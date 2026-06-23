@@ -80,8 +80,7 @@ bool has_connection (const channel_capability_snapshot_t *capability)
                || !capability->connect_endpoints.empty ());
 }
 
-result_t<void> validate_channel_native_reply (
-  const runtime::messaging::message_parts_t &parts)
+result_t<void> validate_channel_native_reply (const runtime::messaging::message_parts_t &parts)
 {
     if (parts.size () != 2) {
         return result_t<void>::failure (
@@ -91,9 +90,9 @@ result_t<void> validate_channel_native_reply (
     runtime::messaging::envelope_codec_t envelope;
     auto header = envelope.decode_header (parts);
     if (!header) {
-        return result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
-          header.error () ? header.error ()->what () : "channel reply header decode failed");
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        header.error () ? header.error ()->what ()
+                                                        : "channel reply header decode failed");
     }
     if (header.value ().kind == runtime::messaging::message_kind_t::error) {
         return result_t<void>::success ();
@@ -105,9 +104,9 @@ result_t<void> validate_channel_native_reply (
     }
     auto body = envelope.decode_body (parts);
     if (!body) {
-        return result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
-          body.error () ? body.error ()->what () : "channel reply body decode failed");
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        body.error () ? body.error ()->what ()
+                                                      : "channel reply body decode failed");
     }
     return result_t<void>::success ();
 }
@@ -199,7 +198,7 @@ class pending_operation_controller_t
         _state.pending_operations.erase (found);
         decrement_pending ();
         return result_t<hook_dispatch_t>::success (
-          hook_dispatch_t{std::move (event), retry_hook_t {}, std::move (hook)});
+          hook_dispatch_t{std::move (event), retry_hook_t{}, std::move (hook)});
     }
 
     result_t<hook_dispatch_t> retry (std::uint64_t operation_id)
@@ -211,7 +210,7 @@ class pending_operation_controller_t
               "retry does not match a pending operation");
         }
         return result_t<hook_dispatch_t>::success (
-          hook_dispatch_t{found->second, _state.retry_hook, dead_letter_hook_t {}});
+          hook_dispatch_t{found->second, _state.retry_hook, dead_letter_hook_t{}});
     }
 
     void drain () noexcept
@@ -306,8 +305,7 @@ result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
                                                  const zlink::message_t &message) const
 {
     auto result =
-      dispatch_request (std::move (channel_name), std::move (topic), std::move (packet_name),
-                        services, serializers, handlers, message);
+      handlers.invoke (channel_name, topic, packet_name, services, serializers, message);
     if (!result) {
         return result_t<void>::failure (result.error_kind (), result.error ()
                                                                 ? result.error ()->what ()
@@ -363,15 +361,14 @@ result_t<void> channel_runtime_t::expire_pending (std::uint64_t operation_id)
         dispatch = pending_operation_controller_t (*_state).expire (operation_id);
     }
     if (!dispatch) {
-        return result_t<void>::failure (
-          dispatch.error_kind (),
-          dispatch.error () ? dispatch.error ()->what () : "pending operation expire failed");
+        return result_t<void>::failure (dispatch.error_kind (),
+                                        dispatch.error () ? dispatch.error ()->what ()
+                                                          : "pending operation expire failed");
     }
     if (dispatch.value ().dead_letter_hook) {
         dispatch.value ().dead_letter_hook (dispatch.value ().event);
     }
-    return result_t<void>::failure (framework_error_kind_t::timeout,
-                                    "pending operation timed out");
+    return result_t<void>::failure (framework_error_kind_t::timeout, "pending operation timed out");
 }
 
 result_t<void> channel_runtime_t::retry_pending (std::uint64_t operation_id)
@@ -384,9 +381,9 @@ result_t<void> channel_runtime_t::retry_pending (std::uint64_t operation_id)
         dispatch = pending_operation_controller_t (*_state).retry (operation_id);
     }
     if (!dispatch) {
-        return result_t<void>::failure (
-          dispatch.error_kind (),
-          dispatch.error () ? dispatch.error ()->what () : "pending operation retry failed");
+        return result_t<void>::failure (dispatch.error_kind (),
+                                        dispatch.error () ? dispatch.error ()->what ()
+                                                          : "pending operation retry failed");
     }
     if (dispatch.value ().retry_hook) {
         dispatch.value ().retry_hook (dispatch.value ().event);
@@ -660,7 +657,8 @@ message_bus_t::erased_request_result_t::erased_request_result_t (framework_excep
 
 message_bus_t::erased_request_result_t::erased_request_result_t (
   zlink::message_t reply, serializer_registry_t &serializers) :
-    _error (framework_error_kind_t::request_failed, ""), _reply (std::move (reply)),
+    _error (framework_error_kind_t::request_failed, ""),
+    _reply (std::move (reply)),
     _serializers (&serializers)
 {
 }
@@ -773,9 +771,9 @@ route_send_call_t &route_send_call_t::metadata (std::string key, std::string val
 task_t<void> route_send_call_t::async ()
 {
     if (!_submit) {
-        return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
-          "route send call is not bound to a route client"));
+        return task_t<void> (
+          result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                   "route send call is not bound to a route client"));
     }
     return _submit (_packet_name, _metadata);
 }
@@ -806,9 +804,9 @@ route_request_call_t &route_request_call_t::metadata (std::string key, std::stri
 task_t<std::uint64_t> route_request_call_t::async ()
 {
     if (!_submit) {
-        return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (
-          framework_error_kind_t::request_protocol_error,
-          "route request call is not bound to a route client"));
+        return task_t<std::uint64_t> (
+          result_t<std::uint64_t>::failure (framework_error_kind_t::request_protocol_error,
+                                            "route request call is not bound to a route client"));
     }
     return _submit (_packet_name, _timeout, _metadata);
 }
@@ -837,8 +835,8 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                     const route_send_call_t::metadata_map_t &metadata)
 {
     if (!state || !state->runtime || state->serializers == nullptr) {
-        return task_t<void> (result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                                      "route client is not configured"));
+        return task_t<void> (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error, "route client is not configured"));
     }
     runtime::messaging::message_parts_t parts;
     try {
@@ -989,8 +987,8 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
         parts = envelope.encode_parts (header, request_type, request, *state->serializers);
     }
     catch (const framework_exception_t &error) {
-        return task_t<zlink::message_t> (
-          result_t<zlink::message_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+          error.kind (), error.what (), error.is_retriable ()));
     }
     return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
       [state, router_channel_id = std::move (router_channel_id),
@@ -1011,9 +1009,9 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
               auto reply_header = envelope.decode_header (reply.value ());
               if (!reply_header) {
                   co_return result_t<zlink::message_t>::failure (
-                    reply_header.error_kind (),
-                    reply_header.error () ? reply_header.error ()->what ()
-                                          : "route reply header decode failed");
+                    reply_header.error_kind (), reply_header.error ()
+                                                  ? reply_header.error ()->what ()
+                                                  : "route reply header decode failed");
               }
               if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
                   co_return result_t<zlink::message_t>::failure (
@@ -1096,8 +1094,8 @@ zlink_builder_t &zlink_builder_t::on_dead_letter (dead_letter_hook_t hook)
 channel_builder_t zlink_builder_t::channel (std::string channel_name)
 {
     auto state = std::make_shared<detail::channel_builder_state_t> (std::move (channel_name));
-    auto [entry, _] = _state->runtime->channels.insert_or_assign (state->snapshot.name,
-                                                                  state->snapshot);
+    auto [entry, _] =
+      _state->runtime->channels.insert_or_assign (state->snapshot.name, state->snapshot);
     state->target = &entry->second;
     return channel_builder_t (state);
 }

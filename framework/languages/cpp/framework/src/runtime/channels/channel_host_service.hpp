@@ -28,6 +28,7 @@ class channel_host_service_t final : public hosted_service_t
 
   private:
     class server_loop_t;
+    class subscriber_loop_t;
 
     message_bus_t _bus;
     std::vector<channel_snapshot_t> _channels;
@@ -37,6 +38,7 @@ class channel_host_service_t final : public hosted_service_t
     service_provider_t *_services = nullptr;
     std::atomic_bool _stop{false};
     std::vector<std::unique_ptr<server_loop_t>> _loops;
+    std::vector<std::unique_ptr<subscriber_loop_t>> _subscriber_loops;
     std::vector<std::thread> _threads;
 };
 

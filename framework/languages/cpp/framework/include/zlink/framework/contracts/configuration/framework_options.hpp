@@ -51,7 +51,8 @@ class handler_options_builder_t
     {
         using request_type = typename THandler::request_type;
         using reply_type = typename THandler::reply_type;
-        _state->add_handler_packet (group_name, detail::handler_group_kind_t::request,
+        auto topic_name = detail::handler_topic_name<THandler, request_type> ();
+        _state->add_handler_packet (group_name, detail::handler_group_kind_t::request, topic_name,
                                     detail::message_name<request_type> ());
 
         detail::injected_handler_registrar_t<
@@ -61,15 +62,14 @@ class handler_options_builder_t
         add_serializers<request_type> ();
         add_serializers<reply_type> ();
         auto route_group_name = group_name;
-        _state->add_installer (
-          std::move (group_name), detail::handler_group_kind_t::request,
-          [handlers] (const std::string &channel_name) {
-              handlers->on_request<THandler, request_type, reply_type> (
-                channel_name, detail::handler_topic_name<THandler, request_type> (),
-                &THandler::handle, {.execution = handler_execution_t::offload});
-          });
+        _state->add_installer (std::move (group_name), detail::handler_group_kind_t::request,
+                               [handlers, topic_name] (const std::string &channel_name) {
+                                   handlers->on_request<THandler, request_type, reply_type> (
+                                     channel_name, topic_name, &THandler::handle,
+                                     {.execution = handler_execution_t::offload});
+                               });
         if constexpr (requires {
-                          static_cast<reply_type (THandler::*) (const request_type &)>(
+                          static_cast<reply_type (THandler::*) (const request_type &)> (
                             &THandler::handle);
                       }) {
             _state->add_route_installer (
@@ -77,24 +77,24 @@ class handler_options_builder_t
               [] (route_channel_builder_t &channel) {
                   channel.add_request_handler<THandler, request_type, reply_type> (
                     detail::message_name<request_type> (),
-                    static_cast<reply_type (THandler::*) (const request_type &)>(
+                    static_cast<reply_type (THandler::*) (const request_type &)> (
                       &THandler::handle));
               });
         } else if constexpr (requires {
                                  static_cast<task_t<reply_type> (THandler::*) (
-                                   const request_type &)>(&THandler::handle);
+                                   const request_type &)> (&THandler::handle);
                              }) {
             _state->add_route_installer (
               std::move (route_group_name), detail::handler_group_kind_t::request,
               [] (route_channel_builder_t &channel) {
                   channel.add_request_handler<THandler, request_type, reply_type> (
                     detail::message_name<request_type> (),
-                    static_cast<task_t<reply_type> (THandler::*) (const request_type &)>(
+                    static_cast<task_t<reply_type> (THandler::*) (const request_type &)> (
                       &THandler::handle));
               });
         } else if constexpr (requires {
                                  static_cast<reply_type (THandler::*) (
-                                   const request_type &, const route_handler_context_t &)>(
+                                   const request_type &, const route_handler_context_t &)> (
                                    &THandler::handle);
                              }) {
             _state->add_route_installer (
@@ -103,11 +103,11 @@ class handler_options_builder_t
                   channel.add_request_handler<THandler, request_type, reply_type> (
                     detail::message_name<request_type> (),
                     static_cast<reply_type (THandler::*) (
-                      const request_type &, const route_handler_context_t &)>(&THandler::handle));
+                      const request_type &, const route_handler_context_t &)> (&THandler::handle));
               });
         } else if constexpr (requires {
                                  static_cast<task_t<reply_type> (THandler::*) (
-                                   const request_type &, const route_handler_context_t &)>(
+                                   const request_type &, const route_handler_context_t &)> (
                                    &THandler::handle);
                              }) {
             _state->add_route_installer (
@@ -116,7 +116,7 @@ class handler_options_builder_t
                   channel.add_request_handler<THandler, request_type, reply_type> (
                     detail::message_name<request_type> (),
                     static_cast<task_t<reply_type> (THandler::*) (
-                      const request_type &, const route_handler_context_t &)>(&THandler::handle));
+                      const request_type &, const route_handler_context_t &)> (&THandler::handle));
               });
         }
         return *this;
@@ -125,7 +125,8 @@ class handler_options_builder_t
     template <typename THandler> handler_options_builder_t &add_send (std::string group_name)
     {
         using message_type = typename THandler::message_type;
-        _state->add_handler_packet (group_name, detail::handler_group_kind_t::send,
+        auto topic_name = detail::handler_topic_name<THandler, message_type> ();
+        _state->add_handler_packet (group_name, detail::handler_group_kind_t::send, topic_name,
                                     detail::message_name<message_type> ());
 
         detail::injected_handler_registrar_t<
@@ -134,15 +135,14 @@ class handler_options_builder_t
         auto *handlers = _handlers;
         add_serializers<message_type> ();
         auto route_group_name = group_name;
-        _state->add_installer (
-          std::move (group_name), detail::handler_group_kind_t::send,
-          [handlers] (const std::string &channel_name) {
-              handlers->on_send<THandler, message_type> (
-                channel_name, detail::handler_topic_name<THandler, message_type> (),
-                &THandler::handle, {.execution = handler_execution_t::offload});
-          });
+        _state->add_installer (std::move (group_name), detail::handler_group_kind_t::send,
+                               [handlers, topic_name] (const std::string &channel_name) {
+                                   handlers->on_send<THandler, message_type> (
+                                     channel_name, topic_name, &THandler::handle,
+                                     {.execution = handler_execution_t::offload});
+                               });
         if constexpr (requires {
-                          static_cast<void (THandler::*) (const message_type &)>(
+                          static_cast<void (THandler::*) (const message_type &)> (
                             &THandler::handle);
                       }) {
             _state->add_route_installer (
@@ -150,23 +150,23 @@ class handler_options_builder_t
               [] (route_channel_builder_t &channel) {
                   channel.add_send_handler<THandler, message_type> (
                     detail::message_name<message_type> (),
-                    static_cast<void (THandler::*) (const message_type &)>(&THandler::handle));
+                    static_cast<void (THandler::*) (const message_type &)> (&THandler::handle));
               });
         } else if constexpr (requires {
-                                 static_cast<task_t<void> (THandler::*) (
-                                   const message_type &)>(&THandler::handle);
+                                 static_cast<task_t<void> (THandler::*) (const message_type &)> (
+                                   &THandler::handle);
                              }) {
             _state->add_route_installer (
               std::move (route_group_name), detail::handler_group_kind_t::send,
               [] (route_channel_builder_t &channel) {
                   channel.add_send_handler<THandler, message_type> (
                     detail::message_name<message_type> (),
-                    static_cast<task_t<void> (THandler::*) (const message_type &)>(
+                    static_cast<task_t<void> (THandler::*) (const message_type &)> (
                       &THandler::handle));
               });
         } else if constexpr (requires {
-                                 static_cast<void (THandler::*) (
-                                   const message_type &, const route_handler_context_t &)>(
+                                 static_cast<void (THandler::*) (const message_type &,
+                                                                 const route_handler_context_t &)> (
                                    &THandler::handle);
                              }) {
             _state->add_route_installer (
@@ -175,11 +175,11 @@ class handler_options_builder_t
                   channel.add_send_handler<THandler, message_type> (
                     detail::message_name<message_type> (),
                     static_cast<void (THandler::*) (
-                      const message_type &, const route_handler_context_t &)>(&THandler::handle));
+                      const message_type &, const route_handler_context_t &)> (&THandler::handle));
               });
         } else if constexpr (requires {
                                  static_cast<task_t<void> (THandler::*) (
-                                   const message_type &, const route_handler_context_t &)>(
+                                   const message_type &, const route_handler_context_t &)> (
                                    &THandler::handle);
                              }) {
             _state->add_route_installer (
@@ -188,7 +188,7 @@ class handler_options_builder_t
                   channel.add_send_handler<THandler, message_type> (
                     detail::message_name<message_type> (),
                     static_cast<task_t<void> (THandler::*) (
-                      const message_type &, const route_handler_context_t &)>(&THandler::handle));
+                      const message_type &, const route_handler_context_t &)> (&THandler::handle));
               });
         }
         return *this;
@@ -197,7 +197,8 @@ class handler_options_builder_t
     template <typename THandler> handler_options_builder_t &add_publish (std::string group_name)
     {
         using event_type = typename THandler::event_type;
-        _state->add_handler_packet (group_name, detail::handler_group_kind_t::publish,
+        auto topic_name = detail::handler_topic_name<THandler, event_type> ();
+        _state->add_handler_packet (group_name, detail::handler_group_kind_t::publish, topic_name,
                                     detail::message_name<event_type> ());
 
         detail::injected_handler_registrar_t<
@@ -205,21 +206,17 @@ class handler_options_builder_t
 
         auto *handlers = _handlers;
         add_serializers<event_type> ();
-        _state->add_installer (
-          std::move (group_name), detail::handler_group_kind_t::publish,
-          [handlers] (const std::string &channel_name) {
-              handlers->on_event<THandler, event_type> (
-                channel_name, detail::handler_topic_name<THandler, event_type> (),
-                &THandler::handle, {.execution = handler_execution_t::offload});
-          });
+        _state->add_installer (std::move (group_name), detail::handler_group_kind_t::publish,
+                               [handlers, topic_name] (const std::string &channel_name) {
+                                   handlers->on_event<THandler, event_type> (
+                                     channel_name, topic_name, &THandler::handle,
+                                     {.execution = handler_execution_t::offload});
+                               });
         return *this;
     }
 
   private:
-    template <typename TPayload> void add_serializers ()
-    {
-        add_json_serializer<TPayload> ();
-    }
+    template <typename TPayload> void add_serializers () { add_json_serializer<TPayload> (); }
 
     template <typename TPayload> void add_json_serializer ()
     {
@@ -299,9 +296,9 @@ class codec_options_builder_t
     // Thrift). The provided serialize/deserialize functions become the payload
     // codec for that type in high-level object messaging.
     template <typename TPayload>
-    codec_options_builder_t &add_serializer (
-      typename serializer_t<TPayload>::serialize_fn_t serialize,
-      typename serializer_t<TPayload>::deserialize_fn_t deserialize)
+    codec_options_builder_t &
+    add_serializer (typename serializer_t<TPayload>::serialize_fn_t serialize,
+                    typename serializer_t<TPayload>::deserialize_fn_t deserialize)
     {
         _serializers->template add<TPayload> (std::move (serialize), std::move (deserialize));
         return *this;
@@ -385,8 +382,7 @@ class client_server_channel_builder_t
         return *this;
     }
 
-    client_server_channel_builder_t &
-    set_default_request_timeout (std::chrono::milliseconds timeout)
+    client_server_channel_builder_t &set_default_request_timeout (std::chrono::milliseconds timeout)
     {
         if (timeout <= std::chrono::milliseconds::zero ()) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -556,25 +552,25 @@ class fanout_channel_builder_t
         } else {
             _options->discovery_backed_capabilities.erase (discovery_capability);
         }
-        _options->set_zlink_action (
-          "fanout_channel:" + channel_name,
-          [channel_name, publisher_endpoint, subscriber_enabled, subscriber_endpoints,
-           subscriber_uses_discovery] (zlink_builder_t &zlink) {
-              auto channel = zlink.channel (channel_name);
-              if (!publisher_endpoint.empty ()) {
-                  channel.enable_publisher ().bind (publisher_endpoint);
-              }
-              if (subscriber_enabled) {
-                  auto subscriber = channel.enable_subscriber ();
-                  if (subscriber_uses_discovery) {
-                      subscriber.use_discovery ();
-                  } else {
-                      for (const auto &endpoint : subscriber_endpoints) {
-                          subscriber.connect (endpoint);
-                      }
-                  }
-              }
-          });
+        _options->set_zlink_action ("fanout_channel:" + channel_name,
+                                    [channel_name, publisher_endpoint, subscriber_enabled,
+                                     subscriber_endpoints,
+                                     subscriber_uses_discovery] (zlink_builder_t &zlink) {
+                                        auto channel = zlink.channel (channel_name);
+                                        if (!publisher_endpoint.empty ()) {
+                                            channel.enable_publisher ().bind (publisher_endpoint);
+                                        }
+                                        if (subscriber_enabled) {
+                                            auto subscriber = channel.enable_subscriber ();
+                                            if (subscriber_uses_discovery) {
+                                                subscriber.use_discovery ();
+                                            } else {
+                                                for (const auto &endpoint : subscriber_endpoints) {
+                                                    subscriber.connect (endpoint);
+                                                }
+                                            }
+                                        }
+                                    });
     }
 
     std::string _channel_name;
@@ -667,8 +663,8 @@ class dealer_mesh_channel_builder_t
         }
         _options->set_zlink_action (
           "dealer_mesh_channel:" + channel_name,
-          [channel_name, bind_endpoint, manual_connections,
-           client_uses_discovery, default_request_timeout] (zlink_builder_t &zlink) {
+          [channel_name, bind_endpoint, manual_connections, client_uses_discovery,
+           default_request_timeout] (zlink_builder_t &zlink) {
               auto channel = zlink.channel (channel_name);
               if (default_request_timeout) {
                   channel.default_request_timeout (*default_request_timeout);
@@ -771,10 +767,10 @@ class route_mesh_channel_builder_t
     add_send_handler (std::string packet_name,
                       void (TOwner::*method) (const TMessage &, const route_handler_context_t &))
     {
-        _route_handlers.push_back ([packet = std::move (packet_name), method] (
-                                     route_channel_builder_t &channel) mutable {
-            channel.add_send_handler<TOwner, TMessage> (std::move (packet), method);
-        });
+        _route_handlers.push_back (
+          [packet = std::move (packet_name), method] (route_channel_builder_t &channel) mutable {
+              channel.add_send_handler<TOwner, TMessage> (std::move (packet), method);
+          });
         apply ();
         return *this;
     }
@@ -784,10 +780,10 @@ class route_mesh_channel_builder_t
       std::string packet_name,
       TReply (TOwner::*method) (const TRequest &, const route_handler_context_t &))
     {
-        _route_handlers.push_back ([packet = std::move (packet_name), method] (
-                                     route_channel_builder_t &channel) mutable {
-            channel.add_request_handler<TOwner, TRequest, TReply> (std::move (packet), method);
-        });
+        _route_handlers.push_back (
+          [packet = std::move (packet_name), method] (route_channel_builder_t &channel) mutable {
+              channel.add_request_handler<TOwner, TRequest, TReply> (std::move (packet), method);
+          });
         apply ();
         return *this;
     }
@@ -817,7 +813,8 @@ class route_mesh_channel_builder_t
         _options->set_zlink_action (
           "route_mesh_channel:" + channel_name,
           [channel_name, bind_endpoint, routing_id, manual_connections, default_request_timeout,
-           route_handler_groups, route_handlers, spot_route_egress_target] (zlink_builder_t &zlink) {
+           route_handler_groups, route_handlers,
+           spot_route_egress_target] (zlink_builder_t &zlink) {
               auto channel = zlink.route_channel (channel_name);
               if (!bind_endpoint.empty ()) {
                   channel.bind (bind_endpoint);
@@ -1116,8 +1113,7 @@ class spot_node_options_builder_t
         return *this;
     }
 
-    spot_node_options_builder_t &
-    attach_publisher (std::string channel_name, std::string endpoint)
+    spot_node_options_builder_t &attach_publisher (std::string channel_name, std::string endpoint)
     {
         detail::require_non_blank (channel_name,
                                    "attached SPOT publisher channel name is required");
@@ -1370,8 +1366,10 @@ class stream_node_options_builder_t
         detail::injected_stream_session_registrar_t<
           TSession, typename detail::handler_dependencies_t<TSession>::type>::add (*_services);
         auto session_name = detail::stream_session_name<TSession> ();
-        _options->stream_session_factories[session_name] = [] (service_provider_t &provider)
-          -> packet_stream_session_t & { return provider.get_required<TSession> (); };
+        _options->stream_session_factories[session_name] =
+          [] (service_provider_t &provider) -> packet_stream_session_t & {
+            return provider.get_required<TSession> ();
+        };
         set_session_name (std::move (session_name));
         apply ();
         return *this;
@@ -1470,25 +1468,21 @@ class zlink_framework_options_t
 
     metadata_policy_builder_t metadata () { return metadata_policy_builder_t (_options); }
 
-    dispatch_options_t &configure_dispatch ()
-    {
-        return _options->dispatch;
-    }
+    dispatch_options_t &configure_dispatch () { return _options->dispatch; }
 
     dispatch_options_t dispatch_options () const { return _options->dispatch; }
 
     discovery_options_builder_t use_discovery () { return discovery_options_builder_t (_options); }
 
-    zlink_framework_options_t &
-    set_default_request_timeout (std::chrono::milliseconds timeout)
+    zlink_framework_options_t &set_default_request_timeout (std::chrono::milliseconds timeout)
     {
         if (timeout <= std::chrono::milliseconds::zero ()) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "request timeout must be greater than zero");
         }
-        _options->set_zlink_action (
-          "default_request_timeout",
-          [timeout] (zlink_builder_t &zlink) { zlink.default_request_timeout (timeout); });
+        _options->set_zlink_action ("default_request_timeout", [timeout] (zlink_builder_t &zlink) {
+            zlink.default_request_timeout (timeout);
+        });
         return *this;
     }
 
@@ -1502,8 +1496,7 @@ class zlink_framework_options_t
         _options->add_zlink_action (
           [pub_endpoint = std::move (pub_endpoint),
            router_endpoint = std::move (router_endpoint)] (zlink_builder_t &zlink) mutable {
-              zlink.enable_registry ().bind (std::move (pub_endpoint),
-                                             std::move (router_endpoint));
+              zlink.enable_registry ().bind (std::move (pub_endpoint), std::move (router_endpoint));
           });
         return *this;
     }

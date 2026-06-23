@@ -375,6 +375,17 @@ int main ()
         return 41;
     }
 
+    zlink::framework::handler_registry_t topic_handlers;
+    topic_handlers.on_event<handler_t, event_t> ("game", "topic-a", &handler_t::on_event,
+                                                 {.packet_name = "topic-event"});
+    topic_handlers.on_event<handler_t, event_t> ("game", "topic-b", &handler_t::on_event,
+                                                 {.packet_name = "topic-event"});
+    if (topic_handlers.find ("game", "topic-a", "topic-event") == nullptr
+        || topic_handlers.find ("game", "topic-b", "topic-event") == nullptr
+        || topic_handlers.find ("game", "topic-c", "topic-event") != nullptr) {
+        return 42;
+    }
+
     auto async_result = handlers.invoke ("game", "async", "async", provider, serializers,
                                          zlink::message_t::from (std::string ("5")));
     if (!async_result

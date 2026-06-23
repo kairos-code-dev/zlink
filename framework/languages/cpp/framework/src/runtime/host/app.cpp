@@ -30,10 +30,13 @@
 namespace zlink::framework::detail
 {
 
-bool has_server_channel (const std::vector<channel_snapshot_t> &channels)
+bool has_inbound_channel (const std::vector<channel_snapshot_t> &channels)
 {
     for (const auto &channel : channels) {
         if (channel.server.enabled && !channel.server.bind_endpoints.empty ()) {
+            return true;
+        }
+        if (channel.subscriber.enabled && !channel.subscriber.connect_endpoints.empty ()) {
             return true;
         }
     }
@@ -103,8 +106,7 @@ class app_state_t
     // once here (never reassigned) so concurrent set/apply only touch the atomic,
     // not the shared_ptr. Installed into dispatch options at apply.
     std::shared_ptr<std::atomic<message_flow_log_mode_t>> message_flow_mode =
-      std::make_shared<std::atomic<message_flow_log_mode_t>> (
-        message_flow_log_mode_t::errors_only);
+      std::make_shared<std::atomic<message_flow_log_mode_t>> (message_flow_log_mode_t::errors_only);
 };
 
 } // namespace zlink::framework::detail
@@ -296,8 +298,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         flow_logging.use_file (*diagnostics_log_file);
         options.configure_dispatch ().diagnostics_logger =
           flow_logging.factory ().create ("zlink.framework.dispatch");
-    }
-    else if (_state->logging.has_output_sink ()) {
+    } else if (_state->logging.has_output_sink ()) {
         options.configure_dispatch ().diagnostics_logger =
           _state->logging.factory ().create ("zlink.framework.dispatch");
     }
@@ -317,7 +318,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     const auto channel_snapshot = _state->zlink.channels ();
     detail::channel_runtime_manager_t::from (_state->zlink)
       .initialize_route_channels (_state->zlink);
-    if (detail::has_server_channel (channel_snapshot)) {
+    if (detail::has_inbound_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
           _state->zlink.message_bus (), channel_snapshot, _state->zlink.discovery_options (),
           _state->handlers, _state->serializers));
@@ -333,9 +334,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   runtime::spot_node_host_service_t::node_runtime_t{spot_node, *runtime});
             }
         }
-        add_hosted_service (
-          std::make_unique<runtime::spot_node_host_service_t> (
-            spot_node_runtimes, _state->zlink.discovery_options ()));
+        add_hosted_service (std::make_unique<runtime::spot_node_host_service_t> (
+          spot_node_runtimes, _state->zlink.discovery_options ()));
     }
     if (!_state->zlink.route_channels ().empty ()) {
         std::vector<runtime::route_channel_host_service_t::spot_node_runtime_t>
@@ -343,8 +343,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         route_spot_node_runtimes.reserve (spot_node_runtimes.size ());
         for (const auto &spot_node : spot_node_runtimes) {
             route_spot_node_runtimes.push_back (
-              runtime::route_channel_host_service_t::spot_node_runtime_t{
-                spot_node.snapshot, spot_node.runtime});
+              runtime::route_channel_host_service_t::spot_node_runtime_t{spot_node.snapshot,
+                                                                         spot_node.runtime});
         }
         add_hosted_service (std::make_unique<runtime::route_channel_host_service_t> (
           _state->zlink.message_bus (), _state->serializers, _state->zlink.registry_query (),
@@ -354,8 +354,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> (),
             _state->serializers)));
     }
-    detail::configure_actor_gateway_spot_bridge (
-      _state->zlink, _state->services, _state->serializers, spot_node_snapshot);
+    detail::configure_actor_gateway_spot_bridge (_state->zlink, _state->services,
+                                                 _state->serializers, spot_node_snapshot);
     const bool has_spot_publisher_client =
       std::any_of (spot_node_snapshot.begin (), spot_node_snapshot.end (),
                    [] (const spot_node_snapshot_t &spot_node) {

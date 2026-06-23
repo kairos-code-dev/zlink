@@ -54,10 +54,9 @@ class channel_host_service_t::server_loop_t
                 _router->attach_discovery (*_discovery);
             }
             catch (const std::exception &error) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_failed,
-                  "channel '" + _channel_name
-                    + "' discovery attach failed: " + error.what ());
+                throw framework_exception_t (framework_error_kind_t::request_failed,
+                                             "channel '" + _channel_name
+                                               + "' discovery attach failed: " + error.what ());
             }
         }
         for (const auto &endpoint : _endpoints) {
@@ -141,18 +140,19 @@ class channel_host_service_t::server_loop_t
     {
         auto request_parts = copy_parts (received.parts ());
         std::lock_guard<std::mutex> lock (_workers_mutex);
-        _workers.emplace_back (
-          [this, received = std::move (received), request_parts = std::move (request_parts)] () mutable {
-              detail::channel_packet_dispatcher_t dispatcher (_runtime);
-              auto scope = _services->create_scope (service_scope_kind_t::handler_invocation);
-              auto reply = dispatcher.dispatch_server_message (
-                _channel_name, request_parts, scope.provider (), *_serializers, *_handlers);
-              if (!reply || reply.value ().size () == 0 || !received.request_seq ()) {
-                  return;
-              }
-              std::lock_guard<std::mutex> reply_lock (_replies_mutex);
-              _replies.push_back (completed_reply_t{std::move (received), std::move (reply.value ())});
-          });
+        _workers.emplace_back ([this, received = std::move (received),
+                                request_parts = std::move (request_parts)] () mutable {
+            detail::channel_packet_dispatcher_t dispatcher (_runtime);
+            auto scope = _services->create_scope (service_scope_kind_t::handler_invocation);
+            auto reply = dispatcher.dispatch_server_message (
+              _channel_name, request_parts, scope.provider (), *_serializers, *_handlers);
+            if (!reply || reply.value ().size () == 0 || !received.request_seq ()) {
+                return;
+            }
+            std::lock_guard<std::mutex> reply_lock (_replies_mutex);
+            _replies.push_back (
+              completed_reply_t{std::move (received), std::move (reply.value ())});
+        });
     }
 
     void flush_replies ()
@@ -224,6 +224,126 @@ class channel_host_service_t::server_loop_t
     std::deque<completed_reply_t> _replies;
 };
 
+class channel_host_service_t::subscriber_loop_t
+{
+  public:
+    subscriber_loop_t (message_bus_t bus,
+                       std::string channel_name,
+                       std::vector<std::string> endpoints,
+                       service_provider_t &services,
+                       serializer_registry_t &serializers,
+                       const handler_registry_t &handlers,
+                       std::atomic_bool &stop) :
+        _runtime (detail::channel_runtime_t::from (bus)),
+        _channel_name (std::move (channel_name)),
+        _services (&services),
+        _serializers (&serializers),
+        _handlers (&handlers),
+        _stop (&stop),
+        _context (std::make_unique<zlink::context_t> ()),
+        _subscriber (std::make_unique<zlink::sub_socket_t> (*_context))
+    {
+        _subscriber->set_subscription ("");
+        for (const auto &endpoint : endpoints) {
+            _subscriber->connect (endpoint);
+        }
+    }
+
+    ~subscriber_loop_t () { stop (); }
+
+    void run ()
+    {
+        while (!_stop->load (std::memory_order_acquire)) {
+            zlink::topic_message_t message;
+            const int rc = _subscriber->subscribe (message, zlink::recv_flags_t::dontwait);
+            if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
+            if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
+            dispatch_async (std::move (message));
+        }
+        join_workers ();
+    }
+
+    void stop () noexcept
+    {
+        if (_subscriber) {
+            try {
+                _subscriber->close ();
+            }
+            catch (...) {
+            }
+        }
+        if (_context) {
+            try {
+                _context->shutdown ();
+                _context->term ();
+            }
+            catch (...) {
+            }
+        }
+        join_workers ();
+    }
+
+  private:
+    static zlink::message_t clone (const zlink::message_t &message)
+    {
+        return zlink::message_t::from (message.to_string ());
+    }
+
+    static zlink::framework::runtime::messaging::message_parts_t
+    copy_parts (const std::vector<zlink::message_t> &parts)
+    {
+        std::vector<zlink::message_t> copied;
+        copied.reserve (parts.size ());
+        for (const auto &part : parts) {
+            copied.push_back (clone (part));
+        }
+        return zlink::framework::runtime::messaging::message_parts_t (std::move (copied));
+    }
+
+    void dispatch_async (zlink::topic_message_t message)
+    {
+        auto parts = copy_parts (message.parts ());
+        std::lock_guard<std::mutex> lock (_workers_mutex);
+        _workers.emplace_back ([this, parts = std::move (parts)] () mutable {
+            detail::channel_packet_dispatcher_t dispatcher (_runtime);
+            auto scope = _services->create_scope (service_scope_kind_t::handler_invocation);
+            (void) dispatcher.dispatch_server_message (_channel_name, parts, scope.provider (),
+                                                       *_serializers, *_handlers);
+        });
+    }
+
+    void join_workers ()
+    {
+        std::vector<std::thread> workers;
+        {
+            std::lock_guard<std::mutex> lock (_workers_mutex);
+            workers.swap (_workers);
+        }
+        for (auto &worker : workers) {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
+        }
+    }
+
+    detail::channel_runtime_t _runtime;
+    std::string _channel_name;
+    service_provider_t *_services;
+    serializer_registry_t *_serializers;
+    const handler_registry_t *_handlers;
+    std::atomic_bool *_stop;
+    std::unique_ptr<zlink::context_t> _context;
+    std::unique_ptr<zlink::sub_socket_t> _subscriber;
+    std::mutex _workers_mutex;
+    std::vector<std::thread> _workers;
+};
+
 channel_host_service_t::channel_host_service_t (message_bus_t bus,
                                                 std::vector<channel_snapshot_t> channels,
                                                 discovery_snapshot_t discovery,
@@ -248,13 +368,22 @@ void channel_host_service_t::start (service_provider_t &services)
             continue;
         }
         const bool publish_to_discovery = !_discovery.registry_endpoints.empty ();
-        auto loop = std::make_unique<server_loop_t> (_bus, channel.name,
-                                                     publish_to_discovery,
-                                                     channel.server.bind_endpoints,
-                                                     channel.server.routing_id, _discovery, services,
-                                                     *_serializers, *_handlers, _stop);
+        auto loop = std::make_unique<server_loop_t> (
+          _bus, channel.name, publish_to_discovery, channel.server.bind_endpoints,
+          channel.server.routing_id, _discovery, services, *_serializers, *_handlers, _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));
+        _threads.emplace_back ([raw] { raw->run (); });
+    }
+    for (const auto &channel : _channels) {
+        if (!channel.subscriber.enabled || channel.subscriber.connect_endpoints.empty ()) {
+            continue;
+        }
+        auto loop = std::make_unique<subscriber_loop_t> (
+          _bus, channel.name, channel.subscriber.connect_endpoints, services, *_serializers,
+          *_handlers, _stop);
+        auto *raw = loop.get ();
+        _subscriber_loops.push_back (std::move (loop));
         _threads.emplace_back ([raw] { raw->run (); });
     }
 }
@@ -265,6 +394,9 @@ void channel_host_service_t::stop () noexcept
     for (auto &loop : _loops) {
         loop->stop ();
     }
+    for (auto &loop : _subscriber_loops) {
+        loop->stop ();
+    }
     for (auto &thread : _threads) {
         if (thread.joinable ()) {
             thread.join ();
@@ -272,6 +404,7 @@ void channel_host_service_t::stop () noexcept
     }
     _threads.clear ();
     _loops.clear ();
+    _subscriber_loops.clear ();
     _services = nullptr;
 }
 

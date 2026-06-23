@@ -242,9 +242,12 @@ handler_registry_t &handler_registry_t::add_handler (handler_descriptor_t descri
     const auto duplicate_packet =
       std::any_of (_state->handlers.begin (), _state->handlers.end (), [&] (const auto &entry) {
           const auto &existing = entry.second.descriptor;
-          return existing.channel_name == descriptor.channel_name
-                 && existing.kind == descriptor.kind
-                 && existing.packet_name == descriptor.packet_name;
+          if (existing.channel_name != descriptor.channel_name || existing.kind != descriptor.kind
+              || existing.packet_name != descriptor.packet_name) {
+              return false;
+          }
+          return existing.topic == descriptor.topic || existing.topic.empty ()
+                 || descriptor.topic.empty ();
       });
     if (duplicate_packet) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,

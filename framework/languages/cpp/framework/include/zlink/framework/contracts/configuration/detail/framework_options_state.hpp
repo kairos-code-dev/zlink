@@ -23,6 +23,7 @@
 #include <set>
 #include <string>
 #include <typeindex>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -113,7 +114,8 @@ inline bool has_manual_connections (const manual_connection_map_t &connections_b
 
 template <typename TSession, typename TDependencies> struct injected_stream_session_registrar_t;
 
-template <typename TDependency> void ensure_stream_dependency_registered (service_collection_t &services)
+template <typename TDependency>
+void ensure_stream_dependency_registered (service_collection_t &services)
 {
     if (services.contains (std::type_index (typeid (TDependency)))) {
         return;
@@ -170,7 +172,7 @@ struct handler_group_options_state_t
     std::map<std::string, std::vector<channel_binding_t>> channels_by_group;
     std::map<std::string, std::vector<installer_binding_t>> installers_by_group;
     std::map<std::string, std::vector<route_installer_binding_t>> route_installers_by_group;
-    std::map<std::string, std::set<std::pair<handler_group_kind_t, std::string>>>
+    std::map<std::string, std::set<std::tuple<handler_group_kind_t, std::string, std::string>>>
       handler_packets_by_group;
     std::vector<serializer_installer_t> json_serializer_installers;
     std::set<std::type_index> json_serializer_types;
@@ -259,11 +261,12 @@ struct handler_group_options_state_t
 
     void add_handler_packet (const std::string &group_name,
                              handler_group_kind_t kind,
+                             std::string topic,
                              std::string packet_name)
     {
         require_non_blank (group_name, "handler group name is required");
         auto &packets = handler_packets_by_group[group_name];
-        if (!packets.emplace (kind, std::move (packet_name)).second) {
+        if (!packets.emplace (kind, std::move (topic), std::move (packet_name)).second) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "duplicate handler registration");
         }

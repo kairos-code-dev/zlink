@@ -24,8 +24,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly ZLinkFrameworkActorFacade _actors;
     private readonly ZLinkFrameworkChannelFacade _channelFacade;
     private readonly ZLinkFrameworkSpotFacade _spotFacade;
-    private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
-    private readonly ZLinkSpotRouteEgressDispatcher _spotRouteEgress;
     private readonly ZLinkFrameworkSessionBindings _sessionBindings = new();
     private readonly object _workerPoolGate = new();
     private ZLinkWorkerPool? _workerPool;
@@ -61,17 +59,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         _actors = components.Actors;
         _channelFacade = components.ChannelFacade;
         _spotFacade = components.SpotFacade;
-        var spotRouteBridges = new ZLinkSpotRouteBridgeProvider(
-            _registration,
-            _backendAdapterFactory,
-            GetOrStartState,
-            _channelFacade.GetOrCreateClientBundle,
-            _channelFacade.GetRouteChannel);
-        _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
-        _spotRouteEgress = new ZLinkSpotRouteEgressDispatcher(
-            _registration,
-            _channelFacade.GetOrCreateClientBundle,
-            spotRouteBridges);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;
@@ -99,6 +86,14 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
+
+    internal bool IsSpotRouteEgressChannel(string channelName)
+    {
+        return _registration.Channels.TryGetValue(channelName, out var channel)
+                && channel.SpotRouteEgress is not null
+            || _registration.RouteChannels.TryGetValue(channelName, out var routeChannel)
+                && routeChannel.SpotRouteEgress is not null;
+    }
 
     internal ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateForRoutingAsync(
         CancellationToken cancellationToken)

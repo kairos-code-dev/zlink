@@ -331,10 +331,10 @@ framework 의 기본 표면은 다음 정도까지만 유지한다.
 - `IZLinkSession`
 - `IZLinkSessionContext`
 - `IZLinkStream`
-- `Message`
+- `ZLinkMessage`
 
-객체 변환은 binding core 의 `Message` 자체가 아니라, 그 위에 얹는 별도
-확장 패키지나 serializer provider 가 맡는다.
+객체 변환은 binding core 의 `Message` 자체가 아니라, framework `ZLinkMessage`와
+별도 확장 패키지 또는 serializer provider가 맡는다.
 
 예를 들면 다음과 같이 쓴다.
 

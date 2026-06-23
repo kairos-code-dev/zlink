@@ -39,10 +39,11 @@ DTO handler, 같은 actor join 코드, 같은 session callback 코드를 사용�
 `JsonMessageExtensions`, raw `Buffer`, `zlink_msg_t` 같은 타입과 helper가 업무 코드에 남아 있다면
 이 계획을 끝낸 것으로 보지 않는다.
 
-## 현재 상태
+## 구현 전 기준 상태
 
-이 절은 2026-06-23 checkout 기준으로 확인한 기준 상태다. 이후 구현 중 checkout이 바뀌면 먼저 이
-상태를 다시 확인한다.
+이 절은 2026-06-23 구현 착수 전 checkout 기준으로 확인한 baseline 이다. 이 표는 문제를
+식별하기 위한 과거 상태이며, 현재 공개 계약을 설명하지 않는다. 구현 후 상태는 바로 아래
+`적용 상태` 절을 기준으로 본다.
 
 | 영역 | 확인한 상태 |
 |------|-------------|
@@ -55,6 +56,21 @@ DTO handler, 같은 actor join 코드, 같은 session callback 코드를 사용�
 | framework message | C++, Java, Kotlin, Node.js, .NET 모두 아직 공통 `ZLinkMessage` 타입이 없다. |
 | codec registry | 다섯 언어 모두 codec registry 또는 동등한 serializer 등록 인프라가 있다. |
 | sample | 일부 sample이 `Message.from(...)`, JSON helper, codec별 helper를 업무 코드에서 직접 사용한다. |
+
+## 적용 상태
+
+이 계획을 적용한 뒤에는 일반 업무 API에서 bindings raw `Message`를 기본 payload로 노출하지 않는다.
+2026-06-23 현재 적용된 공개 계약은 다음 기준을 따른다.
+
+| 영역 | 적용 상태 |
+|------|-----------|
+| .NET session | `IZLinkSession.OnDispatchAsync(...)`는 framework `ZLinkMessage` payload를 받는다. |
+| .NET SPOT create | `IZLinkSpot.OnCreateAsync(...)`는 framework `ZLinkMessage` request를 받는다. |
+| .NET actor join | `IZLinkActorContext.JoinSpot(...)` / `JoinEntrySpot(...)`은 `ZLinkMessage`와 typed request overload를 제공한다. |
+| C++ stream session | normal `packet_stream_session_t::on_packet(...)`은 `zlink::framework::message_t`를 받으며 raw payload는 `on_raw_packet(...)`으로 분리한다. |
+| C++ actor relay | normal `session_actor_t::relay(...)`는 `zlink::framework::message_t`를 받고 raw relay는 `relay_raw(...)`로 분리한다. |
+| framework message | 각 언어의 framework message 타입 또는 동등 타입이 codec registry를 통해 encode/decode를 수행한다. |
+| custom codec 등록 | 기존처럼 options, builder, application startup에서 등록한다. 등록 위치와 extension 작성 계약은 바꾸지 않는다. |
 
 ## 문제 범위
 

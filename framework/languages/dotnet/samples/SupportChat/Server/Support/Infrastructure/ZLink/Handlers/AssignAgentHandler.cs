@@ -1,5 +1,4 @@
 using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Configuration;
@@ -34,7 +33,7 @@ internal sealed class AssignAgentHandler(
         var conversationRid = RoutingId.From(request.ConversationId);
         var joined = await actor.Context.JoinSpot(
                 conversationRid,
-                new JoinConversationReq(request.ConversationId).Encode())
+                new JoinConversationReq(request.ConversationId))
             .Async(cancellationToken);
         var state = joined.Reply.Decode<JoinConversationRes>().State;
         Console.Error.WriteLine($"support assign: joined conversation={request.ConversationId} agent={actor.ActorId} status={state.Status}");

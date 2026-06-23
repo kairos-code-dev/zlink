@@ -31,7 +31,7 @@ internal sealed class ZLinkFrameworkActorFacade(
     public async ValueTask<ZLinkActorJoinResult> JoinActorAsync(
         RoutingId spotRid,
         IZLinkActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken = default)
     {
         var state = getState();
@@ -71,13 +71,13 @@ internal sealed class ZLinkFrameworkActorFacade(
         return new ZLinkActorJoinResult(
             Accepted: joinResult.Accepted,
             ToActorRef(actorState),
-            joinResult.Reply ?? Message.From(ReadOnlySpan<byte>.Empty));
+            joinResult.Reply ?? ZLinkMessage.Empty);
     }
 
     public async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
         RoutingId spotNodeRid,
         IZLinkActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken = default)
     {
         return await _entrySpotJoin.JoinAsync(spotNodeRid, actor, request, cancellationToken)

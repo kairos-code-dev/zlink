@@ -161,10 +161,10 @@ internal static class ZLinkSpotDescriptorFactory
             3,
             "SPOT actor join hook");
         var actorType = parameters[0].ParameterType;
-        if (parameters[1].ParameterType != typeof(Message))
+        if (parameters[1].ParameterType != typeof(ZLinkMessage))
         {
             throw new InvalidOperationException(
-                $"SPOT actor join hook '{spotType}' method '{method.Name}' must use Message as the second parameter.");
+                $"SPOT actor join hook '{spotType}' method '{method.Name}' must use ZLinkMessage as the second parameter.");
         }
 
         ZLinkHandlerMethodShape.RequireCancellationToken(

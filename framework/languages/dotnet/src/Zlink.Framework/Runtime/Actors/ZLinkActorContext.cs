@@ -41,7 +41,7 @@ internal sealed class ZLinkActorContext(
 
     public IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
-        Message request)
+        ZLinkMessage request)
     {
         state.EnsureContextValid();
         ArgumentNullException.ThrowIfNull(request);
@@ -52,7 +52,7 @@ internal sealed class ZLinkActorContext(
             request);
     }
 
-    public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, Message request)
+    public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, ZLinkMessage request)
     {
         state.EnsureContextValid();
         ArgumentNullException.ThrowIfNull(request);
@@ -72,7 +72,7 @@ internal sealed class ZLinkActorJoinSpotCall(
     ZLinkFrameworkRuntime runtime,
     IZLinkActor actor,
     RoutingId spotRid,
-    Message request) : IZLinkActorJoinSpotCall
+    ZLinkMessage request) : IZLinkActorJoinSpotCall
 {
     private TimeSpan? _timeout;
 
@@ -108,7 +108,7 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
     ZLinkFrameworkRuntime runtime,
     IZLinkActor actor,
     RoutingId spotNodeRid,
-    Message request) : IZLinkActorJoinEntrySpotCall
+    ZLinkMessage request) : IZLinkActorJoinEntrySpotCall
 {
     private TimeSpan? _timeout;
 

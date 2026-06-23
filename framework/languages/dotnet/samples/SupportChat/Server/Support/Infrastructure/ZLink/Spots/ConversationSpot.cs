@@ -7,6 +7,7 @@ using SupportChat.Server.Support.Domain.SupportChat;
 using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots;
@@ -63,7 +64,7 @@ internal sealed class ConversationSpot(
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         SupportUserActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var join = request.Decode<JoinConversationReq>();
@@ -76,7 +77,7 @@ internal sealed class ConversationSpot(
         if (string.Equals(actor.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
         {
             var agentState = await JoinAgentAsync(actor, cancellationToken);
-            return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(agentState).Encode());
+            return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(agentState));
         }
 
         actor.JoinConversation(join.ConversationId);
@@ -95,7 +96,7 @@ internal sealed class ConversationSpot(
             actor.ActorId,
             actor.Role);
         Console.Error.WriteLine($"support conversation: actor joined conversation={join.ConversationId} actor={actor.ActorId} role={actor.Role}");
-        return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(conversation.Snapshot()).Encode());
+        return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(conversation.Snapshot()));
     }
 
     public async ValueTask<ConversationState> JoinAgentAsync(

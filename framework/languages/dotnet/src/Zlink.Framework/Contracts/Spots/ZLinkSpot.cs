@@ -2,11 +2,15 @@ using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.Contracts.Spots;
 
-public readonly record struct ZLinkSpotActorJoinResult(bool Accepted, Message? Reply)
+public readonly record struct ZLinkSpotActorJoinResult(bool Accepted, ZLinkMessage? Reply)
 {
-    public static ZLinkSpotActorJoinResult Accept(Message? reply = null) => new(true, reply);
+    public static ZLinkSpotActorJoinResult Accept(ZLinkMessage? reply = null) => new(true, reply);
 
-    public static ZLinkSpotActorJoinResult Reject(Message? reply = null) => new(false, reply);
+    public static ZLinkSpotActorJoinResult Accept<TReply>(TReply reply) => new(true, ZLinkMessage.From(reply));
+
+    public static ZLinkSpotActorJoinResult Reject(ZLinkMessage? reply = null) => new(false, reply);
+
+    public static ZLinkSpotActorJoinResult Reject<TReply>(TReply reply) => new(false, ZLinkMessage.From(reply));
 }
 
 public sealed class ZLinkSpotActorReplyOptions
@@ -105,7 +109,7 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
 {
     ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         TActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
@@ -257,7 +261,7 @@ public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
 
     ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         TActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());

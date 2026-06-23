@@ -29,7 +29,7 @@ internal sealed class ZLinkSessionActor(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(payload);
-        var raw = payload.ToRawMessage();
+        var raw = payload.ToRawMessage(context.Runtime.Registration.Codecs);
         return context.RelayActorRefAsync(this, header, raw, cancellationToken);
     }
 

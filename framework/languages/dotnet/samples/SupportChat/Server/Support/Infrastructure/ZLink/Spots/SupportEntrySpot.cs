@@ -1,7 +1,7 @@
-using Systems.Zlink;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.Handlers;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots;
@@ -32,12 +32,12 @@ internal sealed class SupportEntrySpot(
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         SupportUserActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         _ = actor;
         _ = cancellationToken;
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
     public ValueTask OnJoinedActorAsync(

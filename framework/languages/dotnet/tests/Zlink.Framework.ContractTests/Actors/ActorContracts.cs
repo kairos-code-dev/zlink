@@ -1,4 +1,5 @@
 using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Actors;
@@ -22,10 +23,10 @@ public sealed class ActorContracts
 
         var actor = await manager.GetOrCreateAsync("player-1", "player");
         var joinReply = await actor.Context
-            .JoinSpot(RoutingId.From("room-1"), Encode(new JoinRoom("room-1")))
+            .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
             .Async();
         var entryJoin = await actor.Context
-            .JoinEntrySpot(RoutingId.From("play-node"), Message.From(ReadOnlySpan<byte>.Empty))
+            .JoinEntrySpot(RoutingId.From("play-node"), ZLinkMessage.Empty)
             .Timeout(TimeSpan.FromSeconds(1))
             .Async();
 
@@ -33,7 +34,7 @@ public sealed class ActorContracts
 
         Assert.Equal("player-1", actor.ActorId);
         Assert.True(joinReply.Accepted);
-        Assert.Equal("room-1", Decode<JoinedRoom>(joinReply.Reply).RoomId);
+        Assert.Equal("room-1", joinReply.Reply.Decode<JoinedRoom>().RoomId);
         Assert.True(entryJoin.Accepted);
         Assert.Equal("player-1", entryJoin.Actor.ActorId);
         Assert.Equal(RoutingId.From("play-node"), entryJoin.Actor.NodeRid);
@@ -99,14 +100,14 @@ public sealed class ActorContracts
 
         public IZLinkActorJoinSpotCall JoinSpot(
             RoutingId spotRid,
-            Message request) =>
-            new JoinSpotCall(Encode(new JoinedRoom("room-1")));
+            ZLinkMessage request) =>
+            new JoinSpotCall(ZLinkMessage.From(new JoinedRoom("room-1")));
 
-        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, Message request) =>
-            new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1), Message.From(request));
+        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, ZLinkMessage request) =>
+            new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1), request);
     }
 
-    private sealed class JoinSpotCall(Message reply) : IZLinkActorJoinSpotCall
+    private sealed class JoinSpotCall(ZLinkMessage reply) : IZLinkActorJoinSpotCall
     {
         public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout) => this;
 
@@ -118,7 +119,7 @@ public sealed class ActorContracts
                 reply));
     }
 
-    private sealed class JoinEntrySpotCall(ActorRef result, Message reply) : IZLinkActorJoinEntrySpotCall
+    private sealed class JoinEntrySpotCall(ActorRef result, ZLinkMessage reply) : IZLinkActorJoinEntrySpotCall
     {
         public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout) => this;
 

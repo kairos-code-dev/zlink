@@ -74,10 +74,12 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
         {
             if (result.Reply is { } reply)
             {
+                var encodedReply = reply.Encode(runtime.Registration.Codecs);
+                using var replyMessage = encodedReply.Message;
                 nativeSpot.ReplyActorJoin(
                     joinRequest,
                     joinResultCode: result.Accepted ? 0 : 1,
-                    reply);
+                    encodedReply.Message);
                 return;
             }
 
@@ -94,7 +96,8 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             payload.MessageName,
             null,
             result.Reply,
-            typeof(Message));
+            typeof(ZLinkMessage),
+            runtime.Registration.Codecs);
         try
         {
             nativeSpot.ReplyActorJoin(
@@ -108,14 +111,34 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
         }
     }
 
-    private static JoinPayload DecodeJoinPayload(ZLinkBackendActorJoinRequest joinRequest)
+    private JoinPayload DecodeJoinPayload(ZLinkBackendActorJoinRequest joinRequest)
     {
         if (joinRequest.Parts.Count == 1)
         {
+            try
+            {
+                var envelope = ZLinkEnvelopeCodec.DecodePart<ZLinkActorJoinSinglePartEnvelope>(joinRequest.Parts[0]);
+                using var request = Message.From(envelope.Payload);
+                return new JoinPayload(
+                    UsesEnvelope: true,
+                    MessageName: typeof(ZLinkMessage).Name,
+                    Request: ZLinkMessage.FromEnvelopePayload(
+                        envelope.ContentType,
+                        request,
+                        runtime.Registration.Codecs),
+                    Error: null);
+            }
+            catch
+            {
+            }
+
             return new JoinPayload(
                 UsesEnvelope: false,
                 MessageName: typeof(Message).Name,
-                Request: joinRequest.Parts[0],
+                Request: ZLinkMessage.FromEnvelopePayload(
+                    ZLinkEnvelopeCodec.DefaultContentType,
+                    joinRequest.Parts[0],
+                    runtime.Registration.Codecs),
                 Error: null);
         }
 
@@ -130,7 +153,10 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             return new JoinPayload(
                 UsesEnvelope: true,
                 header.MessageName,
-                joinRequest.Parts[1],
+                ZLinkMessage.FromEnvelopePayload(
+                    header.ContentType,
+                    joinRequest.Parts[1],
+                    runtime.Registration.Codecs),
                 Error: null);
         }
         catch (Exception ex)
@@ -138,7 +164,7 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             return new JoinPayload(
                 UsesEnvelope: true,
                 MessageName: typeof(Message).Name,
-                Request: Message.From(ReadOnlySpan<byte>.Empty),
+                Request: ZLinkMessage.Empty,
                 Error: ex);
         }
     }
@@ -170,6 +196,6 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
     private readonly record struct JoinPayload(
         bool UsesEnvelope,
         string MessageName,
-        Message Request,
+        ZLinkMessage Request,
         Exception? Error);
 }

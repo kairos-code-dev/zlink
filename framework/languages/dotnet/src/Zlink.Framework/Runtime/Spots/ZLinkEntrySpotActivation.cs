@@ -192,7 +192,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
     public async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(
         ZLinkSpotActorJoinDescriptor descriptor,
         IZLinkActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var call = new ActorJoinCallState(descriptor, actor, request);
@@ -363,13 +363,13 @@ internal sealed partial class ZLinkEntrySpotActivation :
     private sealed class ActorJoinCallState(
         ZLinkSpotActorJoinDescriptor descriptor,
         IZLinkActor actor,
-        Message request)
+        ZLinkMessage request)
     {
         public ZLinkSpotActorJoinDescriptor Descriptor { get; } = descriptor;
 
         public IZLinkActor Actor { get; } = actor;
 
-        public Message Request { get; } = request;
+        public ZLinkMessage Request { get; } = request;
 
         public ZLinkSpotActorJoinResult Result { get; set; }
     }

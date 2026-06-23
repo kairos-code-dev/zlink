@@ -1,5 +1,4 @@
 using Systems.Zlink;
-using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
@@ -45,11 +44,11 @@ internal sealed class MatchBingoActorHandler(
                     ActorId = actor.ActorId,
                     DisplayName = actor.DisplayName,
                     ObserveOnly = false,
-                }.ToProto())
+                })
             .Async(cancellationToken)
             ;
         logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
-        var joinedState = joined.Reply.FromProto<BingoRoomJoinRes>().State;
+        var joinedState = joined.Reply.Decode<BingoRoomJoinRes>().State;
         if (joinedState.Status == BingoRoomStatuses.Running)
         {
             await actor.Context.BoundSession

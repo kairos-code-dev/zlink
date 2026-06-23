@@ -1,6 +1,7 @@
 using DeliveryDispatch.Shared.Contracts;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.Tracking;
@@ -28,10 +29,10 @@ internal sealed class DeliveryTrackingSpot(
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         CustomerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var join = request.FromJson<DeliverySpotJoin>();
+        var join = request.Decode<DeliverySpotJoin>();
         cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(join.DeliveryId, _deliveryId, StringComparison.Ordinal))
         {
@@ -41,7 +42,7 @@ internal sealed class DeliveryTrackingSpot(
         _customers[actor.ActorId] = actor;
         Console.Error.WriteLine($"deliverydispatch tracking spot: joined delivery={join.DeliveryId} customer={actor.ActorId}");
         return ValueTask.FromResult(
-            ZLinkSpotActorJoinResult.Accept(new DeliverySpotJoined(join.DeliveryId, actor.ActorId).ToJson()));
+            ZLinkSpotActorJoinResult.Accept(new DeliverySpotJoined(join.DeliveryId, actor.ActorId)));
     }
 
     public void Record(DeliveryStatusChanged status)

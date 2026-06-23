@@ -158,8 +158,7 @@ internal sealed class EnsureActorHandler(
             scenarioActor.DisplayName = request.DisplayName;
         }
 
-        using var joinRequest = Message.From(ReadOnlySpan<byte>.Empty);
-        var joined = await actor.Context.JoinEntrySpot(RoutingId.From(node.Rid), joinRequest)
+        var joined = await actor.Context.JoinEntrySpot(RoutingId.From(node.Rid), ZLinkMessage.Empty)
             .Async(cancellationToken);
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         return new EnsureActorReply(
@@ -221,8 +220,7 @@ internal sealed class JoinUserSpotActorHandler(
             request.ActorId,
             SpotServiceNames.ActorType,
             cancellationToken);
-        using var joinRequest = Message.From(ReadOnlySpan<byte>.Empty);
-        var joined = await actor.Context.JoinSpot(RoutingId.From(request.SpotRid), joinRequest)
+        var joined = await actor.Context.JoinSpot(RoutingId.From(request.SpotRid), ZLinkMessage.Empty)
             .Async(cancellationToken);
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
@@ -274,12 +272,12 @@ internal sealed class ScenarioEntrySpot(
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         ScenarioActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         _ = actor;
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
     public ValueTask OnJoinedActorAsync(
@@ -348,12 +346,12 @@ internal sealed class ScenarioUserSpot(
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         ScenarioActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
     public ValueTask OnLeaveActorAsync(ScenarioActor actor, CancellationToken cancellationToken)
@@ -748,8 +746,7 @@ internal sealed class AuthSessionHandler(
             scenarioActor.DisplayName = request.DisplayName;
         }
 
-        using var joinRequest = Message.From(ReadOnlySpan<byte>.Empty);
-        var joined = await actor.Context.JoinEntrySpot(RoutingId.From(node.Rid), joinRequest)
+        var joined = await actor.Context.JoinEntrySpot(RoutingId.From(node.Rid), ZLinkMessage.Empty)
             .Async(cancellationToken);
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         return new EnsureActorReply(

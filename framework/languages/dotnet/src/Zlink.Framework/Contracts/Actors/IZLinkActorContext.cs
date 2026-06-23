@@ -15,17 +15,36 @@ public interface IZLinkActorContext
 
     IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
-        Message request);
+        ZLinkMessage request);
+
+    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request)
+    {
+        return JoinSpot(spotRid, ZLinkMessage.From(request));
+    }
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
         RoutingId spotNodeRid,
-        Message request);
+        ZLinkMessage request);
+
+    IZLinkActorJoinEntrySpotCall JoinEntrySpot<TRequest>(
+        RoutingId spotNodeRid,
+        TRequest request)
+    {
+        return JoinEntrySpot(spotNodeRid, ZLinkMessage.From(request));
+    }
 }
 
 public sealed record ZLinkActorJoinResult(
     bool Accepted,
     ActorRef Actor,
-    Message Reply);
+    ZLinkMessage Reply);
+
+public sealed record ZLinkActorJoinResult<TReply>(
+    bool Accepted,
+    ActorRef Actor,
+    TReply Reply);
 
 public interface IZLinkActorJoinSpotCall
 {
@@ -33,6 +52,16 @@ public interface IZLinkActorJoinSpotCall
 
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
+
+    async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await Async(cancellationToken).ConfigureAwait(false);
+        return new ZLinkActorJoinResult<TReply>(
+            result.Accepted,
+            result.Actor,
+            result.Reply.Decode<TReply>());
+    }
 }
 
 public interface IZLinkActorJoinEntrySpotCall
@@ -41,4 +70,14 @@ public interface IZLinkActorJoinEntrySpotCall
 
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
+
+    async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await Async(cancellationToken).ConfigureAwait(false);
+        return new ZLinkActorJoinResult<TReply>(
+            result.Accepted,
+            result.Actor,
+            result.Reply.Decode<TReply>());
+    }
 }

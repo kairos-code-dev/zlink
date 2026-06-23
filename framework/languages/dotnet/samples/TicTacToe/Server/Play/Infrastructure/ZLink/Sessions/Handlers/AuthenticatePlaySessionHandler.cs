@@ -6,6 +6,7 @@ using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions.Handlers;
@@ -77,10 +78,9 @@ internal sealed class AuthenticatePlaySessionHandler(
             "play stream: joining actor to entry spot. sessionId={SessionId}, actor={ActorId}",
             context.SessionId,
             player.ActorId);
-        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
         await playerActor.Context.JoinEntrySpot(
                 RoutingId.From(settings.PlaySpotNodeRid),
-                entryJoinRequest)
+                ZLinkMessage.Empty)
             .Async(cancellationToken);
 
         logger.LogInformation(

@@ -240,14 +240,14 @@ internal sealed class ZLinkSpotActivationDispatcher
         try
         {
             var joinRequest = ZLinkEnvelopeCodec.DecodePart<ZLinkRemoteActorJoinRequest>(received.Parts[1]);
-            using var request = Message.From(joinRequest.Request);
             reply = await runtime.JoinRoutedActorAsync(
                     joinRequest.ActorId,
                     joinRequest.ActorType,
                     nativeSpot.RoutingId,
                     ToRoutingId(joinRequest.BoundSessionNodeRid),
                     ToRoutingId(joinRequest.BoundSessionRid),
-                    request,
+                    joinRequest.RequestContentType,
+                    joinRequest.Request,
                     cancellationToken)
                 .ConfigureAwait(false);
         }

@@ -6,6 +6,7 @@ using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Server.Play.Domain.TicTacToe;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.Handlers;
 using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 
@@ -71,7 +72,7 @@ sealed class TicTacToeGame(
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayActor player,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var joinRequest = request.Decode<TicTacToeGameJoinReq>();
@@ -82,7 +83,7 @@ sealed class TicTacToeGame(
             joinRequest.RoomId,
             reply.State.XActorId == player.ActorId ? TicTacToeMarks.X : TicTacToeMarks.O);
 
-        return ZLinkSpotActorJoinResult.Accept(reply.ToJson());
+        return ZLinkSpotActorJoinResult.Accept(reply);
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(

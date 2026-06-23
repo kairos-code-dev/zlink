@@ -4,6 +4,7 @@ using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Messaging;
 
 internal static class Program
 {
@@ -303,14 +304,13 @@ internal sealed class FixtureActorSpot(IZLinkSpotContext context) : IZLinkSpot<F
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         FixtureActor actor,
-        global::Systems.Zlink.Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var decoded = request.FromJson<FixtureActorJoinRequest>();
+        var decoded = request.Decode<FixtureActorJoinRequest>();
         actor.AttachSpot(this);
         await actor.OnAttachedAsync(cancellationToken);
-        return ZLinkSpotActorJoinResult.Accept(
-            JsonMessageExtensions.ToJson(new FixtureActorJoinReply(decoded.RoomId)));
+        return ZLinkSpotActorJoinResult.Accept(new FixtureActorJoinReply(decoded.RoomId));
     }
 }
 

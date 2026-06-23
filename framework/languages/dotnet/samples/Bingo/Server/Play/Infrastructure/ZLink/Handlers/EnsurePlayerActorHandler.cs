@@ -3,6 +3,7 @@ using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
@@ -33,10 +34,9 @@ internal sealed class EnsurePlayerActorHandler(
             player.SetDisplayName(request.DisplayName);
         }
 
-        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
         var joined = await actor.Context.JoinEntrySpot(
                 RoutingId.From(request.PreferredActorNodeRid),
-                entryJoinRequest)
+                ZLinkMessage.Empty)
             .Async(cancellationToken)
             ;
         return new EnsurePlayerActorRes

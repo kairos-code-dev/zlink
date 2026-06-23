@@ -1,4 +1,4 @@
-using Systems.Zlink;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
@@ -58,12 +58,12 @@ internal sealed class PlayEntrySpot(
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         _ = actor;
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
     public async ValueTask OnJoinedActorAsync(

@@ -32,6 +32,8 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     private ZLinkSessionStreamTransport Transport
         => _transport ??= new ZLinkSessionStreamTransport(_stream, _requests, _runtime.Flow);
 
+    internal ZLinkFrameworkRuntime Runtime => _runtime;
+
     public string SessionId => _stream.SessionId;
 
     public RoutingId? RoutingId => _stream.RoutingId;

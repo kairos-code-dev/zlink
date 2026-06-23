@@ -8,6 +8,7 @@ using Bingo.Server.Play.Infrastructure.ZLink.Spots.Handlers;
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Messaging;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots;
 
@@ -83,11 +84,11 @@ internal sealed class BingoRoom(
 
     public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var reply = await JoinAsync(actor, request.FromProto<BingoRoomJoinReq>(), cancellationToken);
-        return ZLinkSpotActorJoinResult.Accept(reply.ToProto());
+        var reply = await JoinAsync(actor, request.Decode<BingoRoomJoinReq>(), cancellationToken);
+        return ZLinkSpotActorJoinResult.Accept(reply);
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(

@@ -5,6 +5,7 @@ using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.Tracking;
@@ -24,10 +25,9 @@ internal sealed class EnsureCustomerActorHandler(
             request.CustomerId,
             SampleNames.CustomerActorType,
             cancellationToken);
-        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
         var joined = await actor.Context.JoinEntrySpot(
                 topology.TrackingSpotNodeRid,
-                entryJoinRequest)
+                ZLinkMessage.Empty)
             .Async(cancellationToken);
         return new CustomerActorEnsured(
             request.CustomerId,
@@ -59,7 +59,7 @@ internal sealed class SubscribeCustomerToDeliveryHandler(
             cancellationToken);
         await actor.Context.JoinSpot(
                 RoutingId.From(request.DeliveryId),
-                new DeliverySpotJoin(request.DeliveryId, request.CustomerId).ToJson())
+                new DeliverySpotJoin(request.DeliveryId, request.CustomerId))
             .Async(cancellationToken);
         return new CustomerDeliverySubscribed(request.CustomerId, request.DeliveryId);
     }

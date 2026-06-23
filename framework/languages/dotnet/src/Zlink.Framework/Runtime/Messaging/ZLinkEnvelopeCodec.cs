@@ -81,6 +81,17 @@ internal static class ZLinkEnvelopeCodec
             return Message.From(message);
         }
 
+        if (bodyType == typeof(ZLinkMessage))
+        {
+            if (body is not ZLinkMessage message)
+            {
+                throw new InvalidOperationException(
+                    $"Envelope body type is ZLinkMessage, but body instance is '{body.GetType()}'.");
+            }
+
+            return message.Encode(codecs ?? new ZLinkCodecRegistryBuilder()).Message;
+        }
+
         if (codecs is not null
             && codecs.TryResolveSerializer(bodyType, out _, out var serializer))
         {
@@ -155,6 +166,11 @@ internal static class ZLinkEnvelopeCodec
             return bodyMessage;
         }
 
+        if (bodyType == typeof(ZLinkMessage))
+        {
+            return ZLinkMessage.FromEnvelopePayload(contentType, bodyMessage, codecs ?? new ZLinkCodecRegistryBuilder());
+        }
+
         if (bodyType == typeof(ReadOnlyMemory<byte>))
         {
             return bodyMessage.AsReadOnlyMemory();
@@ -213,6 +229,13 @@ internal static class ZLinkEnvelopeCodec
         if (bodyType == typeof(Message) || body is Message)
         {
             return JsonContentType;
+        }
+
+        if (bodyType == typeof(ZLinkMessage) && body is ZLinkMessage message)
+        {
+            var encoded = message.Encode(codecs ?? new ZLinkCodecRegistryBuilder());
+            encoded.Message.Dispose();
+            return encoded.ContentType;
         }
 
         if (codecs is not null

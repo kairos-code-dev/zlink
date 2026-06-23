@@ -1,4 +1,5 @@
 using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.ContractTests.Support;
 using Zlink.Framework.Contracts.Workers;
 
@@ -144,7 +145,7 @@ public sealed class SpotContracts
         var roomReply = await new RoomRequestHandler().HandleAsync(room, new JoinRoom("room-1"), CancellationToken.None);
         await new RoomEventHandler().HandleAsync(room, new RoomEvent("opened"), CancellationToken.None);
         await new RoomTimerHandler().HandleAsync(room, TimerTick(), CancellationToken.None);
-        var joinReply = await room.OnActorJoinAsync(actor, Encode(new JoinRoom("room-1")), CancellationToken.None);
+        var joinReply = await room.OnActorJoinAsync(actor, ZLinkMessage.From(new JoinRoom("room-1")), CancellationToken.None);
         await new PlayerActorSendHandler().HandleAsync(room, actor, null!, new RoomEvent("opened"), CancellationToken.None);
         var actorReply = await new PlayerActorRequestHandler().HandleAsync(room, actor, null!, new JoinRoom("room-1"), CancellationToken.None);
         await room.OnJoinedActorAsync(actor, CancellationToken.None);
@@ -159,7 +160,7 @@ public sealed class SpotContracts
 
         Assert.Equal("room-1", roomReply.RoomId);
         Assert.True(joinReply.Accepted);
-        Assert.Equal("room-1", Decode<JoinedRoom>(joinReply.Reply!).RoomId);
+        Assert.Equal("room-1", joinReply.Reply!.Decode<JoinedRoom>().RoomId);
         Assert.Equal("actor:room-1", actorReply.RoomId);
         Assert.Equal("entry:room-1", entryReply.RoomId);
     }
@@ -207,18 +208,18 @@ public sealed class SpotContracts
     }
 
     [Fact]
-    public async Task Spot_actor_join_callback_uses_raw_message_and_explicit_acceptance()
+    public async Task Spot_actor_join_callback_uses_framework_message_and_explicit_acceptance()
     {
         var room = new RoomSpot(new SpotContext(RoutingId.From("room-1")));
         var actor = new PlayerActor("player-1");
-        using var request = Encode(new JoinRoom("room-1"));
+        var request = ZLinkMessage.From(new JoinRoom("room-1"));
 
         var accepted = await room.OnActorJoinAsync(actor, request, CancellationToken.None);
         var rejected = ZLinkSpotActorJoinResult.Reject();
 
         Assert.True(accepted.Accepted);
         Assert.NotNull(accepted.Reply);
-        Assert.Equal("room-1", Decode<JoinedRoom>(accepted.Reply!).RoomId);
+        Assert.Equal("room-1", accepted.Reply!.Decode<JoinedRoom>().RoomId);
         Assert.False(rejected.Accepted);
         Assert.Null(rejected.Reply);
     }
@@ -299,14 +300,14 @@ public sealed class SpotContracts
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
             PlayerActor actor,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken)
         {
             _ = actor;
             _ = cancellationToken;
-            var join = Decode<JoinRoom>(request);
+            var join = request.Decode<JoinRoom>();
             return ValueTask.FromResult(
-                ZLinkSpotActorJoinResult.Accept(Encode(new JoinedRoom(join.RoomId))));
+                ZLinkSpotActorJoinResult.Accept(new JoinedRoom(join.RoomId)));
         }
 
         public ValueTask OnJoinedActorAsync(
@@ -343,12 +344,12 @@ public sealed class SpotContracts
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
             PlayerActor actor,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken)
         {
             _ = actor;
             _ = cancellationToken;
-            return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+            return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
         }
 
         public ValueTask OnJoinedActorAsync(

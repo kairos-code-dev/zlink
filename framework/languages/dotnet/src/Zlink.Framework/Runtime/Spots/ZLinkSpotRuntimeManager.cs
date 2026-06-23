@@ -120,7 +120,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkFrameworkRuntimeState state,
         RoutingId spotRid,
         IZLinkActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var activation = GetActivation(state, spotRid)

@@ -11,6 +11,7 @@ internal sealed record ZLinkActorEntrySpotRouteJoinRequest(
     string SourceNodeRid,
     string SourceSpotRid,
     ulong SourceGeneration,
+    string RequestContentType,
     byte[] RequestPayload);
 
 internal sealed record ZLinkActorEntrySpotRouteJoinReply(
@@ -19,4 +20,9 @@ internal sealed record ZLinkActorEntrySpotRouteJoinReply(
     string ActorType,
     string TargetNodeRid,
     ulong ActorGeneration,
+    string ReplyContentType,
     byte[] ReplyPayload);
+
+internal sealed record ZLinkActorJoinSinglePartEnvelope(
+    string ContentType,
+    byte[] Payload);

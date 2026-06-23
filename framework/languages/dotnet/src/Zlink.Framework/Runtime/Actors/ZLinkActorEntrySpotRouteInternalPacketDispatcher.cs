@@ -64,7 +64,11 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor EntrySpot route join target node '{nativeRef.NodeRid}' does not have an Entry Spot activation.");
 
-        using var joinRequest = Message.From(request.RequestPayload);
+        using var joinRequestPayload = Message.From(request.RequestPayload);
+        var joinRequest = ZLinkMessage.FromEnvelopePayload(
+            request.RequestContentType,
+            joinRequestPayload,
+            runtime.Registration.Codecs);
         var admission = activation.TryResolveActorJoin(out var descriptor) && descriptor is not null
             ? await activation.InvokeActorJoinAsync(descriptor, actor, joinRequest, cancellationToken)
                 .ConfigureAwait(false)
@@ -78,13 +82,26 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
                 .ConfigureAwait(false);
         }
 
+        var replyContentType = ZLinkEnvelopeCodec.DefaultContentType;
+        Message? replyPayload = null;
+        if (admission.Reply is { } reply)
+        {
+            var encodedReply = reply.Encode(runtime.Registration.Codecs);
+            replyContentType = encodedReply.ContentType;
+            replyPayload = encodedReply.Message;
+        }
+
+        using (replyPayload)
+        {
         return ZLinkEnvelopeCodec.EncodePart(new ZLinkActorEntrySpotRouteJoinReply(
             admission.Accepted,
             actor.ActorId,
             state.ActorType ?? request.ActorType,
             nativeRef.NodeRid.ToHex(),
             nativeRef.Generation,
-            admission.Reply?.ToArray() ?? Array.Empty<byte>()));
+            replyContentType,
+            replyPayload?.ToArray() ?? Array.Empty<byte>()));
+        }
     }
 
     private static ZLinkSpotNodeRuntime FindSpotNode(

@@ -47,7 +47,7 @@ internal sealed class ZLinkSpotHandlerInvoker(
     public async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(
         ZLinkSpotActorJoinDescriptor descriptor,
         IZLinkActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         EnsureActorType(

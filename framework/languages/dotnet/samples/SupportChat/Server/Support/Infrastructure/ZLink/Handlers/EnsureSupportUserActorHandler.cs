@@ -5,6 +5,7 @@ using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 
@@ -33,17 +34,16 @@ internal sealed class EnsureSupportUserActorHandler(
         supportActor.SetIdentity(request.DisplayName, request.Role);
         directory.AddOrUpdate(supportActor);
 
-        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
         var joined = await actor.Context.JoinEntrySpot(
                 topology.SupportEntryRid,
-                entryJoinRequest)
+                ZLinkMessage.Empty)
             .Async(cancellationToken);
         if (!string.IsNullOrWhiteSpace(supportActor.ConversationId))
         {
             var conversationRid = RoutingId.From(supportActor.ConversationId);
             await actor.Context.JoinSpot(
                     conversationRid,
-                    new JoinConversationReq(supportActor.ConversationId).Encode())
+                    new JoinConversationReq(supportActor.ConversationId))
                 .Async(cancellationToken);
         }
 

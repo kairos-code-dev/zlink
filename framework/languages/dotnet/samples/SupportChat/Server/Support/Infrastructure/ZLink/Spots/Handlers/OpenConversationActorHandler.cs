@@ -1,5 +1,4 @@
 using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
@@ -34,7 +33,7 @@ internal sealed class OpenConversationActorHandler
         var conversationRid = RoutingId.From(opened.ConversationId);
         var joined = await actor.Context.JoinSpot(
                 conversationRid,
-                new JoinConversationReq(opened.ConversationId).Encode())
+                new JoinConversationReq(opened.ConversationId))
             .Async(cancellationToken);
         var state = joined.Reply.Decode<JoinConversationRes>().State;
         Console.Error.WriteLine($"support entry open: completed conversation={opened.ConversationId} status={state.Status}");

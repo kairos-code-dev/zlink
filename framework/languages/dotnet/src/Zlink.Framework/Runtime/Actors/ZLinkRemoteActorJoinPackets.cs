@@ -11,6 +11,7 @@ internal sealed record ZLinkRemoteActorJoinRequest(
     string ActorType,
     byte[]? BoundSessionNodeRid,
     byte[]? BoundSessionRid,
+    string RequestContentType,
     byte[] Request);
 
 internal sealed record ZLinkRemoteActorJoinReply(
@@ -18,4 +19,5 @@ internal sealed record ZLinkRemoteActorJoinReply(
     byte[] ActorNodeRid,
     string ActorId,
     ulong ActorGeneration,
+    string ReplyContentType,
     byte[] Reply);

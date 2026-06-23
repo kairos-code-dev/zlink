@@ -1,5 +1,6 @@
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 using Zlink.Framework.Runtime.Spots;
@@ -58,7 +59,7 @@ public sealed class SpotAutoRegistrationScannerTests
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
             AutoActor actor,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken)
         {
             _ = actor;

@@ -38,6 +38,8 @@ public sealed class ZLinkMessage
         return new ZLinkMessage(value, typeof(T));
     }
 
+    public static ZLinkMessage Empty { get; } = new(ReadOnlyMemory<byte>.Empty, ZLinkEnvelopeCodec.DefaultContentType, null, null);
+
     public T Decode<T>()
     {
         if (_declaredType is not null)
@@ -58,15 +60,39 @@ public sealed class ZLinkMessage
         return decoded is null ? default! : (T)decoded;
     }
 
-    internal Message ToRawMessage()
+    internal EncodedZLinkMessage Encode(ZLinkCodecRegistryBuilder codecs)
     {
         if (_declaredType is not null)
         {
-            return ZLinkEnvelopeCodec.EncodeBody(_value, _declaredType, _codecs);
+            var header = new ZLinkEnvelopeHeader(
+                ZLinkMessageKind.Request,
+                string.Empty,
+                string.Empty,
+                ZLinkEnvelopeCodec.DefaultContentType,
+                null,
+                null,
+                null,
+                null,
+                null);
+            var parts = ZLinkEnvelopeCodec.EncodeParts(header, _value, _declaredType, codecs);
+            try
+            {
+                var resolvedHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
+                return new EncodedZLinkMessage(resolvedHeader.ContentType, Message.From(parts[1]));
+            }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(parts);
+            }
         }
 
-        return Message.From(_payload.Span);
+        return new EncodedZLinkMessage(
+            ContentType ?? ZLinkEnvelopeCodec.DefaultContentType,
+            Message.From(_payload.Span));
     }
+
+    internal Message ToRawMessage(ZLinkCodecRegistryBuilder codecs)
+        => Encode(codecs).Message;
 
     internal static ZLinkMessage FromStreamPayload(
         ZlinkStreamCodec codec,
@@ -140,3 +166,5 @@ public sealed class ZLinkMessage
             ZLinkJsonSerializerOptions.Default);
     }
 }
+
+internal readonly record struct EncodedZLinkMessage(string ContentType, Message Message);

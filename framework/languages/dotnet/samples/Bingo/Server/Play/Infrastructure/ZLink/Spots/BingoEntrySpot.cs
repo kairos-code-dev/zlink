@@ -1,4 +1,4 @@
-using Systems.Zlink;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.Handlers;
@@ -29,12 +29,12 @@ internal sealed class BingoEntrySpot(
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         _ = actor;
         _ = cancellationToken;
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
     public async ValueTask OnJoinedActorAsync(

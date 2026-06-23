@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Spots;
@@ -52,7 +53,7 @@ public sealed class SpotHandlerInvokerTests
         var descriptor = ZLinkSpotDescriptorFactory
             .CreateSpotActorJoinDescriptors(typeof(DefaultHookSpot))
             .Single();
-        using var request = Message.From("join");
+        var request = ZLinkMessage.From("join");
 
         var invoker = new ZLinkSpotHandlerInvoker(
             new ServiceCollection().BuildServiceProvider(),

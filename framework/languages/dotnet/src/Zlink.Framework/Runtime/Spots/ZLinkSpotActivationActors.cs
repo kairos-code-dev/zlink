@@ -33,7 +33,7 @@ internal sealed partial class ZLinkSpotActivation
 
     public async ValueTask<ZLinkSpotActorJoinResult> JoinActorAsync(
         IZLinkActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -137,8 +137,7 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        using var request = Message.From(ReadOnlySpan<byte>.Empty);
-        await _runtime.JoinActorEntrySpotAsync(NodeRid, actor, request, cancellationToken)
+        await _runtime.JoinActorEntrySpotAsync(NodeRid, actor, ZLinkMessage.Empty, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -186,7 +185,7 @@ internal sealed partial class ZLinkSpotActivation
     private async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(
         ZLinkSpotActorJoinDescriptor descriptor,
         IZLinkActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return await HandlerInvoker.InvokeActorJoinAsync(descriptor, actor, request, cancellationToken)
@@ -195,12 +194,12 @@ internal sealed partial class ZLinkSpotActivation
 
     private sealed class ActorJoinCallState(
         IZLinkActor actor,
-        Message request,
+        ZLinkMessage request,
         ZLinkSpotActorJoinDescriptor descriptor)
     {
         public IZLinkActor Actor { get; } = actor;
 
-        public Message Request { get; } = request;
+        public ZLinkMessage Request { get; } = request;
 
         public ZLinkSpotActorJoinDescriptor Descriptor { get; } = descriptor;
 

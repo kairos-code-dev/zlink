@@ -113,6 +113,19 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             Message.from(payload));
     }
 
+    public void dispatchStreamPacket(
+        String packetName,
+        Message payload,
+        ZLinkStreamCodec codec) {
+        if (streams.isEmpty()) {
+            throw new IllegalStateException("no fake stream socket is available");
+        }
+        streams.get(0).dispatchPacket(
+            RoutingId.from("fake-session"),
+            Message.from(encodeStreamHeader(1, codec.value(), packetName, Optional.empty())),
+            payload);
+    }
+
     public void dispatchStreamRequest(String packetName, String payload, long requestSeq) {
         dispatchStreamRequest(packetName, Message.from(payload), requestSeq, 0);
     }

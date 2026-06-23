@@ -13,6 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -25,6 +26,7 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
@@ -109,6 +111,31 @@ final class StreamSessionTest {
             assertEquals(List.of("First:one", "Second:two"), GameSession.dispatches);
             assertEquals(1, GameSession.connectedCount);
             assertEquals(0, GameSession.disconnectedCount);
+        }
+    }
+
+    @Test
+    void customCodecSessionDispatchDecodesThroughFrameworkMessage() {
+        GameSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.codecs().addSerializer("application/x-session-test", new SessionCustomSerializer());
+        options.codecs().addStreamCodec("application/x-session-test", ZLinkStreamCodec.PROTOBUF);
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            Message payload = Message.from("custom:hello");
+            try {
+                backendFactory.dispatchStreamPacket("Custom", payload, ZLinkStreamCodec.PROTOBUF);
+            } finally {
+                payload.close();
+            }
+
+            awaitCondition(() -> GameSession.dispatches.size() == 1);
+            assertEquals(List.of("Custom:hello"), GameSession.dispatches);
         }
     }
 
@@ -615,6 +642,26 @@ final class StreamSessionTest {
                     .submit())
                 .toCompletableFuture()
                 .join();
+                    }
+    }
+
+    public static final class SessionCustomSerializer implements ZLinkMessageSerializer {
+        @Override
+        public <T> Message serialize(T value) {
+            if (value instanceof Message message) {
+                return Message.from(message);
+            }
+            return Message.from("custom:" + value);
+        }
+
+        @Override
+        public <T> T deserialize(Message message, Class<T> type) {
+            String value = message.toUtf8String();
+            String decoded = value.startsWith("custom:") ? value.substring("custom:".length()) : value;
+            if (type == String.class) {
+                return type.cast(decoded);
+            }
+            throw new IllegalArgumentException("unsupported message type: " + type.getName());
         }
     }
 }

@@ -657,7 +657,7 @@ Spot 배치는 admission 이 아니라 `onCreateActor(actor)` 로만 처리한�
 
 ```ts
 export class MatchSpot implements ZLinkSpot {
-  async onActorJoin(actor: PlayerActor, request: Message): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: PlayerActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 
@@ -1573,10 +1573,10 @@ export interface ZLinkSpotInfo {
 
 export interface ZLinkSpotManager {
   create<TSpot extends ZLinkSpot>(
-    spotType: Type<TSpot>, request?: Message): Promise<ZLinkSpotCreateResult>;
+    spotType: Type<TSpot>, request?: unknown | ZLinkMessage): Promise<ZLinkSpotCreateResult>;
 
   getOrCreate<TSpot extends ZLinkSpot>(
-    spotType: Type<TSpot>, spotRid: RoutingId, request?: Message): Promise<ZLinkSpotCreateResult>;
+    spotType: Type<TSpot>, spotRid: RoutingId, request?: unknown | ZLinkMessage): Promise<ZLinkSpotCreateResult>;
 
   find(spotRid: RoutingId): Promise<ZLinkSpotInfo | null>;
   list(): Promise<readonly ZLinkSpotInfo[]>;
@@ -1588,11 +1588,11 @@ export interface ZLinkSpotManager {
 > (기존 draft 의 `spotName: string` 이 아님). 조회 메서드는 `FindAsync`(=`find`)이며
 > 결과는 public 식별자 `SpotRid` 만 돌려준다(spot 타입/factory 정보는 노출하지 않음).
 > `ZLinkSpotInfo` 는 `spotRid` 만 가진다. `ZLinkSpotCreateResult` 는 `spotRid` +
-> `Existing` / `Created` / `Rejected` 상태와 선택적 reply `Message` 를 가진다.
+> `Existing` / `Created` / `Rejected` 상태와 선택적 reply `ZLinkMessage` 를 가진다.
 > C# generic + overload 를 TS 에서 `spotType: Type<TSpot>` 첫 인자로 표현한다.
 
 - `create(spotType, request?)`: generic 타입으로 factory 선택, runtime 이 새 spotRid 발급.
-  payload 가 없으면 빈 `Message` 를 `onCreate(...)` 에 전달한다.
+  payload 가 없으면 빈 `ZLinkMessage` 를 `onCreate(...)` 에 전달한다.
 - `getOrCreate(spotType, spotRid, request?)`: 호출자가 logical spot rid 지정. 이미 같은
   spotRid 가 있으면 `Existing` 을 반환하고 새 request 는 전달하지 않음.
 - `find(...)` / `list(...)`: 조회 표면. `SpotRid` 만 돌려준다.

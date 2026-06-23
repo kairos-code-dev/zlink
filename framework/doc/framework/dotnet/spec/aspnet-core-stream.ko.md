@@ -35,13 +35,13 @@ packet session 방식으로 정리하는 것이다.
 않는다. 특히 다음 원칙을 둔다.
 
 - framework 가 stream header 를 decode 한 뒤 `ZlinkStreamHeader header` 와
-  `Message payload` 를 session callback 에 전달한다.
+  `ZLinkMessage payload` 를 session callback 에 전달한다.
 - `playhouse` 처럼 header 는 framework 내부에서 packet name 과 metadata 로
   해석한다. application 은 `header.Name` 을 보고 각 packet 타입으로
   decode 하는 모델을 자연스러운 기본으로 본다.
-- 이 decode helper 는 `playhouse/extensions` 처럼 transport 본체에 섞지 않는다.
-  대신 `Message` 위에 얹는 serializer extension 계층으로 두는 편을 기본으로
-  본다.
+- payload decode는 transport 본체에 섞지 않는다. 대신 framework runtime이 등록된
+  codec registry로 `ZLinkMessage`를 만들고, application은 필요한 packet만
+  `Decode<T>()`로 읽는다.
 - recv loop 는 application 표면에 직접 올리지 않는다.
 - `OnConnectedAsync(...)`, `OnDisconnectedAsync(...)` 는 session lifecycle 의
   기본 표면으로 올린다.
@@ -117,7 +117,7 @@ public interface IZLinkSession
 
     ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
 
@@ -166,9 +166,14 @@ public interface IZLinkSessionActor
 
     ActorRef Ref { get; }
 
-    ValueTask RelayAsync(
+    ValueTask RelayRawAsync(
         ZlinkStreamHeader header,
         Message payload,
+        CancellationToken cancellationToken = default);
+
+    ValueTask RelayAsync(
+        ZlinkStreamHeader header,
+        ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 
     ValueTask NotifyDisconnectedAsync(

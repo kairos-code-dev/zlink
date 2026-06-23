@@ -630,7 +630,7 @@ dotnet 코드(`ZLinkSpotActivation`)에서 확인한 user Spot lifecycle 호출 
 1. `configure()` — registration 단계. handler / subscribe 등록만 허용된다(이
    창이 닫힌 뒤 등록을 시도하면 예외). dotnet `Configure()`.
 2. `onCreate(request)` — spot 인스턴스가 처음 만들어질 때 한 번. dotnet
-   `OnCreateAsync(request, ct)`. 빈 생성이면 빈 `Message`.
+   `OnCreateAsync(request, ct)`. 빈 생성이면 빈 `ZLinkMessage`.
 3. `onInitialize()` — `onCreate` 직후 같은 직렬 실행 op 안에서 한 번. dotnet
    `OnInitializeAsync(ct)`. timer 등록은 보통 여기서 한다.
 4. `onClosing()` — spot 종료 시 spot 실행 문맥에서. dotnet `OnClosingAsync(ct)`.

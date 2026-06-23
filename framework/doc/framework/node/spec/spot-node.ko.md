@@ -140,9 +140,9 @@ interface ZLinkSpotInfo {
 ### 동작 의미 (dotnet 과 동일)
 
 - **create**: `spot`(=`TSpot`)으로 factory 를 고르고 runtime 이 새 `spotRid` 를
-  발급한다. caller 가 넘긴 단일 `Message` 를 spot 의 `onCreate(request, ...)` 에
-  한 번 전달한다. payload 없는 `create(spot)` 은 빈 `Message` 를 넘긴 것과 같고,
-  `onCreate` 는 빈 `Message` 를 받아 한 번 실행된다.
+  발급한다. caller 가 넘긴 DTO 또는 `ZLinkMessage` 를 spot 의 `onCreate(request, ...)` 에
+  한 번 전달한다. payload 없는 `create(spot)` 은 빈 `ZLinkMessage` 를 넘긴 것과 같고,
+  `onCreate` 는 빈 `ZLinkMessage` 를 받아 한 번 실행된다.
 - **getOrCreate**: 명시적 `spotRid` 가 필요할 때 쓴다. 같은 `spotRid` 의 spot 이
   이미 ready 면 `state: Existing` 을 반환하고, 이번 `request` 는 `onCreate` 로
   전달하지 않는다. initializing 상태면 첫 생성 요청의 `onCreate` 완료를

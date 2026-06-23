@@ -77,7 +77,7 @@ public final class GameStreamSession implements ZLinkSession {
     @Override
     public void onDispatch(
         ZLinkStreamHeader header,
-        Message payload) {
+        ZLinkMessage payload) {
         actors.getOrCreate("player-42", "player")
             .thenCompose(actor -> context.actors().bind(actor))
             .thenCompose(bound -> bound.relay(header, payload))

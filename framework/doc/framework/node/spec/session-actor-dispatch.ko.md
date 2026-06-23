@@ -527,11 +527,9 @@ session callback 안에서 actor 에게 packet 을 넘기는 public 표면은
 bind 결과로 받은 `ZLinkSessionActor.relay(...)` 다. 이 handle method 는
 session queue 를 actor 실행 queue 로 이어 주는 bridge 역할을 한다.
 
-session callback 으로 들어온 `payload: Message` 는 framework runtime 이 소유한
-수신 payload 를 callback 동안 빌려준 값이다. 따라서 `relay(...)`
-는 caller payload 를 해제하거나 `move()` 로 소비하지 않는다. actor 실행 queue 로
-수명이 넘어가야 하는 경우에는 framework 내부에서 별도 copy 또는 move 대상
-message 를 만들어 소유권을 분리한다.
+session callback 으로 들어온 `payload: ZLinkMessage` 는 framework runtime 이
+codec registry와 함께 감싼 값이다. session은 인증 packet처럼 직접 처리할 payload만
+decode하고, actor로 넘길 packet은 decode하지 않은 채 `relay(...)`에 넘긴다.
 
 ```ts
 class ZLinkSessionActorImpl implements ZLinkSessionActor {
@@ -539,7 +537,7 @@ class ZLinkSessionActorImpl implements ZLinkSessionActor {
 
   async relay(
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void> {
     await this.context.relayActorRef(this, header, payload, signal);
@@ -1273,7 +1271,7 @@ export class TicTacToeSession implements ZLinkSession {
 
   async onDispatch(
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void> {
     if (header.name === 'auth') {

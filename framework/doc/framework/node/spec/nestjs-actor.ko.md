@@ -580,7 +580,7 @@ lifecycle callback 은 Spot 멤버로 선언한다. disconnected handler 는 추
 
 ```ts
 export interface ZLinkSpot {
-  onActorJoin?(actor: ZLinkActor, request: Message): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actor: ZLinkActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor): Promise<void>;
   onLeaveActor?(actor: ZLinkActor): Promise<void>;
   onDisconnectActor?(actor: ZLinkActor): Promise<void>;
@@ -845,7 +845,7 @@ export interface ZLinkSessionActor {
 
   relay(
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
   ): Promise<void>;
 
   notifyDisconnected(): Promise<void>;

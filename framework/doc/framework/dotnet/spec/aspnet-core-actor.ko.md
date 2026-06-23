@@ -475,7 +475,7 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
         var matchSpotRid = RoutingId.From(request.MatchId);
         var result = await actor.Context
-            .JoinSpot(matchSpotRid, request.Encode())
+            .JoinSpot(matchSpotRid, request)
             .Async(cancellationToken)
             .ConfigureAwait(false);
         var reply = result.Reply.Decode<JoinMatchSpotResult>();
@@ -573,11 +573,19 @@ public interface IZLinkActorContext
 
     IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
-        Message request);
+        ZLinkMessage request);
+
+    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request);
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
         RoutingId spotNodeRid,
-        Message request);
+        ZLinkMessage request);
+
+    IZLinkActorJoinEntrySpotCall JoinEntrySpot<TRequest>(
+        RoutingId spotNodeRid,
+        TRequest request);
 }
 ```
 
@@ -588,8 +596,8 @@ public interface IZLinkActorContext
 | `SpotRid` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름, routing id, join 상태. Entry Spot에 있을 때는 `IsJoined`가 false이고 `SpotRid`는 없다 |
 | `BoundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
-| `JoinSpot(spotRid, requestMessage).Async(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). request와 reply는 `Message`이며 JSON, Protobuf, MessagePack 같은 codec 확장 함수는 application 이 선택한다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
-| `JoinEntrySpot(spotNodeRid, requestMessage).Async(...)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 빈 `Message`로 명시해서 넘기며, 결과는 `Accepted`, `ActorRef`, reply `Message`를 담는다 |
+| `JoinSpot(spotRid, request).Async(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). request는 DTO 또는 `ZLinkMessage`이고 reply는 `ZLinkMessage`로 돌아온다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
+| `JoinEntrySpot(spotNodeRid, request).Async(...)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청은 `ZLinkMessage.Empty` 또는 빈 DTO로 넘기며, 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage`를 담는다 |
 
 `JoinSpot`/`JoinEntrySpot` 도 channel `Request` 처럼 reply 대기 `Timeout(...)` override 를
 갖는다. 생략하면 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은
@@ -650,12 +658,12 @@ public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot<Pl
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var joinRequest = request.Decode<TicTacToeGameJoinReq>();
-        var reply = new TicTacToeGameJoinRes(joinRequest.GameId).Encode();
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
+        return ValueTask.FromResult(
+            ZLinkSpotActorJoinResult.Accept(new TicTacToeGameJoinRes(joinRequest.GameId)));
     }
 
     // 비동기 초기화가 필요하면 OnInitializeAsync를 쓴다.

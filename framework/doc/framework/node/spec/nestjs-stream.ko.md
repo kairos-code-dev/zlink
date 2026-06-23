@@ -43,13 +43,13 @@ framework stream node runtime 이 담당한다.
 않는다. 특히 다음 원칙을 둔다.
 
 - framework 가 stream header 를 decode 한 뒤 `ZlinkStreamHeader header` 와
-  `Message payload` 를 session callback 에 전달한다.
+  `ZLinkMessage payload` 를 session callback 에 전달한다.
 - `playhouse` 처럼 header 는 framework 내부에서 packet name 과 metadata 로
   해석한다. application 은 `header.name` 을 보고 각 packet 타입으로
   decode 하는 모델을 자연스러운 기본으로 본다.
-- 이 decode helper 는 `playhouse/extensions` 처럼 transport 본체에 섞지 않는다.
-  대신 `Message` 위에 얹는 serializer extension 계층으로 두는 편을 기본으로
-  본다.
+- payload decode는 transport 본체에 섞지 않는다. 대신 framework runtime이 등록된
+  codec registry로 `ZLinkMessage`를 만들고, application은 필요한 packet만
+  `decode<T>()`로 읽는다.
 - recv loop 는 application 표면에 직접 올리지 않는다.
 - `onConnected(...)`, `onDisconnected(...)` 는 session lifecycle 의
   기본 표면으로 올린다.
@@ -143,13 +143,13 @@ export interface ZLinkSession {
 
   /**
    * framework 가 소유한 inbound stream payload 를 처리한다.
-   * payload 는 이 callback 동안만 borrowed 된다. session 은 이를 읽거나
-   * relay(...) 같은 framework API 에 넘길 수 있지만, 직접 해제하거나
-   * 소유권을 옮기지 않는다(callback 이후까지 보관할 때만 copy 한다).
+   * payload 는 codec registry 와 함께 framework 가 감싼 값이다. session 은
+   * 필요한 packet 만 decode 하고, relay(...) 같은 framework API 에 넘길 때는
+   * decode 하지 않은 채 그대로 넘길 수 있다.
    */
   onDispatch?(
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void>;
 }
@@ -193,7 +193,7 @@ export interface ZLinkSessionActor {
 
   relay(
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void>;
 
@@ -271,7 +271,7 @@ export interface ZLinkSessionPacketHandler<TSessionContext> {
   handle(
     context: TSessionContext,
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void>;
 }
@@ -285,7 +285,7 @@ export interface ZLinkSessionPacketDispatcher<TSessionContext> {
   tryHandle(
     context: TSessionContext,
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<boolean>;
 }

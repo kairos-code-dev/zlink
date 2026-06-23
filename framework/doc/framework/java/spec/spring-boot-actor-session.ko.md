@@ -102,7 +102,7 @@ public interface ZLinkSessionActor {
 
     CompletionStage<Void> relay(
         ZLinkStreamHeader header,
-        Message payload);
+        ZLinkMessage payload);
 
     CompletionStage<Void> notifyDisconnected();
 }

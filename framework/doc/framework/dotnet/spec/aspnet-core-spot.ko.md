@@ -604,15 +604,15 @@ request, publish, subscribe 를 처리할 뿐이다.
 
 여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
 아니라는 사실이다. 생성 결과는 `spotRid`, `Existing`/`Created`/`Rejected` 상태,
-create callback이 돌려준 선택적 reply `Message`면 충분하다. 이후 메시징은
+create callback이 돌려준 선택적 reply `ZLinkMessage`면 충분하다. 이후 메시징은
 현재 channel publish 또는 route bridge channel socket을 통한 send / request 로 푸는
 쪽이, 지금의 topology 초안과 더 잘 맞는다.
 
-생성 요청의 payload는 단일 `Message`로 전달한다. framework는 JSON, Protobuf,
-MessagePack 같은 payload 형식을 정하지 않고, application이 자신이 쓰는 codec 확장
-함수로 request와 reply를 해석한다. 이 payload는 방 설정, seed, 접근 정책처럼 spot이
+생성 요청의 payload는 DTO 또는 단일 `ZLinkMessage`로 전달한다. framework는 등록된
+codec registry를 사용해 JSON, Protobuf, MessagePack 또는 custom codec payload를
+encode/decode한다. 이 payload는 방 설정, seed, 접근 정책처럼 spot이
 처음 만들어질 때만 해석해야 하는 값에 사용한다. `CreateAsync<TSpot>()`처럼 payload가
-없는 편의 overload는 빈 `Message`를 넘긴 것과 같다.
+없는 편의 overload는 빈 `ZLinkMessage`를 넘긴 것과 같다.
 
 생성 요청에는 어떤 spot factory를 사용할지도 함께 들어가야 한다. framework public
 표면에서는 이 값을 generic `TSpot`으로 표현하고, string spot rid은 contract에서

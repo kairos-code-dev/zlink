@@ -324,9 +324,10 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 이 절은 `Stage` 생성 시점에 초기 payload 를 함께 받는 표면이 왜 따로 필요한지를
 정리한다.
 
-초기 payload 는 `Message` request 로 전달된다 — `CreateAsync<TSpot>(Message request)`,
-`GetOrCreateAsync<TSpot>(RoutingId, Message request)`, 그리고 spot 쪽
-`IZLinkSpot.OnCreateAsync(Message request, ...)` 가 이를 받는다. `Stage` 전용 typed
+초기 payload 는 DTO 또는 `ZLinkMessage` request 로 전달된다 —
+`CreateAsync<TSpot, TRequest>(TRequest request)`,
+`GetOrCreateAsync<TSpot, TRequest>(RoutingId, TRequest request)`, 그리고 spot 쪽
+`IZLinkSpot.OnCreateAsync(ZLinkMessage request, ...)` 가 이를 받는다. `Stage` 전용 typed
 metadata wrapper 는 그 위에 올릴 별도 상위 확장 후보다.
 
 예를 들면 `playhouse` 의 stage 생성은 보통 다음 정보를 함께 들고 들어간다.
@@ -339,8 +340,8 @@ metadata wrapper 는 그 위에 올릴 별도 상위 확장 후보다.
 현재 `IZLinkSpotManager` 의 기본 정의는
 [handler-interfaces.ko.md](handler-interfaces.ko.md) 의 section 6.3 을 따른다.
 현재 framework 기본 계약은 `TSpot` 타입으로 factory를 고르는 생성,
-`TSpot + spotRid`로 기존 logical spot을 확보하는 것, 그리고 생성·확보 모두 `Message`
-request payload overload(`CreateAsync<TSpot>(Message)`, `GetOrCreateAsync<TSpot>(RoutingId, Message)`)를
+`TSpot + spotRid`로 기존 logical spot을 확보하는 것, 그리고 생성·확보 모두 DTO 또는
+`ZLinkMessage` request payload overload를
 함께 제공한다.
 
 `Stage wrapper` 를 만들려면 최소한 다음 중 하나가 더 필요하다.

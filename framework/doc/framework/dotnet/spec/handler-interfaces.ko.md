@@ -577,9 +577,8 @@ public readonly record struct ZLinkSpotActorJoinResult(
 }
 ```
 
-actor join admission callback 의 request 와 reply 는 모두 `Message` 다. framework
-core 는 JSON, Protobuf, MessagePack 같은 serializer 를 고르지 않는다. application 은
-request는 `ZLinkMessage`로 받고, 필요한 DTO는 `Decode<T>()`로 얻는다. reply는 DTO 또는
+actor join admission callback 의 request는 `ZLinkMessage`다. application은
+필요한 DTO를 `Decode<T>()`로 얻는다. reply는 DTO 또는
 `ZLinkMessage`로 `ZLinkSpotActorJoinResult`에 담아 반환한다. runtime은 등록된 codec
 registry로 request와 reply를 encode/decode한다.
 
@@ -1701,14 +1700,15 @@ target user Spot 으로 이동하고, `JoinEntrySpot(..., request)` 또는 `leav
 성공은 Entry Spot 으로 이동한다. 실패한 join/leave 는 source Spot membership 을
 그대로 둔다.
 
-`JoinSpot(spotRid, requestMessage)` 는 user Spot routing id(`RoutingId`) 와
-codec 확장 함수로 만든 request `Message` 를 받는다.
+`JoinSpot(spotRid, request)` 는 user Spot routing id(`RoutingId`) 와
+DTO 또는 `ZLinkMessage` request 를 받는다.
 `gameId`, `matchId`, `roomId` 같은 도메인 키를 그대로 넘기지 않는다. application
 registry 가 먼저 domain key 를 user Spot `RoutingId` 로 변환하거나 조회한다.
 
-`JoinEntrySpot(spotNodeRid, requestMessage)` 는 target SpotNode routing id(`RoutingId`) 와
-codec 확장 함수로 만든 request `Message` 를 받는다. Entry Spot 은 SpotNode마다 하나뿐이므로
-Entry Spot rid 를 별도로 넘기지 않는다. 보낼 payload가 없어도 빈 `Message`를 명시해서 넘긴다.
+`JoinEntrySpot(spotNodeRid, request)` 는 target SpotNode routing id(`RoutingId`) 와
+DTO 또는 `ZLinkMessage` request 를 받는다. Entry Spot 은 SpotNode마다 하나뿐이므로
+Entry Spot rid 를 별도로 넘기지 않는다. 보낼 payload가 없어도 `ZLinkMessage.Empty` 또는
+빈 DTO를 명시해서 넘긴다.
 
 `BoundSession.Send(...)` 는 현재 actor 에 연결되어 있는 stream client 로 packet 을
 보낸다. request 에 대한 응답은 actor context 에서 직접 쓰지 않고,
@@ -2791,9 +2791,9 @@ public interface IZLinkSpotManager
 
 - `CreateAsync<TSpot>()`
   - generic 타입으로 factory를 선택하고, runtime이 새 `spotRid`를 발급한다. create
-    callback에는 빈 `Message`가 전달된다.
+    callback에는 빈 `ZLinkMessage`가 전달된다.
 - `CreateAsync<TSpot>(request)`
-  - runtime이 새 `spotRid`를 발급하고, create request `Message`를
+  - runtime이 새 `spotRid`를 발급하고, create request DTO 또는 `ZLinkMessage`를
     `IZLinkSpot.OnCreateAsync(...)`에 전달한다.
 - `GetOrCreateAsync<TSpot>(RoutingId spotRid, request)`
   - generic 타입으로 factory를 선택하되, 호출자가 특정 logical spot rid를 직접

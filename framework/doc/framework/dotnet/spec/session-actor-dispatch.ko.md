@@ -582,11 +582,9 @@ session callback 안에서 actor 에게 packet 을 넘기는 public 표면은
 bind 결과로 받은 `IZLinkSessionActor.RelayAsync(...)` 다. 이 handle method 는
 session queue 를 actor 실행 queue 로 이어 주는 bridge 역할을 한다.
 
-session callback 으로 들어온 `Message payload` 는 framework runtime 이 소유한
-수신 payload 를 callback 동안 빌려준 값이다. 따라서 `RelayAsync(...)`
-는 caller payload 를 해제하거나 `Move()` 로 소비하지 않는다. actor 실행 queue 로
-수명이 넘어가야 하는 경우에는 framework 내부에서 별도 copy 또는 move 대상
-message 를 만들어 소유권을 분리한다.
+session callback 으로 들어온 `ZLinkMessage payload` 는 framework runtime 이
+codec registry와 함께 감싼 값이다. session은 인증 packet처럼 직접 처리할 payload만
+decode하고, actor로 넘길 packet은 decode하지 않은 채 `RelayAsync(...)`에 넘긴다.
 
 ```csharp
 internal sealed class ZLinkSessionActor : IZLinkSessionActor
@@ -595,7 +593,7 @@ internal sealed class ZLinkSessionActor : IZLinkSessionActor
 
     public async ValueTask RelayAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         await _context.RelayActorRefAsync(this, header, payload, cancellationToken)
@@ -1312,7 +1310,7 @@ public sealed class TicTacToeGame : IZLinkSpot<PlayActor>
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var join = request.Decode<JoinMatchReq>();
@@ -1343,7 +1341,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context, IZLinkActorMa
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (header.Name == "auth")
@@ -1404,7 +1402,7 @@ public sealed class JoinMatchHandler
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
         var matchSpotRid = RoutingId.From(request.MatchId);
         var joined = await actor.Context
-            .JoinSpot(matchSpotRid, request.Encode())
+            .JoinSpot(matchSpotRid, request)
             .Async(cancellationToken);
         return joined.Reply.Decode<JoinMatchSpotResult>().ToReply();
     }

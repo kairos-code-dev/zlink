@@ -1188,7 +1188,7 @@ public @interface ZLinkStreamPacket {
 ```
 
 SPOT actor lifecycle callback은 actor만 받는다. join admission callback은
-framework 공통 `Message` request를 받고 `ZLinkSpotActorJoinResponse`를 반환한다.
+framework 공통 `ZLinkMessage` request를 받고 `ZLinkSpotActorJoinResponse`를 반환한다.
 accepted가 `true`일 때만 actor 위치가 target Spot으로 commit되고
 `onJoinedActor`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
 post-join callback도 실행되지 않는다. Entry Spot도 같은 admission callback을 갖고,

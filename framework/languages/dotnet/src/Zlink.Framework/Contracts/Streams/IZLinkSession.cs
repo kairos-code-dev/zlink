@@ -26,7 +26,7 @@ public interface IZLinkSession
     /// </remarks>
     ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;

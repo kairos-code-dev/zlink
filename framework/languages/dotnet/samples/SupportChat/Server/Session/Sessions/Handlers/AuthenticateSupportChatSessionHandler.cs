@@ -16,7 +16,7 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;

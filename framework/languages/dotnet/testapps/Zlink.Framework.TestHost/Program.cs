@@ -316,12 +316,12 @@ internal sealed class TestHostRawStreamSession(
 
     public ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        global::Systems.Zlink.Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
         _ = header;
-        recorder.RecordPayload(Encoding.UTF8.GetString(payload.AsReadOnlySpan()));
+        recorder.RecordPayload(payload.Decode<string>());
         return Context.Client.Reply("pong")
             .Async();
     }

@@ -12,7 +12,7 @@ public interface IZLinkSessionPacketHandler<in TSessionContext>
     ValueTask HandleAsync(
         TSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
 
@@ -29,6 +29,6 @@ public interface IZLinkSessionPacketDispatcher<in TSessionContext>
     ValueTask<bool> TryHandleAsync(
         TSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 }

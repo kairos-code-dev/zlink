@@ -674,7 +674,7 @@ internal sealed class ScenarioSession(
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (await handlers.TryHandleAsync(Context, header, payload, cancellationToken))
@@ -713,7 +713,7 @@ internal sealed class AuthSessionHandler(
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;
@@ -768,7 +768,7 @@ internal sealed class MultiBindSessionHandler(
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;

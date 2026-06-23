@@ -15,9 +15,14 @@ public interface IZLinkSessionActor
     /// lifetime it already owns. For inbound session callbacks that lifetime is
     /// managed by the framework runtime.
     /// </remarks>
-    ValueTask RelayAsync(
+    ValueTask RelayRawAsync(
         ZlinkStreamHeader header,
         Message payload,
+        CancellationToken cancellationToken = default);
+
+    ValueTask RelayAsync(
+        ZlinkStreamHeader header,
+        ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 
     ValueTask NotifyDisconnectedAsync(

@@ -51,7 +51,7 @@ sealed class PlaySession(
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(

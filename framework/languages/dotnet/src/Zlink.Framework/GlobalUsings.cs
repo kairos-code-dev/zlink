@@ -11,6 +11,7 @@ global using Zlink.Framework.Contracts.Dispatch;
 global using Zlink.Framework.Contracts.Errors;
 global using Zlink.Framework.Contracts.Handlers;
 global using Zlink.Framework.Contracts.Eventing;
+global using Zlink.Framework.Contracts.Messaging;
 global using Zlink.Framework.Contracts.Registry;
 global using Zlink.Framework.Contracts.Spots;
 global using Zlink.Framework.Contracts.Streams;

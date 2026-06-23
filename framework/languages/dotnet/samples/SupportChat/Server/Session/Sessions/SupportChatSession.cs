@@ -40,7 +40,7 @@ internal sealed class SupportChatSession(
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (await handlers.TryHandleAsync(

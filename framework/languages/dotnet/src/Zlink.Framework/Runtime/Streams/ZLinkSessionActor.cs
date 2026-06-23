@@ -15,12 +15,22 @@ internal sealed class ZLinkSessionActor(
 
     internal string BindingToken { get; } = bindingToken;
 
-    public ValueTask RelayAsync(
+    public ValueTask RelayRawAsync(
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default)
     {
         return context.RelayActorRefAsync(this, header, payload, cancellationToken);
+    }
+
+    public ValueTask RelayAsync(
+        ZlinkStreamHeader header,
+        ZLinkMessage payload,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        var raw = payload.ToRawMessage();
+        return context.RelayActorRefAsync(this, header, raw, cancellationToken);
     }
 
     public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default)

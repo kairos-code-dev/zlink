@@ -33,7 +33,7 @@ public sealed class StreamContracts
                 null,
                 "player.joined",
                 ZlinkStreamMetadata.Empty),
-            new Message());
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new PlayerJoined("player-1")));
         await actorRef.NotifyDisconnectedAsync();
 
         await context.Client
@@ -84,7 +84,7 @@ public sealed class StreamContracts
                 null,
                 "auth",
                 ZlinkStreamMetadata.Empty),
-            new Message());
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new AuthenticateReply("token")));
         var unhandled = await dispatcher.TryHandleAsync(
             sessionContext,
             new ZlinkStreamHeader(
@@ -94,7 +94,7 @@ public sealed class StreamContracts
                 null,
                 "gameplay",
                 ZlinkStreamMetadata.Empty),
-            new Message());
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new PlayerJoined("player-1")));
 
         Assert.True(handled);
         Assert.False(unhandled);
@@ -152,7 +152,7 @@ public sealed class StreamContracts
         public ValueTask HandleAsync(
             SessionPacketContext context,
             ZlinkStreamHeader header,
-            Message payload,
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
             CancellationToken cancellationToken)
         {
             _ = payload;
@@ -172,7 +172,7 @@ public sealed class StreamContracts
         public async ValueTask<bool> TryHandleAsync(
             TContext context,
             ZlinkStreamHeader header,
-            Message payload,
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
             CancellationToken cancellationToken = default)
         {
             if (!_handlers.TryGetValue(header.Name, out var handler))
@@ -287,6 +287,12 @@ public sealed class StreamContracts
         public Systems.Zlink.ActorRef Ref { get; } = actor;
 
         public ValueTask RelayAsync(
+            ZlinkStreamHeader header,
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask RelayRawAsync(
             ZlinkStreamHeader header,
             Message payload,
             CancellationToken cancellationToken = default) =>

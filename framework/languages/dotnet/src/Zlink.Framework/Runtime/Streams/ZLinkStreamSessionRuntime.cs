@@ -14,6 +14,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly IZLinkSession _handler;
     private readonly ZLinkSessionContext _context;
     private readonly ZLinkMessageFlowTracer _flow;
+    private readonly ZLinkFrameworkRuntime _runtime;
     private int _connected;
     private int _disconnected;
     private int _disposed;
@@ -29,13 +30,13 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         _socket = socket;
         _removeSession = removeSession;
         Stream = new ZLinkManagedStream(socket, routingId);
-        var runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
+        _runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
         _flow = new ZLinkMessageFlowTracer(
-            runtime.Registration.DispatchOptions,
+            _runtime.Registration.DispatchOptions,
             scope.ServiceProvider,
             scope.ServiceProvider.GetService<ILogger<ZLinkStreamSessionRuntime>>());
         _context = new ZLinkSessionContext(
-            runtime,
+            _runtime,
             Stream,
             CloseAsync,
             CloseByProxyAsync);
@@ -160,7 +161,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             {
                 await _handler.OnDispatchAsync(
                     decoded,
-                    payload,
+                    ZLinkStreamPacketPayloadCodec.DecodeMessage(decoded, payload, _runtime.Registration.Codecs),
                     CancellationToken.None);
 
                 if (_flow.Enabled(ZLinkMessageFlowPhase.Dispatched))

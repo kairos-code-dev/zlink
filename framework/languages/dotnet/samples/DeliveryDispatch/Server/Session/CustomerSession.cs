@@ -42,7 +42,7 @@ internal sealed class CustomerSession(
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (await handlers.TryHandleAsync(Context, header, payload, cancellationToken))
@@ -67,12 +67,11 @@ internal sealed class SubscribeDeliveryHandler(
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;
-        var raw = Encoding.UTF8.GetString(payload.AsReadOnlySpan());
-        var deliveryId = ReadDeliveryId(raw);
+        var deliveryId = ReadDeliveryId(payload.Decode<string>());
         var ensured = await channels.RequestToChannel(
                 SampleNames.TrackingRouteChannel,
                 new EnsureCustomerActor(CustomerId))

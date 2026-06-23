@@ -431,7 +431,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 null,
                 "test.session.packet",
                 ZlinkStreamMetadata.Empty),
-            new Message());
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new object()));
         var unhandled = await dispatcher.TryHandleAsync(
             context,
             new ZlinkStreamHeader(
@@ -441,7 +441,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 null,
                 "test.unhandled",
                 ZlinkStreamMetadata.Empty),
-            new Message());
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new object()));
 
         Assert.True(handled);
         Assert.False(unhandled);

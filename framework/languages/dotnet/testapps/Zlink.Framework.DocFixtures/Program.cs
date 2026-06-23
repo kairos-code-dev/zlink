@@ -283,7 +283,7 @@ internal sealed class FixtureRawStreamSession(IZLinkSessionContext context) : IZ
 
     public ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        global::Systems.Zlink.Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;
@@ -367,7 +367,7 @@ internal sealed class FixtureActor(
 
     public ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        global::Systems.Zlink.Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;
@@ -416,7 +416,7 @@ internal sealed class FixtureActorPacketSession(
 
     public ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        global::Systems.Zlink.Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         var actor = _actor ?? throw new InvalidOperationException("Actor is not bound.");

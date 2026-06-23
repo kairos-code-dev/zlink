@@ -70,6 +70,20 @@ internal static class ZLinkStreamPacketPayloadCodec
             $"Actor packet '{header.Name}' uses codec '{header.Codec}'. Register a ZlinkStreamEncodedPayload handler and decode it explicitly.");
     }
 
+    public static ZLinkMessage DecodeMessage(
+        ZlinkStreamHeader header,
+        Message payloadMessage,
+        ZLinkCodecRegistryBuilder codecs)
+    {
+        var payload = payloadMessage.AsReadOnlyMemory();
+        if ((header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0)
+        {
+            payload = ZLinkStreamProtocolDefaults.Lz4Decompress(payload);
+        }
+
+        return ZLinkMessage.FromStreamPayload(header.Codec, payload.ToArray(), codecs);
+    }
+
     public static ZlinkStreamEncodedPayload Encode(
         object? message,
         Type messageType,

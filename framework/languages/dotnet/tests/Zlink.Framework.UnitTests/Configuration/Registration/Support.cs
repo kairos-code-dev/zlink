@@ -184,7 +184,7 @@ public abstract partial class RegistrationValidationSupport
         public ValueTask HandleAsync(
             TestSessionPacketContext context,
             ZlinkStreamHeader header,
-            global::Systems.Zlink.Message payload,
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
             CancellationToken cancellationToken)
         {
             _ = header;
@@ -224,7 +224,7 @@ public abstract partial class RegistrationValidationSupport
         public ValueTask HandleAsync(
             DuplicateSessionPacketContext context,
             ZlinkStreamHeader header,
-            global::Systems.Zlink.Message payload,
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
@@ -235,7 +235,7 @@ public abstract partial class RegistrationValidationSupport
         public ValueTask HandleAsync(
             DuplicateSessionPacketContext context,
             ZlinkStreamHeader header,
-            global::Systems.Zlink.Message payload,
+            Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 

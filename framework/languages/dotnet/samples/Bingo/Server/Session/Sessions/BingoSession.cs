@@ -35,7 +35,7 @@ internal sealed class BingoSession(
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (await handlers.TryHandleAsync(

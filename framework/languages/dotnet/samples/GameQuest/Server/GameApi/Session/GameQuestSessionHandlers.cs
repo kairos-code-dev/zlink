@@ -16,7 +16,7 @@ internal sealed class SubscribeQuestHandler(GameQuestStore store, GameQuestSessi
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;
@@ -35,7 +35,7 @@ internal sealed class GetQuestProgressHandler(GameQuestStore store)
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;
@@ -54,7 +54,7 @@ internal sealed class SyncQuestProgressHandler(GameplayActionService actions)
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;

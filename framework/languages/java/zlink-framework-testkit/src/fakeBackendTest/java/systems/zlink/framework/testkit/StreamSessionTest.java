@@ -11,13 +11,18 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import com.google.protobuf.StringValue;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -136,6 +141,56 @@ final class StreamSessionTest {
 
             awaitCondition(() -> GameSession.dispatches.size() == 1);
             assertEquals(List.of("Custom:hello"), GameSession.dispatches);
+        }
+    }
+
+    @Test
+    void protobufSessionDispatchDecodesThroughFrameworkMessage() {
+        ProtobufSession.dispatches = new CopyOnWriteArrayList<>();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(ProtobufSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        ZLinkMessageSerializer serializer = serializerWith(ZLinkProtobufCodec.defaultCodec());
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            Message payload = serializer.serialize(StringValue.of("proto-session"));
+            try {
+                backendFactory.dispatchStreamPacket("Proto", payload, ZLinkStreamCodec.PROTOBUF);
+            } finally {
+                payload.close();
+            }
+
+            awaitCondition(() -> ProtobufSession.dispatches.size() == 1);
+            assertEquals(List.of("Proto:proto-session"), ProtobufSession.dispatches);
+        }
+    }
+
+    @Test
+    void messagePackSessionDispatchDecodesThroughFrameworkMessage() {
+        MessagePackSession.dispatches = new CopyOnWriteArrayList<>();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(MessagePackSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        ZLinkMessageSerializer serializer = serializerWith(ZLinkMessagePackCodec.defaultCodec());
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            Message payload = serializer.serialize(new PackedSessionPayload("msgpack-session"));
+            try {
+                backendFactory.dispatchStreamPacket("MsgPack", payload, ZLinkStreamCodec.MESSAGE_PACK);
+            } finally {
+                payload.close();
+            }
+
+            awaitCondition(() -> MessagePackSession.dispatches.size() == 1);
+            assertEquals(List.of("MsgPack:msgpack-session"), MessagePackSession.dispatches);
         }
     }
 
@@ -405,6 +460,75 @@ final class StreamSessionTest {
                     }
     }
 
+    public static final class ProtobufSession implements ZLinkSession {
+        static List<String> dispatches = new CopyOnWriteArrayList<>();
+        private final ZLinkSessionContext context;
+
+        public ProtobufSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public void onConnected() {
+        }
+
+        @Override
+        public void onDisconnected() {
+        }
+
+        @Override
+        public void onError(ZLinkStreamError error) {
+        }
+
+        @Override
+        public void onDispatch(
+            ZLinkStreamHeader header,
+            ZLinkMessage payload) {
+            dispatches.add(header.packetName() + ":" + payload.decode(StringValue.class).getValue());
+        }
+    }
+
+    public static final class MessagePackSession implements ZLinkSession {
+        static List<String> dispatches = new CopyOnWriteArrayList<>();
+        private final ZLinkSessionContext context;
+
+        public MessagePackSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public void onConnected() {
+        }
+
+        @Override
+        public void onDisconnected() {
+        }
+
+        @Override
+        public void onError(ZLinkStreamError error) {
+        }
+
+        @Override
+        public void onDispatch(
+            ZLinkStreamHeader header,
+            ZLinkMessage payload) {
+            dispatches.add(header.packetName() + ":" + payload.decode(PackedSessionPayload.class).value());
+        }
+    }
+
+    public record PackedSessionPayload(String value) {
+    }
+
     public static final class ContextSession implements ZLinkSession {
         static String sessionId;
         static int boundCount;
@@ -663,5 +787,12 @@ final class StreamSessionTest {
             }
             throw new IllegalArgumentException("unsupported message type: " + type.getName());
         }
+    }
+
+    private static ZLinkMessageSerializer serializerWith(
+        systems.zlink.framework.configuration.ZLinkCodecExtension extension) {
+        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        registration.use(extension);
+        return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
     }
 }

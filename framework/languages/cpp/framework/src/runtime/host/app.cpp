@@ -300,6 +300,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
+    detail::bind_stream_serializers (_state->zlink, _state->serializers);
     auto &actor_gateway_runtime =
       _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> ();
     actor_gateway_runtime.bind_serializers (_state->serializers);

@@ -424,6 +424,11 @@ stream_runtime_t stream_runtime_t::from (const zlink_builder_t &builder)
     return stream_runtime_t (builder._state->stream_runtime);
 }
 
+void bind_stream_serializers (zlink_builder_t &builder, serializer_registry_t &serializers)
+{
+    builder._state->stream_runtime->serializers = &serializers;
+}
+
 namespace
 {
 
@@ -759,8 +764,14 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
                                       std::nullopt,
                                       std::nullopt};
       });
-    return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()),
-                            [&] { return session.on_packet (stream, header, payload); });
+    if (_state->serializers == nullptr) {
+        return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()),
+                                [&] { return session.on_packet (stream, header, payload); });
+    }
+    return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()), [&] {
+        return session.on_packet (stream, header,
+                                  message_t::from_encoded (payload, _state->serializers));
+    });
 }
 
 result_t<void> stream_runtime_t::dispatch_disconnected (packet_stream_session_t &session,

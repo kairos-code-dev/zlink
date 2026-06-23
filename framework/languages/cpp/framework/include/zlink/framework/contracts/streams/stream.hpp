@@ -4,6 +4,7 @@
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/framework/contracts/channels/call.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
+#include <zlink/framework/contracts/messaging/message.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -173,7 +174,21 @@ class packet_stream_session_t
     virtual task_t<void> on_error (stream_t &stream, const stream_error_t &error) = 0;
     virtual task_t<void> on_packet (stream_t &stream,
                                     const stream_header_t &header,
-                                    const zlink::message_t &payload) = 0;
+                                    const message_t &payload)
+    {
+        return on_packet (stream, header, payload.to_raw ());
+    }
+    virtual task_t<void> on_packet (stream_t &stream,
+                                    const stream_header_t &header,
+                                    const zlink::message_t &payload)
+    {
+        (void) stream;
+        (void) header;
+        (void) payload;
+        return task_t<void> (result_t<void>::failure (
+          framework_error_kind_t::handler_not_found,
+          "raw stream packet handler is not implemented"));
+    }
 };
 
 struct stream_snapshot_t

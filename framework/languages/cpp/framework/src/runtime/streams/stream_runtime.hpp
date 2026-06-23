@@ -43,6 +43,7 @@ class stream_runtime_state_t
     std::map<std::string, std::shared_ptr<stream_builder_state_t>> streams;
     std::uint64_t next_session_id = 1;
     dispatch_options_t dispatch;
+    serializer_registry_t *serializers = nullptr;
 };
 
 class stream_runtime_t

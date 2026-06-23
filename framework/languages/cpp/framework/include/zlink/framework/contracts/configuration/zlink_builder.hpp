@@ -25,6 +25,7 @@ class channel_runtime_manager_t;
 class spot_node_runtime_t;
 class zlink_builder_state_t;
 void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t &options);
+void bind_stream_serializers (zlink_builder_t &builder, serializer_registry_t &serializers);
 } // namespace detail
 
 class zlink_builder_t
@@ -66,6 +67,8 @@ class zlink_builder_t
   private:
     friend void detail::apply_dispatch_options (zlink_builder_t &builder,
                                                 const dispatch_options_t &options);
+    friend void detail::bind_stream_serializers (zlink_builder_t &builder,
+                                                 serializer_registry_t &serializers);
     friend class detail::channel_runtime_manager_t;
     friend class detail::registry_runtime_t;
     friend class detail::spot_node_runtime_t;

@@ -28,10 +28,10 @@ class authenticate_session_handler_t
 
     zlink::framework::task_t<zlink::framework::session_actor_t>
     handle (zlink::framework::session_actor_manager_t &actors, zlink::framework::stream_t &stream,
-            const zlink::framework::stream_header_t &header, const zlink::message_t &payload)
+            const zlink::framework::stream_header_t &header,
+            const zlink::framework::message_t &payload)
     {
-        authenticate_req_t request;
-        from_stream_payload (payload, request);
+        auto request = payload.decode<authenticate_req_t> ();
         auto authenticated =
           co_await _client
             .request (sample_names_t::api_channel,

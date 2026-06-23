@@ -224,6 +224,14 @@ class http_host_service_t::listener_t
         stream.expires_after (timeout);
     }
 
+#ifdef ZLINK_FRAMEWORK_HTTP_WITH_OPENSSL
+    void set_request_timeout (beast::ssl_stream<beast::tcp_stream> &stream,
+                              std::chrono::milliseconds timeout)
+    {
+        stream.next_layer ().expires_after (timeout);
+    }
+#endif
+
     template <typename TStream> bool serve_requests (TStream &stream)
     {
         beast::flat_buffer buffer;
@@ -297,8 +305,8 @@ class http_host_service_t::listener_t
         if (!_tls_context) {
             return;
         }
-        asio::ssl::stream<tcp::socket> stream (std::move (socket), *_tls_context);
-        connection_registration_t registration (*this, stream.next_layer ());
+        beast::ssl_stream<beast::tcp_stream> stream (std::move (socket), *_tls_context);
+        connection_registration_t registration (*this, stream.next_layer ().socket ());
         beast::error_code ec;
         stream.handshake (asio::ssl::stream_base::server, ec);
         if (ec) {

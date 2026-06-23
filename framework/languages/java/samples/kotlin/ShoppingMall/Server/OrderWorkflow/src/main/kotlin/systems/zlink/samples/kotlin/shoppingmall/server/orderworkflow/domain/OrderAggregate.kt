@@ -1,10 +1,5 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain
 
-import com.fasterxml.jackson.databind.JsonNode
-import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderLineInput
-import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderStatuses
-import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderWorkflowReq
-
 /**
  * Order aggregate rebuilt from the event stream. Owns the status state machine,
  * command dedupe, and compensation rules. Knows nothing about framework,
@@ -14,55 +9,55 @@ class OrderAggregate private constructor(private val orderId: String) {
     private val processedCommands = HashSet<String>()
     private var status: String? = null
     private var reservationId: String? = null
-    private var lines: List<OrderLineInput> = emptyList()
+    private var lines: List<OrderLine> = emptyList()
 
     companion object {
         fun rehydrate(
             orderId: String,
             stored: List<StoredOrderEvent>,
-            decode: (JsonNode, Class<*>) -> Any,
         ): OrderAggregate {
             val aggregate = OrderAggregate(orderId)
             for (event in stored) {
-                aggregate.apply(event, decode)
+                aggregate.apply(event)
             }
             return aggregate
         }
     }
 
-    private fun apply(event: StoredOrderEvent, decode: (JsonNode, Class<*>) -> Any) {
+    private fun apply(event: StoredOrderEvent) {
         when (event.eventType) {
             OrderEventTypes.OrderStarted -> {
-                val started = decode(event.payload, OrderStartedEvent::class.java) as OrderStartedEvent
-                status = OrderStatuses.Created
+                val started = event.payload as OrderStartedEvent
+                status = OrderStatus.Created
                 lines = started.lines
                 processedCommands.add(started.sourceCommandId)
             }
             OrderEventTypes.InventoryReserved -> {
-                status = OrderStatuses.InventoryReserved
-                reservationId = event.payload.path("reservationId").asText(null)
+                val reserved = event.payload as InventoryReservedEvent
+                status = OrderStatus.InventoryReserved
+                reservationId = reserved.reservationId
             }
-            OrderEventTypes.InventoryReservationFailed -> status = OrderStatuses.Failed
-            OrderEventTypes.PaymentAuthorized -> status = OrderStatuses.PaymentAuthorized
-            OrderEventTypes.PaymentFailed -> status = OrderStatuses.Failed
-            OrderEventTypes.OrderConfirmed -> status = OrderStatuses.Confirmed
-            OrderEventTypes.OrderFailed -> status = OrderStatuses.Failed
+            OrderEventTypes.InventoryReservationFailed -> status = OrderStatus.Failed
+            OrderEventTypes.PaymentAuthorized -> status = OrderStatus.PaymentAuthorized
+            OrderEventTypes.PaymentFailed -> status = OrderStatus.Failed
+            OrderEventTypes.OrderConfirmed -> status = OrderStatus.Confirmed
+            OrderEventTypes.OrderFailed -> status = OrderStatus.Failed
         }
     }
 
     fun hasStarted(): Boolean = status != null
 
     fun isTerminal(): Boolean =
-        status == OrderStatuses.Confirmed || status == OrderStatuses.Failed
+        status == OrderStatus.Confirmed || status == OrderStatus.Failed
 
     fun status(): String? = status
 
-    fun lines(): List<OrderLineInput> = lines
+    fun lines(): List<OrderLine> = lines
 
     fun hasProcessedCommand(sourceCommandId: String): Boolean =
         processedCommands.contains(sourceCommandId)
 
-    fun start(command: StartOrderWorkflowReq, eventId: String, now: Long): List<Any> {
+    fun start(command: StartOrderCommand, eventId: String, now: Long): List<Any> {
         if (hasStarted()) {
             return emptyList()
         }
@@ -87,7 +82,7 @@ class OrderAggregate private constructor(private val orderId: String) {
         failedEventId: String,
         now: Long,
     ): List<Any> {
-        if (isTerminal() || status != OrderStatuses.Created) {
+        if (isTerminal() || status != OrderStatus.Created) {
             return emptyList()
         }
         if (!result.accepted) {
@@ -107,7 +102,7 @@ class OrderAggregate private constructor(private val orderId: String) {
         failedEventId: String,
         now: Long,
     ): List<Any> {
-        if (isTerminal() || status != OrderStatuses.InventoryReserved) {
+        if (isTerminal() || status != OrderStatus.InventoryReserved) {
             return emptyList()
         }
         if (!result.accepted) {
@@ -122,7 +117,7 @@ class OrderAggregate private constructor(private val orderId: String) {
     }
 
     fun confirm(eventId: String, now: Long): List<Any> {
-        if (isTerminal() || status != OrderStatuses.PaymentAuthorized) {
+        if (isTerminal() || status != OrderStatus.PaymentAuthorized) {
             return emptyList()
         }
         return listOf(OrderConfirmedEvent(eventId, orderId, now))
@@ -134,7 +129,7 @@ data class StoredOrderEvent(
     val sourceCommandId: String?,
     val orderId: String,
     val eventType: String,
-    val payload: JsonNode,
+    val payload: Any,
     val version: Long,
     val createdAtUnixMs: Long,
 )

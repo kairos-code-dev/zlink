@@ -1,7 +1,6 @@
 package systems.zlink.samples.shoppingmall.server.orderworkflow.domain;
 
 import java.util.List;
-import systems.zlink.samples.shoppingmall.shared.contracts.Messages.OrderLineInput;
 
 /**
  * Order domain events.
@@ -23,13 +22,27 @@ public final class OrderEvents {
     public static final String OrderConfirmed = "OrderConfirmedEvent";
     public static final String OrderFailed = "OrderFailedEvent";
 
+    public record OrderLine(String sku, int quantity) {
+    }
+
+    public record StartOrderCommand(
+        String orderId,
+        String cartId,
+        String shippingAddressId,
+        String paymentMethodId,
+        String idempotencyKey,
+        List<OrderLine> lines,
+        double amount,
+        String currency) {
+    }
+
     public record OrderStartedEvent(
         String eventId,
         String sourceCommandId,
         String orderId,
         String cartId,
         String shippingAddressId,
-        List<OrderLineInput> lines,
+        List<OrderLine> lines,
         double amount,
         String currency,
         long createdAtUnixMs) {

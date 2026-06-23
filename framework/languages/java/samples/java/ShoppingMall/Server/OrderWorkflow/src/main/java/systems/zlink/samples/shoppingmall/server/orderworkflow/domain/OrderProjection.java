@@ -1,9 +1,5 @@
 package systems.zlink.samples.shoppingmall.server.orderworkflow.domain;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
-import systems.zlink.samples.shoppingmall.shared.contracts.Messages.OrderState;
-
 /**
  * Pure projection folder: applies a stored event to the running order state.
  *
@@ -14,79 +10,90 @@ public final class OrderProjection {
     private OrderProjection() {
     }
 
-    public static OrderState apply(OrderState current, String eventType, JsonNode payload) {
-        long ts = payload.path("createdAtUnixMs").asLong(
-            payload.path("confirmedAtUnixMs").asLong(
-                payload.path("failedAtUnixMs").asLong(System.currentTimeMillis())));
-        StateBuilder result = switch (eventType) {
-            case OrderEvents.OrderStarted -> new StateBuilder(new OrderState(
-                payload.path("orderId").asText(),
-                Messages.OrderStatuses.Created,
-                payload.path("shippingAddressId").asText(null),
+    public static State apply(State current, OrderAggregate.StoredOrderEvent event) {
+        long ts = event.createdAtUnixMs();
+        Object payload = event.payload();
+        StateBuilder result = switch (event.eventType()) {
+            case OrderEvents.OrderStarted -> new StateBuilder(new State(
+                ((OrderEvents.OrderStartedEvent) payload).orderId(),
+                OrderStatus.Created,
+                ((OrderEvents.OrderStartedEvent) payload).shippingAddressId(),
                 null,
                 null,
                 null,
-                payload.has("amount") ? payload.path("amount").asDouble() : null,
-                payload.path("currency").asText(null),
+                ((OrderEvents.OrderStartedEvent) payload).amount(),
+                ((OrderEvents.OrderStartedEvent) payload).currency(),
                 ts));
             case OrderEvents.InventoryReserved -> require(current).withStatus(
-                Messages.OrderStatuses.InventoryReserved, ts)
-                .withReservationId(payload.path("reservationId").asText(null));
+                OrderStatus.InventoryReserved, ts)
+                .withReservationId(((OrderEvents.InventoryReservedEvent) payload).reservationId());
             case OrderEvents.InventoryReservationFailed -> require(current).withStatus(
-                Messages.OrderStatuses.Failed, ts)
-                .withReason(payload.path("reason").asText(null));
+                OrderStatus.Failed, ts)
+                .withReason(((OrderEvents.InventoryReservationFailedEvent) payload).reason());
             case OrderEvents.PaymentAuthorized -> require(current).withStatus(
-                Messages.OrderStatuses.PaymentAuthorized, ts)
-                .withPaymentId(payload.path("paymentId").asText(null));
+                OrderStatus.PaymentAuthorized, ts)
+                .withPaymentId(((OrderEvents.PaymentAuthorizedEvent) payload).paymentId());
             case OrderEvents.PaymentFailed -> require(current).withStatus(
-                Messages.OrderStatuses.Failed, ts)
-                .withReason(payload.path("reason").asText(null));
+                OrderStatus.Failed, ts)
+                .withReason(((OrderEvents.PaymentFailedEvent) payload).reason());
             case OrderEvents.InventoryReleased -> require(current).withReason(
-                payload.path("reason").asText(null)).touch(ts);
+                ((OrderEvents.InventoryReleasedEvent) payload).reason()).touch(ts);
             case OrderEvents.OrderConfirmed -> require(current).withStatus(
-                Messages.OrderStatuses.Confirmed, ts);
+                OrderStatus.Confirmed, ts);
             case OrderEvents.OrderFailed -> require(current).withStatus(
-                Messages.OrderStatuses.Failed, ts)
-                .withReason(payload.path("reason").asText(null));
+                OrderStatus.Failed, ts)
+                .withReason(((OrderEvents.OrderFailedEvent) payload).reason());
             default -> require(current);
         };
         return result.state();
     }
 
-    private static StateBuilder require(OrderState current) {
+    private static StateBuilder require(State current) {
         if (current == null) {
             throw new IllegalStateException("Cannot apply order event before OrderStartedEvent.");
         }
         return new StateBuilder(current);
     }
 
-    private record StateBuilder(OrderState state) {
+    public record State(
+        String orderId,
+        String status,
+        String shippingAddressId,
+        String reservationId,
+        String paymentId,
+        String reason,
+        Double amount,
+        String currency,
+        long updatedAtUnixMs) {
+    }
+
+    private record StateBuilder(State state) {
         StateBuilder withStatus(String status, long ts) {
-            return new StateBuilder(new OrderState(
+            return new StateBuilder(new State(
                 state.orderId(), status, state.shippingAddressId(), state.reservationId(),
                 state.paymentId(), state.reason(), state.amount(), state.currency(), ts));
         }
 
         StateBuilder withReservationId(String reservationId) {
-            return new StateBuilder(new OrderState(
+            return new StateBuilder(new State(
                 state.orderId(), state.status(), state.shippingAddressId(), reservationId,
                 state.paymentId(), state.reason(), state.amount(), state.currency(), state.updatedAtUnixMs()));
         }
 
         StateBuilder withPaymentId(String paymentId) {
-            return new StateBuilder(new OrderState(
+            return new StateBuilder(new State(
                 state.orderId(), state.status(), state.shippingAddressId(), state.reservationId(),
                 paymentId, state.reason(), state.amount(), state.currency(), state.updatedAtUnixMs()));
         }
 
         StateBuilder withReason(String reason) {
-            return new StateBuilder(new OrderState(
+            return new StateBuilder(new State(
                 state.orderId(), state.status(), state.shippingAddressId(), state.reservationId(),
                 state.paymentId(), reason, state.amount(), state.currency(), state.updatedAtUnixMs()));
         }
 
         StateBuilder touch(long ts) {
-            return new StateBuilder(new OrderState(
+            return new StateBuilder(new State(
                 state.orderId(), state.status(), state.shippingAddressId(), state.reservationId(),
                 state.paymentId(), state.reason(), state.amount(), state.currency(), ts));
         }

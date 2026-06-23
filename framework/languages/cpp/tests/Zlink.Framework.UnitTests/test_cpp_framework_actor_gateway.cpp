@@ -119,19 +119,21 @@ int main ()
 
     zlink::framework::stream_metadata_t metadata;
     metadata.with ("trace", "t1");
-    zlink::framework::stream_header_t header (
-      zlink::framework::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
-      zlink::framework::stream_header_flags_t::has_metadata, std::nullopt, "move", metadata);
-    const auto payload = zlink::framework::message_t::from (std::string ("payload"));
+    zlink::framework::detail::stream_header_t header (
+      zlink::framework::detail::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
+      zlink::framework::detail::stream_header_flags_t::has_metadata, std::nullopt, "move", metadata);
+    const auto payload = zlink::message_t::from (std::string ("payload"));
+    const auto framework_payload =
+      zlink::framework::message_t::from (std::string ("payload"));
     auto relay_with_header = [&] (zlink::framework::session_actor_t &actor,
-                                  const zlink::framework::message_t &message) {
+                                  const zlink::message_t &message) {
         zlink::framework::detail::enter_stream_relay_dispatch (header);
         auto result = actor.relay (message).async ().result ();
         zlink::framework::detail::exit_stream_relay_dispatch ();
         return result;
     };
     auto relay_request_with_header = [&] (zlink::framework::session_actor_t &actor,
-                                          const zlink::framework::message_t &message) {
+                                          const zlink::message_t &message) {
         zlink::framework::detail::enter_stream_relay_dispatch (header);
         auto result = actor.relay_request (message).async ().result ();
         zlink::framework::detail::exit_stream_relay_dispatch ();
@@ -140,14 +142,14 @@ int main ()
     auto relay = relay_with_header (bound.value (), payload);
     if (!relay || gateway.relayed_frames ().size () != 1
         || gateway.relayed_frames ()[0].payload.to_string () != "payload"
-        || payload.decode<std::string> (serializers) != "payload") {
+        || payload.to_string () != "payload") {
         return 7;
     }
 
     bool relay_dispatch_seen = false;
     gateway.on_relay ([&] (const zlink::framework::actor_ref_t &actor,
                            zlink::framework::actor_context_t,
-                           const zlink::framework::stream_header_t &received_header,
+                           const zlink::framework::detail::stream_header_t &received_header,
                            const zlink::message_t &received_payload) {
         relay_dispatch_seen = actor.actor_id () == "bob" && received_header.packet_name () == "move"
                               && received_payload.to_string () == "payload";
@@ -159,7 +161,7 @@ int main ()
         return 22;
     }
     auto relay_request = relay_request_with_header (bound.value (), payload);
-    if (!relay_request || relay_request.value ().decode<std::string> (serializers) != "relay-reply") {
+    if (!relay_request || relay_request.value ().to_string () != "relay-reply") {
         return 23;
     }
 
@@ -171,7 +173,7 @@ int main ()
     }
 
     auto push_result =
-      bound.value ().context ().bound_session ().send (payload).async ().result ();
+      bound.value ().context ().bound_session ().send (framework_payload).async ().result ();
     if (!push_result || gateway.bound_session_pushes ().size () != 1
         || gateway.bound_session_pushes ()[0].payload.to_string () != "payload") {
         return 9;
@@ -192,7 +194,8 @@ int main ()
     if (!disconnect || gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 10;
     }
-    auto disconnected_push = bound.value ().bound_session ().send (payload).async ().result ();
+    auto disconnected_push =
+      bound.value ().bound_session ().send (framework_payload).async ().result ();
     if (disconnected_push
         || disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
         return 16;
@@ -200,7 +203,7 @@ int main ()
     auto disconnected_relay = relay_with_header (bound.value (), payload);
     if (disconnected_relay
         || disconnected_relay.error_kind () != framework_error_kind_t::disconnected
-        || payload.decode<std::string> (serializers) != "payload") {
+        || payload.to_string () != "payload") {
         return 17;
     }
 
@@ -284,10 +287,11 @@ int main ()
     }
     const auto stale_relay = relay_with_header (rebound.value (), payload);
     if (stale_relay || stale_relay.error_kind () != framework_error_kind_t::actor_stale_generation
-        || payload.decode<std::string> (serializers) != "payload") {
+        || payload.to_string () != "payload") {
         return 20;
     }
-    const auto stale_push = rebound.value ().bound_session ().send (payload).async ().result ();
+    const auto stale_push =
+      rebound.value ().bound_session ().send (framework_payload).async ().result ();
     if (stale_push || stale_push.error_kind () != framework_error_kind_t::actor_stale_generation) {
         return 21;
     }
@@ -329,7 +333,7 @@ int main ()
         return 25;
     }
     const auto post_destroy_push =
-      rebound_after_entry.value ().bound_session ().send (payload).async ().result ();
+      rebound_after_entry.value ().bound_session ().send (framework_payload).async ().result ();
     if (post_destroy_push
         || post_destroy_push.error_kind () != framework_error_kind_t::actor_session_not_bound) {
         return 26;

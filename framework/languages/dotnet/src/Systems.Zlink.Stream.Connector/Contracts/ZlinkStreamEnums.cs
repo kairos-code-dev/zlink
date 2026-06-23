@@ -38,7 +38,7 @@ public enum ZlinkStreamMessageKind : byte
 }
 
 [Flags]
-public enum ZlinkStreamHeaderFlags : byte
+internal enum ZlinkStreamHeaderFlags : byte
 {
     None = 0,
     HasRequestSeq = 0x01,

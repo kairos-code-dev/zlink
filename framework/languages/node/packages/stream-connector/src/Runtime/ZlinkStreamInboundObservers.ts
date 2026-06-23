@@ -2,11 +2,11 @@ import {
   Disposable,
   ZlinkStreamError,
   ZlinkStreamErrorCode,
-  ZlinkStreamHeader,
-  ZlinkStreamHeaderFlags,
   ZlinkStreamInboundObservation
 } from '../Contracts';
+import { ZlinkStreamHeaderFlags } from '../Contracts/ZlinkStreamEnums';
 import { ZlinkStreamMetadataMap } from '../Contracts/ZlinkStreamMetadata';
+import type { ZlinkStreamHeader } from '../Contracts/ZlinkStreamModels';
 import { subscription } from './ZlinkStreamSupport';
 
 type InboundObserver = (observation: ZlinkStreamInboundObservation, signal?: AbortSignal) => Promise<void> | void;

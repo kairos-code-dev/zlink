@@ -1,6 +1,6 @@
 namespace Systems.Zlink.Stream.Connector.Contracts;
 
-public readonly record struct ZlinkStreamRequestSeq(ulong Value);
+internal readonly record struct ZlinkStreamRequestSeq(ulong Value);
 
 public sealed record ZlinkStreamEncodedPayload(
     ZlinkStreamCodec Codec,
@@ -17,7 +17,7 @@ public sealed record ZlinkStreamMessage<TPayload>(
     ZlinkStreamMetadata Metadata,
     TPayload Payload);
 
-public sealed record ZlinkStreamHeader(
+internal sealed record ZlinkStreamHeader(
     ZlinkStreamMessageKind Kind,
     ZlinkStreamCodec Codec,
     ZlinkStreamHeaderFlags Flags,
@@ -42,7 +42,7 @@ public sealed record ZlinkStreamInboundObservation(
     ZlinkStreamMessageKind Kind,
     string Name,
     ZlinkStreamCodec Codec,
-    ZlinkStreamRequestSeq? RequestSeq,
+    ulong? RequestSeq,
     ZlinkStreamMetadata Metadata,
     int PayloadLength,
     bool IsCompressed,

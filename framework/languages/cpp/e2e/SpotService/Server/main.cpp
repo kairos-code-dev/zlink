@@ -589,10 +589,10 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::task_t<void> on_packet (
       zlink::framework::stream_t &stream,
       const zlink::framework::stream_dispatch_context_t &dispatch,
-      const zlink::framework::message_t &payload) override
+      const zlink::message_t &payload) override
     {
         if (dispatch.packet_name () == "StreamAuthReq") {
-            auto request = payload.decode<e2e::stream_auth_req_t> ();
+            auto request = payload.parse_json<e2e::stream_auth_req_t> ();
             if (request.actor.actor_id.empty () || request.actor.actor_type.empty ()
                 || (request.target_node_rid != "play-a" && request.target_node_rid != "play-b")) {
                 _state.record ("StreamAuthFailed", request.actor_id, {}, request.target_node_rid);
@@ -612,7 +612,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             if (dispatch.can_reply ()) {
                 co_await stream
                   .reply_packet (
-                    zlink::framework::message_t::from (
+                    zlink::message_t::from_json (
                       e2e::stream_auth_res_t{request.actor, _state.node_rid}))
                   .async ();
             }

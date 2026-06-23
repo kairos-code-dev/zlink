@@ -2611,7 +2611,7 @@ int main ()
         return 67;
     }
     const auto &routed_header = routed_headers[0];
-    if (routed_header.kind () != zlink::framework::stream_message_kind_t::send) {
+    if (routed_header.kind () != zlink::framework::detail::stream_message_kind_t::send) {
         return 68;
     }
     if (routed_header.codec () != zlink::framework::stream_codec_t::json) {

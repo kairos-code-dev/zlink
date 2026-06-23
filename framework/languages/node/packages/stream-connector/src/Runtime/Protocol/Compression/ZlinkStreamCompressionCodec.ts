@@ -1,9 +1,9 @@
 import {
   ZlinkStreamCompression,
-  ZlinkStreamErrorCode,
-  ZlinkStreamHeader,
-  ZlinkStreamHeaderFlags
+  ZlinkStreamErrorCode
 } from '../../../Contracts';
+import { ZlinkStreamHeaderFlags } from '../../../Contracts/ZlinkStreamEnums';
+import type { ZlinkStreamHeader } from '../../../Contracts/ZlinkStreamModels';
 import { connectorError } from '../../ZlinkStreamSupport';
 
 export function compressPayload(payload: Uint8Array, compression: ZlinkStreamCompression): Uint8Array {

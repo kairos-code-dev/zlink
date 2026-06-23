@@ -1,12 +1,12 @@
 import {
   ZlinkStreamCodec,
   ZlinkStreamErrorCode,
-  ZlinkStreamHeaderFlags,
   ZlinkStreamMessageKind,
   ZlinkStreamMetadata,
-  ZlinkStreamMetadataMap,
-  type ZlinkStreamHeader
+  ZlinkStreamMetadataMap
 } from '../../Contracts';
+import { ZlinkStreamHeaderFlags } from '../../Contracts/ZlinkStreamEnums';
+import type { ZlinkStreamHeader } from '../../Contracts/ZlinkStreamModels';
 import {
   connectorError,
   readBigUInt64BE,

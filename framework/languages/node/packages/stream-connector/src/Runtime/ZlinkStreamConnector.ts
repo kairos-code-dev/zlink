@@ -12,8 +12,6 @@ import {
   ZlinkStreamError,
   ZlinkStreamErrorCode,
   ZlinkStreamException,
-  ZlinkStreamHeader,
-  ZlinkStreamHeaderFlags,
   ZlinkStreamInboundObservation,
   zlinkStreamJsonCodec,
   ZlinkStreamMessage,
@@ -24,6 +22,8 @@ import {
   ZlinkStreamSendCall,
   ZlinkStreamWaitCall
 } from '../Contracts';
+import { ZlinkStreamHeaderFlags } from '../Contracts/ZlinkStreamEnums';
+import type { ZlinkStreamHeader } from '../Contracts/ZlinkStreamModels';
 import { ZlinkStreamRequestBuilder, ZlinkStreamSendBuilder, ZlinkStreamWaitBuilder } from './Calls/ZlinkStreamCallBuilders';
 import { buildHeader, ZlinkStreamHeaderCodec } from './Protocol/ZlinkStreamHeaderCodec';
 import { ZlinkStreamFrameCodec } from './Protocol/ZlinkStreamFrameCodec';

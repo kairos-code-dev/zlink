@@ -333,7 +333,7 @@ class named_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
                                               const zlink::framework::stream_dispatch_context_t &,
-                                              const zlink::framework::message_t &) override
+                                              const zlink::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     }
@@ -403,11 +403,11 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t 
                               zlink::framework::task_t<void>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().write_packet (
-                   std::declval<const zlink::framework::message_t &> ())),
+                   std::declval<const zlink::message_t &> ())),
                  zlink::framework::stream_write_call_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet (
-                   std::declval<const zlink::framework::message_t &> ())),
+                   std::declval<const zlink::message_t &> ())),
                  zlink::framework::stream_write_call_t>);
 
 static_assert (
@@ -656,11 +656,11 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_joi
                               zlink::framework::message_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay (
-                   std::declval<const zlink::framework::message_t &> ())),
+                   std::declval<const zlink::message_t &> ())),
                  zlink::framework::relay_call_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay_request (
-                   std::declval<const zlink::framework::message_t &> ())),
+                   std::declval<const zlink::message_t &> ())),
                  zlink::framework::relay_request_call_t>);
 
 static_assert (

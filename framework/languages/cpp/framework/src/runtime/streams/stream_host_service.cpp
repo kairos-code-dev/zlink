@@ -17,6 +17,9 @@ namespace zlink::framework::runtime
 {
 namespace asio = boost::asio;
 using tcp = asio::ip::tcp;
+using detail::stream_header_flags_t;
+using detail::stream_header_t;
+using detail::stream_message_kind_t;
 
 namespace
 {

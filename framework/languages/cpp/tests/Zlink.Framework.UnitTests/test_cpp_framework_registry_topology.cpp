@@ -263,10 +263,10 @@ int main ()
         return 15;
     }
     const auto lookup_after_actor_bind = query.monitoring_snapshot ().spot_lookup_count;
-    const auto payload = zlink::framework::message_t::from (std::string ("payload"));
-    zlink::framework::stream_header_t header (
-      zlink::framework::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
-      zlink::framework::stream_header_flags_t::none, std::nullopt, "move");
+    const auto payload = zlink::message_t::from (std::string ("payload"));
+    zlink::framework::detail::stream_header_t header (
+      zlink::framework::detail::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
+      zlink::framework::detail::stream_header_flags_t::none, std::nullopt, "move");
     zlink::framework::detail::enter_stream_relay_dispatch (header);
     auto relay = actor.value ().relay (payload).async ().result ();
     zlink::framework::detail::exit_stream_relay_dispatch ();

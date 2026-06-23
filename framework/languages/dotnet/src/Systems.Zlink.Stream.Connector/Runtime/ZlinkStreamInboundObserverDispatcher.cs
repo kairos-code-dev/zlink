@@ -75,7 +75,7 @@ internal sealed class ZlinkStreamInboundObserverDispatcher
             header.Kind,
             header.Name,
             header.Codec,
-            header.RequestSeq,
+            header.RequestSeq?.Value,
             header.Metadata,
             wirePayload.Length,
             header.Flags.HasFlag(ZlinkStreamHeaderFlags.PayloadCompressed),

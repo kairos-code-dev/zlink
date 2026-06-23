@@ -10,6 +10,10 @@
 namespace zlink::framework
 {
 
+using detail::stream_header_flags_t;
+using detail::stream_header_t;
+using detail::stream_message_kind_t;
+
 namespace detail
 {
 
@@ -384,26 +388,13 @@ bound_session_t session_actor_t::bound_session () const
     return bound_session_t (_state, _ref);
 }
 
-relay_call_t session_actor_t::relay (const message_t &payload)
+relay_call_t session_actor_t::relay (const zlink::message_t &payload)
 {
     const auto header = detail::current_stream_relay_dispatch ();
     if (!header) {
         return relay_call_t (result_t<void>::failure (
           framework_error_kind_t::request_protocol_error,
           "actor relay requires current stream dispatch state"));
-    }
-    if (!_state->serializers) {
-        return relay_call_t (result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error,
-          "actor relay requires a serializer registry"));
-    }
-    zlink::message_t raw_payload;
-    try {
-        raw_payload = detail::message_to_raw (payload, *_state->serializers);
-    }
-    catch (const framework_exception_t &error) {
-        return relay_call_t (
-          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
     }
     detail::actor_gateway_state_t::relay_dispatcher_t dispatcher;
     {
@@ -431,13 +422,13 @@ relay_call_t session_actor_t::relay (const message_t &payload)
         }
         if (!_state->relay_dispatcher) {
             _state->relayed_frames.push_back (
-              detail::relayed_frame_t{_ref, *header, raw_payload});
+              detail::relayed_frame_t{_ref, *header, payload});
             return relay_call_t (result_t<void>::success ());
         }
         dispatcher = _state->relay_dispatcher;
     }
 
-    auto dispatched = dispatcher (_ref, context (), *header, raw_payload);
+    auto dispatched = dispatcher (_ref, context (), *header, payload);
     if (!dispatched) {
         return relay_call_t (result_t<void>::failure (
           dispatched.error_kind (),
@@ -446,72 +437,59 @@ relay_call_t session_actor_t::relay (const message_t &payload)
     return relay_call_t (result_t<void>::success ());
 }
 
-relay_request_call_t session_actor_t::relay_request (const message_t &payload)
+relay_request_call_t session_actor_t::relay_request (const zlink::message_t &payload)
 {
     const auto header = detail::current_stream_relay_dispatch ();
     if (!header) {
-        return relay_request_call_t (result_t<message_t>::failure (
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_protocol_error,
           "actor relay request requires current stream dispatch state"));
-    }
-    if (!_state->serializers) {
-        return relay_request_call_t (result_t<message_t>::failure (
-          framework_error_kind_t::request_protocol_error,
-          "actor relay request requires a serializer registry"));
-    }
-    zlink::message_t raw_payload;
-    try {
-        raw_payload = detail::message_to_raw (payload, *_state->serializers);
-    }
-    catch (const framework_exception_t &error) {
-        return relay_request_call_t (
-          result_t<message_t>::failure (error.kind (), error.what (), error.is_retriable ()));
     }
     detail::actor_gateway_state_t::relay_dispatcher_t dispatcher;
     {
         const std::lock_guard lock (_state->mutex);
         if (_ref.empty ()) {
-            return relay_request_call_t (result_t<message_t>::failure (
+            return relay_request_call_t (result_t<zlink::message_t>::failure (
               framework_error_kind_t::actor_route_not_found, "session actor is not bound"));
         }
         const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
         if (found != _state->actors_by_id.end () && found->second.disconnected) {
-            return relay_request_call_t (result_t<message_t>::failure (
+            return relay_request_call_t (result_t<zlink::message_t>::failure (
               framework_error_kind_t::disconnected, "actor session is disconnected"));
         }
         if (found == _state->actors_by_id.end ()) {
-            return relay_request_call_t (result_t<message_t>::failure (
+            return relay_request_call_t (result_t<zlink::message_t>::failure (
               framework_error_kind_t::actor_route_not_found, "actor route is not found"));
         }
         if (!found->second.bound) {
-            return relay_request_call_t (result_t<message_t>::failure (
+            return relay_request_call_t (result_t<zlink::message_t>::failure (
               framework_error_kind_t::actor_session_not_bound, "actor session is not bound"));
         }
         if (found->second.ref.generation () != _ref.generation ()) {
-            return relay_request_call_t (result_t<message_t>::failure (
+            return relay_request_call_t (result_t<zlink::message_t>::failure (
               framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
         }
         if (!_state->relay_dispatcher) {
             _state->relayed_frames.push_back (
-              detail::relayed_frame_t{_ref, *header, raw_payload});
-            return relay_request_call_t (result_t<message_t>::failure (
+              detail::relayed_frame_t{_ref, *header, payload});
+            return relay_request_call_t (result_t<zlink::message_t>::failure (
               framework_error_kind_t::actor_dispatch_handler_not_found,
               "actor relay dispatcher is not configured"));
         }
         dispatcher = _state->relay_dispatcher;
     }
-    auto dispatched = dispatcher (_ref, context (), *header, raw_payload);
+    auto dispatched = dispatcher (_ref, context (), *header, payload);
     if (!dispatched) {
-        return relay_request_call_t (result_t<message_t>::failure (
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
           dispatched.error_kind (),
           dispatched.error () ? dispatched.error ()->what () : "actor relay failed"));
     }
     if (!dispatched.value ()) {
-        return relay_request_call_t (result_t<message_t>::failure (
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_protocol_error, "actor relay request has no reply"));
     }
-    return relay_request_call_t (result_t<message_t>::success (
-      message_t::from_raw (std::move (*dispatched.value ()), _state->serializers)));
+    return relay_request_call_t (
+      result_t<zlink::message_t>::success (std::move (*dispatched.value ())));
 }
 
 relay_call_t session_actor_t::notify_disconnected ()

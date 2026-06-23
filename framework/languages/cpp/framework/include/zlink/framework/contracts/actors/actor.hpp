@@ -179,13 +179,13 @@ class actor_join_entry_spot_call_t
     serializer_registry_t *_serializers = nullptr;
 };
 
-class relay_request_call_t : private detail::call_facade_t<relay_request_call_t, message_t>
+class relay_request_call_t : private detail::call_facade_t<relay_request_call_t, zlink::message_t>
 {
   private:
-    using base_t = detail::call_facade_t<relay_request_call_t, message_t>;
+    using base_t = detail::call_facade_t<relay_request_call_t, zlink::message_t>;
 
   public:
-    explicit relay_request_call_t (result_t<message_t> result) : base_t (std::move (result))
+    explicit relay_request_call_t (result_t<zlink::message_t> result) : base_t (std::move (result))
     {
     }
 
@@ -394,8 +394,8 @@ class session_actor_t
     std::string_view actor_id () const noexcept;
     actor_context_t context () const;
     bound_session_t bound_session () const;
-    relay_call_t relay (const message_t &payload);
-    relay_request_call_t relay_request (const message_t &payload);
+    relay_call_t relay (const zlink::message_t &payload);
+    relay_request_call_t relay_request (const zlink::message_t &payload);
     relay_call_t notify_disconnected ();
 
   private:

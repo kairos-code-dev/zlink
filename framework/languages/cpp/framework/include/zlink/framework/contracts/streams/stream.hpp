@@ -26,8 +26,6 @@ class stream_builder_state_t;
 class stream_state_t;
 class stream_runtime_t;
 class actor_gateway_runtime_t;
-} // namespace detail
-
 enum class stream_message_kind_t : std::uint8_t
 {
     send = 1,
@@ -35,14 +33,6 @@ enum class stream_message_kind_t : std::uint8_t
     response = 3,
     error = 4,
     control = 5
-};
-
-enum class stream_codec_t : std::uint8_t
-{
-    raw = 0,
-    json = 1,
-    message_pack = 2,
-    protobuf = 3
 };
 
 enum class stream_header_flags_t : std::uint8_t
@@ -67,6 +57,16 @@ constexpr stream_header_flags_t operator& (stream_header_flags_t lhs,
     return static_cast<stream_header_flags_t> (static_cast<std::uint8_t> (lhs)
                                                & static_cast<std::uint8_t> (rhs));
 }
+class stream_header_t;
+} // namespace detail
+
+enum class stream_codec_t : std::uint8_t
+{
+    raw = 0,
+    json = 1,
+    message_pack = 2,
+    protobuf = 3
+};
 
 enum class stream_session_error_t
 {
@@ -106,6 +106,9 @@ class stream_metadata_t
     std::map<std::string, std::string> _values;
 };
 
+namespace detail
+{
+
 class stream_header_t
 {
   public:
@@ -142,6 +145,8 @@ class stream_header_t
     std::string _correlation_id;
 };
 
+} // namespace detail
+
 class stream_dispatch_context_t
 {
   public:
@@ -153,7 +158,7 @@ class stream_dispatch_context_t
 
   private:
     friend class detail::stream_runtime_t;
-    explicit stream_dispatch_context_t (const stream_header_t &header);
+    explicit stream_dispatch_context_t (const detail::stream_header_t &header);
 
     std::string _packet_name;
     stream_metadata_t _metadata;
@@ -173,14 +178,14 @@ class stream_t
 
     std::string session_id () const;
     task_t<void> close ();
-    stream_write_call_t write_packet (const message_t &payload);
-    stream_write_call_t reply_packet (const message_t &payload);
+    stream_write_call_t write_packet (const zlink::message_t &payload);
+    stream_write_call_t reply_packet (const zlink::message_t &payload);
 
   private:
     friend class detail::actor_gateway_runtime_t;
     friend class detail::stream_runtime_t;
     explicit stream_t (std::shared_ptr<detail::stream_state_t> state);
-    stream_write_call_t write_packet_with_header (stream_header_t header,
+    stream_write_call_t write_packet_with_header (detail::stream_header_t header,
                                                   zlink::message_t payload);
 
     std::shared_ptr<detail::stream_state_t> _state;
@@ -195,7 +200,7 @@ class packet_stream_session_t
     virtual task_t<void> on_error (stream_t &stream, const stream_error_t &error) = 0;
     virtual task_t<void> on_packet (stream_t &stream,
                                     const stream_dispatch_context_t &dispatch,
-                                    const message_t &payload)
+                                    const zlink::message_t &payload)
     {
         (void) stream;
         (void) dispatch;

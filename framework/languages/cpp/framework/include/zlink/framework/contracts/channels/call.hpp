@@ -20,11 +20,10 @@ class message_t;
 namespace zlink::framework
 {
 
-class stream_header_t;
-
 namespace detail
 {
 class stream_write_call_state_t;
+class stream_header_t;
 } // namespace detail
 
 template <typename TReply> class request_call_t
@@ -232,12 +231,12 @@ class stream_write_call_t
 
   private:
     using submit_fn_t =
-      std::function<task_t<void> (const stream_header_t &, const zlink::message_t &)>;
+      std::function<task_t<void> (const detail::stream_header_t &, const zlink::message_t &)>;
 
     friend class stream_t;
     friend class detail::stream_write_call_state_t;
 
-    stream_write_call_t (stream_header_t header, zlink::message_t payload, submit_fn_t submit);
+    stream_write_call_t (detail::stream_header_t header, zlink::message_t payload, submit_fn_t submit);
 
     std::shared_ptr<detail::stream_write_call_state_t> _state;
 };

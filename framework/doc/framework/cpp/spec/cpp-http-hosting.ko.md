@@ -197,25 +197,17 @@ Handler shape 판별은 아래 순서로 구현한다.
 
 Typed route 호출 우선순위:
 
-1. `task_t<http_response_t> handle(const request_type&, const http_request_t&, http_context_t&)`
-2. `http_response_t handle(const request_type&, const http_request_t&, http_context_t&)`
-3. `task_t<http_response_t> handle(const request_type&, const http_request_t&)`
-4. `http_response_t handle(const request_type&, const http_request_t&)`
-5. `task_t<http_response_t> handle(const request_type&, http_context_t&)`
-6. `http_response_t handle(const request_type&, http_context_t&)`
-7. `task_t<http_response_t> handle(const request_type&)`
-8. `http_response_t handle(const request_type&)`
-9. `task_t<reply_type> handle(const request_type&, const http_request_t&, http_context_t&)`
-10. `reply_type handle(const request_type&, const http_request_t&, http_context_t&)`
-11. `task_t<reply_type> handle(const request_type&, const http_request_t&)`
-12. `reply_type handle(const request_type&, const http_request_t&)`
-13. `task_t<reply_type> handle(const request_type&, http_context_t&)`
-14. `reply_type handle(const request_type&, http_context_t&)`
-15. `task_t<reply_type> handle(const request_type&)`
-16. `reply_type handle(const request_type&)`
+1. `handle(const request_type&, const http_request_t&, http_context_t&)`
+2. `handle(const request_type&, const http_request_t&)`
+3. `handle(const request_type&, http_context_t&)`
+4. `handle(const request_type&)`
 
-이 우선순위는 “더 많은 HTTP 제어권을 명시한 handler를 우선한다”는 규칙이다.
-`http_response_t` 반환은 status/header/body를 직접 제어하겠다는 뜻이므로 DTO 반환보다 우선한다.
+각 shape의 반환값은 `reply_type`, `http_response_t`, `task_t<reply_type>`,
+`task_t<http_response_t>` 중 하나여야 한다. 이 우선순위는 반환 타입보다 인자 shape를 먼저 본다.
+같은 handler가 `reply_type handle(request, http, context)`와
+`http_response_t handle(request, http)`를 모두 제공하면 첫 번째 shape가 선택된다.
+선택된 shape가 `http_response_t`를 반환하면 status/header/body를 직접 제어하고,
+`reply_type`을 반환하면 serializer가 DTO를 HTTP body로 변환한다.
 `http_request_t` 인자는 raw HTTP metadata가 필요하다는 뜻이므로 `http_context_t`보다 우선한다.
 
 Raw route 호출 우선순위:

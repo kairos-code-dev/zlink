@@ -185,11 +185,16 @@ static async Task RunSmD7Async(ClientOptions options)
 static async Task RunSmD1AndD6Async(ClientOptions options)
 {
     await using var bound = CreateClient(options.SessionAStreamEndpoint);
+    await using var remote = CreateClient(options.SessionAStreamEndpoint);
     await using var unbound = CreateClient(options.SessionBStreamEndpoint);
     await bound.Connect.Async();
+    await remote.Connect.Async();
     await unbound.Connect.Async();
 
     await bound.Request(new AuthReq("actor-sm-d1", "local relay", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    await remote.Request(new AuthReq("actor-sm-d2", "remote relay", options.PlayBRid))
         .PacketName("AuthReq")
         .Async<AuthReply>();
     await unbound.Request(new AuthReq("actor-sm-d1-shadow", "unbound", options.PlayBRid))
@@ -205,7 +210,18 @@ static async Task RunSmD1AndD6Async(ClientOptions options)
     Ensure(notify.Payload.ActorId == "actor-sm-d1", "SM-D6 push actor mismatch.");
     Ensure(notify.Payload.Value == "push-local", "SM-D6 push value mismatch.");
     Ensure(unbound.ReceivedCount("ActorPushNotify") == 0, "SM-D6 unbound session received push.");
+
+    var remotePushed = remote.WaitFor<ActorPushNotify>().Async().AsTask();
+    var remoteReply = await remote.Request(new ActorPushReq("push-remote"))
+        .PacketName("ActorPushReq")
+        .Async<ActorPingReply>();
+    var remoteNotify = await remotePushed;
+    Ensure(remoteReply.ActorId == "actor-sm-d2", "SM-D2 actor reply mismatch.");
+    Ensure(remoteReply.NodeRid == options.PlayBRid, "SM-D2 remote node mismatch.");
+    Ensure(remoteNotify.Payload.ActorId == "actor-sm-d2", "SM-D2 push actor mismatch.");
+    Ensure(remoteNotify.Payload.Value == "push-remote", "SM-D2 push value mismatch.");
     Console.WriteLine("scenario SM-D1 passed");
+    Console.WriteLine("scenario SM-D2 passed");
     Console.WriteLine("scenario SM-D6 passed");
 }
 
@@ -433,6 +449,11 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
     await clientServerHost.StartAsync();
     var clientServerRoutes = clientServerHost.Services.GetRequiredService<IZLinkRouteClient>();
 
+    await WaitForControlRouteAsync(
+        clientServerRoutes,
+        options.PlayARid,
+        "SM-F expected control route to become ready.");
+
     var created = await clientServerRoutes.Request(
             SpotServiceNames.ControlChannel,
             RoutingId.From(options.PlayARid),
@@ -646,6 +667,31 @@ static async Task<StateReply> RequestSpotStateWithRetryAsync(
     }
 
     throw new TimeoutException(failureMessage, last);
+}
+
+static async Task WaitForControlRouteAsync(
+    IZLinkRouteClient routes,
+    string nodeRid,
+    string failureMessage)
+{
+    await WaitUntilAsync(async () =>
+    {
+        try
+        {
+            var ping = await routes.Request(
+                    SpotServiceNames.ControlChannel,
+                    RoutingId.From(nodeRid),
+                    new ControlPingReq("ready"))
+                .PacketName("ControlPingReq")
+                .Timeout(TimeSpan.FromSeconds(1))
+                .Async<ControlPingReply>();
+            return ping.NodeRid == nodeRid;
+        }
+        catch
+        {
+            return false;
+        }
+    }, failureMessage);
 }
 
 static void Ensure(bool condition, string message)

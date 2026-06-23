@@ -64,6 +64,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/channels/channel_pending_requests.cpp
   framework/src/runtime/channels/channel_reply_writer.cpp
   framework/src/runtime/channels/channel_outbound_exchange.cpp
+  framework/src/runtime/channels/discovery_registry_connection.cpp
   framework/src/runtime/channels/channel_runtime_bundle.cpp
   framework/src/runtime/channels/channel_runtime_manager.cpp
   framework/src/runtime/channels/channel_runtime.cpp

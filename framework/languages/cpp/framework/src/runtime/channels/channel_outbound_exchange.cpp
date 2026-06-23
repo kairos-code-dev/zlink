@@ -3,6 +3,7 @@
 #include "runtime/channels/channel_outbound_exchange.hpp"
 
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/channels/discovery_registry_connection.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
@@ -49,25 +50,6 @@ bool has_connection (const channel_capability_snapshot_t *capability)
     return capability != nullptr && capability->enabled
            && (capability->discovery || !capability->bind_endpoints.empty ()
                || !capability->connect_endpoints.empty ());
-}
-
-void connect_registry_with_retry (zlink::service::discovery_t &discovery,
-                                  const std::string &endpoint)
-{
-    std::exception_ptr last_error;
-    for (int attempt = 0; attempt < 100; ++attempt) {
-        try {
-            discovery.connect_registry (endpoint);
-            return;
-        }
-        catch (...) {
-            last_error = std::current_exception ();
-            std::this_thread::sleep_for (std::chrono::milliseconds (10));
-        }
-    }
-    if (last_error) {
-        std::rethrow_exception (last_error);
-    }
 }
 
 framework_exception_t map_native_request_exception (const std::exception &error)
@@ -412,6 +394,17 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
         return result_t<void>::failure (framework_error_kind_t::disconnected,
                                         "channel client is not connected");
     }
+    channel_runtime_t runtime (_state);
+    const auto pending_send = runtime.queue_pending_send (channel_name);
+    if (!pending_send) {
+        return result_t<void>::failure (
+          pending_send.error_kind (),
+          pending_send.error () ? pending_send.error ()->what () : "channel send was rejected");
+    }
+    const auto fail_pending_send = [&runtime, operation_id = pending_send.value ()] {
+        (void) runtime.retry_pending (operation_id);
+        (void) runtime.expire_pending (operation_id);
+    };
     const bool client_uses_discovery =
       client != nullptr && client->discovery && !_state->discovery.registry_endpoints.empty ();
     if (_state->serializers != nullptr && client != nullptr
@@ -476,20 +469,33 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
             zlink::message_t send_body = zlink::message_t::from (parts[1].to_string ());
             const bool sent = dealer.send ().message (send_header).message (send_body).submit ();
             if (!sent) {
+                fail_pending_send ();
                 return result_t<void>::failure (framework_error_kind_t::request_failed,
                                                 "channel native send failed");
             }
+            auto completed = runtime.mark_send_ready (pending_send.value ());
+            if (!completed) {
+                return completed;
+            }
+            return result_t<void>::success ();
         }
         catch (const framework_exception_t &error) {
+            fail_pending_send ();
             return result_t<void>::failure (error.kind (), error.what ());
         }
         catch (const std::exception &error) {
+            fail_pending_send ();
             return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
         }
         catch (...) {
+            fail_pending_send ();
             return result_t<void>::failure (framework_error_kind_t::request_failed,
                                             "channel native send failed");
         }
+    }
+    auto completed = runtime.mark_send_ready (pending_send.value ());
+    if (!completed) {
+        return completed;
     }
     return result_t<void>::success ();
 }

@@ -4,6 +4,7 @@
 
 #include "runtime/backend/native_route_backend.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/channels/discovery_registry_connection.hpp"
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 #include "runtime/channels/route_packet_dispatcher.hpp"
 #include "runtime/registry/registry_runtime.hpp"
@@ -90,27 +91,9 @@ class native_spot_route_discovery_bridge_t final
             return;
         }
         for (const auto &endpoint : _registry_endpoints) {
-            connect_registry_with_retry (endpoint);
+            detail::connect_registry_with_retry (*_discovery, endpoint);
         }
         _connected = true;
-    }
-
-    void connect_registry_with_retry (const std::string &endpoint)
-    {
-        std::exception_ptr last_error;
-        for (int attempt = 0; attempt < 100; ++attempt) {
-            try {
-                _discovery->connect_registry (endpoint);
-                return;
-            }
-            catch (...) {
-                last_error = std::current_exception ();
-                std::this_thread::sleep_for (std::chrono::milliseconds (10));
-            }
-        }
-        if (last_error) {
-            std::rethrow_exception (last_error);
-        }
     }
 
     std::unique_ptr<zlink::service::discovery_t> _discovery;

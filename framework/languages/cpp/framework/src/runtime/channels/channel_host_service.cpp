@@ -4,6 +4,7 @@
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/channels/discovery_registry_connection.hpp"
 
 #include <zlink.hpp>
 
@@ -15,30 +16,6 @@
 
 namespace zlink::framework::runtime
 {
-
-namespace
-{
-
-void connect_registry_with_retry (zlink::service::discovery_t &discovery,
-                                  const std::string &endpoint)
-{
-    std::exception_ptr last_error;
-    for (int attempt = 0; attempt < 100; ++attempt) {
-        try {
-            discovery.connect_registry (endpoint);
-            return;
-        }
-        catch (...) {
-            last_error = std::current_exception ();
-            std::this_thread::sleep_for (std::chrono::milliseconds (10));
-        }
-    }
-    if (last_error) {
-        std::rethrow_exception (last_error);
-    }
-}
-
-} // namespace
 
 class channel_host_service_t::server_loop_t
 {
@@ -72,7 +49,7 @@ class channel_host_service_t::server_loop_t
                 _discovery = std::make_unique<zlink::service::discovery_t> (
                   *_context, zlink::auto_connect_type::client_server, _channel_name);
                 for (const auto &endpoint : _discovery_snapshot.registry_endpoints) {
-                    connect_registry_with_retry (*_discovery, endpoint);
+                    detail::connect_registry_with_retry (*_discovery, endpoint);
                 }
                 _router->attach_discovery (*_discovery);
             }

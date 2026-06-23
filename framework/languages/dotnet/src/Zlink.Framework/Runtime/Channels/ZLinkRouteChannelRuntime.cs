@@ -72,6 +72,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
     public IZLinkBackendDiscovery? Discovery => _discovery;
 
+    internal bool HasSpotRouteBridge => _spotRouteBridge is not null;
+
     public void AttachSpotRouteBridge(IZLinkBackendSpotRouteBridge bridge)
     {
         if (_spotRouteBridge is not null)

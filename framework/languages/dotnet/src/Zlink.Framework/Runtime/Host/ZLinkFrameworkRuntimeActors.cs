@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Actors;
+using Zlink.Framework.Runtime.Backend.DotNet.Mappings;
 using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Host;
@@ -199,6 +200,42 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorId,
         CancellationToken cancellationToken = default)
         => await _actors.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
+
+    internal async ValueTask NotifyActorDisconnectedAsync(
+        ActorRef actor,
+        CancellationToken cancellationToken = default)
+    {
+        var state = GetOrCreateActorState(actor.ActorId);
+        if (state.Actor is not null
+            && state.NativeActorRef is { } localActor
+            && localActor.NodeRid == actor.NodeRid
+            && localActor.Generation == actor.Generation)
+        {
+            await NotifyActorDisconnectedByIdAsync(actor.ActorId, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (GetActorSpotNode() is not { } node)
+        {
+            await NotifyActorDisconnectedByIdAsync(actor.ActorId, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var backendActor = actor.ToBackend();
+        _ = Task.Run(
+            async () =>
+            {
+                await node.CloseActorBoundSessionAsync(
+                        backendActor,
+                        Registration.DefaultRequestTimeout,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            },
+            CancellationToken.None);
+    }
 
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
         => _actors.GetOrCreateActorState(actorId);

@@ -10,6 +10,7 @@ public static class SpotServiceNames
     public const string StreamNode = "session-stream";
     public const string PlaySpotNode = "play-node";
     public const string SessionSpotNode = "session-node";
+    public const string EdgeSpotNode = "edge-node";
     public const string ActorType = "scenario-player";
     public const string ActorIdMetadata = "actor-id";
 }

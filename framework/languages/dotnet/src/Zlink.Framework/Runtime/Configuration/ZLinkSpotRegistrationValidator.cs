@@ -25,16 +25,12 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"SPOT node '{spotNode.SpotNodeName}' enables pub/sub capability but does not define a pub/sub bind endpoint.");
         }
 
-        if (spotNode.Router is null && spotNode.PubSub is null)
+        if (spotNode.Router is null
+            && spotNode.PubSub is null
+            && spotNode.AttachedSpotPublisherClients.Count == 0)
         {
             throw new ZLinkConfigurationException(
-                $"SPOT node '{spotNode.SpotNodeName}' must enable router or pub/sub capability.");
-        }
-
-        if (spotNode.AttachedSpotPublisherClients.Count > 0 && spotNode.PubSub is null)
-        {
-            throw new ZLinkConfigurationException(
-                $"SPOT node '{spotNode.SpotNodeName}' attaches SPOT publisher clients but does not enable pub/sub capability.");
+                $"SPOT node '{spotNode.SpotNodeName}' must enable router, pub/sub, or publisher-client capability.");
         }
 
         foreach (var acceptance in spotNode.AcceptedSpotRouteChannels.Values)

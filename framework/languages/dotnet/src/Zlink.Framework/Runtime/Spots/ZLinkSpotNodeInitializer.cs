@@ -70,8 +70,9 @@ internal sealed class ZLinkSpotNodeInitializer(
             (true, true) => SpotNodeMode.All,
             (true, false) => SpotNodeMode.Routed,
             (false, true) => SpotNodeMode.PubSub,
+            (false, false) when registration.AttachedSpotPublisherClients.Count > 0 => SpotNodeMode.PubSub,
             _ => throw new ZLinkConfigurationException(
-                $"SPOT node '{registration.SpotNodeName}' must enable router or pub/sub capability.")
+                $"SPOT node '{registration.SpotNodeName}' must enable router, pub/sub, or publisher-client capability.")
         };
     }
 

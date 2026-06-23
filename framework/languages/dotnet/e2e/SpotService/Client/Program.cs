@@ -97,31 +97,36 @@ static async Task RunSmD4Async(ClientOptions options)
 
 static async Task RunSmD5Async(ClientOptions options)
 {
-    var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
-    await using (var client = CreateClient(options.SessionAStreamEndpoint))
-    {
-        await client.Connect.Async();
-        await client.Request(new AuthReq("actor-sm-d5-notified", "disconnect", options.PlayARid))
-            .PacketName("AuthReq")
-            .Async<AuthReply>();
-    }
+    var before = await ReadEvidenceAsync(options.SessionAEvidenceUrl);
+    await using var client = CreateClient(options.SessionAStreamEndpoint);
+    await client.Connect.Async();
+    await client.Request(new AuthReq("actor-sm-d5-notified", "disconnect", options.SessionARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    await client.Close.Async();
 
     await WaitUntilAsync(async () =>
     {
-        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
-        return CountNew(after, before, "entry-disconnected|rid=play-a|actor=actor-sm-d5-notified") == 1;
+        var after = await ReadEvidenceAsync(options.SessionAEvidenceUrl);
+        return CountNew(after, before, $"entry-disconnected|rid={options.SessionARid}|actor=actor-sm-d5-notified") == 1;
     }, "SM-D5 expected only the selected bound actor to receive disconnect notification.");
     Console.WriteLine("scenario SM-D5 passed");
 }
 
 static async Task RunSmF1F2Async(ClientOptions options)
 {
-    using var host = CreateRouteEgressHost(options);
-    await host.StartAsync();
-    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
     var spotRid = $"spot-sm-f-{Guid.NewGuid():N}";
 
-    var created = await routes.Request(
+    using var clientServerHost = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: true,
+        traceName: "client-framework-flow.log");
+    await clientServerHost.StartAsync();
+    var clientServerRoutes = clientServerHost.Services.GetRequiredService<IZLinkRouteClient>();
+
+    var created = await clientServerRoutes.Request(
             SpotServiceNames.ControlChannel,
             RoutingId.From(options.PlayARid),
             new CreateSpotReq(spotRid))
@@ -130,7 +135,7 @@ static async Task RunSmF1F2Async(ClientOptions options)
     Ensure(created.SpotRid == spotRid, "SM-F setup created spot mismatch.");
 
     var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
-    var viaClientServer = await routes.Request(
+    var viaClientServer = await clientServerRoutes.Request(
             SpotServiceNames.ExternalClientServerChannel,
             RoutingId.From(spotRid),
             new StateReq("add", 7))
@@ -140,15 +145,22 @@ static async Task RunSmF1F2Async(ClientOptions options)
     Ensure(viaClientServer.NodeRid == options.PlayARid, "SM-F1 target node mismatch.");
     Ensure(viaClientServer.Value == 7, "SM-F1 state value mismatch.");
 
-    await routes.Send(
+    await clientServerRoutes.Send(
             SpotServiceNames.ExternalClientServerChannel,
             RoutingId.From(spotRid),
             new StateCommand("sm-f1-command"))
         .PacketName("StateCommand")
         .Async();
 
-    var viaRouteMesh = await routes.Request(
-            SpotServiceNames.ExternalClientChannel,
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, before, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-f1-command") == 1;
+    }, "SM-F1 expected spot route command evidence.");
+    Console.WriteLine("scenario SM-F1 passed");
+
+    var viaRouteMesh = await clientServerRoutes.Request(
+            SpotServiceNames.ExternalSpotChannel,
             RoutingId.From(spotRid),
             new StateReq("add", 5))
         .PacketName("StateReq")
@@ -157,8 +169,8 @@ static async Task RunSmF1F2Async(ClientOptions options)
     Ensure(viaRouteMesh.NodeRid == options.PlayARid, "SM-F2 target node mismatch.");
     Ensure(viaRouteMesh.Value == 12, "SM-F2 state value mismatch.");
 
-    await routes.Send(
-            SpotServiceNames.ExternalClientChannel,
+    await clientServerRoutes.Send(
+            SpotServiceNames.ExternalSpotChannel,
             RoutingId.From(spotRid),
             new StateCommand("sm-f2-command"))
         .PacketName("StateCommand")
@@ -167,16 +179,19 @@ static async Task RunSmF1F2Async(ClientOptions options)
     await WaitUntilAsync(async () =>
     {
         var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
-        return CountNew(after, before, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-f1-command") == 1
-            && CountNew(after, before, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-f2-command") == 1;
-    }, "SM-F expected spot route command evidence.");
+        return CountNew(after, before, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-f2-command") == 1;
+    }, "SM-F2 expected spot route command evidence.");
 
-    await host.StopAsync();
-    Console.WriteLine("scenario SM-F1 passed");
+    await clientServerHost.StopAsync();
     Console.WriteLine("scenario SM-F2 passed");
 }
 
-static IHost CreateRouteEgressHost(ClientOptions options)
+static IHost CreateRouteEgressHost(
+    ClientOptions options,
+    bool includeControlChannel,
+    bool includeRouteMeshEgress,
+    bool includeClientServerEgress,
+    string traceName)
 {
     var builder = Host.CreateApplicationBuilder();
     builder.Services.AddZLinkFramework(framework =>
@@ -184,20 +199,35 @@ static IHost CreateRouteEgressHost(ClientOptions options)
         framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
         framework.ConfigureDispatch()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .TraceLogFile(Path.Combine(options.LogDir, "client-framework-flow.log"))
+            .TraceLogFile(Path.Combine(options.LogDir, traceName))
             .TraceNodeId("client-framework");
-        framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
-            .EnableServer(options.ClientControlEndpoint)
-            .EnableClient()
-            .SetRoutingId(RoutingId.From("client-control"));
-        framework.AddRouteMeshChannel(SpotServiceNames.ExternalClientChannel)
-            .EnableServer(options.ClientExternalRouteEndpoint)
-            .EnableClient()
-            .SetRoutingId(RoutingId.From("client-external-route"))
-            .EnableSpotRouteEgress(SpotServiceNames.ExternalSpotChannel);
-        framework.AddClientServerChannel(SpotServiceNames.ExternalClientServerChannel)
-            .EnableClient(options.PlayAExternalSpotEndpoint)
-            .EnableSpotRouteEgress(SpotServiceNames.ExternalSpotChannel);
+        framework.AddSpotMesh(SpotServiceNames.SpotChannel)
+            .UseRegistrySpotResolver()
+            .AddNode(SpotServiceNames.EdgeSpotNode)
+            .EnableRouter(options.ClientSpotRouterEndpoint)
+            .SetRouterRoutingId(RoutingId.From("client-edge"))
+            .AttachSpotPublisherClient(SpotServiceNames.SpotChannel);
+        if (includeControlChannel)
+        {
+            framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
+                .EnableServer(options.ClientControlEndpoint)
+                .EnableClient()
+                .SetRoutingId(RoutingId.From("client-control"));
+        }
+        if (includeRouteMeshEgress)
+        {
+            framework.AddRouteMeshChannel(SpotServiceNames.ExternalSpotChannel)
+                .EnableServer(options.ClientExternalRouteEndpoint)
+                .EnableClient()
+                .SetRoutingId(RoutingId.From("client-external-route"))
+                .EnableSpotRouteEgress(SpotServiceNames.ExternalSpotChannel);
+        }
+        if (includeClientServerEgress)
+        {
+            framework.AddClientServerChannel(SpotServiceNames.ExternalClientServerChannel)
+                .EnableClient(options.PlayAExternalSpotEndpoint)
+                .EnableSpotRouteEgress(SpotServiceNames.ExternalSpotChannel);
+        }
     });
     return builder.Build();
 }
@@ -277,11 +307,14 @@ internal sealed record ClientOptions(
     string SessionBStreamEndpoint,
     string RegistryRouterEndpoint,
     string PlayAEvidenceUrl,
+    string SessionAEvidenceUrl,
     string PlayARid,
     string PlayBRid,
+    string SessionARid,
     string PlayAExternalSpotEndpoint,
     string ClientControlEndpoint,
     string ClientExternalRouteEndpoint,
+    string ClientSpotRouterEndpoint,
     string LogDir)
 {
     public static ClientOptions Parse(string[] args)
@@ -311,11 +344,14 @@ internal sealed record ClientOptions(
             Required("session-b-stream-endpoint"),
             Required("registry-router-endpoint"),
             Required("play-a-evidence-url"),
+            Required("session-a-evidence-url"),
             Required("play-a-rid"),
             Required("play-b-rid"),
+            Required("session-a-rid"),
             Required("play-a-external-spot-endpoint"),
             Required("client-control-endpoint"),
             Required("client-external-route-endpoint"),
+            Required("client-spot-router-endpoint"),
             values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")));
     }
 }

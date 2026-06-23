@@ -89,7 +89,7 @@ internal sealed class ZLinkSessionActorCoordinator(
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
         }
 
-        await runtime.NotifyActorDisconnectedByIdAsync(actorRef.ActorId, cancellationToken)
+        await runtime.NotifyActorDisconnectedAsync(actorRef.Ref, cancellationToken)
             .ConfigureAwait(false);
     }
 

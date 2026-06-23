@@ -340,7 +340,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 localEgressChannelName,
                 targetSpotNodeChannelName)
             .ConfigureAwait(false);
-        await GetRouteChannel(localEgressChannelName)
+        await GetRouteChannelWithSpotRouteBridge(localEgressChannelName)
             .SubmitSpotRouteSendPartsAsync(
                 targetPeerRid,
                 targetSpotRid,
@@ -361,7 +361,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 localEgressChannelName,
                 targetSpotNodeChannelName)
             .ConfigureAwait(false);
-        return await GetRouteChannel(localEgressChannelName)
+        return await GetRouteChannelWithSpotRouteBridge(localEgressChannelName)
             .RequestToSpotPartsAsync(
                 targetPeerRid,
                 targetSpotRid,
@@ -378,6 +378,38 @@ internal sealed partial class ZLinkFrameworkRuntime
             _backendAdapterFactory,
             GetOrStartState,
             GetRouteChannel);
+    }
+
+    private ZLinkRouteChannelRuntime GetRouteChannelWithSpotRouteBridge(string channelName)
+    {
+        var routeChannel = GetRouteChannel(channelName);
+        if (routeChannel.HasSpotRouteBridge)
+        {
+            return routeChannel;
+        }
+
+        var state = GetOrStartState();
+        lock (state.SyncRoot)
+        {
+            if (routeChannel.HasSpotRouteBridge)
+            {
+                return routeChannel;
+            }
+
+            var owner = ResolveSpotRouteBridgeOwner(state);
+            var bridge = owner.Node.CreateRouteBridge();
+            try
+            {
+                routeChannel.AttachSpotRouteBridge(bridge);
+            }
+            catch
+            {
+                _ = bridge.DisposeAsync();
+                throw;
+            }
+        }
+
+        return routeChannel;
     }
 
     internal async ValueTask<IReadOnlyList<Message>> RequestToSpotViaRouterChannelAsync(

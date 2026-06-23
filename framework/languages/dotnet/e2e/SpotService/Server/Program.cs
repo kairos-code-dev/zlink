@@ -93,14 +93,17 @@ else if (options.Role == "session")
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
             .TraceNodeId(options.Rid);
         framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
+        framework.AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
         framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
             .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
             .EnableClient()
-            .SetRoutingId(RoutingId.From(options.Rid));
+            .SetRoutingId(RoutingId.From(options.Rid))
+            .AddHandlerGroup("play");
         framework.AddSpotMesh(SpotServiceNames.SpotChannel)
             .AddNode(SpotServiceNames.SessionSpotNode)
             .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
-            .SetRouterRoutingId(RoutingId.From(options.Rid));
+            .SetRouterRoutingId(RoutingId.From(options.Rid))
+            .AddEntrySpot<ScenarioEntrySpot>();
         framework.AddStreamNode(SpotServiceNames.StreamNode)
             .AttachActorGateway(SpotServiceNames.SessionSpotNode)
             .Bind(Require(options.StreamEndpoint, "--stream-endpoint"))
@@ -500,7 +503,10 @@ internal sealed class ScenarioSession(
 }
 
 internal sealed class AuthSessionHandler(
-    IZLinkRouteClient routes)
+    IZLinkRouteClient routes,
+    IZLinkActorManager actors,
+    NodeOptions node,
+    EvidenceStore evidence)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => "AuthReq";
@@ -513,16 +519,44 @@ internal sealed class AuthSessionHandler(
     {
         _ = header;
         var request = payload.Decode<AuthReq>();
-        var ensured = await routes.Request(
-                SpotServiceNames.ControlChannel,
-                RoutingId.From(request.NodeRid),
-                new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
-            .PacketName("EnsureActorReq")
-            .Async<EnsureActorReply>(cancellationToken);
+        var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
+            ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
+            : await routes.Request(
+                    SpotServiceNames.ControlChannel,
+                    RoutingId.From(request.NodeRid),
+                    new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
+                .PacketName("EnsureActorReq")
+                .Async<EnsureActorReply>(cancellationToken);
         await context.Actors.BindAsync(
             new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
             cancellationToken);
         await context.Client.Reply(new AuthReply(ensured.ActorId, ensured.NodeRid)).Async();
+    }
+
+    private static async ValueTask<EnsureActorReply> EnsureLocalActorAsync(
+        IZLinkActorManager actors,
+        NodeOptions node,
+        EvidenceStore evidence,
+        AuthReq request,
+        CancellationToken cancellationToken)
+    {
+        var actor = await actors.GetOrCreateAsync(
+            request.ActorId,
+            SpotServiceNames.ActorType,
+            cancellationToken);
+        if (actor is ScenarioActor scenarioActor)
+        {
+            scenarioActor.DisplayName = request.DisplayName;
+        }
+
+        using var joinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var joined = await actor.Context.JoinEntrySpot(RoutingId.From(node.Rid), joinRequest)
+            .Async(cancellationToken);
+        evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
+        return new EnsureActorReply(
+            joined.Actor.ActorId,
+            joined.Actor.NodeRid.ToString(),
+            joined.Actor.Generation);
     }
 }
 

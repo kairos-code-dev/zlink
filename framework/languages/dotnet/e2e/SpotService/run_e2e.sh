@@ -44,7 +44,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 22:
+    while len(sockets) < 23:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -85,6 +85,7 @@ SESSION_B_STREAM="tcp://127.0.0.1:${PORTS[17]}"
 SESSION_B_CONTROL="tcp://127.0.0.1:${PORTS[18]}"
 CLIENT_CONTROL="tcp://127.0.0.1:${PORTS[20]}"
 CLIENT_EXTERNAL_ROUTE="tcp://127.0.0.1:${PORTS[21]}"
+CLIENT_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[22]}"
 
 endpoint_port() {
   local endpoint="$1"
@@ -206,11 +207,14 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --session-b-stream-endpoint "$SESSION_B_STREAM" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
   --play-a-evidence-url "$PLAY_A_HTTP/evidence" \
+  --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
   --play-a-rid play-a \
   --play-b-rid play-b \
+  --session-a-rid session-a \
   --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
   --client-control-endpoint "$CLIENT_CONTROL" \
   --client-external-route-endpoint "$CLIENT_EXTERNAL_ROUTE" \
+  --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

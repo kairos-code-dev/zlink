@@ -11,11 +11,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkAwait;
+import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -26,6 +28,7 @@ import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -165,6 +168,43 @@ final class ActorRuntimeFakeBackendTest {
         assertEquals(
             true,
             backendFactory.calls().contains("spotNode.joinActorEntrySpot.player-1.entry-node"));
+    }
+
+    @Test
+    void customCodecActorContextJoinEncodesRequestAndDecodesReplyThroughRegistry() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(CustomCodecJoinSpot.class); }; };
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        CustomJoinSerializer serializer = new CustomJoinSerializer();
+        RoutingId spotRid = RoutingId.from("custom-codec-room");
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.newFrameworkRuntime(
+                     options,
+                     backendFactory,
+                     serializer,
+                     ZLinkHandlerFactory.reflection())) {
+            runtime.spotManager()
+                .create(CustomCodecJoinSpot.class, spotRid)
+                .toCompletableFuture()
+                .join();
+            ZLinkActor actor = runtime.actorManager()
+                .create("player-custom", "player")
+                .toCompletableFuture()
+                .join();
+
+            ZLinkActorJoinResult<CustomJoinReply> joined = actor.context()
+                .joinSpot(spotRid, new CustomJoinRequest("custom"))
+                .submit(CustomJoinReply.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(0, joined.resultCode());
+            assertEquals("custom", serializer.lastJoinRequest.get());
+            assertEquals("joined", joined.reply().value());
+        }
     }
 
     @Test
@@ -695,6 +735,74 @@ final class ActorRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotContext context() {
             return null;
+        }
+    }
+
+    public static final class CustomCodecJoinSpot implements ZLinkSpot<ZLinkActor> {
+        static final AtomicReference<String> lastJoin = new AtomicReference<>();
+
+        @Override
+        public ZLinkSpotContext context() {
+            return null;
+        }
+
+        @Override
+        public ZLinkSpotActorJoinResponse onActorJoin(
+            ZLinkActor actor,
+            ZLinkMessage request,
+            CancellationToken cancellationToken) {
+            CustomJoinRequest decoded = request.decode(CustomJoinRequest.class);
+            lastJoin.set(actor.actorId() + ":" + decoded.value());
+            return ZLinkSpotActorJoinResponse.accept(new CustomJoinReply("reply:" + decoded.value()));
+        }
+    }
+
+    public record CustomJoinRequest(String value) {
+    }
+
+    public record CustomJoinReply(String value) {
+    }
+
+    public static final class CustomJoinSerializer implements ZLinkMessageSerializer {
+        final AtomicReference<String> lastJoinRequest = new AtomicReference<>();
+
+        @Override
+        public <T> Message serialize(T value) {
+            if (value instanceof Message message) {
+                return Message.from(message);
+            }
+            if (value instanceof byte[] bytes) {
+                return Message.from(bytes);
+            }
+            if (value instanceof CustomJoinRequest request) {
+                lastJoinRequest.set(request.value());
+                return Message.from(("req:" + request.value()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            if (value instanceof CustomJoinReply reply) {
+                return Message.from(("rep:" + reply.value()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            return Message.from(String.valueOf(value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public <T> T deserialize(Message message, Class<T> type) {
+            String text = message.toUtf8String();
+            if (type == Message.class) {
+                return type.cast(Message.from(message));
+            }
+            if (type == byte[].class) {
+                return type.cast(message.toByteArray());
+            }
+            if (type == String.class) {
+                return type.cast(text);
+            }
+            if (type == CustomJoinRequest.class && text.startsWith("req:")) {
+                return type.cast(new CustomJoinRequest(text.substring(4)));
+            }
+            if (type == CustomJoinReply.class) {
+                return type.cast(new CustomJoinReply(text.startsWith("rep:") ? text.substring(4) : text));
+            }
+            throw new IllegalArgumentException("unsupported message type: " + type.getName());
         }
     }
 

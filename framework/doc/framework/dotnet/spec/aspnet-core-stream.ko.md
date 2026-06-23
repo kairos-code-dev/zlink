@@ -263,8 +263,8 @@ context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
 - application 은 packet name 을 보고 각 packet 타입으로 decode 한다.
 - session packet dispatcher 는 등록된 packet handler 호출만 돕고, 미등록 packet
   처리 정책은 application 에 남긴다.
-- 이 decode 과정은 가능하면 payload 의 `Message.AsReadOnlySpan()` 기반
-  helper 를 사용한다. 추가 복사를 피하기 위해서다.
+- 이 decode 과정은 `ZLinkMessage.Decode<T>()` 를 사용한다. codec 선택은
+  handler 가 아니라 startup/options 에 등록된 codec registry 에서 결정된다.
 - `IZLinkStream` 의 `SessionId`, `RoutingId`, `LocalAddr`, `RemoteAddr` 로 peer
   와 연결 metadata 를 읽는다.
 - session 은 framework 의 dispatch 경로 위에서 동작한다. 따라서 application 은
@@ -352,8 +352,8 @@ ChatRequest request = payload.Decode<ChatRequest>();
 - protobuf / json / messagepack 의존성을 transport core 에 고정하지 않아도
   된다.
 - serializer 를 별도 패키지로 분리하기 쉽다.
-- payload 의 `Message.AsReadOnlySpan()` 기반 helper 를 써서 불필요한 복사를
-  줄이기 쉽다.
+- handler 가 codec별 helper를 직접 고르지 않아도 `ZLinkMessage.Decode<T>()`
+  로 같은 업무 코드를 유지할 수 있다.
 - `playhouse/extensions` 와 비슷한 사용 경험을 만들 수 있다.
 
 ## 6. recv 방식은 왜 기본에서 빼는가
@@ -378,12 +378,12 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
 - stream session 등록은 attribute 기반으로 열지 않는다.
   `AddStreamNode(...).RegisterSession<T>()` 같은 명시 등록만 기본 표면으로
   둔다.
-- packet decode helper 와 encode helper 는 framework 본체가 아니라 serializer
-  확장 패키지가 맡는다. framework core 는 `Message`, `AsReadOnlySpan()`,
-  session contract 까지만 책임진다.
-- JSON encode/decode helper(`Message.Decode<T>`/`ToJson<T>`)는 framework core
-  (`Zlink.Framework`)가 제공한다. protobuf / messagepack serializer 는 별도 codec[^codec]
-  확장 패키지로 분리하고, transport core 나 framework 기본 runtime 에 그 구현을 직접 섞지 않는다.
+- packet payload 의 업무 표면은 `ZLinkMessage.Decode<T>()` 와 DTO reply 다.
+  serializer 구현은 codec[^codec] 확장 패키지나 custom codec 이 맡고,
+  framework runtime 은 등록된 codec registry 를 통해 encode/decode 한다.
+- JSON, protobuf, messagepack, custom codec 을 바꿔도 session handler 는 codec별
+  helper를 직접 호출하지 않는다. transport core 나 framework 기본 runtime 에 특정
+  codec 구현을 직접 섞지 않는다.
 - `OnErrorAsync(...)` 는 session 에 귀속되는 transport 오류만 받는다.
   handshake 실패와 socket / node 단위 오류는 runtime monitoring 에서 다룬다.
   즉 session callback 에 올리지 않는다.

@@ -1351,9 +1351,10 @@ binding/framework 가 노출해야 할 표면은 다음과 같다. "`session` �
 또한 stream 핫패스에서는 메모리 할당을 최소화하는 것이 원칙이다. 즉
 `Message.ToArray()` 같은 불필요한 추가 복사를 기본 사용법으로 두지 않는다.
 
-`Message.AsReadOnlySpan()` 같은 기존 표면이나 그 위에 얹는 protobuf/json
-decode helper 가, 가능한 한 추가 메모리 할당 없이 동작하도록 설계하는 것을
-기본 원칙으로 둔다.
+session handler 는 raw `Message`나 codec별 protobuf/json decode helper를 직접
+다루지 않는다. framework 는 `ZLinkMessage`를 전달하고, handler 는
+`ZLinkMessage.Decode<T>()` 로 업무 DTO를 얻는다. codec 선택은 startup/options 에
+등록된 codec registry 가 맡는다.
 
 #### 4.4.1 actor/session 상위 모델 메모
 

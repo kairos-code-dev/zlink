@@ -75,6 +75,9 @@ int main ()
     }
 
     zlink::framework::detail::actor_gateway_runtime_t gateway;
+    zlink::framework::serializer_registry_t serializers;
+    serializers.add_json<join_request_t> ().add_json<join_reply_t> ();
+    gateway.bind_serializers (serializers);
     auto manager = gateway.manager ();
     auto created = manager.create ("player", "alice");
     if (!created || created.value ().actor_id () != "alice") {
@@ -191,6 +194,30 @@ int main ()
         return 19;
     }
 
+    bool typed_join_seen = false;
+    gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor,
+                               zlink::framework::spot_rid_t spot_rid,
+                               const zlink::message_t &payload) {
+        const auto request = payload.parse_json<join_request_t> ();
+        typed_join_seen = actor.actor_id () == "bob" && spot_rid.value () == "typed-match"
+                          && request.room_id == "typed-match";
+        return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::success (
+          zlink::framework::detail::actor_join_reply_t{
+            0,
+            zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("spot-node"),
+                                           "player", "bob", 8),
+            zlink::message_t::from_json (join_reply_t{"typed-match", "X"})});
+    });
+    auto actor_context = rebound.value ().context ();
+    const auto typed_join = actor_context
+                              .join_spot (zlink::framework::spot_rid_t::from_string ("typed-match"),
+                                          join_request_t{"typed-match"})
+                              .async<join_reply_t> ()
+                              .result ();
+    if (!typed_join || !typed_join_seen || typed_join.value ().reply.mark != "X") {
+        return 28;
+    }
+
     bool join_spot_seen = false;
     gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor,
                                zlink::framework::spot_rid_t spot_rid,
@@ -205,7 +232,6 @@ int main ()
                                            "player", "bob", 8),
             zlink::message_t::from_json (join_reply_t{"match-1", "O"})});
     });
-    auto actor_context = rebound.value ().context ();
     const auto join_spot = actor_context
                              .join_spot_raw (zlink::framework::spot_rid_t::from_string ("match-1"),
                                              zlink::message_t::from_json (join_request_t{"match-1"}))

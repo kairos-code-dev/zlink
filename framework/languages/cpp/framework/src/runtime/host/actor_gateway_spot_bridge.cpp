@@ -169,6 +169,12 @@ bool is_spot_route_miss (framework_error_kind_t kind)
            || kind == framework_error_kind_t::actor_route_not_found;
 }
 
+bool rid_targets_node (std::string_view rid, std::string_view node_rid)
+{
+    return rid.size () > node_rid.size () && rid.substr (0, node_rid.size ()) == node_rid
+           && rid[node_rid.size ()] == ':';
+}
+
 template <typename Relay>
 result_t<std::optional<zlink::message_t>>
 relay_actor_with_local_binding_first (std::vector<actor_gateway_spot_node_binding_t> &bindings,
@@ -195,10 +201,30 @@ relay_actor_with_local_binding_first (std::vector<actor_gateway_spot_node_bindin
     return last;
 }
 
-bool rid_targets_node (std::string_view rid, std::string_view node_rid)
+template <typename JoinLocal, typename JoinFallback>
+result_t<actor_join_reply_t> join_spot_with_target_binding_first (
+  std::vector<actor_gateway_spot_node_binding_t> &bindings,
+  const spot_rid_t &spot_rid,
+  JoinLocal join_local,
+  JoinFallback join_fallback)
 {
-    return rid.size () > node_rid.size () && rid.substr (0, node_rid.size ()) == node_rid
-           && rid[node_rid.size ()] == ':';
+    for (auto &binding : bindings) {
+        if (!rid_targets_node (spot_rid.value (), binding.local_spot_node_rid)) {
+            continue;
+        }
+        return join_local (binding, spot_rid);
+    }
+
+    auto last = result_t<actor_join_reply_t>::failure (
+      framework_error_kind_t::spot_route_not_found, "SPOT node route not found");
+    for (auto &binding : bindings) {
+        auto candidate = join_fallback (binding, spot_rid);
+        if (candidate || !is_spot_route_miss (candidate.error_kind ())) {
+            return candidate;
+        }
+        last = std::move (candidate);
+    }
+    return last;
 }
 
 } // namespace
@@ -301,14 +327,12 @@ void configure_actor_gateway_spot_bridge (
       [bindings = actor_gateway_spot_nodes, actor_gateway] (
         const actor_ref_t &actor_ref, spot_rid_t spot_rid,
         const zlink::message_t &payload) mutable {
-          for (auto &binding : bindings) {
-              if (!rid_targets_node (spot_rid.value (), binding.local_spot_node_rid)) {
-                  continue;
-              }
+          auto join_local = [&] (actor_gateway_spot_node_binding_t &binding,
+                                 const spot_rid_t &target_spot_rid) {
               if (!actor_ref.node_rid ().empty ()
                   && actor_ref.node_rid ().value () != binding.local_spot_node_rid) {
                   auto joined = binding.runtime.join_remote_actor_to_spot_erased (
-                    actor_ref, std::move (spot_rid), payload,
+                    actor_ref, target_spot_rid, payload,
                     actor_gateway.actor_context (actor_ref));
                   if (joined && joined.value ().result_code == 0) {
                       joined.value ().actor = actor_ref_t (
@@ -321,20 +345,16 @@ void configure_actor_gateway_spot_bridge (
               }
               return join_actor_to_spot_through_route (
                 binding.runtime, binding.route_client, binding.local_spot_node_rid,
-                binding.route_channel_name, actor_ref, std::move (spot_rid), payload);
-          }
-          auto last = result_t<actor_join_reply_t>::failure (
-            framework_error_kind_t::spot_route_not_found, "SPOT node route not found");
-          for (auto &binding : bindings) {
-              auto candidate = join_actor_to_spot_through_route (
+                binding.route_channel_name, actor_ref, target_spot_rid, payload);
+          };
+          auto join_fallback = [&] (actor_gateway_spot_node_binding_t &binding,
+                                    const spot_rid_t &target_spot_rid) {
+              return join_actor_to_spot_through_route (
                 binding.runtime, binding.route_client, binding.local_spot_node_rid,
-                binding.route_channel_name, actor_ref, spot_rid, payload);
-              if (candidate || !is_spot_route_miss (candidate.error_kind ())) {
-                  return candidate;
-              }
-              last = std::move (candidate);
-          }
-          return last;
+                binding.route_channel_name, actor_ref, target_spot_rid, payload);
+          };
+          return join_spot_with_target_binding_first (bindings, spot_rid, join_local,
+                                                      join_fallback);
       });
     actor_gateway.on_join_entry_spot (
       [bindings = actor_gateway_spot_nodes] (const actor_ref_t &actor_ref,

@@ -134,7 +134,13 @@ jobs:
 
       - name: Expose synced core runtime beside Node addon
         if: startsWith(matrix.target.name, 'linux-') || startsWith(matrix.target.name, 'darwin-')
-        run: cp "$ZLINK_RUNTIME_PATH" bindings/node/build/Release/
+        run: |
+          cp "$ZLINK_RUNTIME_PATH" bindings/node/build/Release/
+          if [[ "${{ matrix.target.name }}" == darwin-* ]]; then
+            if ! otool -l bindings/node/build/Release/zlink.node | grep -q '@loader_path'; then
+              install_name_tool -add_rpath @loader_path bindings/node/build/Release/zlink.node
+            fi
+          fi
 
       - name: Run Node framework release gate
         run: npm --prefix framework/languages/node run verify:p0

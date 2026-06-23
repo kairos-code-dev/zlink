@@ -28,7 +28,12 @@
           }
         ],
         [ "OS==\"linux\"", { "ldflags": [ "-Wl,-rpath,\\$$ORIGIN" ] } ],
-        [ "OS==\"mac\"", { "ldflags": [ "-Wl,-rpath,@loader_path" ] } ]
+        [ "OS==\"mac\"", {
+          "ldflags": [ "-Wl,-rpath,@loader_path" ],
+          "xcode_settings": {
+            "LD_RUNPATH_SEARCH_PATHS": [ "@loader_path" ]
+          }
+        } ]
       ]
     }
   ]

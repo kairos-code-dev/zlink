@@ -1014,6 +1014,20 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::framework)
   target_include_directories(zlink_cpp_e2e_pubsub_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_registration_codec_server
+    e2e/RegistrationCodec/Server/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registration_codec_server PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_registration_codec_server PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_registration_codec_client
+    e2e/RegistrationCodec/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registration_codec_client PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)

@@ -107,6 +107,34 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
+    void spotEgressRequestCompletesExceptionallyWhenBridgeResultIsNotOk() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addClientServerChannel("egress")
+            .enableClient("inproc://egress")
+            .enableSpotRouteEgress("ingress");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.requestResult = ZLinkBackendRequestResult.TIMED_OUT;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+
+            var request = runtime.requestToSpotViaEgressChannel(
+                "egress",
+                RoutingId.from("room-spot"),
+                List.of(Message.from("raw-request".getBytes())),
+                Duration.ofMillis(300));
+
+            ExecutionException error = org.junit.jupiter.api.Assertions.assertThrows(
+                ExecutionException.class,
+                () -> request.toCompletableFuture().get(1, TimeUnit.SECONDS));
+            assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
+        }
+    }
+
+    @Test
     void clientServerRuntimeOptionsReadAndWriteServerWeight() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("api")
@@ -280,13 +308,24 @@ final class ZLinkChannelRuntimeTest {
 
     private static final class FakeSpotRouteBridge implements ZLinkBackendSpotRouteBridge {
         boolean nativeCallbackInvoked;
+        int drains;
+        ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
 
         @Override public void attachDealerChannel(String channelName, ZLinkBackendDealerSocket dealer, SpotRouteBridgeEndpointOptions options) { }
         @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router, SpotRouteBridgeEndpointOptions options) { }
         @Override public void setTargetNode(String channelName, RoutingId targetNodeRid) { }
         @Override public boolean send(String channelName, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) { return true; }
-        @Override public boolean request(String channelName, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { return true; }
+        @Override public boolean request(String channelName, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            callback.handle(new ZLinkBackendReceived(
+                requestResult,
+                Optional.empty(),
+                Optional.of(targetSpotRid),
+                Optional.empty(),
+                List.of()));
+            return true;
+        }
         @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) { return false; }
+        @Override public int drain() { return ++drains; }
         @Override public String name() { return "fake-bridge"; }
         @Override public void close() { }
     }

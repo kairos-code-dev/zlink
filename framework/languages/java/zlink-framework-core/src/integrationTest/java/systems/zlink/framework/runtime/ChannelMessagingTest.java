@@ -63,6 +63,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
+import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
@@ -1112,6 +1113,78 @@ final class ChannelMessagingTest {
     }
 
     @Test
+    void clientServerSpotRouteEgress_requestReplySucceeds() throws Exception {
+        String ingressEndpoint = tcpEndpoint();
+        String routeSourceEndpoint = tcpEndpoint();
+        String routeTargetEndpoint = tcpEndpoint();
+        String sourceSpotEndpoint = tcpEndpoint();
+        String targetSpotEndpoint = tcpEndpoint();
+        RoutingId targetSpotRid = RoutingId.from("spot-egress-target");
+        OutboundChannelSpot.CONTEXT.set(null);
+
+        DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
+        sourceOptions.codecs().addJson();
+        { var channel = sourceOptions.addClientServerChannel("egress");
+            channel.enableClient(ingressEndpoint);
+            channel.enableSpotRouteEgress("ingress"); };
+        { var channel = sourceOptions.addRouteMeshChannel("route");
+            channel.enableServer(routeSourceEndpoint);
+            channel.enableClient(routeTargetEndpoint);
+            channel.setRoutingId(RoutingId.from("spot-egress-source-route")); };
+        { var mesh = sourceOptions.addSpotMesh("game");
+            { var node = mesh.addNode("source-node");
+                node.enableRouter(sourceSpotEndpoint)
+                    .setRouterRoutingId(RoutingId.from("spot-egress-source-node"));
+                node.acceptSpotRoutesFromChannel("route", routeSourceEndpoint);
+                node.addSpotFactory(OutboundChannelSpot.class); }; };
+
+        DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
+        targetOptions.codecs().addJson();
+        { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
+            channel.serverRoutingId(RoutingId.from("spot-egress-target-node"));
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Noop"); };
+        { var channel = targetOptions.addRouteMeshChannel("route");
+            channel.enableServer(routeTargetEndpoint);
+            channel.enableClient(routeSourceEndpoint);
+            channel.setRoutingId(RoutingId.from("spot-egress-target-route")); };
+        { var mesh = targetOptions.addSpotMesh("game");
+            { var node = mesh.addNode("target-node");
+                node.enableRouter(targetSpotEndpoint)
+                    .setRouterRoutingId(RoutingId.from("spot-egress-target-node"));
+                node.acceptSpotRoutesFromChannel("route", routeTargetEndpoint);
+                node.acceptSpotRoutesFromChannel("ingress", ingressEndpoint);
+                node.addSpotFactory(RemoteStateSpot.class); }; };
+
+        try (ZLinkFrameworkRuntime source =
+                 RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime target =
+                 RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+            target.spotManager()
+                .create(RemoteStateSpot.class, targetSpotRid)
+                .toCompletableFuture()
+                .get(3, TimeUnit.SECONDS);
+            source.spotManager()
+                .create(OutboundChannelSpot.class, RoutingId.from("spot-egress-client"))
+                .toCompletableFuture()
+                .get(3, TimeUnit.SECONDS);
+
+            ZLinkSpotContext context = Objects.requireNonNull(OutboundChannelSpot.CONTEXT.get());
+            SpotEgressReply reply = context.outbound()
+                .requestToSpot(targetSpotRid, new SpotEgressRequest("ping"))
+                .timeout(Duration.ofSeconds(3))
+                .submit(SpotEgressReply.class)
+                .toCompletableFuture()
+                .get(4, TimeUnit.SECONDS);
+
+            assertEquals("spot-egress-target", reply.spotRid());
+            assertEquals("spot-egress-target-node", reply.nodeRid());
+            assertEquals("pong:ping", reply.value());
+        } finally {
+            OutboundChannelSpot.CONTEXT.set(null);
+        }
+    }
+
+    @Test
     @DisplayName("PUB-001 fanout delivers the same sequence to three subscribers")
     void fanout_deliversSameSequenceToThreeSubscribers() {
         String endpoint = tcpEndpoint();
@@ -1754,6 +1827,45 @@ final class ChannelMessagingTest {
         public ZLinkSpotContext context() {
             return context;
         }
+    }
+
+    public static final class RemoteStateSpot implements ZLinkSpot<ZLinkActor> {
+        private final ZLinkSpotContext context;
+
+        public RemoteStateSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addPacket(RemoteStateHandler.class);
+        }
+    }
+
+    public static final class RemoteStateHandler {
+        @ZLinkSpotRequest
+        public SpotEgressReply handle(
+            RemoteStateSpot spot,
+            SpotEgressRequest request) {
+            return new SpotEgressReply(
+                spot.context().spotRid().toString(),
+                spot.context().nodeRid().toString(),
+                "pong:" + request.value());
+        }
+    }
+
+    public record SpotEgressRequest(String value) {
+    }
+
+    public record SpotEgressReply(
+        String spotRid,
+        String nodeRid,
+        String value) {
     }
 
     public static final class ThrowingRequestHandler implements ZLinkRequestHandler<String, String> {

@@ -40,5 +40,7 @@ public interface ZLinkBackendSpotRouteBridge extends ZLinkBackendObject {
         long requestSeq,
         List<Message> parts);
 
+    int drain();
+
     void close();
 }

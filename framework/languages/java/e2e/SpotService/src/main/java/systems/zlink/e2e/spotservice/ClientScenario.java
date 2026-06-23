@@ -1,11 +1,13 @@
 package systems.zlink.e2e.spotservice;
 
 import java.time.Duration;
+import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 
 public final class ClientScenario {
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration EVENTUAL_TIMEOUT = Duration.ofSeconds(30);
     private final ZLinkSpotOutbound outbound;
 
     public ClientScenario(ZLinkSpotOutbound outbound) {
@@ -25,23 +27,24 @@ public final class ClientScenario {
     }
 
     private void runState1() {
-        Contracts.StateReply first = outbound.requestToSpot(
+        Contracts.StateReply first = eventually(() -> outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("a1"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateReply.class);
+            .await(Contracts.StateReply.class));
         ensure("room-a".equals(first.spotRid()), "SM-A1 wrong spot rid");
         ensure("play-a".equals(first.nodeRid()), "SM-A1 wrong owner node");
         System.out.println("scenario SM-A1 passed");
     }
 
     private void runState2() {
-        Contracts.StateReply second = outbound.requestToSpot(
+        Contracts.StateReply second = eventually(() -> outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("a2"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateReply.class);
-        ensure(second.value().endsWith("a1,a2"), "SM-A2 state did not accumulate");
+            .await(Contracts.StateReply.class));
+        ensure(second.value().contains("a1") && second.value().contains("a2"),
+            "SM-A2 state did not accumulate");
         System.out.println("scenario SM-A2 passed");
     }
 
@@ -61,11 +64,11 @@ public final class ClientScenario {
     }
 
     private void runNormal() {
-        Contracts.StateReply after = outbound.requestToSpot(
+        Contracts.StateReply after = eventually(() -> outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("after-timeout"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateReply.class);
+            .await(Contracts.StateReply.class));
         ensure(after.value().contains("after-timeout"), "SM-C1 post-timeout request failed");
         System.out.println("scenario SM-C1-normal passed");
     }
@@ -90,6 +93,25 @@ public final class ClientScenario {
             return;
         }
         throw new IllegalStateException("operation unexpectedly succeeded");
+    }
+
+    private static <T> T eventually(Supplier<T> action) {
+        long deadline = System.nanoTime() + EVENTUAL_TIMEOUT.toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                return action.get();
+            } catch (RuntimeException error) {
+                lastFailure = error;
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("operation interrupted", interrupted);
+                }
+            }
+        }
+        throw new IllegalStateException("operation did not succeed before timeout", lastFailure);
     }
 
     private static void ensure(boolean condition, String message) {

@@ -209,6 +209,155 @@ public class SendResultContractTest {
     }
 
     @Test
+    public void spotRouteBridgeRouterDrainCompletesDealerBridgeRequestAcrossContexts()
+        throws Exception {
+        TestSupport.assumeNative();
+
+        String endpoint = TestSupport.tcpEndpoint();
+        try (Context targetCtx = Zlink.createContext();
+             SpotNode targetNode = targetCtx.createSpotNode();
+             Spot targetSpot = targetNode.createSpot();
+             RouterSocket targetRouter = targetCtx.createRouterSocket();
+             SpotRouteBridge targetBridge = targetNode.createRouteBridge();
+             Context sourceCtx = Zlink.createContext();
+             SpotNode sourceNode = sourceCtx.createSpotNode();
+             DealerSocket sourceDealer = sourceCtx.createDealerSocket();
+             SpotRouteBridge sourceBridge = sourceNode.createRouteBridge()) {
+            targetSpot.setRoutingId(RoutingId.from("target-spot-cross-context"));
+            targetRouter.bind(endpoint);
+            targetBridge.attachRouterChannel(
+                "ingress",
+                targetRouter,
+                new SpotRouteBridgeEndpointOptions().capabilities(
+                    SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+
+            sourceDealer.connect(endpoint);
+            Thread.sleep(50);
+            sourceBridge.attachDealerChannel("egress", sourceDealer);
+
+            CompletionStage<List<Message>> replyStage =
+                sourceBridge.request("egress", targetSpot.getRoutingId())
+                    .message(Message.from("cross-context-ping"))
+                    .timeout(Duration.ofSeconds(2))
+                    .submit();
+
+            TestSupport.awaitCondition(() -> {
+                try (Received inbound = new Received()) {
+                    if (!targetRouter.recv(inbound, RecvFlags.DONT_WAIT)) {
+                        return false;
+                    }
+                    return targetBridge.handleRouterReceived(
+                        "ingress",
+                        inbound.getRoutingId().orElseThrow(),
+                        inbound.requestSeq().orElseThrow(),
+                        inbound.parts());
+                }
+            });
+
+            TestSupport.awaitCondition(() -> {
+                try (Received routed = new Received()) {
+                    if (!targetSpot.recvRouted(routed, RecvFlags.DONT_WAIT)) {
+                        return false;
+                    }
+                    assertEquals("cross-context-ping",
+                        routed.parts().get(0).toUtf8String());
+                    routed.reply()
+                        .message(Message.from("cross-context-pong"))
+                        .submit();
+                    return true;
+                }
+            });
+
+            TestSupport.awaitCondition(() -> targetBridge.drain() > 0);
+            List<Message> reply = replyStage.toCompletableFuture()
+                .get(3, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("cross-context-pong", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+        }
+    }
+
+    @Test
+    public void spotRouteBridgeRouterDrainCompletesRequestsFromSequentialDealerContexts()
+        throws Exception {
+        TestSupport.assumeNative();
+
+        String endpoint = TestSupport.tcpEndpoint();
+        try (Context targetCtx = Zlink.createContext();
+             SpotNode targetNode = targetCtx.createSpotNode();
+             Spot targetSpot = targetNode.createSpot();
+             RouterSocket targetRouter = targetCtx.createRouterSocket();
+             SpotRouteBridge targetBridge = targetNode.createRouteBridge()) {
+            targetSpot.setRoutingId(RoutingId.from("target-spot-sequential-contexts"));
+            targetRouter.bind(endpoint);
+            targetBridge.attachRouterChannel(
+                "ingress",
+                targetRouter,
+                new SpotRouteBridgeEndpointOptions().capabilities(
+                    SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+
+            for (int i = 0; i < 2; i++) {
+                String requestText = "sequential-ping-" + i;
+                String replyText = "sequential-pong-" + i;
+                try (Context sourceCtx = Zlink.createContext();
+                     SpotNode sourceNode = sourceCtx.createSpotNode();
+                     DealerSocket sourceDealer = sourceCtx.createDealerSocket();
+                     SpotRouteBridge sourceBridge = sourceNode.createRouteBridge()) {
+                    sourceDealer.connect(endpoint);
+                    Thread.sleep(50);
+                    sourceBridge.attachDealerChannel("egress", sourceDealer);
+
+                    CompletionStage<List<Message>> replyStage =
+                        sourceBridge.request("egress", targetSpot.getRoutingId())
+                            .message(Message.from(requestText))
+                            .timeout(Duration.ofSeconds(2))
+                            .submit();
+
+                    TestSupport.awaitCondition(() -> {
+                        try (Received inbound = new Received()) {
+                            if (!targetRouter.recv(inbound, RecvFlags.DONT_WAIT)) {
+                                return false;
+                            }
+                            return targetBridge.handleRouterReceived(
+                                "ingress",
+                                inbound.getRoutingId().orElseThrow(),
+                                inbound.requestSeq().orElseThrow(),
+                                inbound.parts());
+                        }
+                    });
+
+                    TestSupport.awaitCondition(() -> {
+                        try (Received routed = new Received()) {
+                            if (!targetSpot.recvRouted(routed, RecvFlags.DONT_WAIT)) {
+                                return false;
+                            }
+                            assertEquals(requestText,
+                                routed.parts().get(0).toUtf8String());
+                            routed.reply()
+                                .message(Message.from(replyText))
+                                .submit();
+                            return true;
+                        }
+                    });
+
+                    TestSupport.awaitCondition(() -> targetBridge.drain() > 0);
+                    List<Message> reply = replyStage.toCompletableFuture()
+                        .get(3, TimeUnit.SECONDS);
+                    try {
+                        assertEquals(1, reply.size());
+                        assertEquals(replyText, reply.get(0).toUtf8String());
+                    } finally {
+                        reply.forEach(Message::close);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     public void spotNodePublisherPublishesIntoLocalTopicPlane() {
         TestSupport.assumeNative();
 

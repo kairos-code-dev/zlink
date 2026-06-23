@@ -581,6 +581,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) {
             return bridge.handleRouterReceived(channelName, sourceNodeRid, requestSeq, parts);
         }
+        @Override public int drain() { return bridge.drain(); }
         @Override public void close() { bridge.close(); }
     }
 

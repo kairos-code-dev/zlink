@@ -627,6 +627,11 @@ public final class ZLinkChannelRuntime
                     bridgeParts,
                     reply -> {
                         try {
+                            if (reply.result() != ZLinkBackendRequestResult.OK) {
+                                result.completeExceptionally(new ZLinkFrameworkException(
+                                    "SPOT egress request failed: " + reply.result()));
+                                return;
+                            }
                             result.complete(copyMessages(reply.parts()));
                         } catch (RuntimeException ex) {
                             result.completeExceptionally(ex);

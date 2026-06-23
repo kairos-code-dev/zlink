@@ -6,10 +6,13 @@ import org.springframework.stereotype.Component
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore.StoredEvent
 import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain.InventoryReleasedEvent
+import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain.InventoryReservationResult
 import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain.OrderAggregate
 import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain.OrderEventTypes
 import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain.OrderProjection
 import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain.OrderStartedEvent
+import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain.PaymentAuthorizationResult
+import systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain.StoredOrderEvent
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderState
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderStatuses
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderWorkflowReq
@@ -26,7 +29,7 @@ class OrderWorkflowService(private val store: CommerceStore) {
 
     fun start(command: StartOrderWorkflowReq): OrderState {
         val stored = store.readEvents(command.orderId)
-        val aggregate = OrderAggregate.rehydrate(command.orderId, stored, decode)
+        val aggregate = OrderAggregate.rehydrate(command.orderId, stored.toDomainEvents(), decode)
         if (aggregate.hasProcessedCommand(command.idempotencyKey)) {
             return requireProjection(command.orderId)
         }
@@ -44,7 +47,7 @@ class OrderWorkflowService(private val store: CommerceStore) {
         // reaches a terminal state within a handful of steps.
         for (step in 0 until MAX_WORKFLOW_STEPS) {
             val stored = store.readEvents(orderId)
-            val aggregate = OrderAggregate.rehydrate(orderId, stored, decode)
+            val aggregate = OrderAggregate.rehydrate(orderId, stored.toDomainEvents(), decode)
             if (aggregate.isTerminal() || !aggregate.hasStarted()) {
                 return store.findReadModel(orderId) ?: store.placeholder(orderId)
             }
@@ -54,7 +57,10 @@ class OrderWorkflowService(private val store: CommerceStore) {
                 OrderStatuses.Created -> {
                     val reserve = store.reserveInventory(orderId, aggregate.lines())
                     aggregate.applyInventoryResult(
-                        reserve, newEventId("reserved", orderId), newEventId("inv-fail", orderId), ts,
+                        InventoryReservationResult(reserve.accepted, reserve.reservationId, reserve.reason),
+                        newEventId("reserved", orderId),
+                        newEventId("inv-fail", orderId),
+                        ts,
                     )
                 }
                 OrderStatuses.InventoryReserved -> {
@@ -65,7 +71,7 @@ class OrderWorkflowService(private val store: CommerceStore) {
                         currencyFromStarted(stored),
                     )
                     aggregate.applyPaymentResult(
-                        payment,
+                        PaymentAuthorizationResult(payment.accepted, payment.paymentId, payment.reason),
                         newEventId("paid", orderId),
                         newEventId("released", orderId),
                         newEventId("pay-fail", orderId),
@@ -123,6 +129,19 @@ class OrderWorkflowService(private val store: CommerceStore) {
         )
         return StoredEvent(eventId, sourceCommandId, orderId, eventType, payload, 0, createdAt)
     }
+
+    private fun List<StoredEvent>.toDomainEvents(): List<StoredOrderEvent> =
+        map {
+            StoredOrderEvent(
+                it.eventId,
+                it.sourceCommandId,
+                it.orderId,
+                it.eventType,
+                it.payload,
+                it.version,
+                it.createdAtUnixMs,
+            )
+        }
 
     private fun requireProjection(orderId: String): OrderState =
         store.findReadModel(orderId)

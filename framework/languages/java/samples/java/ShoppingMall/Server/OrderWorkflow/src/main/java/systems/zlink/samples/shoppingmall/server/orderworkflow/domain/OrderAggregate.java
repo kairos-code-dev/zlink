@@ -4,9 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import systems.zlink.samples.shoppingmall.server.configuration.CommerceStore.AuthorizePaymentResult;
-import systems.zlink.samples.shoppingmall.server.configuration.CommerceStore.ReserveInventoryResult;
-import systems.zlink.samples.shoppingmall.server.configuration.CommerceStore.StoredEvent;
+import com.fasterxml.jackson.databind.JsonNode;
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages.OrderLineInput;
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages.StartOrderWorkflowReq;
@@ -27,15 +25,18 @@ public final class OrderAggregate {
         this.orderId = orderId;
     }
 
-    public static OrderAggregate rehydrate(String orderId, List<StoredEvent> stored, OrderEventCodec codec) {
+    public static OrderAggregate rehydrate(
+        String orderId,
+        List<StoredOrderEvent> stored,
+        OrderEventCodec codec) {
         OrderAggregate aggregate = new OrderAggregate(orderId);
-        for (StoredEvent event : stored) {
+        for (StoredOrderEvent event : stored) {
             aggregate.apply(event, codec);
         }
         return aggregate;
     }
 
-    private void apply(StoredEvent event, OrderEventCodec codec) {
+    private void apply(StoredOrderEvent event, OrderEventCodec codec) {
         switch (event.eventType()) {
             case OrderEvents.OrderStarted -> {
                 OrderEvents.OrderStartedEvent started =
@@ -98,7 +99,10 @@ public final class OrderAggregate {
     }
 
     public List<Object> applyInventoryResult(
-        ReserveInventoryResult result, String reservedEventId, String failedEventId, long now) {
+        InventoryReservationResult result,
+        String reservedEventId,
+        String failedEventId,
+        long now) {
         if (isTerminal() || !Messages.OrderStatuses.Created.equals(status)) {
             return List.of();
         }
@@ -113,7 +117,7 @@ public final class OrderAggregate {
     }
 
     public List<Object> applyPaymentResult(
-        AuthorizePaymentResult result,
+        PaymentAuthorizationResult result,
         String paymentEventId,
         String releaseEventId,
         String failedEventId,
@@ -141,10 +145,26 @@ public final class OrderAggregate {
 
     /** Decoder/encoder bridge so the aggregate stays free of Jackson types. */
     public interface OrderEventCodec {
-        <T> T decode(com.fasterxml.jackson.databind.JsonNode payload, Class<T> type);
+        <T> T decode(JsonNode payload, Class<T> type);
     }
 
     public String reservationId() {
         return reservationId;
+    }
+
+    public record StoredOrderEvent(
+        String eventId,
+        String sourceCommandId,
+        String orderId,
+        String eventType,
+        JsonNode payload,
+        long version,
+        long createdAtUnixMs) {
+    }
+
+    public record InventoryReservationResult(boolean accepted, String reservationId, String reason) {
+    }
+
+    public record PaymentAuthorizationResult(boolean accepted, String paymentId, String reason) {
     }
 }

@@ -1,9 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.orderworkflow.domain
 
 import com.fasterxml.jackson.databind.JsonNode
-import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore.AuthorizePaymentResult
-import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore.ReserveInventoryResult
-import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore.StoredEvent
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderLineInput
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderStatuses
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderWorkflowReq
@@ -20,7 +17,11 @@ class OrderAggregate private constructor(private val orderId: String) {
     private var lines: List<OrderLineInput> = emptyList()
 
     companion object {
-        fun rehydrate(orderId: String, stored: List<StoredEvent>, decode: (JsonNode, Class<*>) -> Any): OrderAggregate {
+        fun rehydrate(
+            orderId: String,
+            stored: List<StoredOrderEvent>,
+            decode: (JsonNode, Class<*>) -> Any,
+        ): OrderAggregate {
             val aggregate = OrderAggregate(orderId)
             for (event in stored) {
                 aggregate.apply(event, decode)
@@ -29,7 +30,7 @@ class OrderAggregate private constructor(private val orderId: String) {
         }
     }
 
-    private fun apply(event: StoredEvent, decode: (JsonNode, Class<*>) -> Any) {
+    private fun apply(event: StoredOrderEvent, decode: (JsonNode, Class<*>) -> Any) {
         when (event.eventType) {
             OrderEventTypes.OrderStarted -> {
                 val started = decode(event.payload, OrderStartedEvent::class.java) as OrderStartedEvent
@@ -81,7 +82,7 @@ class OrderAggregate private constructor(private val orderId: String) {
     }
 
     fun applyInventoryResult(
-        result: ReserveInventoryResult,
+        result: InventoryReservationResult,
         reservedEventId: String,
         failedEventId: String,
         now: Long,
@@ -100,7 +101,7 @@ class OrderAggregate private constructor(private val orderId: String) {
     }
 
     fun applyPaymentResult(
-        result: AuthorizePaymentResult,
+        result: PaymentAuthorizationResult,
         paymentEventId: String,
         releaseEventId: String,
         failedEventId: String,
@@ -127,3 +128,25 @@ class OrderAggregate private constructor(private val orderId: String) {
         return listOf(OrderConfirmedEvent(eventId, orderId, now))
     }
 }
+
+data class StoredOrderEvent(
+    val eventId: String,
+    val sourceCommandId: String?,
+    val orderId: String,
+    val eventType: String,
+    val payload: JsonNode,
+    val version: Long,
+    val createdAtUnixMs: Long,
+)
+
+data class InventoryReservationResult(
+    val accepted: Boolean,
+    val reservationId: String?,
+    val reason: String?,
+)
+
+data class PaymentAuthorizationResult(
+    val accepted: Boolean,
+    val paymentId: String?,
+    val reason: String?,
+)

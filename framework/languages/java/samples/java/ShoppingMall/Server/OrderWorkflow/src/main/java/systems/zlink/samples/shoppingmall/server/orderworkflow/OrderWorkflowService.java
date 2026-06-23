@@ -12,6 +12,9 @@ import systems.zlink.samples.shoppingmall.server.configuration.CommerceStore.Aut
 import systems.zlink.samples.shoppingmall.server.configuration.CommerceStore.ReserveInventoryResult;
 import systems.zlink.samples.shoppingmall.server.configuration.CommerceStore.StoredEvent;
 import systems.zlink.samples.shoppingmall.server.orderworkflow.domain.OrderAggregate;
+import systems.zlink.samples.shoppingmall.server.orderworkflow.domain.OrderAggregate.InventoryReservationResult;
+import systems.zlink.samples.shoppingmall.server.orderworkflow.domain.OrderAggregate.PaymentAuthorizationResult;
+import systems.zlink.samples.shoppingmall.server.orderworkflow.domain.OrderAggregate.StoredOrderEvent;
 import systems.zlink.samples.shoppingmall.server.orderworkflow.domain.OrderEvents;
 import systems.zlink.samples.shoppingmall.server.orderworkflow.domain.OrderProjection;
 import systems.zlink.samples.shoppingmall.shared.contracts.Messages;
@@ -39,7 +42,7 @@ public final class OrderWorkflowService {
 
     public OrderState start(StartOrderWorkflowReq command) {
         List<StoredEvent> stored = store.readEvents(command.orderId());
-        OrderAggregate aggregate = OrderAggregate.rehydrate(command.orderId(), stored, codec);
+        OrderAggregate aggregate = OrderAggregate.rehydrate(command.orderId(), toDomainEvents(stored), codec);
         if (aggregate.hasProcessedCommand(command.idempotencyKey())) {
             return requireProjection(command.orderId());
         }
@@ -57,7 +60,7 @@ public final class OrderWorkflowService {
         // reaches a terminal state within a handful of steps.
         for (int step = 0; step < MAX_WORKFLOW_STEPS; step++) {
             List<StoredEvent> stored = store.readEvents(orderId);
-            OrderAggregate aggregate = OrderAggregate.rehydrate(orderId, stored, codec);
+            OrderAggregate aggregate = OrderAggregate.rehydrate(orderId, toDomainEvents(stored), codec);
             if (aggregate.isTerminal() || !aggregate.hasStarted()) {
                 return projection(orderId).orElseGet(() -> store.placeholder(orderId));
             }
@@ -67,7 +70,13 @@ public final class OrderWorkflowService {
             if (Messages.OrderStatuses.Created.equals(status)) {
                 ReserveInventoryResult reserve = store.reserveInventory(orderId, aggregate.lines());
                 next = aggregate.applyInventoryResult(
-                    reserve, newEventId("reserved", orderId), newEventId("inv-fail", orderId), ts);
+                    new InventoryReservationResult(
+                        reserve.accepted(),
+                        reserve.reservationId(),
+                        reserve.reason()),
+                    newEventId("reserved", orderId),
+                    newEventId("inv-fail", orderId),
+                    ts);
             } else if (Messages.OrderStatuses.InventoryReserved.equals(status)) {
                 AuthorizePaymentResult payment = store.authorizePayment(
                     orderId,
@@ -75,7 +84,10 @@ public final class OrderWorkflowService {
                     amountFromStarted(stored),
                     currencyFromStarted(stored));
                 next = aggregate.applyPaymentResult(
-                    payment,
+                    new PaymentAuthorizationResult(
+                        payment.accepted(),
+                        payment.paymentId(),
+                        payment.reason()),
                     newEventId("paid", orderId),
                     newEventId("released", orderId),
                     newEventId("pay-fail", orderId),
@@ -137,6 +149,19 @@ public final class OrderWorkflowService {
             payload.path("confirmedAtUnixMs").asLong(
                 payload.path("failedAtUnixMs").asLong(now())));
         return new StoredEvent(eventId, sourceCommandId, orderId, eventType, payload, 0, createdAt);
+    }
+
+    private List<StoredOrderEvent> toDomainEvents(List<StoredEvent> stored) {
+        return stored.stream()
+            .map(event -> new StoredOrderEvent(
+                event.eventId(),
+                event.sourceCommandId(),
+                event.orderId(),
+                event.eventType(),
+                event.payload(),
+                event.version(),
+                event.createdAtUnixMs()))
+            .toList();
     }
 
     private OrderState requireProjection(String orderId) {

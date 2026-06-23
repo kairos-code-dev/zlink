@@ -219,7 +219,6 @@ native core나 C binding 세부 header를 사용자가 직접 include해야만 �
 | `.NET` framework | C++ framework | 역할 |
 |------------------|---------------|------|
 | `Contracts/Actors` | `framework/include/zlink/framework/contracts/actors` | actor public contract |
-| `Contracts/Assembly` | `framework/include/zlink/framework/contracts/assembly` | module and assembly discovery public contract |
 | `Contracts/Channels` | `framework/include/zlink/framework/contracts/channels` | channel client, call object contract |
 | `Contracts/Codecs` | `framework/include/zlink/framework/contracts/codecs` | serializer and message codec public contract |
 | `Contracts/Configuration` | `framework/include/zlink/framework/contracts/configuration` | app, host, config builder contract |
@@ -382,7 +381,6 @@ framework의 세부 디렉토리는 `.NET` `Zlink.Framework`의 실제 `Contract
 | public contract 축 | runtime 축 | C++에서 숨겨야 하는 구현 지식 |
 |--------------------|------------|-------------------------------|
 | `contracts/actors` | `src/runtime/actors` | actor mailbox, relay dispatch, activation bookkeeping |
-| `contracts/assembly` | `src/runtime/host` | module scan cache, startup ordering |
 | `contracts/channels` | `src/runtime/channels`, `src/runtime/messaging` | socket owner, correlation table, send-ready queue |
 | `contracts/codecs` | `src/runtime/codecs` | serializer map, JSON backend, codec feature wiring |
 | `contracts/configuration` | `src/runtime/configuration` | service descriptor store, scope destruction stack |

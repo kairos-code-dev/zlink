@@ -1957,7 +1957,6 @@ int main ()
 
     bool ok = true;
     ok &= require_exists (root / "framework/include/zlink/framework/contracts");
-    ok &= require_exists (root / "framework/include/zlink/framework/contracts/assembly");
     ok &=
       require_exists (root / "framework/include/zlink/framework/contracts/detail/message_name.hpp");
     const std::string removed_framework_facades[] = {

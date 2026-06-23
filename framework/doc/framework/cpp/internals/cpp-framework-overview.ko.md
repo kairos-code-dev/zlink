@@ -94,7 +94,6 @@ runtime 구현인지에 대한 경계는 바꾸지 않는다.
 | `.NET` framework | C++ framework | 의미 |
 |------------------|---------------|------|
 | `Contracts/Actors` | `contracts/actors` | actor와 bound session public 계약 |
-| `Contracts/Assembly` | `contracts/assembly` | module/assembly discovery public 계약 |
 | `Contracts/Channels` | `contracts/channels` | channel send/request/pub/sub public 계약 |
 | `Contracts/Codecs` | `contracts/codecs` | serializer와 message codec public 계약 |
 | `Contracts/Configuration` | `contracts/configuration` | app builder, DI, option public 계약 |

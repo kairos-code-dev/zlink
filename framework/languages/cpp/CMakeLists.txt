@@ -78,7 +78,6 @@ add_library(zlink_framework STATIC
   framework/src/runtime/actors/actor_route_internal_dispatcher.cpp
   framework/src/runtime/actors/actor_gateway_runtime.cpp
   framework/src/runtime/backend/native_route_backend.cpp
-  framework/src/runtime/host/assembly.cpp
   framework/src/runtime/host/actor_gateway_spot_bridge.cpp
   framework/src/runtime/configuration/builders/configuration_builder.cpp
   framework/src/runtime/configuration/services.cpp

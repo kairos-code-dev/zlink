@@ -126,7 +126,6 @@ framework의 `Contracts/*`와 `Runtime/*` 구조를 C++ framework에 옮길 때�
 
 | 기능 축 | C++ public contract owner | C++ runtime implementation owner | public에 두지 않는 것 |
 |---------|---------------------------|----------------------------------|-----------------------|
-| assembly/module discovery | `contracts/assembly/*` | `src/runtime/host/*` | module scan cache, startup ordering |
 | app/host/config | `contracts/configuration/*`, `app.hpp` | `src/runtime/host/*`, `src/runtime/configuration/*` | native context owner, signal backend, startup graph |
 | DI/scope | `contracts/configuration/services.hpp` | `src/runtime/configuration/services.*` | service cache, destruction stack, scope registry |
 | error/result/call | `contracts/errors/*`, `contracts/channels/call.hpp`, `contracts/dispatch/task.hpp` | `src/runtime/messaging/*`, 기능별 runtime submitter | pending operation node, queue slot, completion token |

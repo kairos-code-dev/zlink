@@ -9,6 +9,19 @@ const json = connector;
 const msgpack = require('../../packages/framework-codec-msgpack/dist');
 const protobuf = require('../../packages/framework-codec-protobuf/dist');
 
+function customTextSerializer(prefix = 'custom:') {
+  return {
+    serialize(value) {
+      const text = typeof value === 'string' ? value : value.text;
+      return zlink.Message.from(`${prefix}${text}`);
+    },
+    deserialize(message) {
+      const text = message.getString('utf8');
+      return { text: text.startsWith(prefix) ? text.slice(prefix.length) : text };
+    }
+  };
+}
+
 test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order', async () => {
   const events = [];
   class StageSpot {
@@ -132,6 +145,27 @@ test('ZLinkSpotManager create request DTOs can be decoded with framework message
     { kind: 'protobuf', ready: true }
   ]);
   assert.equal(connector.ZlinkStreamCodec.Json, json.toJson({}).codec);
+});
+
+test('ZLinkSpotManager create request uses configured custom serializer without raw request code', async () => {
+  const decoded = [];
+  class CodecSpot {
+    async onCreate(request) {
+      decoded.push(request.decode());
+      return { accepted: true, reply: { text: 'created' } };
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [CodecSpot],
+    messageSerializers: new Map([['application/x-custom-text', customTextSerializer()]])
+  });
+
+  const created = await manager.create(CodecSpot, { text: 'open' });
+
+  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+  assert.deepEqual(decoded, [{ text: 'open' }]);
+  assert.deepEqual(created.reply, { text: 'created' });
 });
 
 test('spot handler registry records packet and subscribe registrations from configure', async () => {

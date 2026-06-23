@@ -4,6 +4,18 @@ const test = require('node:test');
 const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist/internal');
 
+function customTextSerializer(prefix = 'custom:') {
+  return {
+    serialize(value) {
+      return zlink.Message.from(`${prefix}${value}`);
+    },
+    deserialize(message) {
+      const text = message.getString('utf8');
+      return text.startsWith(prefix) ? text.slice(prefix.length) : text;
+    }
+  };
+}
+
 test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantics', async () => {
   const events = [];
   class PlayerActor {
@@ -484,6 +496,45 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   ]);
   request.close();
   entryRequest.close();
+  replyMessage.close();
+});
+
+test('ZLinkActorContext joinSpot uses configured custom serializer without raw request code', async () => {
+  const calls = [];
+  const replyMessage = zlink.Message.from('custom:joined');
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const actorRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
+  const joinCoordinator = {
+    async joinSpot(actor, state, spotRid, request) {
+      calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${request.getString('utf8')}`);
+      return { resultCode: 0, actor: actorRef, reply: replyMessage };
+    },
+    async joinEntrySpot() {
+      throw new Error('joinEntrySpot must not be called');
+    }
+  };
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator,
+    messageSerializers: new Map([['application/x-custom-text', customTextSerializer()]])
+  });
+  const actor = await manager.create('alice', 'player');
+
+  const joinResult = await actor.context.joinSpot('stage-1', 'hello').submit();
+
+  assert.equal(joinResult.resultCode, 0);
+  assert.equal(joinResult.reply, 'joined');
+  assert.deepEqual(calls, ['joinSpot:alice:alice:stage-1:custom:hello']);
   replyMessage.close();
 });
 

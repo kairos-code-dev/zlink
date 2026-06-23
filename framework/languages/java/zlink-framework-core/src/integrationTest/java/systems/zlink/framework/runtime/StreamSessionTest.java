@@ -25,6 +25,7 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -218,7 +219,7 @@ final class StreamSessionTest {
         @Override
         public void onDispatch(
             ZLinkStreamHeader header,
-            Message payload) {
+            ZLinkMessage payload) {
             dispatchedOnVirtualThread.set(Thread.currentThread().isVirtual());
             if (!"Ping".equals(header.packetName())) {
                 throw new IllegalArgumentException("unexpected packet: " + header.packetName());
@@ -258,13 +259,13 @@ final class StreamSessionTest {
         @Override
         public void onDispatch(
             ZLinkStreamHeader header,
-            Message payload) {
+            ZLinkMessage payload) {
             if ("Bind".equals(header.packetName())) {
-                String actorId = new String(payload.toByteArray(), StandardCharsets.UTF_8);
+                String actorId = payload.decode(String.class);
                 actors.getOrCreate(actorId, "player")
                     .thenCompose(actor -> actor.context()
-                        .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
-                        .submit(Message.class)
+                        .joinEntrySpot(RoutingId.from("play-node"))
+                        .submit()
                         .thenCompose(ignored -> context.actors().bind(actor)))
                     .thenCompose(ignored -> context.client().reply("bound").submit())
                     .toCompletableFuture()

@@ -20,8 +20,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
@@ -103,11 +103,11 @@ final class SpotManagerTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             CompletionStage<ZLinkSpotCreateResult> first = runtime.spotManager()
-                .getOrCreate(SlowCreateSpot.class, spotRid, Message.from("first"));
+                .getOrCreate(SlowCreateSpot.class, spotRid, "first");
             assertTrue(SlowCreateSpot.createStarted.await(3, TimeUnit.SECONDS));
 
             CompletionStage<ZLinkSpotCreateResult> second = runtime.spotManager()
-                .getOrCreate(SlowCreateSpot.class, spotRid, Message.from("second"));
+                .getOrCreate(SlowCreateSpot.class, spotRid, "second");
             SlowCreateSpot.release.complete(null);
 
             ZLinkSpotCreateState firstState =
@@ -166,15 +166,14 @@ final class SpotManagerTest {
         { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://spot-reject-router-" + suffix).setRouterRoutingId(RoutingId.from("spot-reject-node-" + suffix));
                 node.addSpotFactory(RejectingSpot.class); }; };
         try (ZLinkFrameworkRuntime runtime =
-                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
-             Message request = Message.from("closed")) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             var rejected = runtime.spotManager()
-                .create(RejectingSpot.class, request)
+                .create(RejectingSpot.class, "closed")
                 .toCompletableFuture()
                 .join();
 
             assertEquals(ZLinkSpotCreateState.REJECTED, rejected.state());
-            assertEquals("reject:closed", rejected.reply().toUtf8String());
+            assertEquals("reject:closed", rejected.reply().decode(String.class));
             assertTrue(runtime.spotManager()
                 .find(rejected.spotRid())
                 .toCompletableFuture()
@@ -258,8 +257,8 @@ final class SpotManagerTest {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(Message request) {
-            return ZLinkSpotCreateResponse.reject(Message.from("reject:" + request.toUtf8String()));
+        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+            return ZLinkSpotCreateResponse.reject("reject:" + request.decode(String.class));
         }
     }
 
@@ -288,9 +287,9 @@ final class SpotManagerTest {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(Message request) {
+        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
             createCalls.incrementAndGet();
-            createRequest.set(request.toUtf8String());
+            createRequest.set(request.decode(String.class));
             createStarted.countDown();
             release.join();
             return ZLinkSpotCreateResponse.accept();

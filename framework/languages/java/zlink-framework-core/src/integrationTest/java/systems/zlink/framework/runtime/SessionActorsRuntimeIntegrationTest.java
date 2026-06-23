@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Duration;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -29,6 +30,7 @@ import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
@@ -85,16 +87,14 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            try (Message payload = Message.from("hello")) {
-                bound.relay(
-                        new ZLinkStreamHeader(
-                            "ActorNotify",
-                            java.util.Map.of(),
-                            Optional.empty()),
-                        payload)
-                    .toCompletableFuture()
-                    .join();
-            }
+            bound.relay(
+                    new ZLinkStreamHeader(
+                        "ActorNotify",
+                        java.util.Map.of(),
+                        Optional.empty()),
+                    ZLinkMessage.of("hello"))
+                .toCompletableFuture()
+                .join();
 
             assertEquals(
                 "player-1:hello",
@@ -112,9 +112,9 @@ final class SessionActorsRuntimeIntegrationTest {
                 .join();
 
             var joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
+                .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
-                .submit(Message.class)
+                .submit()
                 .toCompletableFuture()
                 .join();
 
@@ -133,9 +133,9 @@ final class SessionActorsRuntimeIntegrationTest {
                 .join();
 
             var joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
+                .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
-                .submit(Message.class)
+                .submit()
                 .toCompletableFuture()
                 .join();
 
@@ -192,9 +192,9 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
             var joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
+                .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
-                .submit(Message.class)
+                .submit()
                 .toCompletableFuture()
                 .join();
 
@@ -218,9 +218,9 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
             ZLinkActorRef actorRef = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
+                .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
-                .submit(Message.class)
+                .submit()
                 .toCompletableFuture()
                 .join()
                 .actor();
@@ -499,9 +499,11 @@ final class SessionActorsRuntimeIntegrationTest {
         TimeUnit unit) throws Exception {
         long deadline = System.nanoTime() + unit.toNanos(timeout);
         while (true) {
-            try (Message payload = Message.from(payloadBytes)) {
-                bound.relay(header, payload).toCompletableFuture().join();
-            }
+            bound.relay(
+                    header,
+                    ZLinkMessage.of(new String(payloadBytes, StandardCharsets.UTF_8)))
+                .toCompletableFuture()
+                .join();
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0) {
                 throw new java.util.concurrent.TimeoutException();
@@ -531,9 +533,9 @@ final class SessionActorsRuntimeIntegrationTest {
         public String handle(String actorId) {
             return actors.getOrCreate(actorId, "player")
                 .thenCompose(actor -> actor.context()
-                    .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
+                    .joinEntrySpot(RoutingId.from("play-node"))
                     .timeout(Duration.ofSeconds(2))
-                    .submit(Message.class))
+                    .submit())
                 .thenApply(joined -> joined.actor().actorId())
                 .toCompletableFuture()
                 .join();

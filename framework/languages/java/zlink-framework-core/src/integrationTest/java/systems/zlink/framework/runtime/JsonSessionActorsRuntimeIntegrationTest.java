@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
@@ -40,19 +40,18 @@ final class JsonSessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            try (Message payload = Message.from("{\"value\":\"json-hello\"}")) {
-                bound.relay(
-                        new ZLinkStreamHeader(
-                            ZLinkStreamMessageKind.SEND,
-                            ZLinkStreamCodec.JSON,
-                            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                            Optional.empty(),
-                            "JsonRelaySend",
-                            java.util.Map.of()),
-                        payload)
-                    .toCompletableFuture()
-                    .join();
-            }
+            bound.relay(
+                    new ZLinkStreamHeader(
+                        ZLinkStreamMessageKind.SEND,
+                        ZLinkStreamCodec.JSON,
+                        EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                        Optional.empty(),
+                        "JsonRelaySend",
+                        java.util.Map.of()),
+                    ZLinkMessage.of(
+                        new SessionActorsRuntimeIntegrationTest.JsonRelayReq("json-hello")))
+                .toCompletableFuture()
+                .join();
 
             assertEquals(
                 actorId + ":json-hello",

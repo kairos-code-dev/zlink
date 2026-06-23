@@ -52,7 +52,7 @@ class authenticate_play_session_handler_t
         auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
 
         co_await stream
-          .reply_packet (header, to_stream_payload (authenticate_res_t{authenticated.player}))
+          .reply_packet (header, authenticate_res_t{authenticated.player})
           .async ();
 
         co_return bound;

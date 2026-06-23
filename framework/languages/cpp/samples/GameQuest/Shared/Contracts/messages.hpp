@@ -344,14 +344,4 @@ inline void from_json (const nlohmann::json &json, game_quest_server_assert_res_
     value.evidence = json.value ("evidence", std::vector<std::string>{});
 }
 
-template <typename T> inline zlink::message_t to_stream_payload (const T &value)
-{
-    return zlink::message_t::from (nlohmann::json (value).dump ());
-}
-
-template <typename T> inline void from_stream_payload (const zlink::message_t &payload, T &value)
-{
-    value = nlohmann::json::parse (payload.to_string ()).template get<T> ();
-}
-
 } // namespace zlink::samples::gamequest

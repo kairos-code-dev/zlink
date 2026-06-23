@@ -38,7 +38,7 @@ class sample_session_t final : public zlink::framework::packet_stream_session_t
     {
         events.push_back ("packet:" + std::string (header.packet_name ()) + ":"
                           + payload.to_raw ().to_string ());
-        auto write = stream.reply_packet (header, payload.to_raw ()).async ().result ();
+        auto write = stream.reply_packet (header, payload).async ().result ();
         if (!write) {
             return zlink::framework::task_t<void> (write);
         }
@@ -93,6 +93,8 @@ int main ()
       .bind ("tcp://0.0.0.0:9200")
       .register_session ("client")
       .attach_actor_gateway ("session-actors");
+    zlink::framework::serializer_registry_t serializers;
+    zlink::framework::detail::bind_stream_serializers (zlink, serializers);
 
     const auto snapshots = zlink.streams ();
     if (snapshots.size () != 1 || snapshots[0].name != "client-stream"

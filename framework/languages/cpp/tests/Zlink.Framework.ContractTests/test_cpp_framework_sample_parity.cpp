@@ -89,22 +89,6 @@ bool is_allowed_raw_codec_helper_file (const std::string &relative)
 {
     const std::vector<std::string> allowed{
       "Bingo/Shared/Contracts/messages.hpp",
-      "Bingo/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp",
-      "Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp",
-      "Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp",
-      "TicTacToe/Shared/Contracts/messages.hpp",
-      "TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/Handlers/"
-      "authenticate_play_session_handler.hpp",
-      "TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_entry_spot.hpp",
-      "TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp",
-      "DeliveryDispatch/Shared/Contracts/messages.hpp",
-      "GameQuest/Shared/Contracts/messages.hpp",
-      "ShoppingMall/Shared/Contracts/messages.hpp",
-      "SupportChat/Shared/Contracts/messages.hpp",
-      "SupportChat/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp",
-      "SupportChat/Server/Support/support_server_host_factory.hpp",
-      "SupportChat/Server/Support/Infrastructure/ZLink/Spots/conversation_spot.hpp",
-      "SupportChat/Server/Support/Infrastructure/ZLink/Spots/support_entry_spot.hpp",
     };
     return std::find (allowed.begin (), allowed.end (), relative) != allowed.end ();
 }

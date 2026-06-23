@@ -399,6 +399,16 @@ static_assert (
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().close ()),
                               zlink::framework::task_t<void>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<const zlink::framework::message_t &> ())),
+                 zlink::framework::stream_write_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<named_reply_t> ())),
+                 zlink::framework::stream_write_call_t>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::bound_session_t &> ().disconnect ()),

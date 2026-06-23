@@ -35,6 +35,7 @@ class stream_state_t
     std::mutex transport_writer_mutex;
     std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>
       transport_writer;
+    serializer_registry_t *serializers = nullptr;
 };
 
 class stream_runtime_state_t

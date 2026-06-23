@@ -343,6 +343,17 @@ stream_write_call_t stream_t::reply_packet (const stream_header_t &request_heade
     return write_packet (reply_header, payload);
 }
 
+stream_write_call_t stream_t::reply_packet (const stream_header_t &request_header,
+                                            const message_t &payload)
+{
+    if (_state->serializers == nullptr) {
+        return stream_write_call_t (
+          result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                   "STREAM reply requires a serializer registry"));
+    }
+    return reply_packet (request_header, payload.to_raw (*_state->serializers));
+}
+
 stream_builder_t::stream_builder_t () :
     _state (std::make_shared<detail::stream_builder_state_t> (""))
 {
@@ -721,6 +732,7 @@ stream_t stream_runtime_t::open_session (std::string stream_name) const
     }
     auto state = std::make_shared<stream_state_t> ();
     state->session_id = std::move (stream_name) + ":" + std::to_string (_state->next_session_id++);
+    state->serializers = _state->serializers;
     return stream_t (state);
 }
 

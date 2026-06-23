@@ -776,14 +776,4 @@ inline nlohmann::json json_from_protobuf_payload (const zlink::message_t &payloa
 
 } // namespace detail
 
-template <typename T> inline zlink::message_t to_stream_payload (const T &value)
-{
-    return detail::json_to_protobuf_payload (nlohmann::json (value));
-}
-
-template <typename T> inline void from_stream_payload (const zlink::message_t &payload, T &value)
-{
-    value = detail::json_from_protobuf_payload (payload).template get<T> ();
-}
-
 } // namespace zlink::samples::bingo

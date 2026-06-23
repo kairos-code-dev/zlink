@@ -582,14 +582,4 @@ inline void from_json (const nlohmann::json &json, game_ended_notify_t &value)
     value.state = json.value ("state", tictactoe_state_t{});
 }
 
-template <typename T> inline zlink::message_t to_stream_payload (const T &value)
-{
-    return zlink::message_t::from (nlohmann::json (value).dump ());
-}
-
-template <typename T> inline void from_stream_payload (const zlink::message_t &payload, T &value)
-{
-    value = nlohmann::json::parse (payload.to_string ()).template get<T> ();
-}
-
 } // namespace zlink::samples::tictactoe

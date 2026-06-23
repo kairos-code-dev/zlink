@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace zlink::framework
 {
@@ -157,6 +158,14 @@ class stream_t
                                       const zlink::message_t &payload);
     stream_write_call_t reply_packet (const stream_header_t &request_header,
                                       const zlink::message_t &payload);
+    stream_write_call_t reply_packet (const stream_header_t &request_header,
+                                      const message_t &payload);
+
+    template <typename TPayload>
+    stream_write_call_t reply_packet (const stream_header_t &request_header, TPayload payload)
+    {
+        return reply_packet (request_header, message_t::from (std::move (payload)));
+    }
 
   private:
     friend class detail::stream_runtime_t;

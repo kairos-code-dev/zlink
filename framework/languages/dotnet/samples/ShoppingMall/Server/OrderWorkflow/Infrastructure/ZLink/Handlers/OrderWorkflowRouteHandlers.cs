@@ -41,12 +41,11 @@ internal sealed class StartOrderWorkflowRouteHandler(
         string orderId,
         CancellationToken cancellationToken)
     {
-        using var payload = new OrderWorkflowSpotCreateReq(orderId).ToJson();
         try
         {
             await spots.GetOrCreateAsync<OrderWorkflowSpot>(
                 RoutingId.From(orderId),
-                payload,
+                new OrderWorkflowSpotCreateReq(orderId),
                 cancellationToken);
         }
         catch (Exception error)

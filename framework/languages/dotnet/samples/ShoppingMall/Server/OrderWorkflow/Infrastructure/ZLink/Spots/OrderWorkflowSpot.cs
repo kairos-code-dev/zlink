@@ -1,8 +1,7 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
 using ShoppingMall.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots;
@@ -22,7 +21,7 @@ internal sealed class OrderWorkflowSpot(
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

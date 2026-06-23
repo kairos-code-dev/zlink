@@ -27,7 +27,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         Type spotType,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -81,7 +81,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         Type spotType,
         RoutingId requestedSpotRid,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);

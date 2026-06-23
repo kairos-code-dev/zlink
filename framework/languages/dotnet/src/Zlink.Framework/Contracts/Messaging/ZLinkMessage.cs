@@ -33,6 +33,8 @@ public sealed class ZLinkMessage
 
     public ZlinkStreamCodec? StreamCodec => _streamCodec;
 
+    public bool IsEmpty => _declaredType is null && _payload.IsEmpty;
+
     public static ZLinkMessage From<T>(T value)
     {
         return new ZLinkMessage(value, typeof(T));

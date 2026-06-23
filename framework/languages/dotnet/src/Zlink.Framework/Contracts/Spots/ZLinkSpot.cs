@@ -87,7 +87,7 @@ public interface IZLinkSpot
     }
 
     ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());

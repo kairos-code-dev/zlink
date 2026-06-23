@@ -13,15 +13,13 @@ internal sealed class ConversationStarter(IZLinkSpotManager spots) : IConversati
         ConversationStartRequest request,
         CancellationToken cancellationToken)
     {
-        using var create = new ConversationCreateRequest(
+        await spots.GetOrCreateAsync<ConversationSpot>(
+            RoutingId.From(conversationId),
+            new ConversationCreateRequest(
                 request.CustomerActorId,
                 request.CustomerDisplayName,
                 request.Subject,
-                request.CreatedAtUnixMs)
-            .ToJson();
-        await spots.GetOrCreateAsync<ConversationSpot>(
-            RoutingId.From(conversationId),
-            create,
+                request.CreatedAtUnixMs),
             cancellationToken);
     }
 }

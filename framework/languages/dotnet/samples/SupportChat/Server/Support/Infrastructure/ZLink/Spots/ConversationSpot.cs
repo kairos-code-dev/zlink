@@ -32,10 +32,10 @@ internal sealed class ConversationSpot(
     }
 
     public async ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var create = request.FromJson<ConversationCreateRequest>();
+        var create = request.Decode<ConversationCreateRequest>();
         var conversationId = Context.SpotRid.ToString();
         _conversation = new Conversation(
             conversationId,

@@ -47,8 +47,7 @@ public sealed class SpotContracts
         await context.Outbound.SendToChannel("api", new RoomEvent("opened")).Async();
         await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
 
-        using var createRequest = Message.From(ReadOnlySpan<byte>.Empty);
-        await spot.OnCreateAsync(createRequest, CancellationToken.None);
+        await spot.OnCreateAsync(ZLinkMessage.Empty, CancellationToken.None);
         await spot.OnInitializeAsync(CancellationToken.None);
         await spot.OnClosingAsync(CancellationToken.None);
         await entrySpot.OnInitializeAsync(CancellationToken.None);
@@ -109,7 +108,7 @@ public sealed class SpotContracts
         var manager = new SpotManager();
         var created = await manager.GetOrCreateAsync<RoomSpot>(
             RoutingId.From("room-1"),
-            Message.From(ReadOnlySpan<byte>.Empty));
+            ZLinkMessage.Empty);
         var routeResolver = new SpotRemoteAddressResolver(created.SpotRid);
         var route = await routeResolver.ResolveSpotRemoteAddressAsync(created.SpotRid, CancellationToken.None);
 
@@ -564,12 +563,11 @@ public sealed class SpotContracts
             CancellationToken cancellationToken = default)
             where TSpot : IZLinkSpot
         {
-            using var empty = Message.From(ReadOnlySpan<byte>.Empty);
-            return await CreateAsync<TSpot>(empty, cancellationToken);
+            return await CreateAsync<TSpot>(ZLinkMessage.Empty, cancellationToken);
         }
 
         public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken = default)
             where TSpot : IZLinkSpot
         {
@@ -581,7 +579,7 @@ public sealed class SpotContracts
 
         public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
             RoutingId spotRid,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken = default)
             where TSpot : IZLinkSpot
         {
@@ -599,8 +597,7 @@ public sealed class SpotContracts
             CancellationToken cancellationToken = default)
             where TSpot : IZLinkSpot
         {
-            using var empty = Message.From(ReadOnlySpan<byte>.Empty);
-            return await GetOrCreateAsync<TSpot>(spotRid, empty, cancellationToken);
+            return await GetOrCreateAsync<TSpot>(spotRid, ZLinkMessage.Empty, cancellationToken);
         }
 
         public ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,

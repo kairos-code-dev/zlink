@@ -46,7 +46,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         ZLinkFrameworkRuntimeState state,
         Type spotType,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var node = GetNodeForSpotFactory(state, spotType);
@@ -57,7 +57,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkFrameworkRuntimeState state,
         Type spotType,
         RoutingId spotRid,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var node = GetNodeForSpotFactory(state, spotType);

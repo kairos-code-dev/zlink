@@ -7,17 +7,21 @@ public enum ZLinkSpotCreateState
     Rejected
 }
 
-public readonly record struct ZLinkSpotCreateResponse(bool Accepted, Message? Reply)
+public readonly record struct ZLinkSpotCreateResponse(bool Accepted, ZLinkMessage? Reply)
 {
-    public static ZLinkSpotCreateResponse Accept(Message? reply = null) => new(true, reply);
+    public static ZLinkSpotCreateResponse Accept(ZLinkMessage? reply = null) => new(true, reply);
 
-    public static ZLinkSpotCreateResponse Reject(Message? reply = null) => new(false, reply);
+    public static ZLinkSpotCreateResponse Accept<TReply>(TReply reply) => new(true, ZLinkMessage.From(reply));
+
+    public static ZLinkSpotCreateResponse Reject(ZLinkMessage? reply = null) => new(false, reply);
+
+    public static ZLinkSpotCreateResponse Reject<TReply>(TReply reply) => new(false, ZLinkMessage.From(reply));
 }
 
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
     ZLinkSpotCreateState State,
-    Message? Reply);
+    ZLinkMessage? Reply);
 
 public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid);
@@ -29,15 +33,49 @@ public interface IZLinkSpotManager
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        Message request,
+        ZLinkMessage request,
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
+
+    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
+        object request,
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot
+    {
+        return CreateAsync<TSpot>(ZLinkMessage.From(request), cancellationToken);
+    }
+
+    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot, TRequest>(
+        TRequest request,
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot
+    {
+        return CreateAsync<TSpot>(ZLinkMessage.From(request), cancellationToken);
+    }
+
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
+        RoutingId spotRid,
+        ZLinkMessage request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
-        Message request,
+        object request,
         CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
+        where TSpot : IZLinkSpot
+    {
+        return GetOrCreateAsync<TSpot>(spotRid, ZLinkMessage.From(request), cancellationToken);
+    }
+
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot, TRequest>(
+        RoutingId spotRid,
+        TRequest request,
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot
+    {
+        return GetOrCreateAsync<TSpot>(spotRid, ZLinkMessage.From(request), cancellationToken);
+    }
 
     ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,

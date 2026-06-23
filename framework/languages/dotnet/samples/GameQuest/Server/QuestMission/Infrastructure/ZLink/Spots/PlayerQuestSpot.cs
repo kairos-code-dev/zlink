@@ -1,7 +1,6 @@
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
 using GameQuest.Shared;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace GameQuest.QuestMission.Infrastructure.ZLink.Spots;
@@ -19,11 +18,11 @@ internal sealed class PlayerQuestSpot(
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        PlayerId = request.FromJson<PlayerQuestSpotCreateReq>().PlayerId;
+        PlayerId = request.Decode<PlayerQuestSpotCreateReq>().PlayerId;
         logger.LogInformation(
             "gamequest player quest spot ready player={PlayerId} spot={SpotRid}",
             PlayerId,

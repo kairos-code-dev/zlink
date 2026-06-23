@@ -168,7 +168,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         Type spotType,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return await _spots.CreateAsync(spotType, request, cancellationToken);
@@ -177,7 +177,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         Type spotType,
         RoutingId requestedSpotRid,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return await _spots.GetOrCreateAsync(

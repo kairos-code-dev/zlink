@@ -15,7 +15,7 @@ internal sealed class ZLinkSpotActivationFactory(
     public async ValueTask<ZLinkSpotActivationCreateResult> CreateAsync(
         Type spotType,
         IZLinkBackendSpot nativeSpot,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         connectDiscoveredPubSubPeers();

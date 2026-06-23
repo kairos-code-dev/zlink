@@ -92,7 +92,7 @@ internal sealed class BingoRoom(
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;

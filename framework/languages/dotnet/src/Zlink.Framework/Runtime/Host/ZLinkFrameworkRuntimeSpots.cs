@@ -10,7 +10,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     internal async ValueTask<ZLinkSpotCreateResult> CreateSpotAsync<TSpot>(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
         where TSpot : IZLinkSpot
     {
@@ -19,7 +19,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal async ValueTask<ZLinkSpotCreateResult> GetOrCreateSpotAsync<TSpot>(
         RoutingId spotRid,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
         where TSpot : IZLinkSpot
     {

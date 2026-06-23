@@ -87,14 +87,14 @@ sealed class TicTacToeGame(
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "game spot: created. roomId={RoomId}, createPayloadBytes={CreatePayloadBytes}",
+            "game spot: created. roomId={RoomId}, createPayloadEmpty={CreatePayloadEmpty}",
             _roomId,
-            request.Size);
+            request.IsEmpty);
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 

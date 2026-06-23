@@ -1,20 +1,19 @@
-using Systems.Zlink;
-using Zlink.Framework.Codecs.Protobuf;
 using Bingo.Server.Play.Domain.Bingo;
 using Bingo.Shared.Contracts;
+using Zlink.Framework.Contracts.Messaging;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots;
 
 internal static class BingoRoomSettingsPayloadMapper
 {
-    public static BingoRoomSettings FromMessage(Message request, BingoRoomSettings defaultSettings)
+    public static BingoRoomSettings FromMessage(ZLinkMessage request, BingoRoomSettings defaultSettings)
     {
-        if (request.Size == 0)
+        if (request.IsEmpty)
         {
             return defaultSettings;
         }
 
-        var payload = request.FromProto<BingoRoomSettingsPayload>();
+        var payload = request.Decode<BingoRoomSettingsPayload>();
         return new BingoRoomSettings(
             payload.RoomName,
             payload.Mode,

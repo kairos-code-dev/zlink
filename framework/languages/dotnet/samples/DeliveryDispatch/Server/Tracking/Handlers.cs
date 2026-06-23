@@ -51,7 +51,7 @@ internal sealed class SubscribeCustomerToDeliveryHandler(
         _ = context;
         await spots.GetOrCreateAsync<DeliveryTrackingSpot>(
             RoutingId.From(request.DeliveryId),
-            new DeliverySpotCreate(request.DeliveryId).ToJson(),
+            new DeliverySpotCreate(request.DeliveryId),
             cancellationToken);
         var actor = await actors.GetOrCreateAsync(
             request.CustomerId,
@@ -80,7 +80,7 @@ internal sealed class DeliveryStatusChangedHandler(
         _ = context;
         await spots.GetOrCreateAsync<DeliveryTrackingSpot>(
             RoutingId.From(request.DeliveryId),
-            new DeliverySpotCreate(request.DeliveryId).ToJson(),
+            new DeliverySpotCreate(request.DeliveryId),
             cancellationToken);
         evidence.Append(request);
         directory.Require(request.DeliveryId)

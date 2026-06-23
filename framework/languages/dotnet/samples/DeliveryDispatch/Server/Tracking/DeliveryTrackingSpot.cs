@@ -1,6 +1,4 @@
 using DeliveryDispatch.Shared.Contracts;
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -17,14 +15,14 @@ internal sealed class DeliveryTrackingSpot(
     public IZLinkSpotContext Context { get; } = context;
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var create = request.FromJson<DeliverySpotCreate>();
+        var create = request.Decode<DeliverySpotCreate>();
         _deliveryId = create.DeliveryId;
         directory.Add(_deliveryId, this);
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept(new DeliverySpotCreated(_deliveryId).ToJson()));
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept(new DeliverySpotCreated(_deliveryId)));
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

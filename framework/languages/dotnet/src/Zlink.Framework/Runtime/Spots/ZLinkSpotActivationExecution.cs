@@ -8,7 +8,7 @@ internal sealed partial class ZLinkSpotActivation
     public CancellationToken StopToken => _stopSource.Token;
 
     public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         RegisterWithoutSynchronizationContext(() =>
@@ -66,9 +66,9 @@ internal sealed partial class ZLinkSpotActivation
         return create.Response;
     }
 
-    private sealed class SpotCreateCallState(Message request)
+    private sealed class SpotCreateCallState(ZLinkMessage request)
     {
-        public Message Request { get; } = request;
+        public ZLinkMessage Request { get; } = request;
 
         public ZLinkSpotCreateResponse Response { get; set; }
     }

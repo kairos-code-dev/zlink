@@ -1,10 +1,10 @@
 using Systems.Zlink;
-using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Messaging;
 
 namespace Bingo.Server.Session.Sessions.Handlers;
 
@@ -19,7 +19,7 @@ internal sealed class AuthenticateBingoSessionHandler(
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = header;

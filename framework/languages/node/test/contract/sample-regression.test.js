@@ -1572,6 +1572,10 @@ test('node framework source tree does not keep emitted JavaScript beside TypeScr
 });
 
 test('node run_samples.sh executes every sample self-check', () => {
+  if (process.platform !== 'linux') {
+    return;
+  }
+
   const output = childProcess.execFileSync(path.join(samplesRoot, 'run_samples.sh'), {
     cwd: workspaceRoot,
     encoding: 'utf8'

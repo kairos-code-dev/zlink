@@ -26,6 +26,7 @@ print_logs() {
 
 cleanup() {
   local status="$?"
+  set +u
   print_logs "${status}"
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"

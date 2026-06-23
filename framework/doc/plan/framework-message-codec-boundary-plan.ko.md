@@ -260,7 +260,7 @@ codec 변경 때마다 업무 코드가 같이 바뀌는 원인이므로 최종 
 | dependency 추가 방식 | 유지 | Protobuf, MessagePack, custom codec package 또는 module을 추가한다. |
 | 업무 API의 raw payload 전달 | 제거 | SPOT create, session dispatch, actor join에서 raw `Message` / `Buffer` / `zlink_msg_t`를 넘기지 않는다. |
 | 업무 코드의 codec별 helper 호출 | 제거 | handler, actor, sample에서 `Message.from(...)`, `JsonMessageExtensions`, 직접 serialize/deserialize를 쓰지 않는다. |
-| wire-level raw API | 명시 raw surface만 유지 | relay, frame harness, backend boundary처럼 raw payload 보존이 목적일 때만 별도 raw 이름으로 남긴다. |
+| wire-level raw capability | public interface에서는 bindings raw 타입을 제거 | relay, frame harness, backend boundary처럼 bytes 보존이 목적이어도 `Message`, `Buffer`, `zlink_msg_t`, `zlink::message_t`를 public framework interface에 노출하지 않는다. 필요한 경우 framework가 소유한 `ZLinkMessage` 또는 별도 framework payload 타입으로 감싼다. |
 
 정리하면, codec을 추가하는 방법은 그대로 두고 payload를 다루는 업무 API만 바꾼다.
 
@@ -295,7 +295,7 @@ codec을 framework runtime이 SPOT create, session dispatch, actor join 경로�
 | custom codec으로 바꾸면 sample 업무 코드를 고쳐야 하는가? | 아니다. dependency와 extension 등록 코드만 바뀌어야 한다. |
 | handler에서 `Message.from(...)`으로 직접 인코딩해도 되는가? | 안 된다. handler는 DTO 또는 `ZLinkMessage`를 사용한다. |
 | session dispatch에서 raw `Message` / `Buffer`를 기본 payload로 받아도 되는가? | 안 된다. typed handler 또는 `ZLinkMessage`를 사용한다. |
-| wire payload를 그대로 보존해야 하는 relay나 harness는 어떻게 하는가? | 명시 raw API로만 남긴다. 일반 업무 API와 sample의 기본 경로에서는 쓰지 않는다. |
+| wire payload를 그대로 보존해야 하는 relay나 harness는 어떻게 하는가? | public interface라면 bindings raw 타입을 직접 노출하지 않는다. 필요한 raw capability는 framework가 소유한 타입으로 감싸고, bindings raw `Message`는 runtime, backend adapter, codec 구현 내부에만 둔다. |
 
 유지되는 기존 방식은 아래처럼 codec extension을 등록하는 코드다. 이 코드는 변경 후에도 같은 의미로
 동작해야 한다.
@@ -766,10 +766,13 @@ ZLinkActorJoinResult<JoinedRoom> result = actor.context()
    가진 시점에 수행한다.
 4. inbound message는 encoded bytes와 content type 또는 stream codec id를 보관하고, decode 시
    registry를 사용한다.
-5. raw `Message`가 필요한 API는 이름이나 namespace로 raw 경계임을 드러낸다.
+5. public framework interface에는 bindings raw `Message`, `Buffer`, `zlink_msg_t`, `zlink::message_t`를
+   노출하지 않는다. raw bytes 보존이 필요한 기능도 framework가 소유한 타입으로 표현하고, bindings raw
+   타입은 runtime, backend adapter, codec 구현 내부에만 둔다.
 6. sample, guide, E2E scenario는 codec별 helper 호출을 업무 코드에 두지 않는다.
 7. 같은 기능을 언어마다 다른 호출 방식으로 만들지 않는다. 문법 차이는 허용하지만 책임 경계는 같아야 한다.
-8. 기존 raw 업무 API는 유지가 아니라 제거 방향으로 진행한다. 단, wire-level raw API는 별도 이름으로 남길 수 있다.
+8. 기존 raw 업무 API는 유지가 아니라 제거 방향으로 진행한다. wire-level raw capability가 필요해도
+   bindings raw 타입을 public contract로 되살리지 않는다.
 9. 이 계획은 raw 예외 표면을 제거하는 breaking change를 허용하는 단계다. 기존 raw 업무 API 호환성은
    최종 목표가 아니며, 필요한 경우 중간 이행 단계에서만 deprecated raw surface를 둔다.
 10. codec extension 등록 방식은 변경하지 않는다. options 또는 builder에서 extension을 추가하는 기존
@@ -931,9 +934,9 @@ ZLinkActorJoinResult<JoinedRoom> result = actor.context()
    선택을 registry 뒤로 숨기는 방식을 먼저 설계한다. 후보는 type-erased serializer entry, concept 기반
    adapter, `std::type_index` registry, explicit typed call wrapper다.
 5. SPOT create, session callback, actor join API에서 low-level `zlink_msg_t` 또는 binding message wrapper를
-   직접 받는 업무 표면을 줄인다.
-6. typed handler template이 있는 경우 그 경로를 표준으로 삼고, raw packet handler는 명시 raw surface로
-   둔다.
+   직접 받는 public 표면을 제거한다.
+6. typed handler template이 있는 경우 그 경로를 표준으로 삼고, raw packet handler가 필요하면 framework가
+   소유한 payload 타입으로 표현한다. bindings message wrapper를 public parameter로 다시 노출하지 않는다.
 7. Protobuf와 MessagePack extension의 C++ trait 또는 adapter는 framework message 내부에서만 쓰이게
    한다. sample 업무 코드가 trait를 직접 호출하지 않게 한다.
 
@@ -984,10 +987,12 @@ ZLinkActorJoinResult<JoinedRoom> result = actor.context()
 
 ### 5단계: raw API 격리
 
-- raw relay, raw stream write, backend adapter, protocol frame test를 제외한 업무 코드에서 raw
-  `Message` 사용을 제거한다.
-- public API에 raw `Message`가 남아야 하는 곳은 이름, 주석, guide에서 raw wire payload 경계임을
-  명시한다.
+- raw relay, raw stream write, backend adapter, protocol frame test를 포함해 public framework interface에서
+  bindings raw `Message`, `Buffer`, `zlink_msg_t`, `zlink::message_t` 노출을 제거한다.
+- runtime, backend adapter, codec 구현 내부에서는 bindings raw 타입을 사용할 수 있다. 다만 그 타입을
+  public method parameter, return type, public property로 노출하지 않는다.
+- raw capability가 필요한 public API는 `ZLinkMessage` 또는 framework가 소유한 encoded payload 타입을
+  사용한다.
 - raw API를 일반 guide 첫 예시로 쓰지 않는다.
 
 ### 6단계: sample 반영
@@ -1036,8 +1041,8 @@ ZLinkActorJoinResult<JoinedRoom> result = actor.context()
 | actor join binary codec round-trip | Protobuf 또는 MessagePack join request/reply가 같은 API로 왕복한다. |
 | actor join custom codec round-trip | custom codec join request/reply가 raw helper 없이 왕복한다. |
 | codec mismatch | 수신 content type이나 stream codec id에 맞는 extension이 없으면 정해진 decode error가 난다. |
-| raw relay preservation | raw relay API는 payload bytes와 header를 바꾸지 않는다. |
-| raw API static check | 일반 업무 API와 sample에서 기존 raw API가 제거되고, raw harness만 명시 raw surface를 쓰는지 grep 또는 API compatibility check로 확인한다. |
+| raw relay preservation | raw relay 기능은 payload bytes와 header를 바꾸지 않는다. public API는 bindings raw 타입이 아니라 framework 소유 타입을 사용한다. |
+| public raw type static check | public framework interface와 sample에서 bindings raw `Message`, `Buffer`, `zlink_msg_t`, `zlink::message_t`가 제거됐는지 grep 또는 API compatibility check로 확인한다. |
 
 ### 언어별 검증
 
@@ -1091,7 +1096,8 @@ ZLinkActorJoinResult<JoinedRoom> result = actor.context()
 1. C++, Java, Kotlin, Node.js, .NET에서 SPOT create, session dispatch, actor join의 기본 업무 API가 raw
    binding message를 요구하지 않는다.
 2. 모든 언어에서 `ZLinkMessage` 또는 typed payload가 등록된 codec registry를 통해 encode/decode된다.
-3. raw API는 명시 raw surface로 남고, 일반 guide와 sample의 기본 경로에서 빠진다.
+3. public framework interface에서 bindings raw `Message`, `Buffer`, `zlink_msg_t`, `zlink::message_t`가
+   빠지고, raw capability가 필요하면 framework 소유 타입으로 표현된다.
 4. JSON, Protobuf, MessagePack, custom codec 회귀 테스트가 SPOT create, session, actor join에서 통과한다.
 5. codec extension과 custom codec은 기존 options/builder 등록 방식으로 계속 동작한다.
 6. framework 문서와 sample이 새 표면으로 갱신되어, codec 변경이 dependency와 extension 등록에만

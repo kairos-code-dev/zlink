@@ -127,10 +127,10 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 **한마디로:** provider를 정상 종료하면 topology에서 빠지고 consumer가 그쪽으로 안 가며, 종료 직전 끝난 request의 reply는 정상 수신되는가.
 
 - 절차: provider에 정상 종료(`StopAsync`/lifetime stop)를 요청한다.
-- 검증: 종료 후 provider가 registry topology에서 빠지고 consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. (host 종료가 아니라 "진행 중 request를 끝까지 drain"하는 런타임 drain 모드는 RL-B5·RL-B6에서 별도로 다룬다.)
+- 검증: 종료 후 provider가 registry topology에서 빠지고 consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. (host 종료가 아니라 "진행 중 request를 끝까지 drain"하는 런타임 drain 모드는 RL-B4·RL-B5에서 별도로 다룬다.)
 - 세부 동작: 정상 종료 시 topology 이탈 + stale 회피.
 
-#### RL-B5 런타임 drain / restore (무중단 배포)
+#### RL-B4 런타임 drain / restore (무중단 배포)
 
 우선순위: `P0`
 
@@ -140,7 +140,7 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 - 검증: drain 후 신규 request는 그 노드 evidence에 더 기록되지 않고 살아 있는 다른 노드가 받는다(후보가 그 노드뿐이면 정해진 public error). 노드는 죽지 않고 registry topology에도 남아 있다. restore 후 다시 routing 대상이 되어 request를 받는다. consumer 재시작 없음.
 - 세부 동작: peer weight 기반 런타임 graceful drain·restore(노드/소켓 종료 아님). (drain·weight 의미 상세는 `framework-channel-drain-peer-weight-plan.ko.md` 참조.)
 
-#### RL-B6 drain 중 in-flight 완료
+#### RL-B5 drain 중 in-flight 완료
 
 우선순위: `P0`
 
@@ -150,7 +150,7 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 - 검증: drain 시점에 이미 처리 중이던 request는 끝까지 완료되어 reply가 정상 수신된다(drain이 진행 중 작업을 취소하지 않음). drain 이후의 신규 request만 그 노드로 가지 않는다. 완료 후 pending이 남지 않는다.
 - 세부 동작: drain = 새 수신 차단, in-flight·reply는 유지.
 
-#### RL-B7 부분 degradation (gray failure)
+#### RL-B6 부분 degradation (gray failure)
 
 우선순위: `P1`
 

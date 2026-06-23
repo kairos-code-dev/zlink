@@ -435,17 +435,19 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
   `SpotNode`가 channel socket을 직접 들고 있지 않다. spot routing을 얹어도 그 channel의 일반
   messaging은 그대로 동작한다.
 - 외부 channel과 spot 사이의 relay packet 의미(frame 순서·request/reply·error·policy)는 한 곳에서
-  정의되고 모든 언어가 같은 의미로 투영한다. 이 core 계약은 **SPOT route channel bridge**로 정리
-  중이며(draft: `core/doc/spec/draft/spot-route-channel-bridge-plan.ko.md`), 아래 시나리오는 그
-  사용자 관찰 동작을 고정한다.
+  정의되고 모든 언어가 같은 의미로 투영한다. core 내부 구현은 **SPOT route channel bridge**로 정리
+  중이지만(draft: `core/doc/spec/draft/spot-route-channel-bridge-plan.ko.md`), **공개 API와 기능은
+  현재 제공되므로 아래 시나리오는 현 public API로 검증 가능**하다(draft는 내부 구현 교체일 뿐 공개
+  표면을 유지한다).
 
-이 트랙은 bridge(draft)가 구현되면 검증할 **사용자 관찰 동작을 고정**하는 intent다. **현재 public
-API는 외부 channel client가 spot을 RoutingId로 직접 타깃하는 표면을 노출하지 않는다** —
-`SendToSpot(...)`/`RequestToSpot(...)`은 spot 간(`IZLinkSpotOutbound`) egress이고, channel이 spot
-route를 받게 하는 `AcceptSpotRoutesFromChannel(...)` builder는 이미 존재한다. 따라서 **SM-F3은 현재
-public API로 검증 가능**하고, **SM-F1·F2(외부 channel→특정 spot egress)와 SM-F4(그 에러 계약)는
-bridge 구현 후** 아래 의도대로 검증한다(그 전에는 "미구현(bridge 대기)"). 어느 경우에도 low-level
-relay packet을 직접 조립하지 않는다.
+이 트랙이 쓰는 공개 API(현재 제공, guide 05-spot 문서화):
+
+- 외부(spot 아닌) 코드는 `IZLinkRouteClient.Request(channelName, spotRid, req)`로 spot을 RoutingId로
+  타깃한다(spot↔spot은 `Context.Outbound.RequestToSpot/SendToSpot`).
+- 송신 노드는 channel에 `EnableSpotRouteEgress("api")`, 수신 SpotNode는
+  `AcceptSpotRoutesFromChannel("api")`로 **같은 이름을 짝지어** 연결한다. client/server·route mesh
+  두 channel 종류 모두 `EnableSpotRouteEgress`를 지원한다.
+- low-level relay packet은 직접 조립하지 않는다(framework가 처리).
 
 > Track C(messaging 방향)와의 관계: Track C는 channel↔spot의 verb(send/request/publish)와 방향을
 > 본다. Track F는 그 아래에서 **channel 종류 무관 동등성, 한 socket의 app packet·spot relay 공존,
@@ -456,9 +458,9 @@ relay packet을 직접 조립하지 않는다.
 
 우선순위: `P0`
 
-**한마디로:** 외부 client/server channel client가 특정 spot의 RoutingId를 찍어 send/request를 보내면, 그 spot에서 처리되고 request는 reply가 돌아오는가.
+**한마디로:** 외부 코드가 route client로 특정 spot의 RoutingId를 찍어 send/request를 보내면, 그 spot에서 처리되고 request는 reply가 돌아오는가.
 
-- 절차: consumer가 client/server channel client로 target spot의 RoutingId를 지정해 request와 send(one-way)를 보낸다.
+- 절차: 송신 노드의 client/server channel에 `EnableSpotRouteEgress("game.stage")`를 켜고, 수신 SpotNode는 `AcceptSpotRoutesFromChannel("game.stage")`로 받는다. 외부 consumer가 `IZLinkRouteClient.Request(channel, spotRid, req)`로 target spot RoutingId에 request와 send(one-way)를 보낸다.
 - 검증: request는 지정한 spot에서 처리되어 정확한 reply가 온다. send는 reply 없이 그 spot evidence에 command로 기록된다. 지정하지 않은 다른 spot에는 도달하지 않는다.
 - 세부 동작: client/server(DEALER) channel을 통한 target spot egress.
 
@@ -468,7 +470,7 @@ relay packet을 직접 조립하지 않는다.
 
 **한마디로:** route mesh channel로 target SpotNode(peer routing id)를 지정해 그 노드의 특정 spot으로 보내면, 노드 경계를 넘어 그 spot에서 처리되고 reply가 돌아오는가.
 
-- 절차: consumer가 route mesh channel에서 target node의 peer routing id를 지정하고, 그 노드(`play-b`)의 target spot RoutingId로 request와 send를 보낸다.
+- 절차: 송신 노드의 route mesh channel에 `EnableSpotRouteEgress(...)`를 켜고, 외부 consumer가 route client로 target node(`play-b`)의 peer routing id를 지정해 그 노드의 target spot RoutingId로 request와 send를 보낸다(수신 노드는 `AcceptSpotRoutesFromChannel`).
 - 검증: request가 target node로 relay되어 그 노드의 spot에서 처리되고 reply가 돌아온다. send는 그 노드 spot evidence에 기록된다. 지정하지 않은 노드에는 도달하지 않는다.
 - 세부 동작: route mesh(ROUTER) channel을 통한 cross-node target spot egress. (SM-F1과 같은 spot routing 의미를 channel 종류만 바꿔 확인 — 동등성.)
 

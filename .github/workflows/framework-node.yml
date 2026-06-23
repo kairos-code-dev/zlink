@@ -136,6 +136,9 @@ jobs:
         if: startsWith(matrix.target.name, 'linux-') || startsWith(matrix.target.name, 'darwin-')
         run: |
           cp "$ZLINK_RUNTIME_PATH" bindings/node/build/Release/
+          if [[ "${{ matrix.target.name }}" == linux-* && -f "${ZLINK_RUNTIME_PATH}.8" ]]; then
+            cp "${ZLINK_RUNTIME_PATH}.8" bindings/node/build/Release/
+          fi
           if [[ "${{ matrix.target.name }}" == darwin-* ]]; then
             if ! otool -l bindings/node/build/Release/zlink.node | grep -q '@loader_path'; then
               install_name_tool -add_rpath @loader_path bindings/node/build/Release/zlink.node
@@ -190,7 +193,11 @@ jobs:
         run: npm --prefix bindings/node run rebuild-native
 
       - name: Expose synced core runtime beside Node addon
-        run: cp "$ZLINK_RUNTIME_PATH" bindings/node/build/Release/
+        run: |
+          cp "$ZLINK_RUNTIME_PATH" bindings/node/build/Release/
+          if [[ -f "${ZLINK_RUNTIME_PATH}.8" ]]; then
+            cp "${ZLINK_RUNTIME_PATH}.8" bindings/node/build/Release/
+          fi
 
       - name: Run Node framework cross-language smoke
         run: npm --prefix framework/languages/node run verify:cross-language

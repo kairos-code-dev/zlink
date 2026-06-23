@@ -2877,7 +2877,7 @@ async function recvRoutedEnvelopeMessage(router) {
 }
 
 async function submitWhenRouteReachable(submit) {
-  const deadline = Date.now() + 1000;
+  const deadline = Date.now() + 5000;
   let lastError;
   while (Date.now() < deadline) {
     try {

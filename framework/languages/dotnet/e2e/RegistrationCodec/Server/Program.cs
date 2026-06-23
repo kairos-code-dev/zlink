@@ -37,8 +37,11 @@ builder.Services.AddZLinkFramework(framework =>
         .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
         .TraceNodeId(options.Rid);
     framework.Codecs.AddJson();
-    framework.Codecs.Use(ZLinkProtobufCodec.Default);
-    framework.Codecs.Use(ZLinkMessagePackCodec.Default);
+    if (options.CodecMode != "json-only")
+    {
+        framework.Codecs.Use(ZLinkProtobufCodec.Default);
+        framework.Codecs.Use(ZLinkMessagePackCodec.Default);
+    }
     framework.AddHandlersFromAssemblyOf<EchoAutoRequestHandler>();
     framework.UseFilter<FirstFilter>();
     framework.UseFilter<SecondFilter>();
@@ -378,7 +381,8 @@ internal sealed record ServerOptions(
     string LogDir,
     string? ChannelEndpoint,
     string? EvidenceFile,
-    string? InvalidMode)
+    string? InvalidMode,
+    string CodecMode)
 {
     public static ServerOptions Parse(string[] args)
     {
@@ -413,6 +417,7 @@ internal sealed record ServerOptions(
             LogDir: Get("--log-dir") ?? "logs",
             ChannelEndpoint: Get("--channel-endpoint"),
             EvidenceFile: Get("--evidence-file"),
-            InvalidMode: Get("--invalid-mode"));
+            InvalidMode: Get("--invalid-mode"),
+            CodecMode: Get("--codec-mode") ?? "all");
     }
 }

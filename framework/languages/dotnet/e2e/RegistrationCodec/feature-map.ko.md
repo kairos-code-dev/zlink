@@ -14,4 +14,4 @@
 | RC-B2 | 구현 | Protobuf codec marker가 있다. |
 | RC-B3 | 구현 | MessagePack codec marker가 있다. |
 | RC-B4 | 구현 | codec coexistence marker가 있다. |
-| RC-B5 | 미구현 | peer codec registry mismatch marker가 없다. |
+| RC-B5 | 구현 | JSON-only peer에 Protobuf request를 보내 실패를 확인하고, 이후 JSON request가 정상 처리되는지 검증한다. |

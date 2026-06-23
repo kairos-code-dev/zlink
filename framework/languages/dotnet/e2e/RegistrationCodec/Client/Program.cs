@@ -40,6 +40,7 @@ await RunRcA3Async(client, http, options);
 await RunRcA4A5Async(client, http, options);
 await RunRcA6Async(options);
 await RunRcB1B2B3B4Async(client, http, options);
+await RunRcB5Async(options);
 
 Console.WriteLine("registration-codec e2e result=passed");
 await host.StopAsync();
@@ -238,6 +239,149 @@ static async Task RunRcB1B2B3B4Async(IZLinkChannelClient client, HttpClient http
     Console.WriteLine("scenario RC-B2 passed");
     Console.WriteLine("scenario RC-B3 passed");
     Console.WriteLine("scenario RC-B4 passed");
+}
+
+static async Task RunRcB5Async(ClientOptions options)
+{
+    var httpPort = PickPort();
+    var channelPort = PickPort();
+    var serverUrl = $"http://127.0.0.1:{httpPort}";
+    var channelEndpoint = $"tcp://127.0.0.1:{channelPort}";
+    var evidenceFile = Path.Combine(options.LogDir, "codec-mismatch.evidence.log");
+    var stdout = Path.Combine(options.LogDir, "codec-mismatch.stdout.log");
+    var stderr = Path.Combine(options.LogDir, "codec-mismatch.stderr.log");
+    using var process = new Process();
+    process.StartInfo = new ProcessStartInfo("dotnet")
+    {
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+    };
+    process.StartInfo.ArgumentList.Add("run");
+    process.StartInfo.ArgumentList.Add("--project");
+    process.StartInfo.ArgumentList.Add(options.ServerProject);
+    process.StartInfo.ArgumentList.Add("--");
+    process.StartInfo.ArgumentList.Add("--rid");
+    process.StartInfo.ArgumentList.Add("codec-mismatch");
+    process.StartInfo.ArgumentList.Add("--http-url");
+    process.StartInfo.ArgumentList.Add(serverUrl);
+    process.StartInfo.ArgumentList.Add("--channel-endpoint");
+    process.StartInfo.ArgumentList.Add(channelEndpoint);
+    process.StartInfo.ArgumentList.Add("--codec-mode");
+    process.StartInfo.ArgumentList.Add("json-only");
+    process.StartInfo.ArgumentList.Add("--evidence-file");
+    process.StartInfo.ArgumentList.Add(evidenceFile);
+    process.StartInfo.ArgumentList.Add("--log-dir");
+    process.StartInfo.ArgumentList.Add(options.LogDir);
+    process.Start();
+    var copyOut = CopyToFileAsync(process.StandardOutput, stdout);
+    var copyErr = CopyToFileAsync(process.StandardError, stderr);
+    try
+    {
+        await WaitHealthAsync(serverUrl, process);
+        using var mismatchHost = CreateClientHost(channelEndpoint, options.LogDir, "codec-mismatch-client");
+        await mismatchHost.StartAsync();
+        var mismatchClient = mismatchHost.Services.GetRequiredService<IZLinkChannelClient>();
+
+        var failed = false;
+        try
+        {
+            await mismatchClient.RequestToChannel(
+                    RegistrationCodecNames.Channel,
+                    new StringValue { Value = "rc-b5" })
+                .PacketName("EchoProtobuf")
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async<StringValue>();
+        }
+        catch (Exception)
+        {
+            failed = true;
+        }
+
+        Ensure(failed, "RC-B5 Protobuf request unexpectedly succeeded against a JSON-only peer.");
+
+        var json = await mismatchClient.RequestToChannel(
+                RegistrationCodecNames.Channel,
+                new JsonEchoReq("rc-b5-json"))
+            .PacketName("EchoJson")
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<EchoReply>();
+        Ensure(json.Value == "echo:rc-b5-json", "RC-B5 JSON fallback request did not recover after mismatch.");
+
+        await mismatchHost.StopAsync();
+    }
+    finally
+    {
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+        }
+
+        await process.WaitForExitAsync();
+        await Task.WhenAll(copyOut, copyErr);
+    }
+
+    Console.WriteLine("scenario RC-B5 passed");
+}
+
+static IHost CreateClientHost(string channelEndpoint, string logDir, string nodeId)
+{
+    return Host.CreateDefaultBuilder()
+        .ConfigureServices(services =>
+        {
+            services.AddZLinkFramework(framework =>
+            {
+                framework.ConfigureDispatch()
+                    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                    .TraceLogFile(Path.Combine(logDir, $"{nodeId}-flow.log"))
+                    .TraceNodeId(nodeId);
+                framework.Codecs.AddJson();
+                framework.Codecs.Use(ZLinkProtobufCodec.Default);
+                framework.Codecs.Use(ZLinkMessagePackCodec.Default);
+                framework.AddClientServerChannel(RegistrationCodecNames.Channel)
+                    .EnableClient(channelEndpoint);
+            });
+        })
+        .Build();
+}
+
+static async Task WaitHealthAsync(string serverUrl, Process process)
+{
+    using var http = new HttpClient();
+    for (var i = 0; i < 120; i++)
+    {
+        if (process.HasExited)
+        {
+            throw new InvalidOperationException($"RC-B5 mismatch server exited early: {process.ExitCode}.");
+        }
+
+        try
+        {
+            using var response = await http.GetAsync($"{serverUrl}/health");
+            if (response.IsSuccessStatusCode)
+            {
+                return;
+            }
+        }
+        catch
+        {
+        }
+
+        await Task.Delay(250);
+    }
+
+    throw new TimeoutException($"Timed out waiting for RC-B5 mismatch server at {serverUrl}.");
+}
+
+static async Task CopyToFileAsync(StreamReader reader, string path)
+{
+    await using var stream = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+    await using var writer = new StreamWriter(stream);
+    while (await reader.ReadLineAsync() is { } line)
+    {
+        await writer.WriteLineAsync(line);
+        await writer.FlushAsync();
+    }
 }
 
 static bool HasCodec(string[] lines, string codec, string contentType)

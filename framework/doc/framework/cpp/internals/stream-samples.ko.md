@@ -35,12 +35,12 @@ public:
     zlink::framework::result_t<void> on_packet(
       zlink::framework::stream_t &stream,
       const zlink::framework::stream_header_t &header,
-      const zlink::message_t &payload) override
+      const zlink::framework::message_t &payload) override
     {
         route_packet_t packet{
           .session_id = stream.session_id(),
           .packet_name = std::string(header.packet_name()),
-          .payload = decode_route_body(payload),
+          .payload = payload.decode<route_body_t>(),
         };
 
         handle_route_packet(stream, packet);
@@ -64,12 +64,15 @@ zlink::framework::stream_write_call_t send_route_ack(
 
     return stream.write_packet(
       reply_header,
-      encode_route_ack(ack));
+      zlink::framework::message_t::from(ack));
 }
 ```
 
 framework core는 raw stream session 샘플을 제공하지 않는다. Header도 framework가
-정의한 `stream_header_t` 방식만 사용한다.
+정의한 `stream_header_t` 방식만 사용한다. 기존처럼 `zlink::message_t`를 직접
+만들어 `write_packet(...)`에 넘기던 예시는 일반 업무 경로에서 제거한다. raw payload를
+그대로 보존해야 하는 runtime boundary나 test harness만 `write_packet_raw(...)` 또는
+`reply_packet_raw(...)`를 사용한다.
 
 ## 4. actor relay
 
@@ -83,7 +86,7 @@ public:
 
     zlink::framework::task_t<void> on_packet(zlink::framework::stream_t &stream,
       const zlink::framework::stream_header_t &header,
-      const zlink::message_t &payload) override
+      const zlink::framework::message_t &payload) override
     {
         if (is_login(header)) {
             actor_ = co_await actors_

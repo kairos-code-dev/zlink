@@ -722,41 +722,30 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         readonly response?: unknown;
         readonly actorPacketTarget?: unknown;
       };
-      if (this.routeTransport.requestRawToSpot !== undefined) {
-        const payload = BindingMessage.from(Buffer.from(JSON.stringify(request)));
-        try {
-          const parts = await this.routeTransport.requestRawToSpot({
-            ...remoteTarget,
-            spotKind: remoteTarget.spotKind ?? ZLinkSpotKind.User
-          }, payload, {
-            timeoutMs: this.options.registration.requestTimeoutMs,
-            signal
-          });
-          try {
-            if (parts.length === 0) {
-              throw new Error(`Remote actor packet relay reply was empty for '${actor.actorId}'.`);
-            }
-            reply = JSON.parse(parts[0].getString('utf8')) as {
-              readonly ok?: boolean;
-              readonly error?: unknown;
-              readonly response?: unknown;
-              readonly actorPacketTarget?: unknown;
-            };
-          } finally {
-            parts.forEach((part) => part.close());
-          }
-        } finally {
-          payload.close();
-        }
-      } else {
-        reply = await this.routeTransport.request(
-          remoteTarget.routerChannelId,
-          remoteTarget.targetNodeRid,
-          ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
-          request,
-          this.options.registration.requestTimeoutMs,
+      const payload = BindingMessage.from(Buffer.from(JSON.stringify(request)));
+      try {
+        const parts = await this.routeTransport.requestRawToSpot({
+          ...remoteTarget,
+          spotKind: remoteTarget.spotKind ?? ZLinkSpotKind.User
+        }, payload, {
+          timeoutMs: this.options.registration.requestTimeoutMs,
           signal
-        );
+        });
+        try {
+          if (parts.length === 0) {
+            throw new Error(`Remote actor packet relay reply was empty for '${actor.actorId}'.`);
+          }
+          reply = JSON.parse(parts[0].getString('utf8')) as {
+            readonly ok?: boolean;
+            readonly error?: unknown;
+            readonly response?: unknown;
+            readonly actorPacketTarget?: unknown;
+          };
+        } finally {
+          parts.forEach((part) => part.close());
+        }
+      } finally {
+        payload.close();
       }
       if (frameHeader.requestSeq !== undefined) {
           if (reply.ok === false) {

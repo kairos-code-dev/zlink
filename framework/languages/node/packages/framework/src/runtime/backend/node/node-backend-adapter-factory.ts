@@ -161,224 +161,253 @@ function asNodeContext(context: ZLinkBackendContext): Context {
 
 function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & ZLinkBackendObject {
   return new Proxy(nativeInstance, {
-    get(target, property, receiver) {
-      if (property === 'nativeInstance') {
-        return target;
-      }
-      if (property === 'dispose') {
-        return async () => {
-          disableSocketLinger(target);
-          await closeWithBusyRetry(target);
-        };
-      }
-      if (property === 'topology') {
-        return (filter: unknown) =>
-          toFrameworkRoutingIdEntries((target as unknown as { topology(filter?: unknown): unknown })
-            .topology(toNativeTopologyFilter(filter)));
-      }
-      if (property === 'memberPeers') {
-        return (channelName: string) =>
-          toFrameworkRoutingIdEntries((target as unknown as { memberPeers(channelName: string): unknown })
-            .memberPeers(channelName));
-      }
-      if (property === 'attachDiscovery') {
-        return (discovery: ZLinkBackendDiscovery) =>
-          (target as unknown as { attachDiscovery(discovery: unknown): void })
-            .attachDiscovery(unwrapBackendObject(discovery));
-      }
-      if (property === 'resolveSpot') {
-        return (spotRid: unknown) =>
-          (target as unknown as { resolveSpot(spotRid: unknown): unknown })
-            .resolveSpot(toNativeRoutingId(spotRid));
-      }
-      if (property === 'createRouteBridge') {
-        return () => wrapBackendObject(
-          (target as unknown as { createRouteBridge(): { close(): void } }).createRouteBridge()
-        ) as unknown as ZLinkBackendSpotRouteBridge;
-      }
-      if (property === 'attachDealerChannel') {
-        return (channelName: string, dealer: ZLinkBackendDealerSocket, options?: { readonly capabilities?: number }) =>
-          (target as unknown as {
-            attachDealerChannel(channelName: string, dealer: unknown, options?: { readonly capabilities?: number }): void;
-          }).attachDealerChannel(channelName, unwrapBackendObject(dealer), options);
-      }
-      if (property === 'attachRouterChannel') {
-        return (channelName: string, router: ZLinkBackendRouterSocket, options?: { readonly capabilities?: number }) =>
-          (target as unknown as {
-            attachRouterChannel(channelName: string, router: unknown, options?: { readonly capabilities?: number }): void;
-          }).attachRouterChannel(channelName, unwrapBackendObject(router), options);
-      }
-      if (property === 'handleRouterReceived') {
-        return (
-          channelName: string,
-          sourceNodeRid: unknown,
-          parts: readonly unknown[],
-          requestSeq?: bigint | number
-        ) =>
-          (target as unknown as {
-            handleRouterReceived(
-              channelName: string,
-              sourceNodeRid: unknown,
-              parts: readonly unknown[],
-              requestSeq?: bigint | number
-            ): boolean;
-          }).handleRouterReceived(channelName, toNativeRoutingId(sourceNodeRid), parts, requestSeq);
-      }
-      if (isSpotRouteBridgeTarget(target) && property === 'setTargetNode') {
-        return (channelName: string, targetNodeRid: unknown) =>
-          (target as unknown as {
-            setTargetNode(channelName: string, targetNodeRid: unknown): void;
-          }).setTargetNode(channelName, toNativeRoutingId(targetNodeRid));
-      }
-      if (isSpotRouteBridgeTarget(target) && property === 'send') {
-        return (channelName: string, targetSpotRid: unknown) =>
-          (target as unknown as {
-            send(channelName: string, targetSpotRid: unknown): unknown;
-          }).send(channelName, toNativeRoutingId(targetSpotRid));
-      }
-      if (isSpotRouteBridgeTarget(target) && property === 'request') {
-        return (channelName: string, targetSpotRid: unknown) =>
-          (target as unknown as {
-            request(channelName: string, targetSpotRid: unknown): unknown;
-          }).request(channelName, toNativeRoutingId(targetSpotRid));
-      }
-      if (property === 'setRoutingId') {
-        return (routingId: unknown) =>
-          (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
-      }
-      if (property === 'connectPeerRid') {
-        return (targetNodeRid: unknown, endpoint: string) =>
-          (target as unknown as { connectPeerRid(targetNodeRid: unknown, endpoint: string): void })
-            .connectPeerRid(toNativeRoutingId(targetNodeRid), endpoint);
-      }
-      if (property === 'createSpot' || property === 'entrySpot') {
-        return () => wrapBackendObject((target as unknown as { [key: string]: () => { close(): void } })[property]());
-      }
-      if (property === 'getOrCreateSpot') {
-        return (spotRid: unknown) => {
-          const result = (target as unknown as {
-            getOrCreateSpot(spotRid: unknown): { readonly spot: { close(): void }; readonly created: boolean };
-          }).getOrCreateSpot(toNativeRoutingId(spotRid));
-          return {
-            ...result,
-            spot: wrapBackendObject(result.spot)
-          };
-        };
-      }
-      if (property === 'createActor') {
-        return (actorId: string) =>
-          (target as unknown as { createActor(actorId: string): { actorRef: unknown } })
-            .createActor(actorId)
-            .actorRef;
-      }
-      if (property === 'actorLookup') {
-        return (actorId: string) => {
-          try {
-            return (target as unknown as { actorLookup(actorId: string): unknown }).actorLookup(actorId);
-          } catch (error) {
-            if (isBindingNotFound(error)) {
-              return undefined;
-            }
-            throw error;
-          }
-        };
-      }
-      if (property === 'sendToChannel') {
-        return (channelName: string, payload: unknown, flags: number) => {
-          const operation = (target as unknown as {
-            sendToChannel(channelName: string): unknown;
-          }).sendToChannel(channelName);
-          submitSendOperation(operation, payload, flags);
-          return true;
-        };
-      }
-      if (property === 'requestToChannel') {
-        return (channelName: string, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
-          const operation = (target as unknown as {
-            requestToChannel(channelName: string): unknown;
-          }).requestToChannel(channelName);
-          return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
-        };
-      }
-      if (property === 'publish') {
-        return (topic: string, payload: unknown, flags: number) => {
-          const operation = (target as unknown as {
-            publish(topic: string): unknown;
-          }).publish(topic);
-          submitSendOperation(operation, payload, flags);
-          return true;
-        };
-      }
-      if (property === 'sendToSpot') {
-        return (targetRid: unknown, spotRid: unknown, payload: unknown, flags: number) => {
-          const operation = (target as unknown as {
-            sendToSpot(targetRid: unknown, spotRid: unknown): unknown;
-          }).sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
-          submitSendOperation(operation, payload, flags);
-          return true;
-        };
-      }
-      if (property === 'requestToSpot') {
-        return (targetRid: unknown, spotRid: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
-          const operation = (target as unknown as {
-            requestToSpot(targetRid: unknown, spotRid: unknown): unknown;
-          }).requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
-          return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
-        };
-      }
-      if (property === 'sendActorBoundSession') {
-        return (actor: unknown, payload: unknown, flags: number) => {
-          const operation = (target as unknown as {
-            sendActorBoundSession(actor: unknown): unknown;
-          }).sendActorBoundSession(toNativeActorRef(actor));
-          submitSendOperation(operation, payload, flags);
-          return true;
-        };
-      }
-      if (property === 'bindRemoteActorSession') {
-        return (actor: unknown, sourceNodeRid: unknown, sourceSessionRid: unknown) =>
-          (target as unknown as {
-            bindRemoteActorSession(actor: unknown, sourceNodeRid: unknown, sourceSessionRid: unknown): void;
-          }).bindRemoteActorSession(
-            toNativeActorRef(actor),
-            toNativeRoutingId(sourceNodeRid),
-            toNativeRoutingId(sourceSessionRid)
-          );
-      }
-      if (property === 'recvRoute') {
-        return (received: unknown, flags: number) => {
-          try {
-            return (target as unknown as {
-              recvRouted(received: unknown, flags: number): boolean;
-            }).recvRouted(received, flags);
-          } catch (error) {
-            if (isRouteRecvRetryable(error)) {
-              return false;
-            }
-            throw error;
-          }
-        };
-      }
-      if (property === 'joinActor') {
-        return (actor: unknown, destNodeRid: unknown, destSpotRid: unknown, payload: unknown, callback: unknown, timeoutMs?: number) => {
-          const operation = (target as unknown as {
-            joinActor(actor: unknown, destNodeRid: unknown, destSpotRid: unknown): unknown;
-          }).joinActor(actor, toNativeRoutingId(destNodeRid), toNativeRoutingId(destSpotRid));
-          return submitRequestOperation(operation, payload, callback, 0, timeoutMs);
-        };
-      }
-      if (property === 'joinActorEntrySpot') {
-        return (actor: unknown, destNodeRid: unknown, request: unknown, callback: unknown, timeoutMs?: number) => {
-          const operation = (target as unknown as {
-            joinActorEntrySpot(actor: unknown, destNodeRid: unknown, request: unknown): unknown;
-          }).joinActorEntrySpot(actor, toNativeRoutingId(destNodeRid), request);
-          return submitPreparedRequestOperation(operation, callback, 0, timeoutMs);
-        };
+    get(target, property) {
+      const resolved =
+        resolveBackendObjectProperty(target, property) ??
+        resolveBackendDiscoveryProperty(target, property) ??
+        resolveBackendSpotNodeProperty(target, property) ??
+        resolveBackendRouteBridgeProperty(target, property) ??
+        resolveBackendMessagingProperty(target, property);
+      if (resolved !== undefined) {
+        return resolved;
       }
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
     }
   }) as T & ZLinkBackendObject;
+}
+
+function resolveBackendObjectProperty(target: unknown, property: string | symbol): unknown {
+  if (property === 'nativeInstance') {
+    return target;
+  }
+  if (property === 'dispose') {
+    return async () => {
+      disableSocketLinger(target);
+      await closeWithBusyRetry(target as { close(): void });
+    };
+  }
+  return undefined;
+}
+
+function resolveBackendDiscoveryProperty(target: unknown, property: string | symbol): unknown {
+  if (property === 'topology') {
+    return (filter: unknown) =>
+      toFrameworkRoutingIdEntries((target as unknown as { topology(filter?: unknown): unknown })
+        .topology(toNativeTopologyFilter(filter)));
+  }
+  if (property === 'memberPeers') {
+    return (channelName: string) =>
+      toFrameworkRoutingIdEntries((target as unknown as { memberPeers(channelName: string): unknown })
+        .memberPeers(channelName));
+  }
+  if (property === 'attachDiscovery') {
+    return (discovery: ZLinkBackendDiscovery) =>
+      (target as unknown as { attachDiscovery(discovery: unknown): void })
+        .attachDiscovery(unwrapBackendObject(discovery));
+  }
+  if (property === 'resolveSpot') {
+    return (spotRid: unknown) =>
+      (target as unknown as { resolveSpot(spotRid: unknown): unknown })
+        .resolveSpot(toNativeRoutingId(spotRid));
+  }
+  return undefined;
+}
+
+function resolveBackendSpotNodeProperty(target: unknown, property: string | symbol): unknown {
+  if (property === 'createRouteBridge') {
+    return () => wrapBackendObject(
+      (target as unknown as { createRouteBridge(): { close(): void } }).createRouteBridge()
+    ) as unknown as ZLinkBackendSpotRouteBridge;
+  }
+  if (property === 'attachDealerChannel') {
+    return (channelName: string, dealer: ZLinkBackendDealerSocket, options?: { readonly capabilities?: number }) =>
+      (target as unknown as {
+        attachDealerChannel(channelName: string, dealer: unknown, options?: { readonly capabilities?: number }): void;
+      }).attachDealerChannel(channelName, unwrapBackendObject(dealer), options);
+  }
+  if (property === 'attachRouterChannel') {
+    return (channelName: string, router: ZLinkBackendRouterSocket, options?: { readonly capabilities?: number }) =>
+      (target as unknown as {
+        attachRouterChannel(channelName: string, router: unknown, options?: { readonly capabilities?: number }): void;
+      }).attachRouterChannel(channelName, unwrapBackendObject(router), options);
+  }
+  if (property === 'setRoutingId') {
+    return (routingId: unknown) =>
+      (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
+  }
+  if (property === 'connectPeerRid') {
+    return (targetNodeRid: unknown, endpoint: string) =>
+      (target as unknown as { connectPeerRid(targetNodeRid: unknown, endpoint: string): void })
+        .connectPeerRid(toNativeRoutingId(targetNodeRid), endpoint);
+  }
+  if (property === 'createSpot' || property === 'entrySpot') {
+    return () => wrapBackendObject((target as unknown as { [key: string]: () => { close(): void } })[property]());
+  }
+  if (property === 'getOrCreateSpot') {
+    return (spotRid: unknown) => {
+      const result = (target as unknown as {
+        getOrCreateSpot(spotRid: unknown): { readonly spot: { close(): void }; readonly created: boolean };
+      }).getOrCreateSpot(toNativeRoutingId(spotRid));
+      return {
+        ...result,
+        spot: wrapBackendObject(result.spot)
+      };
+    };
+  }
+  if (property === 'createActor') {
+    return (actorId: string) =>
+      (target as unknown as { createActor(actorId: string): { actorRef: unknown } })
+        .createActor(actorId)
+        .actorRef;
+  }
+  if (property === 'actorLookup') {
+    return (actorId: string) => {
+      try {
+        return (target as unknown as { actorLookup(actorId: string): unknown }).actorLookup(actorId);
+      } catch (error) {
+        if (isBindingNotFound(error)) {
+          return undefined;
+        }
+        throw error;
+      }
+    };
+  }
+  return undefined;
+}
+
+function resolveBackendRouteBridgeProperty(target: unknown, property: string | symbol): unknown {
+  if (property === 'handleRouterReceived') {
+    return (
+      channelName: string,
+      sourceNodeRid: unknown,
+      parts: readonly unknown[],
+      requestSeq?: bigint | number
+    ) =>
+      (target as unknown as {
+        handleRouterReceived(
+          channelName: string,
+          sourceNodeRid: unknown,
+          parts: readonly unknown[],
+          requestSeq?: bigint | number
+        ): boolean;
+      }).handleRouterReceived(channelName, toNativeRoutingId(sourceNodeRid), parts, requestSeq);
+  }
+  if (isSpotRouteBridgeTarget(target) && property === 'setTargetNode') {
+    return (channelName: string, targetNodeRid: unknown) =>
+      (target as unknown as {
+        setTargetNode(channelName: string, targetNodeRid: unknown): void;
+      }).setTargetNode(channelName, toNativeRoutingId(targetNodeRid));
+  }
+  if (isSpotRouteBridgeTarget(target) && property === 'send') {
+    return (channelName: string, targetSpotRid: unknown) =>
+      (target as unknown as {
+        send(channelName: string, targetSpotRid: unknown): unknown;
+      }).send(channelName, toNativeRoutingId(targetSpotRid));
+  }
+  if (isSpotRouteBridgeTarget(target) && property === 'request') {
+    return (channelName: string, targetSpotRid: unknown) =>
+      (target as unknown as {
+        request(channelName: string, targetSpotRid: unknown): unknown;
+      }).request(channelName, toNativeRoutingId(targetSpotRid));
+  }
+  return undefined;
+}
+
+function resolveBackendMessagingProperty(target: unknown, property: string | symbol): unknown {
+  if (property === 'sendToChannel') {
+    return (channelName: string, payload: unknown, flags: number) => {
+      const operation = (target as unknown as {
+        sendToChannel(channelName: string): unknown;
+      }).sendToChannel(channelName);
+      submitSendOperation(operation, payload, flags);
+      return true;
+    };
+  }
+  if (property === 'requestToChannel') {
+    return (channelName: string, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
+      const operation = (target as unknown as {
+        requestToChannel(channelName: string): unknown;
+      }).requestToChannel(channelName);
+      return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
+    };
+  }
+  if (property === 'publish') {
+    return (topic: string, payload: unknown, flags: number) => {
+      const operation = (target as unknown as {
+        publish(topic: string): unknown;
+      }).publish(topic);
+      submitSendOperation(operation, payload, flags);
+      return true;
+    };
+  }
+  if (property === 'sendToSpot') {
+    return (targetRid: unknown, spotRid: unknown, payload: unknown, flags: number) => {
+      const operation = (target as unknown as {
+        sendToSpot(targetRid: unknown, spotRid: unknown): unknown;
+      }).sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
+      submitSendOperation(operation, payload, flags);
+      return true;
+    };
+  }
+  if (property === 'requestToSpot') {
+    return (targetRid: unknown, spotRid: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
+      const operation = (target as unknown as {
+        requestToSpot(targetRid: unknown, spotRid: unknown): unknown;
+      }).requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
+      return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
+    };
+  }
+  if (property === 'sendActorBoundSession') {
+    return (actor: unknown, payload: unknown, flags: number) => {
+      const operation = (target as unknown as {
+        sendActorBoundSession(actor: unknown): unknown;
+      }).sendActorBoundSession(toNativeActorRef(actor));
+      submitSendOperation(operation, payload, flags);
+      return true;
+    };
+  }
+  if (property === 'bindRemoteActorSession') {
+    return (actor: unknown, sourceNodeRid: unknown, sourceSessionRid: unknown) =>
+      (target as unknown as {
+        bindRemoteActorSession(actor: unknown, sourceNodeRid: unknown, sourceSessionRid: unknown): void;
+      }).bindRemoteActorSession(
+        toNativeActorRef(actor),
+        toNativeRoutingId(sourceNodeRid),
+        toNativeRoutingId(sourceSessionRid)
+      );
+  }
+  if (property === 'recvRoute') {
+    return (received: unknown, flags: number) => {
+      try {
+        return (target as unknown as {
+          recvRouted(received: unknown, flags: number): boolean;
+        }).recvRouted(received, flags);
+      } catch (error) {
+        if (isRouteRecvRetryable(error)) {
+          return false;
+        }
+        throw error;
+      }
+    };
+  }
+  if (property === 'joinActor') {
+    return (actor: unknown, destNodeRid: unknown, destSpotRid: unknown, payload: unknown, callback: unknown, timeoutMs?: number) => {
+      const operation = (target as unknown as {
+        joinActor(actor: unknown, destNodeRid: unknown, destSpotRid: unknown): unknown;
+      }).joinActor(actor, toNativeRoutingId(destNodeRid), toNativeRoutingId(destSpotRid));
+      return submitRequestOperation(operation, payload, callback, 0, timeoutMs);
+    };
+  }
+  if (property === 'joinActorEntrySpot') {
+    return (actor: unknown, destNodeRid: unknown, request: unknown, callback: unknown, timeoutMs?: number) => {
+      const operation = (target as unknown as {
+        joinActorEntrySpot(actor: unknown, destNodeRid: unknown, request: unknown): unknown;
+      }).joinActorEntrySpot(actor, toNativeRoutingId(destNodeRid), request);
+      return submitPreparedRequestOperation(operation, callback, 0, timeoutMs);
+    };
+  }
+  return undefined;
 }
 
 type ZLinkBindingOperation = { [key: string]: (...args: unknown[]) => unknown };

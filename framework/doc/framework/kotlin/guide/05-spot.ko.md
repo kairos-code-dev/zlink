@@ -45,6 +45,7 @@ override한다(`onCreateSuspending`, `onInitializeSuspending`, `onClosingSuspend
 
 ```kotlin
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
+import systems.zlink.framework.messaging.ZLinkMessage
 
 class GameRoomSpot(
     private val context: ZLinkSpotContext,
@@ -53,7 +54,7 @@ class GameRoomSpot(
 
     override fun context(): ZLinkSpotContext = context
 
-    override suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         // 시작 payload를 디코드해 초기 상태 구성(suspend 작업 가능)
         return ZLinkSpotCreateResponse.accept()
     }

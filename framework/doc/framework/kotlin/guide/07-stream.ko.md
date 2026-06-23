@@ -45,11 +45,10 @@ class GameSession(
 ) : ZLinkSuspendingSession() {
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
+    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
         when (header.name()) {
             "ClientInput" -> {
-                // StreamPayloads는 codec으로 payload를 푸는 app-side helper(샘플 참고)
-                val input = StreamPayloads.decode(header, payload, ClientInput::class.java)
+                val input = payload.decode(ClientInput::class.java)
                 channels.sendToChannel("play", ForwardInputCommand(input)).submit().await()
             }
             "Ping" -> context.client().reply(Pong()).submit().await()

@@ -196,11 +196,13 @@ Entry Spot과 user Spot의 actor packet 등록 표면은 같아도 실행 위치
 | Entry Spot timer | Entry Spot 실행 queue |
 
 Spot join admission은 registry handler가 아니라 Spot member callback이다. callback은
-`on_actor_join(actor, message_t)` 형태이며, `spot_actor_join_response_t`로 accepted 여부와
-optional reply `message_t`를 돌려준다. accepted가 `true`일 때만 actor 위치를 target Spot으로
-commit하고 `on_actor_joined(actor)`를 호출한다. accepted가 `false`이면 actor 위치를
-바꾸지 않고 post-joined callback도 호출하지 않는다. Entry Spot으로 돌아오는 명시적
-join도 같은 admission callback을 사용하며, commit 이후 `on_actor_joined(actor)`를 호출한다.
+framework message인 `zlink::framework::message_t` 또는 typed DTO를 받으며,
+`spot_actor_join_response_t`로 accepted 여부와 optional framework message reply를 돌려준다.
+payload encode/decode는 SpotNode에 등록된 serializer registry가 맡는다. accepted가 `true`일
+때만 actor 위치를 target Spot으로 commit하고 `on_actor_joined(actor)`를 호출한다.
+accepted가 `false`이면 actor 위치를 바꾸지 않고 post-joined callback도 호출하지 않는다.
+Entry Spot으로 돌아오는 명시적 join도 같은 admission callback을 사용하며, commit 이후
+`on_actor_joined(actor)`를 호출한다.
 
 actor 수명을 끝내는 API는 Entry Spot context에만 둔다. user Spot context에는 destroy
 API가 없다. actor가 user Spot에 있으면 먼저 user Spot에서 leave를 완료해 Entry Spot으로
@@ -216,12 +218,12 @@ zlink::framework::task_t<void> destroy =
 대한 중복 호출은 성공으로 끝난다. 이전 generation의 stale actor ref는 새 actor를 지우지
 않는다.
 
-Spot create callback은 단일 `message_t` request를 받는다. payload 없이 create하면 빈
-`message_t`를 전달한다. C++에서는 기본 생성 가능한 Spot을 자동 생성하고, 생성자 인자가
+Spot create callback은 `zlink::framework::message_t` 또는 typed DTO request를 받는다.
+payload 없이 create하면 빈 framework message를 전달한다. C++에서는 기본 생성 가능한 Spot을 자동 생성하고, 생성자 인자가
 필요한 Spot은 `add_spot<TSpot>(name, factory)` 또는 `add_entry_spot<TEntrySpot>(factory)`로
 factory를 등록한다. 이 factory는 `.NET`의 activation/DI 역할에 해당하며, 생성된 Spot instance는
-`configure(context)`, `on_create(message_t)`, `on_initialize()` 순서로 lifecycle을 탄다.
-create result는 `spot_rid`, `existing`/`created`/`rejected` state, optional reply `message_t`를
+`configure(context)`, `on_create(...)`, `on_initialize()` 순서로 lifecycle을 탄다.
+create result는 `spot_rid`, `existing`/`created`/`rejected` state, optional framework message reply를
 담는다. `get_or_create`는 이미 있으면 `existing`, 새로 만들면 `created`, create callback이
 거부하면 `rejected`를 돌려준다. 같은 SpotRid로 동시에 `get_or_create`가 들어오면 첫 request만
 create callback으로 전달한다.

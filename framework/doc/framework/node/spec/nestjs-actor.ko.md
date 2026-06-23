@@ -754,8 +754,9 @@ SPOT spec ([nestjs-spot.ko.md](nestjs-spot.ko.md)) 의
 export class TicTacToeGameSpot implements ZLinkSpot {
   constructor(readonly context: ZLinkSpotContext) {}
 
-  async onActorJoin(actor: PlayerActor, request: Message): Promise<ZLinkSpotActorJoinResponse> {
-    return { accepted: true };
+  async onActorJoin(actor: PlayerActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    const join = request.decode<JoinMatchReq>();
+    return { accepted: true, reply: new JoinMatchRes(join.matchId) };
   }
 
   // 비동기 초기화가 필요하면 onInitialize를 쓴다.
@@ -763,9 +764,10 @@ export class TicTacToeGameSpot implements ZLinkSpot {
 }
 ```
 
-join callback 의 request/reply 는 generic DTO 가 아니라 framework 공통 `Message` 다.
-JSON, MessagePack, Protobuf 사용자는 기존 codec helper 로 이 `Message` bytes 를
-decode/encode 한다.
+join callback 의 request/reply 는 raw binding `Message`가 아니라 framework `ZLinkMessage`
+또는 DTO를 사용한다. JSON, MessagePack, Protobuf, custom codec 선택은 framework 구성에
+등록한 codec extension이 맡고, callback 안에서는 `request.decode<T>()` 또는 typed reply만
+사용한다.
 
 자세한 시그니처는 [handler-interfaces.ko.md](handler-interfaces.ko.md) §5.7
 에서 다룬다.

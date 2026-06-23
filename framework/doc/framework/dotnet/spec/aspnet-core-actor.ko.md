@@ -278,10 +278,10 @@ sequenceDiagram
     Note over FW: bind는 session relay만 연결
 
     Note over FW: 3. user Spot join (선택, bind와 독립)
-    Act->>FW: Context.JoinSpot(spotRid, requestMessage).Async()
+    Act->>FW: Context.JoinSpot(spotRid, requestDto).Async()
     FW->>Spot: actor join 요청
     Spot-->>FW: accept + reply
-    FW-->>Act: Accepted + reply Message 반환
+    FW-->>Act: Accepted + reply ZLinkMessage 반환
 
     Note over FW,Act: 이후 메시지 들어오면 dispatch
     FW->>Act: HandleAsync(actor, message, ct)
@@ -689,7 +689,7 @@ method 시그니처 검증은 startup validation 단계에서 이루어진다. �
 ```csharp
 var matchSpotRid = RoutingId.From(matchId);
 var result = await actor.Context
-    .JoinSpot(matchSpotRid, new JoinMatchReq(...).Encode())
+    .JoinSpot(matchSpotRid, new JoinMatchReq(...))
     .Async(cancellationToken);
 
 var reply = result.Reply.Decode<JoinMatchSpotResult>();
@@ -697,7 +697,7 @@ var reply = result.Reply.Decode<JoinMatchSpotResult>();
 
 이 호출은 spot 쪽 join handler 의 결과를 `Reply` 로 돌려주고, application join 결정은
 `Accepted` 로 표현한다. `Accepted == true` 는 join 허용, `false` 는 room full,
-match closed 같은 application 정의 거절이다. 추가 설명이 필요하면 reply `Message`에
+match closed 같은 application 정의 거절이다. 추가 설명이 필요하면 reply `ZLinkMessage`에
 담는다. transport, timeout, protocol failure 는 결과값이 아니라 예외로 처리한다.
 성공 시 actor 쪽 상태가 다음과 같이 갱신된다.
 

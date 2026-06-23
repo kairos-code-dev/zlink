@@ -165,7 +165,7 @@ class PlaySession(
         context.actors().bound().forEach { actor -> actor.notifyDisconnected().await() }
     }
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
+    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
         // 등록된 typed session packet handler(예: 인증)를 먼저 시도
         if (handlers.tryHandleAsync(context, header, payload).await()) return
         // 나머지는 bound actor로 relay

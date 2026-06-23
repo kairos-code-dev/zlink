@@ -168,9 +168,9 @@ class GameChatSession(
 
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
+    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
         if (header.name() == "auth") {
-            val req = StreamPayloads.decode(header, payload, AuthPlayerReq::class.java)
+            val req = payload.decode(AuthPlayerReq::class.java)
             val actor = actors.getOrCreate(req.playerId, "player").await()
             player = context.actors().bind(actor).await()
             context.client().reply(AuthPlayerOk()).submit().await()

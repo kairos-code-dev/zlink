@@ -122,27 +122,25 @@ int main ()
     zlink::framework::detail::stream_header_t header (
       zlink::framework::detail::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
       zlink::framework::detail::stream_header_flags_t::has_metadata, std::nullopt, "move", metadata);
-    const auto payload = zlink::message_t::from (std::string ("payload"));
     const auto framework_payload =
       zlink::framework::message_t::from (std::string ("payload"));
     auto relay_with_header = [&] (zlink::framework::session_actor_t &actor,
-                                  const zlink::message_t &message) {
+                                  const zlink::framework::message_t &message) {
         zlink::framework::detail::enter_stream_relay_dispatch (header);
         auto result = actor.relay (message).async ().result ();
         zlink::framework::detail::exit_stream_relay_dispatch ();
         return result;
     };
     auto relay_request_with_header = [&] (zlink::framework::session_actor_t &actor,
-                                          const zlink::message_t &message) {
+                                          const zlink::framework::message_t &message) {
         zlink::framework::detail::enter_stream_relay_dispatch (header);
         auto result = actor.relay_request (message).async ().result ();
         zlink::framework::detail::exit_stream_relay_dispatch ();
         return result;
     };
-    auto relay = relay_with_header (bound.value (), payload);
+    auto relay = relay_with_header (bound.value (), framework_payload);
     if (!relay || gateway.relayed_frames ().size () != 1
-        || gateway.relayed_frames ()[0].payload.to_string () != "payload"
-        || payload.to_string () != "payload") {
+        || gateway.relayed_frames ()[0].payload.to_string () != "payload") {
         return 7;
     }
 
@@ -156,17 +154,17 @@ int main ()
         return zlink::framework::result_t<std::optional<zlink::message_t>>::success (
           zlink::message_t::from (std::string ("relay-reply")));
     });
-    auto dispatched_relay = relay_with_header (bound.value (), payload);
+    auto dispatched_relay = relay_with_header (bound.value (), framework_payload);
     if (!dispatched_relay || !relay_dispatch_seen || gateway.relayed_frames ().size () != 1) {
         return 22;
     }
-    auto relay_request = relay_request_with_header (bound.value (), payload);
-    if (!relay_request || relay_request.value ().to_string () != "relay-reply") {
+    auto relay_request = relay_request_with_header (bound.value (), framework_payload);
+    if (!relay_request || relay_request.value ().decode<std::string> () != "relay-reply") {
         return 23;
     }
 
     zlink::framework::session_actor_t unbound;
-    auto missing_relay = relay_with_header (unbound, payload);
+    auto missing_relay = relay_with_header (unbound, framework_payload);
     if (missing_relay
         || missing_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 8;
@@ -200,10 +198,10 @@ int main ()
         || disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
         return 16;
     }
-    auto disconnected_relay = relay_with_header (bound.value (), payload);
+    auto disconnected_relay = relay_with_header (bound.value (), framework_payload);
     if (disconnected_relay
         || disconnected_relay.error_kind () != framework_error_kind_t::disconnected
-        || payload.to_string () != "payload") {
+        || framework_payload.decode<std::string> () != "payload") {
         return 17;
     }
 
@@ -285,9 +283,9 @@ int main ()
         || join_spot.value ().reply.decode<join_reply_t> (serializers).mark != "O") {
         return 14;
     }
-    const auto stale_relay = relay_with_header (rebound.value (), payload);
+    const auto stale_relay = relay_with_header (rebound.value (), framework_payload);
     if (stale_relay || stale_relay.error_kind () != framework_error_kind_t::actor_stale_generation
-        || payload.to_string () != "payload") {
+        || framework_payload.decode<std::string> () != "payload") {
         return 20;
     }
     const auto stale_push =
@@ -339,7 +337,7 @@ int main ()
         return 26;
     }
     const auto post_destroy_relay =
-      relay_with_header (rebound_after_entry.value (), payload);
+      relay_with_header (rebound_after_entry.value (), framework_payload);
     if (post_destroy_relay
         || post_destroy_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 27;

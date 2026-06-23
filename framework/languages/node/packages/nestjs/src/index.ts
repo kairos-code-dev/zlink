@@ -5,6 +5,7 @@ import path from 'node:path';
 import { Injectable, Module } from '@nestjs/common';
 import type { DynamicModule, InjectionToken, ModuleMetadata, OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
+import { ZLinkEncodedPayload } from '@zlink-systems/framework';
 import type {
   Type,
   ZLinkActor,
@@ -184,7 +185,7 @@ export type ZLinkNestHandlerKind = 'request' | 'send' | 'publish';
 export interface ZLinkNestHandlerOptions {
   readonly methodName?: string;
   readonly decodePayload?: (
-    payload: Buffer,
+    payload: ZLinkEncodedPayload,
     context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
   ) => unknown;
   readonly encodeResult?: (
@@ -1799,7 +1800,7 @@ function createDiscoveredRequestHandlers(
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['requestHandlers']> {
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'request', (ref, metadata) => ({
-    async handle(payload: Buffer, context: ZLinkRequestContext) {
+    async handle(payload: unknown, context: ZLinkRequestContext) {
       const result = await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
       return encodeHandlerResult(metadata, result, context);
     }
@@ -1812,7 +1813,7 @@ function createDiscoveredSendHandlers(
   moduleRef: ModuleRef
 ): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['sendHandlers']> {
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'send', (ref, metadata) => ({
-    async handle(payload: Buffer, context: ZLinkRouteSendContext) {
+    async handle(payload: unknown, context: ZLinkRouteSendContext) {
       await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
   }));
@@ -1824,7 +1825,7 @@ function createDiscoveredPublishHandlers(
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['publishHandlers']> {
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'publish', (ref, metadata) => ({
-    async handle(payload: Buffer, context: ZLinkPublishContext) {
+    async handle(payload: unknown, context: ZLinkPublishContext) {
       await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
   }));
@@ -1837,7 +1838,7 @@ function createManualRequestHandlers(
   return (handlerTypes ?? []).map((registration) => ({
     packetName: registration.packetName,
     handler: {
-      async handle(payload: Buffer, context: ZLinkRequestContext) {
+      async handle(payload: unknown, context: ZLinkRequestContext) {
         return await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
       }
     }
@@ -1851,7 +1852,7 @@ function createManualPublishHandlers(
   return (handlerTypes ?? []).map((registration) => ({
     packetName: registration.packetName,
     handler: {
-      async handle(payload: Buffer, context: ZLinkPublishContext) {
+      async handle(payload: unknown, context: ZLinkPublishContext) {
         await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
       }
     }
@@ -1865,7 +1866,7 @@ function createManualSendHandlers(
   return (handlerTypes ?? []).map((registration) => ({
     packetName: registration.packetName,
     handler: {
-      async handle(payload: Buffer, context: ZLinkSendContext) {
+      async handle(payload: unknown, context: ZLinkSendContext) {
         await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
       }
     }
@@ -1879,7 +1880,7 @@ function createManualRouteSendHandlers(
   return (handlerTypes ?? []).map((registration) => ({
     packetName: registration.packetName,
     handler: {
-      async handle(payload: Buffer, context: ZLinkRouteSendContext) {
+      async handle(payload: unknown, context: ZLinkRouteSendContext) {
         await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
       }
     }
@@ -1893,7 +1894,7 @@ function createManualRouteRequestHandlers(
   return (handlerTypes ?? []).map((registration) => ({
     packetName: registration.packetName,
     handler: {
-      async handle(payload: Buffer, context: ZLinkRouteRequestContext) {
+      async handle(payload: unknown, context: ZLinkRouteRequestContext) {
         return await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
       }
     }
@@ -2146,7 +2147,7 @@ async function invokeDiscoveredHandler(
   moduleRef: ModuleRef,
   ref: DiscoveredNestProvider,
   metadata: ZLinkNestHandlerMetadata,
-  payload: Buffer,
+  payload: unknown,
   context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): Promise<unknown> {
   const instance = moduleRef.get(ref.token, { strict: false }) as Record<string, unknown>;
@@ -2163,7 +2164,7 @@ async function invokeDiscoveredHandler(
 async function invokeManualHandler(
   moduleRef: ModuleRef,
   handlerType: Type,
-  payload: Buffer,
+  payload: unknown,
   context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): Promise<unknown> {
   const instance = moduleRef.get(handlerType, { strict: false }) as Record<string, unknown>;
@@ -2198,15 +2199,15 @@ function encodeHandlerResult(
 
 function decodePayload(
   metadata: ZLinkNestHandlerMetadata | undefined,
-  payload: Buffer | Uint8Array | string | unknown,
+  payload: unknown,
   context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): unknown {
   if (Buffer.isBuffer(payload) || payload instanceof Uint8Array) {
     if (metadata?.decodePayload !== undefined) {
-      return metadata.decodePayload(Buffer.from(payload), context);
+      return metadata.decodePayload(ZLinkEncodedPayload.from(Buffer.from(payload)), context);
     }
     if (context.contentType !== undefined && context.contentType !== 'application/json') {
-      return Buffer.from(payload);
+      return ZLinkEncodedPayload.from(Buffer.from(payload));
     }
     return parseWireJson(Buffer.from(payload).toString());
   }

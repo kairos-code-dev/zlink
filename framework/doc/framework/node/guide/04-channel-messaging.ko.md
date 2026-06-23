@@ -132,7 +132,7 @@ class PlayRoutes {
 ## 6. 커스텀 codec (Avro 예시)
 
 기본 제공 codec(JSON/Protobuf/MessagePack) 외의 직렬화 포맷이 필요하면 codec registry에
-custom serializer를 등록한다. serializer는 업무 객체 ↔ `Message`(byte payload) 변환만
+custom serializer를 등록한다. serializer는 업무 객체 ↔ `ZLinkEncodedPayload` 변환만
 담당하고, packet name 결정과 codec 선택은 그대로 framework가 처리한다. 아래는 Avro
 (`avsc`)를 끼우는 예시다.
 
@@ -147,10 +147,10 @@ const orderType = avro.Type.forSchema({
 
 const avroSerializer = {
   serialize(value) {
-    return zlink.Message.from(orderType.toBuffer(value));
+    return framework.ZLinkEncodedPayload.from(orderType.toBuffer(value));
   },
-  deserialize(message) {
-    return orderType.fromBuffer(Buffer.from(message.data()));
+  deserialize(payload) {
+    return orderType.fromBuffer(Buffer.from(payload.data()));
   }
 };
 

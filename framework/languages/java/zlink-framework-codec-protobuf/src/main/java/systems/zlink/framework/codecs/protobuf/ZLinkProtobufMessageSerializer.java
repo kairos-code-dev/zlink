@@ -5,7 +5,6 @@ import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 

@@ -41,7 +41,7 @@ recv 방식을 사용하는 샘플은 이 문서에 포함하지 않는다.
 public interface IZLinkStream
 {
     bool Write(
-        Message payload,
+        ZLinkMessage payload,
         SendFlags flags = SendFlags.None);
 
     ValueTask CloseAsync();

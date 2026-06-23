@@ -71,7 +71,7 @@ public interface IZLinkStream
     string? RemoteAddr { get; }
 
     bool Write(
-        Message payload,
+        ZLinkMessage payload,
         SendFlags flags = SendFlags.None);
 
     ValueTask CloseAsync();
@@ -221,11 +221,9 @@ application 에 직접 노출하지 않는다. framework runtime 이 binding 의
 `payload.Decode<T>()` 로 DTO를 읽거나 `IZLinkSessionActor.RelayAsync(...)` 같은 framework
 API 에 그대로 전달한다.
 
-반대로 application 이 직접 만든 `Message` 를 `IZLinkStream.Write(...)` 같은
-raw write API 에 넘길 때는 framework 가 그 `Message` 의 소유권을 가져가지
-않는다. write 호출자는 자신이 만든 `Message` 의 수명을 계속 책임진다. 보통의
-session 응답은 `Context.Client.Send(...)`, `Context.Client.Reply(...)` 같은 typed builder 를
-사용하므로 raw `Message` 수명을 직접 다룰 일이 적다.
+`IZLinkStream.Write(...)` 같은 framework stream 표면도 `ZLinkMessage` 를 받는다.
+application 은 binding `Message` 수명을 직접 다루지 않는다. 보통의 session 응답은
+`Context.Client.Send(...)`, `Context.Client.Reply(...)` 같은 typed builder 를 사용한다.
 
 session 이 일부 packet 만 직접 처리하고 나머지 정책을 스스로 정하고 싶을 때는
 `IZLinkSessionPacketHandler<TSessionContext>` 와

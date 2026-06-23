@@ -32,9 +32,9 @@ class authenticate_play_session_handler_t
     zlink::framework::task_t<zlink::framework::session_actor_t>
     handle (zlink::framework::session_actor_manager_t &actors,
             zlink::framework::stream_t &stream,
-            const zlink::message_t &payload)
+            const zlink::framework::message_t &payload)
     {
-        auto request = payload.parse_json<authenticate_req_t> ();
+        auto request = payload.decode<authenticate_req_t> ();
         auto authenticated = co_await _client
                                .request (
                                  sample_names_t::api_channel,
@@ -51,7 +51,7 @@ class authenticate_play_session_handler_t
         auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
 
         co_await stream
-          .reply_packet (zlink::message_t::from_json (
+          .reply_packet (zlink::framework::message_t::from (
             authenticate_res_t{authenticated.player}))
           .async ();
 

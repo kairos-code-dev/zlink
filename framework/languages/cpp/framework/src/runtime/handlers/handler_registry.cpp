@@ -18,7 +18,7 @@ namespace zlink::framework::detail
 struct handler_entry_t
 {
     handler_descriptor_t descriptor;
-    handler_registry_t::invoker_t invoker;
+    handler_invoker_t invoker;
 };
 
 struct handler_key_t
@@ -83,39 +83,6 @@ handler_registry_t::~handler_registry_t () = default;
 handler_registry_t::handler_registry_t (handler_registry_t &&) noexcept = default;
 
 handler_registry_t &handler_registry_t::operator= (handler_registry_t &&) noexcept = default;
-
-handler_registry_t &handler_registry_t::send_raw (std::string channel_name,
-                                                  std::string packet_name,
-                                                  raw_handler_t handler,
-                                                  handler_options_t options)
-{
-    return send_raw (std::move (channel_name), "", std::move (packet_name), std::move (handler),
-                     std::move (options));
-}
-
-handler_registry_t &handler_registry_t::send_raw (std::string channel_name,
-                                                  std::string topic,
-                                                  std::string packet_name,
-                                                  raw_handler_t handler,
-                                                  handler_options_t options)
-{
-    const auto packet = options.packet_name.value_or (packet_name);
-    return add_handler (
-      {std::move (channel_name), std::move (topic), packet, handler_kind_t::raw, options.execution,
-       std::type_index (typeid (void)), std::type_index (typeid (zlink::message_t))},
-      [handler =
-         std::move (handler)] (service_provider_t &, serializer_registry_t &,
-                               const zlink::message_t &message) -> task_t<zlink::message_t> {
-          const auto result = handler (payload_view_t (detail::encoded_payload_from_raw (message)));
-          if (!result) {
-              return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                result.error_kind (),
-                result.error () ? result.error ()->what () : "raw handler failed"));
-          }
-          return task_t<zlink::message_t> (
-            result_t<zlink::message_t>::success (zlink::message_t{}));
-      });
-}
 
 handler_registry_t &handler_registry_t::observe_failures (failure_observer_t observer)
 {
@@ -206,20 +173,34 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
           try {
               handler_invocation_context_t context{
                 entry->descriptor, make_handler_context<handler_context_t> (entry->descriptor),
-                owned_message};
-              using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
+                message_t::from_raw (*owned_message, &serializers)};
+              using chain_t = std::function<task_t<message_t> (std::size_t)>;
               auto chain = std::make_shared<chain_t> ();
               *chain = [&services, &serializers, &context, &filters, entry, owned_message,
-                        chain] (std::size_t index) -> task_t<zlink::message_t> {
+                        chain] (std::size_t index) -> task_t<message_t> {
                   if (index >= filters.size ()) {
-                      return entry->invoker (services, serializers, *owned_message);
+                      auto raw_task = entry->invoker (services, serializers, *owned_message);
+                      auto raw_message = co_await raw_task;
+                      co_return result_t<message_t>::success (
+                        message_t::from_raw (std::move (raw_message), &serializers));
                   }
-                  return filters[index](
+                  auto filtered = co_await filters[index](
                     services, serializers, context,
                     [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
+                  co_return result_t<message_t>::success (std::move (filtered));
               };
               auto handler_task = (*chain) (0);
-              result = co_await runtime::await_task_result (std::move (handler_task));
+              auto filtered_result =
+                co_await runtime::await_task_result (std::move (handler_task));
+              if (!filtered_result) {
+                  result = result_t<zlink::message_t>::failure (
+                    filtered_result.error_kind (),
+                    filtered_result.error () != nullptr ? filtered_result.error ()->what ()
+                                                       : "handler failed");
+              } else {
+                  result = result_t<zlink::message_t>::success (
+                    detail::message_to_raw (filtered_result.value (), serializers));
+              }
           }
           catch (const framework_exception_t &error) {
               result = result_t<zlink::message_t>::failure (error.kind (), error.what (),
@@ -237,7 +218,7 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
 }
 
 handler_registry_t &handler_registry_t::add_handler (handler_descriptor_t descriptor,
-                                                     invoker_t invoker)
+                                                     detail::handler_invoker_t invoker)
 {
     const auto duplicate_packet =
       std::any_of (_state->handlers.begin (), _state->handlers.end (), [&] (const auto &entry) {

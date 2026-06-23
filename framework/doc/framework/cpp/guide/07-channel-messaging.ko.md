@@ -190,7 +190,7 @@ class audit_filter_t
     explicit audit_filter_t (zlink::framework::logger_t<audit_filter_t> &logger) :
         _logger (logger) {}
 
-    zlink::framework::task_t<zlink::message_t>
+    zlink::framework::task_t<zlink::framework::message_t>
     invoke (const zlink::framework::handler_invocation_context_t &invocation,
             zlink::framework::handler_next_t next)
     {

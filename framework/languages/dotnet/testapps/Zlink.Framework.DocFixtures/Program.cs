@@ -283,11 +283,11 @@ internal sealed class FixtureRawStreamSession(IZLinkSessionContext context) : IZ
     }
 
     public ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         _ = payload;
         _ = cancellationToken;
         return ValueTask.CompletedTask;
@@ -366,11 +366,11 @@ internal sealed class FixtureActor(
     }
 
     public ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         _ = payload;
         _ = cancellationToken;
         return ValueTask.CompletedTask;
@@ -415,10 +415,11 @@ internal sealed class FixtureActorPacketSession(
     }
 
     public ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
+        _ = dispatch;
         var actor = _actor ?? throw new InvalidOperationException("Actor is not bound.");
         return actor.RelayAsync(payload, cancellationToken);
     }

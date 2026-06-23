@@ -719,13 +719,6 @@ inline std::string to_stream_payload (const actor_push_notify_t &value)
     return nlohmann::json (value).dump ();
 }
 
-inline void from_stream_payload (const zlink::message_t &payload, actor_push_notify_t &value)
-{
-    const auto json = nlohmann::json::parse (payload.to_string ());
-    json.at ("actor_id").get_to (value.actor_id);
-    json.at ("value").get_to (value.value);
-}
-
 inline void from_json (const nlohmann::json &json, actor_push_notify_t &value)
 {
     json.at ("actor_id").get_to (value.actor_id);

@@ -129,9 +129,9 @@ spot_context_t}`; `spot_create_state_t{existing, created, rejected}`.
 | 타입 | 핵심 표면 |
 |------|----------|
 | `actor_ref_t` | `node_rid()`/`actor_type()`/`actor_id()`/`generation()`/`empty()` |
-| `actor_context_t` | `actor_ref()`, `is_joined()`, `bound_session()`, `join_spot(spot_rid, DTO/message)`, `join_entry_spot(node_rid, DTO/message)`, `join_spot_raw(...)`, `join_entry_spot_raw(...)` |
-| `bound_session_t` | `send(zlink::message_t)` · `send<TMsg>(msg)` · `disconnect()` — actor 가 자기 client 로 push |
-| `session_actor_t` | `ref()`/`actor_id()`/`context()`/`bound_session()`, `relay(zlink::message_t)`/`relay_request(zlink::message_t)`, `notify_disconnected()` |
+| `actor_context_t` | `actor_ref()`, `is_joined()`, `bound_session()`, `join_spot(spot_rid, DTO/message)`, `join_entry_spot(node_rid, DTO/message)` |
+| `bound_session_t` | `send(zlink::framework::message_t)` · `send<TMsg>(msg)` · `disconnect()` — actor 가 자기 client 로 push |
+| `session_actor_t` | `ref()`/`actor_id()`/`context()`/`bound_session()`, `relay(zlink::framework::message_t)`/`relay_request(zlink::framework::message_t)`, `notify_disconnected()` |
 | `session_actor_manager_t` | `create(type,id)` · `find(id)` · `get_or_create(type,id)` · `bind(actor_ref)` · `unbind_session(id)` (DI 주입) |
 
 - **factory**: `spot_node_builder_t::add_actor_factory<TFactory>(actor_type)`로 등록(duck-typed: `create(actor_id)`).

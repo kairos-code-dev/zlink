@@ -145,7 +145,7 @@ export function decodeChannelReply<TReply>(
     return undefined as TReply;
   }
   if (header.contentType === BINARY_CONTENT_TYPE) {
-    return Buffer.from(parts[1].data()) as TReply;
+    return ZLinkEncodedPayload.from(parts[1].data()) as TReply;
   }
   const serializer = codecs?.serializers.get(header.contentType);
   if (serializer !== undefined) {
@@ -172,12 +172,12 @@ export function decodeChannelPayload(
       return serializer.deserialize(ZLinkEncodedPayload.from(envelope.payload), Object as never);
     }
     if (envelope.header.contentType === BINARY_CONTENT_TYPE) {
-      return Buffer.from(envelope.payload);
+      return ZLinkEncodedPayload.from(envelope.payload);
     }
     if (envelope.header.contentType === JSON_CONTENT_TYPE) {
       return parseWireJson(envelope.payload.toString());
     }
-    return Buffer.from(envelope.payload);
+    return ZLinkEncodedPayload.from(envelope.payload);
   } catch (error) {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.PayloadDecodeFailed,
@@ -201,7 +201,12 @@ function encodePayload(value: unknown, codecs: ZLinkChannelEnvelopeCodecRegistry
   readonly message: MessageLike;
 } {
   const serializer = selectDefaultSerializer(codecs);
-  if (serializer !== undefined && !(Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value))) {
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value)) {
+    throw new ZLinkConfigurationException(
+      'Channel payloads must be DTOs or ZLinkEncodedPayload values produced by a codec extension; raw Message/Buffer payloads are not part of the framework channel API.'
+    );
+  }
+  if (serializer !== undefined) {
     const contentType = requireDefaultSerializerContentType(codecs, serializer);
     return { contentType, message: serializer.serialize(value).data() };
   }
@@ -209,16 +214,11 @@ function encodePayload(value: unknown, codecs: ZLinkChannelEnvelopeCodecRegistry
 }
 
 function toMessageLike(value: unknown): MessageLike {
-  if (Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value)) {
-    return value;
-  }
   return encodeJsonBytes(value);
 }
 
 function contentTypeOf(value: unknown): string {
-  return Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value)
-    ? BINARY_CONTENT_TYPE
-    : JSON_CONTENT_TYPE;
+  return JSON_CONTENT_TYPE;
 }
 
 function isMessage(value: unknown): value is Message {

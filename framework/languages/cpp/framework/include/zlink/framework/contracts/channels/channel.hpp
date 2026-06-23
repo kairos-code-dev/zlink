@@ -86,6 +86,8 @@ enum class route_handler_kind_t
     request
 };
 
+namespace detail
+{
 struct route_handler_registration_t
 {
     route_handler_kind_t kind;
@@ -99,6 +101,7 @@ struct route_handler_registration_t
                                             const route_handler_context_t &)>
       invoker;
 };
+} // namespace detail
 
 class capability_builder_t
 {
@@ -177,7 +180,7 @@ class route_channel_builder_t
     {
         const auto packet =
           packet_name.empty () ? detail::message_name<TMessage> () : std::move (packet_name);
-        return add_handler (route_handler_registration_t{
+        return add_handler (detail::route_handler_registration_t{
           route_handler_kind_t::send, packet, std::type_index (typeid (TOwner)),
           std::type_index (typeid (TMessage)), std::type_index (typeid (void)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
@@ -208,7 +211,7 @@ class route_channel_builder_t
     {
         const auto packet =
           packet_name.empty () ? detail::message_name<TMessage> () : std::move (packet_name);
-        return add_handler (route_handler_registration_t{
+        return add_handler (detail::route_handler_registration_t{
           route_handler_kind_t::send, packet, std::type_index (typeid (TOwner)),
           std::type_index (typeid (TMessage)), std::type_index (typeid (void)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
@@ -239,7 +242,7 @@ class route_channel_builder_t
     {
         const auto packet =
           packet_name.empty () ? detail::message_name<TMessage> () : std::move (packet_name);
-        return add_handler (route_handler_registration_t{
+        return add_handler (detail::route_handler_registration_t{
           route_handler_kind_t::send, packet, std::type_index (typeid (TOwner)),
           std::type_index (typeid (TMessage)), std::type_index (typeid (void)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
@@ -270,7 +273,7 @@ class route_channel_builder_t
     {
         const auto packet =
           packet_name.empty () ? detail::message_name<TRequest> () : std::move (packet_name);
-        return add_handler (route_handler_registration_t{
+        return add_handler (detail::route_handler_registration_t{
           route_handler_kind_t::request, packet, std::type_index (typeid (TOwner)),
           std::type_index (typeid (TRequest)), std::type_index (typeid (TReply)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
@@ -301,7 +304,7 @@ class route_channel_builder_t
     {
         const auto packet =
           packet_name.empty () ? detail::message_name<TRequest> () : std::move (packet_name);
-        return add_handler (route_handler_registration_t{
+        return add_handler (detail::route_handler_registration_t{
           route_handler_kind_t::request, packet, std::type_index (typeid (TOwner)),
           std::type_index (typeid (TRequest)), std::type_index (typeid (TReply)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
@@ -333,7 +336,7 @@ class route_channel_builder_t
     {
         const auto packet =
           packet_name.empty () ? detail::message_name<TRequest> () : std::move (packet_name);
-        return add_handler (route_handler_registration_t{
+        return add_handler (detail::route_handler_registration_t{
           route_handler_kind_t::request, packet, std::type_index (typeid (TOwner)),
           std::type_index (typeid (TRequest)), std::type_index (typeid (TReply)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
@@ -362,7 +365,7 @@ class route_channel_builder_t
     friend class zlink_builder_t;
     explicit route_channel_builder_t (std::shared_ptr<detail::route_channel_builder_state_t> state);
 
-    route_channel_builder_t &add_handler (route_handler_registration_t registration);
+    route_channel_builder_t &add_handler (detail::route_handler_registration_t registration);
 
     std::shared_ptr<detail::route_channel_builder_state_t> _state;
 };
@@ -533,6 +536,9 @@ class route_request_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
+
+  private:
+    friend class route_client_t;
     using submit_fn_t = std::function<task_t<std::uint64_t> (
       const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
     using typed_submit_fn_t = std::function<task_t<zlink::message_t> (
@@ -550,6 +556,7 @@ class route_request_call_t
     {
     }
 
+  public:
     route_request_call_t &packet_name (std::string packet_name);
     route_request_call_t &timeout (std::chrono::milliseconds timeout);
     route_request_call_t &metadata (std::string key, std::string value);

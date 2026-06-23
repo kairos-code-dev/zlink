@@ -33,7 +33,7 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 - `record` / `readonly record struct` → TS `interface` 또는 `type`
 - `enum` → TS string enum
 - `RoutingId(string)` → `type RoutingId = string`
-- `Message` / `ReadOnlyMemory<byte>` → `Message`(payload 구조 타입) / `Buffer`
+- `Message` / `ReadOnlyMemory<byte>` → `ZLinkMessage` / `ZLinkEncodedPayload`
 - `TimeSpan period` → `periodMs: number`
 - generic 인자는 그대로 유지 (`<TSpot, TActor, TRequest, TReply>`)
 - attribute → decorator: `[ZLinkPacket("x")]` → `@ZLinkPacket('x')`.
@@ -62,15 +62,19 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 /** transport routing id. C# RoutingId(string) 의 TS 대응. */
 export type RoutingId = string;
 
-/** payload message. C# Message 의 TS 대응이며 framework 가 구조를 소유한다. */
-export interface Message {
-  data(): Buffer;
-  toBytes(): Uint8Array;
-  copy(): Message;
-  size(): number;
-  isEmpty(): boolean;
-  getString(encoding?: BufferEncoding): string;
-  close(): void;
+/** framework payload message. DTO 또는 encoded payload를 들고 codec registry로 encode/decode한다. */
+export class ZLinkMessage<T = unknown> {
+  static from<T>(value: T): ZLinkMessage<T>;
+  static fromEncoded(payload: ZLinkEncodedPayload): ZLinkMessage;
+  decode<T>(): T;
+  toEncodedPayload(): ZLinkEncodedPayload;
+  isEncoded(): boolean;
+}
+
+/** encoded payload used only by codec serializers and explicit forwarding. */
+export class ZLinkEncodedPayload {
+  static from(bytes: Uint8Array): ZLinkEncodedPayload;
+  data(): Uint8Array;
 }
 
 /** actor runtime handle ref. C# ActorRef 의 TS 대응. */
@@ -187,7 +191,7 @@ export interface ActorRef {
 | filter | `ZLinkHandlerFilter` | handler 전후 공통 처리 | 8 |
 | filter | `ZLinkHandlerInvocation` | filter pipeline 호출 context | 8 |
 | filter | `ZLinkHandlerDelegate` | filter pipeline next delegate | 8 |
-| serializer | `ZLinkMessageSerializer` | `Message` payload 직렬화/역직렬화 | 4.5 |
+| serializer | `ZLinkMessageSerializer` | `ZLinkEncodedPayload` 직렬화/역직렬화 | 4.5 |
 | registry | `ZLinkRegistryQuery` | in-process Registry 조회 | 10.1 |
 | registry | `ZLinkRegistryQueryClient` | 원격 Registry 조회 | 10.2 |
 | options | `ZLinkMonitoringOptions` | runtime monitoring source 등록 옵션 | 10.3 |
@@ -956,7 +960,7 @@ Entry Spot 도 `onActorJoin?(actor, request)` 을 선택적으로 선언해 명�
 (`joinEntrySpot(nodeRid, request)`) admission 을 처리할 수 있다. 선언하지 않은 Entry Spot
 재진입은 그대로 accept 된다. user Spot 과 Entry Spot 모두 `onActorJoin` 이
 `accepted: true` 를 반환할 때만 actor 위치를 commit 하고 `onJoinedActor` 를 호출한다.
-`accepted: false` 이면 위치를 바꾸지 않고 reply `Message` 만 caller 에게 돌려준다.
+`accepted: false` 이면 위치를 바꾸지 않고 reply `ZLinkMessage` 만 caller 에게 돌려준다.
 
 actor join callback 이 accept 응답을 반환하면 framework 가 join commit 을 수행한다.
 application callback 은 별도 `joinActor(...)` 를 호출하지 않는다. `leaveActor(...)` 는 현재
@@ -1088,23 +1092,15 @@ export enum ZLinkMessageFlowLogMode {
 ### 4.5 message serializer / codec
 
 serializer 계층은 transport interface 와 분리한다. STREAM handler 는 framework
-`ZLinkMessage` 를 받고, protobuf/json 변환은 등록된 serializer provider 가 담당한다.
+`ZLinkMessage` 를 받고, serializer provider 는 업무 객체와 `ZLinkEncodedPayload` 사이의
+변환만 담당한다.
 
 ```ts
 export interface ZLinkMessageSerializer {
-  readonly name: string;
-
-  canSerialize(type: unknown): boolean;
-  canDeserialize(type: unknown): boolean;
-
-  serialize<T>(value: T): ZLinkMessage;
-  deserialize<T>(message: ZLinkMessage): T;
-  tryDeserialize<T>(message: ZLinkMessage): { ok: true; value: T } | { ok: false };
+  serialize<T>(value: T): ZLinkEncodedPayload;
+  deserialize<T>(payload: ZLinkEncodedPayload, type: Type<T>): T;
 }
 ```
-
-> 코드 기준: C# `TryDeserialize<T>(ZLinkMessage, out T?)` 의 out 파라미터는 TS 에서 판별 union
-> 반환으로 옮긴다(매핑 정책 §4 의 "out 파라미터 → 반환 객체").
 
 application 코드는 `ZLinkMessage.decode<T>()` 또는 typed handler를 기본으로 쓴다.
 
@@ -1596,7 +1592,7 @@ export interface ZLinkSpotManager {
 
 `onCreate(request)` 는 caller 가 넘긴 payload 를 `ZLinkMessage` 로 전달한다. 기본 사용자는
 DTO 를 넘기고 `request.decode<T>()` 로 읽는다. MessagePack, Protobuf, custom codec 은
-기존처럼 module options 의 codec registry 에 등록하며, handler 에서 `Message` bytes 나
+기존처럼 module options 의 codec registry 에 등록하며, handler 에서 binding `Message` bytes 나
 codec helper 를 직접 다루지 않는다. 같은 spotRid 에 대해 다른 `TSpot` 으로
 `getOrCreate(...)` 하면 `SpotTypeMismatch` 로 실패한다.
 

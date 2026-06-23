@@ -248,7 +248,7 @@ class options_stream_session_t final : public zlink::framework::packet_stream_se
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
                                               const zlink::framework::stream_dispatch_context_t &,
-                                              const zlink::message_t &) override
+                                              const zlink::framework::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     }
@@ -257,7 +257,7 @@ class options_stream_session_t final : public zlink::framework::packet_stream_se
 class options_filter_t
 {
   public:
-    zlink::framework::task_t<zlink::message_t>
+    zlink::framework::task_t<zlink::framework::message_t>
     invoke (const zlink::framework::handler_invocation_context_t &,
             zlink::framework::handler_next_t next)
     {
@@ -635,9 +635,9 @@ int main ()
     auto stream_scope =
       provider.create_scope (zlink::framework::service_scope_kind_t::stream_session);
     (void) stream_scope.get_required<options_stream_session_t> ();
-    auto result =
-      handlers.invoke ("api-channel", "OptionsRequest", options_request_t::packet_name, provider,
-                       serializers, zlink::message_t::from_json (options_request_t{"request"}));
+    auto result = zlink::framework::detail::handler_registry_internal_access_t::invoke (
+      handlers, "api-channel", "OptionsRequest", options_request_t::packet_name, provider,
+      serializers, zlink::message_t::from_json (options_request_t{"request"}));
     if (!result) {
         return 8;
     }
@@ -645,7 +645,8 @@ int main ()
     if (reply.value != "reply:request") {
         return 9;
     }
-    auto late_result = handlers.invoke (
+    auto late_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (
+      handlers,
       "api-channel", "LateOptionsRequest", late_options_request_t::packet_name, provider,
       serializers, zlink::message_t::from_json (late_options_request_t{"request"}));
     if (!late_result) {
@@ -655,7 +656,8 @@ int main ()
     if (late_reply.value != "late:request") {
         return 14;
     }
-    auto context_result = handlers.invoke (
+    auto context_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (
+      handlers,
       "api-channel", "ContextOptionsRequest", context_options_request_t::packet_name, provider,
       serializers, zlink::message_t::from_json (context_options_request_t{"request"}));
     if (!context_result) {
@@ -666,15 +668,15 @@ int main ()
         != "api-channel:" + std::string (context_options_request_t::packet_name) + ":request") {
         return 16;
     }
-    auto send_result =
-      handlers.invoke ("api-channel", "OptionsSend", options_send_t::packet_name, provider,
-                       serializers, zlink::message_t::from_json (options_send_t{"sent"}));
+    auto send_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (
+      handlers, "api-channel", "OptionsSend", options_send_t::packet_name, provider, serializers,
+      zlink::message_t::from_json (options_send_t{"sent"}));
     if (!send_result || options_send_handler_t::last_value != "api-channel:OptionsSend:sent") {
         return 17;
     }
-    auto publish_result =
-      handlers.invoke ("event-channel", "OptionsEvent", options_event_t::packet_name, provider,
-                       serializers, zlink::message_t::from_json (options_event_t{"published"}));
+    auto publish_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (
+      handlers, "event-channel", "OptionsEvent", options_event_t::packet_name, provider,
+      serializers, zlink::message_t::from_json (options_event_t{"published"}));
     if (!publish_result
         || options_publish_handler_t::last_value
              != "event-channel:OptionsEvent:OptionsEvent:published") {

@@ -120,7 +120,7 @@ class spot_context_state_t
     std::string spot_name;
     std::vector<spot_packet_descriptor_t> packets;
     std::vector<spot_handler_descriptor_t> handlers;
-    std::vector<spot_handler_registry_t::invoker_t> handler_invokers;
+    std::vector<spot_handler_invoker_t> handler_invokers;
     std::map<std::type_index, spot_actor_admission_callbacks_t> actor_admissions;
     std::vector<std::string> ordering_log;
     std::weak_ptr<service::spot_t> native_spot;
@@ -402,27 +402,15 @@ class spot_node_runtime_t
     };
 
     template <typename TSpot, typename TActor>
-    static constexpr bool has_raw_actor_join_callback =
-      requires (TSpot & spot, TActor &actor, const zlink::message_t &request)
-    {
-        {
-            spot.on_actor_join (actor, request)
-        } -> std::same_as<spot_actor_join_response_t>;
-    };
-
-    template <typename TSpot, typename TActor>
-    static constexpr bool has_actor_join_callback = has_framework_actor_join_callback<TSpot, TActor>
-                                                    || has_raw_actor_join_callback<TSpot, TActor>;
+    static constexpr bool has_actor_join_callback = has_framework_actor_join_callback<TSpot, TActor>;
 
     template <typename TSpot, typename TActor>
     spot_actor_join_response_t
     invoke_actor_join_callback (TSpot &spot, TActor &actor, const zlink::message_t &request)
     {
-        if constexpr (has_framework_actor_join_callback<TSpot, TActor>) {
-            return spot.on_actor_join (actor, message_t::from_raw (request, _state->channel_runtime->serializers));
-        } else {
-            return spot.on_actor_join (actor, request);
-        }
+        return spot.on_actor_join (actor,
+                                   message_t::from_raw (request,
+                                                        _state->channel_runtime->serializers));
     }
 
     static zlink::message_t actor_join_reply (const spot_actor_join_response_t &response,

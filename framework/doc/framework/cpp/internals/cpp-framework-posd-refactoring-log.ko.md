@@ -1292,26 +1292,24 @@ runtime 구현 파일에 두고, public header에는 template shape와 type-eras
 
 ### 적용한 리팩토링
 
-- `handler_registry_t`에 `on_request`, `on_send`, `on_event`, `send_raw`를 구현했다.
+- `handler_registry_t`에 `on_request`, `on_send`, `on_event`를 구현했다.
 - request handler는 direct return과 `task_t<TReply>` return을 모두 지원한다.
 - send/event handler는 direct `void`와 `task_t<void>` return을 모두 지원한다.
 - handler lookup과 invoke key를 `channel_name + topic + packet_name`으로 바꿨다.
 - 기존 2인자 `find`/`invoke`는 빈 topic 경로로만 남겨 호환 표면을 좁혔다.
 - `handler_descriptor_t`에 `handler_execution_t`를 저장해 offload 정책이 registration
   boundary에서 사라지지 않게 했다.
-- `serializer_registry_t`, `serializer_t<T>`, `payload_view_t`를 추가했고, 실제 serializer
+- `serializer_registry_t`, `serializer_t<T>`를 추가했고, 실제 serializer
   map은 `framework/src/runtime/codecs/serializer.cpp`에 숨겼다.
 - `serializer_registry_t::add_json<T>()`를 추가해 framework 기본 JSON serializer를 제공했다.
 - framework target이 JSON codec include와 `nlohmann_json::nlohmann_json`을 public
   dependency로 갖게 했다. base `zlink::cpp` binding은 JSON dependency를 끌고 오지 않는다.
-- `payload_view_t::copy_message()`로 borrowed payload를 callback 밖에서 보관할 때의 copy
-  boundary를 명확히 했다.
 - handler 실패는 `framework_error_kind_t` result로 정리하고,
   `handler_failure_event_t`/`observe_failures(...)`로 monitoring runtime이 연결할 수 있는
   point-in-time failure event 경계를 만들었다.
 - `test_cpp_framework_serializer_registry`와 `test_cpp_framework_handler_registry`를 추가해
   custom serializer, JSON serializer, decode failure, topic routing, DI owner resolve,
-  task handler, raw handler, default packet name, duplicate registration, failure event를
+  task handler, default packet name, duplicate registration, failure event를
   검증했다.
 
 ### 남은 tradeoff
@@ -1971,7 +1969,7 @@ remote locator codec은 숨긴다.
 - duplicate actor는 `actor_already_exists`, actor id/type 불일치는 `actor_type_mismatch`,
   unbound actor relay는 `actor_route_not_found`, unbound session push는
   `actor_session_not_bound`로 닫았다.
-- `session_actor_t::relay(...)`와 `bound_session_t::send_raw(...)`는 caller payload를 소비하지
+- `session_actor_t::relay(...)`와 `bound_session_t::send(...)`는 caller payload를 소비하지
   않고 runtime-owned frame copy를 만든다.
 - `session_actor_t::notify_disconnected()`와 manager `unbind_session(...)`으로 stream close 시
   session binding cleanup만 수행할 수 있게 했다.
@@ -4691,7 +4689,7 @@ application code는 `.NET`과 같은 수준에서 `codecs::request(...).async<TR
 ### 적용한 리팩토링
 
 - `zlink/stream_connector/codecs/auto_codec.hpp`를 추가했다.
-- `codec_traits<T>` 기본 구현은 `message_t::from_json`과 `message.parse_json<T>()`를 사용한다.
+- `codec_traits<T>` 기본 구현은 `message_t::from_json`과 `message.decode<T>()`를 사용한다.
 - `codecs::send`, `codecs::request`, `codecs::on` helper를 추가해 encoded packet 생성,
   codec id 지정, typed callback decode를 한 곳에 모았다.
 - connector public call object에 `codec(codec_t)` setter를 추가하고, `packet_t` 기반
@@ -4981,7 +4979,7 @@ git diff --check -- framework/languages/cpp
   먼저 시도하고, 처리되지 않은 packet을 bound actor에게 relay하는 정책이 별도 모듈로
   보이지 않는다.
 - 요청 DTO에는 `to_json` hook만 있고 일부 `from_json` hook이 빠져 있었다. session handler가
-  typed request를 `message.parse_json<T>()`로 읽으려면 serializer hook이 DTO contract에
+  typed request를 `message.decode<T>()`로 읽으려면 serializer hook이 DTO contract에
   있어야 한다.
 
 ### 비교한 대안
@@ -5004,7 +5002,7 @@ git diff --check -- framework/languages/cpp
   `Sessions/Handlers/create_match_session_packet_handler.hpp`를 추가했다.
 - session class는 `.NET`처럼 packet handler를 먼저 시도하고, 처리되지 않은 packet은 인증
   뒤 bound actor로 relay한다.
-- session handler는 `message.parse_json<T>()`와 `message_t::from_json(...)`만 사용한다.
+- session handler는 `message.decode<T>()`와 `message_t::from_json(...)`만 사용한다.
   application layer의 직접 JSON field parsing은 추가하지 않았다.
 - Bingo/TicTacToe request DTO에 빠져 있던 `from_json` hook을 추가했다.
 - Session role `main.cpp`는 새 session/handler class를 실제로 생성해 authenticate, actor
@@ -5377,7 +5375,7 @@ ctest --test-dir framework/languages/cpp/build-coverage -L framework-contract --
 - `ctest --test-dir bindings/cpp/build -R codec`은 JSON, MessagePack, Protobuf roundtrip과
   codec target boundary를 함께 실행한다.
 - sample DTO `to_json`/`from_json` hook은 허용된다. handler/client application code는
-  `message_t::from_json`, `message.parse_json<T>()`, stream connector codec helper를 사용한다.
+  `message_t::from_json`, `message.decode<T>()`, stream connector codec helper를 사용한다.
 - framework sample layout contract가 이 규칙을 `framework-contract` label 안에서 고정한다.
 
 ### 재실행한 검증 명령
@@ -6541,7 +6539,7 @@ pipeline으로 닫아야 logging/correlation 지식이 handler마다 반복되�
 
 - Goal 14와 ActorGateway session relay 문서는 session disconnect cleanup 뒤 bound session push와
   relay가 실패해야 한다고 적는다.
-- `bound_session_t::send_raw(...)`은 bound 상태를 확인했지만, `session_actor_t::relay(...)`는
+- `bound_session_t::send(...)`는 bound 상태를 확인했지만, `session_actor_t::relay(...)`는
   disconnect된 actor record를 보지 않고 stale actor ref로 relay frame을 계속 기록했다.
 - disconnect 상태 지식이 push와 relay 경로에 다르게 적용되면 caller는 같은 session actor에
   대해 push는 실패하고 relay는 성공하는 모순을 관찰한다.
@@ -6559,7 +6557,7 @@ push와 relay 모두 같은 state를 확인해야 cleanup 의미가 한 곳에 �
 
 ### 적용한 리팩토링
 
-- `bound_session_t::send_raw(...)`이 disconnected record에는 `disconnected` error를 반환하도록
+- `bound_session_t::send(...)`가 disconnected record에는 `disconnected` error를 반환하도록
   했다.
 - `session_actor_t::relay(...)`가 actor record의 bound/disconnected 상태를 확인하도록 했다.
 - ActorGateway regression test가 `notify_disconnected()` 이후 push와 relay가 모두
@@ -10051,7 +10049,7 @@ session 이름으로 사용한다.
 ### 적용한 리팩토링
 
 - `handler_invocation_context_t`에 `handler_context_t context`와
-  `std::shared_ptr<const zlink::message_t> message`를 추가했다.
+  `zlink::framework::message_t message`를 추가했다.
 - handler dispatch가 filter chain을 만들 때 owned message와 dispatch context를 함께 전달하게
   했다.
 - contract header, handler registry regression, handler/interface draft 문서를 갱신했다.

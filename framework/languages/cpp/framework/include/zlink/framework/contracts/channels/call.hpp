@@ -83,10 +83,14 @@ class channel_request_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<task_t<zlink::message_t> (
-      const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
     channel_request_call_t () = default;
+
+  private:
+    friend class channel_client_t;
+    friend class message_bus_t;
+    using submit_fn_t = std::function<task_t<zlink::message_t> (
+      const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
     channel_request_call_t (std::string packet_name,
                             serializer_registry_t *serializers,
@@ -97,6 +101,7 @@ class channel_request_call_t
     {
     }
 
+  public:
     channel_request_call_t &timeout (std::chrono::milliseconds timeout)
     {
         _timeout = timeout;

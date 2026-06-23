@@ -250,8 +250,9 @@ core wait builder의 `where`를 사용한다. sample client는 server push를 �
 connector member `waitFor(...).where(...).submit(...)` 또는 Kotlin wrapper
 `waitFor<T>(...).where { ... }.await()` 형태를 사용한다.
 typed 표면은 registry가 encode/decode할 수 있는 업무 객체 payload를 기준으로
-동작한다. `String`, `byte[]`, `Message` 같은 raw payload는 connector 하위 경로나
-명시적 raw 사용에서만 다룬다.
+동작한다. application code는 binding `Message`나 `byte[]`를 업무 payload 타입으로
+넘기지 않는다. decode를 미루거나 이미 encode된 payload를 그대로 전달해야 하면
+framework가 제공하는 encoded payload 타입을 사용한다.
 
 Kotlin extension은 Java typed payload 표면 위에 얇게 얹는다.
 

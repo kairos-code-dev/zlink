@@ -35,12 +35,12 @@ public:
     zlink::framework::result_t<void> on_packet(
       zlink::framework::stream_t &stream,
       const zlink::framework::stream_dispatch_context_t &dispatch,
-      const zlink::message_t &payload) override
+      const zlink::framework::message_t &payload) override
     {
         route_packet_t packet{
           .session_id = stream.session_id(),
           .packet_name = std::string(dispatch.packet_name()),
-          .payload = payload.parse_json<route_body_t>(),
+          .payload = payload.decode<route_body_t>(),
         };
 
         handle_route_packet(stream, packet);
@@ -57,14 +57,14 @@ zlink::framework::stream_write_call_t send_route_ack(
   const route_ack_t &ack)
 {
     return stream.write_packet(
-      zlink::message_t::from_json(ack))
+      zlink::framework::message_t::from(ack))
       .packet_name("route.ack");
 }
 ```
 
 framework core는 raw stream session 샘플을 제공하지 않는다. 사용자 샘플은
 `stream_dispatch_context_t`에서 packet name과 metadata만 읽고, payload는
-`zlink::message_t` 하나로 다룬다. reply와 actor relay에 필요한 내부 header 값은 runtime이
+`zlink::framework::message_t` 하나로 다룬다. reply와 actor relay에 필요한 내부 header 값은 runtime이
 보존한다.
 
 ## 4. actor relay
@@ -79,7 +79,7 @@ public:
 
     zlink::framework::task_t<void> on_packet(zlink::framework::stream_t &stream,
       const zlink::framework::stream_dispatch_context_t &dispatch,
-      const zlink::message_t &payload) override
+      const zlink::framework::message_t &payload) override
     {
         if (is_login(dispatch)) {
             actor_ = co_await actors_

@@ -179,13 +179,13 @@ class actor_join_entry_spot_call_t
     serializer_registry_t *_serializers = nullptr;
 };
 
-class relay_request_call_t : private detail::call_facade_t<relay_request_call_t, zlink::message_t>
+class relay_request_call_t : private detail::call_facade_t<relay_request_call_t, message_t>
 {
   private:
-    using base_t = detail::call_facade_t<relay_request_call_t, zlink::message_t>;
+    using base_t = detail::call_facade_t<relay_request_call_t, message_t>;
 
   public:
-    explicit relay_request_call_t (result_t<zlink::message_t> result) : base_t (std::move (result))
+    explicit relay_request_call_t (result_t<message_t> result) : base_t (std::move (result))
     {
     }
 
@@ -249,7 +249,7 @@ class actor_context_t
     bound_session_t bound_session () const;
 
   private:
-    actor_join_spot_call_t join_spot_raw (spot_rid_t spot_rid, const zlink::message_t &request)
+    actor_join_spot_call_t join_spot_erased_message (spot_rid_t spot_rid, const zlink::message_t &request)
     {
         try {
             const auto erased = join_spot_erased (std::move (spot_rid), request);
@@ -287,7 +287,7 @@ class actor_context_t
               "actor join spot requires a serializer registry"));
         }
         try {
-            return join_spot_raw (std::move (spot_rid), request.to_raw (*serializers));
+            return join_spot_erased_message (std::move (spot_rid), request.to_raw (*serializers));
         }
         catch (const framework_exception_t &error) {
             return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
@@ -296,7 +296,8 @@ class actor_context_t
     }
 
     template <typename TRequest>
-      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, message_t>
+                && !std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>)
     actor_join_spot_call_t join_spot (spot_rid_t spot_rid, const TRequest &request)
     {
         auto *serializers = serializer_registry ();
@@ -306,7 +307,7 @@ class actor_context_t
               "actor join spot requires a serializer registry"));
         }
         try {
-            return join_spot_raw (std::move (spot_rid),
+            return join_spot_erased_message (std::move (spot_rid),
                                   detail::encoded_payload_to_raw (
                                     serializers->get<TRequest> ().serialize (request)));
         }
@@ -317,7 +318,7 @@ class actor_context_t
     }
 
   private:
-    actor_join_entry_spot_call_t join_entry_spot_raw (node_rid_t spot_node_rid,
+    actor_join_entry_spot_call_t join_entry_spot_erased_message (node_rid_t spot_node_rid,
                                                       const zlink::message_t &request);
 
   public:
@@ -331,7 +332,7 @@ class actor_context_t
               "actor join entry spot requires a serializer registry"));
         }
         try {
-            return join_entry_spot_raw (std::move (spot_node_rid), request.to_raw (*serializers));
+            return join_entry_spot_erased_message (std::move (spot_node_rid), request.to_raw (*serializers));
         }
         catch (const framework_exception_t &error) {
             return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
@@ -340,7 +341,8 @@ class actor_context_t
     }
 
     template <typename TRequest>
-      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, message_t>
+                && !std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>)
     actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid,
                                                   const TRequest &request)
     {
@@ -351,7 +353,7 @@ class actor_context_t
               "actor join entry spot requires a serializer registry"));
         }
         try {
-            return join_entry_spot_raw (std::move (spot_node_rid),
+            return join_entry_spot_erased_message (std::move (spot_node_rid),
                                         detail::encoded_payload_to_raw (
                                           serializers->get<TRequest> ().serialize (request)));
         }
@@ -394,8 +396,8 @@ class session_actor_t
     std::string_view actor_id () const noexcept;
     actor_context_t context () const;
     bound_session_t bound_session () const;
-    relay_call_t relay (const zlink::message_t &payload);
-    relay_request_call_t relay_request (const zlink::message_t &payload);
+    relay_call_t relay (const message_t &payload);
+    relay_request_call_t relay_request (const message_t &payload);
     relay_call_t notify_disconnected ();
 
   private:

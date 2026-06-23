@@ -1607,7 +1607,7 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
                           << entry.path () << ':' << line_no << '\n';
                 ok = false;
             }
-            if (line.find ("join_spot_raw") != std::string::npos
+            if (line.find ("join_spot_erased_message") != std::string::npos
                 || line.find ("write_packet_raw") != std::string::npos
                 || line.find ("reply_packet_raw") != std::string::npos
                 || line.find ("on_create_raw") != std::string::npos

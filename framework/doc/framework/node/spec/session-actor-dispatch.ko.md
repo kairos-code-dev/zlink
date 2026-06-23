@@ -75,7 +75,7 @@ payload 는 별도 part 로 둔다. payload 가 없으면 빈 payload part 를 �
 
 다음과 같은 형태는 이 문서의 내부 routed wire 계약이 아니다.
 
-- `ZLinkActorDispatchPacket` 같은 단일 DTO 안에 `streamHeader` 와 `payload: Buffer`
+- `ZLinkActorDispatchPacket` 같은 단일 DTO 안에 `streamHeader` 와 payload bytes
   를 같이 넣고, 그 DTO 전체를 다시 JSON 으로 직렬화하는 방식
 - `ZLinkBoundSessionPacket` 같은 단일 DTO 안에 proxy metadata 와 payload bytes 를
   함께 묶는 방식
@@ -479,7 +479,7 @@ class ZLinkStreamSessionRuntime {
 
   async onTransportFrame(
     dispatch: ZLinkSessionDispatchContext,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void> {
     this.sessionQueue.post(
@@ -593,7 +593,7 @@ class ZLinkActorDispatchRuntime {
     actorRef: ZLinkSessionActor,
     binding: ZLinkActorBoundSession,
     dispatch: ZLinkSessionDispatchContext,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void> {
     const item = this.createActorWorkItem<void>(
@@ -611,7 +611,7 @@ class ZLinkActorDispatchRuntime {
     actorRef: ZLinkSessionActor,
     binding: ZLinkActorBoundSession,
     dispatch: ZLinkSessionDispatchContext,
-    payload: Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<TReply> {
     const item = this.createActorWorkItem<TReply>(

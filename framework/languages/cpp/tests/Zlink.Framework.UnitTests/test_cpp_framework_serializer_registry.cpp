@@ -65,11 +65,6 @@ int main ()
         return 3;
     }
 
-    zlink::framework::payload_view_t view (encoded);
-    if (view.to_string () != "42") {
-        return 4;
-    }
-
     bool duplicate_failed = false;
     try {
         serializers.add<payload_t> ([] (const payload_t &) { return zlink::framework::encoded_payload_t{}; },

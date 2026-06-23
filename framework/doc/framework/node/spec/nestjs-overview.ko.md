@@ -368,6 +368,10 @@ framework 의 **유일한** backend 의존은 .NET
 > (`DealerSocket`, `SpotNode`, `Registry`)를 framework public surface 에 직접
 > 노출하지 않는다([backend-dependency-policy](../internals/backend-dependency-policy.ko.md)).
 
+이 절의 `Message`는 backend adapter 내부에서 binding payload를 옮기기 위한 타입이다.
+NestJS application과 framework public handler/session 표면은 `ZLinkMessage` 또는 DTO를
+사용하며, backend `Message`를 직접 받지 않는다.
+
 ### 5.2 포트 6개 요약
 
 | 포트 인터페이스(node) | .NET 원본 | 역할 | Node 구현 대상(`@zlink-systems/zlink`) |
@@ -665,10 +669,10 @@ interface ZLinkBackendSpot extends ZLinkBackendObject {
 }
 ```
 
-> `joinActor` / `requestToChannel` / `sendToChannel` / `publish` / `sendToSpot`
-> / `requestToSpot` / `reply` / `replyActorJoin` 은 public framework 표면에서
-> 단일 `Message` 요청/응답을 우선 사용한다. transport 내부가 여러 part 를 쓰더라도
-> application callback 계약은 별도 part list 를 직접 받지 않는다.
+> 이 절의 `Message` 는 backend adapter 내부 계약이다. public framework application
+> 표면에서는 DTO, `ZLinkMessage`, `ZLinkEncodedPayload` 를 사용하며 binding `Message`
+> 를 요청/응답 타입으로 받지 않는다. transport 내부가 여러 part 를 쓰더라도 application
+> callback 계약은 별도 part list 를 직접 받지 않는다.
 
 #### Registry (`IZLinkBackendRegistryContracts`)
 

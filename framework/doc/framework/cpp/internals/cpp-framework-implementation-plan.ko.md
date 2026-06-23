@@ -375,7 +375,7 @@ git diff --check -- framework/languages/cpp
 - base binding target에서 JSON, MessagePack, Protobuf dependency 제거 확인
 - 선택 codec target: JSON, MessagePack, Protobuf
 - `message_t::from_json(value)`
-- `message.parse_json<T>()`
+- `message.decode<T>()`
 - `message_t::from_messagepack(value)`
 - `message.parse_messagepack<T>()`
 - `message_t::from_protobuf(value)`

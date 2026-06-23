@@ -147,9 +147,11 @@ benchmark_result_t run_burst (fixture_t &fixture, std::size_t packets_per_actor_
             auto &actor = fixture.actors[actor_index];
             for (std::size_t packet = 0; packet < packets_per_actor_for_run; ++packet) {
                 const auto packet_started = std::chrono::steady_clock::now ();
-                auto result = fixture.context.handlers ().invoke_actor_packet (
-                  "admission.move", fixture.spot, actor, fixture.services, fixture.serializers,
-                  zlink::message_t::from (std::to_string (packet)));
+                auto result =
+                  zlink::framework::detail::spot_handler_registry_internal_access_t::invoke_actor_packet (
+                    fixture.context.handlers (),
+                    "admission.move", fixture.spot, actor, fixture.services, fixture.serializers,
+                    zlink::message_t::from (std::to_string (packet)));
                 if (!result) {
                     std::cerr << "dispatch failed: " << result.error ()->what () << '\n';
                     std::abort ();

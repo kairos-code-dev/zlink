@@ -381,7 +381,7 @@ runtime 실행 순서나 native 소유권을 기억하지 않아도 같은 기�
 
 | 상황 | 결정 |
 |------|------|
-| public API가 binding 타입을 받아야 하는가? | `message_t`처럼 payload boundary를 나타내는 값 타입만 허용한다. socket, context, native owner는 runtime에 둔다. |
+| public API가 binding 타입을 받아야 하는가? | 업무 payload 표면에서는 binding `zlink::message_t`를 받지 않는다. DTO 또는 `zlink::framework::message_t`를 받고, binding 타입은 serializer/runtime 내부 경계에 둔다. |
 | 성능 때문에 inline 구현이 필요한가? | validation과 forwarding만 inline으로 둔다. queue 조작, dispatch, codec encode/decode는 runtime으로 보낸다. |
 | 테스트가 private state를 확인해야 하는가? | public contract test는 public header만 사용한다. private state 검증은 runtime unit test로 분리한다. |
 | connector가 framework 타입을 재사용하고 싶은가? | wire 의미와 codec 정책만 공유한다. connector public header가 framework runtime이나 server facade를 include하지 않는다. |
@@ -853,13 +853,13 @@ public:
     virtual ~stream_t() = default;
     virtual std::string session_id() const = 0;
     virtual task_t<void> close() = 0;
-    virtual stream_write_call_t write_packet(zlink::message_t payload) = 0;
-    virtual stream_write_call_t reply_packet(zlink::message_t payload) = 0;
+    virtual stream_write_call_t write_packet(const zlink::framework::message_t &payload) = 0;
+    virtual stream_write_call_t reply_packet(const zlink::framework::message_t &payload) = 0;
 };
 
 class session_actor_t {
 public:
-    relay_call_t relay(const zlink::message_t &payload);
+    relay_call_t relay(const zlink::framework::message_t &payload);
 };
 
 class session_actor_manager_t {
@@ -876,13 +876,13 @@ public:
     virtual task_t<void> on_packet(
       stream_t &stream,
       const stream_dispatch_context_t &dispatch,
-      const zlink::message_t &payload);
+      const zlink::framework::message_t &payload);
 };
 
 struct handler_invocation_context_t {
     handler_descriptor_t descriptor;
     handler_context_t context;
-    std::shared_ptr<const zlink::message_t> message;
+    zlink::framework::message_t message;
 };
 
 struct handler_context_t {
@@ -899,7 +899,7 @@ struct publish_context_t : handler_context_t {
     std::string source;
 };
 
-using handler_next_t = std::function<task_t<zlink::message_t>()>;
+using handler_next_t = std::function<task_t<zlink::framework::message_t>()>;
 
 class handler_registry_t {
 public:
@@ -945,13 +945,6 @@ public:
       void (TOwner::*method)(const TCommand &, const send_context_t &),
       handler_options_t options = {});
 
-    handler_registry_t &send_raw(
-      std::string channel_name,
-      std::string topic,
-      std::string packet_name,
-      std::function<result_t<void>(const payload_view_t &)> handler,
-      handler_options_t options = {});
-
     template <typename TFilter>
     handler_registry_t &use_filter();
 
@@ -973,8 +966,8 @@ options.handlers()
 ```
 
 STREAM application 업무 경로는 header 객체를 직접 받지 않는다. C++ stream session과 actor relay는
-`zlink::message_t` payload 하나를 사용하고, reply와 relay에 필요한 header 값은 runtime 내부
-dispatch state가 보존한다. 별도 `_raw` 이름의 public API는 두지 않는다.
+`zlink::framework::message_t` payload 하나를 사용하고, reply와 relay에 필요한 header 값은 runtime 내부
+dispatch state가 보존한다. binding `zlink::message_t`를 받는 public API는 두지 않는다.
 
 handler dispatch는 binding의 `zlink::message_t`와 `zlink::multipart_t`를 받은 뒤,
 serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한 다음 method를
@@ -1126,7 +1119,7 @@ framework serializer는 binding의 message 중심 codec API 위에 얹는다. bi
 codec 구조도 connector와 같은 방향으로 맞춘다. 즉 base binding은 raw `message_t`와
 protocol enum만 제공하고, JSON, MessagePack, Protobuf 구현은 선택 codec target이
 제공한다. JSON 기본 구현은 `message_t::from_json(...)`,
-`message.parse_json<T>()` 같은 표면과 `nlohmann/json`을 기준으로 한다.
+`message.decode<T>()` 같은 표면과 `nlohmann/json`을 기준으로 한다.
 
 ```cpp
 namespace zlink::framework {
@@ -1152,14 +1145,14 @@ public:
 } // namespace zlink::framework
 ```
 
-framework public handler와 messaging API는 `zlink::message_t`를 일반 사용자에게
-강요하지 않는다. 다만 고급 handler는 raw message를 직접 받을 수 있다.
+framework public handler와 messaging API는 `zlink::framework::message_t` 또는 DTO를 받는다.
+binding `zlink::message_t`는 serializer 구현과 runtime 내부 경계에서만 사용한다.
 
 binding codec helper는 아래 방향으로 변경한다.
 
 ```cpp
-auto message = zlink::message_t::from_json(order);
-auto order = message.parse_json<order_created_t>();
+auto message = zlink::framework::message_t::from(order);
+auto order = message.decode<order_created_t>();
 ```
 
 bindings package는 JSON, MessagePack, Protobuf dependency를 갖지 않는다. JSON은 framework
@@ -1172,13 +1165,6 @@ target_link_libraries(app PRIVATE zlink::cpp)
 
 # Protobuf가 필요할 때만 추가한다.
 target_link_libraries(app PRIVATE zlink::framework_codec_protobuf)
-```
-
-```cpp
-app.advanced().handlers()
-  .send_raw("orders", "orders.raw", [](const zlink::message_t &message) {
-      // raw payload path
-  });
 ```
 
 ## 11. Spot Framework API
@@ -1359,12 +1345,6 @@ public:
 
     actor_join_entry_spot_call_t join_entry_spot(node_rid_t spot_node_rid,
       const zlink::framework::message_t &request);
-
-    actor_join_spot_call_t join_spot_raw(spot_rid_t spot_rid,
-      const zlink::message_t &request);
-
-    actor_join_entry_spot_call_t join_entry_spot_raw(node_rid_t spot_node_rid,
-      const zlink::message_t &request);
 };
 
 } // namespace zlink::framework
@@ -1464,8 +1444,8 @@ protobuf, json, messagepack, custom codec 사용자는 startup/options 에 seria
 업무 코드는 같은 join 호출을 유지한다. `actor_join_result_t`는 join result code, join 이후 actor ref,
 reply `zlink::framework::message_t`를 함께 담는다. typed reply가 필요하면
 `async<TReply>()`가 같은 serializer registry로 decode한다. Entry Spot join도 같은 결과 타입을 돌려준다.
-raw payload를 이미 가진 runtime/harness 경계만 `join_spot_raw(...)`와
-`join_entry_spot_raw(...)`를 사용한다.
+raw payload를 이미 가진 runtime/harness 경계는 private helper로만 연결하고 public
+actor context 표면에는 노출하지 않는다.
 
 호출 실행 표면은 `.NET` framework의 awaitable network API와 같은 방향으로 둔다.
 `request(...)`, `send(...)`, `relay(...)`, `join_spot(...)`, `join_entry_spot(...)` 같은

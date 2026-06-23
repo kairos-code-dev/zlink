@@ -94,7 +94,7 @@ route_channel_registration_t::enable_spot_route_egress (std::string target_spot_
 }
 
 route_channel_registration_t &
-route_channel_registration_t::add_handler (framework::route_handler_registration_t registration)
+route_channel_registration_t::add_handler (framework::detail::route_handler_registration_t registration)
 {
     if (registration.packet_name.empty ()) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,

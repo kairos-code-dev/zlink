@@ -30,7 +30,7 @@ class route_channel_registration_t
     route_channel_registration_t &
     enable_spot_route_egress (std::string target_spot_node_channel_name);
     route_channel_registration_t &
-    add_handler (framework::route_handler_registration_t registration);
+    add_handler (framework::detail::route_handler_registration_t registration);
 
     template <typename TOwner, typename TMessage>
     route_channel_registration_t &add_send_handler (
@@ -78,7 +78,7 @@ class route_channel_registration_t
     std::vector<std::string> _manual_connections;
     std::vector<std::string> _handler_groups;
     std::optional<std::string> _spot_route_egress_target;
-    std::vector<framework::route_handler_registration_t> _handlers;
+    std::vector<framework::detail::route_handler_registration_t> _handlers;
     std::vector<handler_installer_t> _send_handlers;
     std::vector<handler_installer_t> _request_handlers;
 };

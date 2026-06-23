@@ -12,8 +12,8 @@
 ## 2. Request/reply
 
 호출 쪽은 `requestToChannel(channel, request)` builder에 `submit(TReply::class.java).await()`를
-이어 reply를 받는다. 업무 객체는 등록된 codec으로 직렬화된다. (payload가 이미 `Message`면
-`request<TReply>(channel, message)` suspend 확장도 쓸 수 있다.)
+이어 reply를 받는다. 업무 객체는 등록된 codec으로 직렬화된다. 지연 decode나 그대로
+forward가 필요하면 framework 메시지 타입인 `ZLinkMessage`를 넘긴다.
 
 ```kotlin
 val reply: GetProfileReply = client
@@ -127,24 +127,24 @@ session actor relay는 route mesh를 흉내 내지 않고 ActorGateway를 사용
 JSON은 framework 기본 codec이다. Protobuf나 MessagePack처럼 별도 포맷이 필요하면
 framework codec extension package를 추가하고 `options.codecs().use(...)`로 등록한다.
 직접 만든 포맷도 같은 extension 계약을 사용한다. extension은 `ZLinkMessageSerializer`를
-content type으로 등록하고, serializer는 업무 객체 ↔ `Message`(byte payload) 변환만 맡는다.
+content type으로 등록하고, serializer는 업무 객체 ↔ `ZLinkEncodedPayload` 변환만 맡는다.
 packet name 결정과 dispatch 흐름은 framework가 그대로 처리한다.
 
 ```kotlin
 class AvroOrderSerializer : ZLinkMessageSerializer {
     private val schema = Schema.Parser().parse(SCHEMA_JSON)
 
-    override fun <T> serialize(value: T): Message {
+    override fun <T> serialize(value: T): ZLinkEncodedPayload {
         val out = ByteArrayOutputStream()
         val writer = GenericDatumWriter<T>(schema)
         writer.write(value, EncoderFactory.get().binaryEncoder(out, null))
-        return Message.from(out.toByteArray())
+        return ZLinkEncodedPayload.from(out.toByteArray())
     }
 
-    override fun <T> deserialize(message: Message, type: Class<T>): T {
+    override fun <T> deserialize(payload: ZLinkEncodedPayload, type: Class<T>): T {
         val reader = GenericDatumReader<T>(schema)
         return type.cast(reader.read(null,
-            DecoderFactory.get().binaryDecoder(message.toByteArray(), null)))
+            DecoderFactory.get().binaryDecoder(payload.bytes(), null)))
     }
 }
 

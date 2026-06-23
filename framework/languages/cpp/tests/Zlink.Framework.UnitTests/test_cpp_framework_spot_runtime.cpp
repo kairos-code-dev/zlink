@@ -233,7 +233,7 @@ struct stage_spot_t : public zlink::framework::spot_t
       const zlink::framework::message_t &request)
     {
         ++create_count;
-        last_create_request = request.decode<std::string> ();
+        last_create_request = request.empty () ? "" : request.decode<std::string> ();
         if (reject_create) {
             return zlink::framework::spot_create_response_t::reject (
               zlink::framework::message_t::from (std::string ("create-rejected")));
@@ -315,7 +315,7 @@ struct erased_disconnect_spot_t : public zlink::framework::spot_t
     }
 
     zlink::framework::spot_actor_join_response_t on_actor_join (player_actor_factory_t &,
-                                                                const zlink::message_t &)
+                                                                const zlink::framework::message_t &)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -816,6 +816,8 @@ int main ()
     auto lifecycle_stage_spot = std::make_shared<stage_spot_t> ();
     zlink::framework::spot_node_builder_t lifecycle_builder;
     zlink::framework::zlink_builder_t lifecycle_host;
+    zlink::framework::detail::channel_runtime_t::from (lifecycle_host.message_bus ())
+      .bind_serializers (manual_serializers);
     lifecycle_builder = lifecycle_host.add_spot_node ("lifecycle-stage");
     lifecycle_builder
       .add_entry_spot<entry_spot_t> ([lifecycle_entry_spot] { return lifecycle_entry_spot; })
@@ -827,6 +829,7 @@ int main ()
     auto lifecycle_runtime =
       zlink::framework::detail::spot_node_runtime_t::from (lifecycle_builder);
     zlink::framework::detail::actor_gateway_runtime_t lifecycle_gateway;
+    lifecycle_gateway.bind_serializers (manual_serializers);
     lifecycle_runtime.on_destroy_actor ([&] (const zlink::framework::actor_ref_t &actor_ref) {
         return lifecycle_gateway.destroy_actor (actor_ref);
     });
@@ -1027,6 +1030,8 @@ int main ()
     auto auto_destroy_stage = std::make_shared<stage_spot_t> ();
     zlink::framework::spot_node_builder_t auto_destroy_builder;
     zlink::framework::zlink_builder_t auto_destroy_host;
+    zlink::framework::detail::channel_runtime_t::from (auto_destroy_host.message_bus ())
+      .bind_serializers (manual_serializers);
     auto_destroy_builder = auto_destroy_host.add_spot_node ("auto-destroy-stage");
     auto_destroy_builder
       .add_entry_spot<auto_destroy_entry_spot_t> (
@@ -1038,6 +1043,7 @@ int main ()
     auto auto_destroy_runtime =
       zlink::framework::detail::spot_node_runtime_t::from (auto_destroy_builder);
     zlink::framework::detail::actor_gateway_runtime_t auto_destroy_gateway;
+    auto_destroy_gateway.bind_serializers (manual_serializers);
     player_actor_factory_t auto_destroy_actor_state;
     auto_destroy_runtime.on_destroy_actor ([&] (const zlink::framework::actor_ref_t &actor_ref) {
         return auto_destroy_gateway.destroy_actor (actor_ref);
@@ -1103,6 +1109,8 @@ int main ()
     auto packet_leave_spot = std::make_shared<actor_packet_self_leave_spot_t> ();
     zlink::framework::spot_node_builder_t packet_leave_builder;
     zlink::framework::zlink_builder_t packet_leave_host;
+    zlink::framework::detail::channel_runtime_t::from (packet_leave_host.message_bus ())
+      .bind_serializers (manual_serializers);
     packet_leave_builder = packet_leave_host.add_spot_node ("packet-leave-stage");
     packet_leave_builder
       .add_entry_spot<auto_destroy_entry_spot_t> (
@@ -1115,6 +1123,7 @@ int main ()
     auto packet_leave_runtime =
       zlink::framework::detail::spot_node_runtime_t::from (packet_leave_builder);
     zlink::framework::detail::actor_gateway_runtime_t packet_leave_gateway;
+    packet_leave_gateway.bind_serializers (manual_serializers);
     player_actor_factory_t packet_leave_actor_state;
     packet_leave_runtime.on_destroy_actor ([&] (const zlink::framework::actor_ref_t &actor_ref) {
         return packet_leave_gateway.destroy_actor (actor_ref);
@@ -1176,6 +1185,8 @@ int main ()
     auto thread_probe_stage = std::make_shared<stage_spot_t> ();
     zlink::framework::spot_node_builder_t thread_probe_builder;
     zlink::framework::zlink_builder_t thread_probe_host;
+    zlink::framework::detail::channel_runtime_t::from (thread_probe_host.message_bus ())
+      .bind_serializers (manual_serializers);
     thread_probe_builder = thread_probe_host.add_spot_node ("thread-probe-stage");
     thread_probe_builder
       .add_entry_spot<lifecycle_thread_probe_entry_spot_t> (
@@ -1563,16 +1574,19 @@ int main ()
 
     stage_spot_t stage_spot;
     player_actor_factory_t actor;
-    const auto packet_dispatch = context.handlers ().invoke_packet (
-      "state.update", stage_spot, spot_provider, spot_serializers,
-      zlink::message_t::from (std::string ("30")));
+    const auto packet_dispatch =
+      zlink::framework::detail::spot_handler_registry_internal_access_t::invoke_packet (
+        context.handlers (),
+        "state.update", stage_spot, spot_provider, spot_serializers,
+        zlink::message_t::from (std::string ("30")));
     if (!packet_dispatch || stage_spot.last_value != 30 || stage_spot.packet_seen != 30) {
         return 22;
     }
 
     const auto throwing_packet_dispatch =
-      context.handlers ().invoke_packet ("state.throw", stage_spot, spot_provider, spot_serializers,
-                                         zlink::message_t::from (std::string ("31")));
+      zlink::framework::detail::spot_handler_registry_internal_access_t::invoke_packet (
+        context.handlers (), "state.throw", stage_spot, spot_provider, spot_serializers,
+        zlink::message_t::from (std::string ("31")));
     if (throwing_packet_dispatch
         || throwing_packet_dispatch.error_kind () != framework_error_kind_t::request_failed) {
         return 45;
@@ -1600,9 +1614,11 @@ int main ()
         return 48;
     }
 
-    const auto move_dispatch = context.handlers ().invoke_actor_packet (
-      "move", stage_spot, actor, spot_provider, spot_serializers,
-      zlink::message_t::from (std::string ("55")));
+    const auto move_dispatch =
+      zlink::framework::detail::spot_handler_registry_internal_access_t::invoke_actor_packet (
+        context.handlers (),
+        "move", stage_spot, actor, spot_provider, spot_serializers,
+        zlink::message_t::from (std::string ("55")));
     if (!move_dispatch || actor.moved_value != 55 || stage_spot.packet_seen != 55) {
         return 24;
     }
@@ -1638,9 +1654,11 @@ int main ()
         || projected.empty ()) {
         return 39;
     }
-    const auto metadata_dispatch = context.handlers ().invoke_actor_packet (
-      "move", stage_spot, actor, spot_provider, spot_serializers,
-      zlink::message_t::from (std::string ("56")), projected);
+    const auto metadata_dispatch =
+      zlink::framework::detail::spot_handler_registry_internal_access_t::invoke_actor_packet (
+        context.handlers (),
+        "move", stage_spot, actor, spot_provider, spot_serializers,
+        zlink::message_t::from (std::string ("56")), projected);
     if (!metadata_dispatch || actor.moved_value != 56 || stage_spot.last_trace_id != "trace-1"
         || stage_spot.saw_tenant_id) {
         return 40;
@@ -1657,9 +1675,11 @@ int main ()
     serial_spot.configure (serial_context);
     player_actor_factory_t serial_actor;
     auto invoke_serial = [&] {
-        return serial_context.handlers ().invoke_actor_packet (
-          "serial.move", serial_spot, serial_actor, spot_provider, spot_serializers,
-          zlink::message_t::from (std::string ("1")));
+        return zlink::framework::detail::spot_handler_registry_internal_access_t::
+          invoke_actor_packet (
+            serial_context.handlers (),
+            "serial.move", serial_spot, serial_actor, spot_provider, spot_serializers,
+            zlink::message_t::from (std::string ("1")));
     };
     std::optional<zlink::framework::result_t<zlink::message_t>> first_result;
     std::optional<zlink::framework::result_t<zlink::message_t>> second_result;
@@ -1698,9 +1718,11 @@ int main ()
     async_spot.configure (async_context);
     player_actor_factory_t async_actor;
     auto invoke_async = [&] (std::string_view packet_name, int value) {
-        return async_context.handlers ().invoke_actor_packet (
-          packet_name, async_spot, async_actor, spot_provider, spot_serializers,
-          zlink::message_t::from (std::to_string (value)));
+        return zlink::framework::detail::spot_handler_registry_internal_access_t::
+          invoke_actor_packet (
+            async_context.handlers (),
+            packet_name, async_spot, async_actor, spot_provider, spot_serializers,
+            zlink::message_t::from (std::to_string (value)));
     };
     auto slow_future =
       std::async (std::launch::async, [&] { return invoke_async ("async.slow", 1); });

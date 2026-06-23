@@ -26,12 +26,7 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
 
     @Override
     public <T> ZLinkEncodedPayload serialize(T value) {
-        if (value instanceof Message message) {
-            return ZLinkEncodedPayload.from(message.toByteArray());
-        }
-        if (value instanceof byte[] bytes) {
-            return ZLinkEncodedPayload.from(bytes);
-        }
+        rejectRawPayloadType(value == null ? null : value.getClass());
         try {
             return ZLinkEncodedPayload.from(mapper.writeValueAsBytes(value));
         } catch (JsonProcessingException ex) {
@@ -43,12 +38,7 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
 
     @Override
     public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
-        if (type == Message.class) {
-            return type.cast(Message.from(payload.bytes()));
-        }
-        if (type == byte[].class) {
-            return type.cast(payload.bytes());
-        }
+        rejectRawPayloadType(type);
         try {
             return mapper.readValue(payload.bytes(), type);
         } catch (IOException ex) {
@@ -60,11 +50,19 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
 
     @Override
     public void prepare(Class<?> type) {
-        if (type == null || type == Void.class || type == Message.class || type == byte[].class) {
+        if (type == null || type == Void.class) {
             return;
         }
+        rejectRawPayloadType(type);
         mapper.canSerialize(type);
         mapper.canDeserialize(mapper.constructType(type));
+    }
+
+    private static void rejectRawPayloadType(Class<?> type) {
+        if (type == Message.class || type == byte[].class) {
+            throw new IllegalArgumentException(
+                "binding Message and byte[] are not framework business payload types; use a DTO, ZLinkMessage, or ZLinkEncodedPayload");
+        }
     }
 
     private static String valueTypeName(Object value) {

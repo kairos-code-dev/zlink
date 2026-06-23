@@ -58,7 +58,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
                                              const zlink::framework::stream_error_t &) override;
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
                                               const zlink::framework::stream_dispatch_context_t &dispatch,
-                                              const zlink::message_t &payload) override;
+                                              const zlink::framework::message_t &payload) override;
 };
 ```
 
@@ -99,14 +99,14 @@ zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) overr
 write call과 reply call로 패킷을 쓴다. application은 STREAM header를 만들지 않는다.
 
 ```cpp
-auto payload = zlink::message_t::from_json (response);
+auto payload = zlink::framework::message_t::from (response);
 co_await stream.write_packet (payload)
   .packet_name ("game.state.changed") // client가 받을 packet 이름
   .async ();
 co_await stream.reply_packet (payload).async (); // 현재 request dispatch에 대한 응답
 ```
 
-STREAM session은 `stream_dispatch_context_t`와 `zlink::message_t` payload를 받는다.
+STREAM session은 `stream_dispatch_context_t`와 `zlink::framework::message_t` payload를 받는다.
 header 객체를 application code가 만들거나 reply/relay 호출에 다시 넘기지 않는다. custom
 codec은 기존처럼 builder/options에 등록하고, session 업무 코드는 packet name과 metadata만
 dispatch context에서 읽는다.

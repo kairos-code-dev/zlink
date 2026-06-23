@@ -145,7 +145,7 @@ class support_session_t : public zlink::framework::packet_stream_session_t {
   public:
     task_t<void> on_packet (stream_t &stream,
                             const stream_dispatch_context_t &dispatch,
-                            const zlink::message_t &payload) override
+                            const zlink::framework::message_t &payload) override
     {
         auto actor = co_await _actors.find (actor_id);
         co_await actor.value ().relay (payload).async ();   // 현재 dispatch의 packet을 actor로 전달

@@ -24,6 +24,7 @@ final class ZLinkMessagePackMessageSerializer implements ZLinkMessageSerializer 
 
     @Override
     public <T> ZLinkEncodedPayload serialize(T value) {
+        rejectRawPayloadType(value == null ? null : value.getClass());
         return ZLinkEncodedPayload.from(encodeBytes(value));
     }
 
@@ -32,12 +33,7 @@ final class ZLinkMessagePackMessageSerializer implements ZLinkMessageSerializer 
         if (type == String.class) {
             return type.cast(new String(payload.bytes(), StandardCharsets.UTF_8));
         }
-        if (type == byte[].class) {
-            return type.cast(payload.bytes());
-        }
-        if (type == Message.class) {
-            return type.cast(Message.from(payload.bytes()));
-        }
+        rejectRawPayloadType(type);
         try {
             return MAPPER.readValue(payload.bytes(), type);
         } catch (IOException ex) {
@@ -48,12 +44,6 @@ final class ZLinkMessagePackMessageSerializer implements ZLinkMessageSerializer 
     }
 
     private static byte[] encodeBytes(Object value) {
-        if (value instanceof byte[] bytes) {
-            return bytes;
-        }
-        if (value instanceof Message message) {
-            return message.toByteArray();
-        }
         if (value instanceof String text) {
             return text.getBytes(StandardCharsets.UTF_8);
         }
@@ -68,5 +58,12 @@ final class ZLinkMessagePackMessageSerializer implements ZLinkMessageSerializer 
 
     private static String valueTypeName(Object value) {
         return value == null ? "null" : value.getClass().getName();
+    }
+
+    private static void rejectRawPayloadType(Class<?> type) {
+        if (type == Message.class || type == byte[].class) {
+            throw new IllegalArgumentException(
+                "binding Message and byte[] are not framework business payload types; use a DTO, ZLinkMessage, or ZLinkEncodedPayload");
+        }
     }
 }

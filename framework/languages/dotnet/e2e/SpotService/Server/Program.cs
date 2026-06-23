@@ -358,7 +358,7 @@ internal sealed class ScenarioUserSpot(
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -817,21 +817,21 @@ internal sealed class ScenarioSession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (await handlers.TryHandleAsync(Context, header, payload, cancellationToken))
+        if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
         {
             return;
         }
 
-        var actorId = header.Metadata.Get(SpotServiceNames.ActorIdMetadata);
+        var actorId = dispatch.Metadata.Find(SpotServiceNames.ActorIdMetadata);
         var actor = string.IsNullOrWhiteSpace(actorId)
             ? RequireSingleBoundActor()
             : Context.Actors.Find(actorId)
               ?? throw new InvalidOperationException($"Actor route not found: {actorId}");
-        await actor.RelayAsync(header, payload, cancellationToken);
+        await actor.RelayAsync(payload, cancellationToken);
     }
 
     private IZLinkSessionActor RequireSingleBoundActor()
@@ -856,11 +856,11 @@ internal sealed class AuthSessionHandler(
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         var request = payload.Decode<AuthReq>();
         var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
             ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
@@ -910,11 +910,11 @@ internal sealed class MultiBindSessionHandler(
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         var request = payload.Decode<MultiBindReq>();
         foreach (var actorId in new[] { request.FirstActorId, request.SecondActorId })
         {

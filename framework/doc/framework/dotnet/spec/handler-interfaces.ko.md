@@ -1130,7 +1130,7 @@ public interface IZLinkStream
     string? RemoteAddr { get; }
 
     bool Write(
-        Message payload,
+        ZLinkMessage payload,
         SendFlags flags = SendFlags.None);
 
     ValueTask CloseAsync();
@@ -1319,10 +1319,9 @@ optional detail 로 본다.
     받는다.
   - callback 안에서 payload 를 바로 읽거나 `IZLinkSessionActor.RelayAsync(...)` 로 넘길
     수 있다.
-  - application 이 직접 만든 `Message` 를 raw `IZLinkStream.Write(...)` 에
-    넘길 때는 framework 가 caller payload 를 소비하지 않는다. 호출자가 그
-    `Message` 의 수명을 계속 책임진다.
-  - stream에 응답을 보내거나 actor로 넘기는 동작은 `Context`를 통해 수행한다.
+  - stream에 응답을 보내거나 actor로 넘기는 동작은 `Context.Client.Send(...)`,
+    `Context.Client.Reply(...)`, `IZLinkSessionActor.RelayAsync(...)` 같은 framework
+    표면으로 수행한다.
 - 공통 lifecycle
   - `OnConnectedAsync(...)`
   - `OnDisconnectedAsync(...)`
@@ -1634,7 +1633,7 @@ public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotO
 
 actor join admission 은 user Spot 멤버 method 로 선언한다. framework 는
 `IZLinkSpot<TActor>` 의 actor 타입만 계약으로 사용한다. request 와 reply 는 codec-neutral
-`Message` 로 고정한다.
+framework `ZLinkMessage` 로 고정한다.
 
 ```csharp
 public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor>

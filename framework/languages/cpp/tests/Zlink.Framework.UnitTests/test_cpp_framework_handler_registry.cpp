@@ -140,7 +140,7 @@ class handler_t
 class auditing_filter_t
 {
   public:
-    zlink::framework::task_t<zlink::message_t>
+    zlink::framework::task_t<zlink::framework::message_t>
     invoke (const zlink::framework::handler_invocation_context_t &context,
             zlink::framework::handler_next_t next)
     {
@@ -148,7 +148,12 @@ class auditing_filter_t
         last_packet_name = context.descriptor.packet_name;
         last_context_channel = context.context.channel_name;
         last_context_packet = context.context.packet_name;
-        last_message = context.message ? context.message->to_string () : "";
+        try {
+            last_message = std::to_string (context.message.decode<request_t> ().value);
+        }
+        catch (...) {
+            last_message.clear ();
+        }
         auto message = co_await next ();
         ++after_count;
         co_return message;
@@ -165,13 +170,13 @@ class auditing_filter_t
 class short_circuit_filter_t
 {
   public:
-    zlink::framework::task_t<zlink::message_t>
+    zlink::framework::task_t<zlink::framework::message_t>
     invoke (const zlink::framework::handler_invocation_context_t &context,
             zlink::framework::handler_next_t next)
     {
         if (context.descriptor.packet_name == "blocked") {
             ++short_circuit_count;
-            co_return zlink::message_t::from (std::string ("99"));
+            co_return zlink::framework::message_t::from (reply_t{99});
         }
         auto message = co_await next ();
         co_return message;
@@ -287,7 +292,7 @@ int main ()
         return 2;
     }
 
-    auto request_result = handlers.invoke ("game", "move", "request", provider, serializers,
+    auto request_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "move", "request", provider, serializers,
                                            zlink::message_t::from (std::string ("7")));
     if (!request_result
         || serializers.get<reply_t> ()
@@ -307,7 +312,7 @@ int main ()
         return 35;
     }
 
-    auto blocked_result = handlers.invoke ("game", "blocked", "blocked", provider, serializers,
+    auto blocked_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "blocked", "blocked", provider, serializers,
                                            zlink::message_t::from (std::string ("123")));
     if (!blocked_result
         || serializers.get<reply_t> ()
@@ -327,7 +332,7 @@ int main ()
     }
 
     auto context_request_result =
-      handlers.invoke ("game", "context-move", "context-request", provider, serializers,
+      zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "context-move", "context-request", provider, serializers,
                        zlink::message_t::from (std::string ("8")));
     auto &handler = provider.get_required<handler_t> ();
     if (!context_request_result
@@ -341,21 +346,21 @@ int main ()
         return 39;
     }
 
-    auto send_result = handlers.invoke ("game", "command", "command", provider, serializers,
+    auto send_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "command", "command", provider, serializers,
                                         zlink::message_t::from (std::string ("9")));
     if (!send_result || provider.get_required<handler_t> ().last_command != 9) {
         return 4;
     }
 
     auto context_send_result =
-      handlers.invoke ("game", "context-command", "context-command", provider, serializers,
+      zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "context-command", "context-command", provider, serializers,
                        zlink::message_t::from (std::string ("10")));
     if (!context_send_result || handler.last_command != 10 || handler.last_context_channel != "game"
         || handler.last_context_packet != "context-command") {
         return 40;
     }
 
-    auto event_result = handlers.invoke ("game", "event", "event", provider, serializers,
+    auto event_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "event", "event", provider, serializers,
                                          zlink::message_t::from (std::string ("11")));
     if (!event_result || provider.get_required<handler_t> ().last_event != 11) {
         return 5;
@@ -367,7 +372,7 @@ int main ()
     }
 
     auto context_event_result =
-      handlers.invoke ("game", "context-event", "context-event", provider, serializers,
+      zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "context-event", "context-event", provider, serializers,
                        zlink::message_t::from (std::string ("12")));
     if (!context_event_result || handler.last_event != 12 || handler.last_context_channel != "game"
         || handler.last_context_packet != "context-event"
@@ -386,7 +391,7 @@ int main ()
         return 42;
     }
 
-    auto async_result = handlers.invoke ("game", "async", "async", provider, serializers,
+    auto async_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "async", "async", provider, serializers,
                                          zlink::message_t::from (std::string ("5")));
     if (!async_result
         || serializers.get<reply_t> ()
@@ -397,7 +402,7 @@ int main ()
         return 7;
     }
 
-    auto delayed_result = handlers.invoke ("game", "delayed", "delayed", provider, serializers,
+    auto delayed_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "delayed", "delayed", provider, serializers,
                                            zlink::message_t::from (std::string ("6")));
     if (!delayed_result
         || serializers.get<reply_t> ()
@@ -438,7 +443,7 @@ int main ()
         return 34;
     }
 
-    auto missing_result = handlers.invoke ("game", "missing", "request", provider, serializers,
+    auto missing_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "missing", "request", provider, serializers,
                                            zlink::message_t::from (std::string ("1")));
     if (missing_result
         || missing_result.error_kind ()
@@ -446,7 +451,7 @@ int main ()
         return 8;
     }
 
-    auto decode_result = handlers.invoke ("game", "move", "request", provider, serializers,
+    auto decode_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "move", "request", provider, serializers,
                                           zlink::message_t::from (std::string ("bad")));
     if (decode_result
         || decode_result.error_kind ()
@@ -458,7 +463,7 @@ int main ()
         return 10;
     }
 
-    auto thrown_result = handlers.invoke ("game", "throw", "throw", provider, serializers,
+    auto thrown_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "throw", "throw", provider, serializers,
                                           zlink::message_t::from (std::string ("1")));
     if (thrown_result
         || thrown_result.error_kind ()
@@ -472,7 +477,7 @@ int main ()
 
     zlink::framework::service_collection_t empty_services;
     auto empty_provider = empty_services.build_provider ();
-    auto owner_result = handlers.invoke ("game", "move", "request", empty_provider, serializers,
+    auto owner_result = zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, "game", "move", "request", empty_provider, serializers,
                                          zlink::message_t::from (std::string ("1")));
     if (owner_result
         || owner_result.error_kind ()
@@ -485,22 +490,10 @@ int main ()
         return 14;
     }
 
-    bool raw_called = false;
-    handlers.send_raw ("game", "raw-topic", "raw",
-                       [&raw_called] (const zlink::framework::payload_view_t &payload) {
-                           raw_called = payload.to_string () == "raw-body";
-                           return zlink::framework::result_t<void>::success ();
-                       });
-    auto raw_result = handlers.invoke ("game", "raw-topic", "raw", provider, serializers,
-                                       zlink::message_t::from (std::string ("raw-body")));
-    if (!raw_result || !raw_called) {
-        return 15;
-    }
-
     zlink::framework::handler_registry_t default_handlers;
     default_handlers.on_send<handler_t, command_t> ("game", "default", &handler_t::on_command);
     if (default_handlers.find ("game", "default", command_t::packet_name) == nullptr) {
-        return 16;
+        return 15;
     }
 
     bool duplicate_failed = false;
@@ -513,7 +506,7 @@ int main ()
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!duplicate_failed) {
-        return 17;
+        return 16;
     }
 
     return 0;

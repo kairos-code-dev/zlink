@@ -212,11 +212,11 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto header = request_header (packet_name);
         zlink::framework::detail::enter_stream_relay_dispatch (header);
         auto reply =
-          actor.relay_request (zlink::message_t::from_json (request)).async ().result ();
+          actor.relay_request (zlink::framework::message_t::from (request)).async ().result ();
         zlink::framework::detail::exit_stream_relay_dispatch ();
         ensure (reply.has_value (), packet_name + " relay failed: "
                                       + (reply.error () ? reply.error ()->what () : "unknown"));
-        return reply.value ().template parse_json<TReply> ();
+        return reply.value ().template decode<TReply> ();
     }
 
     void run (zlink::framework::route_client_t &routes,
@@ -305,7 +305,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto missing_actor_packet =
           local
             .relay_request (
-              zlink::message_t::from_json (e2e::state_req_t{"add", 1}))
+              zlink::framework::message_t::from (e2e::state_req_t{"add", 1}))
             .async ()
             .result ();
         zlink::framework::detail::exit_stream_relay_dispatch ();
@@ -383,7 +383,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto after_destroy =
           local
             .relay_request (
-              zlink::message_t::from_json (e2e::state_req_t{"add", 1}))
+              zlink::framework::message_t::from (e2e::state_req_t{"add", 1}))
             .async ()
             .result ();
         zlink::framework::detail::exit_stream_relay_dispatch ();

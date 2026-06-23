@@ -90,9 +90,9 @@ app.add_zlink_framework([](auto &options) {
 });
 ```
 
-raw payload가 필요한 경우에만 `send_raw(...)` 같은 고급 extension을 사용한다. STREAM은
-framework core에서 Header 기반 packet 방식만 지원하므로 raw stream session은 공개
-표면에 두지 않는다. 일반 샘플은 typed handler registry를 먼저 보여 준다.
+framework handler registry는 DTO 기반 handler만 공개한다. STREAM도 Header 기반 packet
+방식을 framework 내부에서 처리하므로 raw stream session은 공개 표면에 두지 않는다.
+일반 샘플은 typed handler registry를 먼저 보여 준다.
 
 request handler는 `TReply`를 바로 반환하거나 `task_t<TReply>`를 반환할 수 있다.
 후자는 `.NET`의 `async Task<TReply>` handler와 같은 의미다. handler 안에서 다른

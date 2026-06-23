@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -195,7 +194,7 @@ public sealed class SerialExecutorTests
         var thirdRan = false;
 
         var first = state.ExecuteDispatchAsync(
-            CreateHeader("first"),
+            null!,
             async _ =>
             {
                 firstStarted.SetResult();
@@ -206,7 +205,7 @@ public sealed class SerialExecutorTests
 
         using var secondCancellation = new CancellationTokenSource();
         var second = state.ExecuteDispatchAsync(
-            CreateHeader("second"),
+            null!,
             _ =>
             {
                 secondRan = true;
@@ -223,7 +222,7 @@ public sealed class SerialExecutorTests
         await first.WaitAsync(TimeSpan.FromSeconds(5));
 
         await state.ExecuteDispatchAsync(
-            CreateHeader("third"),
+            null!,
             _ =>
             {
                 thirdRan = true;
@@ -242,7 +241,7 @@ public sealed class SerialExecutorTests
         var order = new List<string>();
 
         var first = state.ExecuteDispatchAsync(
-            CreateHeader("first"),
+            null!,
             async _ =>
             {
                 order.Add("first");
@@ -253,7 +252,7 @@ public sealed class SerialExecutorTests
         await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var second = state.ExecuteDispatchAsync(
-            CreateHeader("second"),
+            null!,
             _ =>
             {
                 order.Add("second");
@@ -261,7 +260,7 @@ public sealed class SerialExecutorTests
             },
             CancellationToken.None).AsTask();
         var third = state.ExecuteDispatchAsync(
-            CreateHeader("third"),
+            null!,
             _ =>
             {
                 order.Add("third");
@@ -273,17 +272,6 @@ public sealed class SerialExecutorTests
 
         await Task.WhenAll(first, second, third).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(["first", "second", "third"], order);
-    }
-
-    private static ZlinkStreamHeader CreateHeader(string name)
-    {
-        return new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Send,
-            ZlinkStreamCodec.Raw,
-            ZlinkStreamHeaderFlags.None,
-            null,
-            name,
-            ZlinkStreamMetadata.Empty);
     }
 
     private static ZLinkSerialExecutionQueue CreateQueue(

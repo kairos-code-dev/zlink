@@ -583,7 +583,7 @@ framework host가 소유한 별도 ingress이고, zlink messaging으로 들어�
 | `CancellationToken` | C++ host shutdown/drain 정책. public handler signature에는 기본 노출하지 않음 |
 | `Results.Ok(dto)` | handler가 `reply_type` DTO 반환 |
 | `HttpClient.PostAsJsonAsync(...)` | `zlink::http_client`가 JSON POST 수행 |
-| `ReadFromJsonAsync<T>()` | `zlink::http_client`가 `message_t::parse_json<T>()` 사용 |
+| `ReadFromJsonAsync<T>()` | `zlink::http_client`가 `message_t::decode<T>()` 사용 |
 
 ## 10. TicTacToe Sample 반영 상태
 
@@ -640,7 +640,7 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 - HTTP client contract: `#include <zlink/http_client.hpp>`가 framework runtime header를
   끌어오지 않는다
 - HTTP client JSON: `zlink::http_client`가 typed DTO request를 JSON으로 보내고 reply DTO를
-  `message_t::parse_json<T>()` 흐름으로 읽는다
+  `message_t::decode<T>()` 흐름으로 읽는다
 - HTTP client HTTPS: test certificate trust 설정이 있으면 `https://` JSON request/response가
   성공한다
 - HTTP client TLS failure: 신뢰하지 않은 certificate와 hostname mismatch는 명시적인

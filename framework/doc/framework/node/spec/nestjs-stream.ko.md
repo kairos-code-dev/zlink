@@ -98,10 +98,10 @@ export interface ZLinkStream {
   readonly remoteAddr: string | undefined;
 
   /**
-   * 명시 raw stream frame 을 보낸다.
+   * framework message 를 stream 으로 보낸다.
    * 송신 성공 여부를 boolean 으로 반환한다.
    */
-  write(payload: Message, flags?: SendFlags): boolean;
+  write(payload: ZLinkMessage, flags?: SendFlags): boolean;
 
   close(signal?: AbortSignal): Promise<void>;
 }
@@ -241,9 +241,10 @@ framework `ZLinkMessage` 를 전달한다.
 `payload.decode<T>()` 로 DTO를 읽거나 `ZLinkSessionActor.relay(...)` 같은 framework
 API 에 그대로 전달한다.
 
-application 이 raw frame 을 직접 보내야 할 때만 `Message` 를 `ZLinkStream.write(...)`
-에 넘긴다. 보통의 session 응답은 `context.client.send(...)`,
-`context.client.reply(...)` 같은 typed builder 를 사용한다.
+application 이 이미 encoded payload 를 그대로 forward 해야 할 때만
+`ZLinkMessage.fromEncoded(...)` 를 만들어 `ZLinkStream.write(...)` 에 넘긴다.
+보통의 session 응답은 `context.client.send(...)`, `context.client.reply(...)`
+같은 typed builder 를 사용한다.
 
 `context.client.send(...)` 와 `ZLinkBoundSession.send(...)` 의 packet name
 해석은 channel client 와 같은 규칙을 따른다. class instance 처럼 런타임 생성자

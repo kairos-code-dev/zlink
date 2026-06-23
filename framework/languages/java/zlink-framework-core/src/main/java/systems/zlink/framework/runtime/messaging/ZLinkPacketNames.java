@@ -1,6 +1,5 @@
 package systems.zlink.framework.runtime.messaging;
 
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkPacket;
 
@@ -12,8 +11,9 @@ public final class ZLinkPacketNames {
         if (payload == null) {
             return "Null";
         }
-        if (payload instanceof Message) {
-            return "Message";
+        if (payload instanceof systems.zlink.contracts.messaging.Message) {
+            throw new ZLinkConfigurationException(
+                "binding Message is not a framework business payload type; use a DTO, ZLinkMessage, or ZLinkEncodedPayload");
         }
         return resolve(payload.getClass());
     }

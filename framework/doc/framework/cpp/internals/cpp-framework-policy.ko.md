@@ -479,7 +479,7 @@ connector와 같은 원칙으로 바꾼다. base binding은 codec dependency를 
 JSON, MessagePack, Protobuf는 선택 codec target이 제공한다. public codec 표면은 별도
 codec namespace 함수를 사용자가 직접 찾아 호출하는 방식을 기본 사용자 경험으로 두지
 않고, `message_t` 중심 API로 정리한다. 예를 들어 `message.parse<T>()`,
-`message.parse_json<T>()`, `message_t::from_json(value)` 같은 형태가 기본이다.
+`message.decode<T>()`, `message_t::from_json(value)` 같은 형태가 기본이다.
 성능 특화 JSON parser가 필요해지더라도 public JSON 정책을 늘리지 않고, 내부 최적화로
 검토한다.
 
@@ -868,8 +868,8 @@ C++ public codec 표면은 message 중심이어야 한다. 사용자가 codec na
 helper를 찾아 호출하는 방식은 주 표면으로 두지 않는다. 기본 사용성은 아래 형태다.
 
 ```cpp
-auto message = zlink::message_t::from_json(order);
-auto order = message.parse_json<order_created_t>();
+auto message = zlink::framework::message_t::from(order);
+auto order = message.decode<order_created_t>();
 ```
 
 framework serializer registry는 이 message 중심 codec API 위에 얹는다. codec 선택이

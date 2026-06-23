@@ -293,7 +293,7 @@ channel_runtime_t::dispatch_request (std::string channel_name,
         return result_t<zlink::message_t>::failure (framework_error_kind_t::route_not_connected,
                                                     "channel server capability is not enabled");
     }
-    return handlers.invoke (channel_name, topic, packet_name, services, serializers, message);
+    return zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, channel_name, topic, packet_name, services, serializers, message);
 }
 
 result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
@@ -305,7 +305,7 @@ result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
                                                  const zlink::message_t &message) const
 {
     auto result =
-      handlers.invoke (channel_name, topic, packet_name, services, serializers, message);
+      zlink::framework::detail::handler_registry_internal_access_t::invoke (handlers, channel_name, topic, packet_name, services, serializers, message);
     if (!result) {
         return result_t<void>::failure (result.error_kind (), result.error ()
                                                                 ? result.error ()->what ()
@@ -644,7 +644,7 @@ route_channel_builder_t::enable_spot_route_egress (std::string target_spot_node_
 }
 
 route_channel_builder_t &
-route_channel_builder_t::add_handler (route_handler_registration_t registration)
+route_channel_builder_t::add_handler (detail::route_handler_registration_t registration)
 {
     _state->registration.add_handler (std::move (registration));
     return *this;

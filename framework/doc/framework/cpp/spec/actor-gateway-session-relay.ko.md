@@ -76,7 +76,7 @@ public:
 
     zlink::framework::task_t<void> on_packet(zlink::framework::stream_t &stream,
       const zlink::framework::stream_dispatch_context_t &dispatch,
-      const zlink::message_t &payload) override
+      const zlink::framework::message_t &payload) override
     {
         if (is_login(dispatch)) {
             actor_ = co_await actors_
@@ -96,7 +96,7 @@ private:
 };
 ```
 
-`payload`는 `zlink::message_t`다. session은 이 값을 decode 하거나 `relay(...)` 같은
+`payload`는 `zlink::framework::message_t`다. session은 이 값을 decode 하거나 `relay(...)` 같은
 framework API에 그대로 넘긴다. header 값은 runtime의 현재 dispatch state가 보존하므로
 application이 header 객체를 다시 넘기지 않는다.
 

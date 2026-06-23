@@ -227,6 +227,8 @@ class spot_context_state_t;
 class spot_node_builder_state_t;
 class spot_node_runtime_state_t;
 class spot_node_runtime_t;
+class spot_handler_registry_internal_access_t;
+class spot_route_internal_dispatcher_t;
 
 struct spot_actor_admission_callbacks_t
 {
@@ -715,17 +717,20 @@ struct spot_create_result_t
     spot_context_t context;
 };
 
+namespace detail
+{
+using spot_handler_invoker_t =
+  std::function<task_t<zlink::message_t> (void *,
+                                          void *,
+                                          service_provider_t &,
+                                          serializer_registry_t &,
+                                          const zlink::message_t &,
+                                          const spot_actor_message_metadata_t &)>;
+}
+
 class spot_handler_registry_t
 {
   public:
-    using invoker_t =
-      std::function<task_t<zlink::message_t> (void *,
-                                              void *,
-                                              service_provider_t &,
-                                              serializer_registry_t &,
-                                              const zlink::message_t &,
-                                              const spot_actor_message_metadata_t &)>;
-
     spot_handler_registry_t ();
     ~spot_handler_registry_t ();
 
@@ -835,6 +840,12 @@ class spot_handler_registry_t
 
     std::vector<spot_handler_descriptor_t> descriptors () const;
 
+  private:
+    friend class spot_context_t;
+    friend class detail::spot_handler_registry_internal_access_t;
+    friend class detail::spot_node_runtime_t;
+    explicit spot_handler_registry_t (std::shared_ptr<detail::spot_context_state_t> state);
+
     template <typename TSpot>
     result_t<zlink::message_t> invoke_packet (std::string_view packet_name,
                                               TSpot &spot,
@@ -877,11 +888,6 @@ class spot_handler_registry_t
           .result ();
     }
 
-  private:
-    friend class spot_context_t;
-    friend class detail::spot_node_runtime_t;
-    explicit spot_handler_registry_t (std::shared_ptr<detail::spot_context_state_t> state);
-
     template <typename TSpot, typename TActor> void register_actor_admission ()
     {
         detail::spot_actor_admission_callbacks_t callbacks;
@@ -893,8 +899,6 @@ class spot_handler_registry_t
             if constexpr (requires { typed_spot.on_actor_join (typed_actor, message_t{}); }) {
                 return typed_spot.on_actor_join (typed_actor,
                                                  message_t::from_raw (request, &serializers));
-            } else if constexpr (requires { typed_spot.on_actor_join (typed_actor, request); }) {
-                return typed_spot.on_actor_join (typed_actor, request);
             } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
                 return spot_actor_join_response_t::accept ();
             } else {
@@ -943,7 +947,7 @@ class spot_handler_registry_t
                                                  std::type_index payload_type,
                                                  std::type_index actor_type,
                                                  std::type_index reply_type,
-                                                 invoker_t invoker);
+                                                 detail::spot_handler_invoker_t invoker);
 
     task_t<zlink::message_t> invoke_erased (spot_handler_kind_t kind,
                                             std::string_view packet_name,
@@ -961,6 +965,55 @@ class spot_handler_registry_t
 
     std::shared_ptr<detail::spot_context_state_t> _state;
 };
+
+namespace detail
+{
+
+class spot_handler_registry_internal_access_t
+{
+  public:
+    template <typename TSpot>
+    static result_t<zlink::message_t> invoke_packet (const spot_handler_registry_t &registry,
+                                                     std::string_view packet_name,
+                                                     TSpot &spot,
+                                                     service_provider_t &services,
+                                                     serializer_registry_t &serializers,
+                                                     const zlink::message_t &message)
+    {
+        return registry.invoke_packet (packet_name, spot, services, serializers, message);
+    }
+
+    template <typename TSpot, typename TActor>
+    static result_t<zlink::message_t> invoke_actor_packet (
+      const spot_handler_registry_t &registry,
+      std::string_view packet_name,
+      TSpot &spot,
+      TActor &actor,
+      service_provider_t &services,
+      serializer_registry_t &serializers,
+      const zlink::message_t &message)
+    {
+        return registry.invoke_actor_packet (packet_name, spot, actor, services, serializers,
+                                             message);
+    }
+
+    template <typename TSpot, typename TActor>
+    static result_t<zlink::message_t> invoke_actor_packet (
+      const spot_handler_registry_t &registry,
+      std::string_view packet_name,
+      TSpot &spot,
+      TActor &actor,
+      service_provider_t &services,
+      serializer_registry_t &serializers,
+      const zlink::message_t &message,
+      spot_actor_message_metadata_t metadata)
+    {
+        return registry.invoke_actor_packet (packet_name, spot, actor, services, serializers,
+                                             message, std::move (metadata));
+    }
+};
+
+} // namespace detail
 
 class spot_node_manager_t
 {
@@ -980,7 +1033,7 @@ class spot_node_manager_t
               && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) spot_create_result_t
       create_spot (std::string spot_name, const TRequest &request)
     {
-        return create_spot_raw (std::move (spot_name),
+        return create_spot_erased_message (std::move (spot_name),
                                 serialize_request (std::type_index (typeid (TRequest)), &request));
     }
 
@@ -992,7 +1045,7 @@ class spot_node_manager_t
               && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) spot_create_result_t
       get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const TRequest &request)
     {
-        return get_or_create_spot_raw (
+        return get_or_create_spot_erased_message (
           std::move (spot_name), std::move (spot_rid),
           serialize_request (std::type_index (typeid (TRequest)), &request));
     }
@@ -1003,6 +1056,13 @@ class spot_node_manager_t
     std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
     std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
     std::optional<actor_ref_t> current_actor_ref (const actor_ref_t &actor_ref) const;
+
+  private:
+    friend class spot_context_t;
+    friend class spot_publisher_client_t;
+    friend class detail::spot_node_runtime_t;
+    friend class detail::spot_route_internal_dispatcher_t;
+    explicit spot_node_manager_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,
@@ -1011,15 +1071,9 @@ class spot_node_manager_t
                         service_provider_t &services,
                         serializer_registry_t &serializers,
                         spot_actor_message_metadata_t metadata = {});
-
-  private:
-    friend class spot_context_t;
-    friend class spot_publisher_client_t;
-    friend class detail::spot_node_runtime_t;
-    explicit spot_node_manager_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
-    spot_create_result_t create_spot_raw (std::string spot_name, zlink::message_t request);
+    spot_create_result_t create_spot_erased_message (std::string spot_name, zlink::message_t request);
     spot_create_result_t
-    get_or_create_spot_raw (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
+    get_or_create_spot_erased_message (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
     zlink::message_t serialize_request (std::type_index request_type, const void *request) const;
 
     std::shared_ptr<detail::spot_node_builder_state_t> _state;
@@ -1259,9 +1313,9 @@ class spot_node_builder_t
     friend class zlink_builder_t;
     friend class detail::spot_node_runtime_t;
     explicit spot_node_builder_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
-    spot_create_result_t create_spot_raw (std::string spot_name, zlink::message_t request);
+    spot_create_result_t create_spot_erased_message (std::string spot_name, zlink::message_t request);
     spot_create_result_t
-    get_or_create_spot_raw (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
+    get_or_create_spot_erased_message (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
 
     spot_node_builder_t &
     add_spot_factory (std::string spot_name, std::type_index spot_type, bool entry_spot);

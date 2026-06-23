@@ -39,11 +39,8 @@ enum ZLinkMessagePackStreamCodec implements ZLinkStreamTypedCodec {
         if (type == String.class) {
             return type.cast(payload.payload().toUtf8String());
         }
-        if (type == byte[].class) {
-            return type.cast(payload.payload().toByteArray());
-        }
-        if (type == Message.class) {
-            return type.cast(Message.from(payload.payload()));
+        if (type == Message.class || type == byte[].class) {
+            rejectRawPayloadType();
         }
         try {
             return MAPPER.readValue(payload.payload().toByteArray(), type);
@@ -55,11 +52,8 @@ enum ZLinkMessagePackStreamCodec implements ZLinkStreamTypedCodec {
     }
 
     private static byte[] encodeBytes(Object value) {
-        if (value instanceof byte[] bytes) {
-            return bytes;
-        }
-        if (value instanceof Message message) {
-            return message.toByteArray();
+        if (value instanceof byte[] || value instanceof Message) {
+            rejectRawPayloadType();
         }
         if (value instanceof String text) {
             return text.getBytes(StandardCharsets.UTF_8);
@@ -75,5 +69,10 @@ enum ZLinkMessagePackStreamCodec implements ZLinkStreamTypedCodec {
 
     private static String valueTypeName(Object value) {
         return value == null ? "null" : value.getClass().getName();
+    }
+
+    private static void rejectRawPayloadType() {
+        throw new IllegalArgumentException(
+            "binding Message and byte[] are not framework business payload types; use a DTO, ZLinkMessage, or ZLinkEncodedPayload");
     }
 }

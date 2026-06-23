@@ -34,10 +34,10 @@ class sample_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
                                               const zlink::framework::stream_dispatch_context_t &dispatch,
-                                              const zlink::message_t &payload) override
+                                              const zlink::framework::message_t &payload) override
     {
         events.push_back ("packet:" + std::string (dispatch.packet_name ()) + ":"
-                          + payload.to_string ());
+                          + payload.decode<std::string> ());
         auto write = stream.reply_packet (payload).async ().result ();
         if (!write) {
             return zlink::framework::task_t<void> (write);
@@ -70,7 +70,7 @@ class throwing_packet_session_t final : public zlink::framework::packet_stream_s
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
                                               const zlink::framework::stream_dispatch_context_t &,
-                                              const zlink::message_t &) override
+                                              const zlink::framework::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::failure (
           zlink::framework::framework_error_kind_t::request_failed, "application packet failure"));
@@ -250,7 +250,7 @@ int main ()
 
     auto fluent_stream = runtime.open_session ("client-stream");
     auto send_call =
-      fluent_stream.write_packet (zlink::message_t::from (std::string ("send-payload")));
+      fluent_stream.write_packet (zlink::framework::message_t::from (std::string ("send-payload")));
     send_call.packet_name ("original");
     if (!runtime.written_headers (fluent_stream).empty ()) {
         return 17;
@@ -269,7 +269,7 @@ int main ()
     }
     const auto close_result = fluent_stream.close ().result ();
     const auto close_write =
-      fluent_stream.write_packet (zlink::message_t::from (std::string ("after-close")))
+      fluent_stream.write_packet (zlink::framework::message_t::from (std::string ("after-close")))
         .async ().result ();
     if (!close_result || close_write
         || close_write.error_kind () != framework_error_kind_t::disconnected
@@ -278,7 +278,7 @@ int main ()
     }
     const auto disconnected_write =
       stream
-        .write_packet (zlink::message_t::from (std::string ("after-disconnect")))
+        .write_packet (zlink::framework::message_t::from (std::string ("after-disconnect")))
         .async ().result ();
     if (disconnected_write
         || disconnected_write.error_kind () != framework_error_kind_t::disconnected

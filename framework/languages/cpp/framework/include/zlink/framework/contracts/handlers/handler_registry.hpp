@@ -8,6 +8,7 @@
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
+#include <zlink/framework/contracts/messaging/message.hpp>
 
 #include <functional>
 #include <memory>
@@ -23,6 +24,7 @@ namespace zlink::framework
 
 namespace detail
 {
+class handler_registry_internal_access_t;
 class handler_registry_state_t;
 } // namespace detail
 
@@ -30,8 +32,7 @@ enum class handler_kind_t
 {
     request,
     send,
-    event,
-    raw
+    event
 };
 
 struct handler_options_t
@@ -84,36 +85,26 @@ struct handler_invocation_context_t
 {
     handler_descriptor_t descriptor;
     handler_context_t context;
-    std::shared_ptr<const zlink::message_t> message;
+    message_t message;
 };
 
-class payload_view_t
+using handler_next_t = std::function<task_t<message_t> ()>;
+
+namespace detail
 {
-  public:
-    explicit payload_view_t (encoded_payload_t payload) : _payload (std::move (payload)) {}
-
-    std::span<const std::byte> bytes () const noexcept { return _payload.bytes (); }
-    std::vector<std::uint8_t> to_bytes () const { return _payload.to_bytes (); }
-    std::string to_string () const { return _payload.to_string (); }
-
-  private:
-    encoded_payload_t _payload;
-};
-
-using handler_next_t = std::function<task_t<zlink::message_t> ()>;
+using handler_invoker_t = std::function<task_t<zlink::message_t> (
+  service_provider_t &, serializer_registry_t &, const zlink::message_t &)>;
+}
 
 class handler_registry_t
 {
   public:
-    using raw_handler_t = std::function<result_t<void> (const payload_view_t &)>;
-    using invoker_t = std::function<task_t<zlink::message_t> (
-      service_provider_t &, serializer_registry_t &, const zlink::message_t &)>;
     using failure_observer_t = std::function<void (const handler_failure_event_t &)>;
     using filter_invoker_t =
-      std::function<task_t<zlink::message_t> (service_provider_t &,
-                                              serializer_registry_t &,
-                                              const handler_invocation_context_t &,
-                                              handler_next_t)>;
+      std::function<task_t<message_t> (service_provider_t &,
+                                        serializer_registry_t &,
+                                        const handler_invocation_context_t &,
+                                        handler_next_t)>;
 
     handler_registry_t ();
     ~handler_registry_t ();
@@ -380,20 +371,11 @@ class handler_registry_t
           std::move (options));
     }
 
-    handler_registry_t &send_raw (std::string channel_name,
-                                  std::string packet_name,
-                                  raw_handler_t handler,
-                                  handler_options_t options = {});
-    handler_registry_t &send_raw (std::string channel_name,
-                                  std::string topic,
-                                  std::string packet_name,
-                                  raw_handler_t handler,
-                                  handler_options_t options = {});
     template <typename TFilter> handler_registry_t &use_filter ()
     {
         return add_filter ([] (service_provider_t &services, serializer_registry_t &,
                                const handler_invocation_context_t &context,
-                               handler_next_t next) -> task_t<zlink::message_t> {
+                               handler_next_t next) -> task_t<message_t> {
             auto &filter = services.get_required<TFilter> ();
             return filter.invoke (context, std::move (next));
         });
@@ -407,6 +389,9 @@ class handler_registry_t
     const handler_descriptor_t *find (std::string_view channel_name,
                                       std::string_view topic,
                                       std::string_view packet_name) const;
+  private:
+    friend class detail::handler_registry_internal_access_t;
+
     result_t<zlink::message_t> invoke (std::string_view channel_name,
                                        std::string_view packet_name,
                                        service_provider_t &services,
@@ -418,8 +403,6 @@ class handler_registry_t
                                        service_provider_t &services,
                                        serializer_registry_t &serializers,
                                        const zlink::message_t &message) const;
-
-  private:
     task_t<zlink::message_t> invoke_async (std::string_view channel_name,
                                            std::string_view packet_name,
                                            service_provider_t &services,
@@ -575,11 +558,41 @@ class handler_registry_t
           });
     }
 
-    handler_registry_t &add_handler (handler_descriptor_t descriptor, invoker_t invoker);
+    handler_registry_t &add_handler (handler_descriptor_t descriptor, detail::handler_invoker_t invoker);
     void emit_failure (const handler_descriptor_t &descriptor,
                        const framework_exception_t &error) const;
 
     std::unique_ptr<detail::handler_registry_state_t> _state;
 };
+
+namespace detail
+{
+
+class handler_registry_internal_access_t
+{
+  public:
+    static result_t<zlink::message_t> invoke (const handler_registry_t &registry,
+                                              std::string_view channel_name,
+                                              std::string_view packet_name,
+                                              service_provider_t &services,
+                                              serializer_registry_t &serializers,
+                                              const zlink::message_t &message)
+    {
+        return registry.invoke (channel_name, packet_name, services, serializers, message);
+    }
+
+    static result_t<zlink::message_t> invoke (const handler_registry_t &registry,
+                                              std::string_view channel_name,
+                                              std::string_view topic,
+                                              std::string_view packet_name,
+                                              service_provider_t &services,
+                                              serializer_registry_t &serializers,
+                                              const zlink::message_t &message)
+    {
+        return registry.invoke (channel_name, topic, packet_name, services, serializers, message);
+    }
+};
+
+} // namespace detail
 
 } // namespace zlink::framework

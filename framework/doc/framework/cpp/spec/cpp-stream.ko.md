@@ -84,8 +84,8 @@ public:
     virtual ~stream_t() = default;
     virtual std::string session_id() const = 0;
     virtual task_t<void> close() = 0;
-    virtual stream_write_call_t write_packet(zlink::message_t payload) = 0;
-    virtual stream_write_call_t reply_packet(zlink::message_t payload) = 0;
+    virtual stream_write_call_t write_packet(const zlink::framework::message_t &payload) = 0;
+    virtual stream_write_call_t reply_packet(const zlink::framework::message_t &payload) = 0;
 };
 
 class stream_write_call_t {
@@ -98,7 +98,7 @@ public:
 
 class session_actor_t {
 public:
-    relay_call_t relay(const zlink::message_t &payload);
+    relay_call_t relay(const zlink::framework::message_t &payload);
 };
 
 class session_actor_manager_t {
@@ -115,7 +115,7 @@ public:
     virtual task_t<void> on_packet(
       stream_t &stream,
       const stream_dispatch_context_t &dispatch,
-      const zlink::message_t &payload);
+      const zlink::framework::message_t &payload);
 };
 
 } // namespace zlink::framework
@@ -124,7 +124,7 @@ public:
 업무 session은 header 객체를 받거나 되돌려 주지 않는다. packet name과 metadata는
 `stream_dispatch_context_t`에서 읽고, reply와 actor relay에 필요한 request sequence와
 correlation 값은 runtime이 내부 dispatch state로 보존한다. C++ stream session payload는
-`zlink::message_t` 하나로 유지하며, 별도 `_raw` 이름의 public API를 두지 않는다.
+`zlink::framework::message_t` 하나로 유지하며, binding `zlink::message_t`를 받는 public API를 두지 않는다.
 
 ## 3. Host 등록
 

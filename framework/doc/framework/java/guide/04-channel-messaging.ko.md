@@ -100,7 +100,7 @@ JSON codec은 `options.codecs().addJson()`로 등록한다(codec을 등록하지
 serializer는 string 기반이다). Protobuf나 MessagePack처럼 별도 포맷이 필요하면
 framework codec extension package를 추가하고 `options.codecs().use(...)`로 등록한다.
 직접 만든 포맷도 같은 extension 계약을 사용한다. extension은 `ZLinkMessageSerializer`를
-content type으로 등록하고, serializer는 업무 객체 ↔ `Message`(byte payload) 변환만 맡는다.
+content type으로 등록하고, serializer는 업무 객체 ↔ `ZLinkEncodedPayload` 변환만 맡는다.
 packet name 결정과 dispatch 흐름은 framework가 그대로 처리한다.
 
 ```java
@@ -108,18 +108,18 @@ public final class AvroOrderSerializer implements ZLinkMessageSerializer {
     private final Schema schema = new Schema.Parser().parse(SCHEMA_JSON);
 
     @Override
-    public <T> Message serialize(T value) {
+    public <T> ZLinkEncodedPayload serialize(T value) {
         var out = new ByteArrayOutputStream();
         var writer = new GenericDatumWriter<>(schema);
         writer.write(value, EncoderFactory.get().binaryEncoder(out, null));
-        return Message.from(out.toByteArray());
+        return ZLinkEncodedPayload.from(out.toByteArray());
     }
 
     @Override
-    public <T> T deserialize(Message message, Class<T> type) {
+    public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
         var reader = new GenericDatumReader<>(schema);
         return type.cast(reader.read(null,
-            DecoderFactory.get().binaryDecoder(message.toByteArray(), null)));
+            DecoderFactory.get().binaryDecoder(payload.bytes(), null)));
     }
 }
 

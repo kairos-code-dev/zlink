@@ -178,8 +178,8 @@ class stream_t
 
     std::string session_id () const;
     task_t<void> close ();
-    stream_write_call_t write_packet (const zlink::message_t &payload);
-    stream_write_call_t reply_packet (const zlink::message_t &payload);
+    stream_write_call_t write_packet (const message_t &payload);
+    stream_write_call_t reply_packet (const message_t &payload);
 
   private:
     friend class detail::actor_gateway_runtime_t;
@@ -200,7 +200,7 @@ class packet_stream_session_t
     virtual task_t<void> on_error (stream_t &stream, const stream_error_t &error) = 0;
     virtual task_t<void> on_packet (stream_t &stream,
                                     const stream_dispatch_context_t &dispatch,
-                                    const zlink::message_t &payload)
+                                    const message_t &payload)
     {
         (void) stream;
         (void) dispatch;

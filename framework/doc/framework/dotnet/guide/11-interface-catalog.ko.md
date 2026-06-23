@@ -127,9 +127,9 @@ public sealed class AuditingFilter : IZLinkHandlerFilter
 ```
 
 `OnDispatchAsync(...)` 의 `payload` 는 framework `ZLinkMessage` 다. session 은 이를
-decode 하거나 `IZLinkSessionActor.RelayAsync(...)` 에 그대로 넘긴다. raw `IZLinkStream.Write(...)` 에
-application 이 직접 만든 `Message` 를 넘길 때만 caller 가 그 `Message` 수명을
-계속 책임진다.
+decode 하거나 `IZLinkSessionActor.RelayAsync(...)` 에 그대로 넘긴다. `IZLinkStream.Write(...)`
+역시 `ZLinkMessage` 를 받으므로 application 이 binding `Message` 수명을 직접 책임지는
+public stream 경로는 없다.
 
 | 인터페이스 | 역할 |
 |------------|------|

@@ -414,6 +414,8 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
     }
 
     std::shared_ptr<spot_request_reply_state_t> state;
+    bool created = false;
+    bool owner_registered = false;
     if (spot->logical_state)
         state = spot->logical_state->request_reply_state;
     {
@@ -424,19 +426,26 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
             state = it->second;
         if (!state) {
             state.reset (new spot_request_reply_state_t (spot_));
+            created = true;
             if (spot->logical_state)
                 spot->logical_state->request_reply_state = state;
         }
-        spot_owner_states ()[spot_] = state;
+        if (it == spot_owner_states ().end () || it->second != state) {
+            spot_owner_states ()[spot_] = state;
+            owner_registered = true;
+        }
     }
-    if (!state)
+    if (!state) {
         state.reset (new spot_request_reply_state_t (spot_));
+        created = true;
+    }
     if (spot->logical_state)
         spot->logical_state->request_reply_state = state;
     if (!state->owner)
         state->owner = spot_;
 
-    refresh_spot_identity_index (spot, state);
+    if (created || owner_registered)
+        refresh_spot_identity_index (spot, state);
     return state;
 }
 

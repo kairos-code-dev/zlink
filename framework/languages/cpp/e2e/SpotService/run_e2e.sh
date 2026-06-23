@@ -180,6 +180,7 @@ ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
 ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
 ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
+ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT="$STREAM_B" \
 ZLINK_CPP_E2E_SCENARIO_MODE=stream \
 ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
@@ -193,13 +194,14 @@ fetch_evidence session-b "$HTTP_SESSION_B"
 grep -q "surface=spot_actor.*reason=handler_missing.*packet=MissingActorPacket" \
   "$LOG_DIR/play-a.stderr.log"
 
-python3 - "$LOG_DIR/play-a-evidence.json" "$LOG_DIR/play-b-evidence.json" "$LOG_DIR/session-a-evidence.json" <<'PY'
+python3 - "$LOG_DIR/play-a-evidence.json" "$LOG_DIR/play-b-evidence.json" "$LOG_DIR/session-a-evidence.json" "$LOG_DIR/session-b-evidence.json" <<'PY'
 import json
 import sys
 
 play_a = json.load(open(sys.argv[1], encoding="utf-8"))
 play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 session_a = json.load(open(sys.argv[3], encoding="utf-8"))
+session_b = json.load(open(sys.argv[4], encoding="utf-8"))
 
 def has(snapshot, marker, actor=None):
     for entry in snapshot["entries"]:
@@ -258,6 +260,9 @@ assert has(play_a, "EntryJoin", "stream-auth-d7")
 assert has_value(play_a, "StateMutated", "stream-auth-d7", "7")
 assert has(play_a, "ActorDisconnected", "stream-disconnect-d5-notified")
 assert count(play_a, "ActorDisconnected", "stream-disconnect-d5-muted") == 0
+assert has_value(play_a, "StateMutated", "stream-reconnect-d12", "11")
+assert has_value(play_a, "StateMutated", "stream-reconnect-d12", "16")
+assert has_value(play_a, "ActorPushedSession", "stream-reconnect-d12", "stream-reconnect-d12-push")
 assert has(play_b, "ActorEnsured", "bob")
 assert has(play_b, "EntryJoin", "bob")
 assert has(play_b, "StateMutated", "bob")
@@ -273,6 +278,8 @@ assert has(session_a, "StreamAuthFailed", "stream-auth-d7")
 assert has(session_a, "StreamBound", "stream-disconnect-d5-notified")
 assert has(session_a, "StreamBound", "stream-disconnect-d5-muted")
 assert has(session_a, "StreamDisconnectNotified", "stream-disconnect-d5-notified")
+assert has(session_a, "StreamBound", "stream-reconnect-d12")
+assert has(session_b, "StreamBound", "stream-reconnect-d12")
 print("spot-service evidence result=passed")
 PY
 

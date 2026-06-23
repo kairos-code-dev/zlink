@@ -57,6 +57,7 @@ struct join_res_t
     std::string display_name;
     int level = 0;
     std::vector<std::string> tags;
+    actor_ref_dto_t actor;
 };
 
 struct state_req_t
@@ -328,7 +329,8 @@ inline void to_json (nlohmann::json &json, const join_res_t &value)
 {
     json = nlohmann::json{{"spot_rid", value.spot_rid}, {"owner_node_rid", value.owner_node_rid},
                           {"actor_id", value.actor_id}, {"display_name", value.display_name},
-                          {"level", value.level},       {"tags", value.tags}};
+                          {"level", value.level},       {"tags", value.tags},
+                          {"actor", value.actor}};
 }
 
 inline void from_json (const nlohmann::json &json, join_res_t &value)
@@ -339,6 +341,7 @@ inline void from_json (const nlohmann::json &json, join_res_t &value)
     json.at ("display_name").get_to (value.display_name);
     json.at ("level").get_to (value.level);
     json.at ("tags").get_to (value.tags);
+    value.actor = json.value ("actor", actor_ref_dto_t{});
 }
 
 inline void to_json (nlohmann::json &json, const state_req_t &value)

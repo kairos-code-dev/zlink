@@ -156,9 +156,14 @@ class user_spot_t : public zlink::framework::spot_t
         actor.level = request.level;
         _state.record ("ActorJoined", actor.actor_id, std::string (_context.spot_rid ().value ()),
                        request.key);
-        return zlink::framework::spot_actor_join_response_t::accept (e2e::join_res_t{
-          std::string (_context.spot_rid ().value ()), std::string (_context.node_rid ().value ()),
-          actor.actor_id, actor.display_name, actor.level, request.tags});
+        return zlink::framework::spot_actor_join_response_t::accept (
+          e2e::join_res_t{.spot_rid = std::string (_context.spot_rid ().value ()),
+                          .owner_node_rid = std::string (_context.node_rid ().value ()),
+                          .actor_id = actor.actor_id,
+                          .display_name = actor.display_name,
+                          .level = actor.level,
+                          .tags = request.tags,
+                          .actor = from_actor_ref (actor.actor_ref)});
     }
 
     void on_actor_joined (const scenario_actor_t &actor)
@@ -481,15 +486,26 @@ class spot_lifecycle_handler_t
 class ensure_actor_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t, zlink::framework::spot_node_manager_t>;
     using request_type = e2e::ensure_actor_req_t;
     using reply_type = e2e::ensure_actor_res_t;
 
-    explicit ensure_actor_handler_t (scenario_state_t &state) : _state (state) {}
+    ensure_actor_handler_t (scenario_state_t &state, zlink::framework::spot_node_manager_t &spots) :
+        _state (state), _spots (spots)
+    {
+    }
 
     e2e::ensure_actor_res_t handle (const e2e::ensure_actor_req_t &request,
                                     const zlink::framework::route_handler_context_t &)
     {
+        auto current = _spots.current_actor_ref (zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string (_state.node_rid), e2e::actor_type,
+          request.actor_id, 0));
+        if (current) {
+            _state.record ("ActorEnsured", request.actor_id, {}, request.display_name);
+            return {.actor = from_actor_ref (*current)};
+        }
         const auto generation = ++_generation;
         _state.record ("ActorEnsured", request.actor_id, {}, request.display_name);
         return {.actor = {.node_rid = _state.node_rid,
@@ -500,6 +516,7 @@ class ensure_actor_handler_t
 
   private:
     scenario_state_t &_state;
+    zlink::framework::spot_node_manager_t &_spots;
     std::uint64_t _generation = 0;
 };
 
@@ -748,7 +765,8 @@ int main (int argc, char **argv)
           .trace_node_id ("cpp-sm-" + node_rid);
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
-          .add_transient<ensure_actor_handler_t, scenario_state_t> ()
+          .add_transient<ensure_actor_handler_t, scenario_state_t,
+                         zlink::framework::spot_node_manager_t> ()
           .add_transient<spot_lifecycle_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ();
         configure_codecs (options.codecs ());

@@ -130,9 +130,11 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
   public:
     scenario_service_t (zlink::framework::app_t &app,
                         std::string stream_endpoint,
+                        std::string alternate_stream_endpoint,
                         std::string scenario_mode) :
         _app (app),
         _stream_endpoint (std::move (stream_endpoint)),
+        _alternate_stream_endpoint (std::move (alternate_stream_endpoint)),
         _scenario_mode (std::move (scenario_mode))
     {
     }
@@ -219,6 +221,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             run_stream_session_scenario (routes, "SM-D2", "play-b", "stream-remote",
                                          "b-stream-room", "stream-remote-push");
             run_multi_stream_session_scenario (routes);
+            run_stream_reconnect_migration_scenario (routes);
             return;
         }
 
@@ -393,10 +396,10 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         }
     }
 
-    zlink::stream_connector::connector_t make_stream_connector () const
+    zlink::stream_connector::connector_t make_stream_connector (std::string endpoint = {}) const
     {
         zlink::stream_connector::connector_options_t options;
-        options.endpoint = _stream_endpoint;
+        options.endpoint = endpoint.empty () ? _stream_endpoint : std::move (endpoint);
         options.connect_timeout = std::chrono::milliseconds (5000);
         options.request_timeout = std::chrono::milliseconds (5000);
         options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
@@ -718,6 +721,114 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario SM-D5 passed\n";
     }
 
+    void run_stream_reconnect_migration_scenario (zlink::framework::route_client_t &routes)
+    {
+        ensure (!_alternate_stream_endpoint.empty (),
+                "SM-D12 alternate stream endpoint is missing");
+        const auto actor_id = std::string ("stream-reconnect-d12");
+        const auto display_name = actor_id + "-display";
+        auto actor = ensure_actor_ref (routes, "play-a", actor_id, display_name);
+
+        auto first_core = make_stream_connector ();
+        first_core.codecs ().add_json ();
+        auto first = zlink::stream_e2e_client::use (first_core);
+        auto first_connected = first.connect ().submit ();
+        ensure (static_cast<bool> (first_connected), "SM-D12 first stream connect failed");
+
+        auto first_auth = zlink::stream_e2e_client::codecs::request (
+                            first, e2e::stream_auth_req_t{"play-a", actor_id, display_name, actor})
+                            .packet_name ("StreamAuthReq")
+                            .timeout (std::chrono::milliseconds (3000))
+                            .async<e2e::stream_auth_res_t> ()
+                            .result ();
+        ensure (static_cast<bool> (first_auth),
+                "SM-D12 first auth failed: " + stream_error_text (first_auth));
+
+        auto joined = zlink::stream_e2e_client::codecs::request (
+                        first, e2e::join_req_t{.key = "a-stream-reconnect",
+                                               .actor_id = actor_id,
+                                               .display_name = display_name,
+                                               .level = 121,
+                                               .tags = {"stream", "SM-D12", "session-a"}})
+                        .packet_name ("JoinReq")
+                        .timeout (std::chrono::milliseconds (5000))
+                        .async<e2e::join_res_t> ()
+                        .result ();
+        ensure (static_cast<bool> (joined),
+                "SM-D12 first join failed: " + stream_error_text (joined));
+        ensure (joined.value ().owner_node_rid == "play-a", "SM-D12 first owner mismatch");
+        actor = joined.value ().actor;
+
+        auto first_state = zlink::stream_e2e_client::codecs::request (
+                             first, e2e::state_req_t{.op = "add", .amount = 11})
+                             .packet_name ("StateReq")
+                             .timeout (std::chrono::milliseconds (5000))
+                             .async<e2e::state_res_t> ()
+                             .result ();
+        ensure (static_cast<bool> (first_state),
+                "SM-D12 first state failed: " + stream_error_text (first_state));
+        ensure (first_state.value ().value == 11, "SM-D12 first state value mismatch");
+        (void) first.close ().submit ();
+        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+        actor = ensure_actor_ref (routes, "play-a", actor_id, display_name);
+
+        auto second_core = make_stream_connector (_alternate_stream_endpoint);
+        second_core.codecs ().add_json ();
+        auto second = zlink::stream_e2e_client::use (second_core);
+        auto second_connected = second.connect ().submit ();
+        ensure (static_cast<bool> (second_connected), "SM-D12 second stream connect failed");
+
+        auto second_auth =
+          zlink::stream_e2e_client::codecs::request (
+            second, e2e::stream_auth_req_t{"play-a", actor_id, display_name, actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (second_auth),
+                "SM-D12 second auth failed: " + stream_error_text (second_auth));
+
+        auto snapshot = zlink::stream_e2e_client::codecs::request (
+                          second, e2e::state_req_t{.op = "add", .amount = 0})
+                          .packet_name ("StateReq")
+                          .timeout (std::chrono::milliseconds (5000))
+                          .async<e2e::state_res_t> ()
+                          .result ();
+        ensure (static_cast<bool> (snapshot),
+                "SM-D12 snapshot failed: " + stream_error_text (snapshot));
+        ensure (snapshot.value ().owner_node_rid == "play-a" && snapshot.value ().value == 11,
+                "SM-D12 snapshot value mismatch");
+
+        auto resumed = zlink::stream_e2e_client::codecs::request (
+                         second, e2e::state_req_t{.op = "add", .amount = 5})
+                         .packet_name ("StateReq")
+                         .timeout (std::chrono::milliseconds (5000))
+                         .async<e2e::state_res_t> ()
+                         .result ();
+        ensure (static_cast<bool> (resumed),
+                "SM-D12 resumed state failed: " + stream_error_text (resumed));
+        ensure (resumed.value ().value == 16, "SM-D12 resumed state value mismatch");
+
+        auto push_wait =
+          second.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000)).async ();
+        auto pushed = zlink::stream_e2e_client::codecs::request (
+                        second, e2e::actor_push_req_t{"stream-reconnect-d12-push"})
+                        .packet_name ("PushReq")
+                        .timeout (std::chrono::milliseconds (5000))
+                        .async<e2e::actor_push_res_t> ()
+                        .result ();
+        ensure (static_cast<bool> (pushed),
+                "SM-D12 push trigger failed: " + stream_error_text (pushed));
+        auto notify = push_wait.result ();
+        ensure (static_cast<bool> (notify), "SM-D12 push notify missing after rebind");
+        ensure (notify.value ().actor_id == actor_id
+                  && notify.value ().value == "stream-reconnect-d12-push",
+                "SM-D12 push notify mismatch");
+
+        (void) second.close ().submit ();
+        std::cout << "scenario SM-D12 passed\n";
+    }
+
     void run_multi_stream_session_scenario (zlink::framework::route_client_t &routes)
     {
         const auto first_actor_id = std::string ("stream-multi-a");
@@ -857,6 +968,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
     zlink::framework::app_t &_app;
     std::string _stream_endpoint;
+    std::string _alternate_stream_endpoint;
     std::string _scenario_mode;
 };
 
@@ -915,11 +1027,13 @@ int main (int argc, char **argv)
     const auto publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT");
     const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
     const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
+    const auto alternate_stream_endpoint = env_or ("ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT");
     const auto scenario_mode = env_or ("ZLINK_CPP_E2E_SCENARIO_MODE");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
 
     auto app = zlink::framework::app_t::create ();
-    auto scenario = std::make_unique<scenario_service_t> (app, stream_endpoint, scenario_mode);
+    auto scenario = std::make_unique<scenario_service_t> (app, stream_endpoint,
+                                                          alternate_stream_endpoint, scenario_mode);
     auto *scenario_result = scenario.get ();
     app.logging ()
       .use_file (log_dir + "/client.log")

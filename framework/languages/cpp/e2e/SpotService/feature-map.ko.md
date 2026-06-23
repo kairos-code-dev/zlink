@@ -43,6 +43,8 @@
   같은 push를 받지 않는지 검증한다.
 - `SM-D7`: stream auth 전 packet dispatch가 실패하고, 잘못된 auth request가 public error로
   끝나며, auth 성공 후 request dispatch가 정상 동작하는지 검증한다.
+- `SM-D12`: `session-a`에서 join/state/push를 수행한 actor가 연결을 끊은 뒤 `session-b`로
+  다시 auth/rebind해 play 노드의 기존 state snapshot과 후속 push를 이어받는지 검증한다.
 
 ## 공개 API 대기
 
@@ -63,5 +65,4 @@
 
 ## 남은 구현 후보
 
-- `SM-D12`: 실제 stream session client와 gateway 노드를 더 확장해야 한다.
 - `SM-G1`: harness가 play node를 kill/restart하고 재join/rebind를 검증해야 한다.

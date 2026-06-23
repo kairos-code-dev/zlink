@@ -148,8 +148,8 @@ sequenceDiagram
 
 session은 `ZLinkSuspendingSession`을 상속해 `onDispatchSuspending`에서 packet을 받는다.
 인증 packet은 typed session packet handler로 처리하고(`bind(...)`), 그 외 packet은
-`ZLinkSessionActor.relay(...)`로 actor에 넘긴다. `payload`는 framework runtime이 콜백
-동안 빌려준 값이다. `relay(...)`는 caller payload를 소비하지 않으므로 그대로 넘긴다.
+`ZLinkSessionActor.relay(...)`로 actor에 넘긴다. `payload`는 framework `ZLinkMessage`다.
+session은 이 값을 decode 하거나 relay API에 그대로 넘긴다.
 
 ```kotlin
 import kotlinx.coroutines.future.await

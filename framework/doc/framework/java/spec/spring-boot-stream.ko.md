@@ -16,7 +16,7 @@
 - stream node는 bind endpoint와 session type을 등록한다.
 - session callback은 `ZLinkSessionContext`를 통해 peer 정보, client 응답,
   actor binding, close 제어를 사용한다.
-- inbound payload는 callback 동안 framework가 빌려준 값이다.
+- inbound payload는 framework `ZLinkMessage`다.
 - 같은 session 안의 callback은 직렬로 실행한다.
 - 서로 다른 session은 독립적으로 진행될 수 있다.
 

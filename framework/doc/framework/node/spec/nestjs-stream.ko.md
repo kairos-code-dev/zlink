@@ -239,12 +239,9 @@ low-level zlink binding 을 직접 사용할 때는 recv 또는 callback 으로 
 application 에 직접 노출하지 않는다. framework runtime 이 binding 의 수신자가
 되며, 수신한 `Message` 의 해제 책임도 framework runtime 이 가진다.
 
-`onDispatch(...)` 로 전달된 `payload` 는 callback 실행 동안 session 이
-그대로 사용할 수 있는 borrowed payload 다. session 은 `dispose()`,
-`Symbol.asyncDispose`, `move()` 를 기본 사용법으로 쓰지 않는다.
-`ZLinkSessionActor.relay(...)` 같은 framework API 에 바로 전달할 때도 `move()` 를
-호출하지 않는다. callback 이 끝난 뒤에도 payload 를 보관해야 하는 경우에만
-`copy()` 또는 `move()` 로 소유권을 명확히 가져간다.
+`onDispatch(...)` 로 전달된 `payload` 는 framework `ZLinkMessage` 다. session 은
+`payload.decode<T>()` 로 DTO를 읽거나 `ZLinkSessionActor.relay(...)` 같은 framework
+API 에 그대로 전달한다.
 
 반대로 application 이 직접 만든 `Message` 를 `ZLinkStream.write(...)` 같은
 raw write API 에 넘길 때는 framework 가 그 `Message` 의 소유권을 가져가지
@@ -296,9 +293,8 @@ dispatcher 는 등록된 handler 의 `packetName` 과 일치하는 packet 만 �
 이 뒤에 actor 로 relay 할지, 오류로 거절할지, 로그만 남길지는 session 구현체가
 정한다. framework 는 이 단계에서 자동 relay 나 자동 무시 정책을 적용하지 않는다.
 
-handler 가 받는 `payload` 도 `onDispatch(...)` 와 같은 borrowed payload 다.
-handler 는 payload 를 직접 해제하거나 `move()` 로 소비하지 않는다. handler 구현은
-DI 를 사용할 수 있으며, framework 등록 과정은 session 이 주입받는 dispatcher 의
+handler 가 받는 `payload` 도 `onDispatch(...)` 와 같은 framework `ZLinkMessage` 다.
+handler 구현은 DI 를 사용할 수 있으며, framework 등록 과정은 session 이 주입받는 dispatcher 의
 context 타입에 맞는 handler 구현을 provider 로 자동 등록한다.
 
 여기서 기대하는 동작은 다음과 같다.
@@ -435,8 +431,8 @@ framework 의 기본 표면은 다음 정도까지만 유지한다.
 예를 들면 다음과 같이 쓴다.
 
 ```ts
-const input = decode<ClientInput>(payload);
-const request = decode<ChatRequest>(payload);
+const input = payload.decode<ClientInput>();
+const request = payload.decode<ChatRequest>();
 ```
 
 이 구조의 장점은 다음과 같다.

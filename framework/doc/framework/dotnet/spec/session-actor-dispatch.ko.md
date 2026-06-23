@@ -1315,7 +1315,7 @@ public sealed class TicTacToeGame : IZLinkSpot<PlayActor>
     {
         var join = request.Decode<JoinMatchReq>();
         return ValueTask.FromResult(
-            ZLinkSpotActorJoinResult.Accept(new JoinMatchRes(join.MatchId).Encode()));
+            ZLinkSpotActorJoinResult.Accept(new JoinMatchRes(join.MatchId)));
     }
 }
 ```

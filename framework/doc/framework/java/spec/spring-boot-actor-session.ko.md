@@ -189,8 +189,8 @@ session actor의 `notifyDisconnected()`는 backend actor binding을 해제한 �
 실행한다. 오래된 session binding에서 disconnect 알림이 늦게 도착해도 현재 bound
 session과 disconnected lifecycle callback을 건드리지 않는다.
 `relay(header, payload)`는 session이 받은 actor packet을 bound actor route로
-전달한다. framework는 payload copy를 만들어 전송하므로 호출자가 넘긴 `Message`의
-소유권은 호출자에게 남아 있다.
+전달한다. `payload`는 framework `ZLinkMessage`이며, session은 이 값을 decode 하거나
+relay API에 그대로 넘긴다.
 
 ## 6. Handler
 
@@ -230,8 +230,8 @@ public interface ZLinkSpotActorSendHandler<
 - actor 생성은 `ZLinkActorManager`를 통해 명시적으로 수행한다.
 - actor packet handler는 actor class가 아니라 Entry Spot 또는 user Spot registry에
   등록한다.
-- session callback에서 받은 payload는 callback 동안 빌려온 값이다. relay할 수는
-  있지만 임의로 dispose하거나 ownership을 이동하지 않는다.
+- session callback에서 받은 payload는 framework `ZLinkMessage`다. session은 이 값을
+  decode 하거나 relay API에 그대로 넘긴다.
 - client close는 session binding cleanup만 수행한다. actor disconnect callback이
   필요하면 application이 `notifyDisconnected()`를 호출한다.
 - remote actor로 relay할 때 Java framework는 backend stream의 bound actor send를

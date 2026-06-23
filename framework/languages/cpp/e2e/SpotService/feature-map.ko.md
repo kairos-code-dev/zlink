@@ -40,6 +40,7 @@
 
 ## 남은 구현 후보
 
+- `SM-A8`: `spot_context_t::run_worker` 공개 API가 있어 worker offload 검증으로 확장할 수 있다.
 - `SM-C3`: `spot_context_t::request_to`와 `send_to` 공개 API가 있어 spot-to-spot messaging으로
   확장할 수 있다.
 - `SM-D1`, `SM-D2`, `SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D12`: 실제 stream session client와

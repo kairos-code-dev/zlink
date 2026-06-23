@@ -28,11 +28,52 @@ var client = host.Services.GetRequiredService<IZLinkChannelClient>();
 using var http = new HttpClient();
 
 await WaitForProvidersAsync(client, "rl-bootstrap", ["api-a", "api-b"]);
+await RunRlB1Async(client, http, options);
 await RunRlB4Async(client, http, options);
 await RunRlB5Async(client, http, options);
 
 Console.WriteLine("resilience-lifecycle e2e result=passed");
 await host.StopAsync();
+
+static async Task RunRlB1Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)
+{
+    var slowMarker = $"rl-b1-slow-{Guid.NewGuid():N}";
+    var timedOut = false;
+    try
+    {
+        await client.RequestToChannel(
+                ResilienceLifecycleNames.Channel,
+                new ProfileRequest("slow", slowMarker))
+            .PacketName("ProfileRequest")
+            .Timeout(TimeSpan.FromMilliseconds(100))
+            .Async<ProfileReply>();
+    }
+    catch (TimeoutException)
+    {
+        timedOut = true;
+    }
+
+    Ensure(timedOut, "RL-B1 expected the slow request to time out.");
+
+    var followUp = await RequestAsync(client, "fast", $"rl-b1-follow-up-{Guid.NewGuid():N}");
+    Ensure(followUp.Value == "profile:fast", "RL-B1 follow-up request failed after timeout.");
+
+    await WaitUntilAsync(async () =>
+    {
+        var apiA = await ReadEvidenceAsync(http, options.ProviderAUrl);
+        if (apiA.Any(line => line.Contains($"profile-request|rid=api-a|marker={slowMarker}", StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        var apiB = await ReadEvidenceAsync(http, options.ProviderBUrl);
+        return apiB.Any(line => line.Contains($"profile-request|rid=api-b|marker={slowMarker}", StringComparison.Ordinal));
+    }, "RL-B1 slow request completion evidence missing.");
+
+    var later = await RequestAsync(client, "fast", $"rl-b1-later-{Guid.NewGuid():N}");
+    Ensure(later.Value == "profile:fast", "RL-B1 later request failed after slow completion.");
+    Console.WriteLine("scenario RL-B1 passed");
+}
 
 static async Task RunRlB4Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)
 {

@@ -152,6 +152,16 @@ codec 변경 때마다 업무 코드가 같이 바뀌는 원인이므로 최종 
 
 정리하면, codec을 추가하는 방법은 그대로 두고 payload를 다루는 업무 API만 바꾼다.
 
+헷갈릴 때는 아래 기준을 먼저 적용한다.
+
+- codec extension을 등록하는 코드는 기존 방식 그대로 둔다.
+- SPOT create, session dispatch, actor join 업무 코드에서 raw payload를 만들거나 해석하는 코드는
+  기존 방식이라도 제거한다.
+- `ZLinkMessage`는 raw bindings `Message`를 이름만 바꾼 타입이 아니다. framework codec registry를
+  통해 encode/decode 지점을 runtime 내부로 옮기기 위한 framework 타입이다.
+- sample은 사용자가 그대로 따라 하는 공개 사용 예시이므로, sample에 raw payload helper가 남아 있으면
+  migration이 끝난 것으로 보지 않는다.
+
 | 질문 | 답 |
 |------|----|
 | custom codec extension을 options에 등록하는 기존 코드는 바뀌는가? | 바뀌지 않는다. 기존 등록 코드는 계속 유효해야 한다. |
@@ -187,6 +197,50 @@ options.codecs().use(my_custom_codec_extension{});
 위 코드는 변경 후에도 그대로 유효해야 한다. custom codec을 추가하려면 application startup 또는
 builder/options에서 extension을 등록한다. handler, actor, session, SPOT create 코드는 codec 종류를
 직접 알 필요가 없어야 한다.
+
+반대로 아래처럼 codec 등록 코드가 아니라 payload를 직접 만드는 코드는 제거 대상이다.
+
+```csharp
+// 제거 대상: 업무 코드가 raw Message와 JSON bytes를 직접 만든다.
+var request = Message.From(JsonSerializer.SerializeToUtf8Bytes(new JoinRoom("room-1")));
+await actor.Context.JoinSpot(roomRid, request).Async();
+```
+
+```java
+// 제거 대상: 업무 코드가 raw Message와 codec helper를 직접 조합한다.
+Message request = Message.from(JsonMessage.encode(new JoinRoom("room-1")));
+actor.context().joinSpot(roomRid, request).submit().join();
+```
+
+```ts
+// 제거 대상: 업무 코드가 binding message 또는 Buffer를 직접 만든다.
+const request = Message.from(JSON.stringify({ roomId: "room-1" }));
+await actor.context.joinSpot(roomRid, request).submit();
+```
+
+```cpp
+// 제거 대상: sample 또는 handler가 raw zlink message를 직접 만든다.
+auto request = zlink::message_t::from_string(json_payload);
+co_await actor.context().join_spot(room_rid, std::move(request));
+```
+
+변경 후에는 같은 의도를 아래처럼 표현한다.
+
+```csharp
+await actor.Context.JoinSpot(roomRid, ZLinkMessage.From(new JoinRoom("room-1"))).Async();
+```
+
+```java
+actor.context().joinSpot(roomRid, new JoinRoom("room-1")).submit(JoinedRoom.class).join();
+```
+
+```ts
+await actor.context.joinSpot(roomRid, { roomId: "room-1" }).submit<JoinedRoom>();
+```
+
+```cpp
+co_await actor.context().join_spot(room_rid, join_room_t{.room_id = "room-1"});
+```
 
 구현자는 아래 기준으로 코드를 판정한다.
 

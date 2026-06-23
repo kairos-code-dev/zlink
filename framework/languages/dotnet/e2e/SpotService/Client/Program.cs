@@ -546,20 +546,28 @@ static async Task RunSmA7A8C4E4Async(ClientOptions options)
             new CreateSpotReq(workerSpotRid))
         .PacketName("CreateSpotReq")
         .Async<CreateSpotReply>();
+    var workerRouteReady = await RequestSpotStateWithRetryAsync(
+        routes,
+        SpotServiceNames.ExternalSpotChannel,
+        workerSpotRid,
+        new StateReq("noop", 0),
+        "SM-A8 worker spot route did not become ready.");
+    Ensure(workerRouteReady.SpotRid == workerSpotRid, "SM-A8 worker route readiness target mismatch.");
     var playABeforeWorker = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
     var worker = await routes.Request(
             SpotServiceNames.ExternalSpotChannel,
             RoutingId.From(workerSpotRid),
-            new WorkerStartReq("sm-a8-worker", 300))
+            new WorkerStartReq("sm-a8-worker", 5000))
         .PacketName("WorkerStartReq")
+        .Timeout(TimeSpan.FromSeconds(5))
         .Async<WorkerStartReply>();
     Ensure(worker.SpotRid == workerSpotRid, "SM-A8 worker start target mismatch.");
-    var duringWorker = await routes.Request(
-            SpotServiceNames.ExternalSpotChannel,
-            RoutingId.From(workerSpotRid),
-            new StateReq("add", 1))
-        .PacketName("StateReq")
-        .Async<StateReply>();
+    var duringWorker = await RequestSpotStateWithRetryAsync(
+        routes,
+        SpotServiceNames.ExternalSpotChannel,
+        workerSpotRid,
+        new StateReq("add", 1),
+        "SM-A8 concurrent spot request timed out.");
     Ensure(duringWorker.Value == 1, "SM-A8 concurrent spot request did not run before worker completion.");
     await WaitUntilAsync(async () =>
     {

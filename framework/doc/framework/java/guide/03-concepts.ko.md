@@ -43,7 +43,7 @@ actor dispatch 를 제공한다.
 
 ## 5. STREAM과 Connector
 
-server 쪽은 `ZLinkSession` 하나를 기준으로 header 기반 packet을 받는다. 외부 client는
+server 쪽은 `ZLinkSession` 하나를 기준으로 dispatch context 기반 packet을 받는다. 외부 client는
 server framework에 의존하지 않는 `ZLinkStreamConnector` 모듈을 사용한다.
 
 ## 6. Spring DI

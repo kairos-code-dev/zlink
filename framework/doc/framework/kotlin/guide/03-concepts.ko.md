@@ -43,7 +43,7 @@ factory, Entry Spot, timer, actor dispatch를 Java와 같은 의미로 제공하
 
 ## 5. STREAM과 Connector
 
-server 쪽은 `ZLinkSuspendingSession` 하나를 기준으로 header 기반 packet을 받는다. 외부
+server 쪽은 `ZLinkSuspendingSession` 하나를 기준으로 dispatch context 기반 packet을 받는다. 외부
 client는 server framework에 의존하지 않는 `ZLinkStreamConnector` 모듈을 사용하며,
 Kotlin에서는 `connector.kotlin()`으로 coroutine·`Flow` 표면을 얻는다.
 

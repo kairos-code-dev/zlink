@@ -122,7 +122,7 @@ export class GameSession implements ZLinkSession {
   ) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
-    if (header.name === 'auth') {
+    if (dispatch.packetName === 'auth') {
       const req = payload.decode<AuthReq>();
       const actor = await this.actors.getOrCreate(req.playerId, 'player');
       this.actor = await this.context.actors.bind(actor);

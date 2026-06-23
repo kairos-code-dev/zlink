@@ -44,8 +44,8 @@ framework stream node runtime 이 담당한다.
 
 - framework 가 stream header 를 decode 한 뒤 `ZLinkSessionDispatchContext dispatch` 와
   `ZLinkMessage payload` 를 session callback 에 전달한다.
-- `playhouse` 처럼 header 는 framework 내부에서 packet name 과 metadata 로
-  해석한다. application 은 `header.name` 을 보고 각 packet 타입으로
+- `playhouse` 처럼 내부 header 는 framework가 packet name 과 metadata 로
+  해석한다. application 은 `dispatch.packetName` 을 보고 각 packet 타입으로
   decode 하는 모델을 자연스러운 기본으로 본다.
 - payload decode는 transport 본체에 섞지 않는다. 대신 framework runtime이 등록된
   codec registry로 `ZLinkMessage`를 만들고, application은 필요한 packet만
@@ -192,7 +192,6 @@ export interface ZLinkSessionActor {
   readonly ref: ActorRef;
 
   relay(
-    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void>;

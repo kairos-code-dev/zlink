@@ -179,7 +179,7 @@ public final class TicTacToeSession implements ZLinkSession {
     public void onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
-        if ("auth".equals(header.name())) {
+        if ("auth".equals(dispatch.packetName())) {
             AuthReq req = payload.decode(AuthReq.class);
             actors.getOrCreate(req.actorId(), "player")
                 .thenCompose(actor -> context.actors().bind(actor))

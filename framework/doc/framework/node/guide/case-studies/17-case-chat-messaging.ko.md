@@ -121,7 +121,7 @@ export class ChatSession implements ZLinkSession {
   ) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
-    if (header.name === 'auth') {
+    if (dispatch.packetName === 'auth') {
       const req = payload.decode<AuthReq>();
       const actor = await this.actors.getOrCreate(req.userId, 'user');
       this.user = await this.context.actors.bind(actor);

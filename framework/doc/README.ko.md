@@ -14,7 +14,7 @@
 | **Framework adapter** | `framework/` | [공통 스펙](framework/common/README.ko.md) | 메시징·SPOT·actor·stream 프레임워크 본체 |
 | **HTTP Client** | `http-client/` | [언어별 문서](http-client/dotnet/README.ko.md) | fluent HTTP/JSON client |
 | **Stream Connector** | `stream-connector/` | [INDEX](stream-connector/cpp/guide/INDEX.ko.md) | client 측 STREAM 접속 라이브러리(C++) |
-| 구현 계획 | `plan/` | [codec 통합 계획](plan/framework-codec-extension-unification-plan.ko.md) | 컴포넌트 횡단 작업 순서 |
+| 구현 계획 | `plan/` | [codec 통합 계획](plan/framework-codec-extension-unification-plan.ko.md), [STREAM 사용자 header 제거 계획](plan/framework-stream-user-header-removal-plan.ko.md) | 컴포넌트 횡단 작업 순서 |
 
 정식 언어: `.NET` · `Java/Kotlin` · `Node.js` · `C++`.
 
@@ -118,6 +118,7 @@ client 측에서 STREAM 서버에 접속하는 별도 라이브러리(C++). Unre
 | 문서 | 다루는 범위 |
 |------|-------------|
 | [Framework codec extension 통합 계획](plan/framework-codec-extension-unification-plan.ko.md) | JSON 기본값, Protobuf/MessagePack extension, custom codec, connector/HTTP client 적용 구조 |
+| [STREAM 사용자 header 제거 계획](plan/framework-stream-user-header-removal-plan.ko.md) | 사용자 header 생성/전달 제거, dispatch context, `_raw` API 정리 |
 
 ---
 

@@ -33,7 +33,7 @@ ZLinkFrameworkConfigurer { options ->
 
 ### session 작성
 
-server framework는 header 기반 session 하나를 사용한다. packet session과 raw
+server framework는 dispatch context 기반 session 하나를 사용한다. packet session과 raw
 session을 public type으로 나누지 않는다. framework가 frame을 디코드해
 `ZLinkSessionDispatchContext dispatch` + `ZLinkMessage payload` 두 부분으로 콜백한다. Kotlin에서는
 `ZLinkSuspendingSession`을 상속해 `onDispatchSuspending`을 `suspend`로 둔다.
@@ -46,7 +46,7 @@ class GameSession(
     override fun context(): ZLinkSessionContext = context
 
     override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-        when (header.name()) {
+        when (dispatch.packetName()) {
             "ClientInput" -> {
                 val input = payload.decode(ClientInput::class.java)
                 channels.sendToChannel("play", ForwardInputCommand(input)).submit().await()

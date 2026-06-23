@@ -174,7 +174,7 @@ public final class LiveChatSession implements ZLinkSession {
 
     @Override
     public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-        if ("auth".equals(header.name())) {
+        if ("auth".equals(dispatch.packetName())) {
             AuthViewerReq req = payload.decode(AuthViewerReq.class);
             viewer = actors.getOrCreate(req.viewerId(), "viewer")
                 .thenCompose(actor -> context.actors().bind(actor))

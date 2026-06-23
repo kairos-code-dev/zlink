@@ -162,7 +162,7 @@ export class LiveChatSession implements ZLinkSession {
   ) {}
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
-    if (header.name === 'auth') {
+    if (dispatch.packetName === 'auth') {
       const req = payload.decode<AuthViewerReq>();
       const actor = await this.actors.getOrCreate(req.viewerId, 'viewer');
       this.viewer = await this.context.actors.bind(actor);

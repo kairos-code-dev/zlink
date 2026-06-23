@@ -144,11 +144,11 @@ actor는 SPOT에 입장해 상태 처리에 참여한다.
 class support_session_t : public zlink::framework::packet_stream_session_t {
   public:
     task_t<void> on_packet (stream_t &stream,
-                            const stream_header_t &header,
-                            const message_t &payload) override
+                            const stream_dispatch_context_t &dispatch,
+                            const zlink::message_t &payload) override
     {
         auto actor = co_await _actors.find (actor_id);
-        co_await actor.value ().relay (header, payload).async ();   // actor → SPOT으로 전달
+        co_await actor.value ().relay (payload).async ();   // 현재 dispatch의 packet을 actor로 전달
     }
 };
 ```

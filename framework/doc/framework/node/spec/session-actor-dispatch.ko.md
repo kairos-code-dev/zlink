@@ -536,11 +536,10 @@ class ZLinkSessionActorImpl implements ZLinkSessionActor {
   constructor(private readonly context: ZLinkSessionContext) {}
 
   async relay(
-    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void> {
-    await this.context.relayActorRef(this, header, payload, signal);
+    await this.context.relayActorRef(this, payload, signal);
   }
 }
 ```
@@ -1274,7 +1273,7 @@ export class TicTacToeSession implements ZLinkSession {
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void> {
-    if (header.name === 'auth') {
+    if (dispatch.packetName === 'auth') {
       const request = payload.decode<AuthReq>();
 
       const actor = await this.context.actors.bind(request.actorId, signal);
@@ -1285,7 +1284,7 @@ export class TicTacToeSession implements ZLinkSession {
       return;
     }
 
-    const actor = this.authenticatedActors.tryGet(header);
+    const actor = this.authenticatedActors.tryGet(dispatch.packetName);
     if (actor !== undefined) {
       await actor.relay(payload, signal);
       return;

@@ -19,14 +19,14 @@ STREAM public contract는 `contracts/streams/*`가 소유한다. public 표면�
 metadata와 error model을 둔다. stream socket owner, frame codec, session table, request
 tracker, session serial executor, transport loop는 `src/runtime/streams/*`에 둔다.
 
-STREAM public API는 raw byte stream이 아니라 framework Header 기반 packet 모델이다.
-Header parsing과 backpressure 처리는 runtime 책임이며, application handler는 이미 정리된
-packet, metadata, typed payload만 다룬다.
+STREAM public API는 raw byte stream이 아니라 packet 모델이다. Header parsing과
+backpressure 처리는 runtime 책임이며, application handler는 dispatch context, metadata,
+payload만 다룬다.
 
 ## 1. 방향
 
-framework core에서 `STREAM`은 packet 방식만 지원한다. 그중에서도 Header는 framework가
-정의한 `stream_header_t` 방식만 지원한다.
+framework core에서 `STREAM`은 packet 방식만 지원한다. 내부 wire header는 runtime이
+소유하고, public session code는 `stream_dispatch_context_t`로 packet name과 metadata만 읽는다.
 
 따라서 아래 표면은 core public 표면에 넣지 않는다.
 
@@ -52,26 +52,11 @@ class task_t;
 template <typename TActor>
 class request_call_t;
 
-enum class stream_message_kind_t : std::uint8_t {
-    send = 1,
-    request = 2,
-    response = 3,
-    error = 4,
-    control = 5
-};
-
 enum class stream_codec_t : std::uint8_t {
     raw = 0,
     json = 1,
     message_pack = 2,
     protobuf = 3
-};
-
-enum class stream_header_flags_t : std::uint8_t {
-    none = 0,
-    has_request_seq = 0x01,
-    has_metadata = 0x02,
-    payload_compressed = 0x04
 };
 
 enum class stream_session_error_t {
@@ -203,7 +188,7 @@ write backpressure, ActorGateway attach 경계를 함께 검증한다.
 - stream endpoint는 app host lifecycle에 묶여 bind/start/stop된다.
 - `on_connected`, `on_packet`, `on_disconnected`, `on_error` callback은 같은 session 안에서
   직렬로 호출된다.
-- valid packet은 `stream_header_t`와 payload로 handler에 전달된다.
+- valid packet은 `stream_dispatch_context_t`와 payload로 handler에 전달된다.
 - invalid header, unsupported codec, malformed metadata는 application handler에 전달되지
   않고 error log와 monitoring event를 남긴다.
 - `stream_t::write_packet(...)`은 submit 전에는 실행되지 않고, submit 후 backpressure와

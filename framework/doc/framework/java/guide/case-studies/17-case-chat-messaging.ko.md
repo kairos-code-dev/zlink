@@ -113,7 +113,7 @@ public final class ChatSession implements ZLinkSession {
 
     @Override
     public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-        if ("auth".equals(header.name())) {
+        if ("auth".equals(dispatch.packetName())) {
             AuthReq req = payload.decode(AuthReq.class);
             user = actors.getOrCreate(req.userId(), "chat-user")
                 .thenCompose(actor -> context.actors().bind(actor))

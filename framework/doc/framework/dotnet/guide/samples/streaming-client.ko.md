@@ -232,10 +232,9 @@ heartbeat ping, heartbeat pong, 사용자 packet 모두 inbound liveness 신호�
 
 ## 5. Packet 모델
 
-이 절에서는 wire 위의 packet 한 단위가 어떻게 생겼는지, 그리고 helper 가 그 안의
-header 와 payload 를 어떻게 채워 넣는지를 정리한다.
-
-wire packet[^wire] 의 가장 낮은 단위 모델은 `header + payload` 형태다.
+이 절에서는 connector helper 가 사용자가 넘긴 payload, packet name, metadata를 어떻게
+packet 의미로 묶는지 정리한다. wire header는 connector runtime 내부 프로토콜이며, application이
+직접 만들거나 transport에 넘기는 public 객체가 아니다.
 
 ```csharp
 public sealed record ZlinkStreamEncodedPayload(
@@ -262,10 +261,8 @@ public sealed record ZlinkStreamMessage<TPayload>(
     TPayload Payload);
 ```
 
-`ZlinkStreamMessage` 는 어디까지나 helper 모델이다. 실제 transport framing 은 항상
-`ReadOnlyMemory<byte> Header` 와 `ReadOnlyMemory<byte> Payload` 를 기준으로 이루어진다.
-
-helper 는 다음 값을 모두 byte header 로 인코딩한다.
+`ZlinkStreamMessage` 는 수신 handler와 wait API가 보는 helper 모델이다. connector runtime은
+다음 값을 내부 wire header로 인코딩하지만, public API에는 header 객체를 노출하지 않는다.
 
 - `Name`
 - `Metadata`
@@ -284,15 +281,16 @@ STREAM frame 의 앞쪽 `2B` 는 connector helper header 가 아니라 `header_s
 +----------------+----------------+----------------+----------------+
 ```
 
-helper header 는 binary header 다. 구조는 다음과 같다.
+내부 wire header 는 binary header 다. 구조를 이해해야 할 때는 다음 정도만 참고한다.
+application code는 이 값을 만들거나 수정하지 않는다.
 
 - `kind` 와 `codec` 은 문자열이 아니라 1 바이트 enum 값으로 인코딩한다.
 - packet name 은 `u8 name_len + UTF-8 bytes` 형식이고, 최대 길이는 255 bytes 다.
 
 ```text
-+---------+----------+----------+------------------+-----------+-------+
-| kind u8 | codec u8 | flags u8 | request_seq u64? | name u8+n | meta? |
-+---------+----------+----------+------------------+-----------+-------+
++---------+----------+----------+------------------+-----------+-------+-------+
+| kind u8 | codec u8 | flags u8 | request_seq u64? | name u8+n | meta? | corr? |
++---------+----------+----------+------------------+-----------+-------+-------+
 ```
 
 STREAM header 값은 connector runtime 내부에서 만든다. client 예제는 header 객체를 직접
@@ -347,6 +345,7 @@ helper header 의 `flags` 값은 공통 스펙과 동일하게 맞춘다.
 | has request seq | `0x01` | `request_seq` 필드가 있다 |
 | has metadata | `0x02` | `meta` 필드가 있다 |
 | payload compressed | `0x04` | payload가 압축된 상태다 |
+| has correlation id | `0x08` | correlation id 필드가 있다 |
 
 `Control` kind는 connector 내부 control frame이다.
 현재 `.NET` connector는 `$zlink.heartbeat.ping`과 `$zlink.heartbeat.pong`을 예약한다.
@@ -773,8 +772,8 @@ public enum ZlinkStreamCompression
 이 절에서는 request / reply 흐름에 필요한 기능과, request 와 response 의 짝짓기 규칙을
 정리한다.
 
-request helper 는 `header + payload` 전송 위에 얹는 선택 기능이다. 다만 일반 client 에서도
-충분히 자주 쓰는 흐름이라, core 패키지 안에 함께 포함한다.
+request helper 는 send와 같은 connector packet call 위에 request/reply matching을 더한 기능이다.
+일반 client 에서도 충분히 자주 쓰는 흐름이라, core 패키지 안에 함께 포함한다.
 
 요구 사항은 다음과 같다.
 
@@ -789,8 +788,8 @@ request helper 는 `header + payload` 전송 위에 얹는 선택 기능이다. 
 - close 시 pending request 실패 처리
 - timeout 시 pending request 제거
 
-request sequence 는 header helper 영역에서 다룬다. 다만 사용자가 byte header 를 직접
-구성하는 경로를 막지는 않는다.
+request sequence 는 connector runtime이 내부 pending request map과 함께 관리한다. 사용자는
+byte header를 직접 구성하지 않고 `Request(...).PacketName(...).Metadata(...)` call을 제출한다.
 
 request / response 규칙은 다음과 같다.
 

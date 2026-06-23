@@ -159,7 +159,7 @@ class MarketplaceChatSession(
     override fun context(): ZLinkSessionContext = context
 
     override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-        if (header.name() == "auth") {
+        if (dispatch.packetName() == "auth") {
             val req = payload.decode(AuthReq::class.java)
             val actor = actors.getOrCreate(req.userId, "chat-user").await()
             user = context.actors().bind(actor).await()

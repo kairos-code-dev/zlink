@@ -1263,9 +1263,9 @@ runtime 이 검증하는 계약이다.
 `sessionId + bindingToken` 이다. 이 binding 상태는 public resolver 계약이
 아니라, framework/core runtime 의 내부 상태다.
 
-`Write(...)` 는 framework Header 기반 packet session 에서 stream 으로 packet 을
-보내는 low-level submit 이다. 일반 application 코드는 가능한 한 `Context.Reply(...)`,
-`IZLinkBoundSession` 같은 framework helper 를 사용한다.
+stream send/reply call은 `ZLinkMessage`를 stream 으로 보내는 submit 이다. 일반
+application 코드는 가능한 한 `Context.Reply(...)`, `IZLinkBoundSession` 같은 framework
+helper 를 사용한다.
 
 session handler 에서 다른 channel 로 send/request 를 보내야 한다면
 `IZLinkSessionContext` 가 아니라 DI 로 주입받은 `IZLinkChannelClient` 를 사용한다.
@@ -3647,13 +3647,9 @@ public sealed class ZLinkStreamPacketAttribute : Attribute
     public ZLinkStreamPacketAttribute();
 }
 
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkStreamRawAttribute : Attribute
-{
-}
 ```
 
-stream 은 framework Header 기반의 packet session 을 하나의 축으로 본다.
+stream 은 dispatch context 기반의 packet session 을 하나의 축으로 본다.
 recv 방식은 현재 스펙 범위에서 제외한다.
 
 session lifecycle 은 세 가지 callback 으로 노출한다. `OnConnectedAsync`,

@@ -32,10 +32,10 @@ public void configure(ZLinkFrameworkOptions framework) {
 
 ### session 작성
 
-Java server framework는 header 기반 `ZLinkSession` 하나를 사용한다. packet session과
+Java server framework는 dispatch context 기반 `ZLinkSession` 하나를 사용한다. packet session과
 raw session을 public type으로 나누지 않는다. framework가 frame을 디코드해
 `ZLinkSessionDispatchContext dispatch` + `ZLinkMessage payload` 두 부분으로 콜백한다. 응용은
-`header.name()`으로 분기하고 `payload.decode(...)`로 DTO를 얻는다.
+`dispatch.packetName()`으로 분기하고 `payload.decode(...)`로 DTO를 얻는다.
 
 ```java
 @Component
@@ -61,7 +61,7 @@ public final class GameSession implements ZLinkSession {
     public void onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
-        switch (header.name()) {
+        switch (dispatch.packetName()) {
             case "ClientInput":
                 ClientInput input = payload.decode(ClientInput.class);
                 channels.sendToChannel("play", new ForwardInputCommand(input))

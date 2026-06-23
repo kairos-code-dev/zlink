@@ -164,7 +164,7 @@ class LiveChatSession(
     override fun context(): ZLinkSessionContext = context
 
     override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-        if (header.name() == "auth") {
+        if (dispatch.packetName() == "auth") {
             val req = payload.decode(AuthViewerReq::class.java)
             val actor = actors.getOrCreate(req.viewerId, "viewer").await()
             viewer = context.actors().bind(actor).await()

@@ -411,7 +411,7 @@ class publisher_t;
 class request_client_t;
 class spot_publisher_client_t;
 class spot_context_t;
-class stream_header_t;
+class stream_dispatch_context_t;
 class stream_error_t;
 class stream_t;
 class packet_stream_session_t;
@@ -821,26 +821,11 @@ public:
     task_t<TActor> async();
 };
 
-enum class stream_message_kind_t : std::uint8_t {
-    send = 1,
-    request = 2,
-    response = 3,
-    error = 4,
-    control = 5
-};
-
 enum class stream_codec_t : std::uint8_t {
     raw = 0,
     json = 1,
     message_pack = 2,
     protobuf = 3
-};
-
-enum class stream_header_flags_t : std::uint8_t {
-    none = 0,
-    has_request_seq = 0x01,
-    has_metadata = 0x02,
-    payload_compressed = 0x04
 };
 
 enum class stream_session_error_t {
@@ -854,17 +839,6 @@ public:
     stream_session_error_t error() const;
     int native_code() const;
     std::string_view message() const;
-};
-
-class stream_header_t {
-public:
-    stream_message_kind_t kind() const;
-    stream_codec_t codec() const;
-    stream_header_flags_t flags() const;
-    std::optional<std::uint64_t> request_seq() const;
-    std::string_view packet_name() const;
-    std::optional<std::string_view> metadata(std::string_view key) const;
-    std::optional<std::string_view> correlation_id() const;
 };
 
 class stream_dispatch_context_t {
@@ -1020,8 +994,8 @@ unit test가 직접 registry를 다룰 때만 `handlers.use_filter<TFilter>()`�
 lookup, serializer 선택, DI resolve 순서, filter chain 저장은 registry 내부 구현으로 숨긴다.
 
 STREAM handler는 일반 request/send/event handler와 분리한다. framework core는 packet
-방식만 지원하고, header도 framework가 정의한 `stream_header_t`만 사용한다. raw stream
-session과 사용자 정의 header framing은 core public 표면에 넣지 않는다.
+방식만 지원한다. 내부 wire header는 runtime이 만들고 검증하며, raw stream session과 사용자
+정의 header framing은 core public 표면에 넣지 않는다.
 
 stream callback은 framework가 packet을 수신하고 header 검증을 마친 뒤 호출한다. 별도
 실행기로 넘기는 것이 기본은 아니며, 같은 stream session의 packet/lifecycle callback은

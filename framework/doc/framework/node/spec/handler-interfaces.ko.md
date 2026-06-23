@@ -720,8 +720,8 @@ export interface ZLinkStream {
   readonly localAddr?: string;
   readonly remoteAddr?: string;
 
-  /** raw frame write. payload 의 소유권을 가져가지 않는다. C# Write(Message, SendFlags). */
-  write(payload: Message, flags?: SendFlags): boolean;
+  write(payload: ZLinkMessage): ZLinkSessionSendCall;
+  reply(payload: ZLinkMessage): ZLinkSessionReplyCall;
 
   close(): Promise<void>;
 }
@@ -814,9 +814,8 @@ session 구현체는 framework 가 생성자에 넘긴 `ZLinkSessionContext` 를
 - `close()` 는 현재 session 의 stream peer 연결을 서버 쪽에서 끊는다. 인증 실패, protocol
   위반, idle timeout 처럼 더 이상 packet 을 받을 이유가 없을 때 호출한다. 연결 종료 후
   session binding 정리는 framework 가 `sessionId + bindingToken` 기준으로 담당한다.
-- `stream.write(...)` 는 framework Header 기반 packet session 에서 stream 으로 보내는
-  low-level submit 이다. 일반 application 코드는 `context.client.reply(...)`,
-  `ZLinkBoundSession` 같은 helper 를 쓴다.
+- `stream.write(...)` 와 `stream.reply(...)` 는 `ZLinkMessage`를 받는 send/reply call을 만든다.
+  일반 application 코드는 `context.client.reply(...)`, `ZLinkBoundSession` 같은 helper 를 쓴다.
 - session handler 에서 다른 channel 로 send/request 하려면 `ZLinkSessionContext` 가 아니라
   DI 로 주입받은 `ZLinkChannelClient` 를 쓴다. channel 호출은 현재 stream peer 가 아니라
   channel 이름에 맞는 framework client socket 으로 나가기 때문이다.
@@ -882,7 +881,7 @@ export interface ZLinkSessionActor {
    * caller payload 를 소비하지 않고 bound actor 로 stream packet 을 relay 한다.
    * framework 가 큐/원격 ActorGateway 를 위한 내부 copy 를 만든다.
    */
-  relay(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void>;
+  relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
 
   notifyDisconnected(): Promise<void>;
 }
@@ -2201,10 +2200,9 @@ export function ZLinkSpotSubscription(spotNodeName: string, topic: string): Meth
 
 ```ts
 export function ZLinkStreamPacket(): MethodDecorator;
-export function ZLinkStreamRaw(): MethodDecorator;
 ```
 
-stream 은 framework Header 기반 packet session 을 하나의 축으로 본다. session lifecycle 은
+stream 은 dispatch context 기반 packet session 을 하나의 축으로 본다. session lifecycle 은
 `onConnected`, `onDisconnected`, `onError` 세 callback 으로 노출한다.
 
 ## 12. 시그니처 규칙

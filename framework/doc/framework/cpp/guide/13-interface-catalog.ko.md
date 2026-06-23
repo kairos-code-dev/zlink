@@ -145,8 +145,8 @@ spot_context_t}`; `spot_create_state_t{existing, created, rejected}`.
 |------|----------|
 | `stream_builder_t` | `bind(ep)` · `register_session(name)` · `attach_actor_gateway(spot_node)` |
 | `packet_stream_session_t` | 순수 가상: `on_connected/on_disconnected/on_error/on_packet` (모두 `task_t<void>`) |
-| `stream_t` | `session_id()` · `close()` · `write_packet(header,payload)` · `reply_packet(req_header,payload)` |
-| `stream_header_t` | kind/codec/flags/request_seq/packet_name/metadata/correlation/content_type |
+| `stream_t` | `session_id()` · `close()` · `write_packet(payload)` · `reply_packet(payload)` |
+| `stream_dispatch_context_t` | `packet_name()` · `metadata()` · `can_reply()` |
 | `stream_error_t` | `error()` · `native_code()` · `message()` |
 
 옵션 레벨 등록: `stream_node_options_builder_t::register_session<TSession>()`(`packet_stream_session_t`

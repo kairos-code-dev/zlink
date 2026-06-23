@@ -179,7 +179,7 @@ public final class GameChatSession implements ZLinkSession {
 
     @Override
     public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-        if ("auth".equals(header.name())) {
+        if ("auth".equals(dispatch.packetName())) {
             AuthPlayerReq req = payload.decode(AuthPlayerReq.class);
             player = actors.getOrCreate(req.playerId(), "player")
                 .thenCompose(actor -> context.actors().bind(actor))

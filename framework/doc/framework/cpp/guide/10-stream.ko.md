@@ -57,15 +57,15 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::task_t<void> on_error (zlink::framework::stream_t &,
                                              const zlink::framework::stream_error_t &) override;
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
-                                              const zlink::framework::stream_header_t &header,
-                                              const zlink::framework::message_t &payload) override;
+                                              const zlink::framework::stream_dispatch_context_t &dispatch,
+                                              const zlink::message_t &payload) override;
 };
 ```
 
 | 훅 | 시점 |
 |----|------|
 | `on_connected(stream)` | 연결 수립 |
-| `on_packet(stream, header, payload)` | 패킷 수신 — `header.packet_name()`으로 분기 |
+| `on_packet(stream, dispatch, payload)` | 패킷 수신 — `dispatch.packet_name()`으로 분기 |
 | `on_error(stream, error)` | 전송 오류 |
 | `on_disconnected(stream)` | 연결 종료 — actor unbind 등 정리 |
 
@@ -96,13 +96,14 @@ zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) overr
 
 서버에서 클라이언트로 직접 쓰기는 `stream_t`의 write call을 쓴다.
 `stream_t`는 현재 연결의 `session_id()`를 읽고, `close()`로 연결을 닫고,
-`write_packet(header, payload)`와 `reply_packet(request_header, payload)`로
-패킷을 쓴다.
+write call과 reply call로 패킷을 쓴다. application은 STREAM header를 만들지 않는다.
 
 ```cpp
-auto payload = zlink::framework::message_t::from (response);
-co_await stream.write_packet (header, payload).async ();          // framework message 전송
-co_await stream.reply_packet (request_header, payload).async ();  // 요청에 대한 응답
+auto payload = zlink::message_t::from_json (response);
+co_await stream.write_packet (payload)
+  .packet_name ("game.state.changed") // client가 받을 packet 이름
+  .async ();
+co_await stream.reply_packet (payload).async (); // 현재 request dispatch에 대한 응답
 ```
 
 STREAM session은 `stream_dispatch_context_t`와 `zlink::message_t` payload를 받는다.
@@ -144,9 +145,9 @@ struct zlink::stream_connector::codecs::codec_traits<place_order_t> {
 ## 5. 패킷 계약
 
 stream 패킷도 채널 메시지와 같은 typed DTO(`packet_name`)다. 서버 session은
-`header.packet_name()`으로 어떤 DTO인지 식별하고, payload를 해당 타입으로
-디코딩한다. `stream_header_t::codec()` 값은 `stream_codec_t`이며 현재 값은
-`raw`, `json`, `message_pack`, `protobuf`다. spot까지 relay되는 패킷은 spot의
+`dispatch.packet_name()`으로 어떤 DTO인지 식별하고, payload를 해당 타입으로
+디코딩한다. stream codec 값은 runtime 내부 header에 있으며 현재 값은 `raw`, `json`,
+`message_pack`, `protobuf`다. spot까지 relay되는 패킷은 spot의
 `add_actor_packet<&T::method>()` 등록과 만나 typed 핸들러로 dispatch된다
 ([8장 §3](08-spot.ko.md#3-room-spot-작성)).
 

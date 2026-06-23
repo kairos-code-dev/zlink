@@ -34,13 +34,13 @@ class route_session_t final : public zlink::framework::packet_stream_session_t {
 public:
     zlink::framework::result_t<void> on_packet(
       zlink::framework::stream_t &stream,
-      const zlink::framework::stream_header_t &header,
-      const zlink::framework::message_t &payload) override
+      const zlink::framework::stream_dispatch_context_t &dispatch,
+      const zlink::message_t &payload) override
     {
         route_packet_t packet{
           .session_id = stream.session_id(),
-          .packet_name = std::string(header.packet_name()),
-          .payload = payload.decode<route_body_t>(),
+          .packet_name = std::string(dispatch.packet_name()),
+          .payload = payload.parse_json<route_body_t>(),
         };
 
         handle_route_packet(stream, packet);
@@ -54,17 +54,11 @@ public:
 ```cpp
 zlink::framework::stream_write_call_t send_route_ack(
   zlink::framework::stream_t &stream,
-  const zlink::framework::stream_header_t &request_header,
   const route_ack_t &ack)
 {
-    auto reply_header = make_framework_stream_header(
-      "route.ack",
-      "application/json",
-      request_header.correlation_id());
-
     return stream.write_packet(
-      reply_header,
-      zlink::framework::message_t::from(ack));
+      zlink::message_t::from_json(ack))
+      .packet_name("route.ack");
 }
 ```
 
@@ -84,10 +78,10 @@ public:
     }
 
     zlink::framework::task_t<void> on_packet(zlink::framework::stream_t &stream,
-      const zlink::framework::stream_header_t &header,
-      const zlink::framework::message_t &payload) override
+      const zlink::framework::stream_dispatch_context_t &dispatch,
+      const zlink::message_t &payload) override
     {
-        if (is_login(header)) {
+        if (is_login(dispatch)) {
             actor_ = co_await actors_
               .bind(find_actor_ref(payload))
               .async();

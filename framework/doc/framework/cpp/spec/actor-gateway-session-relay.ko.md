@@ -75,10 +75,10 @@ public:
     }
 
     zlink::framework::task_t<void> on_packet(zlink::framework::stream_t &stream,
-      const zlink::framework::stream_header_t &header,
-      const zlink::framework::message_t &payload) override
+      const zlink::framework::stream_dispatch_context_t &dispatch,
+      const zlink::message_t &payload) override
     {
-        if (is_login(header)) {
+        if (is_login(dispatch)) {
             actor_ = co_await actors_
               .bind(find_or_create_actor_ref(payload))
               .async();

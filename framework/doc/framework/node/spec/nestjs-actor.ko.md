@@ -846,11 +846,11 @@ export interface ZLinkSessionActor {
   readonly ref: ActorRef;
 
   relay(
-    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
+    signal?: AbortSignal,
   ): Promise<void>;
 
-  notifyDisconnected(): Promise<void>;
+  notifyDisconnected(signal?: AbortSignal): Promise<void>;
 }
 ```
 

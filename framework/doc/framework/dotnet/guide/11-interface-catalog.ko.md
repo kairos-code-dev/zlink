@@ -620,7 +620,7 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 | `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Async()`) |
 | `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Async()`) |
 | `IZLinkSessionActor` | session relay 용 actor handle(`ActorId`, `Ref`, `RelayAsync`, `NotifyDisconnectedAsync`) |
-| `IZLinkStream` | raw stream write(`Write(Message, SendFlags)`) / `CloseAsync`. 보통은 `Send`/`Reply` 를 쓴다 |
+| `IZLinkStream` | `Send(ZLinkMessage)` / `Reply(ZLinkMessage)` / `CloseAsync`. 보통은 send/reply call에서 metadata와 compression을 지정한다 |
 
 검증: `StreamContracts.Session_context_collects_identity_stream_and_actor_operations`.
 

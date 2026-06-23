@@ -119,11 +119,11 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
     // ...
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
-                                              const zlink::framework::stream_header_t &header,
-                                              const zlink::framework::message_t &payload) override
+                                              const zlink::framework::stream_dispatch_context_t &dispatch,
+                                              const zlink::message_t &payload) override
     {
-        if (_authenticate.can_handle (header)) {
-            auto authenticated = co_await _authenticate.handle (_actors, stream, header, payload);
+        if (_authenticate.can_handle (dispatch)) {
+            auto authenticated = co_await _authenticate.handle (_actors, stream, payload);
             auto actor = _actors.get_or_create ("player", std::string (authenticated.actor_id ()));
             if (!actor) {
                 co_return;
@@ -133,7 +133,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
         }
 
         auto actor = _actors.find (*_bound_actor_id);
-        co_await actor.value ().relay (header, payload).async ();   // spot으로 전달
+        co_await actor.value ().relay (payload).async ();   // 현재 dispatch의 packet을 spot으로 전달
     }
 
     zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override

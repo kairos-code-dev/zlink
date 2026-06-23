@@ -61,7 +61,7 @@ struct spot_actor_join_response_t
         return spot_actor_join_response_t{true, std::move (reply)};
     }
 
-    static spot_actor_join_response_t accept (zlink::message_t reply)
+    static spot_actor_join_response_t accept_raw (zlink::message_t reply)
     {
         return accept (message_t::from_encoded (std::move (reply)));
     }
@@ -79,7 +79,7 @@ struct spot_actor_join_response_t
         return spot_actor_join_response_t{false, std::move (reply)};
     }
 
-    static spot_actor_join_response_t reject (zlink::message_t reply)
+    static spot_actor_join_response_t reject_raw (zlink::message_t reply)
     {
         return reject (message_t::from_encoded (std::move (reply)));
     }
@@ -110,7 +110,7 @@ struct spot_create_response_t
         return spot_create_response_t{true, std::move (reply)};
     }
 
-    static spot_create_response_t accept (zlink::message_t reply)
+    static spot_create_response_t accept_raw (zlink::message_t reply)
     {
         return accept (message_t::from_encoded (std::move (reply)));
     }
@@ -128,7 +128,7 @@ struct spot_create_response_t
         return spot_create_response_t{false, std::move (reply)};
     }
 
-    static spot_create_response_t reject (zlink::message_t reply)
+    static spot_create_response_t reject_raw (zlink::message_t reply)
     {
         return reject (message_t::from_encoded (std::move (reply)));
     }

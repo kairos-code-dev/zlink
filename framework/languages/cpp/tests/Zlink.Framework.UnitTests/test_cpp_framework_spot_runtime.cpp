@@ -169,10 +169,10 @@ struct stage_spot_t : public zlink::framework::spot_t
         ++create_count;
         last_create_request = request.to_string ();
         if (reject_create) {
-            return zlink::framework::spot_create_response_t::reject (
+            return zlink::framework::spot_create_response_t::reject_raw (
               zlink::message_t::from ("create-rejected"));
         }
-        return zlink::framework::spot_create_response_t::accept (
+        return zlink::framework::spot_create_response_t::accept_raw (
           zlink::message_t::from ("create-accepted"));
     }
 
@@ -184,10 +184,10 @@ struct stage_spot_t : public zlink::framework::spot_t
         join_seen = std::stoi (request.to_string ());
         actor.joined_value = join_seen;
         if (!accept_join) {
-            return zlink::framework::spot_actor_join_response_t::reject (
+            return zlink::framework::spot_actor_join_response_t::reject_raw (
               zlink::message_t::from ("rejected"));
         }
-        return zlink::framework::spot_actor_join_response_t::accept (
+        return zlink::framework::spot_actor_join_response_t::accept_raw (
           zlink::message_t::from (std::to_string (join_seen + 1)));
     }
 
@@ -344,7 +344,7 @@ struct factory_spot_t : public zlink::framework::spot_t
     {
         ++create_count;
         last_request = request.to_string ();
-        return zlink::framework::spot_create_response_t::accept (zlink::message_t::from (value));
+        return zlink::framework::spot_create_response_t::accept_raw (zlink::message_t::from (value));
     }
 
     void on_initialize () { ++initialize_count; }

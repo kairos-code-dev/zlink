@@ -78,6 +78,21 @@ wait_port() {
   return 1
 }
 
+wait_port_closed() {
+  local name="$1"
+  local endpoint="$2"
+  local port
+  port="$(port_of "$endpoint")"
+  for _ in $(seq 1 120); do
+    if ! (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  echo "Timed out waiting for $name to close at $endpoint" >&2
+  return 1
+}
+
 wait_file() {
   local name="$1"
   local path="$2"
@@ -311,10 +326,17 @@ if [[ -n "$PLAY_A_PID" ]] && kill -0 "$PLAY_A_PID" >/dev/null 2>&1; then
   kill -9 "$PLAY_A_PID" >/dev/null 2>&1 || true
   wait "$PLAY_A_PID" >/dev/null 2>&1 || true
 fi
+wait_port_closed play-a-route "$ROUTE_A"
+wait_port_closed play-a-spot "$SPOT_A"
+wait_port_closed play-a-http "$HTTP_A"
 if [[ -n "$SESSION_A_PID" ]] && kill -0 "$SESSION_A_PID" >/dev/null 2>&1; then
   kill -9 "$SESSION_A_PID" >/dev/null 2>&1 || true
   wait "$SESSION_A_PID" >/dev/null 2>&1 || true
 fi
+wait_port_closed session-a-route "$ROUTE_SESSION_A"
+wait_port_closed session-a-spot "$SPOT_SESSION_A"
+wait_port_closed session-a-stream "$STREAM_A"
+wait_port_closed session-a-http "$HTTP_SESSION_A"
 start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
 start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
 sleep 20
@@ -343,6 +365,7 @@ PIDS+=("$CRASH_CLIENT_PID")
 
 wait_file "SM-G1 ready" "$CRASH_READY"
 kill -9 "$PLAY_A_PID" >/dev/null 2>&1 || true
+wait "$PLAY_A_PID" >/dev/null 2>&1 || true
 touch "$CRASH_GO"
 wait_file "SM-G1 crash observed" "$CRASH_OBSERVED"
 wait "$CRASH_CLIENT_PID"

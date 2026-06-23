@@ -62,8 +62,6 @@ add_library(zlink_framework STATIC
   framework/src/runtime/channels/channel_host_service.cpp
   framework/src/runtime/channels/channel_bundle_factory.cpp
   framework/src/runtime/channels/channel_pending_requests.cpp
-  framework/src/runtime/channels/channel_message_pump.cpp
-  framework/src/runtime/channels/channel_receive_loop.cpp
   framework/src/runtime/channels/channel_reply_writer.cpp
   framework/src/runtime/channels/channel_outbound_exchange.cpp
   framework/src/runtime/channels/channel_runtime_bundle.cpp
@@ -77,7 +75,6 @@ add_library(zlink_framework STATIC
   framework/src/runtime/channels/route_internal_packet_dispatcher.cpp
   framework/src/runtime/channels/route_channel_host_service.cpp
   framework/src/runtime/channels/route_packet_dispatcher.cpp
-  framework/src/runtime/channels/route_receive_pump.cpp
   framework/src/runtime/actors/actor_route_internal_dispatcher.cpp
   framework/src/runtime/actors/actor_gateway_runtime.cpp
   framework/src/runtime/backend/native_route_backend.cpp

@@ -5,8 +5,6 @@
 #include "runtime/channels/channel_packet_dispatcher.hpp"
 #include "runtime/channels/channel_host_service.hpp"
 #include "runtime/channels/channel_reply_writer.hpp"
-#include "runtime/channels/channel_message_pump.hpp"
-#include "runtime/channels/channel_receive_loop.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
@@ -16,7 +14,7 @@
 #include "runtime/channels/route_connection_set.hpp"
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
-#include "runtime/channels/route_receive_pump.hpp"
+#include "runtime/channels/route_packet_dispatcher.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/actors/actor_route_internal_dispatcher.hpp"
 #include "runtime/backend/native_route_backend.hpp"
@@ -31,6 +29,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -49,6 +48,118 @@
 
 namespace
 {
+
+struct test_channel_receive_result_t
+{
+    std::size_t dispatched = 0;
+    std::vector<zlink::framework::runtime::messaging::message_parts_t> replies;
+};
+
+class test_channel_receive_loop_t
+{
+  public:
+    test_channel_receive_loop_t (zlink::framework::detail::channel_runtime_bundle_t &bundle,
+                                 zlink::framework::detail::channel_packet_dispatcher_t dispatcher) :
+        _bundle (bundle), _dispatcher (std::move (dispatcher))
+    {
+    }
+
+    void enqueue_server_message (zlink::framework::runtime::messaging::message_parts_t parts)
+    {
+        _server_messages.push_back (std::move (parts));
+    }
+
+    zlink::framework::result_t<test_channel_receive_result_t>
+    drain_server_messages (const std::string &channel_name,
+                           zlink::framework::service_provider_t &services,
+                           zlink::framework::serializer_registry_t &serializers,
+                           const zlink::framework::handler_registry_t &handlers)
+    {
+        if (!_bundle.try_enter_receive ()) {
+            return zlink::framework::result_t<test_channel_receive_result_t>::failure (
+              zlink::framework::framework_error_kind_t::request_rejected,
+              "channel receive loop is already active");
+        }
+        struct receive_guard_t
+        {
+            zlink::framework::detail::channel_runtime_bundle_t &bundle;
+            ~receive_guard_t () { bundle.leave_receive (); }
+        } receive_guard{_bundle};
+
+        test_channel_receive_result_t result;
+        while (!_server_messages.empty ()) {
+            auto parts = std::move (_server_messages.front ());
+            _server_messages.pop_front ();
+            auto reply = _dispatcher.dispatch_server_message (channel_name, parts, services,
+                                                              serializers, handlers);
+            if (!reply) {
+                return zlink::framework::result_t<test_channel_receive_result_t>::failure (
+                  reply.error_kind (),
+                  reply.error () ? reply.error ()->what ()
+                                  : "channel receive loop dispatch failed");
+            }
+            ++result.dispatched;
+            if (reply.value ().size () != 0) {
+                result.replies.push_back (reply.value ());
+            }
+        }
+        return zlink::framework::result_t<test_channel_receive_result_t>::success (
+          std::move (result));
+    }
+
+    std::size_t pending_message_count () const noexcept { return _server_messages.size (); }
+
+  private:
+    zlink::framework::detail::channel_runtime_bundle_t &_bundle;
+    zlink::framework::detail::channel_packet_dispatcher_t _dispatcher;
+    std::deque<zlink::framework::runtime::messaging::message_parts_t> _server_messages;
+};
+
+struct test_route_receive_result_t
+{
+    std::size_t dispatched = 0;
+    std::vector<zlink::framework::detail::route_dispatch_reply_t> replies;
+};
+
+class test_route_receive_pump_t
+{
+  public:
+    explicit test_route_receive_pump_t (
+      zlink::framework::detail::route_packet_dispatcher_t dispatcher) :
+        _dispatcher (std::move (dispatcher))
+    {
+    }
+
+    void enqueue (zlink::framework::detail::route_received_packet_t packet)
+    {
+        _packets.push_back (std::move (packet));
+    }
+
+    zlink::framework::result_t<test_route_receive_result_t> drain ()
+    {
+        test_route_receive_result_t result;
+        while (!_packets.empty ()) {
+            auto packet = std::move (_packets.front ());
+            _packets.pop_front ();
+            auto dispatch = _dispatcher.dispatch (packet);
+            if (!dispatch) {
+                return zlink::framework::result_t<test_route_receive_result_t>::failure (
+                  dispatch.error_kind (),
+                  dispatch.error () ? dispatch.error ()->what () : "route packet dispatch failed");
+            }
+            ++result.dispatched;
+            if (dispatch.value ().has_value ()) {
+                result.replies.push_back (std::move (*dispatch.value ()));
+            }
+        }
+        return zlink::framework::result_t<test_route_receive_result_t>::success (
+          std::move (result));
+    }
+
+  private:
+    zlink::framework::detail::route_packet_dispatcher_t _dispatcher;
+    std::deque<zlink::framework::detail::route_received_packet_t> _packets;
+};
 
 struct request_t
 {
@@ -1446,9 +1557,8 @@ int main ()
         return 24;
     }
 
-    zlink::framework::detail::channel_receive_loop_t receive_loop (
-      bundle, zlink::framework::detail::channel_message_pump_t (
-                zlink::framework::detail::channel_packet_dispatcher_t (local_runtime)));
+    test_channel_receive_loop_t receive_loop (
+      bundle, zlink::framework::detail::channel_packet_dispatcher_t (local_runtime));
     receive_loop.enqueue_server_message (request_parts);
     if (receive_loop.pending_message_count () != 1) {
         return 25;
@@ -1950,7 +2060,7 @@ int main ()
     clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
     zlink::framework::detail::route_handler_registry_t route_missing_handlers;
     zlink::framework::detail::no_route_internal_packet_dispatcher_t route_missing_internal;
-    zlink::framework::detail::route_receive_pump_t route_pump{
+    test_route_receive_pump_t route_pump{
       zlink::framework::detail::route_packet_dispatcher_t (
         "game.route", provider, serializers, route_missing_handlers, route_missing_internal,
         local_dispatch)};
@@ -2055,7 +2165,7 @@ int main ()
     route_handlers.on_send<local_handler_t, event_t> ("game.route", "event",
                                                       &local_handler_t::handle_route_send);
     zlink::framework::detail::no_route_internal_packet_dispatcher_t no_internal;
-    zlink::framework::detail::route_receive_pump_t route_handler_pump{
+    test_route_receive_pump_t route_handler_pump{
       zlink::framework::detail::route_packet_dispatcher_t ("game.route", provider, serializers,
                                                            route_handlers, no_internal)};
     route_handler_pump.enqueue (zlink::framework::detail::route_received_packet_t{
@@ -2091,7 +2201,7 @@ int main ()
     internal_header.correlation_id = "internal-1";
     auto internal_parts = envelope_codec.encode_raw_body_parts (
       internal_header, zlink::message_t::from (std::string ("{}")));
-    zlink::framework::detail::route_receive_pump_t internal_pump{
+    test_route_receive_pump_t internal_pump{
       zlink::framework::detail::route_packet_dispatcher_t ("game.route", provider, serializers,
                                                            route_handlers, composite_internal)};
     internal_pump.enqueue (zlink::framework::detail::route_received_packet_t{
@@ -2202,7 +2312,7 @@ int main ()
     registered_header.correlation_id = "registered-1";
     auto registered_parts = envelope_codec.encode_raw_body_parts (
       registered_header, zlink::message_t::from (std::string ("25")));
-    zlink::framework::detail::route_receive_pump_t registered_pump{
+    test_route_receive_pump_t registered_pump{
       zlink::framework::detail::route_packet_dispatcher_t (
         "registered.route", provider, serializers, initialized_route.handlers, no_internal)};
     registered_pump.enqueue (zlink::framework::detail::route_received_packet_t{

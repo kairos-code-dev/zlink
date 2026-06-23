@@ -2002,10 +2002,6 @@ int main ()
     ok &= require_exists (root / "framework/src/runtime/channels/channel_bundle_factory.hpp");
     ok &= require_exists (root / "framework/src/runtime/channels/channel_runtime_manager.cpp");
     ok &= require_exists (root / "framework/src/runtime/channels/channel_runtime_manager.hpp");
-    ok &= require_exists (root / "framework/src/runtime/channels/channel_message_pump.cpp");
-    ok &= require_exists (root / "framework/src/runtime/channels/channel_message_pump.hpp");
-    ok &= require_exists (root / "framework/src/runtime/channels/channel_receive_loop.cpp");
-    ok &= require_exists (root / "framework/src/runtime/channels/channel_receive_loop.hpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_connection_set.cpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_connection_set.hpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_channel_registration.cpp");
@@ -2023,8 +2019,6 @@ int main ()
     ok &= require_exists (root / "framework/src/runtime/channels/route_packet.hpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_packet_dispatcher.cpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_packet_dispatcher.hpp");
-    ok &= require_exists (root / "framework/src/runtime/channels/route_receive_pump.cpp");
-    ok &= require_exists (root / "framework/src/runtime/channels/route_receive_pump.hpp");
     ok &= require_exists (root / "framework/src/runtime/configuration/builders");
     ok &= require_exists (
       root / "framework/src/runtime/configuration/builders/configuration_builder.cpp");

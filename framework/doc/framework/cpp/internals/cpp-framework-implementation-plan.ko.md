@@ -1279,22 +1279,14 @@ Handler shape resolution algorithm:
 
 Typed route invocation priority:
 
-1. `task_t<http_response_t> handle(const request_type&, const http_request_t&, http_context_t&)`
-2. `http_response_t handle(const request_type&, const http_request_t&, http_context_t&)`
-3. `task_t<http_response_t> handle(const request_type&, const http_request_t&)`
-4. `http_response_t handle(const request_type&, const http_request_t&)`
-5. `task_t<http_response_t> handle(const request_type&, http_context_t&)`
-6. `http_response_t handle(const request_type&, http_context_t&)`
-7. `task_t<http_response_t> handle(const request_type&)`
-8. `http_response_t handle(const request_type&)`
-9. `task_t<reply_type> handle(const request_type&, const http_request_t&, http_context_t&)`
-10. `reply_type handle(const request_type&, const http_request_t&, http_context_t&)`
-11. `task_t<reply_type> handle(const request_type&, const http_request_t&)`
-12. `reply_type handle(const request_type&, const http_request_t&)`
-13. `task_t<reply_type> handle(const request_type&, http_context_t&)`
-14. `reply_type handle(const request_type&, http_context_t&)`
-15. `task_t<reply_type> handle(const request_type&)`
-16. `reply_type handle(const request_type&)`
+1. `handle(const request_type&, const http_request_t&, http_context_t&)`
+2. `handle(const request_type&, const http_request_t&)`
+3. `handle(const request_type&, http_context_t&)`
+4. `handle(const request_type&)`
+
+각 shape는 `reply_type`, `http_response_t`, `task_t<reply_type>`,
+`task_t<http_response_t>` 중 하나를 반환해야 한다. 선택 순서는 반환 타입보다 인자 shape를
+먼저 본다.
 
 Raw route invocation priority:
 
@@ -1383,7 +1375,7 @@ Goal 19 regression matrix:
 | ambiguous route mode | typed shape와 raw shape가 한 handler에 있으면 실패 |
 | invalid return type | raw route가 DTO를 반환하면 실패 |
 | content length | handler가 준 `Content-Length`는 runtime 최종값으로 보정 |
-| unsupported media type | JSON typed route의 잘못된 content type은 `415` |
+| unsupported media type | JSON typed route의 잘못된 content type은 `400` |
 | body limit | typed/raw route 모두 body limit 초과는 `413` |
 | keep-alive | 같은 connection에서 두 request 처리 |
 | graceful shutdown | 새 accept 중단, active request drain |

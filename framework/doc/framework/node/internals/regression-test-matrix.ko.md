@@ -185,10 +185,10 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | `addSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `addSpotMesh(...)` + router-capable `addNode(...)` + `attachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
 | `create(spotType)` | `integration-single-process` | `spotId`, `Created` 상태가 일관되게 유지된다 |
-| `create(spotType)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `Message`로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
-| `create(spotType, request)` payload | `integration-single-process` | create request `Message`가 `ZLinkSpot.onCreate(...)`로 한 번 전달된다 |
+| `create(spotType)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
+| `create(spotType, request)` payload | `integration-single-process` | create request `ZLinkMessage`가 `ZLinkSpot.onCreate(...)`로 한 번 전달된다 |
 | `getOrCreate(spotType, spotRid, request)` existing | `integration-single-process` | 같은 `spotId`가 이미 ready 상태면 `Existing`이고 새 `request`는 `onCreate(...)`로 전달되지 않는다 |
-| `getOrCreate(...)` concurrent create payload | `integration-single-process` | 같은 `spotId` 동시 생성에서는 첫 생성 요청의 `Message`만 `onCreate(...)`로 전달되고 callback은 한 번만 실행된다 |
+| `getOrCreate(...)` concurrent create payload | `integration-single-process` | 같은 `spotId` 동시 생성에서는 첫 생성 요청의 `ZLinkMessage`만 `onCreate(...)`로 전달되고 callback은 한 번만 실행된다 |
 | `getOrCreate(spotType, spotRid)` same type | `integration-single-process` | 같은 `spotId`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환하고 새 `onCreate(...)`를 호출하지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `onCreate(...)` 또는 `onInitialize(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `find(...)`, `list(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |

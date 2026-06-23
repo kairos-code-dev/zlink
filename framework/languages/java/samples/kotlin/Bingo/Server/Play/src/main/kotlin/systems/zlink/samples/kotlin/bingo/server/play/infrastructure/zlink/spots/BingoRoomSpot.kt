@@ -86,10 +86,6 @@ class BingoRoomSpot(
         actor: PlayerActor,
         cancellationToken: CancellationToken,
     ) {
-        println(
-            "bingo room: actor left. room=${context.spotRid()}, actor=${actor.actorId()}, " +
-                "observer=${settings.isObserver}, nodeRid=${context.nodeRid()}",
-        )
         actors.remove(actor.actorId())
         observers.remove(actor.actorId())
     }
@@ -102,7 +98,7 @@ class BingoRoomSpot(
     }
 
     override suspend fun onInitializeSuspending() {
-        if (settings.isObserver) {
+        if (settings.observerMode()) {
             return
         }
         timer = context.addTimer(
@@ -132,15 +128,11 @@ class BingoRoomSpot(
         if (request.observeOnly) {
             return joinObserver(actor, request)
         }
-        if (settings.isObserver) {
+        if (settings.observerMode()) {
             throw IllegalStateException("Player actor cannot join an observer BingoRoom.")
         }
         val change = requireGame().join(actor.actorId(), request.displayName)
         actors[actor.actorId()] = actor
-        println(
-            "bingo room: actor joined. room=${context.spotRid()}, actor=${actor.actorId()}, " +
-                "count=${change.state.players.size}, status=${change.state.status}, nodeRid=${context.nodeRid()}",
-        )
         publishEvents(
             change.events,
             { actorId -> if (actorId == actor.actorId()) null else actors[actorId] },
@@ -172,22 +164,13 @@ class BingoRoomSpot(
     }
 
     suspend fun announceWinner(event: BingoWinnerEvent) {
-        if (!settings.isObserver ||
+        if (!settings.observerMode() ||
             observers.isEmpty() ||
             event.roomId != settings.observedRoomId
         ) {
-            println(
-                "bingo reward: ignored. room=${event.roomId}, actor=${event.actorId}, " +
-                    "item=${event.itemId}, observer=${settings.isObserver}, " +
-                    "observedRoom=${settings.observedRoomId}, nodeRid=${context.nodeRid()}",
-            )
             return
         }
         for (observer in observers.values.toList()) {
-            println(
-                "bingo reward: announcing. room=${event.roomId}, actor=${event.actorId}, " +
-                    "item=${event.itemId}, observer=${observer.actorId()}, nodeRid=${context.nodeRid()}",
-            )
             observer.push(
                 BingoRewardAnnouncedNotify(
                     event.roomId,
@@ -199,7 +182,6 @@ class BingoRoomSpot(
                     context.nodeRid().toString(),
                 )
             )
-            println("bingo reward: announce sent. room=${event.roomId}, observer=${observer.actorId()}")
         }
     }
 
@@ -207,7 +189,7 @@ class BingoRoomSpot(
         actor: PlayerActor,
         request: StopObservingBingoEventsReq,
     ): StopObservingBingoEventsRes {
-        if (!settings.isObserver ||
+        if (!settings.observerMode() ||
             request.roomId != settings.observedRoomId ||
             !observers.containsKey(actor.actorId())
         ) {
@@ -215,10 +197,6 @@ class BingoRoomSpot(
         }
         observers.remove(actor.actorId())
         context.leaveActor(actor).await()
-        println(
-            "bingo observer room: actor left. observedRoom=${settings.observedRoomId}, " +
-                "observer=${actor.actorId()}, nodeRid=${context.nodeRid()}",
-        )
         return StopObservingBingoEventsRes(true, context.nodeRid().toString())
     }
 
@@ -234,13 +212,13 @@ class BingoRoomSpot(
     }
 
     fun applySettings(settings: BingoRoomSettings) {
-        check(settings.isObserver || settings.requiredPlayers > 0) { "Bingo room requires at least one player." }
+        check(settings.observerMode() || settings.requiredPlayers > 0) { "Bingo room requires at least one player." }
         check(settings.maxDrawNumber > 0) { "Bingo room requires at least one draw number." }
         check(settings.drawPeriodMillis > 0) {
             "Bingo room draw period must be positive."
         }
         this.settings = settings
-        game = if (settings.isObserver) null else BingoGame.room(context.spotRid().toString(), settings)
+        game = if (settings.observerMode()) null else BingoGame.room(context.spotRid().toString(), settings)
         cleanupStarted = false
     }
 
@@ -264,10 +242,6 @@ class BingoRoomSpot(
             )
             .submit()
             .await()
-        println(
-            "bingo reward: published. room=${state.roomId}, actor=$winner, " +
-                "item=rare-golden-dauber, nodeRid=${context.nodeRid()}",
-        )
     }
 
     private suspend fun publishEvents(
@@ -324,14 +298,10 @@ class BingoRoomSpot(
         actor: PlayerActor,
         request: BingoRoomJoinReq,
     ): BingoRoomJoinRes {
-        if (!settings.isObserver || request.roomId != settings.observedRoomId) {
+        if (!settings.observerMode() || request.roomId != settings.observedRoomId) {
             throw IllegalStateException("Observe-only actor can join only its observer BingoRoom.")
         }
         observers[actor.actorId()] = actor
-        println(
-            "bingo observer room: actor joined. observedRoom=${settings.observedRoomId}, " +
-                "observer=${actor.actorId()}, nodeRid=${context.nodeRid()}",
-        )
         return BingoRoomJoinRes(
             BingoRoomState(
                 request.roomId,

@@ -885,6 +885,146 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return result;
     }
 
+    private CompletionStage<Void> dispatchActorPacketToHandler(
+        DefaultSpotOutbound outbound,
+        SpotActorPacketHandlerRegistration handler,
+        Object spotSurface,
+        ZLinkActor actor,
+        ActorPacketFrames.Header packetHeader,
+        ZLinkBackendActorReceived headerPart,
+        Message payload,
+        String replyFailureMessage) {
+        actorRuntime.bindNativeSession(
+            actor,
+            primaryNode,
+            headerPart.actor(),
+            headerPart.sourceNodeRid(),
+            headerPart.sourceSessionRid());
+        boolean actorIsRequest = handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST;
+        String actorPacketName = packetHeader.packetName();
+        String actorId = actor.actorId();
+        ZLinkDispatchMessageKind actorKind = actorIsRequest
+            ? ZLinkDispatchMessageKind.ACTOR_REQUEST
+            : ZLinkDispatchMessageKind.ACTOR_SEND;
+        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.RECEIVED,
+                ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                actorKind,
+                actorPacketName, null, null,
+                packetHeader.requestSeq().map(String::valueOf).orElse(null),
+                null, null, actorId, null));
+        }
+        CompletionStage<Optional<Message>> stage = withCurrentOutbound(
+            outbound,
+            () -> actorIsRequest
+                ? invokeActorRequestHandler(handler, spotSurface, actor, payload)
+                : invokeActorSendHandler(handler, spotSurface, actor, payload)
+                    .thenApply(ignored -> Optional.empty()));
+        return stage.handle((reply, error) -> {
+                if (error != null) {
+                    return Optional.of(new ActorDispatchReply(
+                        ActorPacketFrames.encodeError(packetHeader, error),
+                        true));
+                }
+                return reply.map(message -> new ActorDispatchReply(message, false));
+            })
+            .thenCompose(reply -> {
+                if (reply.isEmpty()) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                byte[] frameBytes;
+                try (Message frame = reply.get().streamFrame()
+                    ? reply.get().message()
+                    : ActorPacketFrames.encodeReply(packetHeader, reply.get().message())) {
+                    frameBytes = frame.toByteArray();
+                }
+                return sendActorBoundSessionWithRetry(
+                    primaryNode,
+                    new ZLinkBackendActorRef(
+                        headerPart.actor().nodeRid(),
+                        actor.actorId(),
+                        headerPart.actor().epoch()),
+                    actor.actorId(),
+                    frameBytes,
+                    replyFailureMessage);
+            })
+            .whenComplete((ignored, error) -> {
+                payload.close();
+                headerPart.close();
+                if (error == null) {
+                    ZLinkMessageFlowPhase phase = actorIsRequest
+                        ? ZLinkMessageFlowPhase.REPLIED
+                        : ZLinkMessageFlowPhase.DISPATCHED;
+                    if (dispatchErrors.flow().enabled(phase)) {
+                        dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                            phase,
+                            ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                            actorKind,
+                            actorPacketName, null, null,
+                            packetHeader.requestSeq().map(String::valueOf).orElse(null),
+                            null, null, actorId, null));
+                    }
+                }
+            });
+    }
+
+    private CompletionStage<Void> invokeActorSendHandler(
+        SpotActorPacketHandlerRegistration registration,
+        Object spotSurface,
+        ZLinkActor actor,
+        Message payload) {
+        Object message = serializer.deserialize(payload, registration.messageType());
+        if (registration.handlerMethod() == null) {
+            return invokeActorSendInterfaceHandler(
+                registration,
+                spotSurface,
+                actor,
+                new DefaultSpotActorSendContext(registration.packetName()),
+                message,
+                "failed to invoke Spot actor send handler");
+        }
+        return invokeVoidMethodHandler(
+            registration.handlerType(),
+            registration.handlerMethod(),
+            actorPacketArguments(
+                registration.handlerMethod(),
+                spotSurface,
+                actor,
+                new DefaultSpotActorSendContext(registration.packetName()),
+                message),
+            "failed to invoke Spot actor send handler");
+    }
+
+    private CompletionStage<Optional<Message>> invokeActorRequestHandler(
+        SpotActorPacketHandlerRegistration registration,
+        Object spotSurface,
+        ZLinkActor actor,
+        Message payload) {
+        Object message = serializer.deserialize(payload, registration.messageType());
+        if (registration.handlerMethod() == null) {
+            return invokeActorRequestInterfaceHandler(
+                    registration,
+                    spotSurface,
+                    actor,
+                    new DefaultSpotActorRequestContext(registration.packetName()),
+                    message,
+                    "failed to invoke Spot actor request handler")
+                .thenApply(reply -> Optional.of(serializer.serialize(reply)));
+        }
+        return invokeReplyMethodHandler(
+                registration.handlerType(),
+                registration.handlerMethod(),
+                actorPacketArguments(
+                    registration.handlerMethod(),
+                    spotSurface,
+                    actor,
+                    new DefaultSpotActorRequestContext(registration.packetName()),
+                    message),
+                "failed to invoke Spot actor request handler")
+            .thenApply(reply -> Optional.of(serializer.serialize(reply)));
+    }
+
     private DefaultSpotOutbound requireCurrentOutbound() {
         DefaultSpotOutbound outbound = currentOutbound.get();
         if (outbound == null) {
@@ -1973,79 +2113,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             ActorPacketFrames.Header packetHeader,
             ZLinkBackendActorReceived headerPart,
             Message payload) {
-            actorRuntime.bindNativeSession(
-                actor,
-                primaryNode,
-                headerPart.actor(),
-                headerPart.sourceNodeRid(),
-                headerPart.sourceSessionRid());
-            boolean actorIsRequest = handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST;
-            String actorPacketName = packetHeader.packetName();
-            String actorId = actor.actorId();
-            ZLinkDispatchMessageKind actorKind = actorIsRequest
-                ? ZLinkDispatchMessageKind.ACTOR_REQUEST
-                : ZLinkDispatchMessageKind.ACTOR_SEND;
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
-                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.RECEIVED,
-                    ZLinkDispatchErrorSurface.SPOT_ACTOR,
-                    actorKind,
-                    actorPacketName, null, null,
-                    packetHeader.requestSeq().map(String::valueOf).orElse(null),
-                    null, null, actorId, null));
-            }
-            CompletionStage<Optional<Message>> stage = withCurrentOutbound(
+            return dispatchActorPacketToHandler(
                 context.outbound,
-                () -> handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST
-                    ? invokeActorRequestHandler(handler, spotSurface, actor, payload)
-                    : invokeActorSendHandler(handler, spotSurface, actor, payload)
-                        .thenApply(ignored -> Optional.empty()));
-            return stage.handle((reply, error) -> {
-                    if (error != null) {
-                        return Optional.of(new ActorDispatchReply(
-                            ActorPacketFrames.encodeError(packetHeader, error),
-                            true));
-                    }
-                    return reply.map(message -> new ActorDispatchReply(message, false));
-                })
-                .thenCompose(reply -> {
-                    if (reply.isEmpty()) {
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    byte[] frameBytes;
-                    try (Message frame = reply.get().streamFrame()
-                        ? reply.get().message()
-                        : ActorPacketFrames.encodeReply(packetHeader, reply.get().message())) {
-                        frameBytes = frame.toByteArray();
-                    }
-                    return sendActorBoundSessionWithRetry(
-                        primaryNode,
-                        new ZLinkBackendActorRef(
-                            headerPart.actor().nodeRid(),
-                            actor.actorId(),
-                            headerPart.actor().epoch()),
-                        actor.actorId(),
-                        frameBytes,
-                        "actor bound session reply failed");
-                })
-                .whenComplete((ignored, error) -> {
-                    payload.close();
-                    headerPart.close();
-                    if (error == null) {
-                        ZLinkMessageFlowPhase phase = actorIsRequest
-                            ? ZLinkMessageFlowPhase.REPLIED
-                            : ZLinkMessageFlowPhase.DISPATCHED;
-                        if (dispatchErrors.flow().enabled(phase)) {
-                            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                phase,
-                                ZLinkDispatchErrorSurface.SPOT_ACTOR,
-                                actorKind,
-                                actorPacketName, null, null,
-                                packetHeader.requestSeq().map(String::valueOf).orElse(null),
-                                null, null, actorId, null));
-                        }
-                    }
-                });
+                handler,
+                spotSurface,
+                actor,
+                packetHeader,
+                headerPart,
+                payload,
+                "actor bound session reply failed");
         }
 
         private void replyActorDispatchError(
@@ -2163,62 +2239,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                 });
                         });
                 });
-        }
-
-        private CompletionStage<Void> invokeActorSendHandler(
-            SpotActorPacketHandlerRegistration registration,
-            Object spotSurface,
-            ZLinkActor actor,
-            Message payload) {
-            Object message = serializer.deserialize(payload, registration.messageType());
-            if (registration.handlerMethod() == null) {
-                return invokeActorSendInterfaceHandler(
-                    registration,
-                    spotSurface,
-                    actor,
-                    new DefaultSpotActorSendContext(registration.packetName()),
-                    message,
-                    "failed to invoke Spot actor send handler");
-            }
-            return invokeVoidMethodHandler(
-                registration.handlerType(),
-                    registration.handlerMethod(),
-                    actorPacketArguments(
-                        registration.handlerMethod(),
-                        spotSurface,
-                        actor,
-                        new DefaultSpotActorSendContext(registration.packetName()),
-                        message),
-                "failed to invoke Spot actor send handler");
-        }
-
-        private CompletionStage<Optional<Message>> invokeActorRequestHandler(
-            SpotActorPacketHandlerRegistration registration,
-            Object spotSurface,
-            ZLinkActor actor,
-            Message payload) {
-            Object message = serializer.deserialize(payload, registration.messageType());
-            if (registration.handlerMethod() == null) {
-                return invokeActorRequestInterfaceHandler(
-                        registration,
-                        spotSurface,
-                        actor,
-                        new DefaultSpotActorRequestContext(registration.packetName()),
-                        message,
-                        "failed to invoke Spot actor request handler")
-                    .thenApply(reply -> Optional.of(serializer.serialize(reply)));
-            }
-            return invokeReplyMethodHandler(
-                    registration.handlerType(),
-                    registration.handlerMethod(),
-                    actorPacketArguments(
-                        registration.handlerMethod(),
-                        spotSurface,
-                        actor,
-                        new DefaultSpotActorRequestContext(registration.packetName()),
-                        message),
-                    "failed to invoke Spot actor request handler")
-                .thenApply(reply -> Optional.of(serializer.serialize(reply)));
         }
 
         @Override
@@ -4387,79 +4407,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             ActorPacketFrames.Header packetHeader,
             ZLinkBackendActorReceived headerPart,
             Message payload) {
-            actorRuntime.bindNativeSession(
-                actor,
-                primaryNode,
-                headerPart.actor(),
-                headerPart.sourceNodeRid(),
-                headerPart.sourceSessionRid());
-            boolean actorIsRequest = handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST;
-            String actorPacketName = packetHeader.packetName();
-            String actorId = actor.actorId();
-            ZLinkDispatchMessageKind actorKind = actorIsRequest
-                ? ZLinkDispatchMessageKind.ACTOR_REQUEST
-                : ZLinkDispatchMessageKind.ACTOR_SEND;
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
-                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.RECEIVED,
-                    ZLinkDispatchErrorSurface.SPOT_ACTOR,
-                    actorKind,
-                    actorPacketName, null, null,
-                    packetHeader.requestSeq().map(String::valueOf).orElse(null),
-                    null, null, actorId, null));
-            }
-            CompletionStage<Optional<Message>> stage = withCurrentOutbound(
+            return dispatchActorPacketToHandler(
                 context.outbound,
-                () -> handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST
-                    ? invokeActorRequestHandler(handler, actor, payload)
-                    : invokeActorSendHandler(handler, actor, payload)
-                        .thenApply(ignored -> Optional.empty()));
-            return stage.handle((reply, error) -> {
-                    if (error != null) {
-                        return Optional.of(new ActorDispatchReply(
-                            ActorPacketFrames.encodeError(packetHeader, error),
-                            true));
-                    }
-                    return reply.map(message -> new ActorDispatchReply(message, false));
-                })
-                .thenCompose(reply -> {
-                    if (reply.isEmpty()) {
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    byte[] frameBytes;
-                    try (Message frame = reply.get().streamFrame()
-                        ? reply.get().message()
-                        : ActorPacketFrames.encodeReply(packetHeader, reply.get().message())) {
-                        frameBytes = frame.toByteArray();
-                    }
-                    return sendActorBoundSessionWithRetry(
-                        primaryNode,
-                        new ZLinkBackendActorRef(
-                            headerPart.actor().nodeRid(),
-                            actor.actorId(),
-                            headerPart.actor().epoch()),
-                        actor.actorId(),
-                        frameBytes,
-                        "user actor bound session reply failed");
-                })
-                .whenComplete((ignored, error) -> {
-                    payload.close();
-                    headerPart.close();
-                    if (error == null) {
-                        ZLinkMessageFlowPhase phase = actorIsRequest
-                            ? ZLinkMessageFlowPhase.REPLIED
-                            : ZLinkMessageFlowPhase.DISPATCHED;
-                        if (dispatchErrors.flow().enabled(phase)) {
-                            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                phase,
-                                ZLinkDispatchErrorSurface.SPOT_ACTOR,
-                                actorKind,
-                                actorPacketName, null, null,
-                                packetHeader.requestSeq().map(String::valueOf).orElse(null),
-                                null, null, actorId, null));
-                        }
-                    }
-                });
+                handler,
+                spot,
+                actor,
+                packetHeader,
+                headerPart,
+                payload,
+                "user actor bound session reply failed");
         }
 
         private void replyActorDispatchError(
@@ -4722,60 +4678,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                 });
                         });
                 });
-        }
-
-        private CompletionStage<Void> invokeActorSendHandler(
-            SpotActorPacketHandlerRegistration registration,
-            ZLinkActor actor,
-            Message payload) {
-            Object message = serializer.deserialize(payload, registration.messageType());
-            if (registration.handlerMethod() == null) {
-                return invokeActorSendInterfaceHandler(
-                    registration,
-                    spot,
-                    actor,
-                    new DefaultSpotActorSendContext(registration.packetName()),
-                    message,
-                    "failed to invoke Spot actor send handler");
-            }
-            return invokeVoidMethodHandler(
-                registration.handlerType(),
-                registration.handlerMethod(),
-                actorPacketArguments(
-                    registration.handlerMethod(),
-                    spot,
-                    actor,
-                    new DefaultSpotActorSendContext(registration.packetName()),
-                    message),
-                "failed to invoke Spot actor send handler");
-        }
-
-        private CompletionStage<Optional<Message>> invokeActorRequestHandler(
-            SpotActorPacketHandlerRegistration registration,
-            ZLinkActor actor,
-            Message payload) {
-            Object message = serializer.deserialize(payload, registration.messageType());
-            if (registration.handlerMethod() == null) {
-                return invokeActorRequestInterfaceHandler(
-                        registration,
-                        spot,
-                        actor,
-                        new DefaultSpotActorRequestContext(registration.packetName()),
-                        message,
-                        "failed to invoke Spot actor request handler")
-                    .thenApply(reply -> Optional.of(serializer.serialize(reply)));
-            }
-            return invokeReplyMethodHandler(
-                    registration.handlerType(),
-                    registration.handlerMethod(),
-                    actorPacketArguments(
-                        registration.handlerMethod(),
-                        spot,
-                        actor,
-                        new DefaultSpotActorRequestContext(registration.packetName()),
-                        message),
-                    "failed to invoke Spot actor request handler")
-                .thenApply(reply -> Optional.of(serializer.serialize(reply)));
         }
 
         @Override

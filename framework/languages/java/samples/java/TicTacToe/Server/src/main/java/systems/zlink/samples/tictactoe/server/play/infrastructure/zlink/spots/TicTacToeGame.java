@@ -266,7 +266,6 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         }
         actor.markForDestroyAfterRoomLeave();
         await(context.leaveActor(actor));
-        System.out.println("actor: LeaveGameReq completed. actor=" + actor.actorId());
     }
 
     private void publishWinMilestone(

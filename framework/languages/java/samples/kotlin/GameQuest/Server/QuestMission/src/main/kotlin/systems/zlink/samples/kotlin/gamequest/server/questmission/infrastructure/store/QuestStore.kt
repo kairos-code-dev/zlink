@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.LockSupport
 import org.springframework.stereotype.Component
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.gamequest.server.questmission.domain.QuestDomain.PendingQuestEvent
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent
 
@@ -54,7 +55,7 @@ class QuestStore : QuestEventProcessor.QuestProgressStore {
             it.playerId == playerId && it.questId == questId && sourceEventId == it.sourceEventId
         }
 
-    override fun appendAndProject(progress: QuestProgress, events: List<StoredQuestEvent>): Boolean {
+    override fun appendAndProject(progress: QuestProgress, events: List<PendingQuestEvent>): Boolean {
         val appended = update(
             "quest-events.json",
             object : TypeReference<MutableList<StoredQuestEvent>>() {},
@@ -83,7 +84,7 @@ class QuestStore : QuestEventProcessor.QuestProgressStore {
                                 event.playerId,
                                 event.questId,
                                 event.eventType,
-                                event.payload,
+                                json.writeValueAsBytes(event.payload),
                                 nextVersion++,
                                 event.createdAtUnixMs,
                             ),

@@ -1,8 +1,5 @@
 package systems.zlink.samples.gamequest.server.questmission.domain;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.util.ArrayList;
 import java.util.List;
 import systems.zlink.samples.gamequest.server.configuration.QuestIds;
@@ -11,12 +8,20 @@ import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 /** Quest catalog and projection builder. Mirrors the .NET {@code QuestDomain}. */
 public final class QuestDomain {
-    private static final ObjectMapper JSON = JsonMapper.builder().findAndAddModules().build();
-
     private QuestDomain() {
     }
 
     public record QuestDefinition(String questId, String eventType, String value, int required) {
+    }
+
+    public record PendingQuestEvent(
+        String eventId,
+        String sourceEventId,
+        String playerId,
+        String questId,
+        String eventType,
+        Object payload,
+        long createdAtUnixMs) {
     }
 
     public static final List<QuestDefinition> CATALOG = List.of(
@@ -60,7 +65,7 @@ public final class QuestDomain {
             System.currentTimeMillis());
     }
 
-    public static List<Messages.StoredQuestEvent> toEvents(
+    public static List<PendingQuestEvent> toEvents(
         QuestDefinition definition,
         Messages.QuestProgress before,
         Messages.QuestProgress after,
@@ -74,7 +79,7 @@ public final class QuestDomain {
             return List.of();
         }
 
-        List<Messages.StoredQuestEvent> events = new ArrayList<>();
+        List<PendingQuestEvent> events = new ArrayList<>();
         String kind = "SnapshotKillCount".equals(source.eventType())
             ? "QuestProgressReconciledEvent"
             : "QuestProgressedEvent";
@@ -89,7 +94,7 @@ public final class QuestDomain {
         return events;
     }
 
-    private static Messages.StoredQuestEvent create(
+    private static PendingQuestEvent create(
         String eventType,
         QuestDefinition definition,
         Messages.QuestProgress before,
@@ -115,22 +120,13 @@ public final class QuestDomain {
                 eventId, after.playerId(), definition.questId(), after.currentCount(), "GameplaySnapshot", now);
             default -> throw new IllegalArgumentException("Unknown quest event type: " + eventType);
         };
-        return new Messages.StoredQuestEvent(
+        return new PendingQuestEvent(
             eventId,
             source.eventId(),
             after.playerId(),
             definition.questId(),
             eventType,
-            serialize(payload),
-            0,
+            payload,
             now);
-    }
-
-    private static byte[] serialize(Object payload) {
-        try {
-            return JSON.writeValueAsBytes(payload);
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to serialize quest event payload.", ex);
-        }
     }
 }

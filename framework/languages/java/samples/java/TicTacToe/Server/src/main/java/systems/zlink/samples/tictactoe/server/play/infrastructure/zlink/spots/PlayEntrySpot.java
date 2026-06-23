@@ -72,7 +72,6 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
 
     public ObserveMilestoneRes observeMilestone(PlayActor actor) {
         rememberObserver(actor);
-        System.out.println("actor: ObserveMilestoneReq completed. actor=" + actor.actorId());
         return new ObserveMilestoneRes(true);
     }
 

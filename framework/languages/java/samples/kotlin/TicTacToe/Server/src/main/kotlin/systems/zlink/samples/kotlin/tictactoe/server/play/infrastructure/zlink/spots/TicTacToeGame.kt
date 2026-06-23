@@ -283,13 +283,14 @@ class TicTacToeGame(
     private data class PlayerSlot(var actor: PlayActor, val mark: String)
 
     private fun isTerminal(state: GameState): Boolean =
-        state.status == "TurnTimedOut"
+        state.status == "Won" ||
+            state.status == "Draw" ||
+            state.status == "TurnTimedOut"
 
     fun leaveGame(actor: PlayActor, roomId: String) {
         check(this.roomId == roomId) { "leave request room id does not match game room" }
         actor.markForDestroyAfterRoomLeave()
         ZLinkAwait.await(context.leaveActor(actor))
-        println("actor: LeaveGameReq completed. actor=${actor.actorId}")
     }
 
     private suspend fun publishWinMilestone(

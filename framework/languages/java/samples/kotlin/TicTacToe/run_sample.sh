@@ -287,7 +287,5 @@ rg -q "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log
 rg -q "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
 rg -q "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
 rg -q "tictactoe completed" "${log_dir}/client.log"
-wait_grep "host leave marker" "actor: LeaveGameReq completed. actor=player-x" "${log_dir}"/play-*.log
-wait_grep "guest leave marker" "actor: LeaveGameReq completed. actor=player-o" "${log_dir}"/play-*.log
 grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
 echo "PASS TicTacToe.Kotlin"

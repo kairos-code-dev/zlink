@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.bingo.server.play.domain.bingo
 
-import com.fasterxml.jackson.annotation.JsonIgnore
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoPlayerState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
 
@@ -49,9 +48,7 @@ data class BingoRoomSettings(
     val drawPeriodMillis: Long,
     val observedRoomId: String?,
 ) {
-    @get:JsonIgnore
-    val isObserver: Boolean
-        get() = observedRoomId != null && observedRoomId.isNotBlank()
+    fun observerMode(): Boolean = observedRoomId != null && observedRoomId.isNotBlank()
 
     companion object {
         fun create(

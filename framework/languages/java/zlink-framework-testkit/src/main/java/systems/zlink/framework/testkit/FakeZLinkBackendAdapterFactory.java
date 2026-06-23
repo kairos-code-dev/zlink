@@ -685,15 +685,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             return true;
         }
         @Override public void reply(RoutingId routingId, long requestSeq, List<Message> parts) { record("reply"); }
-        private static boolean isRoutedActorJoinRequest(List<Message> parts) {
-            return parts.size() >= 2
-                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(firstPart(parts));
-        }
-
-        private static boolean isRoutedBoundSessionSendRequest(List<Message> parts) {
-            return parts.size() >= 1
-                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(firstPart(parts));
-        }
     }
 
     private static final class FakePublisherSocket extends FakeSocket implements ZLinkBackendPublisherSocket {
@@ -996,16 +987,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             return false;
         }
 
-        private static boolean isRoutedActorJoinRequest(List<Message> parts) {
-            return parts.size() >= 2
-                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(firstPart(parts));
-        }
-
-        private static boolean isRoutedBoundSessionSendRequest(List<Message> parts) {
-            return parts.size() >= 1
-                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(firstPart(parts));
-        }
-
         @Override public void close() {
             record("bridge.close");
         }
@@ -1271,6 +1252,16 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static String firstPart(List<Message> parts) {
         return parts.isEmpty() ? "" : parts.get(0).toUtf8String();
+    }
+
+    private static boolean isRoutedActorJoinRequest(List<Message> parts) {
+        return parts.size() >= 2
+            && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(firstPart(parts));
+    }
+
+    private static boolean isRoutedBoundSessionSendRequest(List<Message> parts) {
+        return parts.size() >= 1
+            && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(firstPart(parts));
     }
 
     private static List<Message> copyMessages(List<Message> parts) {

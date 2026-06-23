@@ -37,22 +37,13 @@ class AllocateBingoRoomHandler(
 
     private suspend fun ensureLocalRoom(allocation: BingoRoomAllocation) {
         if (allocation.ownerPlayNodeRid != SampleTopology.selectedPlayNodeRid()) {
-            println(
-                "bingo room allocation: remote owner. room=${allocation.roomId}, " +
-                    "owner=${allocation.ownerPlayNodeRid}, local=${SampleTopology.selectedPlayNodeRid()}",
-            )
             return
         }
 
         val settingsPart = serialize(allocation.settings)
         try {
-            val created = spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(allocation.roomId), settingsPart)
+            spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(allocation.roomId), settingsPart)
                 .await()
-            println(
-                "bingo room allocation: local owner. room=${allocation.roomId}, " +
-                    "owner=${allocation.ownerPlayNodeRid}, local=${SampleTopology.selectedPlayNodeRid()}, " +
-                    "state=${created.state()}",
-            )
         } finally {
             settingsPart.close()
         }

@@ -60,7 +60,6 @@ class PlayEntrySpot(
 
     fun observeMilestone(actor: PlayActor): ObserveMilestoneRes {
         rememberObserver(actor)
-        println("actor: ObserveMilestoneReq completed. actor=${actor.actorId}")
         return ObserveMilestoneRes(true)
     }
 

@@ -4,6 +4,7 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 import systems.zlink.samples.gamequest.server.questmission.QuestMissionOptions;
 import systems.zlink.samples.gamequest.server.questmission.domain.QuestDomain;
+import systems.zlink.samples.gamequest.server.questmission.domain.QuestDomain.PendingQuestEvent;
 import systems.zlink.samples.gamequest.server.questmission.domain.QuestDomain.QuestDefinition;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
@@ -57,7 +58,7 @@ public final class QuestEventProcessor {
         }
 
         Messages.QuestProgress after = QuestDomain.apply(definition, before, gameplayEvent);
-        List<Messages.StoredQuestEvent> questEvents = QuestDomain.toEvents(definition, before, after, gameplayEvent);
+        List<PendingQuestEvent> questEvents = QuestDomain.toEvents(definition, before, after, gameplayEvent);
         if (questEvents.isEmpty()) {
             return;
         }
@@ -111,7 +112,7 @@ public final class QuestEventProcessor {
 
         boolean hasSourceEvent(String playerId, String questId, String sourceEventId);
 
-        boolean appendAndProject(Messages.QuestProgress progress, List<Messages.StoredQuestEvent> events);
+        boolean appendAndProject(Messages.QuestProgress progress, List<PendingQuestEvent> events);
     }
 
     public interface PlayerQuestOwnerProvisioner {

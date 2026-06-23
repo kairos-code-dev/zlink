@@ -51,21 +51,12 @@ public final class AllocateBingoRoomHandler
 
     private void ensureLocalRoom(BingoRoomAllocation allocation) {
         if (!allocation.ownerPlayNodeRid().equals(SampleTopology.selectedPlayNodeRid())) {
-            System.out.println(
-                "bingo room allocation: remote owner. room=" + allocation.roomId()
-                    + ", owner=" + allocation.ownerPlayNodeRid()
-                    + ", local=" + SampleTopology.selectedPlayNodeRid());
             return;
         }
 
         Message settingsPart = serialize(allocation.settings());
         try {
-            var created = await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(allocation.roomId()), settingsPart));
-            System.out.println(
-                "bingo room allocation: local owner. room=" + allocation.roomId()
-                    + ", owner=" + allocation.ownerPlayNodeRid()
-                    + ", local=" + SampleTopology.selectedPlayNodeRid()
-                    + ", state=" + created.state());
+            await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(allocation.roomId()), settingsPart));
         } finally {
             settingsPart.close();
         }

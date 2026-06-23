@@ -3,11 +3,11 @@ package systems.zlink.samples.kotlin.gamequest.server.questmission.application
 import org.springframework.stereotype.Component
 import systems.zlink.samples.kotlin.gamequest.server.questmission.QuestMissionOptions
 import systems.zlink.samples.kotlin.gamequest.server.questmission.domain.QuestDomain
+import systems.zlink.samples.kotlin.gamequest.server.questmission.domain.QuestDomain.PendingQuestEvent
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.NotifyQuestProgressReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgressReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgressRes
 
@@ -102,7 +102,7 @@ class QuestEventProcessor(
 
         fun hasSourceEvent(playerId: String, questId: String, sourceEventId: String): Boolean
 
-        fun appendAndProject(progress: QuestProgress, events: List<StoredQuestEvent>): Boolean
+        fun appendAndProject(progress: QuestProgress, events: List<PendingQuestEvent>): Boolean
     }
 
     interface PlayerQuestOwnerProvisioner {

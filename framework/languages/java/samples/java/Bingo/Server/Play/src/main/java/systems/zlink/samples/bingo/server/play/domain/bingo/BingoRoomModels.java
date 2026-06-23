@@ -1,6 +1,5 @@
 package systems.zlink.samples.bingo.server.play.domain.bingo;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
@@ -86,8 +85,7 @@ public final class BingoRoomModels {
                 observedRoomId);
         }
 
-        @JsonIgnore
-        public boolean isObserver() {
+        public boolean observerMode() {
             return ObserverPurpose.equals(purpose);
         }
     }

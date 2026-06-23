@@ -1,8 +1,5 @@
 package systems.zlink.samples.kotlin.gamequest.server.questmission.domain
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.json.JsonMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestIds
 import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestStatuses
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
@@ -11,13 +8,20 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgressReconciledEvent
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgressedEvent
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestRewardGrantedEvent
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent
 
 /** Quest catalog and projection builder. Mirrors the .NET `QuestDomain`. */
 object QuestDomain {
-    private val json: ObjectMapper = JsonMapper.builder().build().registerKotlinModule()
-
     data class QuestDefinition(val questId: String, val eventType: String, val value: String, val required: Int)
+
+    data class PendingQuestEvent(
+        val eventId: String,
+        val sourceEventId: String,
+        val playerId: String,
+        val questId: String,
+        val eventType: String,
+        val payload: Any,
+        val createdAtUnixMs: Long,
+    )
 
     val CATALOG: List<QuestDefinition> = listOf(
         QuestDefinition(QuestIds.FirstHunt, "MonsterKilled", "*", 3),
@@ -63,7 +67,7 @@ object QuestDomain {
         before: QuestProgress?,
         after: QuestProgress,
         source: GameplayEventEnvelope,
-    ): List<StoredQuestEvent> {
+    ): List<PendingQuestEvent> {
         if (before != null && source.eventId == before.lastEventId) {
             return emptyList()
         }
@@ -71,7 +75,7 @@ object QuestDomain {
             return emptyList()
         }
 
-        val events = mutableListOf<StoredQuestEvent>()
+        val events = mutableListOf<PendingQuestEvent>()
         val kind = if (source.eventType == "SnapshotKillCount") {
             "QuestProgressReconciledEvent"
         } else {
@@ -93,7 +97,7 @@ object QuestDomain {
         before: QuestProgress?,
         after: QuestProgress,
         source: GameplayEventEnvelope,
-    ): StoredQuestEvent {
+    ): PendingQuestEvent {
         val now = System.currentTimeMillis()
         val eventId = "${after.playerId}-${definition.questId}-${source.eventId}-$eventType"
         val payload: Any = when (eventType) {
@@ -118,14 +122,13 @@ object QuestDomain {
             )
             else -> throw IllegalArgumentException("Unknown quest event type: $eventType")
         }
-        return StoredQuestEvent(
+        return PendingQuestEvent(
             eventId,
             source.eventId,
             after.playerId,
             definition.questId,
             eventType,
-            json.writeValueAsBytes(payload),
-            0,
+            payload,
             now,
         )
     }

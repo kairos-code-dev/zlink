@@ -3,6 +3,7 @@ package systems.zlink.samples.gamequest.server.questmission.infrastructure.store
 import systems.zlink.samples.gamequest.server.questmission.application.QuestEventProcessor;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -25,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
+import systems.zlink.samples.gamequest.server.questmission.domain.QuestDomain.PendingQuestEvent;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
@@ -84,7 +86,7 @@ public final class QuestStore implements QuestEventProcessor.QuestProgressStore 
     }
 
     @Override
-    public boolean appendAndProject(Messages.QuestProgress progress, List<Messages.StoredQuestEvent> events) {
+    public boolean appendAndProject(Messages.QuestProgress progress, List<PendingQuestEvent> events) {
         boolean appended = update(
             "quest-events.json",
             new TypeReference<List<Messages.StoredQuestEvent>>() {
@@ -105,7 +107,7 @@ public final class QuestStore implements QuestEventProcessor.QuestProgressStore 
                     .max()
                     .orElse(0) + 1;
                 boolean any = false;
-                for (Messages.StoredQuestEvent event : events) {
+                for (PendingQuestEvent event : events) {
                     boolean exists = stored.stream()
                         .anyMatch(existing -> existing.eventId().equals(event.eventId()));
                     if (!exists) {
@@ -115,7 +117,7 @@ public final class QuestStore implements QuestEventProcessor.QuestProgressStore 
                             event.playerId(),
                             event.questId(),
                             event.eventType(),
-                            event.payload(),
+                            serializeQuestPayload(event.payload()),
                             nextVersion++,
                             event.createdAtUnixMs()));
                         any = true;
@@ -151,6 +153,14 @@ public final class QuestStore implements QuestEventProcessor.QuestProgressStore 
             .thenComparing(Messages.StoredQuestEvent::questId)
             .thenComparingLong(Messages.StoredQuestEvent::version));
         return events;
+    }
+
+    private byte[] serializeQuestPayload(Object payload) {
+        try {
+            return json.writeValueAsBytes(payload);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Failed to serialize quest event payload.", ex);
+        }
     }
 
     // ----- locked read / update -----

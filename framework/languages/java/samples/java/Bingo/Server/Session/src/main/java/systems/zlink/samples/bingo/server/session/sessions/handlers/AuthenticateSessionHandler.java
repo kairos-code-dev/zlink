@@ -41,16 +41,13 @@ public final class AuthenticateSessionHandler
         ZLinkSessionContext context,
         ZLinkStreamHeader header,
         Messages.AuthenticateReq request) {
-        trace("authenticate request received token=" + request.accessToken());
         if (request.accessToken() == null || request.accessToken().isBlank()) {
             throw new IllegalArgumentException("access token is required");
         }
-        trace("request api authentication");
         var authenticated = channels
             .requestToChannel(SampleNames.ApiChannel, new Messages.AuthenticatePlayerReq(request.accessToken()))
             .timeout(SampleTimings.RequestTimeout)
             .await(Messages.AuthenticatePlayerRes.class);
-        trace("api authentication accepted=" + authenticated.accepted());
         if (!authenticated.accepted()
             || authenticated.actorId() == null
             || authenticated.actorId().isBlank()
@@ -61,7 +58,6 @@ public final class AuthenticateSessionHandler
                     ? "Player authentication failed."
                     : authenticated.reason());
         }
-        trace("request play actor ensure preferred=" + SampleTopology.preferredPlayNodeRid());
         var ensured = routes
             .requestTo(
                 SampleNames.PlayChannel,
@@ -72,7 +68,6 @@ public final class AuthenticateSessionHandler
                     SampleTopology.preferredPlayNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
             .await(Messages.EnsurePlayerActorRes.class);
-        trace("play actor ensured actor=" + ensured.actorId());
         await(context.actors()
             .bind(new ZLinkActorRef(
                 RoutingId.from(ensured.actor().nodeRid()),
@@ -84,10 +79,5 @@ public final class AuthenticateSessionHandler
                 authenticated.displayName(),
                 SampleTopology.preferredPlayNodeRid()))
             .await();
-        trace("authenticate reply sent actor=" + ensured.actorId());
-    }
-
-    private static void trace(String message) {
-        System.out.println("bingo session: " + message);
     }
 }

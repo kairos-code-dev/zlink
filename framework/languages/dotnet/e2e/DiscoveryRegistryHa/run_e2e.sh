@@ -199,8 +199,12 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --reg-1-router-endpoint "$REG1_ROUTER" \
   --reg-2-router-endpoint "$REG2_ROUTER" \
   --reg-3-router-endpoint "$REG3_ROUTER" \
+  --reg-2-pub-endpoint "$REG2_PUB" \
+  --reg-2-peer-pub-endpoint "$REG1_PUB" \
+  --reg-2-peer-pub-endpoint "$REG3_PUB" \
   --api-a-endpoint "$API_A" \
   --api-b-endpoint "$API_B" \
+  --server-project "$SERVER_PROJECT" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client-cluster.stdout.log" 2>"$LOG_DIR/client-cluster.stderr.log"
 cat "$LOG_DIR/client-cluster.stdout.log"

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Diagnostics;
 using DiscoveryRegistryHa.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -20,7 +21,12 @@ else if (options.Scenario == "cluster")
 {
     await RunDrA2Async(http, options);
     await RunDrA3Async(http, options);
+    await RunDrB1Async(http, options);
+    await RunDrB2Async(http, options);
+    await RunDrD2Async(http, options);
+    await RunDrD4Async(http, options);
     await RunDrC1Async(http, options);
+    await RunDrC2Async(http, options);
 }
 else
 {
@@ -110,6 +116,84 @@ static async Task RunDrC1Async(HttpClient http, ClientOptions options)
     Console.WriteLine("scenario DR-C1 passed");
 }
 
+static async Task RunDrB1Async(HttpClient http, ClientOptions options)
+{
+    foreach (var registry in new[] { options.Reg2Url, options.Reg3Url })
+    {
+        await WaitForMembersAsync(http, registry, [options.ApiAEndpoint, options.ApiBEndpoint], expectedConnectedPeers: 2);
+        using var host = CreateClientHost($"client-dr-b1-{Guid.NewGuid():N}", options.LogDir, [registry == options.Reg2Url
+            ? options.Reg2RouterEndpoint
+            : options.Reg3RouterEndpoint]);
+        await host.StartAsync();
+        var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+        var reply = await RequestWithRetryAsync(client, "dr-b1", $"dr-b1-{Guid.NewGuid():N}", TimeSpan.FromSeconds(5));
+        Ensure(reply.ProviderRid is "api-a" or "api-b", "DR-B1 late-start registry did not route to a provider.");
+        await host.StopAsync();
+    }
+
+    Console.WriteLine("scenario DR-B1 passed");
+}
+
+static async Task RunDrB2Async(HttpClient http, ClientOptions options)
+{
+    using var host = CreateClientHost("client-dr-b2", options.LogDir, [options.Reg1RouterEndpoint, options.Reg2RouterEndpoint]);
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    var reply = await RequestWithRetryAsync(client, "dr-b2", "dr-b2-live-registry", TimeSpan.FromSeconds(5));
+    Ensure(reply.ProviderRid is "api-a" or "api-b", "DR-B2 live registry endpoint did not keep messaging available.");
+    await host.StopAsync();
+    Console.WriteLine("scenario DR-B2 passed");
+}
+
+static async Task RunDrC2Async(HttpClient http, ClientOptions options)
+{
+    await using var reg2 = StartRegistry(options, "reg-2-recovered");
+    await reg2.WaitReadyAsync();
+    await WaitForMembersAsync(http, options.Reg2Url, [options.ApiAEndpoint, options.ApiBEndpoint], expectedConnectedPeers: 2);
+    using var host = CreateClientHost("client-dr-c2", options.LogDir, [options.Reg2RouterEndpoint]);
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    var reply = await RequestWithRetryAsync(client, "dr-c2", "dr-c2-recovered-registry", TimeSpan.FromSeconds(5));
+    Ensure(reply.ProviderRid is "api-a" or "api-b", "DR-C2 recovered registry did not route to a provider.");
+    await host.StopAsync();
+    Console.WriteLine("scenario DR-C2 passed");
+}
+
+static async Task RunDrD2Async(HttpClient http, ClientOptions options)
+{
+    await WaitForMembersAsync(http, options.Reg1Url, [options.ApiAEndpoint, options.ApiBEndpoint], expectedConnectedPeers: 2);
+    using var host = CreateClientHost("client-dr-d2", options.LogDir, [options.Reg1RouterEndpoint]);
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    var reply = await RequestWithRetryAsync(client, "dr-d2", "dr-d2-standalone", TimeSpan.FromSeconds(5));
+    Ensure(reply.ProviderRid is "api-a" or "api-b", "DR-D2 standalone registry deployment did not route.");
+    await host.StopAsync();
+    Console.WriteLine("scenario DR-D2 passed");
+}
+
+static async Task RunDrD4Async(HttpClient http, ClientOptions options)
+{
+    var inProcess = await http.GetFromJsonAsync<ZLinkRegistryTopologyEntry[]>($"{options.Reg1Url}/registry/topology") ?? [];
+    using var queryHost = Host.CreateDefaultBuilder()
+        .ConfigureServices(services =>
+        {
+            services.AddZLinkRegistryQueryClient(query => query.Endpoint = options.Reg1RouterEndpoint);
+        })
+        .Build();
+    await queryHost.StartAsync();
+    var query = queryHost.Services.GetRequiredService<IZLinkRegistryQueryClient>();
+    var remote = await query.TopologyAsync(
+        new ZLinkRegistryTopologyFilter(ChannelName: DiscoveryRegistryHaNames.Channel),
+        CancellationToken.None);
+    await queryHost.StopAsync();
+
+    var localSnapshot = NormalizeTopology(inProcess);
+    var remoteSnapshot = NormalizeTopology(remote);
+    Ensure(localSnapshot.SequenceEqual(remoteSnapshot, StringComparer.Ordinal),
+        "DR-D4 in-process and remote topology snapshots differed.");
+    Console.WriteLine("scenario DR-D4 passed");
+}
+
 static IHost CreateClientHost(string nodeId, string logDir, IReadOnlyList<string> registryEndpoints)
 {
     return Host.CreateDefaultBuilder()
@@ -140,6 +224,31 @@ static async Task<ProfileReply> RequestAsync(IZLinkChannelClient client, string 
         .PacketName("ProfileRequest")
         .Timeout(TimeSpan.FromSeconds(3))
         .Async<ProfileReply>();
+}
+
+static async Task<ProfileReply> RequestWithRetryAsync(
+    IZLinkChannelClient client,
+    string value,
+    string marker,
+    TimeSpan timeout)
+{
+    var deadline = DateTimeOffset.UtcNow + timeout;
+    Exception? last = null;
+    var attempt = 0;
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        try
+        {
+            return await RequestAsync(client, value, $"{marker}-{attempt++}");
+        }
+        catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
+        {
+            last = ex;
+            await Task.Delay(100);
+        }
+    }
+
+    throw new InvalidOperationException($"Timed out waiting for request success: {marker}.", last);
 }
 
 static async Task WaitForTopologyReadyAsync(HttpClient http, string registryUrl, int expectedReady)
@@ -192,6 +301,70 @@ static async Task PostAsync(HttpClient http, string url)
     }
 }
 
+static DynamicProcess StartRegistry(ClientOptions options, string name)
+{
+    var startInfo = new ProcessStartInfo("dotnet")
+    {
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+    };
+    startInfo.Environment["ZLINK_E2E_RID"] = "reg-2";
+    startInfo.ArgumentList.Add("run");
+    startInfo.ArgumentList.Add("--project");
+    startInfo.ArgumentList.Add(options.ServerProject);
+    startInfo.ArgumentList.Add("--");
+    startInfo.ArgumentList.Add("--role");
+    startInfo.ArgumentList.Add("registry");
+    startInfo.ArgumentList.Add("--rid");
+    startInfo.ArgumentList.Add("reg-2");
+    startInfo.ArgumentList.Add("--registry-id");
+    startInfo.ArgumentList.Add("2");
+    startInfo.ArgumentList.Add("--http-url");
+    startInfo.ArgumentList.Add(options.Reg2Url);
+    startInfo.ArgumentList.Add("--registry-pub-endpoint");
+    startInfo.ArgumentList.Add(options.Reg2PubEndpoint);
+    startInfo.ArgumentList.Add("--registry-router-endpoint");
+    startInfo.ArgumentList.Add(options.Reg2RouterEndpoint);
+    foreach (var peer in options.Reg2PeerPubEndpoints)
+    {
+        startInfo.ArgumentList.Add("--peer-pub-endpoint");
+        startInfo.ArgumentList.Add(peer);
+    }
+    startInfo.ArgumentList.Add("--log-dir");
+    startInfo.ArgumentList.Add(options.LogDir);
+
+    var process = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("Failed to start recovered reg-2.");
+    _ = CopyToFileAsync(process.StandardOutput, Path.Combine(options.LogDir, $"{name}.stdout.log"));
+    _ = CopyToFileAsync(process.StandardError, Path.Combine(options.LogDir, $"{name}.stderr.log"));
+    return new DynamicProcess(process, options.Reg2Url);
+}
+
+static async Task CopyToFileAsync(StreamReader reader, string path)
+{
+    await using var stream = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+    await using var writer = new StreamWriter(stream);
+    while (await reader.ReadLineAsync() is { } line)
+    {
+        await writer.WriteLineAsync(line);
+        await writer.FlushAsync();
+    }
+}
+
+static string[] NormalizeTopology(IEnumerable<ZLinkRegistryTopologyEntry> entries)
+{
+    return entries
+        .Select(entry => string.Join("|",
+            entry.ChannelName,
+            entry.ServiceRole,
+            entry.State,
+            entry.RoutingId?.ToString() ?? "",
+            entry.Endpoint))
+        .Order(StringComparer.Ordinal)
+        .ToArray();
+}
+
 static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
 {
     var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
@@ -233,12 +406,15 @@ internal sealed record ClientOptions(
     string Reg1RouterEndpoint,
     string Reg2RouterEndpoint,
     string Reg3RouterEndpoint,
+    string Reg2PubEndpoint,
+    string[] Reg2PeerPubEndpoints,
     string ApiAEndpoint,
-    string ApiBEndpoint)
+    string ApiBEndpoint,
+    string ServerProject)
 {
     public static ClientOptions Parse(string[] args)
     {
-        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        var values = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (var i = 0; i < args.Length; i++)
         {
             var key = args[i];
@@ -252,12 +428,20 @@ internal sealed record ClientOptions(
                 throw new ArgumentException($"Missing value for '{key}'.");
             }
 
-            values[key] = args[++i];
+            var value = args[++i];
+            if (!values.TryGetValue(key, out var bucket))
+            {
+                bucket = [];
+                values.Add(key, bucket);
+            }
+
+            bucket.Add(value);
         }
 
-        string Get(string name, string fallback = "") => values.TryGetValue(name, out var value)
-            ? value
+        string Get(string name, string fallback = "") => values.TryGetValue(name, out var bucket)
+            ? bucket[^1]
             : fallback;
+        string[] GetMany(string name) => values.TryGetValue(name, out var bucket) ? [.. bucket] : [];
 
         return new ClientOptions(
             Scenario: Get("--scenario", "cluster"),
@@ -268,7 +452,72 @@ internal sealed record ClientOptions(
             Reg1RouterEndpoint: Get("--reg-1-router-endpoint"),
             Reg2RouterEndpoint: Get("--reg-2-router-endpoint"),
             Reg3RouterEndpoint: Get("--reg-3-router-endpoint"),
+            Reg2PubEndpoint: Get("--reg-2-pub-endpoint"),
+            Reg2PeerPubEndpoints: GetMany("--reg-2-peer-pub-endpoint"),
             ApiAEndpoint: Get("--api-a-endpoint"),
-            ApiBEndpoint: Get("--api-b-endpoint"));
+            ApiBEndpoint: Get("--api-b-endpoint"),
+            ServerProject: Get("--server-project"));
+    }
+}
+
+internal sealed class DynamicProcess(Process process, string healthUrl) : IAsyncDisposable
+{
+    public async Task WaitReadyAsync()
+    {
+        using var http = new HttpClient();
+        for (var i = 0; i < 120; i++)
+        {
+            if (process.HasExited)
+            {
+                throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");
+            }
+
+            try
+            {
+                using var response = await http.GetAsync($"{healthUrl}/health");
+                if (response.IsSuccessStatusCode)
+                {
+                    return;
+                }
+            }
+            catch
+            {
+            }
+
+            await Task.Delay(250);
+        }
+
+        throw new TimeoutException($"Timed out waiting for {healthUrl}.");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!process.HasExited)
+        {
+            try
+            {
+                using var http = new HttpClient();
+                using var _ = await http.PostAsync($"{healthUrl}/shutdown", content: null);
+            }
+            catch
+            {
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync();
+                }
+            }
+        }
+
+        process.Dispose();
     }
 }

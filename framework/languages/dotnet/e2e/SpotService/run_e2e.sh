@@ -46,7 +46,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 25:
+    while len(sockets) < 26:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -80,6 +80,7 @@ PLAY_B_SPOT_PUB="tcp://127.0.0.1:${PORTS[10]}"
 SESSION_A_HTTP="http://127.0.0.1:${PORTS[11]}"
 SESSION_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
 SESSION_A_STREAM="tcp://127.0.0.1:${PORTS[13]}"
+SESSION_A_TLS_STREAM="tls://127.0.0.1:${PORTS[25]}"
 SESSION_A_CONTROL="tcp://127.0.0.1:${PORTS[14]}"
 SESSION_B_HTTP="http://127.0.0.1:${PORTS[15]}"
 SESSION_B_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[16]}"
@@ -95,6 +96,7 @@ endpoint_port() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
   endpoint="${endpoint#http://}"
+  endpoint="${endpoint#tls://}"
   echo "${endpoint##*:}"
 }
 
@@ -102,6 +104,7 @@ endpoint_host() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
   endpoint="${endpoint#http://}"
+  endpoint="${endpoint#tls://}"
   echo "${endpoint%:*}"
 }
 
@@ -133,6 +136,13 @@ start_server() {
 echo "log_dir=$LOG_DIR"
 dotnet build "$SERVER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
+TLS_CERT="$LOG_DIR/session-a-tls.crt"
+TLS_KEY="$LOG_DIR/session-a-tls.key"
+openssl req -x509 -newkey rsa:2048 -nodes \
+  -keyout "$TLS_KEY" \
+  -out "$TLS_CERT" \
+  -days 1 \
+  -subj "/CN=localhost" >/dev/null 2>&1
 
 start_server registry \
   --role registry \
@@ -184,12 +194,16 @@ start_server session-a \
   --control-endpoint "$SESSION_A_CONTROL" \
   --spot-router-endpoint "$SESSION_A_SPOT_ROUTER" \
   --stream-endpoint "$SESSION_A_STREAM" \
+  --tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
+  --tls-cert-path "$TLS_CERT" \
+  --tls-key-path "$TLS_KEY" \
   --evidence-file "$LOG_DIR/session-a.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_port session-a "$SESSION_A_HTTP"
 wait_port session-a-control "$SESSION_A_CONTROL"
 wait_port session-a-spot-router "$SESSION_A_SPOT_ROUTER"
 wait_port session-a-stream "$SESSION_A_STREAM"
+wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
 
 start_server session-b \
   --role session \
@@ -211,6 +225,7 @@ sleep 2
 dotnet "$CLIENT_DLL" \
   --session-a-stream-endpoint "$SESSION_A_STREAM" \
   --session-b-stream-endpoint "$SESSION_B_STREAM" \
+  --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
   --play-a-evidence-url "$PLAY_A_HTTP/evidence" \
   --play-b-evidence-url "$PLAY_B_HTTP/evidence" \

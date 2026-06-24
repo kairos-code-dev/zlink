@@ -24,6 +24,10 @@ internal sealed class ZLinkStreamRuntimeManager(
                 var actorGateway = state.SpotNodes[streamNodeRegistration.ActorGatewaySpotNodeName];
                 socket.AttachActorGateway(actorGateway.Node);
             }
+            if (streamNodeRegistration.TlsServer is { } tlsServer)
+            {
+                socket.SetTlsServer(tlsServer.CertPath, tlsServer.KeyPath, tlsServer.RequireClientCert);
+            }
             socket.Bind(streamNodeRegistration.BindEndpoint!);
             var monitor = monitoringAdapter.OpenSocketMonitor(socket);
 

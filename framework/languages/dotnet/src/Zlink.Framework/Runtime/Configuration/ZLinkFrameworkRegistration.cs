@@ -142,10 +142,17 @@ internal sealed class ZLinkStreamNodeRegistration
 
     public string? BindEndpoint { get; set; }
 
+    public ZLinkStreamTlsServerRegistration? TlsServer { get; set; }
+
     public string? ActorGatewaySpotNodeName { get; set; }
 
     public Type? HeaderSessionType { get; set; }
 }
+
+internal sealed record ZLinkStreamTlsServerRegistration(
+    string CertPath,
+    string KeyPath,
+    bool RequireClientCert);
 
 internal sealed class ZLinkRouteChannelRegistration
 {

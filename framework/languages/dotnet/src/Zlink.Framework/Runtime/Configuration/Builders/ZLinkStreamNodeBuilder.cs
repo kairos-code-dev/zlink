@@ -13,6 +13,22 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         return this;
     }
 
+    public IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false)
+    {
+        if (string.IsNullOrWhiteSpace(certPath))
+        {
+            throw new ZLinkConfigurationException("STREAM TLS certificate path must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(keyPath))
+        {
+            throw new ZLinkConfigurationException("STREAM TLS key path must not be empty.");
+        }
+
+        registration.TlsServer = new ZLinkStreamTlsServerRegistration(certPath, keyPath, requireClientCert);
+        return this;
+    }
+
     public IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName)
     {
         if (string.IsNullOrWhiteSpace(spotNodeName))

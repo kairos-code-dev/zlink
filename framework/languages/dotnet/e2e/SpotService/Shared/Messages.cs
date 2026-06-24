@@ -9,6 +9,7 @@ public static class SpotServiceNames
     public const string ExternalClientChannel = "spot.external.client";
     public const string ExternalClientServerChannel = "spot.external.cs.client";
     public const string StreamNode = "session-stream";
+    public const string TlsStreamNode = "session-stream-tls";
     public const string PlaySpotNode = "play-node";
     public const string SessionSpotNode = "session-node";
     public const string EdgeSpotNode = "edge-node";

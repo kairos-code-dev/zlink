@@ -122,6 +122,16 @@ else if (options.Role == "session")
             .AttachActorGateway(SpotServiceNames.SessionSpotNode)
             .Bind(Require(options.StreamEndpoint, "--stream-endpoint"))
             .RegisterSession<ScenarioSession>();
+        if (!string.IsNullOrWhiteSpace(options.TlsStreamEndpoint))
+        {
+            framework.AddStreamNode(SpotServiceNames.TlsStreamNode)
+                .AttachActorGateway(SpotServiceNames.SessionSpotNode)
+                .Bind(options.TlsStreamEndpoint)
+                .SetTlsServer(
+                    Require(options.TlsCertPath, "--tls-cert-path"),
+                    Require(options.TlsKeyPath, "--tls-key-path"))
+                .RegisterSession<ScenarioSession>();
+        }
     });
 }
 else
@@ -1332,7 +1342,10 @@ internal sealed record ServerOptions(
     string? ExternalClientEndpoint,
     string? ExternalSpotEndpoint,
     string? ClientSpotPubEndpoint,
-    string? StreamEndpoint)
+    string? StreamEndpoint,
+    string? TlsStreamEndpoint,
+    string? TlsCertPath,
+    string? TlsKeyPath)
 {
     public static ServerOptions Parse(string[] args)
     {
@@ -1371,6 +1384,9 @@ internal sealed record ServerOptions(
             values.GetValueOrDefault("external-client-endpoint"),
             values.GetValueOrDefault("external-spot-endpoint"),
             values.GetValueOrDefault("client-spot-pub-endpoint"),
-            values.GetValueOrDefault("stream-endpoint"));
+            values.GetValueOrDefault("stream-endpoint"),
+            values.GetValueOrDefault("tls-stream-endpoint"),
+            values.GetValueOrDefault("tls-cert-path"),
+            values.GetValueOrDefault("tls-key-path"));
     }
 }

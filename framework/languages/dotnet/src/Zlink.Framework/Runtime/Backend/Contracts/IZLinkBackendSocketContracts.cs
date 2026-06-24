@@ -164,6 +164,8 @@ internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocke
 
 internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
 {
+    void SetTlsServer(string certPath, string keyPath, bool requireClientCert);
+
     void OnFramedPacket(Action<string, Message, Message> handler);
 
     bool Send(

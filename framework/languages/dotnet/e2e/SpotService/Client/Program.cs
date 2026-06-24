@@ -23,6 +23,7 @@ static async Task RunAsync(ClientOptions options)
     await RunSmD7Async(options);
     await RunSmD8Async(options);
     await RunSmD10Async(options);
+    await RunSmD14Async(options);
     await RunSmD9D11D13Async(options);
     await RunSmD1AndD6Async(options);
     await RunSmD3Async(options);
@@ -409,6 +410,36 @@ static async Task RunSmD10Async(ClientOptions options)
     Ensure(isolatedNotify.Payload.Value == "isolated-push", "SM-D10 isolated session push mismatch.");
 
     Console.WriteLine("scenario SM-D10 passed");
+}
+
+static async Task RunSmD14Async(ClientOptions options)
+{
+    await using var strict = CreateClient(
+        options.SessionATlsStreamEndpoint,
+        skipServerCertificateValidation: false);
+    await ExpectFailureAsync(
+        strict.Connect.Async().AsTask(),
+        "SM-D14 expected strict TLS validation to reject the self-signed stream certificate.");
+
+    await using var tls = CreateClient(
+        options.SessionATlsStreamEndpoint,
+        skipServerCertificateValidation: true);
+    await tls.Connect.Async();
+    await tls.Request(new AuthReq("actor-sm-d14-tls", "stream tls", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+
+    var pushed = tls.WaitFor<ActorPushNotify>().Async().AsTask();
+    var reply = await tls.Request(new ActorPushReq("tls-push"))
+        .PacketName("ActorPushReq")
+        .Async<ActorPingReply>();
+    var notify = await pushed;
+    Ensure(reply.ActorId == "actor-sm-d14-tls", "SM-D14 TLS actor reply mismatch.");
+    Ensure(reply.NodeRid == options.PlayARid, "SM-D14 TLS actor node mismatch.");
+    Ensure(notify.Payload.ActorId == "actor-sm-d14-tls", "SM-D14 TLS push actor mismatch.");
+    Ensure(notify.Payload.Value == "tls-push", "SM-D14 TLS push payload mismatch.");
+
+    Console.WriteLine("scenario SM-D14 passed");
 }
 
 static async Task RunSmD4Async(ClientOptions options)
@@ -1152,12 +1183,12 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
     }, "SM-F1 expected spot route command evidence.");
     Console.WriteLine("scenario SM-F1 passed");
 
-    var viaRouteMesh = await clientServerRoutes.Request(
-            SpotServiceNames.ExternalSpotChannel,
-            RoutingId.From(spotRid),
-            new StateReq("add", 5))
-        .PacketName("StateReq")
-        .Async<StateReply>();
+    var viaRouteMesh = await RequestSpotStateWithRetryAsync(
+        clientServerRoutes,
+        SpotServiceNames.ExternalSpotChannel,
+        spotRid,
+        new StateReq("add", 5),
+        "SM-F2 route-mesh egress to spot timed out.");
     Ensure(viaRouteMesh.SpotRid == spotRid, "SM-F2 target spot mismatch.");
     Ensure(viaRouteMesh.NodeRid == options.PlayARid, "SM-F2 target node mismatch.");
     Ensure(viaRouteMesh.Value == 12, "SM-F2 state value mismatch.");
@@ -1348,7 +1379,8 @@ static IZlinkStreamConnector CreateClient(
     string endpoint,
     Action<IZlinkStreamConnector>? configure = null,
     ZlinkStreamHeartbeatOptions? heartbeat = null,
-    int? maxReceivedMessages = null)
+    int? maxReceivedMessages = null,
+    bool skipServerCertificateValidation = false)
 {
     var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
     {
@@ -1358,6 +1390,7 @@ static IZlinkStreamConnector CreateClient(
         Heartbeat = heartbeat ?? new ZlinkStreamHeartbeatOptions { Enabled = false },
         DispatchMode = ZlinkStreamDispatchMode.Immediate,
         MaxReceivedMessages = maxReceivedMessages ?? 1024,
+        SkipServerCertificateValidation = skipServerCertificateValidation,
     });
     configure?.Invoke(connector);
     return connector;
@@ -1529,6 +1562,7 @@ static void Ensure(bool condition, string message)
 internal sealed record ClientOptions(
     string SessionAStreamEndpoint,
     string SessionBStreamEndpoint,
+    string SessionATlsStreamEndpoint,
     string RegistryRouterEndpoint,
     string PlayAEvidenceUrl,
     string PlayBEvidenceUrl,
@@ -1570,6 +1604,7 @@ internal sealed record ClientOptions(
         return new ClientOptions(
             Required("session-a-stream-endpoint"),
             Required("session-b-stream-endpoint"),
+            Required("session-a-tls-stream-endpoint"),
             Required("registry-router-endpoint"),
             Required("play-a-evidence-url"),
             Required("play-b-evidence-url"),

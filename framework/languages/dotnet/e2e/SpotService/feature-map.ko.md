@@ -37,7 +37,7 @@
 | SM-D11 | 구현 | 같은 run에서 stream actor request와 channel route request를 함께 수행하는 marker가 있다. |
 | SM-D12 | 구현 | session reconnect migration marker가 있다. |
 | SM-D13 | 구현 | heartbeat-enabled stream이 유지된 뒤 request가 성공하는 marker가 있다. |
-| SM-D14 | public API/harness 대기 | framework AddStreamNode().Bind(...)에는 TLS certificate/server option public API가 없어 framework stream TLS E2E를 구성할 수 없다. |
+| SM-D14 | 구현 | framework stream node의 `SetTlsServer(...)` public API로 TLS stream endpoint를 열고, TLS connector 성공 경로와 strict certificate validation 실패 경로를 함께 확인한다. |
 | SM-E1 | 구현 | spot route missing request marker가 있다. |
 | SM-E2 | 구현 | spot timer tick marker가 있다. |
 | SM-E3 | 구현 | idle timer가 spot close를 수행하고 closed spot request가 실패하는 marker가 있다. |

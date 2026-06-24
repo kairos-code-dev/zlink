@@ -166,4 +166,47 @@ class SpotNodeLifecycleTest {
         }
     }
 
+    @Test
+    void actorCreateRequestPayloadIsExposedOnEntrySpotLifecycle() throws Exception {
+        TestSupport.assumeNative();
+
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode(SpotNodeMode.ALL)) {
+            Spot entrySpot = node.entrySpot();
+            CompletableFuture<SpotActorLifecycleEvent> created =
+                new CompletableFuture<>();
+
+            entrySpot.setDispatchHandler(info -> {
+                if (info.event() != SpotDispatchEvent.ACTOR_LIFECYCLE_READABLE)
+                    return;
+                SpotActorLifecycleEvent event =
+                    entrySpot.recvActorLifecycle(RecvFlags.DONT_WAIT);
+                if (event != null) {
+                    created.complete(event);
+                }
+            });
+
+            Message profile = Message.from("profile");
+            Message displayName = Message.from("display-name");
+            Actor actor = node.createActor(
+                "java-create-payload",
+                java.util.List.of(profile, displayName));
+
+            assertEquals(0, profile.size());
+            assertEquals(0, displayName.size());
+
+            try (SpotActorLifecycleEvent event =
+                     created.get(2, TimeUnit.SECONDS)) {
+                assertEquals(SpotActorLifecycleEventKind.JOINED, event.kind());
+                assertEquals(actor.ref().actorId(),
+                    event.info().currentActor().actorId());
+                assertEquals(2, event.requestParts().size());
+                assertEquals("profile",
+                    event.requestParts().get(0).toUtf8String());
+                assertEquals("display-name",
+                    event.requestParts().get(1).toUtf8String());
+            }
+        }
+    }
+
 }

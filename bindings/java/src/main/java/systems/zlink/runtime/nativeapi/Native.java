@@ -2236,6 +2236,20 @@ public final class Native {
         }
     }
 
+    public static int spotNodeActorNewWithRequest(MemorySegment node,
+                                                  MemorySegment actorId,
+                                                  MemorySegment parts,
+                                                  long partCount,
+                                                  MemorySegment out) {
+        try {
+            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_NEW_WITH_REQUEST.invokeExact(
+              node, actorId, parts, partCount, out);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_actor_new_with_request failed", t);
+        }
+    }
+
     public static int spotNodeActorDestroy(MemorySegment node,
                                            MemorySegment actor,
                                            MemorySegment handler,
@@ -2847,6 +2861,20 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_recv_actor_lifecycle failed", t);
+        }
+    }
+
+    public static int spotRecvActorLifecycleWithRequest(MemorySegment spot,
+                                                        MemorySegment eventOut,
+                                                        MemorySegment partsOut,
+                                                        MemorySegment countOut,
+                                                        int flags) {
+        try {
+            return (int) NativeSpotSymbols.MH_SPOT_RECV_ACTOR_LIFECYCLE_WITH_REQUEST.invokeExact(
+              spot, eventOut, partsOut, countOut, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_recv_actor_lifecycle_with_request failed", t);
         }
     }
 

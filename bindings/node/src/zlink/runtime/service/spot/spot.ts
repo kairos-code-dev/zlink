@@ -480,7 +480,9 @@ export class Spot extends NativeHandle {
     }
     return {
       kind: raw.kind,
-      info: spotActorLifecycleInfoFromRaw(raw.info)
+      info: spotActorLifecycleInfoFromRaw(raw.info),
+      message: messageFromSnapshot(raw.message),
+      parts: raw.parts.map((part) => messageFromSnapshot(part))
     };
   }
   drainReply(): number {

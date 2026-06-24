@@ -8,6 +8,7 @@ export {
 export {
   SpotDispatchEvent,
   SpotDispatchSubjectKind,
+  SpotActorLifecycleEventKind,
   SpotKind,
   SpotNodeMode,
   SpotNodeSocketOwner,
@@ -25,6 +26,7 @@ export type {
 export type {
   SpotDispatchEvent as SpotDispatchEventValue,
   SpotDispatchSubjectKind as SpotDispatchSubjectKindValue,
+  SpotActorLifecycleEventKind as SpotActorLifecycleEventKindValue,
   SpotKindValue,
   SpotNodeModeValue,
   SpotNodeSocketOwnerValue,

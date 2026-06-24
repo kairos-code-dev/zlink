@@ -11,6 +11,8 @@ namespace Systems.Zlink;
 
 internal sealed partial class SpotNode
 {
+    private const int StackActorCreatePartLimit = 8;
+
     public Actor CreateActor(string actorId)
     {
         ActorInterop.ValidateActorId(actorId, nameof(actorId));
@@ -22,9 +24,65 @@ internal sealed partial class SpotNode
         return new Actor(this, ActorInterop.FromNative(ref actor));
     }
 
+    public Actor CreateActor(string actorId, Message request)
+    {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+        return CreateActor(actorId, new[] { request });
+    }
+
+    public unsafe Actor CreateActor(string actorId,
+        IReadOnlyList<Message> requestParts)
+    {
+        ActorInterop.ValidateActorId(actorId, nameof(actorId));
+        RequestReplySupport.EnsureParts(requestParts, nameof(requestParts));
+        EnsureNotDisposed();
+
+        Message[] parts = requestParts as Message[] ?? new List<Message>(
+            requestParts).ToArray();
+        Span<ZlinkMsg> nativeParts = parts.Length <= StackActorCreatePartLimit
+            ? stackalloc ZlinkMsg[StackActorCreatePartLimit]
+            : new ZlinkMsg[parts.Length];
+        nativeParts = nativeParts.Slice(0, parts.Length);
+        var built = 0;
+        var submitted = false;
+        try
+        {
+            NativeMessageParts.MoveToNative(parts, nativeParts,
+                nameof(requestParts), ref built);
+            fixed (ZlinkMsg* nativePtr = nativeParts)
+            {
+                int rc = NativeMethods.zlink_spot_node_actor_new_with_request(
+                    _handle, actorId, nativePtr, (nuint)parts.Length,
+                    out ZlinkActorRef actor);
+                if (rc != 0)
+                    throw ZlinkException.CreateConfigException(
+                        NativeMethods.zlink_errno());
+                submitted = true;
+                return new Actor(this, ActorInterop.FromNative(ref actor));
+            }
+        }
+        finally
+        {
+            if (!submitted)
+                NativeMessageParts.RestoreManaged(parts, nativeParts, 0, built);
+        }
+    }
+
     IActor ISpotNode.CreateActor(string actorId)
     {
         return CreateActor(actorId);
+    }
+
+    IActor ISpotNode.CreateActor(string actorId, Message request)
+    {
+        return CreateActor(actorId, request);
+    }
+
+    IActor ISpotNode.CreateActor(string actorId,
+        IReadOnlyList<Message> requestParts)
+    {
+        return CreateActor(actorId, requestParts);
     }
 
     public ActorRef ActorLookup(string actorId)

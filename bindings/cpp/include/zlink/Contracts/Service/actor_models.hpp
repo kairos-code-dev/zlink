@@ -215,10 +215,14 @@ enum class spot_actor_lifecycle_event_kind_t : int
 /// @brief An actor lifecycle event delivered to a lifecycle subscriber.
 struct spot_actor_lifecycle_event_t
 {
-    spot_actor_lifecycle_event_t () : kind (spot_actor_lifecycle_event_kind_t::joined), info () {}
+    spot_actor_lifecycle_event_t () :
+        kind (spot_actor_lifecycle_event_kind_t::joined), info (), request_parts ()
+    {
+    }
 
     spot_actor_lifecycle_event_kind_t kind;
     spot_actor_lifecycle_info_t info;
+    std::vector<message_t> request_parts;
 
   private:
     friend struct detail::actor_model_access_t;
@@ -294,7 +298,8 @@ enum class spot_dispatch_event_t : int
     timer_readable = 3,
     channel_reply_readable = 4,
     actor_readable = 5,
-    actor_join_readable = 6
+    actor_join_readable = 6,
+    actor_lifecycle_readable = 7
 };
 
 enum class spot_dispatch_subject_kind_t : int

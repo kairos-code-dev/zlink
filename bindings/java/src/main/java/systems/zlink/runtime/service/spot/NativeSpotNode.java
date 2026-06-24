@@ -366,6 +366,16 @@ public final class NativeSpotNode implements SpotNode {
         return actorOperations.createActor(actorId);
     }
 
+    @Override
+    public Actor createActor(String actorId, Message request) {
+        return actorOperations.createActor(actorId, request);
+    }
+
+    @Override
+    public Actor createActor(String actorId, List<Message> requestParts) {
+        return actorOperations.createActor(actorId, requestParts);
+    }
+
     Actor actor(String actorId) {
         return actorOperations.createActor(actorId);
     }

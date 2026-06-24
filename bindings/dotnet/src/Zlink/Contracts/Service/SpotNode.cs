@@ -111,6 +111,16 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     IActor CreateActor(string actorId);
     /// <summary>
+    /// Creates an actor and delivers one request part to the entry spot create
+    /// lifecycle callback.
+    /// </summary>
+    IActor CreateActor(string actorId, Message request);
+    /// <summary>
+    /// Creates an actor and delivers request parts to the entry spot create
+    /// lifecycle callback.
+    /// </summary>
+    IActor CreateActor(string actorId, IReadOnlyList<Message> requestParts);
+    /// <summary>
     /// Looks up an actor by actor id.
     /// </summary>
     ActorRef ActorLookup(string actorId);

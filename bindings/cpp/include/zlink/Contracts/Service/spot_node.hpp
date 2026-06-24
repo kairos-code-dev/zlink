@@ -163,6 +163,8 @@ class spot_node_t
     }
 
     actor_t create_actor (const std::string &actor_id_);
+    actor_t create_actor (const std::string &actor_id_, message_t &request_);
+    actor_t create_actor (const std::string &actor_id_, std::vector<message_t> &request_);
 
     actor_ref_t actor_lookup (const std::string &actor_id_) const;
 

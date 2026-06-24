@@ -180,6 +180,34 @@ int main (void)
     CHECK (zlink_spot_dispatch_event_handler (entry_spot, entry_dispatch, &entry_probe)
            == ZLINK_HANDLER_OK);
 
+    zlink_msg_t create_request[2];
+    CHECK (make_part (&create_request[0], "profile") == 0);
+    CHECK (make_part (&create_request[1], "display-name") == 0);
+    zlink_actor_ref_t created_with_request;
+    CHECK (zlink_spot_node_actor_new_with_request (node, "c-create-payload-actor", create_request,
+                                                   2, &created_with_request)
+           == ZLINK_CONFIG_OK);
+
+    zlink_spot_actor_lifecycle_event_t lifecycle_event;
+    zlink_msg_t *lifecycle_parts = NULL;
+    size_t lifecycle_part_count = 0;
+    CHECK (zlink_spot_recv_actor_lifecycle_with_request (
+             entry_spot, &lifecycle_event, &lifecycle_parts, &lifecycle_part_count,
+             ZLINK_RECV_FLAGS_DONTWAIT)
+           == ZLINK_RECV_OK);
+    CHECK (lifecycle_event.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED);
+    CHECK (strcmp (lifecycle_event.info.current_actor.actor_id,
+                   created_with_request.actor_id)
+           == 0);
+    CHECK (lifecycle_part_count == 2);
+    CHECK (zlink_msg_size (&lifecycle_parts[0]) == strlen ("profile"));
+    CHECK (memcmp (zlink_msg_data (&lifecycle_parts[0]), "profile", strlen ("profile")) == 0);
+    CHECK (zlink_msg_size (&lifecycle_parts[1]) == strlen ("display-name"));
+    CHECK (memcmp (zlink_msg_data (&lifecycle_parts[1]), "display-name",
+                   strlen ("display-name"))
+           == 0);
+    zlink_multipart_close (lifecycle_parts, lifecycle_part_count);
+
     zlink_actor_ref_t actor;
     CHECK (zlink_spot_node_actor_new (node, "c-entry-join-actor", &actor) == ZLINK_CONFIG_OK);
 

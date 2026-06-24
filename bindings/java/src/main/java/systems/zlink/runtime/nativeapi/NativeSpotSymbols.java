@@ -82,6 +82,11 @@ final class NativeSpotSymbols {
       "zlink_spot_recv_actor_lifecycle",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    static final MethodHandle MH_SPOT_RECV_ACTOR_LIFECYCLE_WITH_REQUEST =
+      downcall("zlink_spot_recv_actor_lifecycle_with_request",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+          ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+          ValueLayout.JAVA_INT));
     static final MethodHandle MH_SPOT_ACTOR_JOIN_REPLY = downcall(
       "zlink_spot_actor_join_reply",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -130,6 +135,11 @@ final class NativeSpotSymbols {
             "zlink_spot_node_actor_new",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    static final MethodHandle MH_SPOT_NODE_ACTOR_NEW_WITH_REQUEST =
+      downcall("zlink_spot_node_actor_new_with_request",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+          ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+          ValueLayout.ADDRESS));
     static final MethodHandle MH_SPOT_NODE_ACTOR_DESTROY = downcall(
             "zlink_spot_node_actor_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,

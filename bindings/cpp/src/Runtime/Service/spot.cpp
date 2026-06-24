@@ -411,14 +411,20 @@ std::optional<spot_actor_lifecycle_event_t> spot_t::recv_actor_lifecycle (recv_f
 {
     zlink_spot_actor_lifecycle_event_t native_event;
     std::memset (&native_event, 0, sizeof (native_event));
-    const recv_result_t rc = static_cast<recv_result_t> (zlink_spot_recv_actor_lifecycle (
-      _impl->handle, &native_event, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
+    zlink_msg_t *parts = nullptr;
+    size_t part_count = 0;
+    const recv_result_t rc = static_cast<recv_result_t> (
+      zlink_spot_recv_actor_lifecycle_with_request (
+        _impl->handle, &native_event, &parts, &part_count,
+        static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
     if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
         return std::nullopt;
     if (rc != recv_result_t::ok)
         throw recv_error_t (rc, zlink_errno ());
-    return std::optional<spot_actor_lifecycle_event_t> (
-      zlink::detail::actor_model_access_t::from_native (native_event));
+    spot_actor_lifecycle_event_t event =
+      zlink::detail::actor_model_access_t::from_native (native_event);
+    event.request_parts = zlink::detail::take_parts_from_native (parts, part_count);
+    return std::optional<spot_actor_lifecycle_event_t> (std::move (event));
 }
 
 std::optional<actor_join_request_t> spot_t::recv_actor_join (recv_flags_t flags_)

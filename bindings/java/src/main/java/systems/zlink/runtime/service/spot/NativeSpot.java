@@ -33,6 +33,7 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeListSnapshots;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -651,8 +652,10 @@ public final class NativeSpot implements Spot {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment eventOut = arena.allocate(
               NativeLayouts.SPOT_ACTOR_LIFECYCLE_EVENT_LAYOUT);
-            int rc = Native.spotRecvActorLifecycle(handle, eventOut,
-              flags.value());
+            MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int rc = Native.spotRecvActorLifecycleWithRequest(handle, eventOut,
+              partsOut, partCountOut, flags.value());
             if (rc != 0) {
                 if (flags == RecvFlags.DONT_WAIT
                     && rc == RecvResult.NO_DATA.value()) {
@@ -660,13 +663,20 @@ public final class NativeSpot implements Spot {
                 }
                 throw new ZlinkRecvException(RecvResult.fromValue(rc));
             }
+            MemorySegment parts = partsOut.get(ValueLayout.ADDRESS, 0);
+            long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
+            Message[] requestParts = partCount > 0
+                ? InternalAccess.messageFromOwnedMessageVector(parts, partCount)
+                : new Message[0];
+            NativeMessage.multipartClose(parts, partCount);
             return new SpotActorLifecycleEvent(
               ContractAccess.actorLifecycleKindFromValue(eventOut.get(
                 ValueLayout.JAVA_INT,
                 NativeLayouts.SPOT_ACTOR_LIFECYCLE_EVENT_KIND_OFFSET)),
               ActorInterop.lifecycleInfoFromNative(eventOut.asSlice(
                 NativeLayouts.SPOT_ACTOR_LIFECYCLE_EVENT_INFO_OFFSET,
-                NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteSize())));
+                NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteSize())),
+              List.of(requestParts));
         }
     }
 

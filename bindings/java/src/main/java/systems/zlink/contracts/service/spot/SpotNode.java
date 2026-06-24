@@ -60,6 +60,10 @@ public interface SpotNode extends AutoCloseable {
 
     Actor createActor(String actorId);
 
+    Actor createActor(String actorId, Message request);
+
+    Actor createActor(String actorId, List<Message> requestParts);
+
     ActorRef actorLookup(String actorId);
 
     /** Builds an unchecked remote Actor ref for request APIs. */

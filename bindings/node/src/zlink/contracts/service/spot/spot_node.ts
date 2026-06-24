@@ -74,8 +74,8 @@ export interface SpotNode {
   spotLookup(spotRid: RoutingId): Spot | null;
   /** Return the spot for `spotRid`, creating it if absent; `created` is true when newly created. */
   getOrCreateSpot(spotRid: RoutingId): { spot: Spot; created: boolean };
-  /** Create a local actor with id `actorId`. The caller owns it. */
-  createActor(actorId: string): Actor;
+  /** Create a local actor with id `actorId`. Optional request parts are delivered to the actor-created lifecycle event. */
+  createActor(actorId: string, request?: MessageLike | readonly MessageLike[]): Actor;
   /** Look up a local actor by id, returning its reference. */
   actorLookup(actorId: string): ActorRef;
   /** Begin looking up a remote actor's reference; submit the returned operation. */

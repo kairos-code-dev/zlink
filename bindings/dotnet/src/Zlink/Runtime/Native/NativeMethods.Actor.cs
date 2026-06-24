@@ -11,6 +11,14 @@ internal static partial class NativeMethods
         out ZlinkActorRef actorRef);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_spot_node_actor_new_with_request(
+        IntPtr node,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        ZlinkMsg* parts,
+        nuint partCount,
+        out ZlinkActorRef actorRef);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_actor_destroy(IntPtr node,
         ref ZlinkActorRef actor,
         IntPtr handler,
@@ -97,6 +105,14 @@ internal static partial class NativeMethods
     internal static extern int zlink_spot_recv_actor_lifecycle(
         IntPtr spot,
         out ZlinkSpotActorLifecycleEvent lifecycleEvent,
+        int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_recv_actor_lifecycle_with_request(
+        IntPtr spot,
+        out ZlinkSpotActorLifecycleEvent lifecycleEvent,
+        out IntPtr parts,
+        out nuint partCount,
         int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

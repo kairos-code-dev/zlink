@@ -149,6 +149,10 @@ export type SpotActorLifecycleEventKind =
 export interface SpotActorLifecycleEvent {
   readonly kind: SpotActorLifecycleEventKind;
   readonly info: SpotActorLifecycleInfo;
+  /** First create request part, or an empty message when no request was supplied. */
+  readonly message: Message;
+  /** All create request parts in the order supplied to actor creation. */
+  readonly parts: readonly Message[];
 }
 /** One spot hosted on a spot node and its actor counts. */
 export interface SpotNodeSpotEntry {

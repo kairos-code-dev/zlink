@@ -147,7 +147,24 @@ public enum SpotActorLifecycleEventKind
 /// <param name="Info">Details of the actor and spots involved.</param>
 public sealed record SpotActorLifecycleEvent(
     SpotActorLifecycleEventKind Kind,
-    SpotActorLifecycleInfo Info);
+    SpotActorLifecycleInfo Info) : IDisposable
+{
+    /// <summary>
+    /// Gets the request parts supplied when the actor was created. The event
+    /// owns these messages and disposes them when disposed.
+    /// </summary>
+    public IReadOnlyList<Message> RequestParts { get; init; } =
+        Array.Empty<Message>();
+
+    /// <summary>
+    /// Releases any request parts owned by this lifecycle event.
+    /// </summary>
+    public void Dispose()
+    {
+        foreach (Message part in RequestParts)
+            part.Dispose();
+    }
+}
 
 /// <summary>
 /// A message received for an actor: its metadata and parts. Owns its parts

@@ -47,6 +47,8 @@ export interface SpotActorJoinRecvRaw {
 export interface SpotActorLifecycleRaw {
   kind: number;
   info: SpotActorLifecycleInfoRaw;
+  message: MessageSnapshot;
+  parts: MessageSnapshot[];
 }
 
 export interface SpotNodeStatusRaw {

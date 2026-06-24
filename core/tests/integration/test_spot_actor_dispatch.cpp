@@ -29,6 +29,7 @@ std::map<std::string, void *> g_test_actor_nodes_by_ref;
 
 void init_text_msg (zlink_msg_t *msg_, const char *text_);
 std::string msg_text (zlink_msg_t *msg_);
+void on_noop_dispatch (void *, const zlink_spot_dispatch_info_t *, void *);
 
 struct request_wait_t
 {
@@ -668,6 +669,48 @@ void test_entry_spot_facade_lookup_and_rid ()
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+void test_actor_new_with_request_delivers_lifecycle_payload ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_spot_node_entry_spot (node, &entry));
+    TEST_ASSERT_NOT_NULL (entry);
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (entry, on_noop_dispatch, NULL));
+
+    zlink_msg_t payload[2];
+    init_text_msg (&payload[0], "profile");
+    init_text_msg (&payload[1], "display-name");
+
+    zlink_actor_ref_t actor;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_new_with_request (node, "create-payload-actor",
+                                                               payload, 2, &actor));
+
+    zlink_spot_actor_lifecycle_event_t event;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL (ZLINK_RECV_OK,
+                       zlink_spot_recv_actor_lifecycle_with_request (
+                         entry, &event, &parts, &part_count, ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL (ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED, event.kind);
+    TEST_ASSERT_EQUAL_STRING ("create-payload-actor", event.info.current_actor.actor_id);
+    TEST_ASSERT_EQUAL_UINT64 (actor.generation, event.info.current_actor.generation);
+    TEST_ASSERT_EQUAL_UINT64 (2u, part_count);
+    TEST_ASSERT_EQUAL_STRING ("profile", msg_text (&parts[0]).c_str ());
+    TEST_ASSERT_EQUAL_STRING ("display-name", msg_text (&parts[1]).c_str ());
+    zlink_multipart_close (parts, part_count);
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, wait_spot_node_actor_destroy (node, &actor, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 void test_spot_lookup_refcount_and_rid_index ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1126,6 +1169,8 @@ void on_dispatch (void *spot_, const zlink_spot_dispatch_info_t *info_, void *us
         probe->cv.notify_all ();
     }
 }
+
+void on_noop_dispatch (void *, const zlink_spot_dispatch_info_t *, void *) {}
 
 void on_join_only_dispatch (void *spot_, const zlink_spot_dispatch_info_t *info_, void *userdata_)
 {
@@ -3372,6 +3417,7 @@ int main ()
     setup_test_environment ();
     UNITY_BEGIN ();
     RUN_TEST (test_entry_spot_facade_lookup_and_rid);
+    RUN_TEST (test_actor_new_with_request_delivers_lifecycle_payload);
     RUN_TEST (test_spot_lookup_refcount_and_rid_index);
     RUN_TEST (test_spot_get_or_new_creates_and_reuses_logical_spot);
     RUN_TEST (test_spot_get_or_new_rejects_invalid_args_and_clears_outputs);

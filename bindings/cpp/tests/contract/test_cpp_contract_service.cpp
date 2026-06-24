@@ -675,6 +675,41 @@ void test_entry_spot_join_request_reply_contract ()
     assert (user_actors[0].actor_id () == actor.ref ().actor_id ());
 }
 
+void test_actor_create_request_payload_lifecycle_contract ()
+{
+    zlink::context_t ctx;
+    zlink::service::spot_node_t node (ctx, zlink::spot_node_mode_t::all);
+    zlink::service::spot_t entry_spot = node.entry_spot ();
+
+    entry_spot.set_dispatch_handler ([] (const zlink::spot_dispatch_info_t &) {});
+
+    std::vector<zlink::message_t> request;
+    request.push_back (zlink_cpp_contract::make_message ("profile"));
+    request.push_back (zlink_cpp_contract::make_message ("display-name"));
+
+    zlink::service::actor_t actor = node.create_actor ("cpp-create-payload", request);
+    assert (actor.valid ());
+    assert (!request[0].valid ());
+    assert (!request[1].valid ());
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (2);
+    std::optional<zlink::spot_actor_lifecycle_event_t> event;
+    while (std::chrono::steady_clock::now () < deadline) {
+        event = entry_spot.recv_actor_lifecycle (zlink::recv_flags_t::dontwait);
+        if (event.has_value ())
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+
+    assert (event.has_value ());
+    assert (event->kind == zlink::spot_actor_lifecycle_event_kind_t::joined);
+    assert (event->info.current_actor.actor_id () == actor.ref ().actor_id ());
+    assert (event->request_parts.size () == 2);
+    assert (event->request_parts[0].to_string () == "profile");
+    assert (event->request_parts[1].to_string () == "display-name");
+}
+
 } // namespace
 
 int main ()
@@ -685,5 +720,6 @@ int main ()
     test_unified_spot_wrap_node_surface_contract ();
     test_spot_node_get_or_create_spot_contract ();
     test_entry_spot_join_request_reply_contract ();
+    test_actor_create_request_payload_lifecycle_contract ();
     return 0;
 }

@@ -13,6 +13,7 @@ import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
 import { RuntimeSendOperation } from '../../sockets/socket_operation_builders';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { requireNative } from '../../native/native';
+import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { RoutingId, type MessageLike } from '../../../contracts';
 import type { AutoHwmProfileValue } from '../../../contracts/core';
 import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSpotEntry, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter } from '../../../contracts/service';
@@ -178,14 +179,16 @@ export class SpotNode extends NativeHandle {
     this._spots.add(spot);
     return { spot, created: !!result.created };
   }
-  createActor(actorId: string): Actor {
+  createActor(actorId: string, request?: MessageLike | readonly MessageLike[]): Actor {
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
+    const normalizedRequest = request === undefined ? undefined : normalizeOperationPayload(request);
     return Actor.create(
       this._native,
       actorRefFromRaw(configCall('spot node actor create failed', () =>
         requireNative().spotNodeActorNew(
           this._native,
-          normalizedActorId
+          normalizedActorId,
+          normalizedRequest
         ) as ActorRefRaw
       ))
     );

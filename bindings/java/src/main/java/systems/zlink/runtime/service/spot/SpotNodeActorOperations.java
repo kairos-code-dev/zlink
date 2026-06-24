@@ -61,6 +61,51 @@ final class SpotNodeActorOperations {
         }
     }
 
+    Actor createActor(String actorId, Message request) {
+        Objects.requireNonNull(request, "request");
+        return createActor(actorId, List.of(request));
+    }
+
+    Actor createActor(String actorId, List<Message> requestParts) {
+        Objects.requireNonNull(actorId, "actorId");
+        Objects.requireNonNull(requestParts, "requestParts");
+        if (requestParts.isEmpty()) {
+            throw new IllegalArgumentException("requestParts required");
+        }
+        for (Message part : requestParts) {
+            Objects.requireNonNull(part, "requestParts part");
+        }
+        node.ensureOpen();
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(NativeLayouts.ACTOR_REF_LAYOUT);
+            MemorySegment nativeParts = arena.allocate(
+                NativeLayouts.MESSAGE_LAYOUT,
+                requestParts.size());
+            int moved = moveRequestPartsToNative(requestParts, nativeParts);
+            boolean submitted = false;
+            try {
+                int rc = Native.spotNodeActorNewWithRequest(
+                    node.handle(),
+                    NativeHelpers.toCString(arena, actorId),
+                    nativeParts,
+                    requestParts.size(),
+                    out);
+                submitted = rc == 0;
+                if (rc != 0) {
+                    restoreRequestPartsFromNative(requestParts, nativeParts, moved);
+                    throw new ZlinkConfigException(ConfigResult.fromValue(rc));
+                }
+                return new NativeActor(node,
+                    ActorInterop.actorRefFromNative(out));
+            } finally {
+                if (!submitted) {
+                    closeNativeRequestParts(nativeParts, moved);
+                }
+            }
+        }
+    }
+
     ActorRef lookupActor(String actorId) {
         Objects.requireNonNull(actorId, "actorId");
         node.ensureOpen();
@@ -72,6 +117,49 @@ final class SpotNodeActorOperations {
                 throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             }
             return ActorInterop.actorRefFromNative(out);
+        }
+    }
+
+    private static int moveRequestPartsToNative(List<Message> parts,
+                                                MemorySegment nativeParts) {
+        long stride = NativeLayouts.MESSAGE_LAYOUT.byteSize();
+        int moved = 0;
+        try {
+            for (int i = 0; i < parts.size(); i++) {
+                InternalAccess.messageMoveTo(parts.get(i),
+                    nativeParts.asSlice((long) i * stride, stride));
+                moved++;
+            }
+            return moved;
+        } catch (RuntimeException | Error error) {
+            restoreRequestPartsFromNative(parts, nativeParts, moved);
+            closeNativeRequestParts(nativeParts, moved);
+            throw error;
+        }
+    }
+
+    private static void restoreRequestPartsFromNative(List<Message> parts,
+                                                      MemorySegment nativeParts,
+                                                      int moved) {
+        long stride = NativeLayouts.MESSAGE_LAYOUT.byteSize();
+        for (int i = moved - 1; i >= 0; i--) {
+            InternalAccess.messageRestoreFromNative(
+                parts.get(i),
+                nativeParts.asSlice((long) i * stride, stride),
+                false,
+                null);
+        }
+    }
+
+    private static void closeNativeRequestParts(MemorySegment nativeParts,
+                                                int moved) {
+        long stride = NativeLayouts.MESSAGE_LAYOUT.byteSize();
+        for (int i = 0; i < moved; i++) {
+            try {
+                NativeMessage.messageClose(
+                    nativeParts.asSlice((long) i * stride, stride));
+            } catch (RuntimeException ignored) {
+            }
         }
     }
 

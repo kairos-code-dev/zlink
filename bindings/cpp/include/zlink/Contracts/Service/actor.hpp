@@ -48,6 +48,7 @@ class actor_t
 
   private:
     actor_t (spot_node_t &node_, const std::string &actor_id_);
+    actor_t (spot_node_t &node_, const std::string &actor_id_, std::vector<message_t> &request_);
 
     friend class spot_node_t;
 

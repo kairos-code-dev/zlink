@@ -294,6 +294,45 @@ async function waitActorJoin(spot, label) {
   throw new Error(`${label} actor join timed out`);
 }
 
+async function waitActorLifecycle(spot, label) {
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline) {
+    const event = spot.recvActorLifecycle(zlink.RecvFlags.DontWait);
+    if (event) {
+      return event;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`${label} actor lifecycle timed out`);
+}
+
+test('actor create request payload is exposed on entry spot lifecycle', async () => {
+  const ctx = zlink.createContext();
+  const node = zlink.createSpotNode(ctx, zlink.SpotNodeMode.All);
+  const entrySpot = node.entrySpot();
+
+  try {
+    entrySpot.setDispatchHandler(() => {});
+    const actor = node.createActor('node-create-payload', [
+      Buffer.from('profile'),
+      Buffer.from('display-name')
+    ]);
+    const event = await waitActorLifecycle(entrySpot, 'entry spot');
+
+    assert.equal(event.kind, zlink.SpotActorLifecycleEventKind.Joined);
+    assert.equal(event.info.currentActor.actorId, actor.ref().actorId);
+    assert.equal(event.message.data().toString(), 'profile');
+    assert.deepEqual(
+      event.parts.map((part) => part.data().toString()),
+      ['profile', 'display-name']
+    );
+  } finally {
+    entrySpot.close();
+    node.close();
+    ctx.close();
+  }
+});
+
 test('entry spot join carries request and reply parts', async () => {
   const ctx = zlink.createContext();
   const node = zlink.createSpotNode(ctx, zlink.SpotNodeMode.All);

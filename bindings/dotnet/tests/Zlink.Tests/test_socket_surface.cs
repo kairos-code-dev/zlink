@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Xunit;
@@ -331,6 +332,11 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.CreateActor), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
+            nameof(ISpotNode.CreateActor), typeof(string), typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
+            nameof(ISpotNode.CreateActor), typeof(string),
+            typeof(IReadOnlyList<Message>)));
+        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.ActorLookup), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.GetOrCreateSpot), typeof(RoutingId),
@@ -370,6 +376,8 @@ public sealed class test_socket_surface
             nameof(ISpot.SetDispatchHandler), typeof(SpotDispatchHandler)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpot),
             nameof(ISpot.RecvActorLifecycle), typeof(RecvFlags)));
+        Assert.NotNull(typeof(SpotActorLifecycleEvent)
+            .GetProperty(nameof(SpotActorLifecycleEvent.RequestParts)));
         AssertNoPublicInstanceMethod(typeof(ISpot), "SetActorLifecycleHandlers");
         AssertNoPublicInstanceMethod(typeof(ISpot), "SetRoutedReceiveHandler");
         Assert.False(HasPublicInstanceMethod(typeof(ISpot), "Publish",

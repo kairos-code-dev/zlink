@@ -36,16 +36,27 @@ napi_value spot_node_actors (napi_env env, napi_callback_info info)
 
 napi_value spot_node_actor_new (napi_env env, napi_callback_info info)
 {
-    napi_value argv[2];
-    size_t argc = 2;
+    napi_value argv[3];
+    size_t argc = 3;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *node = NULL;
     napi_get_value_external (env, argv[0], &node);
     std::string actor_id = get_string (env, argv[1]);
+    std::vector<zlink_msg_t> parts;
+    napi_valuetype request_type = napi_undefined;
+    if (argc >= 3)
+        napi_typeof (env, argv[2], &request_type);
+    if (request_type != napi_undefined && request_type != napi_null) {
+        if (!build_msg_vector_or_single (env, argv[2], &parts))
+            return NULL;
+    }
     zlink_actor_ref_t ref;
-    int rc = zlink_spot_node_actor_new (node, actor_id.c_str (), &ref);
-    if (rc != ZLINK_CONFIG_OK)
+    int rc = zlink_spot_node_actor_new_with_request (
+      node, actor_id.c_str (), parts.empty () ? NULL : parts.data (), parts.size (), &ref);
+    if (rc != ZLINK_CONFIG_OK) {
+        close_msg_vector (parts);
         return throw_last_error (env, "spotNodeActorNew failed");
+    }
     return create_actor_ref_value (env, ref);
 }
 

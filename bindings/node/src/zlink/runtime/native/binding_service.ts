@@ -165,7 +165,7 @@ export interface ServiceNativeBinding {
     timeoutMs: number
   ) => void;
   spotNodeActorLookup: (node: NativeHandle, actorId: string) => ActorRefRaw;
-  spotNodeActorNew: (node: NativeHandle, actorId: string) => ActorRefRaw;
+  spotNodeActorNew: (node: NativeHandle, actorId: string, request?: unknown) => ActorRefRaw;
   spotNodeActorRecvPart: (
     node: NativeHandle,
     actor: ActorRefRaw,

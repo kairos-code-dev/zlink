@@ -908,7 +908,8 @@ void cleanup_idempotent_join_completion (void *userdata_)
 
 void schedule_lifecycle_event_locked (const std::shared_ptr<spot_logical_state_t> &spot_state_,
                                       bool join_,
-                                      const zlink_spot_actor_lifecycle_info_t &info_)
+                                      const zlink_spot_actor_lifecycle_info_t &info_,
+                                      zlink::spot_owned_msg_parts_t *request_parts_ = NULL)
 {
     if (!spot_state_)
         return;
@@ -929,7 +930,9 @@ void schedule_lifecycle_event_locked (const std::shared_ptr<spot_logical_state_t
     lifecycle_event_t event;
     event.kind = join_ ? ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED : ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT;
     event.info = info_;
-    actor_runtime ().lifecycle.enqueue (spot_state_.get (), event);
+    if (request_parts_)
+        event.request_parts.swap (*request_parts_);
+    actor_runtime ().lifecycle.enqueue (spot_state_.get (), std::move (event));
     zlink::spot_reqrep_internal::maybe_dispatch_spot_info (
       state.get (), ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE,
       ZLINK_SPOT_DISPATCH_SUBJECT_SPOT, NULL);
@@ -1930,6 +1933,16 @@ void zlink_actor_run_lifecycle_for_spot (void *spot_)
 extern "C" zlink_config_result_t
 zlink_spot_node_actor_new (void *node_, const char *actor_id_, zlink_actor_ref_t *actor_out_)
 {
+    return zlink_spot_node_actor_new_with_request (node_, actor_id_, NULL, 0, actor_out_);
+}
+
+extern "C" zlink_config_result_t
+zlink_spot_node_actor_new_with_request (void *node_,
+                                        const char *actor_id_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_,
+                                        zlink_actor_ref_t *actor_out_)
+{
     if (!node_) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -1938,6 +1951,8 @@ zlink_spot_node_actor_new (void *node_, const char *actor_id_, zlink_actor_ref_t
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
+    if (!valid_multipart_payload (parts_, part_count_))
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
     if (!is_registered_spot_node_handle (node_)) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -1947,16 +1962,27 @@ zlink_spot_node_actor_new (void *node_, const char *actor_id_, zlink_actor_ref_t
         errno = ENOTSUP;
         return ZLINK_CONFIG_NOT_SUPPORTED;
     }
+    zlink::spot_owned_msg_parts_t request_parts;
+    const zlink_submit_result_t adopt_rc =
+      adopt_multipart_payload (&request_parts, parts_, part_count_);
+    if (adopt_rc != ZLINK_SUBMIT_OK) {
+        zlink::spot_clear_msg_parts (&request_parts);
+        return zlink::config_result_internal::from_errno (errno);
+    }
 
     zlink_routing_id_t node_rid;
     memset (&node_rid, 0, sizeof (node_rid));
-    if (node->node_routing_id (&node_rid) != 0)
+    if (node->node_routing_id (&node_rid) != 0) {
+        zlink::spot_clear_msg_parts (&request_parts);
         return zlink::config_result_internal::from_errno (errno);
+    }
 
     std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
     actor_handle_t *actor = create_actor_locked (node, node_rid, actor_id_);
-    if (!actor)
+    if (!actor) {
+        zlink::spot_clear_msg_parts (&request_parts);
         return zlink::config_result_internal::from_errno (errno);
+    }
     fill_ref (actor, actor_out_);
     actor->join_epoch = next_commit_epoch_locked ();
     create_active_route_locked (actor);
@@ -1966,7 +1992,8 @@ zlink_spot_node_actor_new (void *node_, const char *actor_id_, zlink_actor_ref_t
     memset (&zero_spot, 0, sizeof (zero_spot));
     const zlink_spot_actor_lifecycle_info_t info = make_lifecycle_info (
       zero_actor, *actor_out_, zero_spot, actor_current_spot_rid_locked (actor), actor->join_epoch);
-    schedule_lifecycle_event_locked (actor->joined_spot_state, true, info);
+    schedule_lifecycle_event_locked (actor->joined_spot_state, true, info, &request_parts);
+    zlink::spot_clear_msg_parts (&request_parts);
     return ZLINK_CONFIG_OK;
 }
 
@@ -3172,7 +3199,23 @@ zlink_spot_node_actor_bind_remote_session (
 extern "C" zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
   void *spot_, zlink_spot_actor_lifecycle_event_t *event_out_, zlink_recv_flags_t flags_)
 {
-    if (!spot_ || !event_out_) {
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const zlink_recv_result_t result = zlink_spot_recv_actor_lifecycle_with_request (
+      spot_, event_out_, &parts, &part_count, flags_);
+    if (result == ZLINK_RECV_OK)
+        zlink_multipart_close (parts, part_count);
+    return result;
+}
+
+extern "C" zlink_recv_result_t
+zlink_spot_recv_actor_lifecycle_with_request (void *spot_,
+                                              zlink_spot_actor_lifecycle_event_t *event_out_,
+                                              zlink_msg_t **parts_out_,
+                                              size_t *part_count_out_,
+                                              zlink_recv_flags_t flags_)
+{
+    if (!spot_ || !event_out_ || !parts_out_ || !part_count_out_) {
         errno = EFAULT;
         return ZLINK_RECV_INVALID_HANDLE;
     }
@@ -3191,6 +3234,20 @@ extern "C" zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
         errno = EAGAIN;
         return ZLINK_RECV_NO_DATA;
     }
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+        return ZLINK_RECV_INTERNAL_ERROR;
+    for (zlink::spot_owned_msg_parts_t::iterator it = event.request_parts.begin ();
+         it != event.request_parts.end (); ++it) {
+        if (zlink::recv_tls_view::push (&(*it)) != 0) {
+            zlink::recv_tls_view::abort ();
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+    }
+    if (zlink::recv_tls_view::commit (parts_out_, part_count_out_) != 0) {
+        zlink::recv_tls_view::abort ();
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+    zlink::spot_clear_msg_parts (&event.request_parts);
     memset (event_out_, 0, sizeof (*event_out_));
     event_out_->kind = event.kind;
     event_out_->info = event.info;

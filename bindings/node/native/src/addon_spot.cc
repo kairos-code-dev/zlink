@@ -1391,8 +1391,10 @@ napi_value spot_recv_actor_lifecycle (napi_env env, napi_callback_info info)
         napi_get_value_int32 (env, argv[1], &flags);
 
     zlink_spot_actor_lifecycle_event_t event;
-    int rc =
-      zlink_spot_recv_actor_lifecycle (spot, &event, static_cast<zlink_recv_flags_t> (flags));
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    int rc = zlink_spot_recv_actor_lifecycle_with_request (
+      spot, &event, &parts, &part_count, static_cast<zlink_recv_flags_t> (flags));
     if (rc != ZLINK_RECV_OK) {
         if ((flags & ZLINK_RECV_FLAGS_DONTWAIT) && zlink_errno () == EAGAIN) {
             napi_value none;
@@ -1407,6 +1409,27 @@ napi_value spot_recv_actor_lifecycle (napi_env env, napi_callback_info info)
     set_uint32_property (env, out, "kind", static_cast<uint32_t> (event.kind));
     napi_set_named_property (env, out, "info",
                              create_spot_actor_lifecycle_info_value (env, event.info));
+    napi_value parts_array;
+    napi_create_array_with_length (env, part_count, &parts_array);
+    for (size_t i = 0; i < part_count; ++i) {
+        napi_value part = create_spot_message_snapshot_value (env, NULL, &parts[i]);
+        napi_set_element (env, parts_array, static_cast<uint32_t> (i), part);
+    }
+    napi_set_named_property (env, out, "parts", parts_array);
+    napi_value message;
+    if (part_count > 0) {
+        napi_get_element (env, parts_array, 0, &message);
+    } else {
+        zlink_msg_t empty;
+        if (zlink_msg_init (&empty) != 0) {
+            zlink_multipart_close (parts, part_count);
+            return throw_last_error (env, "spotRecvActorLifecycle failed");
+        }
+        message = create_spot_message_snapshot_value (env, NULL, &empty);
+        zlink_msg_close (&empty);
+    }
+    napi_set_named_property (env, out, "message", message);
+    zlink_multipart_close (parts, part_count);
     return out;
 }
 

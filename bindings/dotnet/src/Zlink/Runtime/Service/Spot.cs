@@ -356,9 +356,9 @@ internal sealed partial class Spot : ISpot
         RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_recv_actor_lifecycle(
+        int rc = NativeMethods.zlink_spot_recv_actor_lifecycle_with_request(
             _handle, out ZlinkSpotActorLifecycleEvent lifecycleEvent,
-            (int)flags);
+            out IntPtr parts, out nuint partCount, (int)flags);
         if (rc != 0)
         {
             int errno = NativeMethods.zlink_errno();
@@ -368,9 +368,13 @@ internal sealed partial class Spot : ISpot
             throw ZlinkException.CreateRecvException(errno);
         }
 
+        Message[] requestParts = Message.FromNativeVector(parts, partCount);
         return new SpotActorLifecycleEvent(
             (SpotActorLifecycleEventKind)lifecycleEvent.Kind,
-            ActorInterop.FromNative(ref lifecycleEvent.Info));
+            ActorInterop.FromNative(ref lifecycleEvent.Info))
+        {
+            RequestParts = requestParts
+        };
     }
 
     public ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request,

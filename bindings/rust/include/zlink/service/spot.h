@@ -67,6 +67,13 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_new (void *node_,
                                                               const char *actor_id_,
                                                               zlink_actor_ref_t *actor_out_);
 
+ZLINK_EXPORT zlink_config_result_t
+zlink_spot_node_actor_new_with_request (void *node_,
+                                        const char *actor_id_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_,
+                                        zlink_actor_ref_t *actor_out_);
+
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_lookup (void *node_,
                                                                  const char *actor_id_,
                                                                  zlink_actor_ref_t *out_);
@@ -157,6 +164,13 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_bind_remote_session (
 
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
   void *spot_, zlink_spot_actor_lifecycle_event_t *event_out_, zlink_recv_flags_t flags_);
+
+ZLINK_EXPORT zlink_recv_result_t
+zlink_spot_recv_actor_lifecycle_with_request (void *spot_,
+                                              zlink_spot_actor_lifecycle_event_t *event_out_,
+                                              zlink_msg_t **parts_out_,
+                                              size_t *part_count_out_,
+                                              zlink_recv_flags_t flags_);
 
 ZLINK_EXPORT zlink_config_result_t
 zlink_stream_bound_actors (void *stream_,

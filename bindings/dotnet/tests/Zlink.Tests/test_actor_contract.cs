@@ -168,6 +168,47 @@ public sealed class test_actor_contract
     }
 
     [Fact]
+    public void actor_create_request_payload_is_exposed_on_entry_spot_lifecycle()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using var entrySpot = node.EntrySpot();
+        SpotActorLifecycleEvent? lifecycle = null;
+        entrySpot.SetDispatchHandler(info =>
+        {
+            if (info.Event != SpotDispatchEvent.ActorLifecycleReadable)
+                return;
+            lifecycle ??= entrySpot.RecvActorLifecycle(RecvFlags.DontWait);
+        });
+        using Message profile = Message.From("profile");
+        using Message displayName = Message.From("display-name");
+
+        using var actor = node.CreateActor(
+            $"actor-{Guid.NewGuid():N}",
+            new[] { profile, displayName });
+
+        Assert.Throws<ObjectDisposedException>(() => _ = profile.Size);
+        Assert.Throws<ObjectDisposedException>(() => _ = displayName.Size);
+
+        Assert.True(CoreTestSupport.WaitUntil(() => lifecycle != null, 2000));
+
+        SpotActorLifecycleEvent created = lifecycle!;
+        using (created)
+        {
+            Assert.Equal(SpotActorLifecycleEventKind.Joined, created.Kind);
+            Assert.Equal(actor.Ref.ActorId,
+                created.Info.CurrentActor.ActorId);
+            Assert.Equal(2, created.RequestParts.Count);
+            Assert.Equal("profile", created.RequestParts[0].GetString());
+            Assert.Equal("display-name",
+                created.RequestParts[1].GetString());
+        }
+    }
+
+    [Fact]
     public async Task spot_node_join_actor_entry_spot_returns_final_actor_ref()
     {
         if (!CoreTestSupport.IsNativeAvailable())

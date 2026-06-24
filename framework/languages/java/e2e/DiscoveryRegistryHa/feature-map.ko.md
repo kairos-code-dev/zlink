@@ -12,6 +12,8 @@
   검증한다.
 - `DR-A3`: 3 registry peer 합산에서 서로 다른 registry에 붙은 provider 둘을 각 registry probe와
   consumer messaging으로 확인한다.
+- `DR-A4`: 기존 provider와 같은 rid를 다른 registry와 endpoint에 추가 광고한 뒤, 그 registry만
+  보는 consumer messaging이 bounded time 안에 성공하는지 확인한다.
 - `DR-B1`: reg-1과 provider가 먼저 뜬 뒤 reg-2를 늦게 붙이고, reg-2를 보는 consumer가 기존
   provider로 messaging하는지 확인한다.
 - `DR-B2`: reg-2를 정상 종료했다가 같은 endpoint로 다시 띄운 뒤 reg-2 query와 messaging이
@@ -22,14 +24,17 @@
   죽은 registry probe는 bounded failure로 끝나는지 검증한다.
 - `DR-C2`: 죽였던 registry를 같은 endpoint로 다시 띄운 뒤 peer 합산 view와 messaging이 복구되는지
   확인한다.
+- `DR-C3`: 모든 registry process를 잠시 내렸다가 같은 endpoint로 복구한 뒤 provider 재광고 view와
+  messaging이 다시 수렴하는지 확인한다.
 - `DR-D1`: registry와 provider를 한 process에 함께 띄운 embedded 배포 모델에서 discovery와
   messaging을 확인한다.
 - `DR-D2`: registry를 별도 process로 띄운 standalone 배포 모델에서 discovery와 messaging을 확인한다.
+- `DR-D3`: embedded registry+provider process와 standalone registry/provider process를 peer로 묶은
+  혼합 cluster에서 peer 합산 view와 messaging을 확인한다.
 - `DR-D4`: 같은 registry router를 in-process probe와 remote query client로 조회해 topology view가
   같은 provider 집합을 반환하는지 확인한다.
 
 ## public API/harness 대기
 
-- `DR-A4`: 같은 rid 충돌과 tie-break를 안정적으로 고정하는 conflict harness가 필요하다.
-- `DR-C3`: 전체 registry 장애와 복구를 검증하는 restart orchestration이 필요하다.
-- `DR-D3`: remote와 in-process 혼합 cluster를 검증하는 배포 harness가 아직 없다.
+- 전체 registry가 내려간 동안 이미 resolve된 기존 channel connection의 지속 동작은 같은 client를
+  유지하는 장기 실행 harness가 필요하다. 현재 DR-C3는 복구 후 재광고와 messaging 수렴을 검증한다.

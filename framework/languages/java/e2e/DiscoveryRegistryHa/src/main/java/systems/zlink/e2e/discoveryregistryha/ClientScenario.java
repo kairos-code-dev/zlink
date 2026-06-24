@@ -31,7 +31,9 @@ public final class ClientScenario {
 
     public void run() {
         String scenario = Env.get("ZLINK_JAVA_E2E_SCENARIO");
-        waitForExpectedMembers();
+        if (!"DR-A4".equals(scenario)) {
+            waitForExpectedMembers();
+        }
         Set<String> providers = requestUntilProviders(Env.csv("ZLINK_JAVA_E2E_EXPECTED_RIDS"));
         if ("DR-C1".equals(scenario)) {
             expectHttpFailure(Env.get("ZLINK_JAVA_E2E_DEAD_HTTP_ENDPOINT"));

@@ -138,14 +138,16 @@ start_provider() {
   local rid="$1"
   local endpoint="$2"
   local registries="$3"
+  local name="${4:-${rid}}"
   ZLINK_JAVA_E2E_ROLE=provider \
   ZLINK_JAVA_E2E_PROVIDER_RID="${rid}" \
   ZLINK_JAVA_E2E_API_ENDPOINT="${endpoint}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTERS="${registries}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
-  pids+=("$!")
-  wait_port "${rid}-api" "${endpoint}"
+    "$(app_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  LAST_PID="$!"
+  pids+=("${LAST_PID}")
+  wait_port "${name}-api" "${endpoint}"
 }
 
 start_embedded() {
@@ -260,6 +262,22 @@ run_client DR-A3 "${REG1_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-
 run_client DR-A3 "${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
 run_client DR-A3 "${REG3_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
 run_client DR-D4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b" "" "${REG2_ROUTER}" "${REG2_HTTP}"
+read -r A_DUP <<<"$(reserve_ports 1)"
+API_A_DUP="$(tcp "${A_DUP}")"
+start_provider api-a "${API_A_DUP}" "${REG2_ROUTER}" api-a-duplicate
+sleep 2
+run_client DR-A4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a"
+stop_all
+
+read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
+REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
+REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
+start_embedded dr-d3-embedded 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" api-a "${API_A}" "${REG2_PUB}"
+start_registry dr-d3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
+start_provider api-b "${API_B}" "${REG2_ROUTER}"
+sleep 4
+run_client DR-D3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b"
 stop_all
 
 read -r R1P R1R R1H R2P R2R R2H A <<<"$(reserve_ports 7)"
@@ -328,15 +346,44 @@ sleep 4
 run_client DR-C2 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b"
 stop_all
 
+read -r R1P R1R R1H R2P R2R R2H A B <<<"$(reserve_ports 8)"
+REG1_PUB="$(tcp "${R1P}")"; REG1_ROUTER="$(tcp "${R1R}")"; REG1_HTTP="$(http "${R1H}")"
+REG2_PUB="$(tcp "${R2P}")"; REG2_ROUTER="$(tcp "${R2R}")"; REG2_HTTP="$(http "${R2H}")"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
+start_registry dr-c3-reg1 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
+REG1_PID="${LAST_PID}"
+start_registry dr-c3-reg2 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
+REG2_PID="${LAST_PID}"
+start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}"
+API_A_PID="${LAST_PID}"
+start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}"
+API_B_PID="${LAST_PID}"
+sleep 3
+stop_pid "${API_B_PID}"
+stop_pid "${API_A_PID}"
+stop_pid "${REG2_PID}"
+stop_pid "${REG1_PID}"
+sleep 2
+start_registry dr-c3-reg1-recovered 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
+start_registry dr-c3-reg2-recovered 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
+start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}" api-a-recovered
+start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}" api-b-recovered
+sleep 6
+run_client DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b"
+stop_all
+
 grep -q "scenario DR-A1 passed" "${log_dir}/client-DR-A1.stdout.log"
 grep -q "scenario DR-A2 passed" "${log_dir}/client-DR-A2.stdout.log"
 grep -q "scenario DR-A3 passed" "${log_dir}/client-DR-A3.stdout.log"
+grep -q "scenario DR-A4 passed" "${log_dir}/client-DR-A4.stdout.log"
 grep -q "scenario DR-B1 passed" "${log_dir}/client-DR-B1.stdout.log"
 grep -q "scenario DR-B2 passed" "${log_dir}/client-DR-B2.stdout.log"
 grep -q "scenario DR-B3 passed" "${log_dir}/client-DR-B3.stdout.log"
 grep -q "scenario DR-C1 passed" "${log_dir}/client-DR-C1.stdout.log"
 grep -q "scenario DR-C2 passed" "${log_dir}/client-DR-C2.stdout.log"
+grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3.stdout.log"
 grep -q "scenario DR-D1 passed" "${log_dir}/client-DR-D1.stdout.log"
 grep -q "scenario DR-D2 passed" "${log_dir}/client-DR-D2.stdout.log"
+grep -q "scenario DR-D3 passed" "${log_dir}/client-DR-D3.stdout.log"
 grep -q "scenario DR-D4 passed" "${log_dir}/client-DR-D4.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log

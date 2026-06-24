@@ -693,6 +693,13 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto core = make_stream_connector ();
         core.codecs ().add_json ();
+        std::mutex observations_mutex;
+        std::vector<zlink::stream_connector::inbound_observation_t> observations;
+        auto observer = core.observe_inbound (
+          [&] (const zlink::stream_connector::inbound_observation_t &observation) {
+              std::lock_guard lock (observations_mutex);
+              observations.push_back (observation);
+          });
         auto stream = zlink::stream_e2e_client::use (core);
         auto connected = stream.connect ().submit ();
         ensure (static_cast<bool> (connected), "SM-D7 stream connect failed");
@@ -735,8 +742,60 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (state.value ().owner_node_rid == "play-a" && state.value ().value == 7,
                 "SM-D7 stream state dispatch reply mismatch");
 
+        const auto observation_deadline =
+          std::chrono::steady_clock::now () + std::chrono::seconds (2);
+        for (;;) {
+            {
+                std::lock_guard lock (observations_mutex);
+                if (observations.size () >= 3) {
+                    break;
+                }
+            }
+            if (std::chrono::steady_clock::now () >= observation_deadline) {
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        }
+
+        {
+            std::lock_guard lock (observations_mutex);
+            auto observation_summary = [&] {
+                std::string summary;
+                for (const auto &observation : observations) {
+                    if (!summary.empty ()) {
+                        summary += ",";
+                    }
+                    summary += observation.name + "#"
+                               + std::to_string (
+                                 static_cast<int> (observation.kind))
+                               + "#"
+                               + (observation.request_seq
+                                    ? std::to_string (*observation.request_seq)
+                                    : std::string ("none"));
+                }
+                return summary;
+            };
+            auto has_response = [&] (std::uint64_t request_seq) {
+                for (const auto &observation : observations) {
+                    if (observation.kind == zlink::stream_connector::message_kind_t::response
+                        && observation.name == "reply"
+                        && observation.request_seq == request_seq) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            ensure (has_response (1),
+                    "SM-D9 auth response observation missing: " + observation_summary ());
+            ensure (has_response (2),
+                    "SM-D9 join response observation missing: " + observation_summary ());
+            ensure (has_response (3),
+                    "SM-D9 state response observation missing: " + observation_summary ());
+        }
+
         (void) stream.close ().submit ();
         std::cout << "scenario SM-D7 passed\n";
+        std::cout << "scenario SM-D9 passed\n";
     }
 
     void run_bound_session_push_targeting_scenario (zlink::framework::route_client_t &routes)

@@ -17,8 +17,11 @@
   검증한다. 하지만 현재 framework runtime에는 실제 channel, registry, spot source에서
   monitoring payload를 자동 발행하는 연결부가 없으므로 E2E 앱이 관측할 수 있는 runtime source
   event가 없다.
-- `MON-A4`, `MON-A5`: C++ framework public API에는 runtime drain weight accessor가 없고,
-  handshake 실패·timer stopped 상태를 안정적으로 유발하는 E2E trigger가 아직 없다.
+- `MON-A4`: runtime drain 자체는 `channel_runtime_options_t`로 Resilience E2E에서 검증한다.
+  다만 monitoring source event 자동 발행 연결이 없어, drain/failover 전이를 Config 7 event로
+  관측하는 E2E는 아직 없다.
+- `MON-A5`: handshake 실패·timer stopped 상태를 안정적으로 유발하고 monitoring event로 관측하는
+  E2E trigger가 아직 없다.
 - `MON-B1`, `MON-B2`, `MON-C1`, `MON-D1`: kind 필터, 등록 검증, event handler 실패 격리,
   장애 반복 중 관측 연속성은 전용 monitoring host와 runtime error evidence가 필요하다.
 

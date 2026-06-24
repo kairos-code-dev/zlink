@@ -1,29 +1,29 @@
 # Java RegistryMessaging E2E feature map
 
-이 디렉터리는 Config 1의 Java framework 검증이다. 실행 시나리오는 public Spring starter,
-`ZLinkClient`, `ZLinkRouteClient`, channel builders만 사용한다.
+이 문서는 Config 1 Registry Messaging 공통 시나리오 중 Java framework E2E가 현재 검증하는 항목과,
+public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행 코드는 public Spring starter,
+`ZLinkClient`, `ZLinkRouteClient`, channel builder만 사용한다.
 
 ## 구현됨
 
-- RM-A1 registry 자동 연결 + rid 자동 resolve
-- RM-A2 수동 endpoint 연결
-- RM-A4 같은 rid, 다른 endpoint failover
-- RM-A6 cross-channel discovery
-- RM-B1 scale-out
-- RM-B2 scale-in / graceful drain
-- RM-C1 request / send happy path
-- RM-C2 targeted request by rid
-- RM-C3 다중 provider 분산
-- RM-C4 timeout과 late reply 비오염
-- RM-C5 미등록 packet negative path
-- RM-C8 메시지 크기 다양성 중 public typed client 왕복
+- `RM-A1`: registry discovery로 provider를 resolve하고 request를 보낸다.
+- `RM-A2`: 수동 endpoint 연결로 provider에 직접 request를 보낸다.
+- `RM-A4`: 같은 rid를 다른 endpoint로 교체한 뒤 follow-up request를 검증한다.
+- `RM-A6`: 같은 registry 안에서 서로 다른 channel의 provider가 섞이지 않는지 검증한다.
+- `RM-B1`: 실행 중 provider를 추가하고 두 provider로 분산되는지 검증한다.
+- `RM-B2`: provider 하나를 정상 종료한 뒤 남은 provider로 request가 계속 성공하는지 검증한다.
+- `RM-C1`: request와 send happy path를 함께 검증한다.
+- `RM-C2`: route mesh에서 target rid request와 없는 rid 실패를 검증한다.
+- `RM-C3`: 수동 multi-endpoint client/server channel에서 두 provider가 모두 처리하는지 검증한다.
+- `RM-C4`: timeout 뒤 정상 request가 late reply에 오염되지 않는지 검증한다.
+- `RM-C5`: 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다.
+- `RM-C8`: public typed client로 소형, 대형, near-large payload 왕복을 검증한다. max size 초과
+  거부는 framework channel runtime의 max message size 적용이 public typed channel 경로에 배선된
+  뒤 같은 scenario의 추가 marker로 확장한다.
 
-## Java public API 미지원 또는 부분 지원
+## public API/harness 대기
 
-- RM-C6 dealer mesh peer request: 현재 Java `DealerMeshChannelBuilder`는 client endpoint 등록만
-  공개하고 server bind API를 공개하지 않는다. 따라서 provider를 public API만으로 dealer mesh
-  peer로 띄우는 E2E는 작성하지 않았다.
-- RM-C7 weighted 분산: Java channel builders에는 server socket weight 설정 API가 공개되어 있지
-  않다.
-- RM-C8 상한 초과 거부: framework channel runtime의 max message size 적용이 public typed
-  channel 경로에 배선되어 있지 않아 왕복만 검증한다.
+- `RM-C6`: Java `DealerMeshChannelBuilder`는 client endpoint 등록만 공개하고 server bind API를
+  공개하지 않아 provider를 public API만으로 dealer mesh peer로 띄울 수 없다.
+- `RM-C7`: Java channel builder에는 server socket weight 설정 API가 공개되어 있지 않다.
+- `RM-C9`: HWM 포화와 backpressure를 안정적으로 유도하는 public 테스트 제어 API가 아직 없다.

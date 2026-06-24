@@ -47,7 +47,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 26:
+    while len(sockets) < 28:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -78,6 +78,7 @@ PLAY_B_HTTP="http://127.0.0.1:${PORTS[7]}"
 PLAY_B_CONTROL="tcp://127.0.0.1:${PORTS[8]}"
 PLAY_B_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[9]}"
 PLAY_B_SPOT_PUB="tcp://127.0.0.1:${PORTS[10]}"
+PLAY_B_EXTERNAL_SPOT="tcp://127.0.0.1:${PORTS[26]}"
 SESSION_A_HTTP="http://127.0.0.1:${PORTS[11]}"
 SESSION_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
 SESSION_A_STREAM="tcp://127.0.0.1:${PORTS[13]}"
@@ -92,6 +93,7 @@ CLIENT_EXTERNAL_ROUTE="tcp://127.0.0.1:${PORTS[21]}"
 CLIENT_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[22]}"
 CLIENT_EXTERNAL_CHANNEL="tcp://127.0.0.1:${PORTS[23]}"
 CLIENT_SPOT_PUB="tcp://127.0.0.1:${PORTS[24]}"
+CLIENT_EXTERNAL_ROUTE_B="tcp://127.0.0.1:${PORTS[27]}"
 
 endpoint_port() {
   local endpoint="$1"
@@ -181,11 +183,13 @@ start_server play-b \
   --control-endpoint "$PLAY_B_CONTROL" \
   --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
+  --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
   --evidence-file "$LOG_DIR/play-b.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_port play-b "$PLAY_B_HTTP"
 wait_port play-b-control "$PLAY_B_CONTROL"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
+wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
 
 start_server session-a \
   --role session \
@@ -237,9 +241,11 @@ dotnet "$CLIENT_DLL" \
   --play-b-rid play-b \
   --session-a-rid session-a \
   --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+  --play-b-external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
   --play-a-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
   --client-control-endpoint "$CLIENT_CONTROL" \
   --client-external-route-endpoint "$CLIENT_EXTERNAL_ROUTE" \
+  --client-external-route-b-endpoint "$CLIENT_EXTERNAL_ROUTE_B" \
   --client-external-channel-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
   --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
   --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \

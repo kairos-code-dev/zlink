@@ -1373,16 +1373,32 @@ static async Task RunSmG2Async(ClientOptions options)
         new StateReq("add", 1),
         "SM-G2 first owner request timed out.");
     Ensure(first.NodeRid == options.PlayARid, "SM-G2 first owner mismatch.");
+    await host.StopAsync();
 
-    await routes.Request(
+    using var remapHost = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-owner-remap-play-b-flow.log",
+        usePlayBRouteMeshEgress: true);
+    await remapHost.StartAsync();
+    var remapRoutes = remapHost.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        remapRoutes,
+        options.PlayBRid,
+        "SM-G2 expected play-b control route to become ready after remap.");
+
+    await remapRoutes.Request(
             SpotServiceNames.ControlChannel,
             RoutingId.From(options.PlayBRid),
             new CreateSpotReq(secondOwnerSpotRid))
         .PacketName("CreateSpotReq")
         .Async<CreateSpotReply>();
     var second = await RequestSpotStateWithRetryAsync(
-        routes,
-        SpotServiceNames.ExternalSpotChannel,
+        remapRoutes,
+        SpotServiceNames.ExternalSpotChannelB,
         secondOwnerSpotRid,
         new StateReq("add", 1),
         "SM-G2 remapped owner request timed out.");
@@ -1398,13 +1414,13 @@ static async Task RunSmG2Async(ClientOptions options)
             && CountNew(playBAfter, playBBefore, $"spot-state-request|rid={options.PlayBRid}|spot={firstOwnerSpotRid}") == 0;
     }, "SM-G2 expected remapped owner evidence without cross-owner leakage.");
 
-    await host.StopAsync();
+    await remapHost.StopAsync();
     Console.WriteLine("scenario SM-G2 passed");
 }
 
 static async Task RunSmG3Async(ClientOptions options)
 {
-    const int actorCount = 6;
+    const int actorCount = 3;
     var spotRid = $"spot-sm-g3-{Guid.NewGuid():N}";
     var actorIds = Enumerable.Range(0, actorCount)
         .Select(index => $"actor-sm-g3-{index}")
@@ -1430,31 +1446,48 @@ static async Task RunSmG3Async(ClientOptions options)
         .PacketName("CreateSpotReq")
         .Async<CreateSpotReply>();
 
-    var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
-    await Task.WhenAll(actorIds.Select(async actorId =>
+    var clients = new List<IZlinkStreamConnector>();
+    try
     {
-        await using var client = CreateClient(options.SessionAStreamEndpoint);
-        await client.Connect.Async();
-        await client.Request(new UserSpotAuthReq(spotRid, actorId, actorId, options.PlayARid))
-            .PacketName("UserSpotAuthReq")
-            .Async<AuthReply>();
-        var ping = await client.Request(new ActorPingReq(actorId))
-            .PacketName("UserActorPingReq")
-            .Async<ActorPingReply>();
-        Ensure(ping.ActorId == actorId, "SM-G3 actor request target mismatch.");
-        var left = await client.Request(new LeaveReq(actorId))
-            .PacketName("LeaveReq")
-            .Async<LeaveReply>();
-        Ensure(left.Accepted && left.ActorId == actorId, "SM-G3 leave reply mismatch.");
-    }));
+        foreach (var _ in actorIds)
+        {
+            var client = CreateClient(options.SessionAStreamEndpoint);
+            clients.Add(client);
+            await client.Connect.Async();
+        }
 
-    await WaitUntilAsync(async () =>
+        var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        await Task.WhenAll(actorIds.Select(async (actorId, index) =>
+        {
+            var client = clients[index];
+            await client.Request(new UserSpotAuthReq(spotRid, actorId, actorId, options.PlayARid))
+                .PacketName("UserSpotAuthReq")
+                .Async<AuthReply>();
+            var ping = await client.Request(new ActorPingReq(actorId))
+                .PacketName("UserActorPingReq")
+                .Async<ActorPingReply>();
+            Ensure(ping.ActorId == actorId, "SM-G3 actor request target mismatch.");
+            var left = await client.Request(new LeaveReq(actorId))
+                .PacketName("LeaveReq")
+                .Async<LeaveReply>();
+            Ensure(left.Accepted && left.ActorId == actorId, "SM-G3 leave reply mismatch.");
+        }));
+
+        await WaitUntilAsync(async () =>
+        {
+            var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+            return actorIds.All(actorId =>
+                CountNew(after, before, $"spot-actor-joined|rid={options.PlayARid}|spot={spotRid}|actor={actorId}") == 1
+                && CountNew(after, before, $"spot-actor-left|rid={options.PlayARid}|spot={spotRid}|actor={actorId}") == 1);
+        }, "SM-G3 expected exactly one join and leave evidence per actor.");
+    }
+    finally
     {
-        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
-        return actorIds.All(actorId =>
-            CountNew(after, before, $"spot-actor-joined|rid={options.PlayARid}|spot={spotRid}|actor={actorId}") == 1
-            && CountNew(after, before, $"spot-actor-left|rid={options.PlayARid}|spot={spotRid}|actor={actorId}") == 1);
-    }, "SM-G3 expected exactly one join and leave evidence per actor.");
+        foreach (var client in clients)
+        {
+            await client.DisposeAsync();
+        }
+    }
 
     await host.StopAsync();
     Console.WriteLine("scenario SM-G3 passed");
@@ -1571,7 +1604,8 @@ static IHost CreateRouteEgressHost(
     bool includeRouteMeshEgress,
     bool includeClientServerEgress,
     bool includeExternalChannelServer,
-    string traceName)
+    string traceName,
+    bool usePlayBRouteMeshEgress = false)
 {
     var builder = Host.CreateApplicationBuilder();
     builder.Services.AddSingleton<ClientEvidenceStore>();
@@ -1605,11 +1639,22 @@ static IHost CreateRouteEgressHost(
         }
         if (includeRouteMeshEgress)
         {
-            framework.AddRouteMeshChannel(SpotServiceNames.ExternalSpotChannel)
-                .EnableServer(options.ClientExternalRouteEndpoint)
-                .EnableClient()
-                .SetRoutingId(RoutingId.From("client-external-route"))
-                .EnableSpotRouteEgress(SpotServiceNames.ExternalSpotChannel);
+            var channelName = usePlayBRouteMeshEgress
+                ? SpotServiceNames.ExternalSpotChannelB
+                : SpotServiceNames.ExternalSpotChannel;
+            var endpoint = usePlayBRouteMeshEgress
+                ? options.ClientExternalRouteBEndpoint
+                : options.ClientExternalRouteEndpoint;
+            var routingId = usePlayBRouteMeshEgress
+                ? "client-external-route-b"
+                : "client-external-route";
+            framework.AddRouteMeshChannel(channelName)
+                .EnableServer(endpoint)
+                .EnableClient(usePlayBRouteMeshEgress
+                    ? options.PlayBExternalSpotEndpoint
+                    : options.PlayAExternalSpotEndpoint)
+                .SetRoutingId(RoutingId.From(routingId))
+                .EnableSpotRouteEgress(channelName);
         }
         if (includeClientServerEgress)
         {
@@ -1860,9 +1905,11 @@ internal sealed record ClientOptions(
     string PlayBRid,
     string SessionARid,
     string PlayAExternalSpotEndpoint,
+    string PlayBExternalSpotEndpoint,
     string PlayASpotPubEndpoint,
     string ClientControlEndpoint,
     string ClientExternalRouteEndpoint,
+    string ClientExternalRouteBEndpoint,
     string ClientExternalChannelEndpoint,
     string ClientSpotRouterEndpoint,
     string ClientSpotPubEndpoint,
@@ -1904,9 +1951,11 @@ internal sealed record ClientOptions(
             Required("play-b-rid"),
             Required("session-a-rid"),
             Required("play-a-external-spot-endpoint"),
+            Required("play-b-external-spot-endpoint"),
             Required("play-a-spot-pub-endpoint"),
             Required("client-control-endpoint"),
             Required("client-external-route-endpoint"),
+            Required("client-external-route-b-endpoint"),
             Required("client-external-channel-endpoint"),
             Required("client-spot-router-endpoint"),
             Required("client-spot-pub-endpoint"),

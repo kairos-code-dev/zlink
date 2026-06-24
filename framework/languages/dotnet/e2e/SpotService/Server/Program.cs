@@ -60,9 +60,12 @@ else if (options.Role == "play")
             .EnableClient()
             .SetRoutingId(RoutingId.From(options.Rid))
             .AddHandlerGroup("play");
+        var externalSpotChannel = string.Equals(options.Rid, "play-b", StringComparison.Ordinal)
+            ? SpotServiceNames.ExternalSpotChannelB
+            : SpotServiceNames.ExternalSpotChannel;
         if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
         {
-            framework.AddRouteMeshChannel(SpotServiceNames.ExternalSpotChannel)
+            framework.AddRouteMeshChannel(externalSpotChannel)
                 .EnableServer(options.ExternalSpotEndpoint)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
@@ -86,7 +89,7 @@ else if (options.Role == "play")
             .AddSpotFactory<ScenarioAlternateSpot>();
         if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
         {
-            spot.AcceptSpotRoutesFromChannel(SpotServiceNames.ExternalSpotChannel);
+            spot.AcceptSpotRoutesFromChannel(externalSpotChannel);
         }
         if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))
         {

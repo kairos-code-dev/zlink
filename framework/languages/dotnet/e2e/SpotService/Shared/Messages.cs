@@ -6,6 +6,7 @@ public static class SpotServiceNames
     public const string SpotEventTopic = "spot.service.events";
     public const string ControlChannel = "spot.control";
     public const string ExternalSpotChannel = "spot.external.play-a";
+    public const string ExternalSpotChannelB = "spot.external.play-b";
     public const string ExternalClientChannel = "spot.external.client";
     public const string ExternalClientServerChannel = "spot.external.cs.client";
     public const string StreamNode = "session-stream";

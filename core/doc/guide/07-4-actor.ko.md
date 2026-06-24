@@ -66,7 +66,6 @@ Entry Spot 자체는 `SpotNode`가 소유하므로 facade를 닫아도 Entry Spo
 
 1. `SpotNode`에서 Actor를 만든다.
 2. STREAM 클라이언트 세션 라우팅 ID를 확인한다.
-3. `zlink_stream_attach_actor_gateway()`로 STREAM socket을 session owner `SpotNode`에
    연결한다.
 4. `zlink_stream_bind_actor()`로 세션과 Actor를 연결한다.
 5. STREAM 패킷 핸들러나 앱 로직에서 `zlink_stream_send_bound_actor_part()`를
@@ -78,7 +77,6 @@ Entry Spot 자체는 `SpotNode`가 소유하므로 facade를 닫아도 Entry Spo
 zlink_actor_ref_t ref;
 zlink_spot_node_actor_new(node, "player-42", &ref);
 
-zlink_stream_attach_actor_gateway(stream, node);
 
 /* async submit; bind completion fires via reply handler */
 zlink_stream_bind_actor(stream, &session_rid, &ref,

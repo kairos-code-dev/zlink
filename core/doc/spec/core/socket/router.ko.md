@@ -303,7 +303,8 @@ router channel의 `ROUTER`에서 target `Spot`으로 routed 메시지를 보낸�
 새 코드에서는 router channel socket을 `SpotNode`에 직접 연결하지 않는다.
 호출자는 router channel의 `ROUTER` socket을 계속 소유하고,
 `zlink_spot_route_bridge_attach_router_channel()`로 bridge에 빌려준다.
-target node routing id는 `zlink_spot_route_bridge_set_target_node()`로 지정한다.
+target node routing id는 `zlink_spot_route_bridge_send()` /
+`zlink_spot_route_bridge_request()` 호출마다 직접 넘긴다.
 
 호출자는 target node routing id와 target spot routing id를 모두 제공해야 한다.
 router channel peer가 없거나 아직 route가 준비되지 않은 target으로 보내면 일반

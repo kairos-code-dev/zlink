@@ -271,29 +271,15 @@ void actor_session_state_t::erase_stream_owner_if_unused (void *stream_)
 {
     if (!stream_)
         return;
-    if (explicit_stream_owners.count (stream_) != 0)
-        return;
     if (has_binding_for_stream (stream_))
         return;
-    stream_owners.erase (stream_);
-}
-
-void actor_session_state_t::set_explicit_stream_owner (void *stream_, zlink::spot_node_t *node_)
-{
-    stream_owners[stream_] = node_;
-    explicit_stream_owners.insert (stream_);
-}
-
-void actor_session_state_t::clear_explicit_stream_owner (void *stream_)
-{
-    explicit_stream_owners.erase (stream_);
     stream_owners.erase (stream_);
 }
 
 void actor_session_state_t::clear_stream (void *stream_)
 {
     erase_bindings_for_stream (stream_);
-    clear_explicit_stream_owner (stream_);
+    stream_owners.erase (stream_);
 }
 
 void actor_session_state_t::erase_stream_owners_for_node (zlink::spot_node_t *node_)
@@ -301,23 +287,11 @@ void actor_session_state_t::erase_stream_owners_for_node (zlink::spot_node_t *no
     for (std::map<void *, zlink::spot_node_t *>::iterator it = stream_owners.begin ();
          it != stream_owners.end ();) {
         if (it->second == node_) {
-            explicit_stream_owners.erase (it->first);
             it = stream_owners.erase (it);
         } else {
             ++it;
         }
     }
-}
-
-int actor_session_state_t::try_set_explicit_stream_owner (void *stream_, zlink::spot_node_t *node_)
-{
-    std::map<void *, zlink::spot_node_t *>::const_iterator previous = stream_owners.find (stream_);
-    if (previous != stream_owners.end () && previous->second != node_) {
-        errno = EBUSY;
-        return -1;
-    }
-    set_explicit_stream_owner (stream_, node_);
-    return 0;
 }
 
 }

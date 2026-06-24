@@ -374,25 +374,10 @@ typedef struct zlink_spot_route_bridge_endpoint_options_t {
   int inbound_relay_policy;
 } zlink_spot_route_bridge_endpoint_options_t;
 
-typedef struct zlink_spot_route_bridge_summary_t {
-  uint32_t struct_size;
-  uint32_t attached_channel_count;
-  uint64_t pending_request_count;
-  uint64_t rejected_inbound_count;
-  uint64_t malformed_inbound_count;
-  uint64_t routed_send_failure_count;
-} zlink_spot_route_bridge_summary_t;
-
 void *zlink_spot_route_bridge_new(
   void *ctx,
   void *spot_node,
   const zlink_spot_route_bridge_options_t *options);
-
-int zlink_spot_route_bridge_attach_dealer_channel(
-  void *bridge,
-  const char *channel_name,
-  void *dealer_socket,
-  const zlink_spot_route_bridge_endpoint_options_t *options);
 
 int zlink_spot_route_bridge_attach_router_channel(
   void *bridge,
@@ -400,14 +385,10 @@ int zlink_spot_route_bridge_attach_router_channel(
   void *router_socket,
   const zlink_spot_route_bridge_endpoint_options_t *options);
 
-int zlink_spot_route_bridge_set_target_node(
-  void *bridge,
-  const char *channel_name,
-  const zlink_routing_id_t *target_node_rid);
-
 int zlink_spot_route_bridge_send(
   void *bridge,
   const char *channel_name,
+  const zlink_routing_id_t *target_node_rid,
   const zlink_routing_id_t *target_spot_rid,
   zlink_msg_t *parts,
   size_t part_count,
@@ -416,6 +397,7 @@ int zlink_spot_route_bridge_send(
 int zlink_spot_route_bridge_request(
   void *bridge,
   const char *channel_name,
+  const zlink_routing_id_t *target_node_rid,
   const zlink_routing_id_t *target_spot_rid,
   zlink_msg_t *parts,
   size_t part_count,
@@ -425,62 +407,39 @@ int zlink_spot_route_bridge_request(
   uint32_t timeout_ms);
 ```
 
-A bridge connects caller-owned channel sockets to a `SpotNode` routed plane.
-The bridge owns only its own state. It does not close attached `DEALER` or
-`ROUTER` sockets.
+A bridge connects a caller-owned `ROUTER` channel socket to a `SpotNode` routed
+plane. The bridge owns only its own state. It does not close the attached
+`ROUTER` socket. Every bridge function returns `0` on success and `-1` with
+`errno` set on failure.
 
-- `zlink_spot_route_bridge_new()` fails with `EFAULT` when `ctx` or
-  `spot_node` is invalid.
+- `zlink_spot_route_bridge_new()` fails with `EFAULT` when `spot_node` is
+  invalid and `ENOTSUP` when `spot_node` is not routed-capable. `ctx` is
+  reserved and currently ignored.
 - `default_request_timeout_ms` is used when `request()` receives
   `timeout_ms == 0`.
-- `attach_dealer_channel()` accepts only `DEALER` sockets.
 - `attach_router_channel()` accepts only `ROUTER` sockets.
 - Attaching the same `channel_name` twice fails with `EBUSY`.
 - Endpoint `capabilities == 0` is interpreted as
-  `ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_ONLY`.
+  `ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_ONLY`, an alias of
+  `ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE`.
 - `ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE` allows SPOT relay egress and SPOT
-  relay ingress.
-- `ZLINK_SPOT_ROUTE_BRIDGE_CAP_CHANNEL_INBOUND` marks that the same endpoint
-  may also receive ordinary channel packets. The bridge does not process those
-  packets and returns `handled=false`.
-- `send()` and `request()` target a `Spot` by `channel_name` and
-  `target_spot_rid`. A `ROUTER` endpoint must first receive a target node
-  routing id through `set_target_node()`.
-- `request()` delivers replies through the callback. A `timeout_ms` value of
-  `0` uses the bridge default timeout.
+  relay ingress. An endpoint without this capability rejects `send()` /
+  `request()` with `EPERM` and rejects inbound SPOT relay frames.
+- `send()` and `request()` address a target `Spot` directly by
+  `target_node_rid` plus `target_spot_rid`; the relay frame is emitted on the
+  attached `ROUTER` socket toward `target_node_rid`. A missing or empty
+  `target_node_rid` fails with `EINVAL`.
+- `request()` delivers replies through `callback`; a `NULL` callback fails with
+  `EINVAL`. A `timeout_ms` value of `0` uses the bridge default timeout.
 
-Receive handoff APIs are used when the channel runtime has already received
-frames from the socket and needs the bridge to classify them.
+The receive handoff API is used when the channel runtime has already received
+frames from the `ROUTER` socket and needs the bridge to classify them.
 
 ```c
 int zlink_spot_route_bridge_handle_router_received(
   void *bridge,
   const char *channel_name,
   const zlink_routing_id_t *source_node_rid,
-  zlink_msg_t *parts,
-  size_t part_count,
-  bool *handled);
-
-int zlink_spot_route_bridge_handle_router_received_with_metadata(
-  void *bridge,
-  const char *channel_name,
-  const zlink_routing_id_t *source_node_rid,
-  uint64_t request_seq,
-  zlink_msg_t *parts,
-  size_t part_count,
-  bool *handled);
-
-int zlink_spot_route_bridge_handle_dealer_received(
-  void *bridge,
-  const char *channel_name,
-  zlink_msg_t *parts,
-  size_t part_count,
-  bool *handled);
-
-int zlink_spot_route_bridge_handle_dealer_received_with_metadata(
-  void *bridge,
-  const char *channel_name,
-  uint8_t message_type,
   uint64_t request_seq,
   zlink_msg_t *parts,
   size_t part_count,
@@ -491,22 +450,24 @@ int zlink_spot_route_bridge_handle_dealer_received_with_metadata(
 - When `handled=false`, the caller keeps message ownership.
 - When `handled=true`, the bridge takes message ownership and the caller must
   not close the same `zlink_msg_t` values again.
-- Non-SPOT channel packets on an endpoint with `CHANNEL_INBOUND` capability
-  return `handled=false`.
-- Disallowed inbound SPOT relay packets produce an error reply when possible
-  and increment the rejected inbound counter.
+- An inbound SPOT relay request requires routing metadata: a nonzero
+  `request_seq` and a valid `source_node_rid`. Without it the frame is rejected
+  with `ENOTSUP` and counted as a rejected inbound.
+- A frame on an endpoint without `ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE` is
+  rejected with `EPERM` and counted as a rejected inbound.
+- Malformed SPOT relay frames are dropped and counted as malformed inbound.
 
 ```c
 int zlink_spot_route_bridge_drain(void *bridge);
-int zlink_spot_route_bridge_summary(
-  void *bridge,
-  zlink_spot_route_bridge_summary_t *out);
 int zlink_spot_route_bridge_close(void *bridge);
 ```
 
-- `drain()` processes bridge-owned pending reply and handoff progress.
-- `summary()` copies the attached channel count and error counters.
-- `close()` closes the bridge handle, not the attached channel sockets.
+- `drain()` processes bridge-owned pending reply and handoff progress across all
+  attached channels and returns the number of reply completions advanced (`-1`
+  on error). Callback-mode callers that do not block in a SPOT recv call this to
+  fire pending `request()` callbacks.
+- `close()` cancels pending replies and closes the bridge handle. It does not
+  close the attached `ROUTER` sockets.
 
 ### SpotNode publisher handle
 
@@ -593,7 +554,7 @@ zlink_recv_result_t zlink_spot_subscribe(
   size_t *topic_id_len_out,
   zlink_recv_flags_t flags);
 
-zlink_recv_result_t zlink_spot_subscription_event(
+zlink_recv_result_t zlink_spot_recv_subscription_event(
   void *spot,
   zlink_routing_id_t *source_rid_out,
   int *subscribed_out,
@@ -684,8 +645,10 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
 - `event` identifies the readable work plane.
 - `subject_kind` tells the caller how to interpret `subject`.
 - `subject` is the concrete drain target instance.
-- `CHANNEL_REPLY_READABLE` means a channel request completion is ready for the
-  originating `Spot`. It does not expose raw dealer receive.
+- `CHANNEL_REPLY_READABLE` means a SPOT request/reply completion is ready for the
+  originating `Spot`. It does not expose raw dealer receive. Drain it with
+  `zlink_spot_drain_reply()` (whole Spot) or `zlink_spot_drain_channel_reply()`
+  (one channel socket); see [Reply completion drain](#reply-completion-drain).
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
   one-event-per-message delivery counters.
 - `ACTOR_READABLE` means a specific Actor has unread parts ready. `subject` is
@@ -704,7 +667,7 @@ Drain rules by dispatch subject:
 | `SUBSCRIBE_READABLE` | `SPOT` | `spot_` (or NULL) | `zlink_spot_subscribe()` |
 | `ROUTED_READABLE` | `SPOT` | `spot_` (or NULL) | `zlink_spot_recv()` |
 | `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
-| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | legacy attached dealer handle | none — completion fires via the `zlink_reply_handler_fn` registered at request time |
+| `CHANNEL_REPLY_READABLE` | `SPOT` or `CHANNEL_DEALER` | `NULL`, or the channel socket handle | `zlink_spot_drain_reply()` / `zlink_spot_drain_channel_reply()` |
 | `ACTOR_READABLE` | `ACTOR` | callback-lifetime `const zlink_actor_ref_t *` | `zlink_spot_node_actor_recv_part()` |
 | `ACTOR_JOIN_READABLE` | `SPOT` | `spot_` | `zlink_spot_actor_join_recv()` |
 | `ACTOR_LIFECYCLE_READABLE` | `SPOT` | `NULL` | `zlink_spot_recv_actor_lifecycle()` |
@@ -746,12 +709,45 @@ They are consumed through dispatch readiness followed by an explicit drain call.
 
 After `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, callers must drain until the
 corresponding pull API returns `ZLINK_RECV_NO_DATA` / `EAGAIN`.
-`CHANNEL_REPLY_READABLE` is a compatibility readiness notification for the
-deprecated attached dealer path. The matching
-`zlink_reply_handler_fn` from the originating
-`zlink_spot_request_channel_part()` call is invoked by the core's internal
-completion driver. The dispatch `subject` field carries the legacy attached
-dealer handle for diagnostic and ordering purposes.
+`CHANNEL_REPLY_READABLE` signals that one or more SPOT request/reply completions
+are queued for the `Spot`. The callback-mode caller advances them — running the
+`zlink_reply_handler_fn` registered at request time — with an explicit drain:
+`zlink_spot_drain_reply()` for the whole `Spot`, or
+`zlink_spot_drain_channel_reply()` when the dispatch `subject` names a single
+channel socket. A caller that blocks in a SPOT recv drains the same queues
+internally.
+
+#### Reply completion drain
+
+```c
+int zlink_spot_drain_reply(void *spot);
+int zlink_spot_drain_channel_reply(void *spot, void *dealer_subject);
+```
+
+The SPOT request/reply completion model does not run reply callbacks on the IO
+thread the reply arrived on. A reply enqueues a completion and raises
+`CHANNEL_REPLY_READABLE`; the registered `zlink_reply_handler_fn` runs later,
+inside an explicit drain on a thread the caller controls. Blocking SPOT recv
+APIs drain internally, so these calls are for callback-mode (poller-driven)
+callers that never block in recv.
+
+- `zlink_spot_drain_reply()` advances every completion source the `Spot` owns —
+  direct routed replies, all attached route-channel-bridge replies, and bridge
+  handoff progress — looping until quiescent. Call it when
+  `CHANNEL_REPLY_READABLE` arrives with `subject_kind == SPOT`.
+- `zlink_spot_drain_channel_reply()` advances only the channel-reply source
+  keyed by `dealer_subject`, the channel socket handle backing a route-channel
+  bridge. Call it when `CHANNEL_REPLY_READABLE` arrives with
+  `subject_kind == CHANNEL_DEALER` and `subject` naming that socket.
+- Both return the number of reply callbacks invoked, or `-1` with `errno` set.
+  `0` is a successful no-op. `zlink_spot_drain_reply()` fails with `EFAULT` on an
+  invalid `Spot` handle and `ENOTSUP` on a PUB/SUB-only `Spot`;
+  `zlink_spot_drain_channel_reply()` adds `EFAULT` for a `NULL` `dealer_subject`
+  and `ENOENT` when the socket is not a registered channel-reply source.
+- Drain runs on one consistent caller thread per `Spot`. Do not drain the same
+  `Spot` concurrently from multiple threads, and do not re-enter a drain from
+  inside a reply callback. Reply message-part ownership follows the standard
+  reply-callback rules.
 
 ## Spot routed request initiation
 
@@ -1098,6 +1094,13 @@ zlink_config_result_t zlink_spot_node_actor_new(
   const char *actor_id,
   zlink_actor_ref_t *actor_out);
 
+zlink_config_result_t zlink_spot_node_actor_new_with_request(
+  void *node,
+  const char *actor_id,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_actor_ref_t *actor_out);
+
 zlink_config_result_t zlink_spot_node_actor_lookup(
   void *node,
   const char *actor_id,
@@ -1117,8 +1120,26 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
   Entry Spot dispatch handler or any join request handler. Creation does not
   publish an active route. Creation schedules the Entry Spot `on_join`
   lifecycle event.
+- `zlink_spot_node_actor_new_with_request()` creates the same local Entry Spot
+  Actor and additionally attaches an opaque multipart `parts` payload to that
+  creation `on_join` event. Core does not interpret the payload; it is carried
+  through to the Entry Spot and read with
+  `zlink_spot_recv_actor_lifecycle_with_request()`. `zlink_spot_node_actor_new()`
+  is the same call with an empty payload. The payload is delivered only if a
+  dispatch handler is already registered on the Entry Spot at creation time;
+  otherwise the event and its payload are dropped, like any other lifecycle
+  event. The `parts` array must be a valid multipart payload (`parts == NULL`
+  with `part_count == 0`, or `parts != NULL` with `part_count > 0`); a mismatch
+  fails with `ZLINK_CONFIG_INVALID_ARGUMENT`. On success the library adopts the
+  payload frames; on a validation failure ownership stays with the caller.
+- This creation payload is distinct from the Spot join payload of
+  `zlink_spot_node_actor_join_spot()`: the join payload is read on the
+  destination Spot through `zlink_spot_actor_join_recv()` /
+  `zlink_spot_actor_join_reply()`, while the creation payload is observation-only
+  on the owning node's Entry Spot lifecycle stream. Join- and leave-driven
+  lifecycle events carry no payload.
 - Creating with a live actor id that already exists on the same node fails with
-  an `EBUSY`-class result.
+  an `EBUSY`-class result. This applies to both creation calls.
 - `node == NULL` fails with `ZLINK_CONFIG_INVALID_HANDLE`; `errno` is `EFAULT`.
 - `actor_id == NULL` or `actor_out == NULL` fails with
   `ZLINK_CONFIG_INVALID_ARGUMENT`; `errno` is `EINVAL`.
@@ -1440,7 +1461,6 @@ zlink_recv_result_t zlink_spot_node_actor_recv_part(
 ### STREAM session binding
 
 ```c
-zlink_config_result_t zlink_stream_attach_actor_gateway(
   void *stream,
   void *node);
 
@@ -1474,6 +1494,21 @@ zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg(
   zlink_msg_t *message,
   zlink_send_flags_t flags);
 
+zlink_submit_result_t zlink_spot_node_actor_forward_bound_session_part(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  const zlink_routing_id_t *source_node_rid,
+  const zlink_routing_id_t *source_session_rid,
+  zlink_msg_t *message,
+  zlink_send_flags_t flags,
+  zlink_part_flag_t part_flag);
+
+zlink_config_result_t zlink_spot_node_actor_bind_remote_session(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  const zlink_routing_id_t *source_node_rid,
+  const zlink_routing_id_t *source_session_rid);
+
 zlink_config_result_t zlink_stream_bound_actors(
   void *stream,
   const zlink_routing_id_t *session_rid,
@@ -1486,7 +1521,6 @@ zlink_request_result_t zlink_spot_node_actor_close_bound_session(
   uint32_t timeout_ms);
 ```
 
-`zlink_stream_attach_actor_gateway()` chooses the session owner `SpotNode` for
 STREAM Actor relay. `node` must be a routed-capable `SpotNode`. Reattaching the
 same stream to the same node succeeds. Attaching the same stream to a different
 node fails with an invalid-state-class config result.
@@ -1523,7 +1557,6 @@ in the [Discovery active route](#discovery-active-route) section.
   `timeout_ms == 0` installs no timeout.
 - `stream` owns the STREAM session Actor mapping. `stream` must be associated
   with a session owner `SpotNode` through
-  `zlink_stream_attach_actor_gateway()` or by being an internal stream owned by
   a SpotNode. The control path and relay to a remote Actor owner are performed
   by that owner `SpotNode`.
 - Calling bind on a raw or connector STREAM that has no attached ActorGateway
@@ -1575,6 +1608,41 @@ in the [Discovery active route](#discovery-active-route) section.
 - On successful submit, `message` ownership transfers to the library. On
   submit failure ownership stays with the caller.
 
+`zlink_spot_node_actor_forward_bound_session_part()` contracts:
+
+- The forward-direction (session → Actor) ingress relay. It forwards one part
+  of a STREAM session message to the owner of `actor`, stamping the inbound part
+  with the originating `source_node_rid` / `source_session_rid` so the Actor
+  handler reads it back through `zlink_spot_node_actor_recv_part()` with the
+  true origin session in its `info`. Use it from a node that owns the session
+  but relays to a remote Actor; `zlink_stream_send_bound_actor_part()` is the
+  equivalent that infers the source from a local `(stream, session_rid)`
+  binding instead of taking it explicitly.
+- `part_flag` carries the multipart boundary. `ZLINK_PART_MORE` marks more parts
+  to follow; `ZLINK_PART_FINAL` marks the last part. The Actor is only made
+  readable on the `FINAL` part; `MORE` parts are queued silently. While a
+  multipart forward is in progress for one Actor, forwarding a part for a
+  different Actor on the same binding fails with an invalid-state-class result.
+- It is a fire-and-forget submit with no completion handler; the return value
+  only reports acceptance. Invalid arguments — including a zero `generation` or
+  invalid `actor->node_rid` / source rids — fail as invalid-argument-class.
+- On `ZLINK_SUBMIT_OK` ownership of `message` transfers to the library; on
+  submit failure ownership stays with the caller.
+
+`zlink_spot_node_actor_bind_remote_session()` contracts:
+
+- Registers, on the node that owns `actor`, that the Actor's bound session
+  lives on a remote node named by `source_node_rid` / `source_session_rid`.
+  This is the reverse-path mapping that lets a later
+  `zlink_spot_node_actor_send_bound_session_msg()` emit a cross-node frame to
+  the session owner instead of writing a local stream. The local co-located
+  path uses `zlink_stream_bind_actor()` instead.
+- It is a pure state mutation: it sends nothing on the wire and takes no
+  `message`. It returns `ZLINK_CONFIG_OK` on success, an invalid-handle or
+  invalid-argument-class result for bad inputs (including a zero `generation`),
+  and a not-connected / not-found-class result when the Actor cannot be
+  resolved.
+
 After a successful remote join, the existing session mapping is updated to the
 target Actor location under the same Actor id/generation. The application does
 not reattach the session with the final Actor ref just to keep session relay
@@ -1622,11 +1690,35 @@ zlink_recv_result_t zlink_spot_recv_actor_lifecycle(
   void *spot,
   zlink_spot_actor_lifecycle_event_t *event_out,
   zlink_recv_flags_t flags);
+
+zlink_recv_result_t zlink_spot_recv_actor_lifecycle_with_request(
+  void *spot,
+  zlink_spot_actor_lifecycle_event_t *event_out,
+  zlink_msg_t **parts_out,
+  size_t *part_count_out,
+  zlink_recv_flags_t flags);
 ```
 
 `zlink_spot_recv_actor_lifecycle()` drains Actor lifecycle events for one Spot.
 Lifecycle readiness is reported by `ACTOR_LIFECYCLE_READABLE`; the event payload
 is not delivered inline through a direct callback.
+
+`zlink_spot_recv_actor_lifecycle_with_request()` returns the same event plus the
+creation request payload that was attached through
+`zlink_spot_node_actor_new_with_request()`. `zlink_spot_recv_actor_lifecycle()`
+is the same call that discards any attached payload.
+
+- `parts_out` is populated only for a `JOINED` event created with a non-empty
+  creation payload. Join/leave/destroy-driven events report
+  `*part_count_out == 0`.
+- On `ZLINK_RECV_OK` the caller owns `*parts_out` and must release it with
+  `zlink_multipart_close()`. The other return classes match
+  `zlink_spot_recv_actor_lifecycle()`: an empty queue returns
+  `ZLINK_RECV_NO_DATA` / `EAGAIN`, and a `NULL` argument is an
+  invalid-handle-class result.
+- Both calls are non-blocking and pop at most one queued event; `flags` accepts
+  only `0` or `ZLINK_DONTWAIT`. Callers drain in a loop until
+  `ZLINK_RECV_NO_DATA`.
 
 - `kind` is `JOINED` after an Actor enters the Spot and `LEFT` after an Actor
   leaves the Spot.

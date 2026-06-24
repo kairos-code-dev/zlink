@@ -729,7 +729,6 @@ bind를 실행하기 전에 STREAM handle의 session owner `SpotNode`가 먼저 
 이것이 ActorGateway attach다. owner는
 `actor_runtime().sessions.stream_owner(stream, nodes)`로 결정된다.
 
-- application이 `zlink_stream_attach_actor_gateway(stream, node)`를 호출했다면 그 쌍이
   `sessions.stream_owners`에 기록되고 handle은 `sessions.explicit_stream_owners`에
   추가된다. explicit owner는 sticky해서 stream이 닫히거나 owner node가 파괴되거나
   application이 detach할 때까지 유지된다. library가 SpotNode와 연결할 단서가 없는 raw,
@@ -739,7 +738,6 @@ bind를 실행하기 전에 STREAM handle의 session owner `SpotNode`가 먼저 
 - 두 경로 모두 owner를 주지 못하면 bind는 실패한다. owner는 bind 대상 Actor의 `node_rid`로
   추론하지 않는다. session owner는 보내는 stream이 실제로 attach된 node다.
 
-`zlink_stream_attach_actor_gateway()`는 `node`가 routed-capable `SpotNode`인지
 확인하고(아니면 `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`), 이미 다른 owner에 붙은
 stream을 다른 node로 다시 붙이려 하면 거부한다(`EBUSY` / `ZLINK_CONFIG_INVALID_STATE`).
 같은 stream/node 쌍으로 다시 호출하면 멱등으로 성공한다. STREAM 쪽 관점은
@@ -950,7 +948,6 @@ Actor, session, route, join, lifecycle 상태는 모두 프로세스 단위의 �
 | `sessions` | `actor_session_state_t` | STREAM session binding과 stream→owner map (아래 하위 행 참고) |
 | `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | `(stream, session rid)` 복합키. 한 session의 actor id별 Actor 항목을 담는다. remote join commit의 compare-and-swap 트랜잭션 지점 |
 | `sessions.stream_owners` | `map<void*, spot_node_t*>` | STREAM handle → session owner SpotNode(ActorGateway) |
-| `sessions.explicit_stream_owners` | `set<void*>` | `zlink_stream_attach_actor_gateway()`로 owner를 지정한 stream. sticky하며 binding이 사라져도 회수되지 않는다 |
 | `routes` | `actor_route_state_t` | 게시된 actor route와 disconnect note (아래 하위 행 참고) |
 | `routes.active` | `map<string, zlink_actor_route_t>` | actor id → Discovery에 게시된 active route |
 | `routes.disconnected` | `set<pair<spot_node_t*, string>>` | disconnected로 표시된 `(source node, target node rid)` 쌍. relay 실패를 route-not-found로 매핑하는 데 사용 |

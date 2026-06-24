@@ -178,7 +178,6 @@ can be read with `zlink_stream_bound_actors()`. One session may be bound to
 multiple Actors; one Actor may be bound to at most one STREAM session at a time.
 
 ```c
-zlink_config_result_t zlink_stream_attach_actor_gateway(
   void *stream,
   void *node);
 
@@ -214,7 +213,6 @@ zlink_config_result_t zlink_stream_bound_actors(
 ```
 
 - `stream` is the raw STREAM socket that owns the session routing id.
-- `zlink_stream_attach_actor_gateway()` attaches `stream` to the routed-capable
   session owner `SpotNode` used for ActorGateway relay. Calling it again with
   the same stream/node pair succeeds; calling it with a different node fails.
 - Raw and connector STREAM handles must be attached before Actor bind. A

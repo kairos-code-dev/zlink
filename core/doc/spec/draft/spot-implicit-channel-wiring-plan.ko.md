@@ -473,7 +473,6 @@ core mesh 는 RoutingId 로 라우팅하므로 **로컬 노드와 원격 노드�
    egress 의 owner-node-rid → 올바른 per-node 채널 매핑이 discovery 로 풀려야 한다.
 2. **single-owner 가드 해제**(`ZLinkRouteChannelInitializer.cs:88-92`) + 빌더 가드 완화
    (`AddSpotMesh` 다회 / `AddNode` 부활, `ZLinkFrameworkOptionsBuilder.cs:153`).
-3. **ActorGateway**: 로컬 노드 1개 자동 선택 + 명시 override → `AttachActorGateway` **생략 가능**.
    actor 위치는 bind ref 가 운반하고 actor relay 의 cross-node 는 core 가 이미 지원(분리 토폴로지가 증거).
 4. 4언어 빌더·initializer 동일 적용.
 
@@ -481,12 +480,10 @@ core mesh 는 RoutingId 로 라우팅하므로 **로컬 노드와 원격 노드�
 
 ### 정리 / 결정 상태
 
-- **결정**: 후속 작업은 **다중 노드 허용 + `AttachActorGateway` 생략 가능** 방향으로 진행한다.
   `AddSpotMesh(name)`를 여러 번 호출해 노드별 route channel/bridge를 갖게 하고, core/bindings 는 바꾸지 않는다.
 - Q9(프로세스당 단일 노드)는 **모호성 제거가 아니라, 위 framework 작업(노드별 채널·가드 해제)을
   생략하려는 단순화**다. (이전에 적은 "core 구현 생략"은 틀렸음 — core 는 어차피 안 바뀐다.)
 - 다중 노드 허용은 **core 불변 + framework 작업만**으로 되고 **다중 채널과 일관**된다.
-- **`AttachActorGateway` 는 단일이든 다중이든 자동 추론/생략 가능**(단일=유일 노드, 다중=기본+override).
 - → Q9 의 명시 대안으로 **"다중 노드 + 위 framework 작업"** 을 남긴다. 어느 쪽으로 갈지는 별도 결정
   (단일=빨리·단순 / 다중=프로세스당 다역할·채널과 일관). codex 초기 리뷰의 "capability anchor 유지"
   권고와 같은 결의 트레이드오프다.

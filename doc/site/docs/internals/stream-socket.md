@@ -250,13 +250,11 @@ the STREAM handle must know which SpotNode owns its sessions -- this is the
 ActorGateway attachment.
 
 ```c
-zlink_config_result_t zlink_stream_attach_actor_gateway(void *stream,
                                                         void *node);
 ```
 
 There are two ways a STREAM handle acquires a session owner SpotNode:
 
-- **Explicit attach.** `zlink_stream_attach_actor_gateway(stream, node)` records
   the stream as owned by a routed-capable `node`. This is required for raw STREAM
   sockets and for connector-backed streams, because the library has no structural
   link from such a handle to a SpotNode. The attach is one-way and sticky: it

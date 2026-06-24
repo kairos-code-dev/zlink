@@ -175,7 +175,6 @@ per-session 매핑이다. session의 현재 Actor binding은 `zlink_stream_bound
 STREAM session에만 bind될 수 있다.
 
 ```c
-zlink_config_result_t zlink_stream_attach_actor_gateway(
   void *stream,
   void *node);
 
@@ -211,7 +210,6 @@ zlink_config_result_t zlink_stream_bound_actors(
 ```
 
 - `stream`은 session routing id가 속한 raw STREAM socket이다.
-- `zlink_stream_attach_actor_gateway()`는 `stream`을 ActorGateway relay에 사용할
   routed-capable session owner `SpotNode`에 연결한다. 같은 stream/node 조합으로 다시
   호출하면 성공하고, 다른 node로 바꾸려 하면 실패한다.
 - raw 또는 connector STREAM handle은 Actor bind 전에 attach되어야 한다. SpotNode가 내부에서

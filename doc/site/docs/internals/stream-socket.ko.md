@@ -238,13 +238,11 @@ STREAM socket은 client session 메시지를 SpotNode Actor로 relay할 수 있�
 소유하는 SpotNode를 알고 있어야 한다. 이것이 ActorGateway attach다.
 
 ```c
-zlink_config_result_t zlink_stream_attach_actor_gateway(void *stream,
                                                         void *node);
 ```
 
 STREAM handle이 session owner SpotNode를 얻는 경로는 두 가지다.
 
-- **명시적 attach.** `zlink_stream_attach_actor_gateway(stream, node)`는 stream을
   routed-capable `node`가 소유하도록 기록한다. raw STREAM socket과 connector 기반
   stream은 library가 handle에서 SpotNode로 이어지는 구조적 연결이 없으므로 이 경로가 필수다.
   attach는 one-way이고 sticky하다. 다른 node로 다시 붙이려 하면 거부하고(`EBUSY` /

@@ -99,15 +99,11 @@ struct actor_session_state_t
     void erase_bindings_for_stream (void *stream_);
     zlink::spot_node_t *stream_owner (void *stream_, const actor_node_registry_t &nodes_);
     void erase_stream_owner_if_unused (void *stream_);
-    void set_explicit_stream_owner (void *stream_, zlink::spot_node_t *node_);
-    void clear_explicit_stream_owner (void *stream_);
     void clear_stream (void *stream_);
     void erase_stream_owners_for_node (zlink::spot_node_t *node_);
-    int try_set_explicit_stream_owner (void *stream_, zlink::spot_node_t *node_);
 
     binding_map_t bindings;
     std::map<void *, zlink::spot_node_t *> stream_owners;
-    std::set<void *> explicit_stream_owners;
 };
 
 }

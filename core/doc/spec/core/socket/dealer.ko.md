@@ -46,16 +46,16 @@ DEALER는 context auto HWM(고수위 표시, High-Water Mark) 정책에서 `peer
 그 값이 우선합니다. `SNDBUF` / `RCVBUF` 기본값은 `-1`이며 auto-HWM profile은
 이 값을 자동으로 바꾸지 않습니다.
 
-## SPOT route bridge 소유권
+## SPOT channel socket 소유권
 
-client/server channel의 `DEALER`를 target `Spot`으로 보내는 bridge endpoint로
-쓸 수 있다. 이때 socket은 호출자 또는 channel runtime이 계속 소유한다.
-`zlink_spot_route_bridge_attach_dealer_channel()`은 socket을 닫지 않고,
-bridge close도 socket lifecycle을 끝내지 않는다.
+client/server channel의 `DEALER`를 `zlink_spot_send_channel_part()` /
+`zlink_spot_request_channel_part()`의 SPOT channel socket으로 쓸 수 있다. 이때
+socket은 호출자 또는 channel runtime이 계속 소유한다. SPOT 기계는 그 socket을 닫지
+않으며, socket lifecycle은 `Spot`과 독립이다.
 
-bridge가 받은 reply나 inbound frame을 처리하려면 호출자가 socket receive 결과를
-bridge handoff API에 넘긴다. bridge가 `handled=false`를 반환하면 호출자가 그
-packet의 소유권을 유지한다. `handled=true`이면 bridge가 packet 소유권을 가져간다.
+SPOT route bridge endpoint 자체는 `DEALER`가 아니라 `ROUTER` channel
+(`zlink_spot_route_bridge_attach_router_channel()`)이다. 그 소유권과 handoff
+규칙은 [`service/spot.md`](../service/spot.md)에서 설명한다.
 
 ## 함수
 

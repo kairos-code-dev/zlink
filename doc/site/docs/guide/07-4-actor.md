@@ -38,7 +38,6 @@ The minimal flow is:
 1. Create an Actor on the `SpotNode`.
 2. Identify the STREAM client session routing id.
 3. Attach the STREAM socket to the session owner `SpotNode` with
-   `zlink_stream_attach_actor_gateway()`.
 4. Bind session and Actor with `zlink_stream_bind_actor()`.
 5. Inside the STREAM packet handler or app logic, select an Actor id and call
    `zlink_stream_send_bound_actor_part()`.
@@ -49,7 +48,6 @@ The minimal flow is:
 zlink_actor_ref_t ref;
 zlink_spot_node_actor_new(node, "player-42", &ref);
 
-zlink_stream_attach_actor_gateway(stream, node);
 
 /* async submit; bind completion fires through the reply handler */
 zlink_stream_bind_actor(stream, &session_rid, &ref,

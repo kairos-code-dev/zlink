@@ -685,6 +685,33 @@ zlink::spot_node_t *stream_owner_locked (void *stream_)
     return actor_runtime ().sessions.stream_owner (stream_, actor_runtime ().nodes);
 }
 
+zlink::spot_node_t *stream_owner_for_actor_ref_locked (void *stream_,
+                                                       const zlink_actor_ref_t *actor_ref_)
+{
+    zlink::spot_node_t *stream_owner = stream_owner_locked (stream_);
+    if (stream_owner || !actor_ref_ || !valid_routing_id (&actor_ref_->node_rid))
+        return stream_owner;
+    zlink::spot_node_t *actor_node = resolve_node_by_rid_locked (actor_ref_->node_rid);
+    stream_owner = actor_node;
+    if (!stream_owner) {
+        zlink::spot_node_t *only_routed_node = NULL;
+        for (std::set<zlink::spot_node_t *>::const_iterator it =
+               actor_runtime ().nodes.known_nodes.begin ();
+             it != actor_runtime ().nodes.known_nodes.end (); ++it) {
+            zlink::spot_node_t *candidate = *it;
+            if (!candidate || !candidate->routed_enabled ())
+                continue;
+            if (only_routed_node)
+                return NULL;
+            only_routed_node = candidate;
+        }
+        stream_owner = only_routed_node;
+    }
+    if (stream_owner)
+        actor_runtime ().sessions.stream_owners[stream_] = stream_owner;
+    return stream_owner;
+}
+
 void erase_stream_owner_if_unused_locked (void *stream_)
 {
     actor_runtime ().sessions.erase_stream_owner_if_unused (stream_);
@@ -983,7 +1010,7 @@ zlink_request_result_t unbind_actor_from_session_locked (zlink::spot_node_t *str
                                                          const zlink_routing_id_t &session_rid_,
                                                          const char *actor_id_)
 {
-    if (!stream_owner_ || !stream_ || !actor_id_) {
+    if (!stream_ || !actor_id_) {
         errno = EFSM;
         return ZLINK_REQUEST_INVALID_STATE;
     }
@@ -998,7 +1025,7 @@ zlink_request_result_t unbind_actor_from_session_locked (zlink::spot_node_t *str
     if (it == binding.actors.end ())
         return ZLINK_REQUEST_OK;
 
-    if (valid_routing_id (&it->second.ref.node_rid)
+    if (stream_owner_ && valid_routing_id (&it->second.ref.node_rid)
         && actor_route_disconnected_locked (stream_owner_, it->second.ref.node_rid)) {
         errno = ENOTCONN;
         return ZLINK_REQUEST_NOT_CONNECTED;
@@ -1286,10 +1313,10 @@ zlink_request_result_t run_bind_operation_locked (actor_reply_operation_arg_t *a
 {
     if (!arg_)
         return ZLINK_REQUEST_INVALID_STATE;
-    zlink::spot_node_t *stream_owner = stream_owner_locked (arg_->stream);
+    zlink::spot_node_t *stream_owner = stream_owner_for_actor_ref_locked (arg_->stream, &arg_->actor);
     if (!stream_owner) {
-        errno = EFSM;
-        return ZLINK_REQUEST_INVALID_STATE;
+        actor_runtime ().sessions.bind_actor_ref (arg_->stream, arg_->rid, arg_->actor);
+        return ZLINK_REQUEST_OK;
     }
     if (is_remote_actor_ref_for_node (stream_owner, &arg_->actor)) {
         actor_runtime ().sessions.bind_actor_ref (arg_->stream, arg_->rid, arg_->actor);
@@ -1315,8 +1342,7 @@ zlink_request_result_t run_unbind_operation_locked (actor_reply_operation_arg_t 
         return ZLINK_REQUEST_INVALID_STATE;
     zlink::spot_node_t *stream_owner = stream_owner_locked (arg_->stream);
     if (!stream_owner) {
-        errno = EFSM;
-        return ZLINK_REQUEST_INVALID_STATE;
+        return unbind_actor_from_session_locked (NULL, arg_->stream, arg_->rid, arg_->actor_id);
     }
     return unbind_actor_from_session_locked (stream_owner, arg_->stream, arg_->rid, arg_->actor_id);
 }
@@ -3012,39 +3038,6 @@ zlink_stream_send_bound_actor_part (void *stream_,
 
 namespace zlink
 {
-namespace spot_actor_internal
-{
-int set_stream_owner (void *stream_, void *node_)
-{
-    if (!stream_ || !node_ || !is_stream_socket (stream_)
-        || !is_registered_spot_node_handle (node_)) {
-        errno = EINVAL;
-        return -1;
-    }
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->routed_enabled ()) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
-    return actor_runtime ().sessions.try_set_explicit_stream_owner (stream_, node);
-}
-}
-}
-
-extern "C" zlink_config_result_t zlink_stream_attach_actor_gateway (void *stream_, void *node_)
-{
-    if (!stream_ || !node_) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    if (!is_stream_socket (stream_) || !is_registered_spot_node_handle (node_)) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    if (zlink::spot_actor_internal::set_stream_owner (stream_, node_) != 0)
-        return zlink::config_result_internal::from_errno (errno);
-    return ZLINK_CONFIG_OK;
 }
 
 extern "C" zlink_submit_result_t

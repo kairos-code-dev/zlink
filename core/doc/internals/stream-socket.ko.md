@@ -226,21 +226,19 @@ STREAM의 public routing id는 서버가 연결별로 부여한 4바이트 conne
 `zlink_disconnect_rid()`는 이 id를 `uint32_t`로 해석해 STREAM 라우팅 맵에서
 pipe를 찾고 종료 요청을 넣는다. 4바이트가 아닌 rid는 잘못된 인자로 실패한다.
 
-## 9. Session Actor relay (ActorGateway attach)
+## 9. Session Actor relay (session relay)
 
 STREAM socket은 client session 메시지를 SpotNode Actor로 relay할 수 있다. 각 client
 연결의 `source_rid`가 STREAM session이 되고, `zlink_stream_bind_actor()`로 Actor 하나
 이상에 bind될 수 있다. bind를 실행하려면 그 전에 STREAM handle이 자신의 session을
-소유하는 SpotNode를 알고 있어야 한다. 이것이 ActorGateway attach다.
+소유하는 SpotNode를 알고 있어야 한다. 이것이 session relay다.
 
 ```c
-zlink_config_result_t zlink_stream_attach_actor_gateway(void *stream,
                                                         void *node);
 ```
 
 STREAM handle이 session owner SpotNode를 얻는 경로는 두 가지다.
 
-- **명시적 attach.** `zlink_stream_attach_actor_gateway(stream, node)`는 stream을
   routed-capable `node`가 소유하도록 기록한다. raw STREAM socket과 connector 기반
   stream은 library가 handle에서 SpotNode로 이어지는 구조적 연결이 없으므로 이 경로가 필수다.
   attach는 one-way이고 sticky하다. 다른 node로 다시 붙이려 하면 거부하고(`EBUSY` /

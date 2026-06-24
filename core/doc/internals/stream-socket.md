@@ -240,22 +240,20 @@ for each connection. `zlink_disconnect_rid()` interprets that id as a
 `uint32_t`, looks up the pipe in the STREAM route map, and requests
 termination. Any rid that is not 4 bytes fails as an invalid argument.
 
-## 9. Session Actor Relay (ActorGateway attach)
+## 9. Session Actor Relay (session relay)
 
 A STREAM socket can relay client session messages to and from SpotNode Actors.
 Each client connection's `source_rid` becomes a STREAM session that may be bound
 to one or more Actors with `zlink_stream_bind_actor()`. Before any bind can run,
 the STREAM handle must know which SpotNode owns its sessions -- this is the
-ActorGateway attachment.
+session relayment.
 
 ```c
-zlink_config_result_t zlink_stream_attach_actor_gateway(void *stream,
                                                         void *node);
 ```
 
 There are two ways a STREAM handle acquires a session owner SpotNode:
 
-- **Explicit attach.** `zlink_stream_attach_actor_gateway(stream, node)` records
   the stream as owned by a routed-capable `node`. This is required for raw STREAM
   sockets and for connector-backed streams, because the library has no structural
   link from such a handle to a SpotNode. The attach is one-way and sticky: it

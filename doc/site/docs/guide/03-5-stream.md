@@ -28,7 +28,6 @@ external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 > **Bridging client sessions to Actors.** A STREAM server can also act as the
 > front door for SpotNode Actors: each client session can be bound to an Actor so
 > that session traffic is relayed to and from it. That pattern starts by attaching
-> the STREAM socket to a SpotNode with `zlink_stream_attach_actor_gateway()`. See
 > the [Actor guide](07-4-actor.md) for the full session-to-Actor flow.
 
 ---

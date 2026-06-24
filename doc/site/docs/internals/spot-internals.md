@@ -733,7 +733,6 @@ Before any bind can run, the session owner `SpotNode` for a STREAM handle must b
 known. This is the ActorGateway attachment. The owner is resolved through
 `actor_runtime().sessions.stream_owner(stream, nodes)`:
 
-- If the application called `zlink_stream_attach_actor_gateway(stream, node)`, the
   pair is recorded in `sessions.stream_owners` and the handle is added to
   `sessions.explicit_stream_owners`. Explicit owners are sticky: they survive until
   the stream closes, the owner node is destroyed, or the application detaches. This
@@ -746,7 +745,6 @@ known. This is the ActorGateway attachment. The owner is resolved through
   bind target Actor's `node_rid`; the session owner is the node the sending stream
   is actually attached to.
 
-`zlink_stream_attach_actor_gateway()` requires `node` to be a routed-capable
 `SpotNode` (otherwise `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`) and rejects
 re-attaching a stream to a different owner (`EBUSY` /
 `ZLINK_CONFIG_INVALID_STATE`); re-attaching the same stream/node pair is
@@ -964,7 +962,6 @@ serialized by the single `actor_runtime().mutex`** unless noted otherwise.
 | `sessions` | `actor_session_state_t` | STREAM session bindings and stream→owner map (see sub-rows below) |
 | `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | keyed by `(stream, session rid)`; holds the per-actor-id Actor entries of one session; the compare-and-swap on remote join commit uses this map as the transaction point |
 | `sessions.stream_owners` | `map<void*, spot_node_t*>` | STREAM handle → session owner SpotNode (the ActorGateway) |
-| `sessions.explicit_stream_owners` | `set<void*>` | streams whose owner was set by `zlink_stream_attach_actor_gateway()`; these owners are sticky and not garbage-collected when bindings drop |
 | `routes` | `actor_route_state_t` | published actor routes and disconnect notes (see sub-rows below) |
 | `routes.active` | `map<string, zlink_actor_route_t>` | actor id → active route published to Discovery |
 | `routes.disconnected` | `set<pair<spot_node_t*, string>>` | `(source node, target node rid)` pairs marked disconnected; used to map relay failures to route-not-found |

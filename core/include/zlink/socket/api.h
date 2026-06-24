@@ -118,8 +118,6 @@ ZLINK_EXPORT zlink_handler_result_t zlink_recv_handler (void *s_,
 ZLINK_EXPORT zlink_handler_result_t zlink_stream_packet_handler (
   void *stream_, zlink_stream_packet_handler_fn handler_, void *userdata_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_stream_attach_actor_gateway (void *stream_, void *node_);
-
 ZLINK_EXPORT zlink_submit_result_t zlink_stream_bind_actor (void *stream_,
                                                             const zlink_routing_id_t *session_rid_,
                                                             const zlink_actor_ref_t *actor_,

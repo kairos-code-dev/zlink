@@ -47,17 +47,17 @@ message-size cap; the default profile is `balanced`. Manual `SNDHWM` and
 `RCVHWM` settings override the automatic values. `SNDBUF` / `RCVBUF` default to
 `-1`, and auto-HWM profiles do not change these values automatically.
 
-## SPOT Route Bridge Ownership
+## SPOT channel socket ownership
 
-A client/server channel `DEALER` may be used as a bridge endpoint for sending
-to a target `Spot`. The caller or channel runtime continues to own that
-socket. `zlink_spot_route_bridge_attach_dealer_channel()` does not close the
-socket, and closing the bridge does not end the socket lifecycle.
+A client/server channel `DEALER` may be used as a SPOT channel socket for
+`zlink_spot_send_channel_part()` / `zlink_spot_request_channel_part()`. The
+caller or channel runtime continues to own that socket; SPOT machinery does not
+close it, and the socket lifecycle is independent of the `Spot`.
 
-When a reply or inbound frame is received from the socket, the caller passes
-the received frames to the bridge handoff API. If the bridge returns
-`handled=false`, the caller keeps packet ownership. If it returns
-`handled=true`, the bridge has taken packet ownership.
+The SPOT route bridge endpoint itself is a `ROUTER` channel
+(`zlink_spot_route_bridge_attach_router_channel()`), not a `DEALER`; its
+ownership and handoff rules are described in
+[`service/spot.md`](../service/spot.md).
 
 ## Functions
 

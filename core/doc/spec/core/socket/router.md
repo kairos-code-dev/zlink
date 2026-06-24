@@ -306,9 +306,10 @@ through `zlink_errno()` for diagnostics.
 routed messages from a router channel `ROUTER` to a target `Spot`. The target
 node is no longer connected by attaching the router channel to `SpotNode`.
 The caller or channel runtime continues to own the router channel `ROUTER`
-socket, lends it to a bridge with
-`zlink_spot_route_bridge_attach_router_channel()`, and sets the target node
-routing id with `zlink_spot_route_bridge_set_target_node()`.
+socket and lends it to a bridge with
+`zlink_spot_route_bridge_attach_router_channel()`. The target node routing id is
+supplied per call to `zlink_spot_route_bridge_send()` /
+`zlink_spot_route_bridge_request()`.
 
 Callers must provide both the target node routing id and target spot routing
 id. Sending to a target without a router channel peer, or before the route is

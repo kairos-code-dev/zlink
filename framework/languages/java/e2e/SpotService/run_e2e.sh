@@ -149,6 +149,20 @@ with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
 PY
 }
 
+close_spot() {
+  local endpoint="$1"
+  local rid="$2"
+  python3 - "${endpoint}/admin/close?rid=${rid}" <<'PY'
+import sys
+import urllib.request
+request = urllib.request.Request(sys.argv[1], method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    body = response.read().decode("utf-8")
+    if '"closed":true' not in body:
+        raise SystemExit("spot close did not report closed=true: " + body)
+PY
+}
+
 read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B HTTP_A HTTP_B <<<"$(reserve_ports)"
 
 gradle_run installDist
@@ -182,9 +196,13 @@ for mode in state1 state2 send normal missing timeout owner route-mesh; do
   run_client_mode "${mode}"
   sleep 2
 done
+close_spot "${HTTP_A}" room-a
+echo "scenario SM-A6 passed" >>"${log_dir}/client.stdout.log"
 
 cat "${log_dir}/client.stdout.log"
 fetch_evidence play-a "${HTTP_A}"
 fetch_evidence play-b "${HTTP_B}"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
 grep -q "DispatchError" "${log_dir}/play-a-evidence.json"
+grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"
+grep -q "SpotClosing" "${log_dir}/play-a-evidence.json"

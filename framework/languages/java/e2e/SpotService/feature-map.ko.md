@@ -11,6 +11,8 @@ SpotNode builder만 사용한다.
 - `SM-A2`: public `ZLinkSpotOutbound.requestToSpot`으로 user spot state mutation을 검증한다.
 - `SM-A3`: `room-a`와 `room-b`가 각각 `play-a`와 `play-b`에서만 처리되는지 확인한다.
 - `SM-A4`: 같은 key가 같은 `RoutingId`와 같은 owner 노드로 반복 라우팅되는지 확인한다.
+- `SM-A6`: user spot 생성 시 initialize evidence가 남고, public `ZLinkSpotManager.close`로 명시
+  close했을 때 closing evidence가 남는지 확인한다.
 - `SM-C1`: 외부 consumer의 public `ZLinkSpotOutbound`로 request, send, timeout, 미등록 packet
   negative path를 검증한다.
 - `SM-F1`: 외부 consumer가 RouteMesh 경로로 target spot에 도달하는지 확인한다.
@@ -21,7 +23,6 @@ SpotNode builder만 사용한다.
 ## public API/harness 대기
 
 - `SM-A5`: Java E2E에는 Stage wrapper 계층이 아직 없다.
-- `SM-A6`: spot initialize/close lifecycle callback을 evidence로 고정하는 scenario가 아직 없다.
 - `SM-A7`: 같은 spot rid를 다른 spot type으로 다시 생성할 때의 public error를 단언하는 scenario가
   아직 없다.
 - `SM-A8`: worker offload와 spot 직렬성 유지를 함께 단언하는 scenario가 아직 없다.

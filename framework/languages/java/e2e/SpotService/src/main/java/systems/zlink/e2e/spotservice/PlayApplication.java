@@ -40,8 +40,13 @@ public final class PlayApplication {
     @Bean
     EvidenceHttpServer evidenceHttpServer(
         ScenarioState state,
-        com.fasterxml.jackson.databind.ObjectMapper json) {
-        return new EvidenceHttpServer(state, json, Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"));
+        com.fasterxml.jackson.databind.ObjectMapper json,
+        ZLinkSpotManager spots) {
+        return new EvidenceHttpServer(
+            state,
+            json,
+            Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
+            spots);
     }
 
     @Bean

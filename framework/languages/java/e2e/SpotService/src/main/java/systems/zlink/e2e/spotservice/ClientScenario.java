@@ -107,11 +107,11 @@ public final class ClientScenario {
     }
 
     private void runRouteMesh() {
-        Contracts.StateReply reply = outbound.requestToSpot(
+        Contracts.StateReply reply = eventually(() -> outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("route-mesh"))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateReply.class);
+            .await(Contracts.StateReply.class));
         ensure("play-a".equals(reply.nodeRid()), "SM-F2 route mesh target mismatch");
         outbound.sendToSpot(RoutingId.from("room-a"), new Contracts.StateCommand("mixed-route-send"))
             .await();

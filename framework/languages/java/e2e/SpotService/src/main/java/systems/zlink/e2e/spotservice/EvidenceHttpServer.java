@@ -6,21 +6,26 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import org.springframework.context.SmartLifecycle;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
     private final ScenarioState state;
     private final ObjectMapper json;
     private final String endpoint;
+    private final ZLinkSpotManager spots;
     private HttpServer server;
     private boolean running;
 
     public EvidenceHttpServer(
         ScenarioState state,
         ObjectMapper json,
-        String endpoint) {
+        String endpoint,
+        ZLinkSpotManager spots) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
+        this.spots = spots;
     }
 
     @Override
@@ -44,11 +49,55 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 exchange.getResponseBody().write(body);
                 exchange.close();
             });
+            server.createContext("/admin/close", exchange -> {
+                String rid = queryValue(exchange.getRequestURI(), "rid");
+                if (rid == null || rid.isBlank()) {
+                    write(exchange, 400, "missing rid\n");
+                    return;
+                }
+                boolean closed;
+                try {
+                    closed = spots.close(RoutingId.from(rid))
+                        .toCompletableFuture()
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("spot close interrupted", error);
+                } catch (java.util.concurrent.ExecutionException
+                         | java.util.concurrent.TimeoutException error) {
+                    throw new IllegalStateException("spot close failed", error);
+                }
+                write(exchange, 200, "{\"closed\":" + closed + "}\n");
+            });
             server.start();
             running = true;
         } catch (Exception error) {
             throw new IllegalStateException("failed to start evidence endpoint " + endpoint, error);
         }
+    }
+
+    private static String queryValue(URI uri, String name) {
+        String query = uri.getRawQuery();
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        for (String part : query.split("&")) {
+            String[] pair = part.split("=", 2);
+            if (pair.length == 2 && name.equals(pair[0])) {
+                return java.net.URLDecoder.decode(pair[1], StandardCharsets.UTF_8);
+            }
+        }
+        return null;
+    }
+
+    private static void write(
+        com.sun.net.httpserver.HttpExchange exchange,
+        int status,
+        String value) throws java.io.IOException {
+        byte[] body = value.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(status, body.length);
+        exchange.getResponseBody().write(body);
+        exchange.close();
     }
 
     @Override

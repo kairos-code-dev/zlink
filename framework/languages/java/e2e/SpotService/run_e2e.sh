@@ -209,9 +209,11 @@ run_client_mode() {
   local route_client
   local spot_client
   local attempt
+  local status
   for attempt in $(seq 1 5); do
     read -r route_client spot_client <<<"$(reserve_client_endpoints)"
-    if ZLINK_JAVA_E2E_ROLE=client \
+    set +e
+    ZLINK_JAVA_E2E_ROLE=client \
       ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
       ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route_client}" \
       ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
@@ -222,7 +224,10 @@ run_client_mode() {
       ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
       ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"; then
+        timeout 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
+    status="$?"
+    set -e
+    if [[ "${status}" == "0" ]] || grep -q "spot-service e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then
       cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
       cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
       return 0

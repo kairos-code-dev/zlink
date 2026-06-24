@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 
@@ -13,6 +14,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final ObjectMapper json;
     private final String endpoint;
     private final ZLinkChannelRuntimeOptions runtimeOptions;
+    private final ConfigurableApplicationContext applicationContext;
     private HttpServer server;
     private boolean running;
 
@@ -20,11 +22,13 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         ScenarioState state,
         ObjectMapper json,
         String endpoint,
-        ZLinkChannelRuntimeOptions runtimeOptions) {
+        ZLinkChannelRuntimeOptions runtimeOptions,
+        ConfigurableApplicationContext applicationContext) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
         this.runtimeOptions = runtimeOptions;
+        this.applicationContext = applicationContext;
     }
 
     @Override
@@ -52,6 +56,13 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             server.createContext("/admin/release-slow", exchange -> {
                 state.releaseSlow();
                 write(exchange, 200, "{\"status\":\"released\"}\n");
+            });
+            server.createContext("/admin/shutdown", exchange -> {
+                state.record("AdminShutdown", state.providerRid());
+                write(exchange, 200, "{\"status\":\"shutting-down\"}\n");
+                Thread shutdown = new Thread(applicationContext::close, "java-rl-admin-shutdown");
+                shutdown.setDaemon(false);
+                shutdown.start();
             });
             server.start();
             running = true;

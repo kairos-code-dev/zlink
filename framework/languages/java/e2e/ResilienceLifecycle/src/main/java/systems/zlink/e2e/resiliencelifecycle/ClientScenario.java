@@ -35,6 +35,7 @@ public final class ClientScenario {
         runClientTimeoutCleanup();
         runDrainRestore();
         runDrainInFlight();
+        runGracefulShutdown();
     }
 
     private void runClientTimeoutCleanup() {
@@ -109,6 +110,23 @@ public final class ClientScenario {
         post(adminA() + "/admin/restore");
         waitForWeight(adminA(), 100);
         System.out.println("scenario RL-B5 passed");
+    }
+
+    private void runGracefulShutdown() {
+        waitForTopology(2);
+        Contracts.WorkReply beforeShutdown = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.WorkRequest("b3-before-shutdown"))
+            .timeout(Duration.ofSeconds(3))
+            .await(Contracts.WorkReply.class);
+        ensure("work:b3-before-shutdown".equals(beforeShutdown.value()),
+            "RL-B3 pre-shutdown reply payload mismatch");
+
+        post(adminB() + "/admin/shutdown");
+        waitForTopology(1);
+        Set<String> providers = collectStableProvidersWithout("b3-after-shutdown", "api-b", "api-a");
+        ensure(providers.contains("api-a"), "RL-B3 did not converge to api-a after api-b shutdown");
+        System.out.println("scenario RL-B3 passed");
     }
 
     private Set<String> collectProviders(String prefix, int attempts, int expectedCount) {

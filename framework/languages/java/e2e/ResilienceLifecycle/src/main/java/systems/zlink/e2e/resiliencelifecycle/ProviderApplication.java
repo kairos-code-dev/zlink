@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.resiliencelifecycle.handlers.WorkRequestHandler;
@@ -41,12 +42,14 @@ public final class ProviderApplication {
     EvidenceHttpServer evidenceHttpServer(
         ScenarioState state,
         ObjectMapper json,
-        ZLinkChannelRuntimeOptions runtimeOptions) {
+        ZLinkChannelRuntimeOptions runtimeOptions,
+        ConfigurableApplicationContext applicationContext) {
         return new EvidenceHttpServer(
             state,
             json,
             Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
-            runtimeOptions);
+            runtimeOptions,
+            applicationContext);
     }
 
     @Bean

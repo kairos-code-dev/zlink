@@ -13,9 +13,11 @@
 
 ## 현재 구현 기준
 
-외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
-attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
-publisher client를 주입해서 사용한다.
+외부에서 특정 Spot 으로 send/request 를 보낼 때는 **RouteMesh channel** 을 쓰고, framework 가 core
+route bridge 를 내부에서 **자동으로** 잇는다(명시 accept/egress 호출 없음). 사용자는 RouteMesh
+channel 과 `SpotNode` 를 같은 프로세스에 두기만 하면 되고, raw `DEALER`·`ROUTER`·`PUB` socket 을
+`SpotNode` 에 직접 attach 하지 않는다. 외부에서 Spot 으로 topic 을 publish 할 때는
+`IZLinkSpotPublisherClient` 를 주입해 `PublishSpot(...)` 으로 보낸다(이것도 자동 연결).
 
 ## 1. SPOT 이란
 
@@ -114,9 +116,10 @@ node 역할은 서로 독립이다.
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
-SpotNode 함수는 두 부류다 — 🟦 **이 노드가 자기 SPOT channel mesh 에 참여하는 소켓**
-(`EnableRouter`·`EnablePubSub`)과, 🟧 **다른 channel·외부 client 와 잇는 bridge/client**
-함수가 무엇을 켜고 메시지가 어디로 흐르는지 보면 이렇다(점선 = 함수가 켠다).
+SpotNode 함수는 두 부류다 — 🟦 **자기 SPOT channel mesh 에 참여하는 소켓**(`EnableRouter`·
+`EnablePubSub`)과, 🟧 **다른 channel 로 나가는 client**(`AddClientServerChannel`). 외부→spot 의 route·
+publish 는 명시 함수 없이 **자동 연결**된다(같은 프로세스에 RouteMesh channel·SpotNode 가 함께 있으면
+런타임이 알아서 잇는다). 각 함수가 무엇을 켜고 메시지가 어디로 흐르는지 보면 이렇다(점선 = 함수가 켠다).
 
 ```mermaid
 flowchart LR
@@ -145,7 +148,7 @@ flowchart LR
   classDef ownMesh fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
   classDef bridge fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
   class fRouter,fPubSub,rsock,psock ownMesh;
-  class fAccept,fAttach,fClient,csock bridge;
+  class fClient,csock bridge;
 ```
 
 > 🟦 **파란(사각)** = 이 노드가 **자기 SPOT channel mesh** 에 참여하는 소켓 —
@@ -183,28 +186,20 @@ flowchart LR
   class f,p m;
 ```
 
-bridge)를 놓는다. 지정한 외부 channel(client-server server 또는 route mesh 의 ROUTER)을 이
-노드 router 에 bridge 해서, 그 channel 의 client 가 spot 으로 **send(단방향) / request(요청→응답
-왕복)** 할 수 있게 한다. request 면 spot 의 **reply 가 같은 다리로 client 까지 되돌아온다**.
+**🟧 외부→spot route·publish 는 자동(명시 함수 없음).** 외부 코드가 `IZLinkRouteClient` 로 spotRid 에
+send/request 하거나(route), `IZLinkSpotPublisherClient.PublishSpot(...)` 로 topic 을 보내면(publish),
+같은 프로세스에 함께 등록된 **RouteMesh channel**(route) / **SpotMesh pub**(publish)에 런타임이 route
+bridge / publisher 를 **자동으로** 붙여 spot 에 전달한다. 예전의 `AcceptSpotRoutesFromChannel`·
+`EnableSpotRouteEgress`·`AttachSpotPublisherClient` 같은 짝맞춤 호출은 더 없다. route 면 reply 가
+같은 길로 돌아오고, publish 는 단방향(reply 없음)이다. 상세 host 설정은 §5 에서 본다.
 
 ```mermaid
 flowchart LR
-  api["외부 channel(api) 의 client"] ==>|"① send / request"| r ==> spot["내 Spot"]
-  spot -.->|"② request 면 reply 돌아감"| api
+  ext["외부 코드<br/>routeClient.Request(routeMesh, spotRid)<br/>publisherClient.PublishSpot(mesh, topic)"]
+  ext ==>|"자동 연결(colocation)"| sp["Spot"]
+  sp -.->|"route 면 reply 돌아감"| ext
   classDef b fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
-  class f b;
-```
-
-topic 을 publish 할 수 있게 publisher client 를 붙인다. 주입받은 `IZLinkSpotPublisherClient`
-로 publish 하면 노드의 pub 소켓을 거쳐 그 channel 의 구독 spot 에게 전달된다. 단, **publish 는
-단방향(fire-and-forget)이라 reply 가 없다** — 이 client 는 보내기만 하고 받지는 않는다(구독
-spot 이 응답하려면 route 같은 별도 경로를 쓴다). spot **안**에서 publish 하는 건 이게 아니라 `EnablePubSub`.
-
-```mermaid
-flowchart LR
-  pc ==>|"topic publish (단방향 · reply 없음)"| p(["game.stage 의<br/>pub mesh"]) ==> spot["구독 Spot"]
-  classDef b fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
-  class f,pc b;
+  class ext b;
 ```
 
 **🟧 `AddClientServerChannel(name).EnableClient()`** — 이 노드가 **일반 channel server** 를
@@ -220,7 +215,7 @@ flowchart LR
   class f,c b;
 ```
 
-spot↔spot·actor 까지 포함한 전체 연결 짝 매트릭스는 §6(연결 종류별 함수·handler·배선 표)에서 한 번에 본다. 여기 §2 그림은 "함수가 켜는 SpotNode 소켓 ↔ channel" 한 축만 떼어 본 것이다.
+spot↔spot·actor 까지 포함한 전체 연결·handler·배선 표는 **§5 「한눈에 보기」**에서 한 번에 본다. 여기 §2 그림은 "함수가 켜는 SpotNode 소켓 ↔ channel" 한 축만 떼어 본 것이다.
 
 > top-level `UseDiscovery().AddRegistryEndpoint(...)` 를 등록하면 `AddSpotMesh` 는 그 discovery endpoint 를
 > 기본으로 상속한다. mesh 단위로 다른 endpoint 를 쓰려는 경우에만 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 를
@@ -608,8 +603,8 @@ background)에서 부르는 함수가 다를 뿐 결국 같은 handler 로 들�
 
 연결 그림부터 보자. spot 은 `SpotNode` 안에 살고, **같은 spot mesh 의 SpotNode 들은
 router↔router 로 이미 연결**돼 있어(각 노드 `EnableRouter` + discovery) spot↔spot
-메시징은 추가 배선이 없다. 반면 **외부 노드/채널은 이 mesh 에 없으므로** 양쪽에 짝이
-되는 함수를 켜서 연결을 직접 만들어야 한다(굵은 화살표 = 자동, 나머지 = 직접 배선).
+메시징은 추가 배선이 없다. 외부 노드/채널도 **RouteMesh channel(route)·SpotMesh(publish)를 같은
+프로세스에 두면 런타임이 자동으로 잇는다**(굵은 화살표 = spot mesh 자동, 가는 화살표 = colocation 자동 bridge).
 
 ```mermaid
 flowchart LR
@@ -620,13 +615,16 @@ flowchart LR
     spotB["Spot"] --- rB(["router"])
   end
   rA <==>|"이미 연결됨: 양쪽 EnableRouter + discovery<br/>spot packet: SendToSpot / RequestToSpot"| rB
+  api["외부 코드<br/>(routeClient / publisherClient)"] -->|"자동(RouteMesh · SpotMesh pub colocation)<br/>spot packet · topic"| rA
   strm["STREAM 노드<br/>(client session)"] -->|"연결: AttachActorGateway ↔ EnableRouter<br/>actor packet: actorRef.RelayAsync"| rA
 ```
 
 종류별 함수·handler·배선을 한 표로 모으면 다음과 같다.
 
-| 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 배선 (양쪽 짝) |
-|------|---------------------------|----------------------------|------------------------|---------------------|
+| 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 배선 |
+|------|---------------------------|----------------------------|------------------------|-----------|
+| topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(mesh, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | 같은 SpotMesh pub colocation → **자동** (보내는 쪽 SpotMesh + `EnablePubSub`) |
+| spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(routeMesh, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: RouteMesh channel + SpotNode colocation → **자동** |
 | actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM `AttachActorGateway(node)` ↔ `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
 | 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel 의 handler, [04](04-channel-messaging.ko.md)) | 그 channel 의 handler | `AddClientServerChannel(name).EnableClient()` ↔ 그 channel server |
 
@@ -727,7 +725,7 @@ var peer = await spot.Context.Outbound
     .Async<GetStageStateReply>(ct);
 ```
 
-spot **밖**(외부 channel)에서는 `IZLinkRouteClient` 로 `spotRid` 에 보낸다.
+spot **밖**(외부 코드)에서는 `IZLinkRouteClient` 로 **RouteMesh channel 이름 + `spotRid`** 에 보낸다.
 
 ```csharp
 // 일반 코드(spot 아님) — route client 로 spotRid 에 request
@@ -735,43 +733,41 @@ public sealed class StageQueryAdapter(IZLinkRouteClient routes)
 {
     public ValueTask<GetStageStateReply> GetAsync(RoutingId spotRid, CancellationToken ct)
         => routes
-            .Request("gateway.client", spotRid, new GetStageStateRequest())
+            .Request("api", spotRid, new GetStageStateRequest())   // "api" = RouteMesh channel 이름
             .Async<GetStageStateReply>(ct);
 }
 ```
 
-외부→spot 은 mesh 밖이라 **양쪽 노드를 같은 이름으로 짝지어** 연결을 직접 만들어야 한다.
-방향을 나눠 보면 이렇다.
-
-  의 client 가 spot 으로도 보낼 수 있게 한다"는 뜻이다.
-  요청을 내 router 로 받아 spot 에 넘긴다"는 뜻이다.
-
-두 곳의 `"api"` 라는 이름이 같아야 서로를 찾아 이어지고, 그제서야 request 가 spot 까지
-도달한다. `"api"` 는 이 연결 한 쌍을 가리키는 라벨일 뿐이라 양쪽만 똑같으면 아무 이름이나
-된다. request 면 spot 의 reply 도 같은 길로 client 까지 되돌아온다.
+배선은 **자동**이다. 받는 쪽은 `AddRouteMesh("api")` 를 `SpotNode` 와 같은 프로세스에 두기만 하면,
+런타임이 그 RouteMesh ROUTER 에 route bridge 를 붙여 inbound relay 를 spot 에 넘긴다(예전의
+`AcceptSpotRoutesFromChannel`·`EnableSpotRouteEgress` 짝맞춤 없음). 보내는 쪽은
+`AddRouteMesh("api").EnableClient(...)` 만 하면 되고, **target 노드는 보내는 쪽이 `spotRid` 로 소유
+노드를 resolve** 해 거기로 보낸다 — 그래서 spot 이 여러 노드/프로세스에 흩어져 있어도 도달한다.
+request 면 spot 의 reply 가 같은 길로 돌아온다.
 
 ```mermaid
 flowchart LR
   subgraph ext["외부 노드 (local spot 없음)"]
-    h["route/HTTP handler<br/>routes.Request(ch, spotRid, req)"]
-    h --> eg
+    h["route/HTTP handler<br/>routes.Request(&quot;api&quot;, spotRid, req)"]
+    c(["AddRouteMesh(&quot;api&quot;).EnableClient"])
+    h --> c
   end
-  subgraph sn["SpotNode · game.stage"]
+  subgraph sn["SpotNode + AddRouteMesh(&quot;api&quot;).EnableServer (같은 프로세스 → 자동 bridge)"]
     sp["Spot<br/>AddPacket&lt;GetStageStateHandler&gt;"]
-    rt --> sp
   end
-  eg ==>|"① request (target = spotRid)"| rt
+  c ==>|"① request (target=spotRid → 소유 노드로 resolve)"| sp
   sp -.->|"② reply"| h
 ```
 
 ```csharp
 // ── 보내는 노드 (API 서버) ──
-var gateway = options.AddClientServerChannel("gateway.client");
-gateway.EnableClient("tcp://play-node-1:9001");
+options.AddRouteMesh("api").EnableClient("tcp://play-node-1:9001");
 
-// ── 받는 노드 (SpotNode) ──
-var node = mesh;
-node.EnableRouter("tcp://0.0.0.0:9001");
+// ── 받는 노드 (SpotNode) — 같은 프로세스에 RouteMesh + 노드 → 자동 bridge ──
+options.AddRouteMesh("api").EnableServer("tcp://0.0.0.0:9001");
+var node = options.AddSpotMesh("game.stage");
+node.EnableRouter("tcp://0.0.0.0:9101");
+node.AddSpotFactory<StageSpot>();
 ```
 
 ### actor packet
@@ -829,11 +825,11 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<StageActorFactory>("player");   // actor packet — actor 생성 매핑
 
-    var mesh = options.AddSpotMesh("game.stage");
-    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+    options.AddRouteMesh("api").EnableServer("tcp://0.0.0.0:9201");  // spot packet — 외부→spot 자동 bridge
 
-    var node = mesh;
-    node.EnableRouter("tcp://0.0.0.0:9001");                // spot packet · actor packet 수신
+    var node = options.AddSpotMesh("game.stage");
+    node.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+    node.EnableRouter("tcp://0.0.0.0:9001");                // spot↔spot · actor packet
     node.EnablePubSub("tcp://0.0.0.0:9000");                // topic publish/subscribe
     node.AddEntrySpot<StageEntrySpot>();                    // actor packet — entry spot
     node.AddSpotFactory<StageSpot>();
@@ -845,25 +841,25 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    // topic — local spot 없이 game.stage 로 publish
+    options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+
+    // spot packet — RouteMesh "api" 로 routeClient.Request. target 노드는 spotRid 로 resolve
+    options.AddRouteMesh("api").EnableClient("tcp://play-node-1:9201");
+
+    // topic publish — game.stage SpotMesh 에 붙으면 PublishSpot 이 자동 연결
     var mesh = options.AddSpotMesh("game.stage");
-    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
-    var edge = mesh;
+    mesh.EnableRouter("tcp://0.0.0.0:9001");
 
-    // spot packet — play-node 가 "api" 로 연 입구로 보낸다
-    var gateway = options.AddClientServerChannel("gateway.client");
-    gateway.EnableClient("tcp://play-node-1:9001");
-
-    // actor packet — client stream session 의 owner gateway 지정
-    var stream = options.AddStreamNode("client-stream");
-    stream.Bind("tcp://0.0.0.0:7101");
-    stream.AttachActorGateway("play-node");                // ▶ 받는 노드 EnableRouter/AddEntrySpot 와 짝
+    // actor packet — client stream session 의 gateway 로 쓸 로컬 SpotNode 지정
+    options.AddStreamNode("client-stream")
+        .Bind("tcp://0.0.0.0:7101")
+        .AttachActorGateway("game.stage");                 // ▶ 위에서 등록한 로컬 SpotNode 이름
 });
 ```
 
-`AttachActorGateway("play-node")` 는 그 SpotNode 의 `EnableRouter`/`AddEntrySpot` 와
-짝을 이뤄야 한다. 한쪽만 켜면 호출은 컴파일은 되지만 런타임에 도달하지 못한다
-(§7 "자주 막히는 곳" 참고).
+`AttachActorGateway("game.stage")` 의 인자는 이 프로세스에 등록한 로컬 SpotNode 이름이고, 그 노드의
+`EnableRouter`(+ Play 서버라면 `AddEntrySpot`) 와 짝을 이룬다. 한쪽만 켜면 컴파일은 되지만 런타임에
+도달하지 못한다(§7 "자주 막히는 곳" 참고).
 
 ## 6. Stage wrapper (playhouse Stage 류)
 
@@ -878,10 +874,14 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 ## 7. 자주 막히는 곳
 
 - **`Publish` 가 안 된다** → 노드에 `EnablePubSub(endpoint)` 가 없다.
-  연결돼 있는지 확인한다.
+- **외부→spot route 가 안 닿는다** → 받는 프로세스에 `AddRouteMesh(name)` 가 `SpotNode` 와 같은
+  프로세스에 있는지(자동 bridge 조건), 보내는 쪽이 같은 RouteMesh channel 이름을 쓰는지, `spotRid`
+  의 소유 노드가 registry 로 resolve 되는지 확인한다.
 - **Spot factory 타입 중복** → 같은 `SpotNode` 안에서 같은 타입을 두 번 등록하면 시작 예외.
-- **spot 상태에 lock 을 걸어야 하나?** → 같은 user Spot 내부 callback 끼리는 직렬
-  실행이라 불필요. 외부 `SpotRid` 직접 접근만 별도 동기화.
+- **`AddSpotMesh` 가 시작 예외** → 같은 channel 이름으로 두 번 등록했다. 한 프로세스에 여러
+  SpotNode 를 둘 수 있지만 이름은 노드마다 달라야 한다.
+- **spot 상태에 lock 을 걸어야 하나?** → 같은 user Spot 내부 callback 끼리는 직렬 실행이라 불필요.
+  외부 `SpotRid` 직접 접근만 별도 동기화.
 
 ## 8. 더 보기
 

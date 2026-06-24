@@ -38,8 +38,14 @@ await RunRlB5Async(client, http, options);
 await RunRlA1Async(client, http, options);
 await RunRlA2Async(client, http, options);
 await RunRlA3Async(options);
+await RunRlA4Async(client, http, options);
+await RunRlA5Async(client, http, options);
+await RunRlB2Async(client, http, options);
 await RunRlB3Async(client, http, options);
 await RunRlB6Async(client, http, options);
+await RunRlC1Async(options);
+await RunRlC2Async(client, http, options);
+await RunRlC3Async(client, http, options);
 await RunRlC4Async(client, http, options);
 await RunRlD1Async(client);
 await RunRlD2Async(client, http, options);
@@ -214,6 +220,100 @@ static async Task RunRlA3Async(ClientOptions options)
     Console.WriteLine("scenario RL-A3 passed");
 }
 
+static async Task RunRlA4Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)
+{
+    await PostAsync(http, $"{options.ProviderBUrl}/admin/drain");
+    await WaitForWeightAsync(http, options.ProviderBUrl, 0);
+    var greenUrl = PickHttpUrl();
+    var greenEndpoint = PickEndpoint();
+    var greenEvidence = Path.Combine(options.LogDir, "api-b-green.evidence.log");
+    var green = StartProvider(options, "api-b-green", "api-b", greenUrl, greenEndpoint, greenEvidence);
+    await green.WaitReadyAsync();
+
+    for (var i = 0; i < 12; i++)
+    {
+        var reply = await RequestAsync(client, "fast", $"rl-a4-rolling-{i}");
+        Ensure(reply.ProviderRid is "api-a" or "api-b", "RL-A4 rolling request failed.");
+    }
+
+    await PostAsync(http, $"{options.ProviderBUrl}/shutdown");
+    await WaitUntilAsync(async () => !await IsHealthyAsync(http, options.ProviderBUrl),
+        "RL-A4 expected old api-b to stop.");
+    await WaitUntilAsync(async () =>
+    {
+        var topology = await QueryTopologyAsync(options);
+        return topology.Any(entry => entry.RoutingId?.ToString() == "api-b"
+            && entry.Endpoint == greenEndpoint
+            && entry.State == ZLinkTopologyState.Ready);
+    }, "RL-A4 green api-b endpoint did not become ready.");
+    await WaitForProvidersAsync(client, "rl-a4-green", ["api-a", "api-b"]);
+    await green.DisposeAsync();
+    var original = StartProvider(options, "api-b-after-a4", "api-b", options.ProviderBUrl, options.ProviderBEndpoint, options.ProviderBEvidenceFile);
+    await original.WaitReadyAsync();
+    await WaitForProvidersAsync(client, "rl-a4-restored", ["api-a", "api-b"]);
+    Console.WriteLine("scenario RL-A4 passed");
+}
+
+static async Task RunRlA5Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)
+{
+    for (var cycle = 0; cycle < 3; cycle++)
+    {
+        await PostAsync(http, $"{options.ProviderBUrl}/shutdown");
+        await WaitUntilAsync(async () => !await IsHealthyAsync(http, options.ProviderBUrl),
+            "RL-A5 expected api-b flap down.");
+        for (var i = 0; i < 4; i++)
+        {
+            var reply = await RequestAsync(client, "fast", $"rl-a5-down-{cycle}-{i}");
+            Ensure(reply.ProviderRid == "api-a", "RL-A5 down window did not converge to api-a.");
+        }
+
+        var restarted = StartProvider(options, $"api-b-flap-{cycle}", "api-b", options.ProviderBUrl, options.ProviderBEndpoint, options.ProviderBEvidenceFile);
+        await restarted.WaitReadyAsync();
+        await WaitForProvidersAsync(client, $"rl-a5-up-{cycle}", ["api-a", "api-b"]);
+    }
+
+    Console.WriteLine("scenario RL-A5 passed");
+}
+
+static async Task RunRlB2Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)
+{
+    await PostAsync(http, $"{options.ProviderAUrl}/admin/drain");
+    await WaitForWeightAsync(http, options.ProviderAUrl, 0);
+    var marker = $"rl-b2-slow-{Guid.NewGuid():N}";
+    var inFlight = RequestAsync(client, "slow", marker);
+    await WaitUntilAsync(async () =>
+    {
+        var apiB = await ReadEvidenceAsync(http, options.ProviderBUrl);
+        return apiB.Any(line => line.Contains($"profile-start|rid=api-b|marker={marker}", StringComparison.Ordinal));
+    }, "RL-B2 slow request did not start on api-b.");
+    await PostAsync(http, $"{options.ProviderBUrl}/admin/crash");
+    await WaitUntilAsync(async () => !await IsHealthyAsync(http, options.ProviderBUrl),
+        "RL-B2 expected api-b crash.");
+    var failed = false;
+    try
+    {
+        await inFlight;
+    }
+    catch
+    {
+        failed = true;
+    }
+
+    Ensure(failed, "RL-B2 in-flight request unexpectedly completed after provider crash.");
+    await PostAsync(http, $"{options.ProviderAUrl}/admin/restore");
+    await WaitForWeightAsync(http, options.ProviderAUrl, 100);
+    using var survivorHost = CreateDirectClientHost(options, options.ProviderAEndpoint, "rl-b2-survivor");
+    await survivorHost.StartAsync();
+    var survivorClient = survivorHost.Services.GetRequiredService<IZLinkChannelClient>();
+    var followUp = await RequestAsync(survivorClient, "fast", "rl-b2-after-crash");
+    Ensure(followUp.ProviderRid == "api-a", "RL-B2 surviving provider traffic failed.");
+    await survivorHost.StopAsync();
+    var restarted = StartProvider(options, "api-b-after-b2", "api-b", options.ProviderBUrl, options.ProviderBEndpoint, options.ProviderBEvidenceFile);
+    await restarted.WaitReadyAsync();
+    await WaitForProvidersAsync(client, "rl-b2-restored", ["api-a", "api-b"]);
+    Console.WriteLine("scenario RL-B2 passed");
+}
+
 static async Task RunRlB3Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)
 {
     var beforeB = await ReadEvidenceAsync(http, options.ProviderBUrl);
@@ -263,6 +363,76 @@ static async Task RunRlB6Async(IZLinkChannelClient client, HttpClient http, Clie
     var followUp = await RequestAsync(client, "fast", "rl-b6-after");
     Ensure(followUp.Value == "profile:fast", "RL-B6 follow-up request failed after clearing fault.");
     Console.WriteLine("scenario RL-B6 passed");
+}
+
+static async Task RunRlC1Async(ClientOptions options)
+{
+    var tasks = Enumerable.Range(0, 12).Select(async index =>
+    {
+        using var clientHost = CreateClientHost(options, $"rl-c1-client-{index}");
+        await clientHost.StartAsync();
+        var channelClient = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
+        var reply = await RequestWithRetryAsync(channelClient, "fast", $"rl-c1-{index}", TimeSpan.FromSeconds(5));
+        Ensure(reply.Value == "profile:fast", "RL-C1 request failed before cleanup.");
+        await clientHost.StopAsync();
+    });
+    await Task.WhenAll(tasks);
+
+    using var followUpHost = CreateClientHost(options, "rl-c1-follow-up");
+    await followUpHost.StartAsync();
+    var followUpClient = followUpHost.Services.GetRequiredService<IZLinkChannelClient>();
+    var followUp = await RequestWithRetryAsync(followUpClient, "fast", "rl-c1-after-cleanup", TimeSpan.FromSeconds(5));
+    Ensure(followUp.Value == "profile:fast", "RL-C1 follow-up failed after client cleanup.");
+    await followUpHost.StopAsync();
+    Console.WriteLine("scenario RL-C1 passed");
+}
+
+static async Task RunRlC2Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)
+{
+    await PostAsync(http, $"{options.ProviderBUrl}/admin/crash");
+    await WaitUntilAsync(async () => !await IsHealthyAsync(http, options.ProviderBUrl),
+        "RL-C2 expected api-b crash.");
+    await WaitUntilAsync(async () =>
+    {
+        var topology = await QueryTopologyAsync(options);
+        return topology.All(entry => entry.Endpoint != options.ProviderBEndpoint
+            || entry.State != ZLinkTopologyState.Ready);
+    }, "RL-C2 stale api-b topology entry did not leave Ready state.");
+    using var recoveredDiscoveryHost = CreateClientHost(options, "rl-c2-recovered-discovery");
+    await recoveredDiscoveryHost.StartAsync();
+    var recoveredDiscoveryClient = recoveredDiscoveryHost.Services.GetRequiredService<IZLinkChannelClient>();
+    for (var i = 0; i < 8; i++)
+    {
+        var reply = await RequestWithRetryAsync(
+            recoveredDiscoveryClient,
+            "fast",
+            $"rl-c2-after-crash-{i}",
+            TimeSpan.FromSeconds(5));
+        Ensure(reply.ProviderRid == "api-a", "RL-C2 request used stale crashed api-b.");
+    }
+    await recoveredDiscoveryHost.StopAsync();
+
+    var restarted = StartProvider(options, "api-b-after-c2", "api-b", options.ProviderBUrl, options.ProviderBEndpoint, options.ProviderBEvidenceFile);
+    await restarted.WaitReadyAsync();
+    await WaitForProvidersAsync(client, "rl-c2-restored", ["api-a", "api-b"]);
+    Console.WriteLine("scenario RL-C2 passed");
+}
+
+static async Task RunRlC3Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)
+{
+    await PostAsync(http, $"{options.ProviderBUrl}/shutdown");
+    await WaitUntilAsync(async () => !await IsHealthyAsync(http, options.ProviderBUrl),
+        "RL-C3 expected api-b simulated node pause/down.");
+    var during = await RequestAsync(client, "fast", "rl-c3-during-down");
+    Ensure(during.ProviderRid == "api-a", "RL-C3 did not use surviving provider during node down.");
+    var restarted = StartProvider(options, "api-b-after-c3", "api-b", options.ProviderBUrl, options.ProviderBEndpoint, options.ProviderBEvidenceFile);
+    await restarted.WaitReadyAsync();
+    await WaitForProvidersAsync(client, "rl-c3-recovered", ["api-a", "api-b"]);
+    var topology = await QueryTopologyAsync(options);
+    Ensure(topology.Count(entry => entry.RoutingId?.ToString() == "api-b"
+        && entry.Endpoint == options.ProviderBEndpoint
+        && entry.State == ZLinkTopologyState.Ready) == 1, "RL-C3 topology did not converge to one api-b Ready entry.");
+    Console.WriteLine("scenario RL-C3 passed");
 }
 
 static async Task RunRlC4Async(IZLinkChannelClient client, HttpClient http, ClientOptions options)

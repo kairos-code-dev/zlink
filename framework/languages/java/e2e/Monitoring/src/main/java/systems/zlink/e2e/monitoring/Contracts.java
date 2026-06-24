@@ -5,7 +5,6 @@ import java.util.List;
 public final class Contracts {
     public static final String CHANNEL = "monitoring.api";
     public static final String SPOT_MESH = "monitoring.spot.mesh";
-    public static final String SPOT_NODE = "monitoring.spot.node";
     public static final String HANDLER_GROUP = "monitoring";
     public static final String REGISTRY_SOURCE = "ops-registry";
 

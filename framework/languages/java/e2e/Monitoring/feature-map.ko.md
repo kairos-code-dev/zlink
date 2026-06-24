@@ -11,7 +11,7 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
   `CONNECTION_READY`를 관찰한다.
 - `MON-A2`: registry host의 `ops-registry` source에서 `STATUS_CHANGED`,
   `TOPOLOGY_CHANGED`, `SERVICE_SUMMARY_CHANGED`를 관찰한다.
-- `MON-A3`: service host의 `monitoring.spot.node` source에서 `STATUS_CHANGED`,
+- `MON-A3`: service host의 `monitoring.spot.mesh` source에서 `STATUS_CHANGED`,
   `PEERS_CHANGED`, `SUBJECTS_CHANGED`를 관찰하고, failing timer가 `TIMER_HANDLER_FAILED`를
   발행해도 channel messaging이 멈추지 않는지 확인한다.
 

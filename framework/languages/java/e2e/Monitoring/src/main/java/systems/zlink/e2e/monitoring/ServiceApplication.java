@@ -78,7 +78,7 @@ public final class ServiceApplication {
     ZLinkMonitoringOptionsCustomizer monitoringOptions() {
         return options -> {
             options.addSocketEvents(Contracts.CHANNEL);
-            options.addSpotEvents(Contracts.SPOT_NODE, Duration.ofMillis(100));
+            options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100));
         };
     }
 

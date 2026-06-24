@@ -147,6 +147,15 @@ app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
     lifetime.StopApplication();
     return Results.Ok(new { status = "stopping" });
 });
+app.MapPost("/crash", () =>
+{
+    ThreadPool.QueueUserWorkItem(_ =>
+    {
+        Thread.Sleep(50);
+        System.Diagnostics.Process.GetCurrentProcess().Kill(entireProcessTree: false);
+    });
+    return Results.Accepted();
+});
 await app.RunAsync();
 
 static string Require(string? value, string optionName)

@@ -47,7 +47,7 @@
 | SM-F3 | 구현 | client/server egress와 route-mesh egress를 같은 spot에 혼재해 처리한 marker가 있다. |
 | SM-F4 | 구현 | spot route negative marker가 있다. |
 | SM-F5 | 구현 | client/server egress host 종료 후 route-mesh egress가 같은 spot으로 계속 동작하는 marker가 있다. |
-| SM-G1 | public API/harness 대기 | play node 프로세스 crash/recovery를 같은 client scenario에서 제어하는 harness가 없다. |
-| SM-G2 | public API/harness 대기 | owner 이동/리밸런싱을 트리거하는 framework public API가 없다. |
-| SM-G3 | public API/harness 대기 | join/leave race를 결정적으로 동기화하는 actor mailbox 테스트 hook이 없다. |
-| SM-G4 | public API/harness 대기 | many bound session push 부하를 안정적으로 계측하는 load harness가 없다. |
+| SM-G1 | 구현 | client가 play-a crash endpoint로 프로세스를 kill한 뒤 play-a bound actor request 실패, play-b 격리 유지, play-b 재bind 복구를 확인한다. |
+| SM-G2 | 구현 | 앱이 같은 logical key의 owner spot RoutingId를 play-a에서 play-b로 remap하고, remap 전후 evidence가 새 owner에만 남는지 확인한다. |
+| SM-G3 | 구현 | 같은 user spot에 여러 stream session이 동시에 join/request/leave를 수행하고 actor별 join/leave lifecycle evidence가 1회씩 남는지 확인한다. |
+| SM-G4 | 구현 | 다수 bound session에 동시에 push를 보내 각 session이 자기 actor push만 받는지 확인한다. |

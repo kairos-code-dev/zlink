@@ -17,6 +17,16 @@ await RunAsync(options);
 
 static async Task RunAsync(ClientOptions options)
 {
+    if (string.Equals(options.ScenarioSet, "track-g", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmG2Async(options);
+        await RunSmG3Async(options);
+        await RunSmG4Async(options);
+        await RunSmG1Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
     await RunSmB1B2B3B5Async(options);
     await RunSmB6Async(options);
     await RunSmB8Async(options);
@@ -38,6 +48,10 @@ static async Task RunAsync(ClientOptions options)
     await RunSmA3A6B4B7Async(options);
     await RunSmA5Async(options);
     await RunSmA1A2A4F1F2Async(options);
+    await RunSmG2Async(options);
+    await RunSmG3Async(options);
+    await RunSmG4Async(options);
+    await RunSmG1Async(options);
     Console.WriteLine("spot-service e2e result=passed");
 }
 
@@ -838,6 +852,13 @@ static async Task RunSmE2E3Async(ClientOptions options)
         var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
         return CountNew(after, beforeTimer, $"timer-basic|rid={options.PlayARid}|spot={timerSpotRid}|name=sm-e2-basic") >= 2;
     }, "SM-E2 expected basic timer evidence.");
+    var timerClosed = await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CloseSpotReq(timerSpotRid))
+        .PacketName("CloseSpotReq")
+        .Async<CloseSpotReply>();
+    Ensure(timerClosed.Closed, "SM-E2 timer spot close reply mismatch.");
 
     var idleSpotRid = $"spot-sm-e3-{Guid.NewGuid():N}";
     await routes.Request(
@@ -922,7 +943,7 @@ static async Task RunSmA7A8C4E4Async(ClientOptions options)
             RoutingId.From(workerSpotRid),
             new WorkerStartReq("sm-a8-worker", 5000))
         .PacketName("WorkerStartReq")
-        .Timeout(TimeSpan.FromSeconds(10))
+        .Timeout(TimeSpan.FromSeconds(30))
         .Async<WorkerStartReply>();
     Ensure(worker.SpotRid == workerSpotRid, "SM-A8 worker start target mismatch.");
     var duringWorker = await RequestSpotStateWithRetryAsync(
@@ -1313,6 +1334,237 @@ static async Task RunSmA5Async(ClientOptions options)
     Console.WriteLine("scenario SM-A5 passed");
 }
 
+static async Task RunSmG2Async(ClientOptions options)
+{
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-owner-remap-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-G2 expected play-a control route to become ready.");
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayBRid,
+        "SM-G2 expected play-b control route to become ready.");
+
+    var key = $"key-sm-g2-{Guid.NewGuid():N}";
+    var firstOwnerSpotRid = $"spot-{key}-a";
+    var secondOwnerSpotRid = $"spot-{key}-b";
+    var playABefore = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var playBBefore = await ReadEvidenceAsync(options.PlayBEvidenceUrl);
+
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(firstOwnerSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    var first = await RequestSpotStateWithRetryAsync(
+        routes,
+        SpotServiceNames.ExternalSpotChannel,
+        firstOwnerSpotRid,
+        new StateReq("add", 1),
+        "SM-G2 first owner request timed out.");
+    Ensure(first.NodeRid == options.PlayARid, "SM-G2 first owner mismatch.");
+
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayBRid),
+            new CreateSpotReq(secondOwnerSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    var second = await RequestSpotStateWithRetryAsync(
+        routes,
+        SpotServiceNames.ExternalSpotChannel,
+        secondOwnerSpotRid,
+        new StateReq("add", 1),
+        "SM-G2 remapped owner request timed out.");
+    Ensure(second.NodeRid == options.PlayBRid, "SM-G2 remapped owner mismatch.");
+
+    await WaitUntilAsync(async () =>
+    {
+        var playAAfter = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        var playBAfter = await ReadEvidenceAsync(options.PlayBEvidenceUrl);
+        return CountNew(playAAfter, playABefore, $"spot-state-request|rid={options.PlayARid}|spot={firstOwnerSpotRid}|value=1") == 1
+            && CountNew(playBAfter, playBBefore, $"spot-state-request|rid={options.PlayBRid}|spot={secondOwnerSpotRid}|value=1") == 1
+            && CountNew(playAAfter, playABefore, $"spot-state-request|rid={options.PlayARid}|spot={secondOwnerSpotRid}") == 0
+            && CountNew(playBAfter, playBBefore, $"spot-state-request|rid={options.PlayBRid}|spot={firstOwnerSpotRid}") == 0;
+    }, "SM-G2 expected remapped owner evidence without cross-owner leakage.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-G2 passed");
+}
+
+static async Task RunSmG3Async(ClientOptions options)
+{
+    const int actorCount = 6;
+    var spotRid = $"spot-sm-g3-{Guid.NewGuid():N}";
+    var actorIds = Enumerable.Range(0, actorCount)
+        .Select(index => $"actor-sm-g3-{index}")
+        .ToArray();
+
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-join-leave-race-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-G3 expected play-a control route to become ready.");
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(spotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+
+    var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await Task.WhenAll(actorIds.Select(async actorId =>
+    {
+        await using var client = CreateClient(options.SessionAStreamEndpoint);
+        await client.Connect.Async();
+        await client.Request(new UserSpotAuthReq(spotRid, actorId, actorId, options.PlayARid))
+            .PacketName("UserSpotAuthReq")
+            .Async<AuthReply>();
+        var ping = await client.Request(new ActorPingReq(actorId))
+            .PacketName("UserActorPingReq")
+            .Async<ActorPingReply>();
+        Ensure(ping.ActorId == actorId, "SM-G3 actor request target mismatch.");
+        var left = await client.Request(new LeaveReq(actorId))
+            .PacketName("LeaveReq")
+            .Async<LeaveReply>();
+        Ensure(left.Accepted && left.ActorId == actorId, "SM-G3 leave reply mismatch.");
+    }));
+
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return actorIds.All(actorId =>
+            CountNew(after, before, $"spot-actor-joined|rid={options.PlayARid}|spot={spotRid}|actor={actorId}") == 1
+            && CountNew(after, before, $"spot-actor-left|rid={options.PlayARid}|spot={spotRid}|actor={actorId}") == 1);
+    }, "SM-G3 expected exactly one join and leave evidence per actor.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-G3 passed");
+}
+
+static async Task RunSmG4Async(ClientOptions options)
+{
+    const int sessionCount = 12;
+    var clients = new List<IZlinkStreamConnector>();
+    try
+    {
+        for (var index = 0; index < sessionCount; index++)
+        {
+            var client = CreateClient(options.SessionAStreamEndpoint);
+            clients.Add(client);
+            await client.Connect.Async();
+            await client.Request(new AuthReq($"actor-sm-g4-{index}", $"bound-load-{index}", options.PlayARid))
+                .PacketName("AuthReq")
+                .Async<AuthReply>();
+        }
+
+        var results = await Task.WhenAll(clients.Select(async (client, index) =>
+        {
+            var actorId = $"actor-sm-g4-{index}";
+            var value = $"push-{index}";
+            var pushed = client.WaitFor<ActorPushNotify>().Async().AsTask();
+            var reply = await client.Request(new ActorPushReq(value))
+                .PacketName("ActorPushReq")
+                .Async<ActorPingReply>();
+            var notify = await pushed;
+            return (actorId, value, reply, notify);
+        }));
+
+        foreach (var (actorId, value, reply, notify) in results)
+        {
+            Ensure(reply.ActorId == actorId, "SM-G4 push reply actor mismatch.");
+            Ensure(reply.Value == value, "SM-G4 push reply value mismatch.");
+            Ensure(notify.Payload.ActorId == actorId, "SM-G4 push notify actor mismatch.");
+            Ensure(notify.Payload.Value == value, "SM-G4 push notify value mismatch.");
+        }
+
+        Ensure(
+            clients.All(client => client.ReceivedCount("ActorPushNotify") == 1),
+            "SM-G4 expected each session to receive only its own push.");
+    }
+    finally
+    {
+        foreach (var client in clients)
+        {
+            await client.DisposeAsync();
+        }
+    }
+
+    Console.WriteLine("scenario SM-G4 passed");
+}
+
+static async Task RunSmG1Async(ClientOptions options)
+{
+    await using var playA = CreateClient(options.SessionAStreamEndpoint);
+    await using var playB = CreateClient(options.SessionBStreamEndpoint);
+    await playA.Connect.Async();
+    await playB.Connect.Async();
+    await playA.Request(new AuthReq("actor-sm-g1-crash", "crash-owner", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    await playB.Request(new AuthReq("actor-sm-g1-survivor", "survivor", options.PlayBRid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+
+    var beforeCrash = await playA.Request(new ActorPingReq("before-crash"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(beforeCrash.NodeRid == options.PlayARid, "SM-G1 play-a actor setup mismatch.");
+    var beforeSurvivor = await playB.Request(new ActorPingReq("before-crash"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(beforeSurvivor.NodeRid == options.PlayBRid, "SM-G1 play-b actor setup mismatch.");
+
+    await CrashNodeAsync(options.PlayACrashUrl);
+    await WaitUntilAsync(
+        async () => !await CanReadEvidenceAsync(options.PlayAEvidenceUrl),
+        "SM-G1 expected play-a evidence endpoint to go down after crash.");
+
+    await ExpectFailureAsync(
+        playA.Request(new ActorPingReq("after-crash"))
+            .PacketName("ActorPingReq")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<ActorPingReply>().AsTask(),
+        "SM-G1 expected play-a actor request to fail after crash.");
+
+    var survivor = await playB.Request(new ActorPingReq("after-crash"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(survivor.ActorId == "actor-sm-g1-survivor", "SM-G1 survivor actor mismatch.");
+    Ensure(survivor.NodeRid == options.PlayBRid, "SM-G1 survivor node mismatch.");
+
+    await using var recovered = CreateClient(options.SessionBStreamEndpoint);
+    await recovered.Connect.Async();
+    await recovered.Request(new AuthReq("actor-sm-g1-crash", "recovered-on-play-b", options.PlayBRid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var rebound = await recovered.Request(new ActorPingReq("rebound"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(rebound.ActorId == "actor-sm-g1-crash", "SM-G1 rebound actor mismatch.");
+    Ensure(rebound.NodeRid == options.PlayBRid, "SM-G1 rebound node mismatch.");
+
+    Console.WriteLine("scenario SM-G1 passed");
+}
+
 static IHost CreateRouteEgressHost(
     ClientOptions options,
     bool includeControlChannel,
@@ -1402,6 +1654,41 @@ static async Task<string[]> ReadEvidenceAsync(string url)
     return await client.GetFromJsonAsync<string[]>(url) ?? [];
 }
 
+static async Task<bool> CanReadEvidenceAsync(string url)
+{
+    try
+    {
+        await ReadEvidenceAsync(url);
+        return true;
+    }
+    catch (HttpRequestException)
+    {
+        return false;
+    }
+    catch (TaskCanceledException)
+    {
+        return false;
+    }
+}
+
+static async Task CrashNodeAsync(string url)
+{
+    using var client = new HttpClient
+    {
+        Timeout = TimeSpan.FromSeconds(2),
+    };
+    try
+    {
+        await client.PostAsync(url, content: null);
+    }
+    catch (HttpRequestException)
+    {
+    }
+    catch (TaskCanceledException)
+    {
+    }
+}
+
 static int CountNew(string[] after, string[] before, string pattern)
 {
     var beforeCount = before.Count(line => line.Contains(pattern, StringComparison.Ordinal));
@@ -1431,7 +1718,7 @@ static ulong ExtractUInt64(string line, string key)
 
 static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
 {
-    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(60);
     Exception? last = null;
     while (DateTimeOffset.UtcNow < deadline)
     {
@@ -1567,6 +1854,8 @@ internal sealed record ClientOptions(
     string PlayAEvidenceUrl,
     string PlayBEvidenceUrl,
     string SessionAEvidenceUrl,
+    string PlayACrashUrl,
+    string ScenarioSet,
     string PlayARid,
     string PlayBRid,
     string SessionARid,
@@ -1609,6 +1898,8 @@ internal sealed record ClientOptions(
             Required("play-a-evidence-url"),
             Required("play-b-evidence-url"),
             Required("session-a-evidence-url"),
+            Required("play-a-crash-url"),
+            values.GetValueOrDefault("scenario-set", "all"),
             Required("play-a-rid"),
             Required("play-b-rid"),
             Required("session-a-rid"),

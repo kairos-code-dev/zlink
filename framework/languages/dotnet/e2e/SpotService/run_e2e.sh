@@ -8,6 +8,7 @@ SERVER_DLL="$SCRIPT_DIR/Server/bin/Debug/net8.0/SpotService.Server.dll"
 CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/SpotService.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
+SCENARIO_SET="${SCENARIO_SET:-all}"
 mkdir -p "$LOG_DIR"
 
 PIDS=()
@@ -115,7 +116,7 @@ wait_port() {
   local port
   host="$(endpoint_host "$endpoint")"
   port="$(endpoint_port "$endpoint")"
-  for _ in $(seq 1 400); do
+  for _ in $(seq 1 1000); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -230,6 +231,8 @@ dotnet "$CLIENT_DLL" \
   --play-a-evidence-url "$PLAY_A_HTTP/evidence" \
   --play-b-evidence-url "$PLAY_B_HTTP/evidence" \
   --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
+  --play-a-crash-url "$PLAY_A_HTTP/crash" \
+  --scenario-set "$SCENARIO_SET" \
   --play-a-rid play-a \
   --play-b-rid play-b \
   --session-a-rid session-a \

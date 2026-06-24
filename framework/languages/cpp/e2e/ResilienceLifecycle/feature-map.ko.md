@@ -18,7 +18,7 @@
   바꾸는 runtime accessor가 없다. bindings socket option을 직접 만지는 우회는 framework public
   surface 검증이 아니므로 사용하지 않는다.
 - `RL-A3`, `RL-B2`, `RL-B6`, `RL-C1`, `RL-C2`, `RL-C3`, `RL-C4`, `RL-D1`, `RL-D2`,
-  `RL-D4`, `RL-D5`: 현재 C++ E2E harness에 지속 부하, SIGKILL 중 in-flight 관측,
+  `RL-D3`, `RL-D4`, `RL-D5`: 현재 C++ E2E harness에 지속 부하, SIGKILL 중 in-flight 관측,
   registry TTL 단축, network partition, runtime error sink 관측을 안정적으로 고정하는 전용
   제어 표면이 아직 없다. 해당 제어가 생기면 별도 scenario로 확장한다.
 - `RL-A2`, `RL-A4`, `RL-A5`: Config 1 runner가 scale-out/in과 same-rid endpoint 교체를 일부

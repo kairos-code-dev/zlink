@@ -24,6 +24,10 @@
 - `RC-A2`: attribute 기반 handler discovery는 `.NET`의 attribute 표면이다. C++에는
   런타임 attribute나 assembly scan 공개 API가 없으므로 `RC-A1`의 handler group 등록이
   C++의 대응 표면이다.
+- `RC-A4`: C++ E2E는 singleton state 주입과 evidence endpoint만 사용한다. 공통 시나리오가
+  요구하는 request별 scoped dependency와 dispose count를 고정하는 public DI scope/dispose
+  harness가 아직 없다.
+- `RC-A5`: C++ framework에는 handler filter pipeline 공개 API가 아직 없다.
 - `RC-B2`, `RC-B3`: C++ framework에는 protobuf/messagepack extension 헤더가 있지만 현재
   channel message envelope의 공개 content type은 `application/json`으로 고정되어 있다.
   extension은 payload serializer 등록만 제공하므로 `application/x-protobuf` 또는

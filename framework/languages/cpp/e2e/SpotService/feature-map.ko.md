@@ -57,10 +57,35 @@
 제공한다. 따라서 E2E 앱에서 `__zlink.spot.*` 내부 packet을 직접 조립하지 않는다.
 
 - `SM-C1`: 외부 channel에서 특정 spot으로 request/send/publish를 보내는 방향.
+- `SM-A3`: 특정 spot id를 직접 지정해 해당 owner 노드에서만 처리되는지 확인하는 독립 scenario
+  marker가 아직 없다. owner mapping은 `SM-A4`가 검증한다.
+- `SM-A5`: C++ framework에는 Stage wrapper 공개 계층이 아직 없다.
+- `SM-B7`: actor lifecycle callback과 packet handler 순서를 독립적으로 단언하는 scenario marker가
+  아직 없다. local/remote join 자체는 `SM-B1`/`SM-B2`가 검증한다.
+- `SM-D3`: entry spot에 actor를 bind하는 공개 예제/runner 경로가 아직 없다. user spot actor bind는
+  `SM-D1`/`SM-D2`가 검증한다.
+- `SM-D8`: stream reconnect 중 pending request 실패와 재auth/rebind를 분리해 고정하는 stream
+  client harness 단계가 필요하다. 다른 gateway 재접속은 `SM-D12`가 검증한다.
+- `SM-D9`: stream inbound observer를 evidence로 노출하는 C++ public observer 표면이 아직 없다.
+- `SM-D10`: stream backpressure 정책을 public contract로 고정하고 부하를 주입하는 harness가
+  필요하다.
+- `SM-D11`: 같은 consumer에서 stream request와 channel request를 동시에 섞는 dedicated runner가
+  아직 없다.
+- `SM-D13`: stream heartbeat 중단을 제어하는 public harness knob이 아직 없다.
+- `SM-D14`: C++ stream E2E runner에 TLS endpoint/certificate 구성이 아직 없다.
 - `SM-E1`: handler 없는 spot route request의 public negative path.
+- `SM-E2`: spot timer handler 등록과 발화 evidence를 검증하는 C++ E2E scenario가 아직 없다.
+- `SM-E3`: idle timer가 public `close_spot`을 호출하는 흐름을 고정하는 scenario가 아직 없다.
+- `SM-E4`: timer overrun policy별 tick 패턴을 public evidence로 확인하는 scenario가 아직 없다.
 - `SM-F1`: client/server channel에서 target spot으로 직접 egress하는 경로.
 - `SM-F2`: route mesh channel에서 target node와 target spot을 함께 지정하는 경로.
+- `SM-F3`: 같은 channel에서 일반 packet과 spot route packet이 공존하는 bridge 분기.
 - `SM-F4`: route 없음, ingress 거부, malformed spot route packet의 public error 계약.
+- `SM-F5`: spot route 사용/중단과 channel socket lifecycle 독립성.
+- `SM-G2`: owner 재배치는 framework 자동 기능이 아니라 앱의 key-to-routing-id remap이므로,
+  scale-out 중 remap을 안정적으로 고정하는 harness가 필요하다.
+- `SM-G3`: 다수 client의 동시 join/leave/request 경합을 재현하는 부하 harness가 아직 없다.
+- `SM-G4`: 다수 bound session push 부하와 오배달 없음을 확인하는 부하 harness가 아직 없다.
 
 해당 시나리오를 구현하려면 C++ framework에도 spot target을 받는 공개 route client 호출이 필요하다.
 예를 들어 `request(channel, target_node_rid, spot_rid, request)` 또는 같은 의미의 별도 메서드가

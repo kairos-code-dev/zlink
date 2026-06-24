@@ -7,6 +7,8 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
 
 ## 구현됨
 
+- `RL-B1`: 처리 중인 request를 client timeout으로 끝낸 뒤 같은 client의 후속 request가 정상 reply를
+  받아 late reply가 pending을 오염시키지 않는지 확인한다.
 - `RL-B4`: provider admin 경로가 `clientServerChannel(name).configureServerSocket().weight(0/100)`을
   호출해 runtime drain/restore를 검증한다.
 - `RL-B5`: 느린 handler가 이미 받은 request는 drain 뒤에도 정상 reply하고, drain 이후 새 request는
@@ -20,8 +22,6 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
 - `RL-A3`: process crash/replace 중 in-flight 결과를 고정하는 kill/restart harness가 필요하다.
 - `RL-A4`: rolling restart를 provider 그룹 단위로 수행하는 orchestration이 아직 없다.
 - `RL-A5`: blue/green provider 교체와 registry view 검증을 묶는 harness가 아직 없다.
-- `RL-B1`: timeout 뒤 late reply 비오염은 RegistryMessaging RM-C4에서 일부 확인하지만,
-  Config 5 독립 marker는 아직 없다.
 - `RL-B2`: retry 정책 facade가 Java framework public client에 아직 없다.
 - `RL-B3`: graceful shutdown 뒤 남은 provider로만 routing되는 Config 5 독립 marker가 아직 없다.
 - `RL-B6`: packet loss/half-open transport를 만드는 network partition harness가 아직 없다.

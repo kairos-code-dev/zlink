@@ -32,8 +32,30 @@ public final class ClientScenario {
     }
 
     public void run() {
+        runClientTimeoutCleanup();
         runDrainRestore();
         runDrainInFlight();
+    }
+
+    private void runClientTimeoutCleanup() {
+        try {
+            client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.WorkRequest("timeout"))
+                .timeout(Duration.ofMillis(300))
+                .await(Contracts.WorkReply.class);
+            throw new IllegalStateException("RL-B1 timeout request unexpectedly completed");
+        } catch (RuntimeException expected) {
+            waitForEvidenceAny("TimeoutStarted", adminA(), adminB());
+        }
+        sleep(1800);
+        Contracts.WorkReply followUp = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.WorkRequest("b1-follow-up"))
+            .timeout(Duration.ofSeconds(3))
+            .await(Contracts.WorkReply.class);
+        ensure("work:b1-follow-up".equals(followUp.value()), "RL-B1 follow-up payload mismatch");
+        System.out.println("scenario RL-B1 passed");
     }
 
     private void runDrainRestore() {
@@ -175,6 +197,27 @@ public final class ClientScenario {
             sleep(100);
         }
         throw new IllegalStateException("marker " + marker + " was not observed at " + baseUrl);
+    }
+
+    private void waitForEvidenceAny(String marker, String... baseUrls) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            for (String baseUrl : baseUrls) {
+                try {
+                    JsonNode entries = json.readTree(get(baseUrl + "/evidence")).path("entries");
+                    if (entries.isArray()) {
+                        for (JsonNode entry : entries) {
+                            if (marker.equals(entry.path("marker").asText())) {
+                                return;
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException("marker " + marker + " was not observed at any provider");
     }
 
     private String adminA() {

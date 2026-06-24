@@ -31,6 +31,12 @@ public sealed record StateReply(string SpotRid, string NodeRid, int Value);
 
 public sealed record StateCommand(string Marker);
 
+public sealed record StageProbeReq(string Marker, int Delta);
+
+public sealed record StageProbeReply(string SpotRid, string NodeRid, int Value, string Marker);
+
+public sealed record StageTimerStartCommand(string Name, int PeriodMs);
+
 public sealed record SpotEvent(string Marker);
 
 public sealed record SpotOutboundReq(string Marker);

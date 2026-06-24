@@ -8,7 +8,7 @@
 | SM-A2 | 구현 | user spot state mutation marker가 있다. |
 | SM-A3 | 구현 | 특정 spot id request가 owner node evidence에만 남는 route resolver marker가 있다. |
 | SM-A4 | 구현 | owner routing marker가 있다. |
-| SM-A5 | public API/harness 대기 | framework public surface에 별도 Stage wrapper 계층 API가 없어 wrapper 의미를 E2E에서 직접 구성할 표면이 없다. |
+| SM-A5 | 구현 | app-level ScenarioStage wrapper를 통해 spot request/timer/lifecycle을 실행하고 marker를 확인한다. |
 | SM-A6 | 구현 | spot initialize와 explicit close lifecycle marker가 있다. |
 | SM-A7 | 구현 | spot type mismatch marker가 있다. |
 | SM-A8 | 구현 | worker offload marker가 있다. |

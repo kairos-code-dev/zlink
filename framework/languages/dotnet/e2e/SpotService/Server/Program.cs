@@ -435,6 +435,32 @@ internal sealed class ScenarioAlternateSpot(
     public IZLinkSpotContext Context { get; } = context;
 }
 
+internal sealed class ScenarioStage(ScenarioUserSpot spot)
+{
+    public StageProbeReply Apply(StageProbeReq request, EvidenceStore evidence)
+    {
+        var value = spot.Add(request.Delta);
+        evidence.Add(
+            $"stage-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|marker={request.Marker}|value={value}");
+        return new StageProbeReply(
+            spot.Context.SpotRid.ToString(),
+            spot.Context.NodeRid.ToString(),
+            value,
+            request.Marker);
+    }
+
+    public async ValueTask StartTimerAsync(
+        StageTimerStartCommand command,
+        CancellationToken cancellationToken)
+    {
+        await spot.Context.AddTimer<StageTimerHandler>(
+            command.Name,
+            TimeSpan.FromMilliseconds(command.PeriodMs),
+            cancellationToken: cancellationToken);
+    }
+}
+
 [ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotEventTopic)]
 internal sealed class SpotEventHandler(EvidenceStore evidence)
     : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotEvent>
@@ -446,6 +472,51 @@ internal sealed class SpotEventHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-event|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkSpotRequestHandler("StageProbeReq")]
+internal sealed class StageProbeHandler(EvidenceStore evidence)
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, StageProbeReq, StageProbeReply>
+{
+    public ValueTask<StageProbeReply> HandleAsync(
+        ScenarioUserSpot spot,
+        StageProbeReq request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var stage = new ScenarioStage(spot);
+        return ValueTask.FromResult(stage.Apply(request, evidence));
+    }
+}
+
+[ZLinkSpotPacketHandler("StageTimerStartCommand")]
+internal sealed class StageTimerStartHandler
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, StageTimerStartCommand>
+{
+    public async ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        StageTimerStartCommand request,
+        CancellationToken cancellationToken)
+    {
+        var stage = new ScenarioStage(spot);
+        await stage.StartTimerAsync(request, cancellationToken);
+    }
+}
+
+internal sealed class StageTimerHandler(EvidenceStore evidence)
+    : IZLinkSpotTimerHandler<ScenarioUserSpot>
+{
+    public ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"stage-timer|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}"
+            + $"|delivery={tick.DeliveryIndex}");
         return ValueTask.CompletedTask;
     }
 }

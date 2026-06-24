@@ -32,6 +32,7 @@ static async Task RunAsync(ClientOptions options)
     await RunSmE2E3Async(options);
     await RunSmA7A8C4E4Async(options);
     await RunSmA3A6B4B7Async(options);
+    await RunSmA5Async(options);
     await RunSmA1A2A4F1F2Async(options);
     Console.WriteLine("spot-service e2e result=passed");
 }
@@ -543,12 +544,11 @@ static async Task RunSmC3Async(ClientOptions options)
     }
 
     var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
-    var reply = await routes.Request(
-            SpotServiceNames.ExternalSpotChannel,
-            RoutingId.From(sourceSpotRid),
-            new SpotToSpotReq(targetSpotRid, "direct"))
-        .PacketName("SpotToSpotReq")
-        .Async<SpotToSpotReply>();
+    var reply = await RequestSpotToSpotWithRetryAsync(
+        routes,
+        sourceSpotRid,
+        new SpotToSpotReq(targetSpotRid, "direct"),
+        "SM-C3 spot to spot request timed out.");
     Ensure(reply.SourceSpotRid == sourceSpotRid, "SM-C3 source spot mismatch.");
     Ensure(reply.TargetSpotRid == targetSpotRid, "SM-C3 target spot mismatch.");
     Ensure(reply.TargetValue == 3, "SM-C3 target state mismatch.");
@@ -1076,6 +1076,73 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
     Console.WriteLine("scenario SM-F5 passed");
 }
 
+static async Task RunSmA5Async(ClientOptions options)
+{
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-stage-wrapper-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-A5 expected play-a control route to become ready.");
+
+    var spotRid = $"spot-sm-a5-{Guid.NewGuid():N}";
+    var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(spotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+
+    var reply = await routes.Request(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(spotRid),
+            new StageProbeReq("sm-a5-stage", 9))
+        .PacketName("StageProbeReq")
+        .Async<StageProbeReply>();
+    Ensure(reply.SpotRid == spotRid, "SM-A5 stage wrapper returned the wrong spot.");
+    Ensure(reply.NodeRid == options.PlayARid, "SM-A5 stage wrapper returned the wrong node.");
+    Ensure(reply.Value == 9, "SM-A5 stage wrapper state mutation mismatch.");
+    Ensure(reply.Marker == "sm-a5-stage", "SM-A5 stage wrapper marker mismatch.");
+
+    await routes.Send(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(spotRid),
+            new StageTimerStartCommand("sm-a5-stage-timer", 50))
+        .PacketName("StageTimerStartCommand")
+        .Async();
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, before, $"spot-initialize|rid={options.PlayARid}|spot={spotRid}") == 1
+            && CountNew(after, before, $"stage-request|rid={options.PlayARid}|spot={spotRid}|marker=sm-a5-stage|value=9") == 1
+            && CountNew(after, before, $"stage-timer|rid={options.PlayARid}|spot={spotRid}|name=sm-a5-stage-timer") >= 1;
+    }, "SM-A5 expected stage wrapper request/timer evidence.");
+
+    var closed = await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CloseSpotReq(spotRid))
+        .PacketName("CloseSpotReq")
+        .Async<CloseSpotReply>();
+    Ensure(closed.Closed, "SM-A5 stage wrapper close reply mismatch.");
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, before, $"spot-closing|rid={options.PlayARid}|spot={spotRid}") == 1;
+    }, "SM-A5 expected stage wrapper lifecycle close evidence.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-A5 passed");
+}
+
 static IHost CreateRouteEgressHost(
     ClientOptions options,
     bool includeControlChannel,
@@ -1246,6 +1313,35 @@ static async Task<StateReply> RequestSpotStateWithRetryAsync(
                 .PacketName("StateReq")
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Async<StateReply>();
+        }
+        catch (TimeoutException ex)
+        {
+            last = ex;
+        }
+    }
+
+    throw new TimeoutException(failureMessage, last);
+}
+
+static async Task<SpotToSpotReply> RequestSpotToSpotWithRetryAsync(
+    IZLinkRouteClient routes,
+    string sourceSpotRid,
+    SpotToSpotReq request,
+    string failureMessage)
+{
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+    TimeoutException? last = null;
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        try
+        {
+            return await routes.Request(
+                    SpotServiceNames.ExternalSpotChannel,
+                    RoutingId.From(sourceSpotRid),
+                    request)
+                .PacketName("SpotToSpotReq")
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async<SpotToSpotReply>();
         }
         catch (TimeoutException ex)
         {

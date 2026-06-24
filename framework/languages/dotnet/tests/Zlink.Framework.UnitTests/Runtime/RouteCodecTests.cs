@@ -164,6 +164,10 @@ public sealed class RouteCodecTests
 
         public void OnSendReady(Action handler) => throw new NotSupportedException();
 
+        public void SetSendHighWaterMark(int value) => throw new NotSupportedException();
+
+        public void SetReceiveHighWaterMark(int value) => throw new NotSupportedException();
+
         public void SetRoutingId(RoutingId routingId) => throw new NotSupportedException();
 
         public void SetMandatory(bool mandatory) => throw new NotSupportedException();

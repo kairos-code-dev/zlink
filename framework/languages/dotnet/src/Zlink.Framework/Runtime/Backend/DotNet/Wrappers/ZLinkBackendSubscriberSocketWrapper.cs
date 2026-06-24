@@ -15,6 +15,16 @@ internal sealed class ZLinkBackendSubscriberSocketWrapper(ISubSocket nativeSocke
         nativeSocket.SetChannelName(channelName);
     }
 
+    public void SetSendHighWaterMark(int value)
+    {
+        nativeSocket.Options.SendHighWaterMark = value;
+    }
+
+    public void SetReceiveHighWaterMark(int value)
+    {
+        nativeSocket.Options.ReceiveHighWaterMark = value;
+    }
+
     public void Connect(string endpoint)
     {
         nativeSocket.Connect(endpoint);

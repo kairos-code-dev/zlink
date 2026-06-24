@@ -140,14 +140,18 @@ internal sealed class ProfileRequestHandler(EvidenceStore evidence)
 internal sealed class ProfileCommandHandler(EvidenceStore evidence)
     : IZLinkSendHandler<ProfileCommand>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         ProfileCommand command,
         ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (command.CommandId.StartsWith("rm-c9-slow-", StringComparison.Ordinal))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
         evidence.Add($"profile-command|rid={evidence.Rid}|command={command.CommandId}|packet={context.PacketName}");
-        return ValueTask.CompletedTask;
     }
 }
 

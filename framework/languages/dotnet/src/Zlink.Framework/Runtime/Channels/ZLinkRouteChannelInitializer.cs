@@ -61,6 +61,7 @@ internal sealed class ZLinkRouteChannelInitializer(
     {
         var router = adapter.CreateRouterSocket(state.Context);
         router.SetChannelName(routedRegistration.RouterChannelId);
+        ZLinkChannelBundleFactory.ApplySocketConfig(router, routedRegistration.SocketConfig);
         if (routedRegistration.RoutingConfig.RoutingId.Size > 0)
         {
             router.SetRoutingId(routedRegistration.RoutingConfig.RoutingId);

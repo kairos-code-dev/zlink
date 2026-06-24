@@ -13,6 +13,7 @@ using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Registry;
 
 var options = ClientOptions.Parse(args);
@@ -88,6 +89,7 @@ static async Task RunAsync(ClientOptions options)
 
     await RunRmC7Async(options);
     await RunRmC8Async(options);
+    await RunRmC9Async(options);
 
     if (!string.IsNullOrWhiteSpace(options.ServerProject))
     {
@@ -438,6 +440,66 @@ static async Task RunRmC8Async(ClientOptions options)
     Ensure(followUp.Value == "profile:rm-c8-after", "RM-C8 follow-up request failed.");
     await host.StopAsync();
     Console.WriteLine("scenario RM-C8 passed");
+}
+
+static async Task RunRmC9Async(ClientOptions options)
+{
+    using var host = CreateChannelClientHost(
+        options,
+        client =>
+        {
+            var channel = client.AddClientServerChannel("profile")
+                .EnableClient(options.ProviderAEndpoint);
+            channel.ConfigureClientSocket().SendHighWaterMark = 1;
+            channel.ConfigureClientSocket().ReceiveHighWaterMark = 1;
+            channel.ConfigureClientSocket().SendTimeout = TimeSpan.FromMilliseconds(100);
+        });
+
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    var marker = $"rm-c9-{Guid.NewGuid():N}";
+    var outcomes = await Task.WhenAll(Enumerable.Range(0, 32)
+        .Select(index => RunBackpressureSendAsync(client, $"{marker}-{index}")));
+
+    Ensure(
+        outcomes.Any(outcome => outcome is BackpressureOutcome.BoundedFailure),
+        "RM-C9 expected at least one bounded failure while the low-HWM socket was saturated.");
+
+    await Task.Delay(TimeSpan.FromSeconds(5));
+    var followUp = await client.RequestToChannel("profile", new ProfileRequest("rm-c9-after"))
+        .PacketName("ProfileRequest")
+        .Timeout(TimeSpan.FromSeconds(5))
+        .Async<ProfileReply>();
+    Ensure(followUp.Value == "profile:rm-c9-after", "RM-C9 follow-up request failed after backlog cleared.");
+    await host.StopAsync();
+    Console.WriteLine("scenario RM-C9 passed");
+}
+
+static async Task<BackpressureOutcome> RunBackpressureSendAsync(
+    IZLinkChannelClient client,
+    string value)
+{
+    try
+    {
+        await client.SendToChannel("profile", new ProfileCommand($"rm-c9-slow-{value}"))
+            .PacketName("ProfileCommand")
+            .Async();
+        return BackpressureOutcome.Accepted;
+    }
+    catch (TimeoutException)
+    {
+        return BackpressureOutcome.BoundedFailure;
+    }
+    catch (ZLinkFrameworkException error) when (error.IsRetriable
+        || error.InnerException is ZlinkSubmitException)
+    {
+        return BackpressureOutcome.BoundedFailure;
+    }
+    catch (Exception error) when (error.Message.Contains("backpressure", StringComparison.OrdinalIgnoreCase)
+        || error.Message.Contains("socket became writable", StringComparison.OrdinalIgnoreCase))
+    {
+        return BackpressureOutcome.BoundedFailure;
+    }
 }
 
 static async Task RunDynamicProviderScenariosAsync(ClientOptions options)
@@ -999,6 +1061,12 @@ internal sealed class DynamicCluster : IAsyncDisposable
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
+}
+
+internal enum BackpressureOutcome
+{
+    Accepted,
+    BoundedFailure
 }
 
 internal sealed class DynamicProcess(

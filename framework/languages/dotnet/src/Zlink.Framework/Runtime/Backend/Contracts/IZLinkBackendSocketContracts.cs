@@ -28,6 +28,13 @@ internal interface IZLinkBackendSocket : IZLinkBackendObject, IAsyncDisposable
     void SetChannelName(string channelName);
 }
 
+internal interface IZLinkBackendSocketOptions : IZLinkBackendSocket
+{
+    void SetSendHighWaterMark(int value);
+
+    void SetReceiveHighWaterMark(int value);
+}
+
 internal interface IZLinkBackendConnectableSocket : IZLinkBackendSocket
 {
     void Connect(string endpoint);
@@ -43,7 +50,7 @@ internal interface IZLinkBackendWeightedSocket : IZLinkBackendSocket
     int GetPeerWeight();
 }
 
-internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket
+internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket, IZLinkBackendSocketOptions
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
@@ -68,7 +75,7 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, I
     Received? Recv(RecvFlags flags = RecvFlags.None);
 }
 
-internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket
+internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket, IZLinkBackendSocketOptions
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
@@ -129,7 +136,7 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, I
         IReadOnlyList<Message> parts);
 }
 
-internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket
+internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket, IZLinkBackendSocketOptions
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
@@ -146,7 +153,7 @@ internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket
         SendFlags flags);
 }
 
-internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocket
+internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocket, IZLinkBackendSocketOptions
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 

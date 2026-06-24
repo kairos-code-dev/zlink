@@ -17,6 +17,30 @@ internal static class ZLinkMessageParts
         }
     }
 
+    public static IReadOnlyList<Message> CopyAll(IReadOnlyList<Message> parts)
+    {
+        var copies = new Message[parts.Count];
+        var copied = 0;
+        try
+        {
+            for (; copied < parts.Count; copied++)
+            {
+                copies[copied] = parts[copied].Copy();
+            }
+
+            return copies;
+        }
+        catch
+        {
+            for (var index = 0; index < copied; index++)
+            {
+                copies[index].Dispose();
+            }
+
+            throw;
+        }
+    }
+
     private sealed class TwoMessageParts(
         Message header,
         Message body) : IReadOnlyList<Message>

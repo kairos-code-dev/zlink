@@ -18,4 +18,4 @@
 | RM-C6 | 구현 | dealer mesh peer request marker가 있다. |
 | RM-C7 | 구현 | build-time weight 75/25 provider를 직접 연결하고 high-weight provider가 더 많이 처리하는 marker가 있다. |
 | RM-C8 | 구현 | 1B, 4KiB, 256KiB, 1MiB payload 왕복 hash/length marker가 있다. MaxMessageSize 초과 거부는 framework channel runtime 미배선으로 별도 한계다. |
-| RM-C9 | public API/harness 대기 | framework channel runtime이 HWM 옵션을 live socket에 적용하지 않아 public E2E에서 포화 backpressure를 직접 만들 수 없다. |
+| RM-C9 | 구현 | low-HWM client socket으로 느린 provider에 다량 send를 보내 bounded timeout/backpressure를 관측하고, backlog 해소 뒤 후속 request가 성공하는 marker가 있다. |

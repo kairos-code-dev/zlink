@@ -20,8 +20,9 @@ internal sealed class ZLinkChannelBundleFactory(
         var adapter = backendAdapterFactory.CreateChannelAdapter();
         var dealer = adapter.CreateDealerSocket(state.Context);
         dealer.SetChannelName(channelName);
+        ApplySocketConfig(dealer, channel.Client!.SocketConfig);
         // weight 는 bind/connect/discovery 前에 적용해 default-weight 노출 창을 없앤다.
-        dealer.SetPeerWeight(channel.Client!.SocketConfig.Weight);
+        dealer.SetPeerWeight(channel.Client.SocketConfig.Weight);
         if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
         {
             dealer.Bind(channel.Client.BindEndpoint);
@@ -69,6 +70,7 @@ internal sealed class ZLinkChannelBundleFactory(
     {
         var router = adapter.CreateRouterSocket(state.Context);
         router.SetChannelName(channelName);
+        ApplySocketConfig(router, channel.Server!.SocketConfig);
         if (channel.Server!.RoutingConfig.RoutingId.Size > 0)
         {
             router.SetRoutingId(channel.Server.RoutingConfig.RoutingId);
@@ -101,6 +103,7 @@ internal sealed class ZLinkChannelBundleFactory(
     {
         var subscriber = adapter.CreateSubscriberSocket(state.Context);
         subscriber.SetChannelName(channelName);
+        ApplySocketConfig(subscriber, channel.Subscriber!.SocketConfig);
         subscriber.SetSubscription(string.Empty);
         var bundle = new ZLinkChannelRuntimeBundle(subscriber);
 
@@ -132,6 +135,7 @@ internal sealed class ZLinkChannelBundleFactory(
         adapter ??= backendAdapterFactory.CreateChannelAdapter();
         var publisher = adapter.CreatePublisherSocket(state.Context);
         publisher.SetChannelName(channelName);
+        ApplySocketConfig(publisher, channel.Publisher!.SocketConfig);
         publisher.Bind(channel.Publisher!.BindEndpoint!);
         var bundle = new ZLinkChannelRuntimeBundle(
             publisher,
@@ -160,6 +164,21 @@ internal sealed class ZLinkChannelBundleFactory(
         return channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
             ? ZLinkAutoConnectType.DealerMesh
             : ZLinkAutoConnectType.ClientServer;
+    }
+
+    internal static void ApplySocketConfig(
+        IZLinkBackendSocketOptions socket,
+        IZLinkSocketConfig config)
+    {
+        if (config.SendHighWaterMark > 0)
+        {
+            socket.SetSendHighWaterMark(config.SendHighWaterMark);
+        }
+
+        if (config.ReceiveHighWaterMark > 0)
+        {
+            socket.SetReceiveHighWaterMark(config.ReceiveHighWaterMark);
+        }
     }
 
     private static void AttachManualConnections(

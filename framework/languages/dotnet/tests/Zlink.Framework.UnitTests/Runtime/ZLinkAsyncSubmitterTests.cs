@@ -53,6 +53,35 @@ public sealed class ZLinkAsyncSubmitterTests
     }
 
     [Fact]
+    public async Task Async_RetriesWithFreshMessageCopies()
+    {
+        Action? ready = null;
+        var submitted = 0;
+
+        await using var submitter = new ZLinkAsyncSubmitter(
+            handler => ready = handler,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        var task = submitter.Async(
+            Message.From("payload"),
+            parts =>
+            {
+                submitted++;
+                using var moved = parts[0].Move();
+                return submitted == 3;
+            });
+
+        Assert.False(task.IsCompleted);
+        Assert.Equal(2, submitted);
+
+        ready?.Invoke();
+        await task;
+
+        Assert.Equal(3, submitted);
+    }
+
+    [Fact]
     public async Task Async_FailsPendingItemWhenSendTimeoutExpires()
     {
         await using var submitter = new ZLinkAsyncSubmitter(

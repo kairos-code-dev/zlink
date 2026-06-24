@@ -103,13 +103,26 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         _stopToken.ThrowIfCancellationRequested();
 
-        if (TrySubmitNow(parts, trySubmit, out _))
+        if (TrySubmitNow(parts, trySubmit, out var submitFailure))
         {
             ZLinkMessageParts.DisposeAll(parts);
             return ValueTask.CompletedTask;
         }
 
+        if (submitFailure is ZlinkSubmitException submitError && !IsRetryableSubmitFailure(submitError))
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            return ValueTask.FromException(ZLinkRequestFailureMapper.CreateSubmitException(
+                submitError,
+                "ZLink command submit"));
+        }
+
         var pending = _operationFactory.CreateCommand(parts, trySubmit);
+        if (submitFailure is not null)
+        {
+            pending.RecordSubmitFailure(submitFailure);
+        }
+
         EnqueuePending(pending, cancellationToken);
         return new ValueTask(pending.Task);
     }
@@ -233,16 +246,15 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 {
                     if (retryableFailure is not null)
                     {
-                        if (!item.CompleteOnAccepted
-                            && retryableFailure is ZlinkSubmitException
+                        if (retryableFailure is ZlinkSubmitException
                             {
                                 Result: not ZlinkSubmitException.ErrorCode.Backpressured
                                     and not ZlinkSubmitException.ErrorCode.NotConnected
-                            } requestSubmitError)
+                            } submitError)
                         {
                             item.TryFail(ZLinkRequestFailureMapper.CreateSubmitException(
-                                requestSubmitError,
-                                "ZLink request submit"));
+                                submitError,
+                                item.CompleteOnAccepted ? "ZLink command submit" : "ZLink request submit"));
                             Dequeue(item);
                             continue;
                         }
@@ -276,14 +288,19 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         out ZlinkException? retryableFailure)
     {
         retryableFailure = null;
+        var submitParts = ZLinkMessageParts.CopyAll(parts);
         try
         {
-            return trySubmit(parts);
+            return trySubmit(submitParts);
         }
-        catch (ZlinkException error) when (IsRetryableSubmitFailure(error))
+        catch (ZlinkException error)
         {
             retryableFailure = error;
             return false;
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(submitParts);
         }
     }
 

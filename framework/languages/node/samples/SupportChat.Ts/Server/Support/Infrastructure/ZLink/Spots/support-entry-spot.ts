@@ -1,5 +1,4 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_ACTOR_GATEWAY } from '@zlink-systems/nestjs';
 import { AgentAvailabilityDirectory } from '../../../Application/ConversationAssignment/agent-availability-directory';
 import { SampleNames } from '../../../../Configuration/sample-names';
 import {
@@ -9,8 +8,6 @@ import {
   openConversationRes
 } from '../../../../../Shared/Contracts/messages';
 import type {
-  ActorRef,
-  ZLinkActorGateway,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage
@@ -34,11 +31,10 @@ class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActorType> {
   readonly context!: ZLinkEntrySpotContext<SupportUserActorType>;
 
   constructor(
-    private readonly availability: AgentAvailabilityDirectoryType,
-    @Inject(ZLINK_ACTOR_GATEWAY) private readonly actorGateway: ZLinkActorGateway
+    private readonly availability: AgentAvailabilityDirectoryType
   ) {}
 
-  async openConversation(actorRef: ActorRef, request: OpenConversationReq & { actorId: string; displayName: string; role?: string }): Promise<OpenConversationRes> {
+  async openConversation(actor: SupportUserActorType, request: OpenConversationReq & { actorId: string; displayName: string; role?: string }): Promise<OpenConversationRes> {
     if ((request.role ?? SupportChatRoles.customer) !== SupportChatRoles.customer) {
       throw new Error('Only customer actors can open a conversation.');
     }
@@ -51,11 +47,11 @@ class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActorType> {
       .packetName(PacketNames.openConversationApiReq)
       .submit<OpenConversationApiRes>();
 
-    const joined = await this.actorGateway
-      .joinSpot(actorRef, opened.conversationId)
+    const joined = await actor.context
+      .joinSpot(opened.conversationId)
       .submit<Partial<JoinConversationRes & { error: string }>>();
     if (joined.resultCode !== 0) {
-      throw new Error(joined.reply?.error ?? `Conversation '${opened.conversationId}' rejected actor '${actorRef.actorId}'.`);
+      throw new Error(joined.reply?.error ?? `Conversation '${opened.conversationId}' rejected actor '${actor.actorId}'.`);
     }
     const state = (joined.reply as JoinConversationRes).state;
     return openConversationRes(opened.conversationId, state);
@@ -93,6 +89,5 @@ class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActorType> {
 }
 
 Inject(AgentAvailabilityDirectory)(SupportEntrySpot, undefined, 0);
-Inject(ZLINK_ACTOR_GATEWAY)(SupportEntrySpot, undefined, 1);
 
 export { SupportEntrySpot };

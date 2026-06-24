@@ -25,7 +25,6 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowPhase;
-import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
@@ -42,7 +41,7 @@ import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
-public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorGateway {
+public final class ZLinkActorRuntime implements ZLinkActorManager {
     @FunctionalInterface
     public interface CreatedNotifier {
         CompletionStage<Void> notify(
@@ -209,36 +208,6 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorGat
         }
         return createLocalActor(actorId, actorType, createRequest, false)
             .thenApply(this::publicRefFor);
-    }
-
-    @Override
-    public ZLinkActorJoinEntrySpotCall joinEntrySpot(
-        ZLinkActorRef actor,
-        RoutingId spotNodeRid,
-        ZLinkMessage request) {
-        if (spotNodeRid == null) {
-            throw new ZLinkConfigurationException("spotNodeRid is required");
-        }
-        return new JoinEntrySpotCall(
-            contextFor(actor),
-            spotNodeRid,
-            messageFromRequest(request),
-            defaultRequestTimeout);
-    }
-
-    @Override
-    public ZLinkActorJoinSpotCall joinSpot(
-        ZLinkActorRef actor,
-        RoutingId spotRid,
-        ZLinkMessage request) {
-        if (spotRid == null) {
-            throw new ZLinkConfigurationException("spotRid is required");
-        }
-        return new JoinSpotCall(
-            contextFor(actor),
-            spotRid,
-            messageFromRequest(request),
-            defaultRequestTimeout);
     }
 
     private Class<? extends ZLinkActorFactory> requireFactory(String actorType) {

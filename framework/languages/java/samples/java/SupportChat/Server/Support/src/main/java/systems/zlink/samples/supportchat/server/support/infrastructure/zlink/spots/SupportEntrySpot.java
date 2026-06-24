@@ -45,7 +45,7 @@ public final class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> 
         actor.setIdentity(request.displayName(), request.role());
         var ref = await(actors.find(actor.actorId()))
             .orElseThrow(() -> new IllegalStateException("Support actor ref is not available."));
-        directory.addOrUpdate(ref, actor.displayName(), actor.role());
+        directory.addOrUpdate(actor, ref);
     }
 
     @Override

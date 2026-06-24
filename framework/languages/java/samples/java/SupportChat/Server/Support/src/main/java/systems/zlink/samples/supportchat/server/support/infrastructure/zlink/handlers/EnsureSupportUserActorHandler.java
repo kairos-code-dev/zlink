@@ -2,16 +2,12 @@ package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.ha
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
-import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
-import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("support")
@@ -20,13 +16,9 @@ public final class EnsureSupportUserActorHandler
         Messages.EnsureSupportUserActorReq,
         Messages.EnsureSupportUserActorRes> {
     private final ZLinkActorManager actors;
-    private final ZLinkActorGateway actorGateway;
 
-    public EnsureSupportUserActorHandler(
-        ZLinkActorManager actors,
-        ZLinkActorGateway actorGateway) {
+    public EnsureSupportUserActorHandler(ZLinkActorManager actors) {
         this.actors = actors;
-        this.actorGateway = actorGateway;
     }
 
     @Override
@@ -37,11 +29,7 @@ public final class EnsureSupportUserActorHandler
             request.actorId(),
             SampleNames.SupportActorType,
             request));
-        var joined = actorGateway
-            .joinEntrySpot(actor, RoutingId.from(SampleTopology.SupportRid))
-            .timeout(SampleTimings.RequestTimeout)
-            .await();
-        return new Messages.EnsureSupportUserActorRes(toSnapshot(joined.actor()));
+        return new Messages.EnsureSupportUserActorRes(toSnapshot(actor));
     }
 
     private static Messages.ActorRefSnapshot toSnapshot(ZLinkActorRef actor) {

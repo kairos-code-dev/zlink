@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](11-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](12-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 12. ZLink 을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
+# 13. ZLink 을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
 > ZLink 은 단순 RPC 라이브러리가 아니라, `.NET` 백엔드에서 **논리 channel, 연결
 > 수명, 동적 상태 노드(SPOT), pub/sub, discovery 를 한 framework 안에서 묶어 주는
@@ -273,10 +273,10 @@ sequenceDiagram
 | "stub/channel 을 재사용하라" | `IZLinkChannelClient` 가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
 | RPC deadline | `RequestToChannel(...).Timeout(...)` | reply 대기 시간 |
 | L7 로드밸런싱(Envoy/Istio) | channel name + `Discovery` 가 peer 분배 | sidecar 불필요 |
-| service discovery(Eureka/xDS) | `UseDiscovery().AddRegistryEndpoint(...)`  + Registry | [08-registry](08-registry.ko.md) |
+| service discovery(Eureka/xDS) | `UseDiscovery().AddRegistryEndpoint(...)`  + Registry | [09-registry](09-registry.ko.md) |
 | interceptor | `IZLinkHandlerFilter` | [4](04-channel-messaging.ko.md) §5 |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay 는 broker 유지 |
-| 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [09-monitoring](09-monitoring.ko.md) |
+| 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [10-monitoring](10-monitoring.ko.md) |
 | 양방향 streaming | STREAM session | 외부 client 수용. HTTP edge 정책은 별도 |
 
 ## 7. 더 보기
@@ -291,8 +291,8 @@ sequenceDiagram
   [17-2](case-studies/17-2-case-live-commerce-chat.ko.md) ·
   [17-3](case-studies/17-3-case-game-chat.ko.md) ·
   [18](case-studies/18-case-trading-system.ko.md)
-- 표면 매핑: [04-channel-messaging](04-channel-messaging.ko.md) §0, [11-interface-catalog](11-interface-catalog.ko.md) §1.6
-- 기능 선택 지도: [10-feature-map](10-feature-map.ko.md)
+- 표면 매핑: [04-channel-messaging](04-channel-messaging.ko.md) §0, [12-interface-catalog](12-interface-catalog.ko.md) §1.6
+- 기능 선택 지도: [11-feature-map](11-feature-map.ko.md)
 
 ### 참고 자료
 
@@ -304,5 +304,5 @@ sequenceDiagram
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](11-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](12-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](case-studies/13-case-ecommerce-checkout.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

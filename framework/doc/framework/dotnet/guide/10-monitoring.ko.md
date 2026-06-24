@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Registry](08-registry.ko.md) | [다음: 기능 맵](10-feature-map.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Registry](09-registry.ko.md) | [다음: 기능 맵](11-feature-map.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 9. Monitoring — runtime 이벤트 관찰
+# 10. Monitoring — runtime 이벤트 관찰
 
 > 정식 계약은 [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)가
 > 다룬다.
@@ -22,7 +22,7 @@ status/topology 변화, spot peer/subject 변화, timer handler 실패 같은 **
 | socket | raw monitor 기반 event (connect/disconnect/handshake 등) |
 | registry | 주기적 snapshot diff 기반 event 합성 |
 | spot | 주기적 snapshot diff 기반 + timer 실패는 즉시 |
-| discovery | 별도 runtime event 없음 → Registry snapshot/query 로 조회([08-registry](08-registry.ko.md)) |
+| discovery | 별도 runtime event 없음 → Registry snapshot/query 로 조회([09-registry](09-registry.ko.md)) |
 
 공통 규칙: event kind 는 `enum`, payload 는 `record struct`, 응용은
 `IZLinkRuntimeEventHandler<TEvent>` 를 DI 에 등록해 수신한다.
@@ -188,11 +188,11 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
   `AddZLinkFramework`/`AddZLinkRegistry` 로 실제로 떠 있는지와
   `IZLinkRuntimeEventHandler<TEvent>` 구현체가 DI 에 등록됐는지 확인한다.
 - **discovery 상태를 받고 싶다** → discovery 는 runtime event 가 아니다. Registry
-  snapshot/query 로 조회한다([08-registry](08-registry.ko.md) §5).
+  snapshot/query 로 조회한다([09-registry](09-registry.ko.md) §5).
 - **health/metric endpoint 를 기대한다** → `AddZLinkMonitoring(...)` 은 socket/
   registry/spot runtime event source 를 등록한다. 별도 health check 또는 metric
   endpoint 를 자동으로 만들지 않는다. health 는 필요하면 `IZLinkRegistryQuery` 같은
-  조회 표면으로 직접 노출한다([08-registry](08-registry.ko.md) §5).
+  조회 표면으로 직접 노출한다([09-registry](09-registry.ko.md) §5).
 - **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch()` 에
   `IZLinkMessageDispatchErrorObserver` 를 등록한다. request 실패는 error reply 로 돌아가고,
   send/publish/subscription/actor send 실패는 drop 되지만 로그, metric, observer event 로 남는다.
@@ -230,11 +230,11 @@ builder.Services.AddZLinkFramework(options =>
 
 ## 6. 더 보기
 
-- 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [11-interface-catalog](11-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
+- 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [12-interface-catalog](12-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
 - 정식 계약: [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)
-- topology 스냅샷 조회: [08-registry](08-registry.ko.md)
+- topology 스냅샷 조회: [09-registry](09-registry.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Registry](08-registry.ko.md) | [다음: 기능 맵](10-feature-map.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Registry](09-registry.ko.md) | [다음: 기능 맵](11-feature-map.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

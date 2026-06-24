@@ -1,5 +1,5 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_ACTOR_GATEWAY, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
+import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import {
   bingoRoomJoinReq,
   bingoRoomSettingsPayload,
@@ -13,8 +13,6 @@ import { MatchBingoActorHandler } from './Handlers/match-bingo-actor-handler';
 import { ObserveBingoEventsHandler } from './Handlers/observe-bingo-events-handler';
 import { PacketNames } from '../../../../../Shared/Contracts/messages';
 import type {
-  ActorRef,
-  ZLinkActorGateway,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkSpotManager
@@ -36,8 +34,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
 
   constructor(
     private readonly roomDirectory: BingoRoomAllocatorType,
-    @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
-    @Inject(ZLINK_ACTOR_GATEWAY) private readonly actorGateway: ZLinkActorGateway
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager
   ) {}
 
   configure(): void {
@@ -45,9 +42,9 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     this.context.handlers.actorRequest(PacketNames.observeBingoEventsReq, ObserveBingoEventsHandler);
   }
 
-  async matchActor(actorRef: ActorRef, request: MatchBingoReq & { actorId: string; displayName: string }): Promise<MatchBingoRes> {
+  async matchActor(actor: PlayerActorType, request: MatchBingoReq & { actorId: string; displayName: string }): Promise<MatchBingoRes> {
     if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-entry-match allocate actor=${actorRef.actorId}`);
+      console.log(`play-entry-match allocate actor=${actor.actorId}`);
     }
     const allocated = await this.roomDirectory.allocate(request, String(this.context.nodeRid), request.mode);
     const roomId = allocated.roomId;
@@ -58,21 +55,21 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
       });
     }
     if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-entry-match join actor=${actorRef.actorId} room=${roomId}`);
+      console.log(`play-entry-match join actor=${actor.actorId} room=${roomId}`);
     }
-    const joined = await this.actorGateway
-      .joinSpot(actorRef, roomId, bingoRoomJoinReq(roomId, request.actorId, request.displayName))
+    const joined = await actor.context
+      .joinSpot(roomId, bingoRoomJoinReq(roomId, request.actorId, request.displayName))
       .submit<BingoRoomJoinRes>();
     if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-entry-match joined actor=${actorRef.actorId} room=${roomId} result=${joined.resultCode}`);
+      console.log(`play-entry-match joined actor=${actor.actorId} room=${roomId} result=${joined.resultCode}`);
     }
     if (joined.resultCode !== 0) {
-      throw new Error(`Room ${roomId} rejected actor '${actorRef.actorId}'.`);
+      throw new Error(`Room ${roomId} rejected actor '${actor.actorId}'.`);
     }
     const state = joined.reply?.state
       ?? await this.spots.executeOnSpot<BingoRoomSpot, unknown>(BingoRoomSpot, roomId, (room) => room.snapshot());
     if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-entry-match done actor=${actorRef.actorId} room=${roomId}`);
+      console.log(`play-entry-match done actor=${actor.actorId} room=${roomId}`);
     }
     return matchBingoRes(roomId, state, allocated.ownerPlayNodeRid);
   }
@@ -120,6 +117,5 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
 
 Inject(BingoRoomAllocator)(BingoEntrySpot, undefined, 0);
 Inject(ZLINK_SPOT_MANAGER)(BingoEntrySpot, undefined, 1);
-Inject(ZLINK_ACTOR_GATEWAY)(BingoEntrySpot, undefined, 2);
 
 export { BingoEntrySpot };

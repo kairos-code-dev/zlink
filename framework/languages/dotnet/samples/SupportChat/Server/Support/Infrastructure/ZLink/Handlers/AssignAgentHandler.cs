@@ -11,7 +11,6 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 [ZLinkHandlerGroup("support")]
 internal sealed class AssignAgentHandler(
     AgentAssignmentService assignment,
-    IZLinkActorGateway actorGateway,
     SupportActorDirectory actors)
     : IZLinkRequestHandler<AssignAgentReq, AssignAgentRes>
 {
@@ -33,8 +32,7 @@ internal sealed class AssignAgentHandler(
 
         var actor = actors.Get(assigned.ActorId);
         var conversationRid = RoutingId.From(request.ConversationId);
-        var joined = await actorGateway.JoinSpot(
-                actor.Ref,
+        var joined = await actor.Actor.Context.JoinSpot(
                 conversationRid,
                 new JoinConversationReq(request.ConversationId))
             .Async(cancellationToken);

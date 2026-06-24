@@ -28,7 +28,7 @@ class SupportEntrySpot(
         actor.setIdentity(request.displayName, request.role)
         val ref = actors.find(actor.actorId()).toCompletableFuture().join()
             .orElseThrow { IllegalStateException("Support actor ref is not available.") }
-        directory.addOrUpdate(ref, actor.displayName, actor.role)
+        directory.addOrUpdate(actor, ref)
     }
 
     override fun onActorJoin(

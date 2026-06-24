@@ -169,7 +169,6 @@ static string Require(string? value, string optionName)
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsureActorHandler(
     IZLinkActorManager actors,
-    IZLinkActorGateway actorGateway,
     NodeOptions node,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<EnsureActorReq, EnsureActorReply>
@@ -186,13 +185,11 @@ internal sealed class EnsureActorHandler(
             new ScenarioActorCreateRequest(request.DisplayName),
             cancellationToken);
 
-        var joined = await actorGateway.JoinEntrySpot(actor, RoutingId.From(node.Rid), ZLinkMessage.Empty)
-            .Async(cancellationToken);
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         return new EnsureActorReply(
-            joined.Actor.ActorId,
-            joined.Actor.NodeRid.ToString(),
-            joined.Actor.Generation);
+            actor.ActorId,
+            actor.NodeRid.ToString(),
+            actor.Generation);
     }
 }
 
@@ -281,7 +278,6 @@ internal sealed class SpotTypeMismatchHandler(
 [ZLinkHandlerGroup("play")]
 internal sealed class JoinUserSpotActorHandler(
     IZLinkActorManager actors,
-    IZLinkActorGateway actorGateway,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorReply>
 {
@@ -295,16 +291,14 @@ internal sealed class JoinUserSpotActorHandler(
             request.ActorId,
             SpotServiceNames.ActorType,
             cancellationToken);
-        var joined = await actorGateway.JoinSpot(actor, RoutingId.From(request.SpotRid), ZLinkMessage.Empty)
-            .Async(cancellationToken);
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
-            + $"|actor={request.ActorId}|accepted={joined.Accepted}");
+            + $"|actor={request.ActorId}|accepted=True");
         return new JoinUserSpotActorReply(
             request.SpotRid,
-            joined.Actor.ActorId,
-            joined.Accepted,
-            joined.Actor.Generation);
+            actor.ActorId,
+            Accepted: true,
+            actor.Generation);
     }
 }
 
@@ -1123,7 +1117,6 @@ internal sealed class ScenarioSession(
 internal sealed class AuthSessionHandler(
     IZLinkRouteClient routes,
     IZLinkActorManager actors,
-    IZLinkActorGateway actorGateway,
     NodeOptions node,
     EvidenceStore evidence)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
@@ -1139,7 +1132,7 @@ internal sealed class AuthSessionHandler(
         _ = dispatch;
         var request = payload.Decode<AuthReq>();
         var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
-            ? await EnsureLocalActorAsync(actors, actorGateway, node, evidence, request, cancellationToken)
+            ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
             : await routes.Request(
                     SpotServiceNames.ControlChannel,
                     RoutingId.From(request.NodeRid),
@@ -1154,7 +1147,6 @@ internal sealed class AuthSessionHandler(
 
     private static async ValueTask<EnsureActorReply> EnsureLocalActorAsync(
         IZLinkActorManager actors,
-        IZLinkActorGateway actorGateway,
         NodeOptions node,
         EvidenceStore evidence,
         AuthReq request,
@@ -1166,13 +1158,11 @@ internal sealed class AuthSessionHandler(
             new ScenarioActorCreateRequest(request.DisplayName),
             cancellationToken);
 
-        var joined = await actorGateway.JoinEntrySpot(actor, RoutingId.From(node.Rid), ZLinkMessage.Empty)
-            .Async(cancellationToken);
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         return new EnsureActorReply(
-            joined.Actor.ActorId,
-            joined.Actor.NodeRid.ToString(),
-            joined.Actor.Generation);
+            actor.ActorId,
+            actor.NodeRid.ToString(),
+            actor.Generation);
     }
 }
 
@@ -1209,7 +1199,6 @@ internal sealed class MultiBindSessionHandler(
 
 internal sealed class UserSpotAuthSessionHandler(
     IZLinkActorManager actors,
-    IZLinkActorGateway actorGateway,
     IZLinkRouteClient routes,
     NodeOptions node,
     EvidenceStore evidence)
@@ -1226,7 +1215,7 @@ internal sealed class UserSpotAuthSessionHandler(
         _ = dispatch;
         var request = payload.Decode<UserSpotAuthReq>();
         var joined = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
-            ? await JoinLocalUserSpotAsync(actors, actorGateway, evidence, request, cancellationToken)
+            ? await JoinLocalUserSpotAsync(actors, evidence, request, cancellationToken)
             : await JoinRemoteUserSpotAsync(routes, request, cancellationToken);
 
         EnsureAccepted(joined);
@@ -1238,7 +1227,6 @@ internal sealed class UserSpotAuthSessionHandler(
 
     private static async ValueTask<JoinUserSpotActorReply> JoinLocalUserSpotAsync(
         IZLinkActorManager actors,
-        IZLinkActorGateway actorGateway,
         EvidenceStore evidence,
         UserSpotAuthReq request,
         CancellationToken cancellationToken)
@@ -1249,16 +1237,14 @@ internal sealed class UserSpotAuthSessionHandler(
             new ScenarioActorCreateRequest(request.DisplayName),
             cancellationToken);
 
-        var joined = await actorGateway.JoinSpot(actor, RoutingId.From(request.SpotRid), ZLinkMessage.Empty)
-            .Async(cancellationToken);
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
-            + $"|actor={request.ActorId}|accepted={joined.Accepted}");
+            + $"|actor={request.ActorId}|accepted=True");
         return new JoinUserSpotActorReply(
             request.SpotRid,
-            joined.Actor.ActorId,
-            joined.Accepted,
-            joined.Actor.Generation);
+            actor.ActorId,
+            Accepted: true,
+            actor.Generation);
     }
 
     private static async ValueTask<JoinUserSpotActorReply> JoinRemoteUserSpotAsync(

@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: STREAM](07-stream.ko.md) | [다음: Monitoring — runtime 이벤트](09-monitoring.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: STREAM](08-stream.ko.md) | [다음: Monitoring — runtime 이벤트](10-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 8. Registry — 구동과 topology 조회
+# 9. Registry — 구동과 topology 조회
 
 > 정식 계약은 [spec/aspnet-core-registry](../spec/aspnet-core-registry.ko.md)가
 > 다룬다. 이 챕터는 Registry 를 띄우고 topology 를 조회하는 사용법이다.
@@ -210,7 +210,7 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 Registry 를 key-value 저장소로 노출하는 것은 아니다. Redis/DB 가 필요하면 custom
-resolver 를 등록한다([06-actor-session](06-actor-session.ko.md) §5).
+resolver 를 등록한다([07-actor-session](07-actor-session.ko.md) §4).
 
 ## 7. lifecycle
 
@@ -222,11 +222,11 @@ resolver 를 등록한다([06-actor-session](06-actor-session.ko.md) §5).
 
 ## 8. 더 보기
 
-- 이 챕터 계약의 실행 검증 예문(options/query/query client): [11-interface-catalog](11-interface-catalog.ko.md) §6 — 검증 클래스 `RegistryContracts`
+- 이 챕터 계약의 실행 검증 예문(options/query/query client): [12-interface-catalog](12-interface-catalog.ko.md) §6 — 검증 클래스 `RegistryContracts`
 - 정식 계약: [spec/aspnet-core-registry](../spec/aspnet-core-registry.ko.md)
-- runtime 이벤트로 topology 변화 관찰: [09-monitoring](09-monitoring.ko.md)
+- runtime 이벤트로 topology 변화 관찰: [10-monitoring](10-monitoring.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: STREAM](07-stream.ko.md) | [다음: Monitoring — runtime 이벤트](09-monitoring.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: STREAM](08-stream.ko.md) | [다음: Monitoring — runtime 이벤트](10-monitoring.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

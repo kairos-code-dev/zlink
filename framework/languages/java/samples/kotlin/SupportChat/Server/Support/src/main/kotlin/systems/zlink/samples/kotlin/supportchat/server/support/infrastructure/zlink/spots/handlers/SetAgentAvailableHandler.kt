@@ -32,7 +32,7 @@ class SetAgentAvailableHandler(
         check(Roles.Agent == actor.role) { "Only agent actors can set availability." }
         val ref = actorManager.find(actor.actorId()).toCompletableFuture().join()
             .orElseThrow { IllegalStateException("Support actor ref is not available.") }
-        actors.addOrUpdate(ref, actor.displayName, actor.role)
+        actors.addOrUpdate(actor, ref)
         availability.setAvailable(actor.actorId(), actor.displayName, request.isAvailable)
         return SetAgentAvailableRes(request.isAvailable)
     }

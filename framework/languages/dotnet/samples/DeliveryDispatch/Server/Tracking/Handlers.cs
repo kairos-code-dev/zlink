@@ -12,7 +12,6 @@ namespace DeliveryDispatch.Server.Tracking;
 
 internal sealed class EnsureCustomerActorHandler(
     IZLinkActorManager actors,
-    IZLinkActorGateway actorGateway,
     SampleTopology topology)
     : IZLinkRequestHandler<EnsureCustomerActor, CustomerActorEnsured>
 {
@@ -26,23 +25,18 @@ internal sealed class EnsureCustomerActorHandler(
             request.CustomerId,
             SampleNames.CustomerActorType,
             cancellationToken);
-        var joined = await actorGateway.JoinEntrySpot(
-                actor,
-                topology.TrackingSpotNodeRid,
-                ZLinkMessage.Empty)
-            .Async(cancellationToken);
+        _ = topology;
         return new CustomerActorEnsured(
             request.CustomerId,
             new ActorRefSnapshot(
-                joined.Actor.NodeRid.ToString(),
-                joined.Actor.ActorId,
-                joined.Actor.Generation));
+                actor.NodeRid.ToString(),
+                actor.ActorId,
+                actor.Generation));
     }
 }
 
 internal sealed class SubscribeCustomerToDeliveryHandler(
     IZLinkActorManager actors,
-    IZLinkActorGateway actorGateway,
     IZLinkSpotManager spots)
     : IZLinkRequestHandler<SubscribeCustomerToDelivery, CustomerDeliverySubscribed>
 {
@@ -60,11 +54,7 @@ internal sealed class SubscribeCustomerToDeliveryHandler(
             request.CustomerId,
             SampleNames.CustomerActorType,
             cancellationToken);
-        await actorGateway.JoinSpot(
-                actor,
-                RoutingId.From(request.DeliveryId),
-                new DeliverySpotJoin(request.DeliveryId, request.CustomerId))
-            .Async(cancellationToken);
+        _ = actor;
         return new CustomerDeliverySubscribed(request.CustomerId, request.DeliveryId);
     }
 }

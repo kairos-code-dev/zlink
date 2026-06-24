@@ -3,7 +3,7 @@ using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal static class ZLinkActorGatewayForwarder
+internal static class ZLinkActorSessionForwarder
 {
     public static bool ShouldForward(
         ZLinkActorRuntimeState actorState,

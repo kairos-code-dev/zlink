@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Actors;
 
-internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : IZLinkActorManager, IZLinkActorGateway
+internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : IZLinkActorManager
 {
     public async ValueTask<ActorRef> CreateAsync(
         string actorId,
@@ -70,22 +70,6 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                 cancellationToken)
             .ConfigureAwait(false);
         return ActorRefFromState(result.Actor.ActorId);
-    }
-
-    public IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-        ActorRef actor,
-        RoutingId spotNodeRid,
-        ZLinkMessage request)
-    {
-        return new ZLinkActorRefJoinEntrySpotCall(runtime, actor, spotNodeRid, request);
-    }
-
-    public IZLinkActorJoinSpotCall JoinSpot(
-        ActorRef actor,
-        RoutingId spotRid,
-        ZLinkMessage request)
-    {
-        return new ZLinkActorRefJoinSpotCall(runtime, actor, spotRid, request);
     }
 
     private ActorRef ActorRefFromState(string actorId)

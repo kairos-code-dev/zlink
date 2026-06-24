@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../guide/10-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../guide/11-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
@@ -81,7 +81,7 @@
 | options | `IZLinkDispatchOptions` | dispatch mode configuration | 4.4.3 |
 | options | `IZLinkCodecRegistryBuilder` | codec registry builder | 6.1 |
 | serializer | `IZLinkMessageSerializer` | `Message` payload 직렬화/역직렬화 | 4.5 |
-| client | `IZLinkChannelClient` | 일반 channel request/send outbound client(client-server, dealer mesh) | 5.1 |
+| client | `IZLinkChannelClient` | 일반 client-server channel request/send outbound client | 5.1 |
 | client | `IZLinkSpotOutbound` | SPOT outbound client | 5.2 |
 | client | `IZLinkRouteClient` | route mesh channel 로 target node 호출 | 5.2.1 |
 | client | `IZLinkSpotPublisherClient` | spot channel publish client | 5.3 |
@@ -89,7 +89,6 @@
 | builder | `IZLinkFrameworkOptions` | framework 등록 루트 builder | 6.1 |
 | builder | `IZLinkClientServerChannelBuilder` | client-server channel 등록 builder | 6.1 |
 | builder | `IZLinkFanoutChannelBuilder` | fanout (pub/sub) channel 등록 builder | 6.1 |
-| builder | `IZLinkDealerMeshChannelBuilder` | dealer mesh channel 등록 builder | 6.1 |
 | builder | `IZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
 | builder | `IZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `IZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
@@ -1234,19 +1233,6 @@ public interface IZLinkActorManager
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorGateway
-{
-    IZLinkActorJoinSpotCall JoinSpot(
-        ActorRef actor,
-        RoutingId spotRid,
-        object request);
-
-    IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-        ActorRef actor,
-        RoutingId spotNodeRid,
-        object request);
-}
-
 public interface IZLinkSessionContext
 {
     string SessionId { get; }
@@ -1961,14 +1947,9 @@ public interface IZLinkChannelClient
 
 ```
 
-`IZLinkChannelClient` 는 일반 channel request/send outbound 표면이다. 호출자는
-`channelName`만 넘기고, runtime 은 등록된 channel bundle 을 보고 client-server
-channel 이면 local client DEALER socket 을, dealer mesh channel 이면 mesh DEALER
-socket 을 선택한다.
-
-client-server channel 과 dealer mesh channel 은 같은 request/send 표면을 쓴다.
-따라서 별도 client-server 전용 별칭을 두지 않고 `IZLinkChannelClient` 하나만
-public DI 표면으로 등록한다.
+`IZLinkChannelClient` 는 client-server channel request/send outbound 표면이다.
+호출자는 `channelName`만 넘기고, runtime 은 등록된 channel bundle 을 보고 local
+client DEALER socket 을 선택한다.
 
 runtime 의 채널 구성 방식은 다음과 같다.
 
@@ -2583,18 +2564,6 @@ public interface IZLinkFanoutChannelBuilder
         where THandler : class;
 }
 
-public interface IZLinkDealerMeshChannelBuilder
-{
-    IZLinkDealerMeshChannelBuilder EnableServer(string endpoint);
-
-    IZLinkDealerMeshChannelBuilder EnableClient();
-
-    IZLinkDealerMeshChannelBuilder EnableClient(string endpoint);
-
-    IZLinkDealerMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
-
-}
-
 public interface IZLinkRouteMeshChannelBuilder
 {
     IZLinkRouteMeshChannelBuilder EnableServer(string endpoint);
@@ -2679,9 +2648,6 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
 - `AddFanoutChannel`
   - pub/sub fanout 채널을 등록한다. builder는 `EnablePublisher(...)`와
     `EnableSubscriber(...)`만 노출한다.
-- `AddDealerMeshChannel`
-  - DEALER mesh 채널을 등록한다. builder는 `EnableServer(...)`와
-    `EnableClient(...)`만 노출한다.
 - `AddRouteMeshChannel`
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
     manual connection을 한 builder 안에서 함께 설정한다.
@@ -3880,5 +3846,5 @@ interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../guide/10-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../guide/11-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](aspnet-core-channel-messaging.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

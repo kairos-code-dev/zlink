@@ -1,4 +1,3 @@
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Codecs.Json;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Configuration;
@@ -12,7 +11,6 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 [ZLinkHandlerGroup("support")]
 internal sealed class EnsureSupportUserActorHandler(
     IZLinkActorManager actors,
-    IZLinkActorGateway actorGateway,
     SampleTopology topology)
     : IZLinkRequestHandler<EnsureSupportUserActorReq, EnsureSupportUserActorRes>
 {
@@ -28,16 +26,12 @@ internal sealed class EnsureSupportUserActorHandler(
             request,
             cancellationToken);
 
-        var joined = await actorGateway.JoinEntrySpot(
-                actor,
-                topology.SupportEntryRid,
-                ZLinkMessage.Empty)
-            .Async(cancellationToken);
+        _ = topology;
 
         return new EnsureSupportUserActorRes(
             new ActorRefSnapshot(
-                joined.Actor.NodeRid.ToBytes().ToArray(),
-                joined.Actor.ActorId,
-                joined.Actor.Generation));
+                actor.NodeRid.ToBytes().ToArray(),
+                actor.ActorId,
+                actor.Generation));
     }
 }

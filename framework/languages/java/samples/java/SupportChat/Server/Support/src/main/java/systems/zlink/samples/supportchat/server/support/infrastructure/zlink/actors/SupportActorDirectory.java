@@ -5,15 +5,15 @@ import java.util.Map;
 import systems.zlink.framework.actors.ZLinkActorRef;
 
 public final class SupportActorDirectory {
-    public record Entry(ZLinkActorRef ref, String displayName, String role) {
+    public record Entry(SupportUserActor actor, ZLinkActorRef ref, String displayName, String role) {
     }
 
     private final Object gate = new Object();
     private final Map<String, Entry> actors = new HashMap<>();
 
-    public void addOrUpdate(ZLinkActorRef ref, String displayName, String role) {
+    public void addOrUpdate(SupportUserActor actor, ZLinkActorRef ref) {
         synchronized (gate) {
-            actors.put(ref.actorId(), new Entry(ref, displayName, role));
+            actors.put(ref.actorId(), new Entry(actor, ref, actor.displayName(), actor.role()));
         }
     }
 

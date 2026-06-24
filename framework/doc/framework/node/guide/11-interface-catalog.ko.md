@@ -12,7 +12,6 @@
 - `ZLINK_FANOUT_CLIENT`
 - `ZLINK_SPOT_MANAGER`
 - `ZLINK_ACTOR_MANAGER`
-- `ZLINK_ACTOR_GATEWAY`
 - `ZLINK_REGISTRY_QUERY`
 
 ## 2. channel
@@ -31,7 +30,6 @@
 - `ZLinkActor`
 - `ZLinkActorContext`
 - `ZLinkActorManager`
-- `ZLinkActorGateway`
 - `ZLinkBoundSession`
 
 ## 4. stream과 connector

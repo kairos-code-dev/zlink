@@ -163,7 +163,6 @@ export interface ActorRef {
 | builder | `ZLinkFrameworkOptions` | framework 등록 루트 builder (= module options) | 6.1 |
 | builder | `ZLinkClientServerChannelBuilder` | client-server channel 등록 builder | 6.1 |
 | builder | `ZLinkFanoutChannelBuilder` | fanout (pub/sub) channel 등록 builder | 6.1 |
-| builder | `ZLinkDealerMeshChannelBuilder` | dealer mesh channel 등록 builder | 6.1 |
 | builder | `ZLinkRouteChannelBuilder` | route channel 등록 builder | 6.1 |
 | builder | `ZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
 | builder | `ZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
@@ -933,20 +932,6 @@ export interface ZLinkActorManager {
   find(actorId: string): Promise<ActorRef | undefined>;
   getOrCreate(actorId: string, actorType: string, request?: ZLinkMessage): Promise<ActorRef>;
 }
-
-export interface ZLinkActorGateway {
-  joinSpot(
-    actor: ActorRef,
-    spotRid: RoutingId,
-    request?: ZLinkMessage,
-  ): ZLinkActorJoinSpotCall;
-
-  joinEntrySpot(
-    actor: ActorRef,
-    spotNodeRid: RoutingId,
-    request?: ZLinkMessage,
-  ): ZLinkActorJoinEntrySpotCall;
-}
 ```
 
 > 코드 기준(중요): dotnet `IZLinkActorJoinSpotCall.Async<TReply>` 는 bare `TReply`
@@ -1175,8 +1160,7 @@ export interface ZLinkChannelClient {
 > Promise<boolean>` 평면 API 가 아니라 builder 표면을 따른다. submit 반환은 `boolean` 이
 > 아니라 `void` / `TReply` 다(backpressure 는 내부 queue 로 처리, no-wait 표면 없음).
 
-client-server channel 과 dealer mesh channel 은 같은 request/send 표면을 쓴다. 그래서
-client-server 전용 별칭을 두지 않고 `ZLinkChannelClient` 하나만 public DI 표면으로 둔다.
+client-server channel 의 request/send 호출에는 `ZLinkChannelClient` public DI 표면을 쓴다.
 
 packet key 해석 순서:
 
@@ -1413,7 +1397,6 @@ export interface ZLinkFrameworkOptions {
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
-  addDealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder;
   addRouteChannel(name: string): ZLinkRouteChannelBuilder;
   addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
   addStreamNode(name: string): ZLinkStreamNodeBuilder;
@@ -1433,7 +1416,6 @@ export interface ZLinkMetadataPolicyBuilder {
 
 - `addClientServerChannel(...)`: request/send 용 client-server 채널 등록.
 - `addFanoutChannel(...)`: pub/sub fanout 채널 등록.
-- `addDealerMeshChannel(...)`: DEALER mesh 채널 등록.
 - `addRouteChannel(...)` / `addRouteMeshChannel(...)`: route channel 등록.
 - `useDiscovery().addRegistryEndpoint(...)`: 일반 channel 역할이 공유할 registry endpoint 집합 등록.
 - `addStreamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
@@ -1479,7 +1461,6 @@ export class AppModule {}
 |------|------|------|
 | `addClientServerChannel(name)` | `addClientServerChannel(name)` | nestjs-channel-messaging |
 | `addFanoutChannel(name)` | `addFanoutChannel(name)` | nestjs-channel-messaging |
-| `addDealerMeshChannel(name)` | `addDealerMeshChannel(name)` | nestjs-channel-messaging |
 | `addRouteMeshChannel(name)` | `addRouteMeshChannel(name)` | nestjs-channel-messaging |
 | `addSpotMesh(name).addNode(...)` | `addSpotNode(name)` | nestjs-spot |
 | `addStreamNode(name)` | `addStreamNode(name)` | nestjs-stream |
@@ -1506,11 +1487,6 @@ export interface ZLinkFanoutChannelBuilder {
   enablePublisher(endpoint: string): this;
   enableSubscriber(): this;
   enableSubscriber(endpoint: string): this;
-}
-
-export interface ZLinkDealerMeshChannelBuilder {
-  enableClient(): this;
-  enableClient(endpoint: string): this;
 }
 
 export interface ZLinkRouteChannelBuilder {
@@ -2048,7 +2024,7 @@ monitoring/registry event payload 에 쓰이는 model 과 enum 이다. 상세 �
 ```ts
 export enum ZLinkAutoConnectType {
   Invalid = 'invalid', RouteMesh = 'routeMesh', ClientServer = 'clientServer',
-  DealerMesh = 'dealerMesh', Fanout = 'fanout', SpotMesh = 'spotMesh',
+  Fanout = 'fanout', SpotMesh = 'spotMesh',
 }
 export enum ZLinkServiceKind { Discovery = 'discovery', SpotSub = 'spotSub', SpotPub = 'spotPub', Socket = 'socket' }
 export enum ZLinkServiceRole { Invalid = 'invalid', Spot = 'spot', Router = 'router', Dealer = 'dealer', Pub = 'pub', Sub = 'sub' }

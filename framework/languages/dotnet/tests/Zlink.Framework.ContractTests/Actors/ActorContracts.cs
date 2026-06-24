@@ -30,8 +30,6 @@ public sealed class ActorContracts
             .Timeout(TimeSpan.FromSeconds(1))
             .Async();
 
-        actor.Configure();
-
         Assert.Equal("player-1", actorRef.ActorId);
         Assert.Equal("player-1", actor.ActorId);
         Assert.True(joinReply.Accepted);

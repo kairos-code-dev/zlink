@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 기능 맵](10-feature-map.ko.md) | [다음: ZLink 을 어디에 쓰나](12-grpc-alternative.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 기능 맵](11-feature-map.ko.md) | [다음: ZLink 을 어디에 쓰나](13-grpc-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 11. 인터페이스 카탈로그 — 모든 계약을 코드로
+# 12. 인터페이스 카탈로그 — 모든 계약을 코드로
 
 > 이 챕터는 framework adapter 가 노출하는 **모든 public 계약 인터페이스**를 한곳에
 > 모아, 각 인터페이스가 실제로 어떻게 쓰이는지 코드와 함께 보여 준다. 개념·사용
@@ -190,8 +190,8 @@ await events
 | Unary RPC | request/response | `IZLinkChannelClient.RequestToChannel(...).Async<TReply>` ([4](04-channel-messaging.ko.md)) |
 | Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).Async` ([4](04-channel-messaging.ko.md)) |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutClient.Publish` + `IZLinkPublishHandler<T>` ([4](04-channel-messaging.ko.md)) |
-| Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([7](07-stream.ko.md), §5) |
-| Service discovery(DNS/xDS) | Registry + Discovery | `UseDiscovery` + `IZLinkRegistryQuery` ([8](08-registry.ko.md), §6) |
+| Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([7](08-stream.ko.md), §5) |
+| Service discovery(DNS/xDS) | Registry + Discovery | `UseDiscovery` + `IZLinkRegistryQuery` ([8](09-registry.ko.md), §6) |
 | Interceptor | handler filter | `IZLinkHandlerFilter` ([4](04-channel-messaging.ko.md) §5, §1.4) |
 | Deadline/timeout | request timeout | `IZLinkRequestCall.Timeout(...)` (§1.1) |
 | Metadata/trailer | metadata 정책 | `ConfigureMetadata` + `IZLinkMessageMetadataPolicy` (§2.1, §5.2) |
@@ -252,11 +252,6 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         .EnableSubscriber("tcp://127.0.0.1:5100");
 }
 {
-    var channel = options.AddDealerMeshChannel("mesh")
-        .EnableServer("tcp://127.0.0.1:5200")
-        .EnableClient("tcp://127.0.0.1:5201");
-}
-{
     var channel = options.AddRouteMeshChannel("play-router")
         .EnableServer("tcp://127.0.0.1:5300")
         .EnableClient("tcp://127.0.0.1:5301");
@@ -267,7 +262,6 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 |------------|------|
 | `IZLinkClientServerChannelBuilder` | client-server channel(`EnableServer`/`EnableClient`, request/send handler, `EnableSpotRouteEgress`) |
 | `IZLinkFanoutChannelBuilder` | fanout channel(`EnablePublisher`/`EnableSubscriber`, publish handler) |
-| `IZLinkDealerMeshChannelBuilder` | dealer mesh channel(`EnableServer`/`EnableClient`, send/request handler) |
 | `IZLinkRouteMeshChannelBuilder` | route mesh channel(`EnableServer`/`EnableClient`, routing/socket, route send/request handler, `EnableSpotRouteEgress`) |
 
 검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`.
@@ -505,21 +499,14 @@ public sealed class RoomRequestHandler
 
 ## 4. Actor — actor · context · factory · handler
 
-> 사용법은 [06-actor-session](06-actor-session.ko.md). 검증 클래스는 `ActorContracts`.
+> 사용법은 [06-actor-spot](06-actor-spot.ko.md). 검증 클래스는 `ActorContracts`.
 
 ### 4.1 actor 와 lifecycle
 
 ```csharp
 ActorRef actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActorManager
-var joinReply = await gateway
-    .JoinSpot(actor, RoutingId.From("room-1"), new JoinRoom("room-1")) // IZLinkActorGateway
-    .Async();
-if (!joinReply.Accepted)   // join 은 거절될 수 있다 — Reply 를 읽기 전에 Accepted 를 먼저 확인한다
-{
-    return;
-}
-var joined = joinReply.Reply.Decode<JoinedRoom>();
-actor.Configure();   // join 성공 뒤에 호출(호출 순서 제약)
+// Spot 밖 public handler는 ActorRef를 보관하거나 session bind에 넘긴다.
+// room join 같은 admission은 Entry Spot actor request handler에서 처리한다.
 ```
 
 | 인터페이스 | 역할 |
@@ -530,7 +517,6 @@ actor.Configure();   // join 성공 뒤에 호출(호출 순서 제약)
 | `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor ref 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
-| `IZLinkActorGateway` | current Spot 밖에서 `ActorRef` 로 Entry Spot 또는 user Spot join 수행 |
 
 검증: `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`.
 
@@ -567,7 +553,7 @@ public sealed class RoomRequestHandler
 
 ## 5. STREAM session — session · context · push · bound session
 
-> 사용법은 [07-stream](07-stream.ko.md), [06-actor-session](06-actor-session.ko.md) §4.
+> 사용법은 [08-stream](08-stream.ko.md), [07-actor-session](07-actor-session.ko.md) §3.
 > 검증 클래스는 `StreamContracts`.
 
 ### 5.1 session 과 session context
@@ -651,7 +637,7 @@ var traceId = metadata.Find("trace-id");        // 없으면 null
 
 ## 6. Registry — status · topology · client options
 
-> 사용법은 [08-registry](08-registry.ko.md). 검증 클래스는 `RegistryContracts`.
+> 사용법은 [09-registry](09-registry.ko.md). 검증 클래스는 `RegistryContracts`.
 
 ```csharp
 options.PubEndpoint = "tcp://127.0.0.1:6001";   // IZLinkRegistryOptions
@@ -678,7 +664,7 @@ var snapshot = await client.TopologyAsync();                    // IZLinkRegistr
 
 ## 7. Monitoring — source 등록과 runtime event handler
 
-> 사용법은 [09-monitoring](09-monitoring.ko.md). 검증 클래스는 `EventingContracts`.
+> 사용법은 [10-monitoring](10-monitoring.ko.md). 검증 클래스는 `EventingContracts`.
 
 ```csharp
 options.AddSocketEvents("router", ZLinkSocketEventKind.Connected); // 인자 = (source 이름, 받을 event kind)
@@ -743,16 +729,16 @@ await timer.CancelAsync();   // IZLinkTimer
 
 > client 측 Stream Connector(`Systems.Zlink.Stream.Connector`)의 `Zlink*` 타입은
 > 별도 client 라이브러리라 이 카탈로그(서버 framework 계약)에 포함되지 않는다.
-> connector 표면은 [07-stream](07-stream.ko.md) §2 와
+> connector 표면은 [08-stream](08-stream.ko.md) §2 와
 > [samples/streaming-client](samples/streaming-client.ko.md)가 다룬다.
 
 ## 10. 더 보기
 
 - 언어 중립 정식 정의: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
-- 기능 선택 지도: [10-feature-map](10-feature-map.ko.md)
+- 기능 선택 지도: [11-feature-map](11-feature-map.ko.md)
 - 계약 테스트 소스: `framework/languages/dotnet/tests/Zlink.Framework.ContractTests`
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 기능 맵](10-feature-map.ko.md) | [다음: ZLink 을 어디에 쓰나](12-grpc-alternative.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 기능 맵](11-feature-map.ko.md) | [다음: ZLink 을 어디에 쓰나](13-grpc-alternative.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -125,14 +125,14 @@ internal sealed class ZLinkSpotActivationDispatcher
                 continue;
             }
 
-            if (ZLinkActorGatewayForwarder.ShouldForward(
+            if (ZLinkActorSessionForwarder.ShouldForward(
                     runtimeState,
                     frame.Actor,
                     out var targetActor))
             {
                 using (frame.Body)
                 {
-                    ZLinkActorGatewayForwarder.Forward(
+                    ZLinkActorSessionForwarder.Forward(
                         runtime,
                         targetActor,
                         frame.SourceNodeRid,

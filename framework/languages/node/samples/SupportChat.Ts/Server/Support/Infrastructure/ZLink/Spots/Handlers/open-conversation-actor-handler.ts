@@ -27,11 +27,7 @@ class OpenConversationActorHandler
     request: OpenConversationReq
   ): Promise<OpenConversationRes> {
     void context;
-    const actorRef = actor.context.actorRef;
-    if (actorRef === undefined) {
-      throw new Error(`Actor '${actor.actorId}' has no ActorRef.`);
-    }
-    return await entrySpot.openConversation(actorRef, {
+    return await entrySpot.openConversation(actor, {
       ...request,
       actorId: actor.actorId,
       displayName: actor.displayName,

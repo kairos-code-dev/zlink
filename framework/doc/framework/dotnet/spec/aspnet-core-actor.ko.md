@@ -172,8 +172,9 @@ application 은 `IZLinkActorManager` 로 actor 생성을 명시한다. `CreateAs
 다른 actor type으로 다시 사용하면 `ActorTypeMismatch` 를 던진다.
 `GetOrCreateAsync(...)` 는 같은 actor type의 기존 actor 를 재사용하고, 없으면
 factory 로 새 actor 를 만든다. public manager 는 application actor 객체를 직접
-돌려주지 않고 `ActorRef` 를 반환한다. current Spot 밖의 handler 는 이 ref를
-`IZLinkActorGateway`에 넘겨 Entry Spot 또는 user Spot join을 수행한다.
+돌려주지 않고 `ActorRef` 를 반환한다. Spot 밖 public handler 는 actor join이나
+admission을 직접 호출하지 않는다. actor 초기 상태는 create request와 Entry Spot의
+`OnCreateActorAsync(...)` 계열 callback에서 설정한다.
 
 ```csharp
 public interface IZLinkActorManager
@@ -215,19 +216,6 @@ public interface IZLinkActorManager
         string actorType,
         TRequest createRequest,
         CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorGateway
-{
-    IZLinkActorJoinSpotCall JoinSpot(
-        ActorRef actor,
-        RoutingId spotRid,
-        object request);
-
-    IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-        ActorRef actor,
-        RoutingId spotNodeRid,
-        object request);
 }
 ```
 

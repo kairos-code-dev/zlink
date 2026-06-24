@@ -16,7 +16,6 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.type.filter.AssignableTypeFilter;
-import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
@@ -35,7 +34,6 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
     private static final String SPOT_REMOTE_ADDRESS_RESOLVER_BEAN_NAME =
         "zlinkSpotRemoteAddressResolver";
     private static final String ACTOR_MANAGER_BEAN_NAME = "zlinkActorManager";
-    private static final String ACTOR_GATEWAY_BEAN_NAME = "zlinkActorGateway";
 
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
@@ -84,9 +82,6 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         }
         if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorManager.class)) {
             registerDelegate(registry, ACTOR_MANAGER_BEAN_NAME, ZLinkFrameworkActorManagerBean.class);
-        }
-        if (hasSpotNode && hasActorFactory && !hasBean(beanFactory, ZLinkActorGateway.class)) {
-            registerDelegate(registry, ACTOR_GATEWAY_BEAN_NAME, ZLinkFrameworkActorGatewayBean.class);
         }
     }
 

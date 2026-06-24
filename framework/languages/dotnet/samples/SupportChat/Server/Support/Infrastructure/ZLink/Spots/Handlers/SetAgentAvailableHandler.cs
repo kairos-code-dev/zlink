@@ -30,7 +30,7 @@ internal sealed class SetAgentAvailableHandler(
 
         var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
             ?? throw new InvalidOperationException($"Support actor ref is not available. actor={actor.ActorId}");
-        actors.AddOrUpdate(actorRef, actor.DisplayName, actor.Role);
+        actors.AddOrUpdate(actor, actorRef);
         availability.SetAvailable(actor.ActorId, actor.DisplayName, message.IsAvailable);
         return new SetAgentAvailableRes(message.IsAvailable);
     }

@@ -23,7 +23,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -232,15 +231,12 @@ final class StreamSessionTest {
     public static final class ActorRelaySession implements ZLinkSession {
         private final ZLinkSessionContext context;
         private final ZLinkActorManager actors;
-        private final ZLinkActorGateway actorGateway;
 
         public ActorRelaySession(
             ZLinkSessionContext context,
-            ZLinkActorManager actors,
-            ZLinkActorGateway actorGateway) {
+            ZLinkActorManager actors) {
             this.context = context;
             this.actors = actors;
-            this.actorGateway = actorGateway;
         }
 
         @Override
@@ -267,10 +263,7 @@ final class StreamSessionTest {
             if ("Bind".equals(dispatch.packetName())) {
                 String actorId = payload.decode(String.class);
                 actors.getOrCreate(actorId, "player")
-                    .thenCompose(actor -> actorGateway
-                        .joinEntrySpot(actor, RoutingId.from("play-node"))
-                        .submit()
-                        .thenCompose(ignored -> context.actors().bind(actor)))
+                    .thenCompose(actor -> context.actors().bind(actor))
                     .thenCompose(ignored -> context.client().reply("bound").submit())
                     .toCompletableFuture()
                     .join();

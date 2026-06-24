@@ -9,7 +9,6 @@ import type {
   ZLinkActorJoinEntrySpotCall,
   ZLinkActorJoinResult,
   ZLinkActorJoinSpotCall,
-  ZLinkActorGateway,
   ZLinkActorManager,
   ZLinkBoundSession,
   ZLinkSpot,
@@ -264,7 +263,7 @@ class ZLinkActorCreationCoordinator {
   }
 }
 
-export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorGateway {
+export class DefaultZLinkActorManager implements ZLinkActorManager {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
   private readonly creation: ZLinkActorCreationCoordinator;
 
@@ -313,30 +312,6 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorGa
     state.setNativeActorRef(actorRef);
     const result = await this.createOrGet(actorId, actorType, false, undefined, signal);
     return result.actor;
-  }
-
-  joinSpot(actorRef: ActorRef, spotRid: RoutingId, request?: unknown): ZLinkActorJoinSpotCall {
-    const resolved = this.requireGatewayActor(actorRef);
-    return new DefaultZLinkActorJoinSpotCall(
-      resolved.state,
-      resolved.actor,
-      this.requireJoinCoordinator(),
-      spotRid,
-      request,
-      this.options.messageSerializers
-    );
-  }
-
-  joinEntrySpot(actorRef: ActorRef, nodeRid: RoutingId, request: unknown): ZLinkActorJoinEntrySpotCall {
-    const resolved = this.requireGatewayActor(actorRef);
-    return new DefaultZLinkActorJoinEntrySpotCall(
-      resolved.state,
-      resolved.actor,
-      this.requireJoinCoordinator(),
-      nodeRid,
-      request,
-      this.options.messageSerializers
-    );
   }
 
   getState(actorId: string): ZLinkActorRuntimeState | undefined {
@@ -442,28 +417,6 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorGa
     const state = new ZLinkActorRuntimeState(actorId);
     this.states.set(actorId, state);
     return state;
-  }
-
-  private requireGatewayActor(actorRef: ActorRef): { readonly actor: ZLinkActor; readonly state: ZLinkActorRuntimeState } {
-    const state = this.states.get(actorRef.actorId);
-    const actor = state?.actor;
-    const nativeRef = state?.nativeActorRef;
-    if (state === undefined || actor === undefined || nativeRef === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actorRef.actorId}' is not created locally.`
-      );
-    }
-    if (
-      !routingIdsEqual(toFrameworkRoutingId(nativeRef.nodeRid), actorRef.nodeRid) ||
-      nativeRef.generation !== actorRef.generation
-    ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `ActorRef for '${actorRef.actorId}' does not match the local actor generation.`
-      );
-    }
-    return { actor, state };
   }
 
   private actorRefForState(state: ZLinkActorRuntimeState): ActorRef {

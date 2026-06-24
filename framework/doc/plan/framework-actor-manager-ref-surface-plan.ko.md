@@ -211,27 +211,16 @@ actor factory 생성자나 외부 handler가 직접 해석하지 않는다. runt
 기존 샘플은 manager에서 actor를 받은 뒤 `actor.Context.JoinEntrySpot(...)` 또는 `actor.context().joinEntrySpot(...)`을
 호출한다. 반환 타입을 actor ref로 바꾸면 이 호출 경로가 사라진다.
 
-공통 대안은 다음 둘 중 하나를 선택한다.
+공통 대안은 다음 둘 중 하나를 검토했다.
 
 | 대안 | 내용 | 판단 |
 |------|------|------|
-| A | actor manager가 `GetOrCreate`만 제공하고, Entry Spot join은 별도 `JoinEntrySpot(actorRef, nodeRid, request)` public API로 제공한다. | actor ref만으로 동작해 경계가 명확하지만 API가 하나 늘어난다. |
-| B | actor manager의 `GetOrCreate`가 생성 후 target Entry Spot admission까지 함께 수행할 수 있는 overload를 제공한다. | 호출부가 단순하지만 생성과 admission 의미가 섞인다. |
+| A | actor manager가 `GetOrCreate`만 제공하고, Entry Spot join은 별도 public gateway API로 제공한다. | Spot 밖 코드에 admission 제어를 다시 노출하므로 취소한다. |
+| B | actor manager의 `GetOrCreate`가 생성 후 target Entry Spot admission까지 함께 수행할 수 있는 overload를 제공한다. | 호출부가 단순하지만 생성과 admission 의미가 섞이므로 채택하지 않는다. |
 
-1차 구현은 A를 선택한다. 생성/조회와 admission은 다른 동작이다. 이름을 유지하라는 요구는 actor manager
-함수 이름에 적용하고, Entry Spot 이동은 별도 API로 분리한다.
-
-후보 이름:
-
-| 언어 | 후보 API |
-|------|----------|
-| .NET | `IZLinkActorGateway.JoinEntrySpotAsync(ActorRef actor, RoutingId nodeRid, ZLinkMessage request, ...)` 또는 actor manager 내부의 `JoinEntrySpotAsync(...)` |
-| Java/Kotlin | `ZLinkActorGateway.joinEntrySpot(ZLinkActorRef actor, RoutingId nodeRid, Object request)` |
-| Node/NestJS | `actorGateway.joinEntrySpot(actorRef, nodeRid, request, signal?)` |
-| C++ | `actor_gateway_t::join_entry_spot(actor_ref_t actor, node_rid_t nodeRid, TRequest request)` |
-
-최종 이름은 언어별 기존 actor gateway/session actor naming과 맞춘다. 단, actor 객체를 받는 overload는
-public 표면에 남기지 않는다.
+최종 방향은 별도 actor gateway public API를 두지 않는 것이다. actor manager는 actor 생성과 조회만
+맡고 `ActorRef`를 반환한다. actor join/admission은 Entry Spot이 소유한 workflow 또는 framework 내부
+runtime 경로에서만 처리한다.
 
 ### 4. actor 상태 변경 경로 이동
 
@@ -241,8 +230,8 @@ actor 상태 변경은 actor manager 호출 직후에 하지 않는다. 기존 �
 | 기존 코드 | 변경 방향 |
 |-----------|-----------|
 | `actor.SetDisplayName(...)` | actor 생성 payload를 받은 `OnCreateActor` 또는 actor request handler에서 처리 |
-| `actor.context().joinEntrySpot(...)` | actor ref 기반 gateway API로 처리 |
-| `actor.context().joinSpot(...)` | Entry Spot actor request handler 또는 actor ref 기반 gateway API로 처리 |
+| `actor.context().joinEntrySpot(...)` | Entry Spot이 소유한 생성/초기화 workflow 또는 framework 내부 runtime 경로로 처리 |
+| `actor.context().joinSpot(...)` | Entry Spot actor request handler 같은 Spot-owned workflow 안에서만 처리 |
 | actor 객체 필드 직접 읽기 | actor request payload, actor state snapshot reply, 또는 Spot-owned domain state에서 읽기 |
 
 Bingo의 경우 `EnsurePlayerActorReq`의 `DisplayName`은 actor 생성 payload로 넘기고,
@@ -414,7 +403,8 @@ To-Be:
 - `get_or_create`는 `result_t<actor_ref_t>`를 반환하고 새 actor 생성 시에만 request를 사용한다.
 - session bind는 `actor_ref_t`만 받는 형태를 표준으로 유지한다.
 - `onCreateActor`는 생성 request를 받을 수 있게 바꾼다.
-- Spot 밖에서 join을 수행해야 하는 경우 actor ref 기반 actor gateway API를 사용한다.
+- Spot 밖 public handler는 join/admission을 직접 수행하지 않는다.
+- join/admission이 필요하면 Entry Spot actor request handler 같은 Spot-owned workflow 또는 framework 내부 runtime 경로로 옮긴다.
 - 내부 dispatch용 `actor_context_t`와 actor instance 접근은 Spot runtime 내부에 둔다.
 
 수정 대상:
@@ -431,7 +421,7 @@ To-Be:
 1. C/C++ headers sync 후 C++ framework가 새 core create payload API를 호출하게 한다.
 2. `session_actor_manager_t` 반환 타입을 `actor_ref_t`로 바꾼다.
 3. `onCreateActor(actor, message_t request)` 또는 typed callback을 추가한다.
-4. actor ref 기반 Entry Spot join gateway를 정리한다.
+4. Spot 밖 public join/admission 호출을 제거하고 Spot-owned workflow로 옮긴다.
 5. C++ Bingo/SupportChat/DeliveryDispatch/TicTacToe 샘플과 regression tests를 갱신한다.
 
 ## Framework 문서 반영 계획
@@ -504,12 +494,12 @@ To-Be:
 | Java | `ActorManagerTest`, `SessionActorsRuntimeIntegrationTest`, `StreamSessionTest`, Spring auto-configuration tests, Bingo/SupportChat/DeliveryDispatch/TicTacToe sample regression |
 | Kotlin | Kotlin Bingo/SupportChat/DeliveryDispatch/TicTacToe sample compile/run checks, Kotlin guide snippets if test fixture가 있으면 함께 수정 |
 | Node | framework actor manager unit tests, stream bind tests, Bingo/SupportChat/DeliveryDispatch/TicTacToe sample smoke |
-| C++ | actor gateway/session manager tests, Bingo/SupportChat/DeliveryDispatch/TicTacToe sample compile, actor ref bind and join regression |
+| C++ | session manager tests, Bingo/SupportChat/DeliveryDispatch/TicTacToe sample compile, actor ref bind regression |
 
 ### 샘플 E2E 기준
 
 - Bingo는 `DisplayName`이 create callback에서 actor에 설정되고, 두 player가 서로 다른 Play node actor ref를 받으며, remote room join 검증이 유지되어야 한다.
-- SupportChat은 session bind와 conversation join이 actor ref만으로 유지되어야 한다.
+- SupportChat은 session bind는 actor ref로 유지하고, conversation join은 Spot-owned workflow 안에서 수행해야 한다.
 - DeliveryDispatch는 customer actor ensure 이후 delivery tracking join/notify가 유지되어야 한다.
 - TicTacToe는 authenticate 이후 session bind와 game join이 유지되어야 한다.
 

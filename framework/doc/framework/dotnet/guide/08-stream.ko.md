@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Actor · Session Actor Dispatch](06-actor-session.ko.md) | [다음: Registry — topology 조회](08-registry.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch](07-actor-session.ko.md) | [다음: Registry — topology 조회](09-registry.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 7. STREAM — 외부 client 받기
+# 8. STREAM — 외부 client 받기
 
 > 서버 측 정식 계약은 [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md),
 > client connector 는 [samples/streaming-client](samples/streaming-client.ko.md)와
@@ -105,7 +105,7 @@ public sealed class ClientHeaderSession(
 | 표면 | 용도 |
 |------|------|
 | `Client.Send(msg).Async()` / `Client.Reply(msg).Async()` | client 로 push / 요청에 응답 |
-| `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-session](06-actor-session.ko.md)) |
+| `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-spot](06-actor-spot.ko.md)) |
 | `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request 를 보내야 할 때는 session 생성자에서
@@ -119,7 +119,7 @@ public sealed class ClientHeaderSession(
   `OnDisconnectedAsync` ← disconnected. session 에 귀속되는 transport 오류는
   `OnErrorAsync` 가 먼저, 연결 종료 확정 후 `OnDisconnectedAsync` 가 따른다.
 - handshake 실패와 bind/accept/close 같은 socket 레벨 오류는 session 콜백이 아니라
-  runtime monitoring 으로만 간다([09-monitoring](09-monitoring.ko.md)).
+  runtime monitoring 으로만 간다([10-monitoring](10-monitoring.ko.md)).
 - **같은 session 의 콜백은 직렬**로 돈다(두 dispatch/lifecycle 이 겹치지 않음).
   frame 도착 순서는 session 별로 보존된다. session 끼리는 독립으로 진행한다.
 - application handler 예외는 `OnErrorAsync` 로 올라오지 않는다.
@@ -269,15 +269,15 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 - **압축이 한쪽만** → server→client 는 typed API 가 자동 해제하지만, client→server
   는 `.Compress()` 를 명시해야 한다. LZ4 만 지원.
 - **session 콜백에서 actor 상태 직접 접근** → 하지 않는다. session 은 actor
-  dispatch/spot 호출만 제출한다([06-actor-session](06-actor-session.ko.md)).
+  dispatch/spot 호출만 제출한다([06-actor-spot](06-actor-spot.ko.md)).
 
 ## 5. 더 보기
 
-- 이 챕터 계약의 실행 검증 예문(session/context/push/bound session): [11-interface-catalog](11-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
+- 이 챕터 계약의 실행 검증 예문(session/context/push/bound session): [12-interface-catalog](12-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
 - 서버 정식 계약: [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md)
 - 전체 예제: [STREAM 샘플](samples/stream-samples.ko.md), [Stream Connector 가이드](samples/streaming-client.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Actor · Session Actor Dispatch](06-actor-session.ko.md) | [다음: Registry — topology 조회](08-registry.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch](07-actor-session.ko.md) | [다음: Registry — topology 조회](09-registry.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

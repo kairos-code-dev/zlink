@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Monitoring](09-monitoring.ko.md) | [다음: 인터페이스 카탈로그](11-interface-catalog.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Monitoring](10-monitoring.ko.md) | [다음: 인터페이스 카탈로그](12-interface-catalog.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 10. 기능 맵 — 무엇을, 얼마나 쉽게, 언제
+# 11. 기능 맵 — 무엇을, 얼마나 쉽게, 언제
 
 > 각 기능의 사용법은 앞 챕터(04~09)가, 정식 계약은 spec 문서가 다룬다. 이 문서는
 > 기능 선택을 돕는 지도다.
@@ -26,12 +26,12 @@
 | 일반 handler 에서 Spot 흐름 진입 | 중간 | HTTP/세션 gateway 가 actor 생성 또는 Entry Spot join 으로 `ActorRef` 확보 | [5](05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
 | Spot timer (게임 루프 등) | 중간 | 주기 tick, heartbeat, 정리 작업 | [5](05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
 | Stage wrapper | 중간 | `playhouse` Stage 류를 SPOT 위에 얹을 때 | [5](05-spot.ko.md) | [stage-wrapper](../spec/stage-wrapper-on-spot.ko.md) |
-| actor / Entry Spot | 높음 | session 과 묶인 actor 로 packet 자동 dispatch | [6](06-actor-session.ko.md) | [actor](../spec/aspnet-core-actor.ko.md) |
-| session actor dispatch | 높음 | 연결 서버와 로직 서버를 분리(재접속 이전성) | [6](06-actor-session.ko.md) | [session-actor-dispatch](../spec/session-actor-dispatch.ko.md) |
-| STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework 로 받기 | [7](07-stream.ko.md) | [stream](../spec/aspnet-core-stream.ko.md) |
-| Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [7](07-stream.ko.md) | [streaming-client](samples/streaming-client.ko.md) |
-| Registry topology 조회 | 중간 | 클러스터 topology snapshot/query | [8](08-registry.ko.md) | [registry](../spec/aspnet-core-registry.ko.md) |
-| runtime monitoring | 낮음 | socket/registry/spot 이벤트 관찰 | [9](09-monitoring.ko.md) | [monitoring](../spec/aspnet-core-monitoring.ko.md) |
+| actor / Entry Spot | 높음 | session 과 묶인 actor 로 packet 자동 dispatch | [6](06-actor-spot.ko.md) | [actor](../spec/aspnet-core-actor.ko.md) |
+| session actor dispatch | 높음 | 연결 서버와 로직 서버를 분리(재접속 이전성) | [6](06-actor-spot.ko.md) | [session-actor-dispatch](../spec/session-actor-dispatch.ko.md) |
+| STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework 로 받기 | [7](08-stream.ko.md) | [stream](../spec/aspnet-core-stream.ko.md) |
+| Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [7](08-stream.ko.md) | [streaming-client](samples/streaming-client.ko.md) |
+| Registry topology 조회 | 중간 | 클러스터 topology snapshot/query | [8](09-registry.ko.md) | [registry](../spec/aspnet-core-registry.ko.md) |
+| runtime monitoring | 낮음 | socket/registry/spot 이벤트 관찰 | [9](10-monitoring.ko.md) | [monitoring](../spec/aspnet-core-monitoring.ko.md) |
 
 ## 3. 빠른 선택 가이드
 
@@ -80,12 +80,12 @@ flowchart TD
 ## 5. 더 보기
 
 - 핵심 개념: [03-concepts](03-concepts.ko.md)
-- ZLink 을 어디에 쓰나(새 서비스 도입 판단): [12-grpc-alternative](12-grpc-alternative.ko.md)
-- 모든 계약 인터페이스를 코드로(ContractTests 검증): [11-interface-catalog](11-interface-catalog.ko.md)
+- ZLink 을 어디에 쓰나(새 서비스 도입 판단): [13-grpc-alternative](13-grpc-alternative.ko.md)
+- 모든 계약 인터페이스를 코드로(ContractTests 검증): [12-interface-catalog](12-interface-catalog.ko.md)
 - 전체 인터페이스 카탈로그(언어 중립 정식): [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
 - 동작/검증 기준: [internals/behavior-matrix](../internals/behavior-matrix.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Monitoring](09-monitoring.ko.md) | [다음: 인터페이스 카탈로그](11-interface-catalog.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Monitoring](10-monitoring.ko.md) | [다음: 인터페이스 카탈로그](12-interface-catalog.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -54,32 +54,3 @@ public interface IZLinkActorManager
             cancellationToken);
     }
 }
-
-public interface IZLinkActorGateway
-{
-    IZLinkActorJoinSpotCall JoinSpot(
-        ActorRef actor,
-        RoutingId spotRid,
-        ZLinkMessage request);
-
-    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
-        ActorRef actor,
-        RoutingId spotRid,
-        TRequest request)
-    {
-        return JoinSpot(actor, spotRid, ZLinkMessage.From(request));
-    }
-
-    IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-        ActorRef actor,
-        RoutingId spotNodeRid,
-        ZLinkMessage request);
-
-    IZLinkActorJoinEntrySpotCall JoinEntrySpot<TRequest>(
-        ActorRef actor,
-        RoutingId spotNodeRid,
-        TRequest request)
-    {
-        return JoinEntrySpot(actor, spotNodeRid, ZLinkMessage.From(request));
-    }
-}

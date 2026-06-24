@@ -3,7 +3,6 @@ package systems.zlink.framework.runtime.host;
 import systems.zlink.framework.runtime.backend.*;
 
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
@@ -115,7 +114,6 @@ public final class ZLinkFrameworkRuntime
             : null;
         if (this.actors != null) {
             runtimeHandlers.add(ZLinkActorManager.class, this.actors);
-            runtimeHandlers.add(ZLinkActorGateway.class, this.actors);
             this.actors.setMessageFlowTracer(
                 new systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer(
                     this.registration.dispatchOptions(),
@@ -273,13 +271,6 @@ public final class ZLinkFrameworkRuntime
     }
 
     public ZLinkActorManager actorManager() {
-        if (actors == null) {
-            throw new ZLinkConfigurationException("Actor runtime is not configured");
-        }
-        return actors;
-    }
-
-    public ZLinkActorGateway actorGateway() {
         if (actors == null) {
             throw new ZLinkConfigurationException("Actor runtime is not configured");
         }

@@ -1,13 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Inject } from '@nestjs/common';
-import { ZLINK_ACTOR_GATEWAY } from '@zlink-systems/nestjs';
 import { PlayActorJoinGameHandler } from './Handlers/play-actor-join-game-handler';
 import { PacketNames, observeMilestoneRes, winMilestoneNotify } from '../../../../../Shared/Contracts/messages';
 import { PlayerWinMilestoneEventHandler } from './Handlers/player-win-milestone-event-handler';
 import { SampleNames } from '../../../../Configuration/sample-settings';
 import type {
-  ActorRef,
-  ZLinkActorGateway,
   ZLinkActor,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -48,8 +44,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
   readonly context!: ZLinkEntrySpotContext<PlayEntrySpotActor>;
 
   constructor(
-    private readonly milestoneObservers: MilestoneObserverRegistry,
-    @Inject(ZLINK_ACTOR_GATEWAY) private readonly actorGateway: ZLinkActorGateway
+    private readonly milestoneObservers: MilestoneObserverRegistry
   ) {}
 
   configure(): void {
@@ -57,7 +52,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
     this.context.handlers.addSubscribe(PlayerWinMilestoneEventHandler, SampleNames.playerMilestoneTopic);
   }
 
-  async join(actorRef: ActorRef, player: PlayerInfo, roomId: string): Promise<JoinGameRes> {
+  async join(actor: PlayEntrySpotActor, player: PlayerInfo, roomId: string): Promise<JoinGameRes> {
     const request: TicTacToeGameJoinReq = {
       roomId,
       player: {
@@ -67,10 +62,10 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
         wins: player.wins
       }
     };
-    const joined = await this.actorGateway.joinSpot(actorRef, roomId, request).submit<Partial<JoinGameRes & { error: string }>>();
+    const joined = await actor.context.joinSpot(roomId, request).submit<Partial<JoinGameRes & { error: string }>>();
     const reply = joined.reply ?? {};
     if (joined.resultCode !== 0) {
-      throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actorRef.actorId}'.`);
+      throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actor.actorId}'.`);
     }
     return reply as JoinGameRes;
   }
@@ -119,6 +114,5 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
 }
 
 Inject(MilestoneObserverRegistry)(PlayEntrySpot, undefined, 0);
-Inject(ZLINK_ACTOR_GATEWAY)(PlayEntrySpot, undefined, 1);
 
 export { MilestoneObserverRegistry, PlayEntrySpot };

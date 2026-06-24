@@ -44,7 +44,7 @@ public final class SetAgentAvailableHandler
         }
         var ref = await(actorManager.find(actor.actorId()))
             .orElseThrow(() -> new IllegalStateException("Support actor ref is not available."));
-        actors.addOrUpdate(ref, actor.displayName(), actor.role());
+        actors.addOrUpdate(actor, ref);
         availability.setAvailable(actor.actorId(), actor.displayName(), request.isAvailable());
         return new Messages.SetAgentAvailableRes(request.isAvailable());
     }

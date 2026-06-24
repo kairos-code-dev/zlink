@@ -86,23 +86,13 @@ public interface ZLinkActorManager {
         String actorType,
         ZLinkMessage createRequest);
 }
-
-public interface ZLinkActorGateway {
-    ZLinkActorJoinSpotCall joinSpot(
-        ZLinkActorRef actor,
-        RoutingId spotRid,
-        Object request);
-    ZLinkActorJoinEntrySpotCall joinEntrySpot(
-        ZLinkActorRef actor,
-        RoutingId spotNodeRid,
-        Object request);
-}
 ```
 
 `actorType`은 application이 정하는 짧은 문자열 키다. 같은 actor id를 다른
 actorType으로 다시 쓰면 설정 또는 런타임 오류로 실패해야 한다.
-manager 는 actor 객체를 직접 반환하지 않고 `ZLinkActorRef`를 반환한다. current
-Spot 밖에서 join을 수행해야 하는 handler는 이 ref를 `ZLinkActorGateway`에 넘긴다.
+manager 는 actor 객체를 직접 반환하지 않고 `ZLinkActorRef`를 반환한다. Spot 밖
+public handler는 이 ref로 actor join/admission을 직접 수행하지 않는다. actor 초기
+상태는 create request와 Entry Spot의 create callback에서 설정한다.
 
 ## 4. Session Binding
 

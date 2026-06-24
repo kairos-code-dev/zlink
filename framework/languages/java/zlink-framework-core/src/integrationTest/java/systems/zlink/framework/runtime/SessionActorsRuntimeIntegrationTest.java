@@ -24,7 +24,6 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.handlers.ZLinkRequest;
@@ -519,23 +518,15 @@ final class SessionActorsRuntimeIntegrationTest {
     @ZLinkHandlerGroup("play-channel")
     public static final class EnsureActorHandler {
         private final ZLinkActorManager actors;
-        private final ZLinkActorGateway actorGateway;
 
-        public EnsureActorHandler(
-            ZLinkActorManager actors,
-            ZLinkActorGateway actorGateway) {
+        public EnsureActorHandler(ZLinkActorManager actors) {
             this.actors = actors;
-            this.actorGateway = actorGateway;
         }
 
         @ZLinkRequest(packetName = "Ensure")
         public String handle(String actorId) {
             return actors.getOrCreate(actorId, "player")
-                .thenCompose(actor -> actorGateway
-                    .joinEntrySpot(actor, RoutingId.from("play-node"))
-                    .timeout(Duration.ofSeconds(2))
-                    .submit())
-                .thenApply(joined -> joined.actor().actorId())
+                .thenApply(actor -> actor.actorId())
                 .toCompletableFuture()
                 .join();
         }

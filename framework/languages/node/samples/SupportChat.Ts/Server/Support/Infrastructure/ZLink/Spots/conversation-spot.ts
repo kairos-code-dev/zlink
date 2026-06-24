@@ -34,7 +34,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
   readonly context!: ZLinkSpotContext<SupportUserActorType, ConversationSpot>;
   private conversationId = 'supportchat-conversation';
   private conversation: Conversation | null = null;
-  private readonly actors = new Map<string, SupportUserActorType>();
+  private readonly actors = new Set<string>();
 
   static useNotifications(notifications: SupportNotificationPublisherLike): void {
     ConversationSpot.notifications = notifications;
@@ -66,7 +66,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
       }
 
       actor.joinConversation(conversation.conversationId);
-      this.actors.set(actor.actorId, actor);
+      this.actors.add(actor.actorId);
       const snapshot = conversation.snapshot();
       // The customer joins after the agent was already assigned, so it never observed the
       // agent's ParticipantJoinedNotify. Deliver a catch-up notify so the customer sees the
@@ -99,7 +99,15 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
     const conversation = this.requireConversation();
     const change = conversation.joinAgent(agent.actorId, agent.displayName, Date.now());
     agent.joinConversation(conversation.conversationId);
-    this.actors.set(agent.actorId, agent);
+    this.actors.add(agent.actorId);
+    await this.requireNotifications().publish(change.events, this.participantActorIds());
+    return change.state;
+  }
+
+  async joinAgentByIdentity(agentActorId: string, agentDisplayName: string): Promise<ConversationState> {
+    const conversation = this.requireConversation();
+    const change = conversation.joinAgent(agentActorId, agentDisplayName, Date.now());
+    this.actors.add(agentActorId);
     await this.requireNotifications().publish(change.events, this.participantActorIds());
     return change.state;
   }
@@ -148,7 +156,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
   }
 
   private participantActorIds(): string[] {
-    return [...this.actors.keys()];
+    return [...this.actors];
   }
 
   private ensureConversationId(conversationId: string): void {

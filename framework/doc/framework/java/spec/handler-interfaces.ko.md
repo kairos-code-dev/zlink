@@ -443,17 +443,6 @@ public interface ZLinkActorManager {
         ZLinkMessage createRequest);
 }
 
-public interface ZLinkActorGateway {
-    ZLinkActorJoinSpotCall joinSpot(
-        ZLinkActorRef actor,
-        RoutingId spotRid,
-        Object request);
-    ZLinkActorJoinEntrySpotCall joinEntrySpot(
-        ZLinkActorRef actor,
-        RoutingId spotNodeRid,
-        Object request);
-}
-
 public interface ZLinkActorContext {
     Optional<RoutingId> spotRid();
     boolean isJoined();
@@ -575,13 +564,6 @@ public interface FanoutChannelBuilder {
     FanoutChannelBuilder addPublishHandler(Class<?> handlerType, @Nullable String packetName);
 }
 
-public interface DealerMeshChannelBuilder {
-    DealerMeshChannelBuilder enableClient();
-    DealerMeshChannelBuilder enableClient(String endpoint);
-    DealerMeshChannelBuilder setDefaultRequestTimeout(Duration timeout);
-    DealerMeshChannelBuilder addHandlerGroup(String groupName);
-}
-
 public interface RouteMeshChannelBuilder {
     RouteMeshChannelBuilder enableServer(String endpoint);
     RouteMeshChannelBuilder setRoutingId(RoutingId routingId);
@@ -611,7 +593,6 @@ public interface ZLinkFrameworkOptions {
     ZLinkDiscoveryBuilder useDiscovery();
     ClientServerChannelBuilder addClientServerChannel(String channelName);
     FanoutChannelBuilder addFanoutChannel(String channelName);
-    DealerMeshChannelBuilder addDealerMeshChannel(String channelName);
     RouteMeshChannelBuilder addRouteMeshChannel(String channelName);
     ZLinkSpotMeshBuilder addSpotMesh(String channelName);
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);

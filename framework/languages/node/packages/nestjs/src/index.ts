@@ -12,7 +12,6 @@ import type {
   ZLinkChannelRequestHandlerRegistration,
   ZLinkChannelSendHandlerRegistration,
   ZLinkClientCapabilityOptions,
-  ZLinkDealerMeshChannelOptions,
   ZLinkChannelOptions,
   ZLinkCodecExtension,
   ZLinkCodecRegistryOptions,
@@ -166,8 +165,6 @@ interface ZLinkNestFanoutChannelOptions extends ZLinkNestHandlerDiscoveryOptions
   readonly publishHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
 }
 
-interface ZLinkNestDealerMeshChannelOptions extends ZLinkDealerMeshChannelOptions {}
-
 interface ZLinkNestRouterMeshOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
@@ -261,7 +258,6 @@ interface ZLinkNestModuleRegistrationOptions extends Omit<
   readonly [ZLINK_MODULE_OPTIONS_BRAND]: true;
   readonly clientServerChannels?: Readonly<Record<string, ZLinkNestClientServerChannelOptions>>;
   readonly fanoutChannels?: Readonly<Record<string, ZLinkNestFanoutChannelOptions>>;
-  readonly dealerMeshChannels?: Readonly<Record<string, ZLinkNestDealerMeshChannelOptions>>;
   readonly routerMeshes?: Readonly<Record<string, ZLinkNestRouterMeshOptions>>;
   readonly spotNodes?: readonly (string | ZLinkSpotNodeRegistrationOptions)[] |
     Readonly<Record<string, ZLinkSpotNodeOptions>>;
@@ -276,7 +272,6 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   useDiscovery(): ZLinkNestDiscoveryBuilder;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
-  addDealerMeshChannel(name: string): ZLinkNestDealerMeshChannelBuilder;
   addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder;
   addSpotNode(name: string): ZLinkNestSpotNodeBuilder;
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder;
@@ -313,11 +308,6 @@ export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptions
   enableSubscriber(endpoint?: string | readonly string[]): this;
   addPublishHandler(packetName: string, handlerType: Type): this;
   addHandlerGroup(groupName: string): this;
-}
-
-export interface ZLinkNestDealerMeshChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
-  bind(endpoint: string | undefined): this;
-  enableClient(endpoint?: string | readonly string[]): this;
 }
 
 export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBuilder {
@@ -362,7 +352,6 @@ export const ZLINK_SPOT_MANAGER = Symbol.for('@zlink-systems/framework:spot-mana
 export const ZLINK_SPOT_OUTBOUND = Symbol.for('@zlink-systems/framework:spot-outbound');
 export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:spot-publisher-client');
 export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
-export const ZLINK_ACTOR_GATEWAY = Symbol.for('@zlink-systems/framework:actor-gateway');
 export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
 export const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:registry-runtime');
 export const ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-query');
@@ -538,7 +527,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   private additionalOptions: ZLinkNestFrameworkAdditionalOptions = {};
   private readonly clientServerChannels: Record<string, ZLinkNestClientServerChannelOptions> = {};
   private readonly fanoutChannels: Record<string, ZLinkNestFanoutChannelOptions> = {};
-  private readonly dealerMeshChannels: Record<string, ZLinkNestDealerMeshChannelOptions> = {};
   private readonly routerMeshes: Record<string, ZLinkNestRouterMeshOptions> = {};
   private readonly streams: Record<string, ZLinkStreamNodeOptions> = {};
   private readonly spotNodes: Record<string, ZLinkSpotNodeOptions> = {};
@@ -613,11 +601,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     return new DefaultZLinkNestFanoutChannelBuilder(this, this.fanoutChannels[name]);
   }
 
-  addDealerMeshChannel(name: string): ZLinkNestDealerMeshChannelBuilder {
-    this.dealerMeshChannels[name] ??= {};
-    return new DefaultZLinkNestDealerMeshChannelBuilder(this, this.dealerMeshChannels[name]);
-  }
-
   addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
     this.routerMeshes[name] ??= {};
     return new DefaultZLinkNestRouterMeshBuilder(this, this.routerMeshes[name]);
@@ -639,7 +622,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
       ...this.additionalOptions,
       clientServerChannels: { ...this.clientServerChannels },
       fanoutChannels: { ...this.fanoutChannels },
-      dealerMeshChannels: { ...this.dealerMeshChannels },
       routerMeshes: { ...this.routerMeshes },
       streams: { ...this.streams },
       spotNodes: { ...this.spotNodes },
@@ -689,10 +671,6 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
 
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
     return this.root.addFanoutChannel(name);
-  }
-
-  addDealerMeshChannel(name: string): ZLinkNestDealerMeshChannelBuilder {
-    return this.root.addDealerMeshChannel(name);
   }
 
   addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
@@ -852,22 +830,6 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestChildBuilder impleme
 
   addPublishHandler(packetName: string, handlerType: Type): this {
     this.channelOptions.publishHandlerTypes = [...(this.channelOptions.publishHandlerTypes ?? []), { packetName, handlerType }];
-    return this;
-  }
-}
-
-class DefaultZLinkNestDealerMeshChannelBuilder extends ZLinkNestChildBuilder implements ZLinkNestDealerMeshChannelBuilder {
-  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly channelOptions: Mutable<ZLinkNestDealerMeshChannelOptions>) {
-    super(root);
-  }
-
-  bind(endpoint: string | undefined): this {
-    this.channelOptions.bind = endpoint;
-    return this;
-  }
-
-  enableClient(endpoint?: string | readonly string[]): this {
-    this.channelOptions.client = endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) };
     return this;
   }
 }
@@ -1718,13 +1680,6 @@ function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions):
     };
   }
 
-  for (const [name, channel] of Object.entries(options.dealerMeshChannels ?? {})) {
-    assertChannelNameAvailable(channels, name, 'DealerMeshChannel');
-    channels[name] = {
-      dealerMesh: { ...channel }
-    };
-  }
-
   for (const [name, routerMesh] of Object.entries(options.routerMeshes ?? {})) {
     const { handlerGroups: _handlerGroups, ...routeChannel } = routerMesh;
     routeChannels.push({
@@ -2321,9 +2276,6 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
   const providers = CONDITIONAL_CLIENT_PROVIDER_SPECS
     .filter((spec) => spec.isEnabled(registration))
     .map((spec) => createConditionalClientProvider(spec, registration));
-  if (framework.hasActorManager(registration)) {
-    providers.push({ provide: ZLINK_ACTOR_GATEWAY, useExisting: ZLINK_ACTOR_MANAGER });
-  }
   if (framework.hasSpotRemoteAddressResolver(registration)) {
     providers.push(...spotRemoteAddressResolverProviders(registration));
   }
@@ -2390,11 +2342,6 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
 function conditionalClientProvidersForFactory(): Provider[] {
   return [
     ...CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForFactory),
-    {
-      provide: ZLINK_ACTOR_GATEWAY,
-      inject: [ZLINK_ACTOR_MANAGER],
-      useFactory: (actorManager: unknown) => actorManager
-    },
     {
       provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
       inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService, ZLINK_FRAMEWORK_RUNTIME],
@@ -2469,7 +2416,6 @@ function conditionalClientTokens(): InjectionToken[] {
     ZLINK_SPOT_OUTBOUND,
     ZLINK_SPOT_PUBLISHER_CLIENT,
     ZLINK_ACTOR_MANAGER,
-    ZLINK_ACTOR_GATEWAY,
     ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER
   ];
 }

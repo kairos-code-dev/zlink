@@ -104,79 +104,9 @@ internal sealed class ZLinkActorJoinSpotCall(
     }
 }
 
-internal sealed class ZLinkActorRefJoinSpotCall(
-    ZLinkFrameworkRuntime runtime,
-    ActorRef actor,
-    RoutingId spotRid,
-    ZLinkMessage request) : IZLinkActorJoinSpotCall
-{
-    private TimeSpan? _timeout;
-
-    public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout)
-    {
-        _timeout = timeout;
-        return this;
-    }
-
-    public async ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
-    {
-        var timeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-
-        try
-        {
-            return await runtime.JoinActorAsync(
-                spotRid,
-                actor,
-                request,
-                timeoutSource.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutSource.IsCancellationRequested)
-        {
-            throw new TimeoutException($"SPOT actor join timed out after {timeout}.");
-        }
-    }
-}
-
 internal sealed class ZLinkActorJoinEntrySpotCall(
     ZLinkFrameworkRuntime runtime,
     IZLinkActor actor,
-    RoutingId spotNodeRid,
-    ZLinkMessage request) : IZLinkActorJoinEntrySpotCall
-{
-    private TimeSpan? _timeout;
-
-    public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout)
-    {
-        _timeout = timeout;
-        return this;
-    }
-
-    public async ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
-    {
-        var timeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-
-        try
-        {
-            return await runtime.JoinActorEntrySpotAsync(
-                spotNodeRid,
-                actor,
-                request,
-                timeoutSource.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutSource.IsCancellationRequested)
-        {
-            throw new TimeoutException($"Entry SPOT actor join timed out after {timeout}.");
-        }
-    }
-}
-
-internal sealed class ZLinkActorRefJoinEntrySpotCall(
-    ZLinkFrameworkRuntime runtime,
-    ActorRef actor,
     RoutingId spotNodeRid,
     ZLinkMessage request) : IZLinkActorJoinEntrySpotCall
 {

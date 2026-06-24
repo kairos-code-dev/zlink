@@ -197,21 +197,11 @@ export interface ZLinkActorManager {
     signal?: AbortSignal,
   ): Promise<ActorRef>;
 }
-
-export interface ZLinkActorGateway {
-  joinSpot(
-    actor: ActorRef,
-    spotRid: RoutingId,
-    request?: ZLinkMessage,
-  ): ZLinkActorJoinSpotCall;
-
-  joinEntrySpot(
-    actor: ActorRef,
-    spotNodeRid: RoutingId,
-    request?: ZLinkMessage,
-  ): ZLinkActorJoinEntrySpotCall;
-}
 ```
+
+`ZLinkActorManager` 는 actor 객체가 아니라 `ActorRef`만 반환한다. Spot 밖 public
+handler는 이 ref로 actor join/admission을 직접 수행하지 않는다. actor 초기 상태는
+create request와 Entry Spot의 `onCreateActor` callback에서 설정한다.
 
 `ActorAlreadyExists` / `ActorTypeMismatch` 는 `ZLinkFrameworkException` 의
 `kind`(`ZLinkFrameworkErrorKind`) 값이다 (dotnet `ZLinkFrameworkErrorKind` 에 대응). actor type 충돌은

@@ -99,7 +99,7 @@ from .actor_ops import (
 )
 from .request_progress import (
     PendingRequest as _PendingRequest,
-    RequestProgressPump as _RequestProgressPump,
+    SpotRequestRuntime as _SpotRequestRuntime,
     acquire_external_request_progress as _acquire_external_request_progress,
     release_external_request_progress as _release_external_request_progress,
 )
@@ -332,9 +332,6 @@ class Spot(SpotActorJoinMixin):
 
     def _init_state(self, node):
         self._node = node
-        self._request_pending = {}
-        self._request_progress_targets = {}
-        self._request_reply_handler = None
         self._routed_handler = None
         self._routed_handler_cb = None
         self._dispatch_handler = None
@@ -350,9 +347,9 @@ class Spot(SpotActorJoinMixin):
         self._actor_lifecycle_on_leave_cb = None
         self._own = True
         self._timers = {}
-        self._request_progress = _RequestProgressPump(
-            self._request_progress_handles,
-            lambda: bool(self._request_pending),
+        self._request_runtime = _SpotRequestRuntime(
+            self._request_progress_target,
+            _make_message_list,
             idle_grace_s=_REQUEST_PROGRESS_IDLE_GRACE_S,
         )
 
@@ -361,17 +358,6 @@ class Spot(SpotActorJoinMixin):
 
     def _unregister_timer(self, timer):
         self._timers.pop(timer._handle, None)
-
-    def _request_progress_handles(self):
-        """Yield handles to register on the request-completion poller."""
-        seen = set()
-        result = []
-        for _kind, handle in list(self._request_progress_targets.values()):
-            if not handle or handle in seen:
-                continue
-            seen.add(handle)
-            result.append(handle)
-        return result
 
     def _request_progress_target(self, channel_bytes=None):
         return ("spot", self._handle)
@@ -567,44 +553,27 @@ class Spot(SpotActorJoinMixin):
         )
 
     def _request_to_channel_callback(self, channel_bytes, payload, callback, *, flags=0, timeout=0):
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        self._request_pending[handle] = pending
-        try:
-            self._start_channel_request(channel_bytes, payload, flags, timeout, handle)
-            self._request_progress.ensure_running()
-            return True
-        except SubmitError as ex:
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
-            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
-        except Exception:
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
-            raise
+        return self._request_runtime.start(
+            callback,
+            channel_bytes,
+            lambda handle: self._start_channel_request(
+                channel_bytes, payload, flags, timeout, handle
+            ),
+            flags=flags,
+            backpressure_returns_false=True,
+        )
 
     def _start_channel_request(self, channel_bytes, payload, flags, timeout, handle):
         native_parts = self._native_parts_from_payload(payload)
-        reply_handler = self._ensure_request_reply_handler()
-        self._request_progress_targets[handle] = self._request_progress_target(
-            channel_bytes
+        _submit_channel_request(
+            self._handle,
+            channel_bytes,
+            native_parts,
+            self._request_runtime.reply_handler,
+            handle,
+            flags,
+            _timeout_to_ms(timeout),
         )
-        try:
-            _submit_channel_request(
-                self._handle,
-                channel_bytes,
-                native_parts,
-                reply_handler,
-                handle,
-                flags,
-                _timeout_to_ms(timeout),
-            )
-        except Exception:
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
-            raise
 
     def request_to_spot(self, dest_node_rid, dest_spot_rid):
         return RequestOp(
@@ -615,25 +584,15 @@ class Spot(SpotActorJoinMixin):
         )
 
     def _request_to_spot_callback(self, dest_node_rid, dest_spot_rid, parts, callback, *, flags=0, timeout=0):
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        self._request_pending[handle] = pending
-        try:
-            self._start_spot_request(
+        return self._request_runtime.start(
+            callback,
+            None,
+            lambda handle: self._start_spot_request(
                 dest_node_rid, dest_spot_rid, parts, flags, timeout, handle
-            )
-            self._request_progress.ensure_running()
-            return True
-        except SubmitError as ex:
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
-            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
-        except Exception:
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
-            raise
+            ),
+            flags=flags,
+            backpressure_returns_false=True,
+        )
 
     def request_to_router(self, peer_rid):
         return RequestOp(
@@ -652,23 +611,16 @@ class Spot(SpotActorJoinMixin):
         native_parts = self._native_parts_from_payload(payload)
         native_node = _copy_routing_id(dest_node_rid)
         native_spot = _copy_routing_id(dest_spot_rid)
-        reply_handler = self._ensure_request_reply_handler()
-        self._request_progress_targets[handle] = self._request_progress_target()
-        try:
-            _submit_spot_request(
-                self._handle,
-                native_node,
-                native_spot,
-                native_parts,
-                reply_handler,
-                handle,
-                flags,
-                _timeout_to_ms(timeout),
-            )
-        except Exception:
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
-            raise
+        _submit_spot_request(
+            self._handle,
+            native_node,
+            native_spot,
+            native_parts,
+            self._request_runtime.reply_handler,
+            handle,
+            flags,
+            _timeout_to_ms(timeout),
+        )
 
     def _recv_subscribed(self, flags):
         return _recv_spot_subscribed(self._handle, flags)
@@ -805,29 +757,19 @@ class Spot(SpotActorJoinMixin):
             _raise_last_error()
         self._send_ready_handler_cb = callback
 
-    def _ensure_request_reply_handler(self):
-        if self._request_reply_handler is None:
-            self._request_reply_handler = _REPLY_HANDLER(self._on_reply)
-        return self._request_reply_handler
-
     def _request_callback(self, native_func, routing_ids, payload, callback, *, flags=0, timeout=0):
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        self._request_pending[handle] = pending
-        try:
-            self._start_request(native_func, routing_ids, payload, flags, timeout, handle)
-            self._request_progress.ensure_running()
-            return True
-        except Exception:
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
-            raise
+        return self._request_runtime.start(
+            callback,
+            None,
+            lambda handle: self._start_request(
+                native_func, routing_ids, payload, flags, timeout, handle
+            ),
+            flags=flags,
+        )
 
     def _start_request(self, native_func, routing_ids, payload, flags, timeout, handle):
         native_parts = _clone_payload(payload)
         native_rids = [_copy_routing_id(rid) for rid in routing_ids]
-        reply_handler = self._ensure_request_reply_handler()
-        self._request_progress_targets[handle] = self._request_progress_target()
         if len(native_rids) == 2:
             rc, err = _submit_parts(
                 native_parts,
@@ -836,7 +778,7 @@ class Spot(SpotActorJoinMixin):
                     ctypes.byref(native_rids[0]),
                     ctypes.byref(native_rids[1]),
                     part_ptr,
-                    reply_handler,
+                    self._request_runtime.reply_handler,
                     ctypes.c_void_p(handle),
                     int(flags),
                     part_flag,
@@ -850,7 +792,7 @@ class Spot(SpotActorJoinMixin):
                     self._handle,
                     ctypes.byref(native_rids[0]),
                     part_ptr,
-                    reply_handler,
+                    self._request_runtime.reply_handler,
                     ctypes.c_void_p(handle),
                     int(flags),
                     part_flag,
@@ -860,21 +802,8 @@ class Spot(SpotActorJoinMixin):
         else:
             raise ValueError("routing_ids must not be empty")
         if rc != 0:
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
+            self._request_runtime.discard(handle)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
-
-    def _on_reply(self, result_code, parts, part_count, userdata):
-        handle = ctypes.cast(userdata, ctypes.c_void_p).value
-        self._request_progress_targets.pop(handle, None)
-        pending = self._request_pending.pop(handle, None)
-        if pending is None:
-            return
-        result = _request_result_from_code(int(result_code))
-        received = []
-        if result == RequestResult.OK:
-            received = _make_message_list(parts, part_count)
-        pending.resolve(result, received, _request_result_native_errno(result))
 
     def _submit_reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq, parts, flags):
         _ensure_reply_flags_supported(flags)
@@ -1025,10 +954,7 @@ class Spot(SpotActorJoinMixin):
         self._dispatch_handler_cb = callback
 
     def _cancel_pending_requests(self):
-        for handle, pending in list(self._request_pending.items()):
-            self._request_pending.pop(handle, None)
-            self._request_progress_targets.pop(handle, None)
-            pending.resolve(RequestResult.TERMINATED, None, _ERRNO_ETERM)
+        self._request_runtime.cancel_all(RequestResult.TERMINATED, _ERRNO_ETERM)
 
     def close(self):
         if not self._handle:
@@ -1043,8 +969,7 @@ class Spot(SpotActorJoinMixin):
         self._dispatch_handler = None
         self._dispatch_handler_cb = None
         self._cancel_pending_requests()
-        self._request_progress.stop()
-        self._request_reply_handler = None
+        self._request_runtime.stop()
         lifecycle_on_join_cb = self._actor_lifecycle_on_join_cb
         lifecycle_on_leave_cb = self._actor_lifecycle_on_leave_cb
         self._actor_lifecycle_on_join_cb = None

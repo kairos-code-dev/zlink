@@ -521,6 +521,39 @@ capability_builder_t &capability_builder_t::set_routing_id (zlink::routing_id_t 
     return *this;
 }
 
+capability_builder_t &capability_builder_t::send_high_water_mark (zlink::message_count_t value)
+{
+    auto &snapshot = capability_snapshot (*_state);
+    snapshot.enabled = true;
+    snapshot.send_high_water_mark = value;
+    return *this;
+}
+
+capability_builder_t &
+capability_builder_t::receive_high_water_mark (zlink::message_count_t value)
+{
+    auto &snapshot = capability_snapshot (*_state);
+    snapshot.enabled = true;
+    snapshot.receive_high_water_mark = value;
+    return *this;
+}
+
+capability_builder_t &capability_builder_t::max_message_size (zlink::byte_size_t value)
+{
+    auto &snapshot = capability_snapshot (*_state);
+    snapshot.enabled = true;
+    snapshot.max_message_size = value;
+    return *this;
+}
+
+capability_builder_t &capability_builder_t::peer_weight (zlink::peer_weight_t value)
+{
+    auto &snapshot = capability_snapshot (*_state);
+    snapshot.enabled = true;
+    snapshot.peer_weight = value;
+    return *this;
+}
+
 channel_capability_snapshot_t capability_builder_t::snapshot () const
 {
     return capability_snapshot (*_state);

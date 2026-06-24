@@ -363,6 +363,36 @@ class client_server_channel_builder_t
         return *this;
     }
 
+    client_server_channel_builder_t &
+    server_send_high_water_mark (zlink::message_count_t value)
+    {
+        _server_send_high_water_mark = value;
+        apply_channel ();
+        return *this;
+    }
+
+    client_server_channel_builder_t &
+    server_receive_high_water_mark (zlink::message_count_t value)
+    {
+        _server_receive_high_water_mark = value;
+        apply_channel ();
+        return *this;
+    }
+
+    client_server_channel_builder_t &server_max_message_size (zlink::byte_size_t value)
+    {
+        _server_max_message_size = value;
+        apply_channel ();
+        return *this;
+    }
+
+    client_server_channel_builder_t &server_peer_weight (zlink::peer_weight_t value)
+    {
+        _server_peer_weight = value;
+        apply_channel ();
+        return *this;
+    }
+
     client_server_channel_builder_t &enable_client ()
     {
         _client_enabled = true;
@@ -378,6 +408,35 @@ class client_server_channel_builder_t
         _client_enabled = true;
         _client_uses_discovery = false;
         _client_endpoints.push_back (std::move (endpoint));
+        apply_channel ();
+        return *this;
+    }
+
+    client_server_channel_builder_t &client_send_high_water_mark (zlink::message_count_t value)
+    {
+        _client_send_high_water_mark = value;
+        apply_channel ();
+        return *this;
+    }
+
+    client_server_channel_builder_t &
+    client_receive_high_water_mark (zlink::message_count_t value)
+    {
+        _client_receive_high_water_mark = value;
+        apply_channel ();
+        return *this;
+    }
+
+    client_server_channel_builder_t &client_max_message_size (zlink::byte_size_t value)
+    {
+        _client_max_message_size = value;
+        apply_channel ();
+        return *this;
+    }
+
+    client_server_channel_builder_t &client_peer_weight (zlink::peer_weight_t value)
+    {
+        _client_peer_weight = value;
         apply_channel ();
         return *this;
     }
@@ -409,9 +468,17 @@ class client_server_channel_builder_t
         const auto channel_name = _channel_name;
         const auto server_endpoint = _server_endpoint;
         const auto server_routing_id = _server_routing_id;
+        const auto server_send_high_water_mark = _server_send_high_water_mark;
+        const auto server_receive_high_water_mark = _server_receive_high_water_mark;
+        const auto server_max_message_size = _server_max_message_size;
+        const auto server_peer_weight = _server_peer_weight;
         const auto client_enabled = _client_enabled;
         const auto client_endpoints = _client_endpoints;
         const auto client_uses_discovery = _client_uses_discovery;
+        const auto client_send_high_water_mark = _client_send_high_water_mark;
+        const auto client_receive_high_water_mark = _client_receive_high_water_mark;
+        const auto client_max_message_size = _client_max_message_size;
+        const auto client_peer_weight = _client_peer_weight;
         const auto default_request_timeout = _default_request_timeout;
         const auto discovery_capability = "client_server_channel '" + channel_name + "' client";
         if (!server_endpoint.empty ()) {
@@ -431,8 +498,11 @@ class client_server_channel_builder_t
         }
         _options->set_zlink_action (
           "client_server_channel:" + channel_name,
-          [channel_name, server_endpoint, server_routing_id, client_enabled, client_endpoints,
-           client_uses_discovery, default_request_timeout] (zlink_builder_t &zlink) {
+          [channel_name, server_endpoint, server_routing_id, server_send_high_water_mark,
+           server_receive_high_water_mark, server_max_message_size, server_peer_weight,
+           client_enabled, client_endpoints, client_uses_discovery,
+           client_send_high_water_mark, client_receive_high_water_mark, client_max_message_size,
+           client_peer_weight, default_request_timeout] (zlink_builder_t &zlink) {
               auto channel = zlink.channel (channel_name);
               if (default_request_timeout) {
                   channel.default_request_timeout (*default_request_timeout);
@@ -442,10 +512,34 @@ class client_server_channel_builder_t
                   if (server_routing_id) {
                       server.set_routing_id (*server_routing_id);
                   }
+                  if (server_send_high_water_mark) {
+                      server.send_high_water_mark (*server_send_high_water_mark);
+                  }
+                  if (server_receive_high_water_mark) {
+                      server.receive_high_water_mark (*server_receive_high_water_mark);
+                  }
+                  if (server_max_message_size) {
+                      server.max_message_size (*server_max_message_size);
+                  }
+                  if (server_peer_weight) {
+                      server.peer_weight (*server_peer_weight);
+                  }
                   server.bind (server_endpoint);
               }
               if (client_enabled) {
                   auto client = channel.enable_client ();
+                  if (client_send_high_water_mark) {
+                      client.send_high_water_mark (*client_send_high_water_mark);
+                  }
+                  if (client_receive_high_water_mark) {
+                      client.receive_high_water_mark (*client_receive_high_water_mark);
+                  }
+                  if (client_max_message_size) {
+                      client.max_message_size (*client_max_message_size);
+                  }
+                  if (client_peer_weight) {
+                      client.peer_weight (*client_peer_weight);
+                  }
                   if (client_uses_discovery) {
                       client.use_discovery ();
                   } else {
@@ -462,7 +556,15 @@ class client_server_channel_builder_t
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _server_endpoint;
     std::optional<zlink::routing_id_t> _server_routing_id;
+    std::optional<zlink::message_count_t> _server_send_high_water_mark;
+    std::optional<zlink::message_count_t> _server_receive_high_water_mark;
+    std::optional<zlink::byte_size_t> _server_max_message_size;
+    std::optional<zlink::peer_weight_t> _server_peer_weight;
     std::optional<std::chrono::milliseconds> _default_request_timeout;
+    std::optional<zlink::message_count_t> _client_send_high_water_mark;
+    std::optional<zlink::message_count_t> _client_receive_high_water_mark;
+    std::optional<zlink::byte_size_t> _client_max_message_size;
+    std::optional<zlink::peer_weight_t> _client_peer_weight;
     std::vector<std::string> _client_endpoints;
     bool _client_enabled = false;
     bool _client_uses_discovery = false;

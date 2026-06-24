@@ -6,10 +6,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -39,6 +41,15 @@ std::vector<std::string> split_csv (const std::string &text)
         }
     }
     return result;
+}
+
+std::optional<int> parse_int_env (const char *name)
+{
+    const auto value = env_or (name);
+    if (value.empty ()) {
+        return std::nullopt;
+    }
+    return std::stoi (value);
 }
 
 class scenario_state_t
@@ -193,6 +204,8 @@ int main (int argc, char **argv)
     const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto server_weight = parse_int_env ("ZLINK_CPP_E2E_SERVER_WEIGHT");
+    const auto max_message_size = parse_int_env ("ZLINK_CPP_E2E_MAX_MESSAGE_SIZE");
 
     app.logging ()
       .use_file (log_dir + "/" + provider_rid + ".log")
@@ -213,10 +226,18 @@ int main (int argc, char **argv)
             options.use_discovery ().add_registry_endpoint (endpoint);
         }
         if (!api_endpoint.empty ()) {
-            options.add_client_server_channel (e2e::api_channel)
-              .enable_server (api_endpoint)
-              .server_routing_id (zlink::routing_id_t::from (provider_rid))
-              .use_handler_group (e2e::handler_group);
+            auto channel = options.add_client_server_channel (e2e::api_channel);
+            channel.enable_server (api_endpoint)
+              .server_routing_id (zlink::routing_id_t::from (provider_rid));
+            if (server_weight) {
+                channel.server_peer_weight (
+                  zlink::peer_weight_t::value (static_cast<std::uint32_t> (*server_weight)));
+            }
+            if (max_message_size) {
+                channel.server_max_message_size (
+                  zlink::byte_size_t::bytes (static_cast<std::int64_t> (*max_message_size)));
+            }
+            channel.use_handler_group (e2e::handler_group);
         }
         if (!workflow_endpoint.empty ()) {
             options.add_client_server_channel (e2e::workflow_channel)

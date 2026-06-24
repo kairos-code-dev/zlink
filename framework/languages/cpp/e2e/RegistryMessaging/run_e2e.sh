@@ -92,14 +92,20 @@ start_provider() {
   local route="$3"
   local http="$4"
   local instance="${5:-$rid}"
-  ZLINK_CPP_E2E_ROLE=provider \
-  ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
-  ZLINK_CPP_E2E_PROVIDER_INSTANCE="$instance" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$api" \
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+  if (($# >= 5)); then
+    shift 5
+  else
+    shift 4
+  fi
+  env "$@" \
+    ZLINK_CPP_E2E_ROLE=provider \
+    ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
+    ZLINK_CPP_E2E_PROVIDER_INSTANCE="$instance" \
+    ZLINK_CPP_E2E_API_ENDPOINT="$api" \
+    ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
+    ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
+    ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+    ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
@@ -173,6 +179,23 @@ cat "$LOG_DIR/client-common.stdout.log"
 stop_pid "$API_A_PID"
 stop_pid "$API_B_PID"
 stop_pid "$WORKFLOW_A_PID"
+
+start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a ZLINK_CPP_E2E_SERVER_WEIGHT=75
+API_A_PID="$LAST_PID"
+start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B" api-b ZLINK_CPP_E2E_SERVER_WEIGHT=25
+API_B_PID="$LAST_PID"
+sleep 1
+run_client weighted rm-c7 env
+cat "$LOG_DIR/client-rm-c7.stdout.log"
+stop_pid "$API_A_PID"
+stop_pid "$API_B_PID"
+
+start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a ZLINK_CPP_E2E_MAX_MESSAGE_SIZE=2048
+API_A_PID="$LAST_PID"
+sleep 1
+run_client max-size rm-c8-max env
+cat "$LOG_DIR/client-rm-c8-max.stdout.log"
+stop_pid "$API_A_PID"
 
 start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
 API_A_PID="$LAST_PID"

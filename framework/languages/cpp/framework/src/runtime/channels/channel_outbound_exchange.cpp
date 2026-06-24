@@ -3,6 +3,7 @@
 #include "runtime/channels/channel_outbound_exchange.hpp"
 
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/channels/channel_socket_options.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
@@ -93,6 +94,7 @@ class channel_native_publisher_t
     explicit channel_native_publisher_t (const channel_capability_snapshot_t &publisher) :
         _socket (_context)
     {
+        apply_common_channel_socket_options (_socket, publisher);
         for (const auto &endpoint : publisher.bind_endpoints) {
             _socket.bind (endpoint);
         }
@@ -233,6 +235,7 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                     zlink::message_t request_body = zlink::message_t::from (parts[1].to_string ());
                     zlink::context_t context;
                     zlink::dealer_socket_t dealer (context);
+                    apply_weighted_channel_socket_options (dealer, *client);
                     dealer.channel_name (channel_name);
                     dealer.options ().immediate (true);
                     dealer.options ().connect_timeout (connect_timeout);
@@ -436,6 +439,7 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
 
             zlink::context_t context;
             zlink::dealer_socket_t dealer (context);
+            apply_weighted_channel_socket_options (dealer, *client);
             dealer.channel_name (channel_name);
             dealer.options ().immediate (true);
             dealer.options ().connect_timeout (timeout);

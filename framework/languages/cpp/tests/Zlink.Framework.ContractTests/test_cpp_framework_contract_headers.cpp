@@ -189,6 +189,32 @@ static_assert (has_http_client_coroutine_resume_builder<zlink::http_client::clie
 static_assert (
   has_http_client_coroutine_execute_resume_builder<zlink::http_client::client_builder_t>);
 
+template <typename T>
+concept has_channel_capability_socket_options = requires (T value)
+{
+    value.send_high_water_mark (zlink::message_count_t::value (8));
+    value.receive_high_water_mark (zlink::message_count_t::value (8));
+    value.max_message_size (zlink::byte_size_t::bytes (4096));
+    value.peer_weight (zlink::peer_weight_t::value (75));
+};
+
+template <typename T>
+concept has_client_server_socket_options = requires (T value)
+{
+    value.server_send_high_water_mark (zlink::message_count_t::value (8));
+    value.server_receive_high_water_mark (zlink::message_count_t::value (8));
+    value.server_max_message_size (zlink::byte_size_t::bytes (4096));
+    value.server_peer_weight (zlink::peer_weight_t::value (75));
+    value.client_send_high_water_mark (zlink::message_count_t::value (8));
+    value.client_receive_high_water_mark (zlink::message_count_t::value (8));
+    value.client_max_message_size (zlink::byte_size_t::bytes (4096));
+    value.client_peer_weight (zlink::peer_weight_t::value (75));
+};
+
+static_assert (has_channel_capability_socket_options<zlink::framework::capability_builder_t>);
+static_assert (
+  has_client_server_socket_options<zlink::framework::client_server_channel_builder_t>);
+
 namespace
 {
 

@@ -50,6 +50,10 @@ struct channel_capability_snapshot_t
     bool enabled = false;
     bool discovery = false;
     std::optional<zlink::routing_id_t> routing_id;
+    std::optional<zlink::message_count_t> send_high_water_mark;
+    std::optional<zlink::message_count_t> receive_high_water_mark;
+    std::optional<zlink::byte_size_t> max_message_size;
+    std::optional<zlink::peer_weight_t> peer_weight;
     std::vector<std::string> bind_endpoints;
     std::vector<std::string> connect_endpoints;
 };
@@ -115,6 +119,10 @@ class capability_builder_t
     capability_builder_t &connect (std::string endpoint);
     capability_builder_t &use_discovery ();
     capability_builder_t &set_routing_id (zlink::routing_id_t routing_id);
+    capability_builder_t &send_high_water_mark (zlink::message_count_t value);
+    capability_builder_t &receive_high_water_mark (zlink::message_count_t value);
+    capability_builder_t &max_message_size (zlink::byte_size_t value);
+    capability_builder_t &peer_weight (zlink::peer_weight_t value);
 
     channel_capability_snapshot_t snapshot () const;
 

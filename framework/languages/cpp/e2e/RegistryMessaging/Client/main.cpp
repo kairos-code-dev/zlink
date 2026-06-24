@@ -93,6 +93,10 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 run_scale_in (channels);
             } else if (scenario == "failover") {
                 run_failover (channels);
+            } else if (scenario == "weighted") {
+                run_weighted_distribution (channels);
+            } else if (scenario == "max-size") {
+                run_max_message_size_limit (channels);
             } else {
                 throw std::runtime_error ("unknown scenario " + scenario);
             }
@@ -202,6 +206,27 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario RM-C3 passed\n";
     }
 
+    void run_weighted_distribution (zlink::framework::channel_client_t &channels)
+    {
+        std::map<std::string, int> counts;
+        for (int index = 0; index < 240; ++index) {
+            auto task =
+              channels
+                .request (e2e::api_channel,
+                          e2e::profile_request_t{.value = "weighted-" + std::to_string (index)})
+                .timeout (std::chrono::milliseconds (2000))
+                .async<e2e::profile_reply_t> ();
+            ensure (task.result ().has_value (), "RM-C7 weighted request failed");
+            ++counts[task.result ().value ().provider_rid];
+        }
+        ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
+                "RM-C7 did not use both weighted providers");
+        ensure (counts["api-a"] + counts["api-b"] == 240, "RM-C7 count mismatch");
+        ensure (counts["api-a"] > counts["api-b"],
+                "RM-C7 higher-weight provider was not preferred");
+        std::cout << "scenario RM-C7 passed\n";
+    }
+
     void run_cross_channel_discovery (zlink::framework::channel_client_t &channels)
     {
         auto api = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "a6-api"})
@@ -236,6 +261,30 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                     "RM-C8 reply payload mismatch for payload size " + std::to_string (size));
         }
         std::cout << "scenario RM-C8 passed\n";
+    }
+
+    void run_max_message_size_limit (zlink::framework::channel_client_t &channels)
+    {
+        const auto oversized_payload = std::string (32 * 1024, 'x');
+        auto oversized =
+          channels
+            .request ("registry.messaging.api.manual.max",
+                      e2e::profile_request_t{.value = oversized_payload})
+            .timeout (std::chrono::milliseconds (1000))
+            .async<e2e::profile_reply_t> ();
+        ensure (!oversized.result ().has_value (),
+                "RM-C8 oversized request unexpectedly succeeded");
+
+        auto normal =
+          channels
+            .request ("registry.messaging.api.manual.max",
+                      e2e::profile_request_t{.value = "after-oversized"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
+        ensure (normal.result ().has_value (), "RM-C8 normal request after oversized failed");
+        ensure (normal.result ().value ().value == "profile:after-oversized",
+                "RM-C8 normal reply after oversized mismatch");
+        std::cout << "scenario RM-C8-max passed\n";
     }
 
     void run_route_mesh (zlink::framework::route_client_t &routes)
@@ -390,6 +439,11 @@ int main (int argc, char **argv)
         options.add_client_server_channel ("registry.messaging.api.manual.multi")
           .enable_client (api_a_endpoint)
           .enable_client (api_b_endpoint);
+        options.add_client_server_channel ("registry.messaging.api.manual.weighted")
+          .enable_client (api_a_endpoint)
+          .enable_client (api_b_endpoint);
+        options.add_client_server_channel ("registry.messaging.api.manual.max")
+          .enable_client (api_a_endpoint);
         options.add_route_mesh (e2e::route_channel)
           .enable_server (env_or ("ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT"))
           .set_routing_id (zlink::routing_id_t::from (std::string ("client")))

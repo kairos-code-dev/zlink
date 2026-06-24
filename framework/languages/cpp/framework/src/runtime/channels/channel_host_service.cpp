@@ -4,6 +4,7 @@
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/channels/channel_socket_options.hpp"
 #include "runtime/registry/discovery_registry_connection.hpp"
 
 #include <zlink.hpp>
@@ -25,6 +26,7 @@ class channel_host_service_t::server_loop_t
                    bool use_discovery,
                    std::vector<std::string> endpoints,
                    std::optional<zlink::routing_id_t> routing_id,
+                   channel_capability_snapshot_t capability,
                    discovery_snapshot_t discovery,
                    service_provider_t &services,
                    serializer_registry_t &serializers,
@@ -33,6 +35,7 @@ class channel_host_service_t::server_loop_t
         _runtime (detail::channel_runtime_t::from (bus)),
         _channel_name (std::move (channel_name)),
         _endpoints (std::move (endpoints)),
+        _capability (std::move (capability)),
         _discovery_snapshot (std::move (discovery)),
         _services (&services),
         _serializers (&serializers),
@@ -41,6 +44,7 @@ class channel_host_service_t::server_loop_t
         _context (std::make_unique<zlink::context_t> ()),
         _router (std::make_unique<zlink::router_socket_t> (*_context))
     {
+        detail::apply_weighted_channel_socket_options (*_router, _capability);
         if (routing_id) {
             _router->set_routing_id (*routing_id);
         }
@@ -210,6 +214,7 @@ class channel_host_service_t::server_loop_t
     detail::channel_runtime_t _runtime;
     std::string _channel_name;
     std::vector<std::string> _endpoints;
+    channel_capability_snapshot_t _capability;
     discovery_snapshot_t _discovery_snapshot;
     service_provider_t *_services;
     serializer_registry_t *_serializers;
@@ -230,12 +235,14 @@ class channel_host_service_t::subscriber_loop_t
     subscriber_loop_t (message_bus_t bus,
                        std::string channel_name,
                        std::vector<std::string> endpoints,
+                       channel_capability_snapshot_t capability,
                        service_provider_t &services,
                        serializer_registry_t &serializers,
                        const handler_registry_t &handlers,
                        std::atomic_bool &stop) :
         _runtime (detail::channel_runtime_t::from (bus)),
         _channel_name (std::move (channel_name)),
+        _capability (std::move (capability)),
         _services (&services),
         _serializers (&serializers),
         _handlers (&handlers),
@@ -243,6 +250,7 @@ class channel_host_service_t::subscriber_loop_t
         _context (std::make_unique<zlink::context_t> ()),
         _subscriber (std::make_unique<zlink::sub_socket_t> (*_context))
     {
+        detail::apply_common_channel_socket_options (*_subscriber, _capability);
         _subscriber->set_subscription ("");
         for (const auto &endpoint : endpoints) {
             _subscriber->connect (endpoint);
@@ -334,6 +342,7 @@ class channel_host_service_t::subscriber_loop_t
 
     detail::channel_runtime_t _runtime;
     std::string _channel_name;
+    channel_capability_snapshot_t _capability;
     service_provider_t *_services;
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;
@@ -370,7 +379,8 @@ void channel_host_service_t::start (service_provider_t &services)
         const bool publish_to_discovery = !_discovery.registry_endpoints.empty ();
         auto loop = std::make_unique<server_loop_t> (
           _bus, channel.name, publish_to_discovery, channel.server.bind_endpoints,
-          channel.server.routing_id, _discovery, services, *_serializers, *_handlers, _stop);
+          channel.server.routing_id, channel.server, _discovery, services, *_serializers,
+          *_handlers, _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));
         _threads.emplace_back ([raw] { raw->run (); });
@@ -380,8 +390,8 @@ void channel_host_service_t::start (service_provider_t &services)
             continue;
         }
         auto loop = std::make_unique<subscriber_loop_t> (
-          _bus, channel.name, channel.subscriber.connect_endpoints, services, *_serializers,
-          *_handlers, _stop);
+          _bus, channel.name, channel.subscriber.connect_endpoints, channel.subscriber, services,
+          *_serializers, *_handlers, _stop);
         auto *raw = loop.get ();
         _subscriber_loops.push_back (std::move (loop));
         _threads.emplace_back ([raw] { raw->run (); });

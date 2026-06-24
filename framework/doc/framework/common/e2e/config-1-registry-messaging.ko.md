@@ -186,7 +186,7 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 
 **한마디로:** server 두 대에 weight를 다르게(예: 75 vs 25) 주면, client의 분산도 그 비율을 따라 한쪽으로 더 쏠리는가.
 
-- 절차: client-server channel의 두 provider를 서로 다른 build-time weight로 띄운다 — `api-a`는 `ConfigureServerSocket().Weight = 75`, `api-b`는 `ConfigureServerSocket().Weight = 25`(둘 다 `1..99`라 후보에서 빠지지 않음). consumer는 RM-C3처럼 두 provider endpoint를 직접 `EnableClient`로 등록(수동 multi-endpoint)하고, warm-up 후 충분한 수의 request(예: 200개)를 보낸다.
+- 절차: client-server channel의 두 provider를 서로 다른 build-time weight로 띄운다 — `api-a`는 `ConfigureServerSocket().Weight = 75`, `api-b`는 `ConfigureServerSocket().Weight = 25`(둘 다 `1..99`라 후보에서 빠지지 않음). consumer는 server가 advertise한 weight를 실제로 관측할 수 있는 연결 경로(discovery 또는 transport가 peer weight를 전달하는 수동 multi-endpoint)를 사용하고, warm-up 후 충분한 수의 request(예: 200개)를 보낸다.
 - 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 weight 비율을 따라 `api-a`가 `api-b`보다 **뚜렷이 많이** 처리한다(정확한 75/25는 보장값이 아니므로 "고weight가 저weight보다 분명히 많음 + 양쪽 모두 처리 + 합계 일치"로 검증한다).
 - 세부 동작: server쪽 advertised weight에 따른 client측 부하 분산.
 
@@ -204,7 +204,7 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 - 검증: 소형·대형·근접-max payload는 내용이 손상 없이 정확히 왕복한다(대형도 분할/재조립이 투명). `MaxMessageSize`를 넘는 payload는 정해진 public error로 거부되고, 그 뒤 정상 크기 request는 영향 없이 동작한다.
 - 세부 동작: payload 크기 경계(왕복 + 상한 거부).
 
-> 주의: 크기 다양성 **왕복**은 public typed client로 바로 유도된다. 다만 현재 framework channel runtime은 `ConfigureServerSocket().MaxMessageSize`를 live socket에 적용하지 않으므로(빌더 옵션은 있으나 미배선), **상한 초과 거부** 검증은 그 적용이 들어오거나 binding 레이어/harness로 유도해야 한다. 그 전에는 거부 부분을 "미구현(framework 미배선)"으로 둔다.
+> 주의: 크기 다양성 **왕복**은 public typed client로 바로 유도된다. 상한 초과 거부는 각 언어의 public channel builder가 server socket의 max message size를 live socket에 적용한 뒤 검증한다. public typed client는 항상 정상 envelope를 만들기 때문에, payload decode 실패처럼 raw frame이 필요한 경로는 이 config 범위가 아니라 binding/raw-frame contract 테스트에서 다룬다.
 
 #### RM-C9 backpressure / HWM 포화
 
@@ -216,7 +216,7 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 - 검증: HWM 포화 시 정해진 흐름 제어(블록·timeout·정해진 public error) 중 계약된 동작이 일어나고, 연결이 깨지거나 다른 정상 트래픽이 오염되지 않는다. 적체가 풀리면 messaging이 정상화된다.
 - 세부 동작: 송신 HWM 포화 시 backpressure 계약.
 
-> 주의: 현재 framework channel runtime은 `SendHighWaterMark`/`ReceiveHighWaterMark`를 live socket에 적용하지 않고, async submitter가 backpressure를 내부 재시도로 흡수한다. 따라서 framework channel 레이어에서 HWM 포화는 현재 harness 의존 intent다(backpressure 표면 자체의 직접 검증은 binding 레이어가 더 적합). framework 적용이 들어오기 전에는 "미구현(framework 미배선)"으로 둔다.
+> 주의: 각 언어의 framework channel runtime은 `SendHighWaterMark`/`ReceiveHighWaterMark` 같은 HWM 설정을 live socket에 적용해야 한다. 다만 framework channel 레이어에서 포화를 결정적으로 유도하려면 느린 handler, 다량 송신, timeout 관측을 안정화하는 harness가 필요하다. backpressure 표면 자체의 직접 검증은 binding 레이어가 더 적합할 수 있다.
 
 ## 5. 완료 기준
 

@@ -540,103 +540,6 @@ public final class Native {
       "zlink_spot_actors",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_NEW = downcall("zlink_registry_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_BIND = downcall("zlink_registry_bind",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_SET = downcall("zlink_registry_set",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_REG_GET = downcall("zlink_registry_get",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_ADD_PEER = downcall("zlink_registry_add_peer",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_DESTROY = downcall("zlink_registry_destroy",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_STATUS_SNAPSHOT = downcall(
-            "zlink_registry_status",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_SERVICE_SUMMARY_SNAPSHOT = downcall(
-            "zlink_registry_service_summary",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_MEMBER_PEERS = downcall(
-            "zlink_registry_member_peers",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_TOPOLOGY = downcall(
-            "zlink_registry_topology",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_QUERY_CLIENT_NEW = downcall(
-            "zlink_registry_query_client_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_QUERY_CLIENT_CONNECT = downcall(
-            "zlink_registry_query_client_connect",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_QUERY_SNAPSHOT = downcall(
-            "zlink_registry_query_client_topology",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_QUERY_DESTROY = downcall(
-            "zlink_registry_query_client_destroy",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-
-    private static final MethodHandle MH_DISC_NEW_FIXED = downcall(
-            "zlink_discovery_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_CONNECT = downcall("zlink_discovery_connect_registry",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_RESOLVE_SPOT = downcall(
-            "zlink_discovery_resolve_spot",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_RESOLVE_ACTOR = downcall(
-            "zlink_discovery_resolve_actor",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_BIND_ROUTE = downcall(
-            "zlink_discovery_bind_route",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_DISC_UNBIND_ROUTE = downcall(
-            "zlink_discovery_unbind_route",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_DISC_RESOLVE_ROUTE = downcall(
-            "zlink_discovery_resolve_route",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_SET_VALUE = downcall(
-            "zlink_discovery_set_value",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_DISC_GET_VALUE = downcall(
-            "zlink_discovery_get_value",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_DESTROY = downcall("zlink_discovery_destroy",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_MEMBER_PEERS = downcall(
-            "zlink_discovery_member_peers",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-
     private static final MethodHandle MH_SPOT_NODE_NEW = downcall("zlink_spot_node_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                 ValueLayout.ADDRESS));
@@ -2329,278 +2232,155 @@ public final class Native {
     }
 
     public static MemorySegment registryNew(MemorySegment ctx) {
-        try {
-            return (MemorySegment) MH_REG_NEW.invokeExact(ctx);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_new failed", t);
-        }
+        return NativeRegistrySymbols.registryNew(ctx);
     }
 
     public static int registryBind(MemorySegment reg, MemorySegment pub,
                                    MemorySegment router) {
-        try {
-            return (int) MH_REG_BIND.invokeExact(reg, pub, router);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_bind failed", t);
-        }
+        return NativeRegistrySymbols.registryBind(reg, pub, router);
     }
 
     public static int registrySetOption(MemorySegment reg, int option, int value) {
-        try {
-            return (int) MH_REG_SET.invokeExact(reg, option, value);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_set failed", t);
-        }
+        return NativeRegistrySymbols.registrySetOption(reg, option, value);
     }
 
     public static int registryGetOption(MemorySegment reg, int option,
                                         MemorySegment valueOut,
                                         MemorySegment errorOut) {
-        try {
-            return (int) MH_REG_GET.invokeExact(reg, option, valueOut, errorOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_get failed", t);
-        }
+        return NativeRegistrySymbols.registryGetOption(reg, option, valueOut,
+            errorOut);
     }
 
     public static int registryAddPeer(MemorySegment reg, MemorySegment peer) {
-        try {
-            return (int) MH_REG_ADD_PEER.invokeExact(reg, peer);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_add_peer failed", t);
-        }
+        return NativeRegistrySymbols.registryAddPeer(reg, peer);
     }
 
     public static int registryDestroy(MemorySegment regPtr) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
-            p.set(ValueLayout.ADDRESS, 0, regPtr);
-            return (int) MH_REG_DESTROY.invokeExact(p);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_destroy failed", t);
-        }
+        return NativeRegistrySymbols.registryDestroy(regPtr);
     }
 
     public static int registryStatus(MemorySegment registry,
                                              MemorySegment out) {
-        try {
-            return (int) MH_REG_STATUS_SNAPSHOT.invokeExact(registry, out);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_status failed",
-              t);
-        }
+        return NativeRegistrySymbols.registryStatus(registry, out);
     }
 
     public static int registryServiceSummary(MemorySegment registry,
                                                      MemorySegment filter,
                                                      MemorySegment entries,
                                                      MemorySegment count) {
-        try {
-            return (int) MH_REG_SERVICE_SUMMARY_SNAPSHOT.invokeExact(registry,
-              filter, entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_registry_service_summary failed", t);
-        }
+        return NativeRegistrySymbols.registryServiceSummary(registry, filter,
+            entries, count);
     }
 
     public static int registryMemberPeers(MemorySegment registry,
                                           MemorySegment channelName,
                                           MemorySegment entries,
                                           MemorySegment count) {
-        try {
-            return (int) MH_REG_MEMBER_PEERS.invokeExact(registry, channelName,
-              entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_member_peers failed", t);
-        }
+        return NativeRegistrySymbols.registryMemberPeers(registry, channelName,
+            entries, count);
     }
 
     public static int registryTopology(MemorySegment registry,
                                                MemorySegment entries,
                                                MemorySegment count) {
-        try {
-            return (int) MH_REG_TOPOLOGY.invokeExact(registry,
-              MemorySegment.NULL, entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_topology failed",
-              t);
-        }
+        return NativeRegistrySymbols.registryTopology(registry, entries, count);
     }
 
     public static int registryTopology(MemorySegment registry,
                                        MemorySegment filter,
                                        MemorySegment entries,
                                        MemorySegment count) {
-        try {
-            return (int) MH_REG_TOPOLOGY.invokeExact(registry, filter,
-              entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_topology failed",
-              t);
-        }
+        return NativeRegistrySymbols.registryTopology(registry, filter, entries,
+            count);
     }
 
     public static MemorySegment registryQueryClientNew(MemorySegment ctx) {
-        try {
-            return (MemorySegment) MH_REG_QUERY_CLIENT_NEW.invokeExact(ctx);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_query_client_new failed",
-              t);
-        }
+        return NativeRegistrySymbols.registryQueryClientNew(ctx);
     }
 
     public static int registryQueryClientConnect(MemorySegment client,
                                                  MemorySegment endpoint) {
-        try {
-            return (int) MH_REG_QUERY_CLIENT_CONNECT.invokeExact(client,
-              endpoint);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_registry_query_client_connect failed", t);
-        }
+        return NativeRegistrySymbols.registryQueryClientConnect(client,
+            endpoint);
     }
 
     public static int registryQuerySnapshot(MemorySegment client,
                                             MemorySegment filter,
                                             MemorySegment entries,
                                             MemorySegment count) {
-        try {
-            return (int) MH_REG_QUERY_SNAPSHOT.invokeExact(client, filter,
-              entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_query_client_topology failed",
-              t);
-        }
+        return NativeRegistrySymbols.registryQuerySnapshot(client, filter,
+            entries, count);
     }
 
     public static int registryQueryDestroy(MemorySegment clientPtr) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment holder = arena.allocate(ValueLayout.ADDRESS);
-            holder.set(ValueLayout.ADDRESS, 0, clientPtr);
-            return (int) MH_REG_QUERY_DESTROY.invokeExact(holder);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_query_client_destroy failed",
-              t);
-        }
+        return NativeRegistrySymbols.registryQueryDestroy(clientPtr);
     }
 
     public static MemorySegment discoveryNewFixed(MemorySegment ctx,
                                                   int autoConnectType,
                                                   MemorySegment channelName) {
-        try {
-            return (MemorySegment) MH_DISC_NEW_FIXED.invokeExact(ctx,
-              autoConnectType, channelName);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_new failed", t);
-        }
+        return NativeDiscoverySymbols.discoveryNewFixed(ctx, autoConnectType,
+            channelName);
     }
 
     public static int discoveryConnectRegistry(MemorySegment disc, MemorySegment pub) {
-        try {
-            return (int) MH_DISC_CONNECT.invokeExact(disc, pub);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_connect_registry failed", t);
-        }
+        return NativeDiscoverySymbols.discoveryConnectRegistry(disc, pub);
     }
 
     public static int discoveryResolveSpot(MemorySegment discovery,
                                            MemorySegment spotRid,
                                            MemorySegment routeOut) {
-        try {
-            return (int) MH_DISC_RESOLVE_SPOT.invokeExact(discovery, spotRid,
-              routeOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_resolve_spot failed",
-              t);
-        }
+        return NativeDiscoverySymbols.discoveryResolveSpot(discovery, spotRid,
+            routeOut);
     }
 
     public static int discoveryResolveActor(MemorySegment discovery,
                                             MemorySegment actorId,
                                             MemorySegment routeOut) {
-        try {
-            return (int) MH_DISC_RESOLVE_ACTOR.invokeExact(discovery, actorId,
-              routeOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_resolve_actor failed",
-              t);
-        }
+        return NativeDiscoverySymbols.discoveryResolveActor(discovery, actorId,
+            routeOut);
     }
 
     public static int discoveryBindRoute(MemorySegment discovery, int kind,
                                          MemorySegment key, long keySize,
                                          MemorySegment value,
                                          long valueSize) {
-        try {
-            return (int) MH_DISC_BIND_ROUTE.invokeExact(discovery, kind, key,
-              keySize, value, valueSize);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_bind_route failed", t);
-        }
+        return NativeDiscoverySymbols.discoveryBindRoute(discovery, kind, key,
+            keySize, value, valueSize);
     }
 
     public static int discoveryUnbindRoute(MemorySegment discovery, int kind,
                                            MemorySegment key, long keySize) {
-        try {
-            return (int) MH_DISC_UNBIND_ROUTE.invokeExact(discovery, kind, key,
-              keySize);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_unbind_route failed",
-              t);
-        }
+        return NativeDiscoverySymbols.discoveryUnbindRoute(discovery, kind, key,
+            keySize);
     }
 
     public static int discoveryResolveRoute(MemorySegment discovery, int kind,
                                             MemorySegment key, long keySize,
                                             MemorySegment ownerRoutingIdOut,
                                             MemorySegment valueOut) {
-        try {
-            return (int) MH_DISC_RESOLVE_ROUTE.invokeExact(discovery, kind, key,
-              keySize, ownerRoutingIdOut, valueOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_resolve_route failed",
-              t);
-        }
+        return NativeDiscoverySymbols.discoveryResolveRoute(discovery, kind,
+            key, keySize, ownerRoutingIdOut, valueOut);
     }
 
     public static int discoverySetValue(MemorySegment disc, long value) {
-        try {
-            return (int) MH_DISC_SET_VALUE.invokeExact(disc, value);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_set_value failed", t);
-        }
+        return NativeDiscoverySymbols.discoverySetValue(disc, value);
     }
 
     public static int discoveryGetValue(MemorySegment disc,
                                         MemorySegment valueOut) {
-        try {
-            return (int) MH_DISC_GET_VALUE.invokeExact(disc, valueOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_get_value failed", t);
-        }
+        return NativeDiscoverySymbols.discoveryGetValue(disc, valueOut);
     }
 
     public static int discoveryDestroy(MemorySegment discPtr) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
-            p.set(ValueLayout.ADDRESS, 0, discPtr);
-            return (int) MH_DISC_DESTROY.invokeExact(p);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_destroy failed", t);
-        }
+        return NativeDiscoverySymbols.discoveryDestroy(discPtr);
     }
 
     public static int discoveryMemberPeers(MemorySegment discovery,
                                            MemorySegment entries,
                                            MemorySegment count) {
-        try {
-            return (int) MH_DISC_MEMBER_PEERS.invokeExact(discovery, entries,
-              count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_member_peers failed",
-              t);
-        }
+        return NativeDiscoverySymbols.discoveryMemberPeers(discovery, entries,
+            count);
     }
 
     public static MemorySegment spotNodeNew(MemorySegment ctx) {

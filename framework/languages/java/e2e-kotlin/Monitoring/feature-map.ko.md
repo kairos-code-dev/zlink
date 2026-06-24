@@ -1,0 +1,20 @@
+# Kotlin Monitoring E2E feature map
+
+이 문서는 Config 7 Runtime Monitoring 공통 시나리오 중 Kotlin 전용 E2E 상태를 정리한다. 현재 추적된
+Kotlin Monitoring runner/source가 없으므로 Kotlin 전용 stdout marker로 구현 완료를 주장하지 않는다.
+
+## 구현됨
+
+- 없음.
+
+## public API/harness 대기
+
+- `MON-A1`: socket 이벤트 관찰 Kotlin runner와 marker가 아직 없다.
+- `MON-A2`: registry 이벤트 관찰 Kotlin runner와 marker가 아직 없다.
+- `MON-A3`: spot 이벤트 관찰 Kotlin runner와 marker가 아직 없다.
+- `MON-A4`: 가용성 전이 관측 Kotlin harness가 아직 없다.
+- `MON-A5`: handshake/status/timer-stopped kind Kotlin trigger가 아직 없다.
+- `MON-B1`: event kind filter Kotlin runner와 marker가 아직 없다.
+- `MON-B2`: monitoring 등록 검증 Kotlin runner와 marker가 아직 없다.
+- `MON-C1`: event dispatch 실패 격리 Kotlin runner와 marker가 아직 없다.
+- `MON-D1`: 장애/복구 반복 중 관측 연속성 Kotlin harness가 아직 없다.

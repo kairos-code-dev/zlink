@@ -1457,12 +1457,16 @@ static async Task RunSmG3Async(ClientOptions options)
         }
 
         var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        for (var index = 0; index < actorIds.Length; index++)
+        {
+            await clients[index].Request(new UserSpotAuthReq(spotRid, actorIds[index], actorIds[index], options.PlayARid))
+                .PacketName("UserSpotAuthReq")
+                .Async<AuthReply>();
+        }
+
         await Task.WhenAll(actorIds.Select(async (actorId, index) =>
         {
             var client = clients[index];
-            await client.Request(new UserSpotAuthReq(spotRid, actorId, actorId, options.PlayARid))
-                .PacketName("UserSpotAuthReq")
-                .Async<AuthReply>();
             var ping = await client.Request(new ActorPingReq(actorId))
                 .PacketName("UserActorPingReq")
                 .Async<ActorPingReply>();

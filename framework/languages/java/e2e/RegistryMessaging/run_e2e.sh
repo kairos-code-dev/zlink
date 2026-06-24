@@ -144,9 +144,11 @@ start_provider() {
   local route="$3"
   local workflow="$4"
   local instance="${5:-$rid}"
+  local weight="${6:-}"
   ZLINK_JAVA_E2E_ROLE=provider \
   ZLINK_JAVA_E2E_PROVIDER_RID="${rid}" \
   ZLINK_JAVA_E2E_PROVIDER_INSTANCE="${instance}" \
+  ZLINK_JAVA_E2E_API_WEIGHT="${weight}" \
   ZLINK_JAVA_E2E_API_ENDPOINT="${api}" \
   ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route}" \
   ZLINK_JAVA_E2E_WORKFLOW_ENDPOINT="${workflow}" \
@@ -203,6 +205,16 @@ cat "${log_dir}/client-common.stdout.log"
 stop_pid "${API_A_PID}"
 stop_pid "${API_B_PID}"
 stop_pid "${WORKFLOW_A_PID}"
+
+start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a 75
+API_A_PID="${LAST_PID}"
+start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b 25
+API_B_PID="${LAST_PID}"
+sleep 2
+run_client weighted rm-c7 env
+cat "${log_dir}/client-rm-c7.stdout.log"
+stop_pid "${API_A_PID}"
+stop_pid "${API_B_PID}"
 
 start_provider api-a "${API_A}" "${ROUTE_A}" ""
 API_A_PID="${LAST_PID}"

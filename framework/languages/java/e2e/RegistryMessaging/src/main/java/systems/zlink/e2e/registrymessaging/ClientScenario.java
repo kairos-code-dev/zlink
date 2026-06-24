@@ -29,6 +29,7 @@ public final class ClientScenario {
             case "scale-out" -> runScaleOut();
             case "scale-in" -> runScaleIn();
             case "failover" -> runFailover();
+            case "weighted" -> runWeightedDistribution();
             default -> throw new IllegalArgumentException(
                 "unknown scenario " + Env.get("ZLINK_JAVA_E2E_SCENARIO"));
         }
@@ -114,6 +115,23 @@ public final class ClientScenario {
         ensure(counts.getOrDefault("api-b", 0) > 0, "RM-C3 did not reach api-b");
         ensure(counts.values().stream().mapToInt(Integer::intValue).sum() == 80, "RM-C3 count mismatch");
         System.out.println("scenario RM-C3 passed");
+    }
+
+    private void runWeightedDistribution() {
+        Map<String, Integer> counts = new HashMap<>();
+        for (int index = 0; index < 300; index++) {
+            Contracts.ProfileReply reply = request(
+                "registry.messaging.api.manual.multi",
+                new Contracts.ProfileRequest("weighted-" + index),
+                Duration.ofSeconds(2));
+            counts.merge(reply.providerRid(), 1, Integer::sum);
+        }
+        int high = counts.getOrDefault("api-a", 0);
+        int low = counts.getOrDefault("api-b", 0);
+        ensure(high > 0 && low > 0, "RM-C7 did not reach both providers: " + counts);
+        ensure(high > low, "RM-C7 high weight provider was not preferred: " + counts);
+        ensure(high + low == 300, "RM-C7 count mismatch: " + counts);
+        System.out.println("scenario RM-C7 passed");
     }
 
     private void runCrossChannelDiscovery() {

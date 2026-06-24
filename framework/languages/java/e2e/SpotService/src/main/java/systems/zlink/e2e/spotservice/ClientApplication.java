@@ -60,10 +60,11 @@ public final class ClientApplication {
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
                 .setRoutingId(RoutingId.from("client"));
             options.addClientServerChannel(Contracts.EGRESS_CHANNEL)
-                .enableClient(Env.get("ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT"))ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH)
-                ;
+                .enableClient(Env.get("ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT"));
+            ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
-                .setRouterRoutingId(RoutingId.from("client"));node.addSpotFactory(ClientDriverSpot.class);
+                .setRouterRoutingId(RoutingId.from("client"));
+            node.addSpotFactory(ClientDriverSpot.class);
         };
     }
 }

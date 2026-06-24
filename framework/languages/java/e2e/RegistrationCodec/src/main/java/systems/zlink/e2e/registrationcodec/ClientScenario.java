@@ -67,6 +67,16 @@ public final class ClientScenario {
             .await();
         waitForEvidence("Send", "EchoManual", "manual-send");
         System.out.println("scenario RC-A3 passed");
+
+        Contracts.EchoReply filtered = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.EchoManualRequest("filter-order-request"))
+            .packetName("EchoManual")
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.EchoReply.class);
+        ensure("echo:filter-order-request".equals(filtered.value()), "RC-A5 request mismatch");
+        waitForFilterOrder("filter-order-request");
+        System.out.println("scenario RC-A5 passed");
     }
 
     private void runCodecVariants() {
@@ -141,6 +151,27 @@ public final class ClientScenario {
         } catch (Exception error) {
             throw new IllegalStateException("failed to fetch evidence", error);
         }
+    }
+
+    private void waitForFilterOrder(String value) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline) {
+            var entries = snapshot().entries().stream()
+                .filter(entry -> "Filter".equals(entry.marker()))
+                .filter(entry -> "EchoManual".equals(entry.packetName()))
+                .map(Contracts.EvidenceEntry::value)
+                .filter(entry -> entry.endsWith(":" + value))
+                .toList();
+            if (entries.equals(java.util.List.of(
+                "first-before:" + value,
+                "second-before:" + value,
+                "second-after:" + value,
+                "first-after:" + value))) {
+                return;
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException("timed out waiting for RC-A5 filter order");
     }
 
     private static void sleep(long millis) {

@@ -115,6 +115,7 @@ import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
@@ -171,6 +172,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final List<ChannelRegistration> routeMeshChannels = new ArrayList<>();
     private final List<String> routerSpotNodeNames = new ArrayList<>();
     private final ThreadLocal<DefaultSpotOutbound> currentOutbound = new ThreadLocal<>();
+    private ZLinkSpotRemoteAddressResolver remoteAddressResolver;
     private final Map<RoutingId, CompletionStage<ZLinkSpotCreateResult>> pendingSpotCreates =
         new HashMap<>();
     private volatile boolean closing;
@@ -696,6 +698,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 "SPOT route was not found for '" + spotRid + "'.",
                 ex);
         }
+    }
+
+    public void setRemoteAddressResolver(ZLinkSpotRemoteAddressResolver remoteAddressResolver) {
+        this.remoteAddressResolver = java.util.Objects.requireNonNull(
+            remoteAddressResolver,
+            "remoteAddressResolver");
+    }
+
+    private CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
+        String configuredRouterChannelId,
+        RoutingId spotRid) {
+        if (remoteAddressResolver != null) {
+            return remoteAddressResolver.resolveSpotRemoteAddressAsync(spotRid);
+        }
+        return CompletableFuture.completedFuture(
+            resolveRegistrySpotRemoteAddress(null, configuredRouterChannelId, spotRid));
     }
 
     public CompletionStage<Optional<Message>> dispatchLocalSessionActor(
@@ -2907,10 +2925,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     packetName.orElse(null), egressChannelName, null, null, null,
                     spotRid.toString(), null, null));
             }
-            List<Message> spotParts = parts(packetName, payload);
-            try {
-                ZLinkSpotRemoteAddress address =
-                    resolveRegistrySpotRemoteAddress(null, egressChannelName, spotRid);
+            return resolveSpotRemoteAddressAsync(egressChannelName, spotRid)
+                .thenCompose(address -> {
                 ZLinkBackendSpotNode routerNode = nodesByName.get(address.routerChannelId());
                 if (routerNode != null) {
                     return new SpotToSpotSendCall(
@@ -2921,14 +2937,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         packetName)
                         .submit();
                 }
-                return channels.sendToSpotViaRouterChannel(
-                    address.routerChannelId(),
-                    address.targetNodeRid(),
-                    address.spotRid(),
-                    spotParts);
-            } finally {
-                spotParts.forEach(Message::close);
-            }
+                List<Message> spotParts = parts(packetName, payload);
+                try {
+                    return channels.sendToSpotViaRouterChannel(
+                        address.routerChannelId(),
+                        address.targetNodeRid(),
+                        address.spotRid(),
+                        spotParts);
+                } finally {
+                    spotParts.forEach(Message::close);
+                }
+            });
         }
     }
 
@@ -2984,7 +3003,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         @Override
         public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-            List<Message> spotParts = parts(packetName, payload);
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowPhase.SENT,
@@ -2993,9 +3011,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     packetName.orElse(null), egressChannelName, null, null, null,
                     spotRid.toString(), null, null));
             }
-            try {
-                ZLinkSpotRemoteAddress address =
-                    resolveRegistrySpotRemoteAddress(null, egressChannelName, spotRid);
+            return resolveSpotRemoteAddressAsync(egressChannelName, spotRid)
+                .thenCompose(address -> {
                 ZLinkBackendSpotNode routerNode = nodesByName.get(address.routerChannelId());
                 if (routerNode != null) {
                     return new SpotToSpotRequestCall(
@@ -3007,37 +3024,40 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         timeout)
                         .submit(replyType);
                 }
-                return channels.requestToSpotViaRouterChannel(
-                    address.routerChannelId(),
-                    address.targetNodeRid(),
-                    address.spotRid(),
-                    spotParts,
-                    timeout)
-                    .thenApply(replyParts -> {
-                        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
-                            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                ZLinkMessageFlowPhase.REPLY_RECEIVED,
-                                ZLinkDispatchErrorSurface.SPOT_ROUTE,
-                                ZLinkDispatchMessageKind.RESPONSE,
-                                packetName.orElse(null), egressChannelName, null, null, null,
-                                spotRid.toString(), null, null));
-                        }
-                        Message emptyReply = null;
-                        try {
-                            Message firstReply = replyParts.isEmpty()
-                                ? (emptyReply = Message.from(new byte[0]))
-                                : replyParts.get(0);
-                            return ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType);
-                        } finally {
-                            if (emptyReply != null) {
-                                emptyReply.close();
+                List<Message> spotParts = parts(packetName, payload);
+                try {
+                    return channels.requestToSpotViaRouterChannel(
+                        address.routerChannelId(),
+                        address.targetNodeRid(),
+                        address.spotRid(),
+                        spotParts,
+                        timeout)
+                        .thenApply(replyParts -> {
+                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                    ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                                    ZLinkDispatchMessageKind.RESPONSE,
+                                    packetName.orElse(null), egressChannelName, null, null, null,
+                                    spotRid.toString(), null, null));
                             }
-                            replyParts.forEach(Message::close);
-                        }
-                    });
-            } finally {
-                spotParts.forEach(Message::close);
-            }
+                            Message emptyReply = null;
+                            try {
+                                Message firstReply = replyParts.isEmpty()
+                                    ? (emptyReply = Message.from(new byte[0]))
+                                    : replyParts.get(0);
+                                return ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType);
+                            } finally {
+                                if (emptyReply != null) {
+                                    emptyReply.close();
+                                }
+                                replyParts.forEach(Message::close);
+                            }
+                        });
+                } finally {
+                    spotParts.forEach(Message::close);
+                }
+            });
         }
     }
 

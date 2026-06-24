@@ -61,6 +61,8 @@ public final class ServerApplication {
             options.codecs().addJson();
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.codecs().use(ZLinkMessagePackCodec.forPayloadTypes(ServerApplication::isPackedType));
+            options.useFilter(FirstOrderFilter.class);
+            options.useFilter(SecondOrderFilter.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/server-flow.log")

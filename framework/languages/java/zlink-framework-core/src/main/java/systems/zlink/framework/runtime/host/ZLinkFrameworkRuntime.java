@@ -97,8 +97,14 @@ public final class ZLinkFrameworkRuntime
                 serializer,
                 runtimeHandlers,
                 eventDispatcher);
+        Class<? extends ZLinkSpotRemoteAddressResolver> resolverType =
+            options.registration().spotRemoteAddressResolverType();
         if (this.spots != null) {
             runtimeHandlers.add(ZLinkSpotManager.class, this.spots);
+            if (resolverType != null) {
+                this.spots.setRemoteAddressResolver(
+                    (ZLinkSpotRemoteAddressResolver) runtimeHandlers.create(resolverType));
+            }
         }
         if (this.spots != null) {
             this.channels.registerSpotRouteBridgeOwner(this.spots::primaryNode);
@@ -122,8 +128,6 @@ public final class ZLinkFrameworkRuntime
             this.actors.setRoutedTransport(
                 this.channels,
                 () -> this.spots.primaryNode().entrySpot().routingId());
-            Class<? extends ZLinkSpotRemoteAddressResolver> resolverType =
-                options.registration().spotRemoteAddressResolverType();
             if (resolverType != null) {
                 this.actors.setRemoteAddressResolver(
                     (ZLinkSpotRemoteAddressResolver) runtimeHandlers.create(resolverType));

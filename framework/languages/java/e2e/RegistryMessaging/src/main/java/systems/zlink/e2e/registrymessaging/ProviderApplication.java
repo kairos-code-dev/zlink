@@ -2,6 +2,7 @@ package systems.zlink.e2e.registrymessaging;
 
 import java.util.concurrent.CompletableFuture;
 import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
@@ -10,6 +11,7 @@ import systems.zlink.e2e.registrymessaging.handlers.ProfileCommandHandler;
 import systems.zlink.e2e.registrymessaging.handlers.ProfileRequestHandler;
 import systems.zlink.e2e.registrymessaging.handlers.RoutePingHandler;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
+import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -79,6 +81,19 @@ public final class ProviderApplication {
                         Contracts.RoutePing.class,
                         Contracts.RoutePong.class,
                         Contracts.ROUTE_PACKET);
+            }
+        };
+    }
+
+    @Bean
+    ApplicationRunner applyInitialSocketWeight(ZLinkChannelRuntimeOptions runtimeOptions) {
+        return ignored -> {
+            String weight = Env.get("ZLINK_JAVA_E2E_API_WEIGHT");
+            if (!weight.isBlank()) {
+                runtimeOptions
+                    .clientServerChannel(Contracts.API_CHANNEL)
+                    .configureServerSocket()
+                    .weight(Integer.parseInt(weight));
             }
         };
     }

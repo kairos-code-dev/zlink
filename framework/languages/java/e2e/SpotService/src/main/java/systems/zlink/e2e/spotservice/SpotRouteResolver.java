@@ -14,7 +14,7 @@ public final class SpotRouteResolver implements ZLinkSpotRemoteAddressResolver {
         String rid = spotRid.toString();
         String targetNode = rid.contains("b") ? "play-b" : "play-a";
         return CompletableFuture.completedFuture(new ZLinkSpotRemoteAddress(
-            Contracts.INGRESS_CHANNEL,
+            Contracts.ROUTE_CHANNEL,
             RoutingId.from(targetNode),
             spotRid,
             ZLinkSpotKind.USER));

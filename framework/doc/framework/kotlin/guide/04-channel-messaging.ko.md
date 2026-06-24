@@ -120,7 +120,7 @@ class DefaultPlayRoutes(
 }
 ```
 
-session actor relay는 route mesh를 흉내 내지 않고 ActorGateway를 사용한다([06-actor-session](06-actor-session.ko.md)).
+session actor relay는 route mesh를 흉내 내지 않고 SessionRelay를 사용한다([06-actor-session](06-actor-session.ko.md)).
 
 ## 5. 커스텀 codec (Avro 예시)
 

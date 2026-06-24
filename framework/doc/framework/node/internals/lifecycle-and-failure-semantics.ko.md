@@ -214,11 +214,11 @@ worker 를 backpressure 대기용으로 잡아 두지 않는다. pending queue �
 ## 8. Session Actor Route 변경 의미
 
 session 이 actor 에 attach 되면 framework 는 actor id, actor type, session rid,
-session owner SpotNode, session binding token 을 ActorGateway binding 으로 연결한다.
-이후 session -> actor relay 는 logical actor handle 을 core ActorGateway 로 내려보내고,
+session owner SpotNode, session binding token 을 session relay binding 으로 연결한다.
+이후 session -> actor relay 는 logical actor handle 을 core SessionRelay 로 내려보내고,
 packet 마다 application resolver 를 호출하지 않는다.
 
-actor 위치가 바뀌면 core ActorGateway 의 current location 이 relay 대상이 된다.
+actor 위치가 바뀌면 core SessionRelay 의 current location 이 relay 대상이 된다.
 framework 는 concrete route 주소를 session 상태로 갱신하지 않는다. session binding token 은
 disconnect cleanup 과 stale session 방어에 계속 쓰며, 이전 session 의 늦은 close 가 새
 binding 을 지우지 못하도록 조건부 unbind 에 사용한다.

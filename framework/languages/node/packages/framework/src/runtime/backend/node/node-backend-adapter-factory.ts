@@ -510,9 +510,9 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
       if (messaging !== undefined) {
         return messaging;
       }
-      const actorGateway = resolveSocketActorGatewayProperty(target, property);
-      if (actorGateway !== undefined) {
-        return actorGateway;
+      const sessionRelay = resolveSocketSessionRelayProperty(target, property);
+      if (sessionRelay !== undefined) {
+        return sessionRelay;
       }
       if (property === 'attachDiscovery') {
         return (discovery: ZLinkBackendDiscovery) =>
@@ -714,7 +714,7 @@ function resolveSocketMessagingProperty(
   return undefined;
 }
 
-function resolveSocketActorGatewayProperty(target: unknown, property: string | symbol): unknown {
+function resolveSocketSessionRelayProperty(target: unknown, property: string | symbol): unknown {
   if (property === 'disconnectPeer') {
     return (routingId: unknown) =>
       (target as { disconnectRid(routingId: unknown): void }).disconnectRid(toNativeRoutingId(routingId));
@@ -722,10 +722,6 @@ function resolveSocketActorGatewayProperty(target: unknown, property: string | s
   if (property === 'onFramedPacket') {
     return (handler: unknown) =>
       (target as { setPacketHandler(handler: unknown): void }).setPacketHandler(handler);
-  }
-  if (property === 'attachActorGateway') {
-    return (node: unknown) =>
-      (target as { attachActorGateway(node: unknown): void }).attachActorGateway(unwrapBackendObject(node));
   }
   if (property === 'bindActor') {
     return async (sessionRid: unknown, actor: unknown, timeoutMs: number) => {

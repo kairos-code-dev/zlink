@@ -793,8 +793,7 @@ int main (int argc, char **argv)
               .enable_pub_sub (pubsub_endpoint, zlink::routing_id_t::from (node_rid));
             options.add_stream_node ("spot-service-stream")
               .bind (stream_endpoint)
-              .register_session<stream_session_t> ()
-              .attach_actor_gateway (node_rid);
+              .register_session<stream_session_t> ();
             options.http ()
               .listen (http_endpoint)
               .map_health ("/health")

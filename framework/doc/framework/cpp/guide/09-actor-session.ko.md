@@ -170,7 +170,6 @@ options.add_spot_mesh (...).add_node ("bingo.room.node")
 options.add_stream_node ("tictactoe.stream")
   .bind (topology.stream_endpoint)
   .register_session<play_session_t> ()
-  .attach_actor_gateway ("tictactoe.spot.node");
 ```
 
 게이트웨이가 켜지면: 클라이언트 패킷 → session relay → gateway → spot의 actor

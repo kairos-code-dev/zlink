@@ -556,7 +556,6 @@ interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
   send(routingId: RoutingId, payload: Message, flags: SendFlags): boolean;
   send(routingId: RoutingId, parts: readonly Message[], flags: SendFlags): boolean;
   disconnectPeer(routingId: RoutingId): void;
-  attachActorGateway(node: ZLinkBackendSpotNode): void;
   bindActor(
     sessionRid: RoutingId,
     actor: ZLinkBackendActorRef,

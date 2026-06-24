@@ -40,7 +40,6 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 | channel 전체 연결 설정 | 역할 builder의 `bind`, `connect`, `use_discovery` |
 | spot 전용 publisher client | `spot_context_t` 또는 `spot_publisher_client_t::publish(channel, topic, event)` |
 | target Spot 직접 호출 public client | actor 생성 또는 Entry Spot join 뒤 actor/session handle 사용 |
-| session actor relay용 route mesh channel | `stream.attach_actor_gateway(...)`와 `session_actor_t::relay(...)` |
 | raw timer callback | `spot_context_t::add_timer(...)`와 `timer_tick_t` metadata |
 
 application handler owner는 `options.handlers().add<THandler>(...)`로 등록한 타입이어야 한다.
@@ -204,7 +203,6 @@ Entry Spot 실행 줄에서 처리한다. C++ framework는 CAPI timer를 감싸�
 실행 순서는 Spot runtime의 직렬 실행 큐가 정한다.
 
 Session actor relay는 application route mesh channel을 쓰지 않는다. STREAM session은
-`attach_actor_gateway(...)`로 local SpotNode에 붙고, packet relay는
 `session_actor_t::relay(...)`로 표현한다.
 
 ## 7. 중요한 규칙
@@ -223,7 +221,7 @@ Session actor relay는 application route mesh channel을 쓰지 않는다. STREA
 - 일반 channel messaging의 handler dispatch는 local server 역할 ingress 기준이다.
 - outbound client 역할의 receive path는 reply correlation 경로로 본다.
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.
-- session actor relay는 ActorGateway attach와 logical actor handle 기준으로 설명한다.
+- session actor relay는 session relay와 logical actor handle 기준으로 설명한다.
 - Registry는 Spot remote address 조회 기본값으로 쓰고 actor-session binding 저장소로
   쓰지 않는다.
 

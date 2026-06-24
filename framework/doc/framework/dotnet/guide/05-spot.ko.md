@@ -616,7 +616,7 @@ flowchart LR
   end
   rA <==>|"이미 연결됨: 양쪽 EnableRouter + discovery<br/>spot packet: SendToSpot / RequestToSpot"| rB
   api["외부 코드<br/>(routeClient / publisherClient)"] -->|"자동(RouteMesh · SpotMesh pub colocation)<br/>spot packet · topic"| rA
-  strm["STREAM 노드<br/>(client session)"] -->|"연결: AttachActorGateway ↔ EnableRouter<br/>actor packet: actorRef.RelayAsync"| rA
+  strm["STREAM 노드<br/>(client session)"] -->|"gateway 자동 연결(같은 프로세스 SpotNode)<br/>actor packet: actorRef.RelayAsync"| rA
 ```
 
 종류별 함수·handler·배선을 한 표로 모으면 다음과 같다.
@@ -625,7 +625,7 @@ flowchart LR
 |------|---------------------------|----------------------------|------------------------|-----------|
 | topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(mesh, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | 같은 SpotMesh pub colocation → **자동** (보내는 쪽 SpotMesh + `EnablePubSub`) |
 | spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(routeMesh, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: RouteMesh channel + SpotNode colocation → **자동** |
-| actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM `AttachActorGateway(node)` ↔ `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
+| actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM gateway 자동(같은 프로세스 SpotNode) + `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
 | 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel 의 handler, [04](04-channel-messaging.ko.md)) | 그 channel 의 handler | `AddClientServerChannel(name).EnableClient()` ↔ 그 channel server |
 
 spot **안**에서 내보내는 코드는 한 handler 에서 세 종류를 이렇게 부른다.
@@ -850,16 +850,16 @@ builder.Services.AddZLinkFramework(options =>
     var mesh = options.AddSpotMesh("game.stage");
     mesh.EnableRouter("tcp://0.0.0.0:9001");
 
-    // actor packet — client stream session 의 gateway 로 쓸 로컬 SpotNode 지정
+    // actor packet — stream 의 gateway 는 같은 프로세스 game.stage 노드로 자동 연결
     options.AddStreamNode("client-stream")
         .Bind("tcp://0.0.0.0:7101")
-        .AttachActorGateway("game.stage");                 // ▶ 위에서 등록한 로컬 SpotNode 이름
+        .RegisterSession<StageSession>();
 });
 ```
 
-`AttachActorGateway("game.stage")` 의 인자는 이 프로세스에 등록한 로컬 SpotNode 이름이고, 그 노드의
-`EnableRouter`(+ Play 서버라면 `AddEntrySpot`) 와 짝을 이룬다. 한쪽만 켜면 컴파일은 되지만 런타임에
-도달하지 못한다(§7 "자주 막히는 곳" 참고).
+STREAM 의 actor-gateway 입구는 **같은 프로세스의 (router 가 켜진) local SpotNode**(여기선
+`game.stage`)로 자동 연결된다(별도 호출 없음). 자세한 actor/session 흐름은
+[06-actor-spot](06-actor-spot.ko.md)·[07-actor-session](07-actor-session.ko.md)에서 다룬다.
 
 ## 6. Stage wrapper (playhouse Stage 류)
 

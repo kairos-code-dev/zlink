@@ -60,7 +60,6 @@ function createTicTacToePlayModule(config: {
             .actorFactory(SampleNames.playerActorType, PlayActorFactory)
             .addStreamNode(SampleNames.playStream)
               .bind(config.playStreamEndpoint)
-              .attachActorGateway(SampleNames.playSpotNode)
             .registerSession(PlaySessionFactory)
             .addSpotMesh(SampleNames.playSpotNode)
               .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)

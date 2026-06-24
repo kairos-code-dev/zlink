@@ -212,7 +212,7 @@ public final class UserActor implements ZLinkActor {
 |----|-------------|--------------|
 | client 연결 | WebSocket gateway 직접 구현 | STREAM session |
 | user 위치 | connection registry 조회 | actor/session binding |
-| conversation routing | API/service 가 room owner 를 직접 찾음 | ActorGateway 또는 SPOT routing |
+| conversation routing | API/service 가 room owner 를 직접 찾음 | SessionRelay 또는 SPOT routing |
 | online fan-out | gateway node/session 으로 직접 deliver | UserActor `boundSession().send(...)` |
 | offline 알림 | notification worker | 그대로 유지 |
 | history 저장 | message DB | 그대로 유지 |

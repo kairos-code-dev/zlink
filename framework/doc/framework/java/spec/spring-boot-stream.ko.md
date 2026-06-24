@@ -38,7 +38,6 @@ public class StreamConfig {
 
             ZLinkStreamNodeBuilder stream = options.addStreamNode("gateway");
             stream.bind("tcp://0.0.0.0:7201");
-            stream.attachActorGateway("game.stage");
             stream.registerSession(GameStreamSession.class);
         };
     }
@@ -94,23 +93,22 @@ context.client()
     .submit();
 ```
 
-## 4. ActorGateway attach
+## 4. session relay
 
 local managed actor instance를 bind해서 같은 runtime 안에서 actor로 relay하는 경우
-stream node는 ActorGateway attach 없이 동작한다. session gateway처럼 remote
-`ZLinkActorRef`를 bind하거나 actor 위치를 core ActorGateway가 해석해야 하는 경우에는
-stream node가 SpotNode의 ActorGateway에 attach되어 있어야 한다.
+stream node는 session relay 없이 동작한다. session gateway처럼 remote
+`ZLinkActorRef`를 bind하거나 actor 위치를 core SessionRelay가 해석해야 하는 경우에는
+stream node가 SpotNode의 SessionRelay에 attach되어 있어야 한다.
 
 ```java
 ZLinkStreamNodeBuilder stream = options.addStreamNode("gateway");
 stream.bind("tcp://0.0.0.0:7201");
-stream.attachActorGateway("play");
 stream.registerSession(GameStreamSession.class);
 ```
 
 이 설정은 session relay용 route mesh channel을 만든다는 뜻이 아니다. application
 Spot route egress가 필요하면 별도 route channel을 등록한다. local managed actor
-binding은 framework 내부 dispatch를 사용하고, remote actor binding은 ActorGateway
+binding은 framework 내부 dispatch를 사용하고, remote actor binding은 SessionRelay
 경로로 보낸다.
 
 ## 5. Client Connector

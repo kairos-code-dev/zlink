@@ -86,13 +86,13 @@ class play_server_host_factory_t
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client ();
             options.add_spot_mesh (sample_names_t::room_spot_discovery)
-              .use_registry_spot_resolver (sample_names_t::play_channel))
+              .use_registry_spot_resolver (sample_names_t::play_channel)
               .enable_router (topology.selected_play_spot_router_endpoint (),
                               zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_actor_gateway ()
               .enable_pub_sub (topology.selected_play_spot_endpoint (),
                                zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-.add_entry_spot<bingo_entry_spot_t> ()
+              .add_entry_spot<bingo_entry_spot_t> ()
               .add_spot<bingo_room_spot_t> (sample_names_t::room_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type);
         });

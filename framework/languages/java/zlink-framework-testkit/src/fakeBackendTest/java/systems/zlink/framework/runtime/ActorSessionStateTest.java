@@ -19,15 +19,15 @@ import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 final class ActorSessionStateTest {
     @Test
     void actorSessionState_filtersStaleDisconnect_andOnlyDisconnectsCurrentStream() {
-        RemoteActorGatewayTest.GameSpot.disconnectCount = 0;
+        RemoteSessionRelayTest.GameSpot.disconnectCount = 0;
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
-        DefaultZLinkFrameworkOptions options = RemoteActorGatewayTest.options();
+        DefaultZLinkFrameworkOptions options = RemoteSessionRelayTest.options();
         RoutingId spotRid = RoutingId.from("game-1");
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backend)) {
             runtime.spotManager()
-                .create(RemoteActorGatewayTest.GameSpot.class, spotRid)
+                .create(RemoteSessionRelayTest.GameSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
@@ -50,7 +50,7 @@ final class ActorSessionStateTest {
                 .join();
 
             staleBinding.notifyDisconnected().toCompletableFuture().join();
-            assertTrue(RemoteActorGatewayTest.GameSpot.disconnectCount == 0);
+            assertTrue(RemoteSessionRelayTest.GameSpot.disconnectCount == 0);
             actor.context()
                 .boundSession()
                 .send("push")
@@ -63,7 +63,7 @@ final class ActorSessionStateTest {
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> actor.context().boundSession());
-            assertTrue(RemoteActorGatewayTest.GameSpot.disconnectCount == 1);
+            assertTrue(RemoteSessionRelayTest.GameSpot.disconnectCount == 1);
             assertTrue(actor.context().isJoined());
         }
 

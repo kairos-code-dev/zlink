@@ -23,7 +23,7 @@ session 에 아직 bind 되지 않은 actor 에서 호출하면 retriable framew
 ## 2. session bind
 
 stream session 은 `context.actors.bind(actor)` 로 actor 를 session 에 연결한다.
-binding 은 native ActorGateway 를 통해 등록되고, 실패하면 local binding 도 남기지
+binding 은 native SessionRelay 를 통해 등록되고, 실패하면 local binding 도 남기지
 않는다.
 
 ## 3. ordering

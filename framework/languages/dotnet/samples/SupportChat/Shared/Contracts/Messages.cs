@@ -35,7 +35,8 @@ public sealed record OpenConversationApiReq(
 
 public sealed record OpenConversationApiRes(
     string ConversationId,
-    string Status);
+    string Status,
+    string? AgentActorId);
 
 public sealed record AllocateConversationReq(
     string CustomerActorId,

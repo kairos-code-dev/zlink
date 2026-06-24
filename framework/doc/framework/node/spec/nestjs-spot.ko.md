@@ -957,9 +957,8 @@ channel 의 `ROUTER(server)` 를 `rid` 로 직접 지정해서 호출하는 모�
 
 최신 topology 에서는 `.addSpotMesh(name)` 이 실행할 `SpotNode` 를 직접 등록하고,
 전역 `discovery` 가 active channel view 를 공급한다. SPOT network 를 구성하는
-모든 node 는 `.addSpotMesh(...)` 로 등록한다. STREAM ActorGateway 는 별도 node
+모든 node 는 `.addSpotMesh(...)` 로 등록한다. STREAM SessionRelay 는 별도 node
 builder 가 아니라, stream 이 router
-역할을 켠 SpotNode 를 `.attachActorGateway(spotNodeName)` 으로 참조하는
 방식으로 연결한다(자세한 내용은 [nestjs-stream.ko.md](nestjs-stream.ko.md)).
 
 ## 10. 결정된 기준

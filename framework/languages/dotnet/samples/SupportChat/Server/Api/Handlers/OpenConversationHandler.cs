@@ -35,6 +35,7 @@ internal sealed class OpenConversationHandler(IZLinkChannelClient channels)
 
         return new OpenConversationApiRes(
             allocated.ConversationId,
-            assigned.Status);
+            assigned.Status,
+            assigned.AgentActorId);
     }
 }

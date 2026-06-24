@@ -146,8 +146,6 @@ internal sealed class ZLinkStreamNodeRegistration
 
     public ZLinkStreamTlsServerRegistration? TlsServer { get; set; }
 
-    public string? ActorGatewaySpotNodeName { get; set; }
-
     public Type? HeaderSessionType { get; set; }
 }
 

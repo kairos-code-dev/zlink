@@ -53,7 +53,6 @@ builder.Services.AddZLinkFramework(options =>
     }
     {
         var stream = options.AddStreamNode(SampleNames.CustomerStreamNode);
-        stream.AttachActorGateway(SampleNames.DeliverySpotDiscovery);
         stream.Bind(topology.SessionStreamEndpoint);
         stream.RegisterSession<CustomerSession>();
 

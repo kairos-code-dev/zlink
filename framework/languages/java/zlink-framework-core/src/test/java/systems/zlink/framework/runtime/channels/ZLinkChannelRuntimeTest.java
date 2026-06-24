@@ -327,6 +327,7 @@ final class ZLinkChannelRuntimeTest {
         @Override public java.util.concurrent.CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return false; }
         @Override public boolean forwardActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, List<Message> parts, SendFlags flags) { return false; }
+        @Override public void bindRemoteActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid) { }
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { }
         @Override public SpotNodeStatus status() { throw new UnsupportedOperationException(); }
         @Override public List<SpotNodePeerEntry> peers() { return List.of(); }

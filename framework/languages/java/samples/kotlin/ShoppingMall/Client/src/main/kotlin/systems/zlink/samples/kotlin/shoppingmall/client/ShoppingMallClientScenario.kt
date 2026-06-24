@@ -82,7 +82,7 @@ class ShoppingMallClientScenario(
         ensure(started.orderId == "order-pending-0001")
         ensure(started.status == OrderStatuses.Created)
 
-        val created = getState(apiA, started.orderId)
+        val created = waitForCreatedOrConfirmed(apiA, started.orderId)
         ensure(created.isCreatedOrConfirmed())
         ensure(created.shippingAddressId == "addr-office")
         println("shoppingmall-pending=completed")
@@ -190,6 +190,21 @@ class ShoppingMallClientScenario(
         }
         throw IllegalStateException(
             "Order '$orderId' did not reach status '$expectedStatus' (last=${last?.status ?: "none"}).",
+        )
+    }
+
+    private suspend fun waitForCreatedOrConfirmed(instanceId: String, orderId: String): OrderState {
+        val deadline = System.nanoTime() + SampleTimings.WorkflowTimeout.toNanos()
+        var last: OrderState? = null
+        while (System.nanoTime() < deadline) {
+            last = getState(instanceId, orderId)
+            if (last.isCreatedOrConfirmed()) {
+                return last
+            }
+            LockSupport.parkNanos(SampleTimings.PollDelay.toNanos())
+        }
+        throw IllegalStateException(
+            "Order '$orderId' did not reach Created or Confirmed (last=${last?.status ?: "none"}).",
         )
     }
 

@@ -21,17 +21,23 @@ internal sealed class EnsureCustomerActorHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var actor = await actors.GetOrCreateAsync(
+        var joined = await actors.JoinEntrySpotAsync(
             request.CustomerId,
             SampleNames.CustomerActorType,
+            topology.TrackingSpotNodeRid,
+            request,
             cancellationToken);
-        _ = topology;
+        if (!joined.Accepted)
+        {
+            throw new InvalidOperationException($"Entry spot actor join was rejected: {request.CustomerId}");
+        }
+
         return new CustomerActorEnsured(
             request.CustomerId,
             new ActorRefSnapshot(
-                actor.NodeRid.ToString(),
-                actor.ActorId,
-                actor.Generation));
+                joined.Actor.NodeRid.ToString(),
+                joined.Actor.ActorId,
+                joined.Actor.Generation));
     }
 }
 

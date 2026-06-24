@@ -38,6 +38,19 @@ internal sealed class ConversationNotificationPublisher
             .Async(cancellationToken);
     }
 
+    public async ValueTask PublishAssignedToAgentAsync(
+        SupportUserActor agent,
+        ConversationState state,
+        CancellationToken cancellationToken)
+    {
+        await agent.Context.BoundSession
+            .Send(new ConversationAssignedNotify(
+                state.ConversationId,
+                state))
+            .PacketName(SampleNames.ConversationAssignedPacket)
+            .Async(cancellationToken);
+    }
+
     private async ValueTask PublishAsync(
         ConversationEvent conversationEvent,
         IReadOnlyDictionary<string, SupportUserActor> actors,

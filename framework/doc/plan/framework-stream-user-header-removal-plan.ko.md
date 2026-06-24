@@ -970,7 +970,7 @@ Bound session 회귀 테스트는 두 가지를 확인한다. 첫째, header 객
 5. actor relay API에서 header 인자를 제거한다.
    - relay는 current dispatch state가 있는 동안만 가능하다.
    - 다중 actor 선택은 metadata의 `actor-id` 같은 application key를 읽어서 actor를 찾는다.
-6. framework 내부 SPOT/actor gateway 경로는 internal header를 계속 사용한다.
+6. framework 내부 SPOT/session relay 경로는 internal header를 계속 사용한다.
    - internal packet envelope에는 request sequence, codec, metadata, correlation id를 보존한다.
 7. bound session push 경로가 header 제거와 무관하게 유지되는지 확인한다.
    - packet name과 metadata는 계속 public 입력값으로 받는다.

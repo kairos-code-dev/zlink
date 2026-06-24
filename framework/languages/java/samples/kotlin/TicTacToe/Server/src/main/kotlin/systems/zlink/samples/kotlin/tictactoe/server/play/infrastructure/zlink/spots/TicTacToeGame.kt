@@ -250,7 +250,6 @@ class TicTacToeGame(
                 actor.context().boundSession()
                     .send(GameStateNotify(state))
                     .submit()
-                    .await()
             }
     }
 
@@ -276,7 +275,6 @@ class TicTacToeGame(
                 actor.context().boundSession()
                     .send(message)
                     .submit()
-                    .await()
             }
     }
 

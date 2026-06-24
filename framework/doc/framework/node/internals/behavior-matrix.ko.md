@@ -76,7 +76,7 @@
 | top-level standalone `addSpotMesh(name)` 등록 | 허용 | SpotMesh 이름이 곧 단일 SpotNode 이름이다 |
 | 분리된 SPOT discovery 등록과 node 등록 | 비허용 | discovery 와 node 집합은 spot mesh가 함께 소유한다 |
 | 같은 process에 SpotMesh 여러 개 | 비허용 | Q9 정책으로 process당 SpotNode는 하나만 둔다 |
-| 같은 mesh의 router-capable node를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
+| 같은 mesh의 router-capable node를 stream SessionRelay 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
 | 같은 `SpotNode`에 Entry Spot[^entry-spot] registry 중복 등록 | 비허용 | startup validation 오류 |
 | `router` 역할만 등록 | 허용 | inbound routed call만 받는다 |
@@ -106,7 +106,7 @@
 | routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점에 오류 |
-| session actor attach 중 application resolver fallback 사용 | 비허용 | session relay 는 logical actor handle 을 저장하고, 실제 위치 해석은 core ActorGateway 로 일원화한다 |
+| session actor attach 중 application resolver fallback 사용 | 비허용 | session relay 는 logical actor handle 을 저장하고, 실제 위치 해석은 core SessionRelay 로 일원화한다 |
 | route 없는 `bind(actor, ...)` 로 remote actor bind | 비허용 | 이 overload 는 local actor instance 경로로만 동작하고, local actor 가 없으면 `ActorRouteNotFound` 로 실패한다 |
 | 같은 actor id가 새 stream session에서 다시 bind | 허용 | 기존 actor 인스턴스를 재사용하고 session binding token[^binding-token]만 갱신한다 |
 | actor factory가 요청 actor id와 다른 id를 반환 | 비허용 | actor route와 binding id가 갈라지므로 actor 생성 오류 |

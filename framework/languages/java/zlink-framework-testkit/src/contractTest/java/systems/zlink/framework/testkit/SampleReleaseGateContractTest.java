@@ -708,8 +708,6 @@ final class SampleReleaseGateContractTest {
             "TicTacToe Spot instances must be created by the framework runtime, not sample-owned fallback contexts");
         assertTrue(playSource.contains(".addStreamNode("),
             "TicTacToe direct sample must register the STREAM entry point");
-        assertTrue(playSource.contains("attachActorGateway("),
-            "TicTacToe direct sample must bridge stream sessions to the Play actor gateway");
         assertFalse(serverProgramSource.contains("CreateGameHandler"),
             "TicTacToe role Program must not collapse Play handler wiring into the entry point");
     }
@@ -1064,8 +1062,6 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe Spot instances must be created by the framework runtime, not sample-owned fallback contexts");
         assertTrue(playSource.contains(".addStreamNode("),
             "Kotlin TicTacToe direct sample must register the STREAM entry point");
-        assertTrue(playSource.contains("attachActorGateway("),
-            "Kotlin TicTacToe direct sample must bridge stream sessions to the Play actor gateway");
         assertFalse(serverProgramSource.contains("CreateGameHandler"),
             "Kotlin TicTacToe role Program must not collapse Play handler wiring into the entry point");
     }

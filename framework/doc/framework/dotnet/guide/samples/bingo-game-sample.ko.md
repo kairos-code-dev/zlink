@@ -39,7 +39,7 @@
 서버 사이의 Spot route 는 Registry 기반 framework 기본 구현을 사용한다.
 샘플 Play 서버는 `UseDiscovery().AddRegistryEndpoint(...)` 로 Registry 를 연결하고
 channel·SpotMesh 를 등록한다. Play 서버의
-actor 준비 응답은 actor id/type 과 ActorGateway remote address snapshot 을 돌려주고,
+actor 준비 응답은 actor id/type 과 SessionRelay remote address snapshot 을 돌려주고,
 Session 서버는 현재 STREAM session 을 그 actor handle 에 bind 한다. actor-session binding 은 framework / core runtime 내부 상태로
 관리된다.
 일반 파일 metadata store 처럼 직접 구현하지 않고, room 배정과 게임 상태 같은 domain
@@ -254,7 +254,7 @@ public sealed record BingoGameEndedNotify(BingoRoomState State);
    actor id/type 과 remote address 를 받는다.
 5. `SessionServer` 는 remote address 를 받는 `BindAsync(...)` 호출로
    현재 stream session 과 actor 를 bind 한다. remote address 는 Play 서버 runtime 이 발급한
-   ActorGateway locator 이며 application route mesh channel 설정이 아니다.
+   session relay locator 이며 application route mesh channel 설정이 아니다.
 6. client 는 `AuthenticateRes` 로 `ActorId` 와 `DisplayName` 을 받는다.
 
 matching 흐름은 다음과 같다.

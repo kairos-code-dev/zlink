@@ -28,12 +28,11 @@ ActorGateway frame codec이나 내부 relay packet 종류를 public API로 노�
 
 `ZLink Framework for C++`는 `ASP.NET Core`처럼 application host, DI, HTTP hosting,
 handler dispatch, zlink channel runtime을 한 곳에서 제공하는 framework가 된다. 따라서
-session server, actor host, DI, handler dispatch, ActorGateway attach도 이 host 모델
+session server, actor host, DI, handler dispatch, session relay도 이 host 모델
 안에서 직접 제공해야 한다.
 
 핵심 결정은 다음과 같다.
 
-- STREAM session은 local SpotNode에 `attach_actor_gateway(...)`로 붙는다.
 - session에서 actor로 보내는 packet은 application route mesh channel로 보내지 않는다.
 - session은 `actor_ref_t` 또는 logical actor handle을 bind하고, 이후 packet은
   `session_actor_t::relay(...)`로 넘긴다.
@@ -54,7 +53,6 @@ app.add_zlink_framework([](auto &options) {
     options.add_stream_node("client-stream")
       .bind("tcp://0.0.0.0:9200")
       .register_session<client_session_t>()
-      .attach_actor_gateway("session-actors");
 });
 ```
 
@@ -178,7 +176,6 @@ framework에서 고정한다. 특히 session actor relay가 application route me
 
 필수 항목:
 
-- STREAM session이 local SpotNode에 `attach_actor_gateway(...)`로 붙은 뒤 actor bind를
   수행한다.
 - `actor_ref_t`의 `node_rid`, `actor_id`, `generation`은 bind, relay, push round-trip에서
   유지된다.

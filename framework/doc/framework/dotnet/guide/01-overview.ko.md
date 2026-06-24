@@ -261,7 +261,7 @@ flowchart LR
         CoreS["channel server"]:::channel
         SpotN["SPOT node<br/>(entry + room spots)"]:::spot
         StreamN["stream node"]:::stream
-        ActorG["actor gateway"]:::actor
+        ActorG["session relay"]:::actor
     end
     Registry["Registry<br/>(discovery)"]:::infra
 
@@ -282,7 +282,7 @@ flowchart LR
 ```
 
 - **진입 서버** — ASP.NET Core HTTP로 외부 요청을 받아 domain 서버에 위임한다.
-- **도메인 서버** — channel server + SPOT(상태 단위) + actor gateway + stream node.
+- **도메인 서버** — channel server + SPOT(상태 단위) + session relay + stream node.
 - **Registry 서버** — 서버 주소를 관리한다. 점선 = discovery로 해석되는 연결.
 - **클라이언트 앱** — HTTP로 요청 생성, stream으로 실시간 상태 수신.
 

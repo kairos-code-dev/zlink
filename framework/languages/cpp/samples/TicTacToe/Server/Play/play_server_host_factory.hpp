@@ -94,8 +94,7 @@ class play_server_host_factory_t
               .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type);
             options.add_stream_node (sample_names_t::stream_name)
               .bind (topology.selected_stream_endpoint ())
-              .register_session<play_session_t> ()
-              .attach_actor_gateway (topology.selected_play_node_rid ());
+              .register_session<play_session_t> ();
         });
         return app;
     }

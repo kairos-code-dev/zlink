@@ -31,7 +31,7 @@ internal sealed class ConversationSpot(
         Context.Handlers.AddHandler<CloseConversationHandler>();
     }
 
-    public async ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -53,7 +53,7 @@ internal sealed class ConversationSpot(
             conversationId,
             create.CustomerActorId);
         Console.Error.WriteLine($"support conversation: created conversation={conversationId} customer={create.CustomerActorId}");
-        return ZLinkSpotCreateResponse.Accept();
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
     public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
@@ -82,13 +82,7 @@ internal sealed class ConversationSpot(
 
         actor.JoinConversation(join.ConversationId);
         _actors[actor.ActorId] = actor;
-        if (string.Equals(actor.ActorId, conversation.CustomerActorId, StringComparison.Ordinal))
-        {
-            await notifications.PublishJoinedAgentToCustomerAsync(
-                actor,
-                conversation.Snapshot(),
-                cancellationToken);
-        }
+        _ = cancellationToken;
 
         logger.LogInformation(
             "support conversation: actor joined. conversation={ConversationId}, actor={ActorId}, role={Role}",
@@ -99,7 +93,7 @@ internal sealed class ConversationSpot(
         return ZLinkSpotActorJoinResult.Accept(new JoinConversationRes(conversation.Snapshot()));
     }
 
-    public async ValueTask<ConversationState> JoinAgentAsync(
+    public ValueTask<ConversationState> JoinAgentAsync(
         SupportUserActor agent,
         CancellationToken cancellationToken)
     {
@@ -107,8 +101,8 @@ internal sealed class ConversationSpot(
         var change = conversation.JoinAgent(agent.ActorId, agent.DisplayName, NowUnixMs());
         agent.JoinConversation(conversation.ConversationId);
         _actors[agent.ActorId] = agent;
-        await notifications.PublishAsync(change.Events, _actors, cancellationToken);
-        return change.State;
+        _ = cancellationToken;
+        return ValueTask.FromResult(change.State);
     }
 
     public async ValueTask<SendChatMessageRes> SendMessageAsync(

@@ -129,7 +129,6 @@ public sealed class UserActor(string actorId, IZLinkActorContext context) : IZLi
 {
     var s = options.AddStreamNode("chat");
     s.Bind("tcp://0.0.0.0:9100");
-    s.AttachActorGateway("rooms");
     s.RegisterSession<ChatSession>();
 
 }

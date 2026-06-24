@@ -194,7 +194,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
             .filter(actor -> excludedActorId == null || !actor.actorId().equals(excludedActorId))
             .forEach(actor -> actor.context().boundSession()
                 .send(new GameStateNotify(state))
-                .await());
+                .submit());
     }
 
     private void leaveFinishedActors(GameState state) {
@@ -224,7 +224,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
             .filter(actor -> !actor.actorId().equals(joinedActor.actorId()))
             .forEach(actor -> actor.context().boundSession()
                 .send(message)
-                .await());
+                .submit());
     }
 
     private void rememberActor(PlayActor actor) {

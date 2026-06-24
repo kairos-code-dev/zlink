@@ -1,5 +1,6 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.handlers
 
+import kotlinx.coroutines.future.await
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
@@ -30,7 +31,7 @@ class SetAgentAvailableHandler(
         cancellationToken: CancellationToken,
     ): SetAgentAvailableRes {
         check(Roles.Agent == actor.role) { "Only agent actors can set availability." }
-        val ref = actorManager.find(actor.actorId()).toCompletableFuture().join()
+        val ref = actorManager.find(actor.actorId()).await()
             .orElseThrow { IllegalStateException("Support actor ref is not available.") }
         actors.addOrUpdate(actor, ref)
         availability.setAvailable(actor.actorId(), actor.displayName, request.isAvailable)

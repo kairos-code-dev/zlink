@@ -81,9 +81,9 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| binding public API gap list | `unit` | P2~P8 에 필요한 channel/spot/stream/registry/monitoring/ActorGateway/bound session API가 목록화되고 gap이 0이다 |
+| binding public API gap list | `unit` | P2~P8 에 필요한 channel/spot/stream/registry/monitoring/SessionRelay/bound session API가 목록화되고 gap이 0이다 |
 | framework public-api-only import guard | `unit` | framework runtime/adapter package가 binding internal path, native addon symbol, generated private helper를 import하지 않는다 |
-| ActorGateway attach public API smoke | `integration-single-process` | stream session relay가 binding public API만으로 ActorGateway에 attach된다 |
+| session relay public API smoke | `integration-single-process` | stream session relay가 binding public API만으로 SessionRelay에 attach된다 |
 | bound session public API smoke | `integration-single-process` | bound session send/disconnect가 binding public API만으로 동작한다 |
 | registry query public API smoke | `integration-single-process` | registry query client wrapper가 binding public API만 호출한다 |
 | socket monitor public API smoke | `integration-single-process` | socket monitoring source가 binding public API만 호출한다 |
@@ -182,7 +182,6 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | `addSpotMesh(...)`에 `useDiscovery().addRegistryEndpoint(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
 | `addSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
 | `addSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
-| `addSpotMesh(...)` + `attachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
 | `create(spotType)` | `integration-single-process` | `spotId`, `Created` 상태가 일관되게 유지된다 |
 | `create(spotType)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
 | `create(spotType, request)` payload | `integration-single-process` | create request `ZLinkMessage`가 `ZLinkSpot.onCreate(...)`로 한 번 전달된다 |
@@ -237,7 +236,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
 | sample-only store 없이 framework/session 흐름 사용 | `unit` | TicTacToe.Ts 와 Bingo.Ts 샘플이 sample-only actor-session store 없이 framework/session 흐름을 사용한다 |
 | stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
-| bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core ActorGateway binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
+| bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core session relay binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
 | bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `ZLinkBoundSession.disconnect(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
 | bound session disconnect remote actor | `integration-single-process` | remote actor 가 actor id 없이 `ZLinkBoundSession.disconnect(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다 |
 | session context close | `integration-single-process` | `ZLinkSessionContext.close(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |

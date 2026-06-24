@@ -50,12 +50,10 @@ public final class SessionServerApplication {
             route.enableServer(SampleTopology.selectedSessionRouteEndpoint());
             route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
-                ;
+            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
                 .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
             options.addStreamNode(SampleNames.StreamNode)
-                .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession.class)
                 .addSessionPacketHandler(AuthenticateSessionHandler.class);

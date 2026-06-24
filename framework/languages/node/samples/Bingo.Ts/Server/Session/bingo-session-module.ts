@@ -14,6 +14,7 @@ function createBingoSessionModule(endpoints: {
   sessionSpotEndpoint: string;
   sessionSpotNodeRid: string;
   preferredPlayNodeRid?: string;
+  preferredPlayRouteEndpoint?: string;
 } & Partial<BingoSampleConfig>) {
   class BingoSessionModule {}
 
@@ -27,6 +28,12 @@ function createBingoSessionModule(endpoints: {
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-session.log`)
             .traceNodeId('session');
           return builder
+          .options({
+            registrySpotRemoteAddresses: {
+              namespace: SampleNames.roomSpotNode,
+              routerChannelId: SampleNames.roomRouteChannel
+            }
+          })
           .codecs()
             .use(zlinkProtobufCodec())
           .useDiscovery()
@@ -38,11 +45,11 @@ function createBingoSessionModule(endpoints: {
           .addRouteMesh(SampleNames.roomRouteChannel)
             .enableRouter(endpoints.sessionRouteEndpoint)
             .routingId(endpoints.sessionSpotNodeRid)
+            .connect(endpoints.preferredPlayRouteEndpoint)
           .addSpotMesh(SampleNames.roomSpotNode)
             .enableRouter(endpoints.sessionSpotEndpoint, endpoints.sessionSpotNodeRid)
           .addStreamNode(SampleNames.sessionStream)
             .bind(endpoints.sessionEndpoint)
-            .attachActorGateway(SampleNames.roomSpotNode)
             .registerSession(BingoSessionFactory)
           .build();
         }

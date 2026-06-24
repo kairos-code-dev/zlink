@@ -19,11 +19,11 @@ class PlaySession(
         }
     }
 
-    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-        if (handlers.tryHandleAsync(context, dispatch, payload).await()) {
+    override suspend fun onDispatchSuspending(header: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+        if (handlers.tryHandleAsync(context, header, payload).await()) {
             return
         }
-        requireActor(dispatch.packetName()).relay(payload).await()
+        requireActor(header.packetName()).relay(header, payload).await()
     }
 
     private fun requireActor(packetName: String): ZLinkSessionActor =

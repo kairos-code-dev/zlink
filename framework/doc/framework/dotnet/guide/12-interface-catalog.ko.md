@@ -305,7 +305,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkStreamNodeBuilder` | stream node(`Bind`, `AttachActorGateway`, `RegisterSession<TSession>`) |
+| `IZLinkStreamNodeBuilder` | stream node(`Bind`, `RegisterSession<TSession>`) |
 | `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, entry/spot factory) |
 | `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh와 단일 spot node(`UseDiscovery`, router/pub-sub/factory 설정) |
 

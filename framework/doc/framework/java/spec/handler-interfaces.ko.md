@@ -521,7 +521,6 @@ public interface ZLinkEntrySpotOptions {
 
 public interface ZLinkStreamNodeBuilder {
     ZLinkStreamNodeBuilder bind(String endpoint);
-    ZLinkStreamNodeBuilder attachActorGateway(String spotNodeName);
     ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType);
     ZLinkStreamNodeBuilder addSessionPacketHandler(
         Class<? extends ZLinkSessionPacketHandler<?>> handlerType);
@@ -1226,7 +1225,7 @@ public interface ZLinkHandlerFilter {
   `listConnections`도 지원해야 한다.
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.
 - stream session은 header 기반 `ZLinkSession` 하나로 둔다.
-- actor/session relay는 ActorGateway와 `ZLinkBoundSession`을 기준으로 구현한다.
+- actor/session relay는 SessionRelay와 `ZLinkBoundSession`을 기준으로 구현한다.
 
 ### 7.1 message dispatch error observer
 

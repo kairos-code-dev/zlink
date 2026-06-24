@@ -21,10 +21,6 @@ internal sealed class ZLinkStreamRuntimeManager(
         foreach (var streamNodeRegistration in registration.StreamNodes.Values)
         {
             var socket = streamAdapter.CreateStreamSocket(state.Context);
-            if (ResolveActorGatewayNode(state, streamNodeRegistration) is { } actorGateway)
-            {
-                socket.AttachActorGateway(actorGateway.Node);
-            }
             if (streamNodeRegistration.TlsServer is { } tlsServer)
             {
                 socket.SetTlsServer(tlsServer.CertPath, tlsServer.KeyPath, tlsServer.RequireClientCert);
@@ -44,23 +40,4 @@ internal sealed class ZLinkStreamRuntimeManager(
         }
     }
 
-    private static ZLinkSpotNodeRuntime? ResolveActorGatewayNode(
-        ZLinkFrameworkRuntimeState state,
-        ZLinkStreamNodeRegistration streamNodeRegistration)
-    {
-        if (!string.IsNullOrWhiteSpace(streamNodeRegistration.ActorGatewaySpotNodeName))
-        {
-            return state.SpotNodes[streamNodeRegistration.ActorGatewaySpotNodeName];
-        }
-
-        foreach (var spotNode in state.SpotNodes.Values)
-        {
-            if (spotNode.Registration.Router is not null)
-            {
-                return spotNode;
-            }
-        }
-
-        return null;
-    }
 }

@@ -28,6 +28,7 @@ class CommerceStore {
     val json: ObjectMapper = ObjectMapper().registerKotlinModule()
     private val stateFile: Path
     private val lockFile: Path
+    private val stateMutex = Any()
 
     init {
         val directory = System.getProperty(
@@ -507,7 +508,7 @@ class CommerceStore {
 
     private fun <T> mutate(mutator: (ObjectNode) -> T): T = withState(mutator, true)
 
-    private fun <T> withState(action: (ObjectNode) -> T, write: Boolean): T {
+    private fun <T> withState(action: (ObjectNode) -> T, write: Boolean): T = synchronized(stateMutex) {
         FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
             val lock = acquire(channel)
             try {

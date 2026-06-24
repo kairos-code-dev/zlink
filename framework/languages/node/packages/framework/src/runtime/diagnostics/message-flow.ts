@@ -187,6 +187,14 @@ function field(name: string, value: string | undefined): string | undefined {
   return value === undefined || value === '' ? undefined : `${name}=${value}`;
 }
 
+function errorField(error: unknown): string | undefined {
+  if (error === undefined) {
+    return undefined;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return field('error', JSON.stringify(message));
+}
+
 export function flowLine(flow: ZLinkMessageFlowEvent, nodeId: string | undefined, size: number | undefined): string {
   return [
     'message flow',
@@ -221,7 +229,8 @@ export function errorLine(event: ZLinkMessageDispatchErrorEvent, nodeId: string 
     field('corr', event.correlationId),
     field('src', event.sourceRid),
     field('spot', event.spotRid),
-    field('actor', event.actorId)
+    field('actor', event.actorId),
+    errorField(event.error)
   ]
     .filter((value): value is string => value !== undefined)
     .join(' ');

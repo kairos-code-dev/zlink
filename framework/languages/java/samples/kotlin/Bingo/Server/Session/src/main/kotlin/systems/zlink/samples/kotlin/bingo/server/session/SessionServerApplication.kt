@@ -46,7 +46,6 @@ class SessionServerApplication {
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
                 .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()))
             options.addStreamNode(SampleNames.StreamNode)
-                .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession::class.java)
                 .addSessionPacketHandler(AuthenticateSessionHandler::class.java)

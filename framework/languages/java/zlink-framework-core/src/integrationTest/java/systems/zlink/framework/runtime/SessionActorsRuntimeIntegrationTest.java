@@ -251,7 +251,6 @@ final class SessionActorsRuntimeIntegrationTest {
                 node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-bind-" + System.nanoTime());
-            stream.attachActorGateway("play");
             stream.registerSession(GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
@@ -366,7 +365,6 @@ final class SessionActorsRuntimeIntegrationTest {
                     .setRouterRoutingId(sessionNodeRid);
                 node.enablePubSub(sessionPub); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind(streamEndpoint);
-            stream.attachActorGateway("session");
             stream.registerSession(GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());

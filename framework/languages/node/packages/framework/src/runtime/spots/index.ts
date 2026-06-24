@@ -536,7 +536,7 @@ class ZLinkSpotNodeConnector {
       if (this.options.registration.registrySpotRemoteAddresses?.namespace === spotNodeName) {
         discovery.spotOwnerSyncEnabled = true;
       }
-      if (this.options.registration.actorFactories.size > 0 || this.isStreamActorGateway(spotNodeName)) {
+      if (this.options.registration.actorFactories.size > 0 || this.isStreamSessionRelayNode(spotNodeName)) {
         discovery.actorRouteSyncEnabled = true;
       }
       node.attachDiscovery(discovery);
@@ -574,13 +574,8 @@ class ZLinkSpotNodeConnector {
     return (this.options.registration.discovery?.registries ?? []).length > 0;
   }
 
-  private isStreamActorGateway(spotNodeName: string): boolean {
-    for (const streamNode of this.options.registration.streamNodes.values()) {
-      if (streamNode.attachActorGateway === spotNodeName) {
-        return true;
-      }
-    }
-    return false;
+  private isStreamSessionRelayNode(spotNodeName: string): boolean {
+    return this.options.registration.spotNodes.get(spotNodeName)?.router !== undefined;
   }
 
 }
@@ -1992,6 +1987,9 @@ export class ZLinkEntrySpotActivation {
       actorId,
       correlationId: header.correlationId ?? header.requestSeq?.toString()
     });
+    if (remoteBoundSessionTarget !== undefined) {
+      this.options.remoteActorPacketTargetReceiver?.(actorId, remoteBoundSessionTarget);
+    }
     const routed = await this.options.localActorPacketRouter?.(
       actorId,
       parts,
@@ -2020,9 +2018,6 @@ export class ZLinkEntrySpotActivation {
         );
       }
       return undefined;
-    }
-    if (remoteBoundSessionTarget !== undefined) {
-      this.options.remoteActorPacketTargetReceiver?.(actorId, remoteBoundSessionTarget);
     }
     let payload: unknown;
     try {

@@ -46,12 +46,13 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         });
 
     private final ZLinkBackendStreamSocket stream;
+    private final ZLinkBackendSpotNode spotNode;
     private final RoutingId sessionRid;
     private final ZLinkActorRuntime actors;
     private final ZLinkMessageSerializer serializer;
     private final Predicate<RoutingId> routeReady;
     private final LocalActorDispatcher localActorDispatcher;
-    private final boolean nativeActorGatewayAttached;
+    private final boolean nativeSessionRelayAttached;
     private final ZLinkStreamCodec defaultCodec;
     private final List<ZLinkSessionActor> bound = new ArrayList<>();
 
@@ -115,15 +116,30 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkMessageSerializer serializer,
         Predicate<RoutingId> routeReady,
         LocalActorDispatcher localActorDispatcher,
-        boolean nativeActorGatewayAttached,
+        boolean nativeSessionRelayAttached,
         ZLinkStreamCodec defaultCodec) {
+        this(null, stream, sessionRid, actors, serializer, routeReady,
+            localActorDispatcher, nativeSessionRelayAttached, defaultCodec);
+    }
+
+    public ZLinkSessionActorsRuntime(
+        ZLinkBackendSpotNode spotNode,
+        ZLinkBackendStreamSocket stream,
+        RoutingId sessionRid,
+        ZLinkActorRuntime actors,
+        ZLinkMessageSerializer serializer,
+        Predicate<RoutingId> routeReady,
+        LocalActorDispatcher localActorDispatcher,
+        boolean nativeSessionRelayAttached,
+        ZLinkStreamCodec defaultCodec) {
+        this.spotNode = spotNode;
         this.stream = stream;
         this.sessionRid = sessionRid;
         this.actors = actors;
         this.serializer = serializer;
         this.routeReady = routeReady == null ? ignored -> true : routeReady;
         this.localActorDispatcher = localActorDispatcher;
-        this.nativeActorGatewayAttached = nativeActorGatewayAttached;
+        this.nativeSessionRelayAttached = nativeSessionRelayAttached;
         this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
     }
 
@@ -155,6 +171,17 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
 
     private CompletionStage<ZLinkSessionActor> bindBackendRef(
         ZLinkBackendActorRef ref) {
+        if (actors != null) {
+            Optional<ZLinkActor> localActor = actors.localActor(ref.actorId());
+            if (localActor.isPresent()) {
+                ZLinkBackendActorRef localRef = actors.refFor(localActor.get());
+                if (localRef.nodeRid().equals(ref.nodeRid())
+                    && localRef.actorId().equals(ref.actorId())
+                    && localRef.epoch() == ref.epoch()) {
+                    return bindManagedAsync(localActor.get());
+                }
+            }
+        }
         return awaitRouteReady(ref)
             .thenCompose(ignored -> stream.bindActor(sessionRid, ref)
                 .submit(Duration.ofSeconds(30)))
@@ -181,7 +208,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 "managed actor binding requires an actor runtime"));
         }
         ZLinkBackendActorRef ref = actors.refFor(actor);
-        CompletionStage<Void> nativeBinding = nativeActorGatewayAttached
+        CompletionStage<Void> nativeBinding = nativeSessionRelayAttached
             ? awaitRouteReady(ref)
                 .thenCompose(ignored -> stream.bindActor(sessionRid, ref)
                     .submit(Duration.ofSeconds(30)))
@@ -191,13 +218,22 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 ZLinkBoundSessionRuntime boundSession =
                     new ZLinkBoundSessionRuntime(
                         stream,
+                        spotNode,
                         sessionRid,
                         ref.actorId(),
                         serializer,
                         actors,
                         actor,
                         defaultCodec);
-                long bindingToken = actors.bindSession(actor, boundSession);
+                RoutingId sourceNodeRid =
+                    nativeSessionRelayAttached && spotNode != null ? spotNode.routingId() : null;
+                RoutingId sourceSessionRid =
+                    nativeSessionRelayAttached ? sessionRid : null;
+                long bindingToken = actors.bindSession(
+                    actor,
+                    boundSession,
+                    sourceNodeRid,
+                    sourceSessionRid);
                 boundSession.setBindingToken(bindingToken);
                 BoundActor boundActor = new BoundActor(
                     stream,
@@ -209,7 +245,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     bindingToken,
                     routeReady,
                     localActorDispatcher,
-                    nativeActorGatewayAttached);
+                    nativeSessionRelayAttached);
                 boundSession.setUnbindListener(() -> bound.remove(boundActor));
                 bound.add(boundActor);
                 return boundActor;
@@ -231,7 +267,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 }
                 if (System.nanoTime() >= deadline) {
                     result.completeExceptionally(new TimeoutException(
-                        "ActorGateway route was not ready before timeout: "
+                        "session relay route was not ready before timeout: "
                             + ref.actorId()));
                     return;
                 }
@@ -252,7 +288,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         private final long bindingToken;
         private final Predicate<RoutingId> routeReady;
         private final LocalActorDispatcher localActorDispatcher;
-        private final boolean nativeActorGatewayAttached;
+        private final boolean nativeSessionRelayAttached;
 
         BoundActor(
             ZLinkBackendStreamSocket stream,
@@ -264,7 +300,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             long bindingToken,
             Predicate<RoutingId> routeReady,
             LocalActorDispatcher localActorDispatcher,
-            boolean nativeActorGatewayAttached) {
+            boolean nativeSessionRelayAttached) {
             this.stream = stream;
             this.sessionRid = sessionRid;
             this.ref = ref;
@@ -274,7 +310,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             this.bindingToken = bindingToken;
             this.routeReady = routeReady == null ? ignored -> true : routeReady;
             this.localActorDispatcher = localActorDispatcher;
-            this.nativeActorGatewayAttached = nativeActorGatewayAttached;
+            this.nativeSessionRelayAttached = nativeSessionRelayAttached;
         }
 
         @Override
@@ -432,19 +468,19 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         }
                         if (System.nanoTime() >= deadline) {
                             result.completeExceptionally(new TimeoutException(
-                                "ActorGateway route was not ready before timeout: "
+                                "session relay route was not ready before timeout: "
                                     + ref.actorId()));
                             return;
                         }
                         retryAfterNativeBinding(this);
                     } catch (ZlinkSubmitException ex) {
-                        if (ex.getResult() != SubmitResult.NOT_CONNECTED) {
+                        if (!isRetryableSubmitResult(ex.getResult())) {
                             result.completeExceptionally(ex);
                             return;
                         }
                         if (System.nanoTime() >= deadline) {
                             result.completeExceptionally(new TimeoutException(
-                                "ActorGateway route was not ready before timeout: "
+                                "session relay route was not ready before timeout: "
                                     + ref.actorId()));
                             return;
                         }
@@ -465,6 +501,12 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 .submit(Duration.ofSeconds(2))
                 .whenComplete((ignored, error) ->
                     RELAY_RETRY_EXECUTOR.schedule(attempt, 10, TimeUnit.MILLISECONDS));
+        }
+
+        private static boolean isRetryableSubmitResult(SubmitResult result) {
+            return result == SubmitResult.NOT_CONNECTED
+                || result == SubmitResult.BACKPRESSURED
+                || result == SubmitResult.NOT_FOUND;
         }
 
         private CompletionStage<Void> ensureNativeBinding() {

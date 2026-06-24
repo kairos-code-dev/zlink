@@ -2258,7 +2258,7 @@ public client 는 두지 않는다.
 
 remote actor 위치는 session 이 직접 계산하지 않는다. session 은 actor id/type 으로
 local actor handle 을 만들거나, actor 생성 또는 join 결과의 `ActorRef` 로
-remote actor handle 을 만들고, core ActorGateway 가 그 actor ref 를 기준으로 relay 한다.
+remote actor handle 을 만들고, core SessionRelay 가 그 actor ref 를 기준으로 relay 한다.
 
 ### 5.5.1 route transport helper
 
@@ -2479,8 +2479,6 @@ public interface IZLinkStreamNodeBuilder
 {
     IZLinkStreamNodeBuilder Bind(string endpoint);
 
-    IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName);
-
     IZLinkStreamNodeBuilder RegisterSession<TSession>()
         where TSession : class, IZLinkSession;
 }
@@ -2657,8 +2655,8 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
     mesh builder는 자체 `UseDiscovery().AddRegistryEndpoint(...)`와
     `EnableRouter`, `EnablePubSub`, `AddSpotFactory<TSpot>(...)`,
     `AddEntrySpot<TEntrySpot>()`를 노출한다.
-    ActorGateway 는 별도 node builder 를 갖지 않고, stream 이 router 역할
-    를 켠 SpotNode 를 `AttachActorGateway(...)` 로 참조한다.
+    SessionRelay 는 별도 node builder 를 갖지 않고, 같은 프로세스의 router 역할
+    SpotNode 에 STREAM 의 session relay 입구가 자동으로 연결된다.
 - `EnableServer(...)`
   - local request/send handler를 받을 `ROUTER(server)` 역할을 연다.
   - 이 역할은 local bind endpoint가 없으면 다른 프로세스에서 접근할 수
@@ -3016,10 +3014,9 @@ public interface IZLinkEntrySpotOptions
 `AddSpotMesh(channelName)` 는 SPOT channel 이름과 이 프로세스의 단일 node 를
 함께 소유한다. 그래서 같은 channel 안에 node 를 다시 추가하는 함수는 두지 않는다.
 
-ActorGateway 도 같은 원칙을 따른다. 별도 `AddActorGatewayNode(...)` 표면을 두지
-않고, `AddSpotMesh(...)` 가 만든 SpotNode 에 `EnableRouter(...)` 와 router
-`Bind(...)` 를 설정한 뒤 stream 이 `AttachActorGateway(spotNodeName)` 으로
-그 local ingress node 를 참조한다.
+Session relay 도 같은 원칙을 따른다. 별도 relay node builder 를 두지 않고,
+`AddSpotMesh(...)` 가 만든 router-capable SpotNode 를 framework 가 relay ingress 로
+사용한다.
 
 정리하면, `SPOT` 등록 시점에도 다음 축들을 함께 드러내는 편이 맞다.
 

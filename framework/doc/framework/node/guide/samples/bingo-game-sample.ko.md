@@ -12,7 +12,7 @@ push를 한 흐름으로 보여 준다.
 
 ## 2. 서버 구성
 
-- `Session`: STREAM 노드로 client 접속을 받고 ActorGateway로 player actor에 bind 한다.
+- `Session`: STREAM 노드로 client 접속을 받고 SessionRelay로 player actor에 bind 한다.
 - `Api`: 인증·매칭 요청을 받는 client-server channel handler를 NestJS provider로 노출한다.
 - `Play`: room Spot·Entry Spot·player actor·draw timer·domain event를 가진 상태 소유 서버.
 - `Registry`: embedded registry로 네 서버가 서로를 Discovery로 발견한다.

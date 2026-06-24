@@ -39,12 +39,11 @@ import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class StreamSessionTest {
     @Test
-    void streamNodeBindsAndAttachesConfiguredActorGatewaySpotNode() {
+    void streamNodeBindsAndAttachesConfiguredSessionRelaySpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.attachActorGateway("play");
             stream.registerSession(GameSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -69,7 +68,6 @@ final class StreamSessionTest {
                 "stream.bind.inproc://gateway",
                 "stream.onPacket",
                 "stream.onTransportError",
-                "stream.attachActorGateway.spotNode",
                 "close.context",
                 "close.stream",
                 "close.context",
@@ -244,7 +242,6 @@ final class StreamSessionTest {
                 node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActorFactory.class);
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.attachActorGateway("play");
             stream.registerSession(ContextSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -272,7 +269,6 @@ final class StreamSessionTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("session-node")); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.attachActorGateway("session");
             stream.registerSession(ContextSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();

@@ -56,7 +56,7 @@ zlink runtime을 같은 application host 안에서 구성해야 한다.
 
 특히 `C++`에는 `ASP.NET Core`, `Spring Boot`, `NestJS`처럼 널리 쓰이는 단일 표준
 application framework가 없으므로, zlink framework가 app, host, DI, HTTP hosting,
-configuration, handler registry, CAPI dispatch 연결, lifecycle, ActorGateway attach 같은
+configuration, handler registry, CAPI dispatch 연결, lifecycle, session relay 같은
 기반 프레임워크 설계 내용을 직접 제공한다. 이 내용은 공통 정책을 대체하는 것이 아니라,
 공통 정책에서 다루지 않은 `C++` application framework 세부 스펙을 채우기 위한 것이다.
 
@@ -549,7 +549,7 @@ dependency로만 추가한다. GoogleTest, GoogleMock, benchmark 라이브러리
 - hosted service 시작과 종료 순서 관리
 
 `app_t`는 깊은 모듈이어야 한다. 호출자가 zlink context, socket 생성 순서, poller
-실행 순서, ActorGateway attach 순서를 기억해야 한다면 host 추상화가 실패한 것이다.
+실행 순서, session relay 순서를 기억해야 한다면 host 추상화가 실패한 것이다.
 
 ### 4.2 DI Container
 
@@ -770,7 +770,6 @@ struct timer_options_t {
 ### 4.5.2 ActorGateway Session Relay
 
 Session 서버와 Play 서버를 분리하는 흐름은 ActorGateway를 기준으로 설명한다.
-STREAM session이 사용할 local SpotNode를 `attach_actor_gateway(...)`로 지정하고,
 session은 actor handle에 bind한 뒤 `relay(...)`로 packet을 넘긴다.
 
 이 경로는 application route mesh channel을 사용하지 않는다. route mesh channel은
@@ -1180,7 +1179,7 @@ Discovery와 topology는 zlink framework의 차별화 축이다.
 manual 연결을 섞지 않는다.
 
 Registry-backed 기본값은 Spot remote address 조회에 사용한다. session actor relay는
-Registry actor route lookup을 hot path로 쓰지 않고, stream의 ActorGateway attach와
+Registry actor route lookup을 hot path로 쓰지 않고, stream의 session relay와
 logical actor handle을 사용한다. actor-session binding은 framework/core runtime state
 이며 Registry row나 sample-only metadata store에 저장하지 않는다.
 
@@ -1273,7 +1272,7 @@ framework core hosting 기능이다. Kafka, gRPC 같은 외부 system bridge와 
 | 5 | messaging core | publish, request, send, reply dispatch |
 | 6 | spot abstraction | spot lifecycle, core dispatch ordering, direct routing, publish |
 | 7 | SPOT timer | tick metadata, overrun policy, timer failure monitoring |
-| 8 | actor/session relay | ActorGateway attach, session bind, relay, bound session push |
+| 8 | actor/session relay | session relay, session bind, relay, bound session push |
 | 9 | hosted services | start/stop lifecycle과 shutdown 연동 |
 | 10 | HTTP hosting | ASP.NET Core Minimal API route handler 대응, JSON DTO binding, DI handler, status mapping |
 | 11 | logging / health | runtime 오류, handler 예외, runtime 상태를 볼 수 있는 core 표면 |
@@ -1354,7 +1353,7 @@ CPU-bound handler offload를 검토한다. packet 이름과 handler 흐름은 `.
 `TicTacToe`는 HTTP 시작 요청, STREAM, ActorGateway 기반 actor/session relay 샘플이다.
 `.NET` TicTacToe처럼 client가 먼저 HTTP `POST /games`를 호출하고, C++ sample의
 `CreateGameHttpReq` API handler 응답에 담긴 Play stream endpoint에 connector가 연결된다.
-이 샘플은 HTTP hosting, STREAM endpoint, ActorGateway attach, Entry Spot, actor factory,
+이 샘플은 HTTP hosting, STREAM endpoint, session relay, Entry Spot, actor factory,
 session actor bind, relay, bound session push, actor join/move, disconnect cleanup을
 검토한다.
 

@@ -14,7 +14,7 @@ session, actor, room Spot을 함께 호스팅한다. 샘플은 `api-a`, `api-b`,
 `play-b`를 실행해 API와 Play가 모두 2개 이상일 때도 같은 게임 흐름이 유지되는지
 보여 준다.
 
-별도 Session 서버는 없다. 대신 각 Play 서버가 자기 stream session과 actor gateway를
+별도 Session 서버는 없다. 대신 각 Play 서버가 자기 stream session과 session relay를
 소유하고, room Spot은 Redis에 기록된 room route를 통해 owner Play의 SpotNode로
 찾아간다. 이 구조는 framework가 stream, actor, Spot 경계를 어떻게 연결하는지 보여 주면서,
 운영 환경에서 흔히 쓰는 Redis 기반 위치 저장소를 각 언어 framework의 public spot remote

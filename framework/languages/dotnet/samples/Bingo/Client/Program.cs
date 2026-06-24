@@ -45,7 +45,7 @@ internal static class Program
                     clientName,
                     observation.Kind,
                     observation.Name,
-                    observation.RequestSeq?.Value.ToString() ?? "-",
+                    observation.RequestSeq?.ToString() ?? "-",
                     observation.PayloadLength);
                 return ValueTask.CompletedTask;
             });

@@ -51,7 +51,7 @@ final class ZLinkFrameworkCapabilityBeanRegistrar implements BeanFactoryPostProc
         boolean hasSpotNode = !options.registration().spotNodes().isEmpty();
         boolean hasActorFactory = !options.registration().actorFactories().isEmpty();
         boolean hasSpotPublisherClient = options.registration().spotNodes().stream()
-            .anyMatch(node -> !node.attachedSpotPublisherClients().isEmpty());
+            .anyMatch(node -> node.pubSubEnabled());
         boolean hasRegistrySpotRemoteAddresses =
             options.registration().registrySpotRemoteAddresses() != null;
 

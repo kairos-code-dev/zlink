@@ -127,7 +127,6 @@ manual peer는 `add_route_mesh(...).enable_client(endpoint)`에서 설정한다.
 
 session actor relay는 Registry actor route lookup을 hot path로 사용하지 않는다.
 
-- STREAM session은 `attach_actor_gateway(...)`로 local SpotNode에 붙는다.
 - session bind는 local actor handle 또는 remote actor ref를 사용한다.
 - actor-session binding은 framework/core runtime state로 유지한다.
 - sample-only route store 또는 metadata store를 두지 않는다.

@@ -55,7 +55,6 @@ public static class SessionServerHostFactory
             }
             {
                 var stream = options.AddStreamNode(SampleNames.StreamNode);
-                stream.AttachActorGateway(SampleNames.SupportSpotDiscovery);
                 stream.Bind(session.StreamEndpoint);
                 stream.RegisterSession<SupportChatSession>();
 

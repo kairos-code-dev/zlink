@@ -105,7 +105,7 @@ query client는 hidden retry를 하지 않는다. 연결 실패와 timeout은 �
 registry query는 운영 점검과 topology snapshot 용도로 분리하는 편이 맞다.
 
 Actor/session binding은 Registry row로 저장하지 않는다. session은 actor id/type과
-core ActorGateway가 제공하는 logical handle을 사용하고, Registry는 Spot owner 조회와
+core SessionRelay가 제공하는 logical handle을 사용하고, Registry는 Spot owner 조회와
 운영 topology 확인에 집중한다.
 
 Spot remote address 기본값은 Registry-backed resolver로 제공할 수 있다. 이 resolver는

@@ -55,11 +55,6 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
         nativeSocket.DisconnectRid(routingId);
     }
 
-    public void AttachActorGateway(IZLinkBackendSpotNode node)
-    {
-        nativeSocket.AttachActorGateway(node.RequireNative<ISpotNode>());
-    }
-
     public async ValueTask BindActorAsync(
         RoutingId sessionRid,
         ZLinkBackendActorRef actor,

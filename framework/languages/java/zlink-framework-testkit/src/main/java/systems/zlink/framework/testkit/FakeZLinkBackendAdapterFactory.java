@@ -920,6 +920,17 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 + firstPart(parts));
             return true;
         }
+        @Override public void bindRemoteActorBoundSession(
+            ZLinkBackendActorRef actor,
+            RoutingId sourceNodeRid,
+            RoutingId sourceSessionRid) {
+            record("bindRemoteActorBoundSession."
+                + actor.actorId()
+                + "."
+                + sourceNodeRid
+                + "."
+                + sourceSessionRid);
+        }
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) {
             record("closeActorBoundSession." + actor.actorId());
         }
@@ -970,7 +981,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     joinReply = ZLinkActorSpotRoutePackets.encodeJoinReply(
                         accepted,
                         new ZLinkBackendActorRef(
-                            targetNodes.getOrDefault(channelName, RoutingId.from("remote-node")),
+                            targetNodeRid,
                             request.actorId(),
                             request.actorGeneration() + 1),
                         accepted ? joinedPayload : rejectedPayload);
@@ -1247,7 +1258,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             record("reply." + routingId + "." + header.requestSequence().orElse(0L) + "." + header.packetName() + "." + header.flags() + "." + header.metadata() + "." + firstPart(parts));
             return true;
         }
-        @Override public void attachActorGateway(ZLinkBackendSpotNode node) { record("attachActorGateway." + node.name()); }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) { record("bindActor." + actor.actorId()); return timeout -> CompletableFuture.completedFuture(null); }
         @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) { record("unbindActor." + actorId); return timeout -> CompletableFuture.completedFuture(null); }
         @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) { record("sendBoundActor." + actorId); return true; }

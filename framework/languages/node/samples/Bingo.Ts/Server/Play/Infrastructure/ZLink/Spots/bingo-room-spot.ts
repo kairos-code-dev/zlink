@@ -95,7 +95,10 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
         accepted: true,
         reply: joined
       };
-    } catch {
+    } catch (error) {
+      if (process.env.BINGO_DEBUG_FLOW === '1') {
+        console.log(`play-room-join rejected actor=${actor.actorId} error=${error instanceof Error ? error.message : String(error)}`);
+      }
       return {
         accepted: false
       };

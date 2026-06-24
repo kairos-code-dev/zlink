@@ -22,7 +22,6 @@ import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
 interface ZLinkSuspendingRequestHandler<TRequest, TReply> {
@@ -226,6 +225,6 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
 }
 
 private fun <T> blocking(block: suspend () -> T): T =
-    runBlocking(Dispatchers.Default) {
+    runBlocking {
         block()
     }

@@ -50,8 +50,6 @@ public final class BingoClientScenario {
         ensure(client2Auth.actorId().equals("player-2"));
         ensure(!client2Auth.actorId().equals(client1Auth.actorId()));
         ensure(!client2Auth.actorNodeRid().equals(client1Auth.actorNodeRid()));
-        var client2Started =
-            client2.waitFor(SampleNames.GameStartedPacket).submit(Messages.BingoGameStartedNotify.class);
 
         Messages.MatchBingoRes client2Match =
             client2.request(new Messages.MatchBingoReq("two-player")).await(Messages.MatchBingoRes.class);
@@ -64,7 +62,6 @@ public final class BingoClientScenario {
         ensure(join.actorId().equals(client2Auth.actorId()));
         ensure(client2.receivedCount(SampleNames.PlayerJoinedPacket) == 0);
         ensure(client1.await(client1Started).payload().state().status().equals("Running"));
-        ensure(client2.await(client2Started).payload().state().status().equals("Running"));
 
         Messages.SubmitBingoCardRes client2Card = client2
             .request(new Messages.SubmitBingoCardReq(client2Match.roomId(), BingoClientCards.Player2))

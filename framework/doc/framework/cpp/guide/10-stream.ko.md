@@ -19,7 +19,6 @@ Game client --(stream connector)--> stream node --> session --> actor/spot
 options.add_stream_node ("tictactoe.stream")
   .bind (topology.stream_endpoint)            // 예: tcp://0.0.0.0:5581
   .register_session<play_session_t> ()
-  .attach_actor_gateway ("tictactoe.spot.node");   // actor 경로 연결 (9장)
 ```
 
 이 예제는 옵션 레벨의 `stream_node_options_builder_t` 표면이다.
@@ -28,12 +27,10 @@ options.add_stream_node ("tictactoe.stream")
 |----------------|------|
 | `bind(endpoint)` | 클라이언트 접속을 받을 endpoint |
 | `register_session<T>()` | 연결당 생성될 session 타입 |
-| `attach_actor_gateway(spot_node)` | 세션 actor를 spot 노드로 잇기 |
 
 저수준 `stream_builder_t`는 같은 stream node를 구성하지만 session 타입을 직접
 등록하지 않고 `register_session(session_name)`으로 이미 등록된 session 이름을
 연결한다. 저수준 표면은 `bind(endpoint)`, `register_session(session_name)`,
-`attach_actor_gateway(spot_node)`만 쓴다.
 
 ## 3. session 작성
 
@@ -155,7 +152,6 @@ stream 패킷도 채널 메시지와 같은 typed DTO(`packet_name`)다. 서버 
 
 - **세션이 안 생긴다** → stream node에 `register_session<T>()`가 없거나 `bind`를
   안 했다.
-- **actor 패킷이 spot까지 안 간다** → `attach_actor_gateway`(stream 쪽)와
   `enable_actor_gateway`(spot 노드 쪽) 짝이 맞는지 확인한다([9장 §5](09-actor-session.ko.md#5-actor-gateway)).
 - **패킷 디코딩 실패** → `packet_name`과 codec 등록을 확인한다.
 - **heartbeat·재연결·TLS 동작** → 이는 서버 session이 아니라 클라이언트

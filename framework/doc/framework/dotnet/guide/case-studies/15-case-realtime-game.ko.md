@@ -132,7 +132,6 @@ public sealed class PlaceMarkHandler
 {
     var s = options.AddStreamNode("session");
     s.Bind("tcp://0.0.0.0:9100");
-    s.AttachActorGateway("play-node");   // 이 stream 의 relay 대상 SpotNode
     s.RegisterSession<GameSession>();
 
 }

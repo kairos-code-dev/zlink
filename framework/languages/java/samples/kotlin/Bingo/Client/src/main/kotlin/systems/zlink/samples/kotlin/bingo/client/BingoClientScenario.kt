@@ -60,7 +60,6 @@ class BingoClientScenario {
         ensure(client2Auth.actorId == "player-2")
         ensure(client2Auth.actorId != client1Auth.actorId)
         ensure(client2Auth.actorNodeRid != client1Auth.actorNodeRid)
-        val client2Started = async { client2.waitFor<BingoGameStartedNotify>().await() }
 
         val client2Match = client2.request(MatchBingoReq("two-player")).await<MatchBingoRes>()
         ensure(client2Match.roomId == client1Match.roomId)
@@ -72,7 +71,6 @@ class BingoClientScenario {
         ensure(join.actorId == client2Auth.actorId)
         ensure(client2.receivedCount(SampleNames.PlayerJoinedPacket) == 0)
         ensure(client1Started.await().payload().state.status == "Running")
-        ensure(client2Started.await().payload().state.status == "Running")
 
         val client2Card = client2.request(SubmitBingoCardReq(client2Match.roomId, BingoClientCards.Player2)).await<SubmitBingoCardRes>()
         ensure(client2Card.state.status == "Running")

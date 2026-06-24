@@ -28,7 +28,7 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
-final class RemoteActorGatewayTest {
+final class RemoteSessionRelayTest {
     @Test
     void sessionAndPlayServers_relaySucceeds() {
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
@@ -48,7 +48,6 @@ final class RemoteActorGatewayTest {
             assertEquals("player-1", actor.actorId());
         }
 
-        assertTrue(backend.calls().contains("stream.attachActorGateway.spotNode"));
         assertTrue(backend.calls().contains("stream.bindActor.player-1"));
     }
 
@@ -58,7 +57,6 @@ final class RemoteActorGatewayTest {
                 node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
-            stream.attachActorGateway("play");
             stream.registerSession(GameSession.class); };
         return options;
     }

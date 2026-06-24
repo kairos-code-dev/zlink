@@ -18,7 +18,7 @@ push를 한 흐름으로 보여 준다. payload codec은 cross-language schema�
 
 ## 2. 샘플 범위
 
-- `Session`: STREAM 노드로 client 접속을 받고 ActorGateway로 player actor에 bind 한다.
+- `Session`: STREAM 노드로 client 접속을 받고 SessionRelay로 player actor에 bind 한다.
 - `Api`: 인증·매칭 요청을 받는 client-server channel handler를 노출한다.
 - `Play`: room Spot(`BingoRoomSpot`)과 Entry Spot(`BingoEntrySpot`), player actor,
   draw timer, domain event를 가진 상태 소유 서버다.

@@ -24,7 +24,7 @@ internal sealed class ZLinkBoundActorRelaySender(TimeSpan timeout)
                         SendFlags.None);
                 },
                 timeout,
-                "Actor session relay failed because the ActorGateway route was not ready before timeout.",
+                "Actor session relay failed because the session relay route was not ready before timeout.",
                 cancellationToken)
             .ConfigureAwait(false);
     }

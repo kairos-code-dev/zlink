@@ -790,7 +790,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         state,
         reply,
         remoteAddress,
-        reply.reply === undefined ? undefined : BindingMessage.from(Buffer.from(reply.reply, 'base64')),
+        reply.reply == null ? undefined : BindingMessage.from(Buffer.from(reply.reply, 'base64')),
         signal
       );
     }

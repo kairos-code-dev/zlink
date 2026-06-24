@@ -733,10 +733,10 @@ session 이 actor 로 packet 을 relay 할 때는 `ZLinkSession.onDispatch(...)`
 application 이 actor runtime 을 직접 호출하는 별도 public client 는 두지 않는다.
 이때 session callback 으로 받은 payload 는 framework runtime 이 callback 동안
 빌려준 값이다. session 은 이를 직접 해제하거나 `move()` 로 소비하지 않고,
-`ZLinkSessionActor.relay(...)` 에 그대로 넘긴다. remote ActorGateway 로 보내기
+`ZLinkSessionActor.relay(...)` 에 그대로 넘긴다. remote SessionRelay 로 보내기
 위해 필요한 내부 frame 은 framework 가 별도로 만든다.
 
-remote actor 위치 해석은 public resolver 가 아니라 core ActorGateway 경로가
+remote actor 위치 해석은 public resolver 가 아니라 core SessionRelay 경로가
 맡는다. session 은 local actor 를 actor id/type 으로 bind 하거나, Play 서버가
 join 결과에서 받은 `ActorRef` 로 remote actor handle 을 bind 한다. 이 구조에서는
 session packet 마다 application 저장소를 조회하지 않으며, application route mesh
@@ -895,7 +895,7 @@ sequenceDiagram
     autonumber
     participant C as Client
     participant S as Session
-    participant G as ActorGateway
+    participant G as SessionRelay
     participant Act as ZLinkActor
 
     C->>S: STREAM connect + authenticate
@@ -922,7 +922,7 @@ sequenceDiagram
 ## 9. Session actor dispatch (gateway 패턴)
 
 이 절은 이 문서에서 다루는 가장 큰 use case 를 정리한다. 서버 역할을 두 종류로
-나누고, 각 역할이 어떤 ActorGateway binding 위에서 동작하는지 본다.
+나누고, 각 역할이 어떤 session relay binding 위에서 동작하는지 본다.
 
 서버를 여러 대 두는 구성을 가정해 보자. 이 구성에서 **Session 서버** 는
 client 연결만 받는다. 실제 gameplay 로직은 **Play 서버** 의 actor 가 처리한다.
@@ -934,11 +934,11 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
 
 - **actor handle** -- Session 서버가 actor id/type 으로 만드는 handle 이다.
   local actor 는 process 안의 native actor ref 로 bind 하고, remote actor 는 actor 생성 또는
-  join 결과의 `ActorRef` 로 ActorGateway remote actor ref 를 얻어 bind 한다.
-- **STREAM ActorGateway attach** -- Session 서버의 STREAM node 가 어느 SpotNode 를
-  session owner gateway 로 사용할지 지정하는 등록이다 (`attachActorGateway`). 이
-  등록이 있어야 session 에서 actor 로 가는 relay 와 actor 에서 bound session
-  으로 돌아오는 push 가 같은 gateway 상태를 사용한다.
+  join 결과의 `ActorRef` 로 SessionRelay remote actor ref 를 얻어 bind 한다.
+- **STREAM session relay** -- Session 서버의 STREAM node 가 framework registration 안의
+  router-capable SpotNode 를 relay ingress 로 사용한다. 이 연결이 있어야 session 에서
+  actor 로 가는 relay 와 actor 에서 bound session 으로 돌아오는 push 가 같은 relay
+  상태를 사용한다.
 - **`ZLinkSpotRemoteAddressResolver`** -- "spot rid → user Spot routing id" 를
   푼다. actor 가 `joinSpot(spotRid, ...)` 로 node 경계를 넘을 수 있다면 이
   resolver 를 등록한다.
@@ -954,7 +954,7 @@ sequenceDiagram
     participant C as Client
     participant S as Session Server
     participant P as Play Server (Actor)
-    participant G as ActorGateway
+    participant G as SessionRelay
 
     C->>S: STREAM 연결 + 인증
     S->>G: Bind sessionRid + token to logical actor
@@ -983,11 +983,11 @@ actor handler 는 **`ZLinkBoundSession`** 에 "현재 actor 의 client 로 messa
 이 부탁을 받은 framework 는 다음 순서로 일을 처리한다.
 
 1. actor handler 의 현재 actor id/type 으로 bound session binding 을 찾는다.
-2. core ActorGateway actor-to-session API 로 payload 를 내려보낸다.
+2. core SessionRelay actor-to-session API 로 payload 를 내려보낸다.
 3. bound session owner 가 local 이면 해당 STREAM session 으로 바로 보내고, remote 이면
    owner gateway 로 내부 relay 를 보낸다.
 
-ActorGateway 내부 relay packet 은 application route mesh channel handler group 으로
+SessionRelay 내부 relay packet 은 application route mesh channel handler group 으로
 노출되지 않는다. application route mesh channel 은 일반 routed messaging 용도로 남고,
 session actor relay 의 public 설정 조건이 아니다.
 
@@ -1073,7 +1073,7 @@ application 이 시작한 close 이므로 session 의 `onDisconnected(...)` 를
 
 session relay 는 application route mesh resolver 를 사용하지 않는다. session 이 actor id/type 으로
 local actor handle 을 만들거나 Play 서버가 돌려준 `ActorRef` 로 remote actor
-handle 을 만들면, core ActorGateway 가 해당 actor ref 를 기준으로 relay 한다.
+handle 을 만들면, core SessionRelay 가 해당 actor ref 를 기준으로 relay 한다.
 
 actor-session binding 은 public route resolver 결과가 아니다. 이전 stream
 의 뒤늦은 close 가 새 binding 을 지우지 못하도록, 내부에서 binding token
@@ -1092,7 +1092,6 @@ ZLinkModule.forRoot(
       .enableRouter('tcp://0.0.0.0:7201')
     .addStreamNode('client-stream')
       .bind('tcp://0.0.0.0:7101')
-      .attachActorGateway('session-node')
       .registerSession(ClientHeaderSession)
     .build()
 );
@@ -1117,7 +1116,7 @@ ZLinkModule.forRoot(
 
 actor remote address resolver 는 session relay 의 등록 요소가 아니다.
 session 서버는 client packet 마다 application route lookup 을 수행하지 않고,
-framework 가 만든 actor handle 과 ActorGateway 경로를 사용한다.
+framework 가 만든 actor handle 과 SessionRelay 경로를 사용한다.
 
 actor-session binding 은 framework / core runtime 내부에서 관리한다. 각 서버의
 역할을 나누어 보면 다음과 같다.
@@ -1188,7 +1187,6 @@ actor 관련 등록 표면은 `zlinkFramework()` builder 와 `.options(...)` 의
 | `.options({ spotRemoteAddressResolver })` / `.options({ registrySpotRemoteAddresses })` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
 | `.addSpotMesh(...).addEntrySpot(...)` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `.addSpotMesh(...).addSpotFactory(...)` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
-| `.addStreamNode(...).attachActorGateway(...)` | client stream을 받는 Session 서버 | STREAM node를 session owner gateway에 attach |
 | `.options({ metadata })` | metadata forward가 필요한 서버 | actor 경계 너머로 forward할 키 |
 
 ## 12. 다른 문서와의 관계

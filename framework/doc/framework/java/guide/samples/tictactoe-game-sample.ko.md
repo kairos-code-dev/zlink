@@ -18,9 +18,9 @@
 ## 2. 샘플 범위
 
 - `Api`: 인증과 game 생성 요청을 받는 client-server channel 서버.
-- `Play`: stream 노드 + ActorGateway + room Spot(`TicTacToeGame`) + Entry Spot을 한
+- `Play`: stream 노드 + SessionRelay + room Spot(`TicTacToeGame`) + Entry Spot을 한
   서버에 둔다. `PlaySession`은 framework typed session packet dispatcher로 인증을
-  처리하고, 이후 packet은 actor gateway가 bound actor로 relay 한다.
+  처리하고, 이후 packet은 session relay가 bound actor로 relay 한다.
 - 수동 endpoint 연결: `useManualConnections().connect(endpoint)` / `enableClient(endpoint)`.
 
 ## 3. 전체 흐름
@@ -48,8 +48,8 @@ API로 `RoomId` 문자열에서 만든다(임의 hex가 아님).
 options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
 var play = options.addClientServerChannel(SampleNames.PlayChannel);
 play.enableServer(settings.playChannelEndpoint());
-var stream = options.addStreamNode(SampleNames.ClientStream);
-stream.attachActorGateway(SampleNames.PlaySpot).bind(settings.playEndpoint())
+options.addStreamNode(SampleNames.ClientStream)
+      .bind(settings.playEndpoint())
       .registerSession(PlaySession.class)
       .addSessionPacketHandler(AuthenticatePlaySessionHandler.class);
 ```

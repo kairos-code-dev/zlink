@@ -111,7 +111,7 @@ val reply: InspectRoomReply =
 ```
 
 routed channel은 target node를 직접 지정하는 application route 용도다. session actor
-dispatch는 이 샘플 경로가 아니라 `STREAM`의 ActorGateway attach 경로를 사용한다.
+dispatch는 이 샘플 경로가 아니라 `STREAM`의 session relay 경로를 사용한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

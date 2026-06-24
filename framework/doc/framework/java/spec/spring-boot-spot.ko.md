@@ -44,7 +44,7 @@ publisher handle을 사용한다.
 - timer는 공용 scheduler보다 spot lifecycle registration 표면으로 두는 편이
   자연스럽다.
 - 같은 runtime 안의 local managed session actor dispatch는 framework 내부 dispatch를
-  사용한다. remote session actor dispatch는 Spot route channel이 아니라 ActorGateway
+  사용한다. remote session actor dispatch는 Spot route channel이 아니라 SessionRelay
   attach를 사용한다.
 
 ## 2. 기본 등록

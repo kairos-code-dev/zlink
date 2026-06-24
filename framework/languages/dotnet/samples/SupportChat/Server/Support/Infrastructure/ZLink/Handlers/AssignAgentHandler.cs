@@ -1,20 +1,16 @@
-using Systems.Zlink;
-using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 
 [ZLinkHandlerGroup("support")]
 internal sealed class AssignAgentHandler(
-    AgentAssignmentService assignment,
-    SupportActorDirectory actors)
+    AgentAssignmentService assignment)
     : IZLinkRequestHandler<AssignAgentReq, AssignAgentRes>
 {
-    public async ValueTask<AssignAgentRes> HandleAsync(
+    public ValueTask<AssignAgentRes> HandleAsync(
         AssignAgentReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
@@ -24,23 +20,17 @@ internal sealed class AssignAgentHandler(
         var assigned = assignment.AssignNextAgent();
         if (assigned is null)
         {
-            return new AssignAgentRes(
+            return ValueTask.FromResult(new AssignAgentRes(
                 request.ConversationId,
                 ConversationStatuses.WaitingForAgent,
-                AgentActorId: null);
+                AgentActorId: null));
         }
 
-        var actor = actors.Get(assigned.ActorId);
-        var conversationRid = RoutingId.From(request.ConversationId);
-        var joined = await actor.Actor.Context.JoinSpot(
-                conversationRid,
-                new JoinConversationReq(request.ConversationId))
-            .Async(cancellationToken);
-        var state = joined.Reply.Decode<JoinConversationRes>().State;
-        Console.Error.WriteLine($"support assign: joined conversation={request.ConversationId} agent={actor.Ref.ActorId} status={state.Status}");
-        return new AssignAgentRes(
+        _ = cancellationToken;
+        Console.Error.WriteLine($"support assign: assigned conversation={request.ConversationId} agent={assigned.ActorId}");
+        return ValueTask.FromResult(new AssignAgentRes(
             request.ConversationId,
-            state.Status,
-            actor.Ref.ActorId);
+            ConversationStatuses.Active,
+            assigned.ActorId));
     }
 }

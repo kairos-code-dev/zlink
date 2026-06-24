@@ -27,7 +27,7 @@
 - Spot timer와 timer monitoring event
 - actor factory, `ZLinkActorManager`, actor context
 - STREAM node, header 기반 `ZLinkSession`
-- ActorGateway 기반 session actor relay
+- SessionRelay 기반 session actor relay
 - `ZLinkBoundSession` push와 disconnect
 - Java Stream Connector
 - connector codec helper: JSON, MessagePack, Protobuf (typed connector 기본은 JSON)

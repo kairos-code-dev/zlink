@@ -209,22 +209,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"STREAM node '{streamNode.StreamNodeName}' must register a header stream session.");
         }
 
-        if (string.IsNullOrWhiteSpace(streamNode.ActorGatewaySpotNodeName))
-        {
-            return;
-        }
-
-        if (!registration.SpotNodes.TryGetValue(streamNode.ActorGatewaySpotNodeName, out var spotNode))
-        {
-            throw new ZLinkConfigurationException(
-                $"STREAM node '{streamNode.StreamNodeName}' references unknown ActorGateway target SpotNode '{streamNode.ActorGatewaySpotNodeName}'.");
-        }
-
-        if (spotNode.Router is null)
-        {
-            throw new ZLinkConfigurationException(
-                $"STREAM node '{streamNode.StreamNodeName}' attaches ActorGateway to SpotNode '{streamNode.ActorGatewaySpotNodeName}' but that SpotNode does not enable router capability.");
-        }
     }
 
     internal static IReadOnlyList<string> ResolveSpotDiscoveryEndpoints(

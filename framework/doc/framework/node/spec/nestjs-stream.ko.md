@@ -346,9 +346,8 @@ context 타입에 맞는 handler 구현을 provider 로 자동 등록한다.
 dotnet 의 `AddStreamNode(name)` fluent builder 는 NestJS 의 `zlinkFramework()`
 builder 로 옮긴다. dotnet builder 메서드 한 개 = node builder 메서드 한 개로
 1:1 대응시킨다. dotnet `IZLinkStreamNodeBuilder` 코드
-(`Contracts/Configuration/Builders.cs`, `Runtime/.../ZLinkStreamNodeBuilder.cs`)
-는 `Bind(endpoint)`, `AttachActorGateway(spotNodeName)`,
-`RegisterSession<TSession>()` 세 메서드를 노출하므로, node builder 도 이 셋을
+(`Contracts/Configuration/Builders.cs`, `Runtime/.../ZLinkStreamNodeBuilder.cs`)는
+`Bind(...)`, `RegisterSession<TSession>()` 두 메서드를 노출하므로, node builder 도 이 둘을
 메서드로 매핑한다.
 
 ```ts
@@ -361,7 +360,6 @@ builder 로 옮긴다. dotnet builder 메서드 한 개 = node builder 메서드
           .enableRouter('tcp://0.0.0.0:9110')
         .addStreamNode('client.stream')
           .bind('tcp://0.0.0.0:9100')
-          .attachActorGateway('game.spot')
           .registerSession(ClientHeaderSession)
         .build()
     ),
@@ -401,9 +399,9 @@ actor 를 쓰는 stream server 는 fluent builder 의 `actorFactory(...)` 와
   둔다.
 - 등록 시점에 이 node 가 framework Header 기반 packet 경로라는 사실이 분명하게
   드러난다.
-- `attachActorGateway` 는 session→actor bind/relay 가 향할 SpotNode 이름을
-  연결한다. 참조 대상 SpotNode 는 router 역할을 켜야 한다. actor 로 relay
-  하지 않는 순수 stream node 는 이 키를 생략한다.
+- session→actor bind/relay 는 framework 가 같은 registration 안의 router-capable
+  SpotNode 를 사용해 자동으로 연결한다. application 이 stream node 에 relay 대상
+  이름을 별도로 지정하지 않는다.
 
 ## 5. serializer 계층
 

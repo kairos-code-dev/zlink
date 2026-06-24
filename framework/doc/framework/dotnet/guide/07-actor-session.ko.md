@@ -21,16 +21,17 @@ actor 를 호스팅하는 **Play 역할**과 client STREAM 을 받는 **Session 
   그 actor 로 넘긴다. 게임 로직은 돌리지 않는다.
 - **Play(Actor)** — actor·Entry Spot·user Spot 을 띄우고 실제 게임 로직을 돌린다.
 
-어느 쪽으로 배포하든 로직 코드(handler·actor·spot)는 똑같다. **달라지는 건 등록 코드(§6)와
-`AttachActorGateway` 가 어디를 가리키느냐뿐**이다. 두 방식 모두 client 는 STREAM 하나만 들고
+어느 쪽으로 배포하든 로직 코드(handler·actor·spot)는 똑같다. **달라지는 건 등록 코드(§6)뿐**이다.
+두 방식 모두 client 는 STREAM 하나만 들고
 있으면 되고, Play 가 보내는 메시지도 그 STREAM 으로 돌아온다. 다시 접속할 때(분리 구성이면 다른
 Session 서버로 붙을 수도 있다)도 binding 만 새 stream 으로 바뀔 뿐, actor 인스턴스와 spot
 membership 은 그대로 남는다(actor id 만 같으면 되니 — 멱등).
 
 ### (A) 분리 — Session 서버 ↔ Play 서버 (다른 프로세스)
 
-Session 서버의 `AttachActorGateway` 가 **다른 프로세스에 있는 Play 서버의 SpotNode** 를 가리킨다.
-그래서 relay 가 네트워크를 한 번 건너간다. (예: **Bingo** 샘플 — Session·Play·Api·Registry 를 각각
+Session 서버는 자기 프로세스에 gateway 용 local SpotNode 하나를 두고(자동 연결), 그 gateway 가
+**원격 Play 서버의 actor 로 relay 를 forward** 한다. 그래서 relay 가 네트워크를 한 번 건너간다.
+(예: **Bingo** 샘플 — Session·Play·Api·Registry 를 각각
 별도 서버로 운영)
 
 ```mermaid
@@ -55,8 +56,8 @@ sequenceDiagram
 
 ### (B) 통합 — Session + Play (같은 프로세스)
 
-한 `AddZLinkFramework` 안에 StreamNode(session)와 SpotMesh/ActorFactory(play)를 함께 두고,
-`AttachActorGateway` 가 **같은 프로세스 안의 SpotNode** 를 가리킨다. relay 가 프로세스 안에서 끝나
+한 `AddZLinkFramework` 안에 StreamNode(session)와 SpotMesh/ActorFactory(play)를 함께 두면, stream 의
+gateway 가 **같은 프로세스의 그 SpotNode 로 자동 연결**된다. relay 가 프로세스 안에서 끝나
 네트워크를 타지 않는다. (예: **TicTacToe** 샘플)
 
 ```csharp
@@ -64,13 +65,12 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");      // play 역할
 
-    // session 역할 — gateway 가 "같은 프로세스의" spot 노드를 가리킨다(in-process relay)
+    // session 역할 — gateway 는 같은 프로세스의 SpotNode 로 자동 연결(in-process relay)
     options.AddStreamNode("client-stream")
-        .AttachActorGateway("play-spot")                        // ← 아래 SpotMesh 와 같은 이름(로컬)
         .Bind("tcp://0.0.0.0:9000")
         .RegisterSession<PlaySession>();
 
-    // play 역할 — 같은 프로세스가 spot 노드를 호스팅
+    // play 역할 — 같은 프로세스가 spot 노드를 호스팅(= 위 stream 의 gateway 입구)
     options.AddSpotMesh("play-spot")
         .EnableRouter("tcp://0.0.0.0:9201")
         .AddEntrySpot<PlayerEntrySpot>()
@@ -78,9 +78,11 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-> 결국 차이는 `AttachActorGateway` 가 **같은 프로세스 안의 노드**(통합)를 가리키느냐, **다른
-> 프로세스의 Play 노드**(분리)를 가리키느냐, 그 하나뿐이다. 통합으로 두더라도 Play 노드끼리는
-> `EnableRouter`+discovery 로 서로 mesh 를 이루므로 spot↔spot routing 은 어느 쪽이든 똑같이 돈다.
+> STREAM 의 actor-gateway 입구는 **같은 프로세스의 (router 가 켜진) SpotNode 로 자동 연결**된다 —
+> stream 과 SpotNode 를 한 프로세스에 두면 framework 가 알아서 잇는다(별도 호출 없음). 통합·분리의
+> 진짜 차이는 그 gateway 노드가 **actor 를 직접 호스팅하느냐(통합)** vs **원격 Play 노드로 forward
+> 하느냐(분리)** 다. actor 의 실제 위치는 bind 된 ref 가 운반하고, gateway 노드는 그쪽으로
+> relay·return 을 잇는 입구일 뿐이다.
 
 ### 장단점 — 언제 무엇을
 
@@ -233,7 +235,7 @@ public sealed class PlayerNotifyHandler
 
 ## 4. resolver — Spot lookup 만 public
 
-session relay 는 actor id/type logical handle 과 core ActorGateway 를 사용한다. actor 위치 조회용
+session relay 는 actor id/type logical handle 과 core SessionRelay 를 사용한다. actor 위치 조회용
 public resolver 는 없다(actor↔session binding 은 framework 내부 상태).
 
 | 등록 | 역할 |
@@ -253,7 +255,7 @@ framework 가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcep
 
 | Kind (일부) | 의미 |
 |-------------|------|
-| `ActorRouteNotFound` | actor 를 찾을 수 없거나 ActorGateway relay 경로를 열 수 없음 |
+| `ActorRouteNotFound` | actor 를 찾을 수 없거나 session relay 경로를 열 수 없음 |
 | `ActorAlreadyExists` / `ActorTypeMismatch` | actor 생성 충돌 |
 | `SpotCreateFailed` / `SpotRouteNotFound` / `SpotTypeMismatch` | spot 생성, route 조회, 타입 충돌 |
 | `ActorSessionNotBound` | push 할 bound session 이 없음 |
@@ -264,27 +266,25 @@ framework 가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcep
 
 ## 6. 등록 코드
 
-session relay 는 application route mesh channel 로 흐르지 않는다. STREAM session 이 쓸 local
-SpotNode 를 `AttachActorGateway(...)` 로 지정하면, `BindAsync(...)` 가 local actor ref 또는 Play
-서버가 발급한 remote actor locator 를 core ActorGateway 경로에 bind 한다. 그래서 session handler 는
-route mesh channel 이름이나 router socket 을 알 필요가 없다.
+session relay 는 application route mesh channel 로 흐르지 않는다. STREAM session 의 actor-gateway
+입구는 **같은 프로세스의 (router 가 켜진) local SpotNode 로 자동 연결**된다(별도 호출 없음).
+`BindAsync(...)` 가 local actor ref 또는 Play 서버가 발급한 remote actor locator 를 core SessionRelay
+경로에 bind 하므로, session handler 는 route mesh channel 이름이나 router socket 을 알 필요가 없다.
 
 > 아래는 **(A) 분리** 방식의 등록 코드(두 프로세스)다. **(B) 통합**은 이 둘을 한
-> `AddZLinkFramework` 로 합치고 `AttachActorGateway` 가 같은 프로세스의 SpotNode 를 가리킨다 —
-> 코드는 §1 (B) 스니펫을 참고한다.
+> `AddZLinkFramework` 로 합친다 — 코드는 §1 (B) 스니펫을 참고한다.
 
 ### Session 서버
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    // STREAM session 이 사용할 local SpotNode (ActorGateway ingress)
+    // STREAM session 의 actor-gateway 입구로 쓸 local SpotNode (router 만 있으면 됨)
     options.AddSpotMesh("game.session")
         .EnableRouter("tcp://0.0.0.0:9101")
         .SetRouterRoutingId(sessionNodeRid);
 
-    options.AddStreamNode("client-stream")
-        .AttachActorGateway("session-node")   // 이 stream 의 relay 대상 SpotNode
+    options.AddStreamNode("client-stream")   // gateway 는 위 game.session 노드로 자동 연결
         .Bind("tcp://0.0.0.0:9000")
         .RegisterSession<TicTacToeSession>();
 

@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots
 
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.ZLinkAwait.await
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
@@ -26,7 +27,7 @@ class SupportEntrySpot(
     ) {
         val request = createRequest.decode(EnsureSupportUserActorReq::class.java)
         actor.setIdentity(request.displayName, request.role)
-        val ref = actors.find(actor.actorId()).toCompletableFuture().join()
+        val ref = await(actors.find(actor.actorId()))
             .orElseThrow { IllegalStateException("Support actor ref is not available.") }
         directory.addOrUpdate(actor, ref)
     }

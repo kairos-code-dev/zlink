@@ -10,7 +10,6 @@ import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
-import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameStartedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiReq
@@ -61,9 +60,6 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
             .await()
         if (cancellationToken.isCancellationRequested) {
             throw IllegalStateException("MatchBingoReq was cancelled")
-        }
-        if (joined.reply().state.status == "Running") {
-            actor.push(BingoGameStartedNotify(joined.reply().state))
         }
         return MatchBingoRes(matched.roomId, joined.reply().state, matched.roomOwnerNodeRid)
     }

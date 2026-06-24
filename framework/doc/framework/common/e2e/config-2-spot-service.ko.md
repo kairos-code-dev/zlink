@@ -24,7 +24,7 @@ bound session이 붙는 배포다. 이걸 한 번 띄워 두고 spot messaging�
 |------|----|------|
 | registry | 1 | discovery server. |
 | play(actor) 노드 | 2 (`play-a`, `play-b`) | entry spot + user spot + actor mailbox 호스트. SpotNode(`EnableRouter`)에 entry/user spot·actor handler·spot timer. registry에 광고. `/evidence`·`/health`. |
-| session(gateway) 노드 | 2 (`session-a`, `session-b`) | stream session 호스트. 로컬 SpotNode + `AddStreamNode(...).AttachActorGateway("session-node")`로 actor gateway. 각자 stream endpoint. **연결 서버**(로직은 play 노드). |
+| session(gateway) 노드 | 2 (`session-a`, `session-b`) | stream session 호스트. 로컬 SpotNode(`EnableRouter`) + `AddStreamNode(...)` — session relay 입구는 같은 프로세스의 SpotNode 로 자동 연결. 각자 stream endpoint. **연결 서버**(로직은 play 노드). |
 | consumer | 시나리오별 | channel client + stream client. entry spot은 registry로 resolve. |
 
 이 배포의 핵심은 **연결과 로직을 나눠 둔 것**이다. client는 session(gateway) 노드에 stream으로

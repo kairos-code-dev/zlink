@@ -55,4 +55,5 @@ public final class UserSpot implements ZLinkSpot<ZLinkActor> {
     public void command(String value) {
         evidence.record("StateCommand", context.spotRid().toString(), value);
     }
+
 }

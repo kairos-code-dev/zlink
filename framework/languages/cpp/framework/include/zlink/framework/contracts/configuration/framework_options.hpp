@@ -1219,15 +1219,6 @@ class stream_node_options_builder_t
         return *this;
     }
 
-    stream_node_options_builder_t &attach_actor_gateway (std::string spot_node_name)
-    {
-        detail::require_non_blank (spot_node_name,
-                                   "STREAM ActorGateway target SpotNode name is required");
-        _actor_gateway_spot_node = std::move (spot_node_name);
-        apply ();
-        return *this;
-    }
-
   private:
     void set_session_name (std::string session_name)
     {
@@ -1247,19 +1238,15 @@ class stream_node_options_builder_t
         const auto stream_name = _stream_name;
         const auto endpoint = _endpoint;
         const auto session_name = _session_name;
-        const auto actor_gateway_spot_node = _actor_gateway_spot_node;
         _options->set_zlink_action (
           "stream_node:" + stream_name,
-          [stream_name, endpoint, session_name, actor_gateway_spot_node] (zlink_builder_t &zlink) {
+          [stream_name, endpoint, session_name] (zlink_builder_t &zlink) {
               auto stream = zlink.stream (stream_name);
               if (!endpoint.empty ()) {
                   stream.bind (endpoint);
               }
               if (!session_name.empty ()) {
                   stream.register_session (session_name);
-              }
-              if (!actor_gateway_spot_node.empty ()) {
-                  stream.attach_actor_gateway (actor_gateway_spot_node);
               }
           });
     }
@@ -1269,7 +1256,6 @@ class stream_node_options_builder_t
     std::shared_ptr<detail::framework_options_state_t> _options;
     std::string _endpoint;
     std::string _session_name;
-    std::string _actor_gateway_spot_node;
     bool _session_configured = false;
 };
 

@@ -878,7 +878,7 @@ export interface ZLinkSessionActor {
 
   /**
    * caller payload 를 소비하지 않고 bound actor 로 stream packet 을 relay 한다.
-   * framework 가 큐/원격 ActorGateway 를 위한 내부 copy 를 만든다.
+   * framework 가 큐/원격 SessionRelay 를 위한 내부 copy 를 만든다.
    */
   relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
 
@@ -1295,7 +1295,7 @@ frame 을 한 번만 만든다. backpressure 대기 한계는 framework submitte
 session 에서 actor 로 relay 할 때는 `ZLinkSessionActor.relay(...)` 를 쓴다. actor runtime 을
 직접 호출하는 별도 public client 는 두지 않는다. remote actor 위치는 session 이 직접
 계산하지 않고, actor id/type 으로 local handle 을 만들거나 생성/join 결과의 `ActorRef` 로
-remote handle 을 만들면 core ActorGateway 가 relay 한다.
+remote handle 을 만들면 core SessionRelay 가 relay 한다.
 
 route transport helper 는 application public surface 가 아니라 internal transport helper 다.
 일반 application 코드는 `RoutingId` 를 직접 넘기지 않고 actor id / spot key 기반 client 를 쓴다.
@@ -1498,7 +1498,6 @@ export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {
 
 export interface ZLinkStreamNodeBuilder {
   bind(endpoint: string): this;
-  attachActorGateway(spotNodeName: string): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): this;
 }
 ```
@@ -1642,9 +1641,8 @@ builder 함수 의미:
   기준 등록한다. node-local `addSpotFactory(...)` 도 `ZLinkSpotManager` 등록 집합에
   합산된다. 같은 node 안에서 같은 `TSpot` 재등록은 예외다.
 
-ActorGateway 는 별도 node builder 를 두지 않는다. `addSpotMesh(...)` 로 등록한 SpotNode 에
-`enableRouter(endpoint)` 를 설정한 뒤, stream 이 `attachActorGateway(spotNodeName)`
-으로 그 local ingress node 를 참조한다(§6.1 `ZLinkStreamNodeBuilder`).
+Session relay 는 별도 node builder 를 두지 않는다. `addSpotMesh(...)` 로 등록한
+router-capable SpotNode 를 framework 가 relay ingress 로 사용한다.
 
 `addSpotMesh(channelName)` 는 SPOT channel 이름과 node 묶음을 함께 소유한다. 그래서
 `node(...)` 안에서 같은 channel 이름을 다시 받지 않는다.

@@ -61,7 +61,7 @@ Kotlin은 그 위의 `suspend` 표면(아래 §0)을 더한다.
 | [handler-interfaces](../java/spec/handler-interfaces.ko.md) | interface, annotation, context, options |
 | [spring-boot-channel-messaging](../java/spec/spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
 | [spring-boot-spot](../java/spec/spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
-| [spring-boot-actor-session](../java/spec/spring-boot-actor-session.ko.md) | actor factory, ActorGateway, bound session |
+| [spring-boot-actor-session](../java/spec/spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
 | [spring-boot-stream](../java/spec/spring-boot-stream.ko.md) | stream node, header session |
 | [stream-connector](../java/spec/stream-connector.ko.md) | Java/Kotlin Stream Connector |
 | [spring-boot-registry](../java/spec/spring-boot-registry.ko.md) | embedded registry, remote query |

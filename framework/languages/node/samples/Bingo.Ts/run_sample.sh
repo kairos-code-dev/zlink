@@ -158,6 +158,11 @@ write(sys.argv[5], {
     **base,
     "playEndpoint": "${BINGO_PLAY_A_ENDPOINT}",
     "playRouteEndpoint": "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
+    "routePeerEndpoints": [
+        "${BINGO_PLAY_B_ROUTE_ENDPOINT}",
+        "${BINGO_SESSION_A_ROUTE_ENDPOINT}",
+        "${BINGO_SESSION_B_ROUTE_ENDPOINT}"
+    ],
     "playSpotEndpoint": "${BINGO_PLAY_A_SPOT_ENDPOINT}",
     "playSpotPubSubEndpoint": "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}",
     "playSpotNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}"
@@ -166,6 +171,11 @@ write(sys.argv[6], {
     **base,
     "playEndpoint": "${BINGO_PLAY_B_ENDPOINT}",
     "playRouteEndpoint": "${BINGO_PLAY_B_ROUTE_ENDPOINT}",
+    "routePeerEndpoints": [
+        "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
+        "${BINGO_SESSION_A_ROUTE_ENDPOINT}",
+        "${BINGO_SESSION_B_ROUTE_ENDPOINT}"
+    ],
     "playSpotEndpoint": "${BINGO_PLAY_B_SPOT_ENDPOINT}",
     "playSpotPubSubEndpoint": "${BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT}",
     "playSpotNodeRid": "${BINGO_PLAY_B_SPOT_NODE_RID}"
@@ -176,7 +186,8 @@ write(sys.argv[7], {
     "sessionRouteEndpoint": "${BINGO_SESSION_A_ROUTE_ENDPOINT}",
     "sessionSpotEndpoint": "${BINGO_SESSION_A_SPOT_ENDPOINT}",
     "sessionSpotNodeRid": "${BINGO_SESSION_A_SPOT_NODE_RID}",
-    "preferredPlayNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}"
+    "preferredPlayNodeRid": "${BINGO_PLAY_A_SPOT_NODE_RID}",
+    "preferredPlayRouteEndpoint": "${BINGO_PLAY_A_ROUTE_ENDPOINT}"
 })
 write(sys.argv[8], {
     **base,
@@ -184,7 +195,8 @@ write(sys.argv[8], {
     "sessionRouteEndpoint": "${BINGO_SESSION_B_ROUTE_ENDPOINT}",
     "sessionSpotEndpoint": "${BINGO_SESSION_B_SPOT_ENDPOINT}",
     "sessionSpotNodeRid": "${BINGO_SESSION_B_SPOT_NODE_RID}",
-    "preferredPlayNodeRid": "${BINGO_PLAY_B_SPOT_NODE_RID}"
+    "preferredPlayNodeRid": "${BINGO_PLAY_B_SPOT_NODE_RID}",
+    "preferredPlayRouteEndpoint": "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
 })
 PY
 
@@ -225,8 +237,8 @@ wait_discovery_ready() {
     "${BINGO_PLAY_A_SPOT_NODE_RID}" \
     "${BINGO_PLAY_B_SPOT_NODE_RID}" <<'NODE'
 const registryEndpoint = process.argv[2];
-const requiredRouteRids = new Set(process.argv.slice(3));
-const requiredSpotRids = new Set(process.argv.slice(5));
+const requiredRouteRids = new Set();
+const requiredSpotRids = new Set(process.argv.slice(3));
 const zlink = require('@zlink-systems/zlink');
 const requiredChannels = new Set(['bingo.api', 'bingo.play']);
 const roomRouteChannel = 'bingo.room.route';
@@ -234,6 +246,20 @@ const roomSpotChannel = 'bingo.room';
 const pause = new Int32Array(new SharedArrayBuffer(4));
 const context = zlink.createContext();
 const client = zlink.createRegistryQueryClient(context);
+
+function routingIdText(value) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  const bytes = value?._bytes;
+  if (Buffer.isBuffer(bytes) || ArrayBuffer.isView(bytes)) {
+    return Buffer.from(bytes).toString('utf8');
+  }
+  if (Array.isArray(bytes?.data)) {
+    return Buffer.from(bytes.data).toString('utf8');
+  }
+  return String(value);
+}
 
 try {
   client.connect(registryEndpoint);
@@ -253,7 +279,7 @@ try {
         entry.serviceRole === 3 &&
         typeof entry.endpoint === 'string' &&
         entry.endpoint.length > 0)
-      .map((entry) => String(entry.routingId)));
+      .map((entry) => routingIdText(entry.routingId)));
     const readySpotRids = new Set(topology
       .filter((entry) =>
         entry.channelName === roomSpotChannel &&
@@ -261,7 +287,7 @@ try {
         entry.serviceRole === 2 &&
         typeof entry.endpoint === 'string' &&
         entry.endpoint.length > 0)
-      .map((entry) => String(entry.routingId)));
+      .map((entry) => routingIdText(entry.routingId)));
     if (
       [...requiredChannels].every((channelName) => readyChannels.has(channelName)) &&
       [...requiredRouteRids].every((routingId) => readyRouteRids.has(routingId)) &&

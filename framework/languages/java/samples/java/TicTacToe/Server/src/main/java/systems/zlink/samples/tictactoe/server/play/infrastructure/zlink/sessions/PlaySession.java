@@ -41,10 +41,10 @@ public final class PlaySession implements ZLinkSession {
     }
 
     @Override
-    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
-        boolean handled = await(handlers.tryHandleAsync(context, dispatch, payload));
+    public void onDispatch(ZLinkSessionDispatchContext header, ZLinkMessage payload) {
+        boolean handled = await(handlers.tryHandleAsync(context, header, payload));
         if (!handled) {
-            await(requireActor(dispatch.packetName()).relay(payload));
+            await(requireActor(header.packetName()).relay(header, payload));
         }
     }
 

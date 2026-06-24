@@ -36,7 +36,7 @@
 | spot actor handler | `ZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>`, `ZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>`, `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
 | actor → own client push | Spot actor handler 가 받은 actor 의 `context.boundSession.send(msg).submit(...)` |
 | 다른 actor → client push | 먼저 대상 actor 에 메시지를 보내고, 대상 Spot actor handler 가 actor `context.boundSession` 으로 push |
-| route 해석 | session relay 는 logical actor id/type handle 을 사용하고, core ActorGateway 가 현재 actor 위치를 해석한다. actor → client push 방향은 framework/core가 가진 actor-session binding[^actor-session-binding]을 사용한다 |
+| route 해석 | session relay 는 logical actor id/type handle 을 사용하고, core SessionRelay 가 현재 actor 위치를 해석한다. actor → client push 방향은 framework/core가 가진 actor-session binding[^actor-session-binding]을 사용한다 |
 
 인터페이스 전체 정의는 [handler-interfaces.ko.md](handler-interfaces.ko.md)
 §4.4, §5.5, §5.6 에 모여 있다. 이 문서에서는 사용 모양과 등록 코드
@@ -1388,7 +1388,7 @@ enum ZLinkFrameworkErrorKind {
 `SpotCreateFailed`, `SpotRouteNotFound`, `SpotTypeMismatch` 는 `ZLinkSpotManager` 와
 registry 기반 spot route 조회에서 사용한다.
 `bind(...)` 와 routed actor dispatch 수신 경로는 actor 를
-생성하지 않는다. bind 는 logical actor handle 을 core ActorGateway binding 으로 넘기며,
+생성하지 않는다. bind 는 logical actor handle 을 core session relay binding 으로 넘기며,
 actor remote address resolver 를 fallback 으로 호출하지 않는다. actor 를 찾을 수 없거나
 gateway 경로로 relay 할 수 없으면 `ActorRouteNotFound` 로 분류한다. 현재 actor 에
 bound 된 session 이 없어서 client push 를 보낼 수 없으면 `ActorSessionNotBound` 로

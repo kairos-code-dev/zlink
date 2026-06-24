@@ -87,10 +87,56 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             defaultCodec);
     }
 
+    CompletionStage<Void> sendFrame(byte[] frameBytes) {
+        try (Message frame = Message.from(frameBytes)) {
+            return sendFrame(
+                sourceEntrySpot,
+                routedTransport,
+                routeChannelName,
+                targetNodeRid,
+                targetEntrySpotRid,
+                actorRef,
+                frame);
+        }
+    }
+
     @Override
     public CompletionStage<Void> disconnect() {
         actorRuntime.clearSessionBinding(actor, bindingToken);
         return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
+    private static CompletionStage<Void> sendFrame(
+        ZLinkBackendSpot sourceEntrySpot,
+        ZLinkChannelRuntime routedTransport,
+        String routeChannelName,
+        RoutingId targetNodeRid,
+        RoutingId targetEntrySpotRid,
+        ZLinkBackendActorRef actorRef,
+        Message frame) {
+        List<Message> parts = ZLinkActorSpotRoutePackets.createBoundSessionSendParts(actorRef, frame);
+        try {
+            if (routedTransport != null && routeChannelName != null && !routeChannelName.isBlank()) {
+                return routedTransport.sendToSpotViaRouterChannel(
+                    routeChannelName,
+                    targetNodeRid,
+                    targetEntrySpotRid,
+                    parts);
+            }
+            boolean submitted = sourceEntrySpot.sendToSpot(
+                    targetNodeRid,
+                    targetEntrySpotRid,
+                    parts,
+                    SendFlags.NONE);
+            if (!submitted) {
+                return java.util.concurrent.CompletableFuture.failedFuture(
+                    new ZLinkConfigurationException(
+                        "routed actor bound session target is not ready"));
+            }
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        } finally {
+            parts.forEach(Message::close);
+        }
     }
 
     private record SendCall(
@@ -160,30 +206,15 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             } finally {
                 payload.close();
             }
-            Message frame = Message.from(frameBytes);
-            List<Message> parts = ZLinkActorSpotRoutePackets.createBoundSessionSendParts(actorRef, frame);
-            try {
-                if (routedTransport != null && routeChannelName != null && !routeChannelName.isBlank()) {
-                    return routedTransport.sendToSpotViaRouterChannel(
-                        routeChannelName,
-                        targetNodeRid,
-                        targetEntrySpotRid,
-                        parts);
-                }
-                boolean submitted = sourceEntrySpot.sendToSpot(
-                        targetNodeRid,
-                        targetEntrySpotRid,
-                        parts,
-                        SendFlags.NONE);
-                if (!submitted) {
-                    return java.util.concurrent.CompletableFuture.failedFuture(
-                        new ZLinkConfigurationException(
-                            "routed actor bound session target is not ready"));
-                }
-                return java.util.concurrent.CompletableFuture.completedFuture(null);
-            } finally {
-                parts.forEach(Message::close);
-                frame.close();
+            try (Message frame = Message.from(frameBytes)) {
+                return ZLinkRoutedBoundSessionRuntime.sendFrame(
+                    sourceEntrySpot,
+                    routedTransport,
+                    routeChannelName,
+                    targetNodeRid,
+                    targetEntrySpotRid,
+                    actorRef,
+                    frame);
             }
         }
     }

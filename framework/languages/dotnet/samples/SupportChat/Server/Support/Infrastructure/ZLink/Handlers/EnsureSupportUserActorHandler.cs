@@ -1,4 +1,5 @@
 using Zlink.Framework.Contracts.Codecs.Json;
+using Systems.Zlink;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
@@ -20,14 +21,27 @@ internal sealed class EnsureSupportUserActorHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var actor = await actors.GetOrCreateAsync(
-            request.ActorId,
-            SampleNames.SupportActorType,
-            request,
+        if (await actors.FindAsync(request.ActorId, cancellationToken) is { } existing)
+        {
+            return ToResponse(existing);
+        }
+
+        var joined = await actors.JoinEntrySpotAsync(
+                request.ActorId,
+                SampleNames.SupportActorType,
+                topology.SupportEntryRid,
+                request,
             cancellationToken);
+        if (!joined.Accepted)
+        {
+            throw new InvalidOperationException($"Entry spot actor join was rejected: {request.ActorId}");
+        }
 
-        _ = topology;
+        return ToResponse(joined.Actor);
+    }
 
+    private static EnsureSupportUserActorRes ToResponse(ActorRef actor)
+    {
         return new EnsureSupportUserActorRes(
             new ActorRefSnapshot(
                 actor.NodeRid.ToBytes().ToArray(),

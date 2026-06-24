@@ -317,10 +317,9 @@ context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
 builder.Services.AddZLinkFramework(options =>
 {
     {
-        var stream =     options.AddStreamNode("client.stream");
+        var stream = options.AddStreamNode("client.stream");
         stream.Bind("tcp://0.0.0.0:9100");
         stream.RegisterSession<ClientHeaderSession>();
-
     }
 });
 ```

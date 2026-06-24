@@ -61,13 +61,14 @@ public final class PlayServerApplication {
             route.addHandlerGroup("play-route");
             route.setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
-                .useRegistrySpotResolver()
-                );
+            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
+            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
+                .setRouterChannelId(SampleNames.PlayChannel);
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));node.addEntrySpot(BingoEntrySpot.class);
+                .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
+            node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);
         };
     }

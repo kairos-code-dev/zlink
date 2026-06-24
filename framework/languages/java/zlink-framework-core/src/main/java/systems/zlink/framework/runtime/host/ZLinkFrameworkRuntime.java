@@ -152,7 +152,7 @@ public final class ZLinkFrameworkRuntime
                 serializer,
                 actors,
                 runtimeHandlers,
-                spots == null ? ignored -> true : spots::isActorGatewayRouteReady,
+                spots == null ? ignored -> true : spots::isSessionRelayRouteReady,
                 spots);
     }
 

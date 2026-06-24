@@ -565,12 +565,17 @@ public final class ZLinkChannelRuntime
                     targetNodeRid,
                     targetSpotRid,
                     bridgeParts,
-                    reply -> {
-                        try {
-                            result.complete(copyMessages(reply.parts()));
-                        } catch (RuntimeException ex) {
-                            result.completeExceptionally(ex);
-                        } finally {
+                        reply -> {
+                            try {
+                                if (reply.result() != ZLinkBackendRequestResult.OK) {
+                                    result.completeExceptionally(new ZLinkConfigurationException(
+                                        "route mesh SPOT request failed: " + reply.result()));
+                                    return;
+                                }
+                                result.complete(copyMessages(reply.parts()));
+                            } catch (RuntimeException ex) {
+                                result.completeExceptionally(ex);
+                            } finally {
                             reply.parts().forEach(Message::close);
                         }
                     },
@@ -937,7 +942,9 @@ public final class ZLinkChannelRuntime
             return false;
         }
         String text = parts.get(0).toUtf8String().trim();
-        return text.startsWith("{")
+        return text.startsWith("true\n")
+            || text.startsWith("false\n")
+            || text.startsWith("{")
             && text.endsWith("}")
             && (text.contains("\"ok\"")
                 || text.contains("\"response\"")

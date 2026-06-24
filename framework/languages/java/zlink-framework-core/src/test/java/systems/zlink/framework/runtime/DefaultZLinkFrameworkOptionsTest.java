@@ -720,36 +720,12 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void streamNodeActorGatewayRequiresConfiguredSpotNode() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.attachActorGateway("play");
-            stream.registerSession(GameSession.class); };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void streamNodeActorGatewayRequiresRouterSpotNode() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var mesh = options.addSpotMesh("game"); { var node = mesh;  }; };
-        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.attachActorGateway("play");
-            stream.registerSession(GameSession.class); };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void streamNodeWithActorGatewayAndRouterSpotNodeIsAccepted() {
+    void streamNodeWithRouterSpotNodeIsAccepted() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                 node.addSpotFactory(TestSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.attachActorGateway("play");
             stream.registerSession(GameSession.class); };
 
         options.validate();

@@ -74,8 +74,8 @@ function Wait-DiscoveryReady(
 ) {
     $script = @'
 const registryEndpoint = process.argv[2];
-const requiredRouteRids = new Set(process.argv.slice(3, 7));
-const requiredSpotRids = new Set(process.argv.slice(5, 7));
+const requiredRouteRids = new Set();
+const requiredSpotRids = new Set(process.argv.slice(3, 7));
 const zlink = require('@zlink-systems/zlink');
 const requiredChannels = new Set(['bingo.api', 'bingo.play']);
 const roomRouteChannel = 'bingo.room.route';
@@ -83,6 +83,20 @@ const roomSpotChannel = 'bingo.room';
 const pause = new Int32Array(new SharedArrayBuffer(4));
 const context = zlink.createContext();
 const client = zlink.createRegistryQueryClient(context);
+
+function routingIdText(value) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  const bytes = value?._bytes;
+  if (Buffer.isBuffer(bytes) || ArrayBuffer.isView(bytes)) {
+    return Buffer.from(bytes).toString('utf8');
+  }
+  if (Array.isArray(bytes?.data)) {
+    return Buffer.from(bytes.data).toString('utf8');
+  }
+  return String(value);
+}
 
 try {
   client.connect(registryEndpoint);
@@ -102,7 +116,7 @@ try {
         entry.serviceRole === 3 &&
         typeof entry.endpoint === 'string' &&
         entry.endpoint.length > 0)
-      .map((entry) => String(entry.routingId)));
+      .map((entry) => routingIdText(entry.routingId)));
     const readySpotRids = new Set(topology
       .filter((entry) =>
         entry.channelName === roomSpotChannel &&
@@ -110,7 +124,7 @@ try {
         entry.serviceRole === 2 &&
         typeof entry.endpoint === 'string' &&
         entry.endpoint.length > 0)
-      .map((entry) => String(entry.routingId)));
+      .map((entry) => routingIdText(entry.routingId)));
     if (
       [...requiredChannels].every((channelName) => readyChannels.has(channelName)) &&
       [...requiredRouteRids].every((routingId) => readyRouteRids.has(routingId)) &&
@@ -230,6 +244,7 @@ try {
     Write-SampleConfig $playAConfig ($base + @{
         playEndpoint = $playAEndpoint
         playRouteEndpoint = $playARouteEndpoint
+        routePeerEndpoints = @($playBRouteEndpoint, $sessionARouteEndpoint, $sessionBRouteEndpoint)
         playSpotEndpoint = $playASpotEndpoint
         playSpotPubSubEndpoint = $playASpotPubSubEndpoint
         playSpotNodeRid = $playASpotNodeRid
@@ -237,6 +252,7 @@ try {
     Write-SampleConfig $playBConfig ($base + @{
         playEndpoint = $playBEndpoint
         playRouteEndpoint = $playBRouteEndpoint
+        routePeerEndpoints = @($playARouteEndpoint, $sessionARouteEndpoint, $sessionBRouteEndpoint)
         playSpotEndpoint = $playBSpotEndpoint
         playSpotPubSubEndpoint = $playBSpotPubSubEndpoint
         playSpotNodeRid = $playBSpotNodeRid
@@ -247,6 +263,7 @@ try {
         sessionSpotEndpoint = $sessionASpotEndpoint
         sessionSpotNodeRid = $sessionASpotNodeRid
         preferredPlayNodeRid = $playASpotNodeRid
+        preferredPlayRouteEndpoint = $playARouteEndpoint
     })
     Write-SampleConfig $sessionBConfig ($base + @{
         sessionEndpoint = $sessionBEndpoint
@@ -254,6 +271,7 @@ try {
         sessionSpotEndpoint = $sessionBSpotEndpoint
         sessionSpotNodeRid = $sessionBSpotNodeRid
         preferredPlayNodeRid = $playBSpotNodeRid
+        preferredPlayRouteEndpoint = $playBRouteEndpoint
     })
 
     Push-Location $scriptDir

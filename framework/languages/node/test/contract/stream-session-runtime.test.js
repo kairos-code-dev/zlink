@@ -507,7 +507,6 @@ class FakeStreamSocket {
   }
 
   async dispose() {}
-  attachActorGateway() {}
   async bindActor() {}
   async unbindActor() {}
   sendBoundActor() { return true; }

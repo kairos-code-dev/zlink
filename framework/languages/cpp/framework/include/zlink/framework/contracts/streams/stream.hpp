@@ -215,7 +215,6 @@ struct stream_snapshot_t
     std::string name;
     std::string bind_endpoint;
     std::string packet_session_name;
-    std::optional<std::string> actor_gateway_spot_node_name;
 };
 
 class stream_builder_t
@@ -231,7 +230,6 @@ class stream_builder_t
 
     stream_builder_t &bind (std::string endpoint);
     stream_builder_t &register_session (std::string session_name);
-    stream_builder_t &attach_actor_gateway (std::string spot_node_name);
     stream_snapshot_t snapshot () const;
 
   private:

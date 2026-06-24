@@ -972,7 +972,6 @@ bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::pat
     bool ok = true;
     const std::string required[] = {
       "STREAM session과 actor를 ActorGateway로 bind/relay",
-      "`stream.attach_actor_gateway(spot_node_name)`",
       "`actor_ref_t`",
       "`session_actor_manager_t`",
       "`session_actor_t`",

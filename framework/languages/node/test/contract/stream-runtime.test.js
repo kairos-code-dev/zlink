@@ -56,7 +56,7 @@ test('session actors bind actor refs, expose bound actors, and reject missing ro
   );
 });
 
-test('managed stream actor bind calls native ActorGateway before local binding is visible', async () => {
+test('managed stream actor bind calls native SessionRelay before local binding is visible', async () => {
   const socket = new FakeStreamSocket();
   const runtime = new framework.ZLinkStreamBindingRuntime({ actorBindTimeoutMs: 1234 });
   const context = runtime.createSessionContext(new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session'));
@@ -156,7 +156,7 @@ test('managed stream actor bind failure does not create stale local binding', as
   assert.equal(runtime.find('actor-a'), undefined);
 });
 
-test('runtime host bound session uses local stream route before native ActorGateway', async () => {
+test('runtime host bound session uses local stream route before native SessionRelay', async () => {
   const actorRef = { nodeRid: 'node-a', actorId: 'actor-native', generation: 7n };
   const nativeSends = [];
   const host = new framework.ZLinkFrameworkRuntimeHost({
@@ -192,7 +192,7 @@ test('runtime host bound session uses local stream route before native ActorGate
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { ok: true });
 });
 
-test('runtime host bound session falls back to native ActorGateway when no local route exists', async () => {
+test('runtime host bound session falls back to native SessionRelay when no local route exists', async () => {
   const actorRef = { nodeRid: 'node-a', actorId: 'actor-native', generation: 7n };
   const nativeSends = [];
   const routeCalls = [];
@@ -237,7 +237,7 @@ test('runtime host bound session falls back to native ActorGateway when no local
   assert.deepEqual(JSON.parse(new TextDecoder().decode(nativeSends[0].frame.payload)), { ok: true });
 });
 
-test('runtime host bound session uses routed Session target before native ActorGateway', async () => {
+test('runtime host bound session uses routed Session target before native SessionRelay', async () => {
   const actorRef = { nodeRid: 'node-a', actorId: 'actor-routed', generation: 7n };
   const sessionNodeRid = zlink.RoutingId.from('session-node');
   const sessionSpotRid = zlink.RoutingId.from('session-entry');
@@ -435,7 +435,7 @@ test('runtime host local spot join preserves routed Session target for stream-bo
   assert.deepEqual(manager.getState('actor-routed-local-join').remoteBoundSessionTarget, remoteTarget);
 });
 
-test('runtime host native bound session retries while ActorGateway route is connecting', async () => {
+test('runtime host native bound session retries while SessionRelay route is connecting', async () => {
   const actorRef = { nodeRid: 'node-a', actorId: 'actor-native', generation: 7n };
   const attempts = [];
   const host = new framework.ZLinkFrameworkRuntimeHost({
@@ -837,7 +837,7 @@ test('runtime host local spot join uses SpotManager for actors with native refs'
   result.reply.close();
 });
 
-test('session actor relay sends header and payload through managed stream ActorGateway route', async () => {
+test('session actor relay sends header and payload through managed stream SessionRelay route', async () => {
   const socket = new FakeStreamSocket();
   const runtime = new framework.ZLinkStreamBindingRuntime({
     messageFactory: binaryMessageFactory()
@@ -1399,7 +1399,6 @@ class FakeStreamSocket {
   }
 
   onFramedPacket() {}
-  attachActorGateway() {}
   async dispose() {}
 }
 

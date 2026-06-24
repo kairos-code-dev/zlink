@@ -1,7 +1,5 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
-using System.Text;
-using System.Text.Json;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -71,7 +69,7 @@ internal sealed class SubscribeDeliveryHandler(
         CancellationToken cancellationToken)
     {
         _ = dispatch;
-        var deliveryId = ReadDeliveryId(payload.Decode<string>());
+        var deliveryId = payload.Decode<SubscribeDelivery>().DeliveryId;
         var ensured = await channels.RequestToChannel(
                 SampleNames.TrackingRouteChannel,
                 new EnsureCustomerActor(CustomerId))
@@ -94,15 +92,4 @@ internal sealed class SubscribeDeliveryHandler(
             .Async();
     }
 
-    private static string ReadDeliveryId(string raw)
-    {
-        using var document = JsonDocument.Parse(raw);
-        if (document.RootElement.TryGetProperty("deliveryId", out var value)
-            && !string.IsNullOrWhiteSpace(value.GetString()))
-        {
-            return value.GetString()!;
-        }
-
-        throw new InvalidOperationException("SubscribeDelivery requires deliveryId.");
-    }
 }

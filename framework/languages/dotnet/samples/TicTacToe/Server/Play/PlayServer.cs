@@ -45,7 +45,6 @@ internal sealed class PlayServer(SampleSettings settings)
                 .AddRequestHandler<CreateGameHandler>();
 
             options.AddStreamNode(SampleNodes.ClientStream)
-                .AttachActorGateway(SampleNodes.PlaySpot)
                 .Bind(settings.PlayEndpoint)
                 .RegisterSession<PlaySession>();
 

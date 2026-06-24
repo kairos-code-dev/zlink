@@ -996,9 +996,8 @@ mesh 안에서 동작한다고 이해하면 된다.
 
 SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경로는
 제공하지 않는다. SPOT network 를 구성하는 로컬 node 는
-`AddSpotMesh` 호출과 동시에 등록된다. STREAM
-ActorGateway 는 별도 node builder 가 아니라, stream 이 router 역할을
-켠 SpotNode 를 `AttachActorGateway(spotNodeName)` 로 참조하는 방식으로 연결한다.
+`AddSpotMesh` 호출과 동시에 등록된다. STREAM session relay 는 별도 node builder 가
+아니라, framework 가 router 역할을 켠 SpotNode 를 relay ingress 로 사용한다.
 
 ## 10. 결정된 기준
 

@@ -38,13 +38,12 @@ import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class StreamSessionTest {
     @Test
-    void streamNodeAttachActorGatewayUsesJavaBindingPublicApi() {
+    void streamNodeStartsWithoutExplicitSessionRelayAttach() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                 node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-" + System.nanoTime());
-            stream.attachActorGateway("play");
             stream.registerSession(GameSession.class); };
 
         try (ZLinkFrameworkRuntime ignored =
@@ -94,7 +93,6 @@ final class StreamSessionTest {
                 node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
-            stream.attachActorGateway("play");
             stream.registerSession(ActorRelaySession.class); };
 
         try (ZLinkFrameworkRuntime ignored =

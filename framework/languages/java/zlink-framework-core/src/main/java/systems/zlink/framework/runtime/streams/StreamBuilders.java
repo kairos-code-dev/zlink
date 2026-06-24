@@ -20,12 +20,6 @@ public final class StreamBuilders {
         }
 
         @Override
-        public ZLinkStreamNodeBuilder attachActorGateway(String spotNodeName) {
-            registration.attachActorGateway(spotNodeName);
-            return this;
-        }
-
-        @Override
         public ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType) {
             registration.registerSession(sessionType);
             return this;

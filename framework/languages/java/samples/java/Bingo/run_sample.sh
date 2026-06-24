@@ -117,7 +117,7 @@ try:
     chosen = set()
     while len(reserved) < 21:
         host = "127.0.0.1"
-        port = random.randint(48000, 60999)
+        port = random.randint(20000, 29999)
         key = (host, port)
         if key in chosen:
             continue
@@ -257,7 +257,7 @@ wait_port "${play_b_route_host}" "${play_b_route_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
 wait_port "${play_b_spot_host}" "${play_b_spot_port}"
 
-sleep 2
+sleep 5
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
 
 grep -q "bingo=completed" "${log_dir}/client.log"

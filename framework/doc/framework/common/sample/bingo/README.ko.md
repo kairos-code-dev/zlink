@@ -112,7 +112,7 @@ channel, stream, Spot node endpoint를 Registry에 등록하고, 다른 서버�
 |------|-----------|------|
 | Session -> API channel | Discovery 자동 연결 | Session 서버가 API 서버 주소를 직접 들고 있지 않게 한다. |
 | API -> Play channel | Discovery 자동 연결 | matching API가 현재 Play 서버 endpoint를 Registry에서 찾는다. |
-| Session -> Play actor gateway | Registry 기반 actor locator | Session 서버가 Play 서버 actor의 위치를 직접 관리하지 않게 한다. |
+| Session -> Play session relay | Registry 기반 actor locator | Session 서버가 Play 서버 actor의 위치를 직접 관리하지 않게 한다. |
 | Play actor -> remote room Spot | Registry-backed Spot resolver | actor가 다른 Play 서버의 room Spot에 join할 수 있게 한다. |
 | Play Spot pub/sub -> Play Spot pub/sub | Discovery 자동 연결 | reward event를 다른 Play 서버의 `BingoRoom`으로 fan-out한다. |
 | Play -> Session bound push | Registry 기반 session route | Play 서버가 현재 client session 위치를 framework route로 찾는다. |
@@ -187,7 +187,7 @@ fallback으로 성공시키면 안 된다.
 | `Bingo.Api` | `Api` channel server | access token 인증과 matching API 요청을 처리한다. |
 | `Bingo.Api` | `Play` channel client | Play 서버에 room 배정을 요청한다. |
 | `Bingo.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
-| `Bingo.Session` | session Spot node | ActorGateway attach와 bound session push 수신을 담당한다. |
+| `Bingo.Session` | session Spot node | session relay와 bound session push 수신을 담당한다. |
 | `Bingo.Play` | actor runtime | player actor를 만들고 Entry Spot에 join시킨다. |
 | `Bingo.Play` | `BingoEntrySpot` | actor가 특정 room에 들어가기 전의 admission 지점을 맡는다. |
 | `Bingo.Play` | `BingoRoom` room Spot | game room에서는 room 참가자, 제출된 카드, draw deck, 승리 판정, player Notify 생성을 소유한다. observer용 local room에서는 reward topic 수신과 observer push 전달만 맡는다. |
@@ -297,7 +297,7 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Play/Infrastructure/ZLink/Matchmaking/*` | external adapter | Redis를 사용해 mode별 waiting room record와 actor reservation을 atomic하게 저장한다. |
 
 의존 방향은 `Infrastructure -> Application -> Domain`이다. Domain은 ZLink framework, Registry,
-stream session, actor gateway, logger를 알지 않는다. Application은 room 배정 같은 use
+stream session, session relay, logger를 알지 않는다. Application은 room 배정 같은 use
 case 조율만 맡고, server endpoint 발견, session binding, push 전송 같은 외부 입출력은
 adapter에 둔다. 이 규칙 덕분에 다른 언어로 옮겨도 gateway 구조와 게임 규칙의 위치가
 같게 유지된다.
@@ -367,7 +367,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 - Session 서버는 gateway 역할만 한다. 인증, actor binding, packet relay, bound session
   push 수신을 맡고, card 검증, draw, winner 판정 같은 게임 규칙을 해석하지 않는다.
 - Domain에는 card, draw deck, room status, winner 판정만 둔다. Registry, stream session,
-  actor gateway, handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
+  session relay, handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
 - Application은 room allocation use case를 조율한다. framework callback을 직접 받거나
   transport 세부 구현을 다루지 않는다.
 - Infrastructure는 Registry/Discovery, channel, stream session, actor, Spot, timer,

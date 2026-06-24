@@ -250,7 +250,6 @@ export interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
   onFramedPacket(handler: (peer: string, header: Message, payload: Message) => void): void;
   send(routingId: RoutingId, payload: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
   disconnectPeer(routingId: RoutingId): void;
-  attachActorGateway(node: ZLinkBackendSpotNode): void;
   bindActor(
     sessionRid: RoutingId,
     actor: ZLinkBackendActorRef,

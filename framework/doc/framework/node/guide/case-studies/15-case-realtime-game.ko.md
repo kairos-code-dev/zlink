@@ -86,7 +86,6 @@ ZLinkModule.forRoot(
       .addSpotFactory(MatchSpot)
     .addStreamNode('session')
       .bind('tcp://0.0.0.0:9100')
-      .attachActorGateway('play')
       .registerSession(GameSession)
     .build()
 );

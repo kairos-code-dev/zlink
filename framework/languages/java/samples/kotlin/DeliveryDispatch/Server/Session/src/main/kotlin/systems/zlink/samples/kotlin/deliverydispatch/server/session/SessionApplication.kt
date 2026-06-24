@@ -59,7 +59,6 @@ class SessionApplication {
             node.enablePubSub(SampleTopology.SessionSpotEndpoint)
                 .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionSpotPubRid))
             options.addStreamNode(SampleNames.CustomerStreamNode)
-                .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.SessionStreamEndpoint)
                 .registerSession(CustomerSession::class.java)
                 .addSessionPacketHandler(SubscribeDeliveryHandler::class.java)

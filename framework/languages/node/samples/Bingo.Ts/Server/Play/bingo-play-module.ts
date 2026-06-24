@@ -19,11 +19,12 @@ import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import { PacketNames } from '../../Shared/Contracts/messages';
 function createBingoPlayModule(config: {
-  registryRouterEndpoint: string;
-  playEndpoint: string;
-  playRouteEndpoint: string;
-  playSpotEndpoint: string;
-  playSpotPubSubEndpoint: string;
+	  registryRouterEndpoint: string;
+	  playEndpoint: string;
+	  playRouteEndpoint: string;
+	  routePeerEndpoints: string[];
+	  playSpotEndpoint: string;
+	  playSpotPubSubEndpoint: string;
   playSpotNodeRid: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
@@ -56,6 +57,7 @@ function createBingoPlayModule(config: {
           .addRouteMesh(SampleNames.roomRouteChannel)
             .enableRouter(config.playRouteEndpoint)
             .routingId(config.playSpotNodeRid)
+            .connect(config.routePeerEndpoints)
             .addRequestHandler(PacketNames.ensurePlayerActorReq, EnsurePlayerActorHandler)
           .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
           .addSpotMesh(SampleNames.roomSpotNode)

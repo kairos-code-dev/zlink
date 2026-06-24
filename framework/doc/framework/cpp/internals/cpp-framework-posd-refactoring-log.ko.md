@@ -1898,7 +1898,7 @@ transport loop, validation drop은 runtime에 둔다.
 - Header validation 실패 packet은 session `on_packet(...)`으로 넘기지 않게 했다.
 - application packet handler failure는 `on_error(...)`로 넘기지 않고 실패 result로 돌려준다.
 - `test_cpp_framework_stream_framework`에서 stream bind/session registration,
-  ActorGateway attach 이름 보관, header encode/decode, semantic validation, reserved prefix,
+  session relay 이름 보관, header encode/decode, semantic validation, reserved prefix,
   session callback ordering, packet reply, invalid packet drop, transport error projection을
   검증했다.
 
@@ -1907,7 +1907,6 @@ transport loop, validation drop은 runtime에 둔다.
 - 실제 binding `stream_socket_t` I/O, write-ready backpressure, request tracker storage는
   runtime owner 안에서 더 붙여야 한다. Goal 12에서는 public STREAM contract와 frame/session
   runtime 경계를 먼저 닫았다.
-- `attach_actor_gateway(...)`는 Goal 13에서 actor/session relay runtime과 연결한다. Goal 12는
   route mesh channel로 우회하지 않는 구성 표면만 보관한다.
 
 ### 재실행한 검증 명령
@@ -1975,7 +1974,7 @@ remote locator codec은 숨긴다.
   않고 runtime-owned frame copy를 만든다.
 - `session_actor_t::notify_disconnected()`와 manager `unbind_session(...)`으로 stream close 시
   session binding cleanup만 수행할 수 있게 했다.
-- `test_cpp_framework_ActorGateway_actor_session_relay`에서 ActorGateway attach 구성, actor
+- `test_cpp_framework_ActorGateway_actor_session_relay`에서 session relay 구성, actor
   create/find/get-or-create, local/remote ref bind, relay, bound session push, disconnect
   cleanup, payload non-consuming 정책을 검증했다.
 
@@ -2428,7 +2427,7 @@ TicTacToe는 STREAM/ActorGateway 중심으로 둔다.
   callback submit, coroutine submit, user Spot, SPOT timer, monitoring, graceful shutdown,
   offload handler option을 확인하는 샘플로 채웠다.
 - `samples/TicTacToe`를 `Shared`, `Client`, `Server/Registry`, `Server/Api`,
-  `Server/Play`, `Server/Session` 역할로 나누고 STREAM endpoint, ActorGateway attach,
+  `Server/Play`, `Server/Session` 역할로 나누고 STREAM endpoint, session relay,
   Entry Spot, actor factory, session actor bind, relay, bound session push,
   actor join/move, disconnect cleanup을 확인하는 샘플로 채웠다.
 - 샘플 이름은 `Bingo`, `TicTacToe` 그대로 유지하고 별도 접미사를 붙이지 않았다.
@@ -3048,7 +3047,7 @@ git diff --check -- framework/languages/cpp
   topology, authenticate handler, match allocation, room join/start/draw, notification
   inbox, publish callback/coroutine, SPOT timer 흐름이 보이도록 재작성했다.
 - `TicTacToe`를 `Shared`, `Client`, `Server/Registry`, `Server/Api`, `Server/Play`,
-  `Server/Session`으로 나누고 session stream host, ActorGateway attach, authenticate
+  `Server/Session`으로 나누고 session stream host, session relay, authenticate
   actor, create match, join, place mark, turn changed, game ended, bound session push,
   disconnect cleanup 흐름이 보이도록 재작성했다.
 - CMake sample smoke를 역할별 실행 파일로 등록했다.

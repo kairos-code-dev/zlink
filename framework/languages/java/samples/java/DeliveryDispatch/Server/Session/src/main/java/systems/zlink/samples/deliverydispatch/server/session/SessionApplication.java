@@ -67,8 +67,8 @@ public final class SessionApplication {
             node.enableRouter(SampleTopology.SessionSpotRouterEndpoint)
                 .setRouterRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid));
             node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionSpotPubRid));options.addStreamNode(SampleNames.CustomerStreamNode)
-                .attachActorGateway(SampleNames.SessionSpotNode)
+                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionSpotPubRid));
+            options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.SessionStreamEndpoint)
                 .registerSession(CustomerSession.class)
                 .addSessionPacketHandler(SubscribeDeliveryHandler.class);

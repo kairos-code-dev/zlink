@@ -37,12 +37,14 @@ public final class PlayServer {
                 .addHandlerGroup(SampleNames.PlayChannel);
             RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.RouteChannel);
             route.enableServer(settings.routeEndpoint())
-                .enableClient(settings.peerRouteEndpoint())options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver.class);
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh)
-                ;
+                .enableClient(settings.peerRouteEndpoint())
+                .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
+            options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver.class);
+            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh);
             node.enableRouter(settings.spotEndpoint())
                 .setRouterRoutingId(RoutingId.from(settings.playSpotNodeRid()));
-            node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid()), settings.peerSpotEndpoint());node.enablePubSub(settings.spotPubSubEndpoint())
+            node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid()), settings.peerSpotEndpoint());
+            node.enablePubSub(settings.spotPubSubEndpoint())
                 .setPubSubRoutingId(RoutingId.from(settings.playSpotNodeRid() + "-pub"));
             node.connectPeerPub(settings.peerSpotPubSubEndpoint());
             node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId));
@@ -50,7 +52,6 @@ public final class PlayServer {
             node.addSpotFactory(TicTacToeGame.class);
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint())
-                .attachActorGateway(SampleNames.PlayNode)
                 .registerSession(PlaySession.class)
                 .addSessionPacketHandler(AuthenticatePlaySessionHandler.class);
         };

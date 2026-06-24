@@ -8,7 +8,7 @@
 | [handler-interfaces](handler-interfaces.ko.md) | interface, annotation, context, options |
 | [spring-boot-channel-messaging](spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
 | [spring-boot-spot](spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
-| [spring-boot-actor-session](spring-boot-actor-session.ko.md) | actor factory, ActorGateway, bound session |
+| [spring-boot-actor-session](spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
 | [spring-boot-stream](spring-boot-stream.ko.md) | stream node, header session |
 | [stream-connector](stream-connector.ko.md) | Java/Kotlin Stream Connector |
 | [spring-boot-registry](spring-boot-registry.ko.md) | embedded registry, remote query |

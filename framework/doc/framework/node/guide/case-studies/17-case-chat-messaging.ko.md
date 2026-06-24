@@ -68,7 +68,6 @@ ZLinkModule.forRoot(
       .addSpotFactory(ChatRoomSpot)
     .addStreamNode('chat')
       .bind('tcp://0.0.0.0:7710')
-      .attachActorGateway('rooms')
       .registerSession(ChatSession)
     .build()
 );

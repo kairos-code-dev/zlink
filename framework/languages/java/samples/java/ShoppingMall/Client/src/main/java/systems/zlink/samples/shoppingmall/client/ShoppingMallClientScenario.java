@@ -76,7 +76,7 @@ public final class ShoppingMallClientScenario {
         ensure("order-pending-0001".equals(started.orderId()));
         ensure(OrderStatuses.Created.equals(started.status()));
 
-        OrderState created = getState(ApiA, started.orderId());
+        OrderState created = waitForCreatedOrConfirmed(ApiA, started.orderId());
         ensure(isCreatedOrConfirmed(created));
         ensure("addr-office".equals(created.shippingAddressId()));
         System.out.println("shoppingmall-pending=completed");
@@ -190,6 +190,21 @@ public final class ShoppingMallClientScenario {
         throw new IllegalStateException(
             "Order '" + orderId + "' did not reach status '" + expectedStatus
                 + "' (last=" + (last == null ? "none" : last.status()) + ").");
+    }
+
+    private OrderState waitForCreatedOrConfirmed(String instanceId, String orderId) {
+        long deadline = System.nanoTime() + SampleTimings.WorkflowTimeout.toNanos();
+        OrderState last = null;
+        while (System.nanoTime() < deadline) {
+            last = getState(instanceId, orderId);
+            if (isCreatedOrConfirmed(last)) {
+                return last;
+            }
+            LockSupport.parkNanos(SampleTimings.PollDelay.toNanos());
+        }
+        throw new IllegalStateException(
+            "Order '" + orderId + "' did not reach Created or Confirmed"
+                + " (last=" + (last == null ? "none" : last.status()) + ").");
     }
 
     private static boolean isCreatedOrConfirmed(OrderState state) {

@@ -158,7 +158,6 @@ test('node framework docs do not describe removed nested configuration callbacks
     [/\bspotMeshes(?:\s*:\s*\{|\[[^\]]+\])/, 'old NestJS spotMeshes object option'],
     [/\bacceptedSpotRouteChannels(?:\s*:\s*\{|\[[^\]]+\])/, 'old NestJS acceptedSpotRouteChannels option'],
     [/\bmanualConnections\s*:/, 'old NestJS manualConnections object option'],
-    [/\battachActorGateway\s*:/, 'old NestJS stream attachActorGateway object option'],
     [/codecs\s*:\s*\[/, 'old codecs array option']
   ];
 

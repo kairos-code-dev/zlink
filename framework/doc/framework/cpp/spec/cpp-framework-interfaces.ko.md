@@ -585,7 +585,6 @@ class stream_builder_t {
 public:
     stream_builder_t &bind(std::string endpoint);
     stream_builder_t &register_session(std::string session_name);
-    stream_builder_t &attach_actor_gateway(std::string spot_node_name);
 };
 
 class stream_node_options_builder_t {
@@ -596,7 +595,6 @@ public:
     stream_node_options_builder_t &register_session();
 
     stream_node_options_builder_t &register_session(std::string session_name);
-    stream_node_options_builder_t &attach_actor_gateway(
       std::string spot_node_name);
 };
 
@@ -1665,7 +1663,6 @@ options.add_spot_mesh(sample_names_t::game_spot_discovery)
 options.add_stream_node(sample_names_t::stream_name)
   .bind(topology.stream_endpoint)
   .register_session<client_session_t>()
-  .attach_actor_gateway(sample_names_t::spot_node);
 ```
 
 `register_session<TSession>()`은 `.NET`의 `RegisterSession<TSession>()`에 맞춘 typed session
@@ -2104,7 +2101,6 @@ int main(int argc, char **argv)
   builder와 `spot_context_t`로 감싸는 방식으로 정리한다.
 - SPOT discovery 설정은 `spot_node.use_discovery(channel_name)`처럼 active SPOT
   channel view 이름을 명시하는 형태로 맞춘다.
-- STREAM session actor relay는 `stream.attach_actor_gateway(spot_node_name)`과
   `session_actor_t::relay(...)` 표면으로 맞춘다.
 - SPOT timer는 CAPI timer `fire_count`를 기반으로 `timer_options_t`, `timer_tick_t`,
   overrun policy, timer failure monitoring을 포함하는 표면으로 맞춘다.

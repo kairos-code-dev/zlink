@@ -10,9 +10,9 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDiscovery(sampleRoot);
-        AssertSessionServerUsesActorGateway(sampleRoot, allowRouteMeshChannel: true);
+        AssertSessionServerUsesSessionRelay(sampleRoot, allowRouteMeshChannel: true);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
-        AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(sampleRoot);
+        AssertEnsureActorHandlersReturnSessionRelayRemoteAddresses(sampleRoot);
         AssertNoSampleSessionRelayJson(sampleRoot);
         AssertSessionPayloadPolicy(sampleRoot);
         AssertUsesFrameworkSessionPacketDispatcher(sampleRoot);
@@ -352,7 +352,7 @@ public sealed class RegressionTests
         Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);
     }
 
-    private static void AssertSessionServerUsesActorGateway(
+    private static void AssertSessionServerUsesSessionRelay(
         string sampleRoot,
         bool allowRouteMeshChannel)
     {
@@ -365,7 +365,6 @@ public sealed class RegressionTests
         Assert.True(
             text.Contains("EnableRouter", StringComparison.Ordinal)
                 || text.Contains("ConfigureRouter", StringComparison.Ordinal));
-        Assert.Contains("AttachActorGateway", text, StringComparison.Ordinal);
         if (!allowRouteMeshChannel)
         {
             Assert.DoesNotContain("AddRouteMesh", text, StringComparison.Ordinal);
@@ -391,7 +390,7 @@ public sealed class RegressionTests
         }
     }
 
-    private static void AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(string sampleRoot)
+    private static void AssertEnsureActorHandlersReturnSessionRelayRemoteAddresses(string sampleRoot)
     {
         var playRoot = Path.Combine(sampleRoot, "Server", "Play");
         var sourceFiles = EnumerateSourceFiles(playRoot)

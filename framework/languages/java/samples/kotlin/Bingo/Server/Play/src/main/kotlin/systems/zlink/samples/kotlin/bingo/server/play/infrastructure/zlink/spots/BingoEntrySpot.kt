@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.ZLinkAwait.await
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
@@ -48,7 +49,7 @@ class BingoEntrySpot(
         cancellationToken: CancellationToken,
     ) {
         if (actor.destroyAfterEntrySpotJoin) {
-            context.destroyActor(actor).toCompletableFuture().join()
+            await(context.destroyActor(actor))
         }
     }
 

@@ -38,6 +38,7 @@ public final class CommerceStore {
     private final ObjectMapper json = new ObjectMapper();
     private final Path stateFile;
     private final Path lockFile;
+    private final Object stateMutex = new Object();
 
     public CommerceStore() {
         String directory = System.getProperty(
@@ -572,21 +573,23 @@ public final class CommerceStore {
     }
 
     private <T> T withState(Function<ObjectNode, T> action, boolean write) {
-        try (FileChannel channel = FileChannel.open(
-            lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-            FileLock lock = acquire(channel);
-            try {
-                ObjectNode state = loadState();
-                T result = action.apply(state);
-                if (write) {
-                    saveState(state);
+        synchronized (stateMutex) {
+            try (FileChannel channel = FileChannel.open(
+                lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+                FileLock lock = acquire(channel);
+                try {
+                    ObjectNode state = loadState();
+                    T result = action.apply(state);
+                    if (write) {
+                        saveState(state);
+                    }
+                    return result;
+                } finally {
+                    lock.release();
                 }
-                return result;
-            } finally {
-                lock.release();
+            } catch (IOException ex) {
+                throw new UncheckedIOException("Failed to access commerce store.", ex);
             }
-        } catch (IOException ex) {
-            throw new UncheckedIOException("Failed to access commerce store.", ex);
         }
     }
 

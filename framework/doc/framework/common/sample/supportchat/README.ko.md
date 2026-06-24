@@ -78,7 +78,7 @@ SupportChat은 Registry/Discovery 기반 자동 연결을 사용한다.
 | Session -> API channel | Discovery 자동 연결 | Session 서버가 인증 요청을 처리할 때 API 서버 주소를 직접 들고 있지 않게 한다. |
 | Support -> API channel | Discovery 자동 연결 | Support actor가 상담 시작 orchestration을 API 서버에 요청한다. |
 | API -> Support channel | Discovery 자동 연결 | API 서버가 conversation 생성과 agent 배정 요청을 Support 서버로 보낸다. |
-| Session -> Support actor gateway | Registry 기반 actor locator | Session 서버가 Support 서버 actor의 위치를 직접 관리하지 않게 한다. |
+| Session -> Support session relay | Registry 기반 actor locator | Session 서버가 Support 서버 actor의 위치를 직접 관리하지 않게 한다. |
 | Support -> Session bound push | Registry 기반 session route | Support 서버가 현재 client session 위치를 framework route로 찾는다. |
 
 이 샘플은 자동 연결, actor binding, bound session push를 함께 보여 주는 역할을 맡는다.
@@ -106,9 +106,9 @@ Session, API, Support 서버가 나누는 책임은 Bingo의 Session, API, Play 
 | `SupportChat.Api` | `Api` channel server | Session 서버의 token 검증과 Support actor의 상담 시작 orchestration 요청을 처리한다. |
 | `SupportChat.Api` | `Support` channel client | Support 서버에 conversation 생성과 agent 자동 배정을 요청한다. |
 | `SupportChat.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
-| `SupportChat.Session` | session Spot node | ActorGateway attach와 bound session push 수신을 담당한다. |
+| `SupportChat.Session` | session Spot node | session relay와 bound session push 수신을 담당한다. |
 | `SupportChat.Support` | actor runtime | customer actor와 agent actor를 만들고 Entry Spot에 join시킨다. |
-| `SupportChat.Support` | actor gateway endpoint | Session 서버의 `EnsureSupportUserActorReq`를 받아 actor를 만들거나 기존 actor를 반환한다. |
+| `SupportChat.Support` | session relay endpoint | Session 서버의 `EnsureSupportUserActorReq`를 받아 actor를 만들거나 기존 actor를 반환한다. |
 | `SupportChat.Support` | `SupportEntrySpot` | actor가 conversation에 들어가기 전 admission 지점을 맡는다. |
 | `SupportChat.Support` | `ConversationSpot` | 참여자, 메시지 순서, typing 상태, idle timer, close 상태를 소유한다. |
 | `SupportChat.Support` | `Support` channel server | API 서버의 conversation 생성과 agent 배정 요청을 받는다. |
@@ -137,7 +137,7 @@ Server/Support/
       Actors/
         SupportUserActor
         SupportUserActorFactory
-      ActorGateway/
+      SessionRelay/
         EnsureSupportUserActorHandler
       Handlers/
         AllocateConversationHandler

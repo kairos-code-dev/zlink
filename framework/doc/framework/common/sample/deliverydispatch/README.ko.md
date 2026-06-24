@@ -148,7 +148,7 @@ flowchart LR
 | `DeliveryDispatch.DispatchCenter` | dispatch channel server, courier channel client, tracking channel client | 배차 요청 접수, 배송원 제안, timeout, 재배정, 상태 event 생성을 맡는다. |
 | `DeliveryDispatch.Courier` | courier channel server | 배송 제안을 받고 courier mode에 따라 수락하거나 timeout을 만든다. |
 | `DeliveryDispatch.Tracking` | tracking channel server, fanout publisher, delivery Spot node | 상태 event 기록, Delivery Tracking Spot 생성, status fanout publish를 맡는다. |
-| `DeliveryDispatch.Session` | stream server, fanout subscriber, actor gateway client | 고객 연결, delivery subscription, status push를 맡는다. |
+| `DeliveryDispatch.Session` | stream server, fanout subscriber, session relay client | 고객 연결, delivery subscription, status push를 맡는다. |
 | `DeliveryDispatch.Client` | HTTP client, stream connector | 배송 생성, subscription, status notify 검증을 수행한다. |
 | `DeliveryDispatch.Probe` | readiness probe | registry topology와 Tracking channel active probe를 확인한다. |
 

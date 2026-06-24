@@ -417,16 +417,6 @@ stream_builder_t &stream_builder_t::register_session (std::string session_name)
     return *this;
 }
 
-stream_builder_t &stream_builder_t::attach_actor_gateway (std::string spot_node_name)
-{
-    if (spot_node_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "ActorGateway Spot node name must not be empty");
-    }
-    _state->snapshot.actor_gateway_spot_node_name = std::move (spot_node_name);
-    return *this;
-}
-
 stream_snapshot_t stream_builder_t::snapshot () const
 {
     return _state->snapshot;

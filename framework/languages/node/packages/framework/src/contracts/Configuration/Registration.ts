@@ -173,7 +173,6 @@ export interface ZLinkRouteChannelOptions {
 
 export interface ZLinkStreamNodeOptions {
   readonly bind?: string;
-  readonly attachActorGateway?: string;
   readonly session?: Type;
 }
 
@@ -603,11 +602,6 @@ class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
     return this;
   }
 
-  attachActorGateway(spotNodeName: string): this {
-    this.streamNode.attachActorGateway = spotNodeName;
-    return this;
-  }
-
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this {
     if (this.streamNode.session !== undefined) {
       throw new ZLinkConfigurationException('STREAM node cannot register more than one header stream session.');
@@ -932,7 +926,6 @@ interface MutableRouteChannelOptions extends MutableRouteMeshChannelOptions {
 
 interface MutableStreamNodeOptions {
   bind?: string;
-  attachActorGateway?: string;
   session?: Type;
 }
 

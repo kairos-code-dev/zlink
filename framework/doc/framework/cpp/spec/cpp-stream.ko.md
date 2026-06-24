@@ -161,7 +161,6 @@ app.add_zlink_framework([](auto &options) {
     options.add_stream_node("route-stream")
       .bind("tcp://0.0.0.0:9200")
       .register_session<client_session_t>()
-      .attach_actor_gateway("session-actors");
 });
 ```
 
@@ -196,7 +195,7 @@ session 이름으로 사용하고, 없으면 타입 이름 기반 message name�
 
 STREAM 회귀 테스트는 `.NET` framework의 packet session 동작과 같은 의미를 C++ 표면으로
 고정한다. raw byte stream 성공 여부만 보지 않고 header validation, session lifecycle,
-write backpressure, ActorGateway attach 경계를 함께 검증한다.
+write backpressure, session relay 경계를 함께 검증한다.
 
 필수 항목:
 
@@ -214,7 +213,6 @@ write backpressure, ActorGateway attach 경계를 함께 검증한다.
 - pending write 중 disconnect가 발생하면 caller는 disconnected 계열 error를 받는다.
 - session-scoped service는 disconnect cleanup 뒤 해제된다.
 - session callback에서 받은 payload는 relay 후에도 framework ownership 규칙을 깨지 않는다.
-- `attach_actor_gateway(...)`가 설정된 stream은 route mesh channel을 만들지 않고
   ActorGateway relay 경로를 사용한다.
 - shutdown 중 새 session accept를 멈추고 기존 session cleanup을 완료한다.
 

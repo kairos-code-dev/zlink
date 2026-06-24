@@ -851,8 +851,6 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
     EXPECT_NE (play_factory.find ("options.add_stream_node (sample_names_t::stream_name)"),
                std::string::npos);
     EXPECT_NE (play_factory.find (".register_session<play_session_t> ()"), std::string::npos);
-    EXPECT_NE (play_factory.find (".attach_actor_gateway (topology.selected_play_node_rid ())"),
-               std::string::npos);
     EXPECT_NE (api_factory.find (".listen (topology.selected_api_http_endpoint ())"),
                std::string::npos);
     EXPECT_NE (api_factory.find (".map_post<create_game_http_handler_t> (\"/games\")"),
@@ -933,8 +931,6 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_EQ (client.find ("bingo-client.log"), std::string::npos);
     EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
     EXPECT_NE (session_factory.find (".enable_actor_gateway ()"), std::string::npos);
-    EXPECT_NE (session_factory.find (".attach_actor_gateway (sample_names_t::session_spot_node)"),
-               std::string::npos);
     EXPECT_NE (session.find (".relay_request (payload)"), std::string::npos);
     EXPECT_NE (session.find (".relay (payload)"), std::string::npos);
     EXPECT_EQ (session.find ("payload.to_raw ()"), std::string::npos);

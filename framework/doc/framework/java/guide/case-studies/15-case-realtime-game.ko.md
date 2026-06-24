@@ -81,7 +81,6 @@ dispatch 가 가져간다. **per-room lock 도, Redis 세션 라우팅 캐시도
 ```java
 ZLinkStreamNodeBuilder stream = options.addStreamNode("session");
 stream.bind("tcp://0.0.0.0:9100");
-stream.attachActorGateway("play");
 stream.registerSession(GameSession.class);
 
 options.addActorFactory("player", PlayerActorFactory.class);

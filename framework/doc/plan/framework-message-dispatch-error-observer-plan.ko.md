@@ -22,7 +22,7 @@ framework runtime이 등록되지 않은 메시지나 처리 실패를 만났을
 | `.NET` | channel, route mesh channel, SPOT route, SPOT subscription, SPOT actor dispatch |
 | Java/Kotlin | Spring Boot channel, route, SPOT route, SPOT subscription, SPOT actor dispatch |
 | Node/NestJS | channel, route, SPOT route, SPOT subscription, SPOT actor dispatch |
-| C++ | channel, route, SPOT runtime, actor gateway/session dispatch 중 framework가 소유한 dispatch 경로 |
+| C++ | channel, route, SPOT runtime, session relay/session dispatch 중 framework가 소유한 dispatch 경로 |
 
 stream connector의 inbound observer는 별도 기능이다. 이 계획은 framework message dispatch 단계의
 오류 관측만 다룬다.
@@ -441,7 +441,7 @@ Node는 현재 `ZLinkUnhandledDispatchOptions` 계약과 문서가 맞지 않으
 C++은 public 표면이 `.NET` parity를 따라가도록 한다.
 
 - `configure_dispatch` 아래 observer 등록 API를 추가한다.
-- channel/route/SPOT/actor gateway dispatch failure를 공통 event로 변환한다.
+- channel/route/SPOT/session relay dispatch failure를 공통 event로 변환한다.
 - observer callback은 framework executor 또는 bounded queue를 통해 호출한다.
 - callback exception이 C++ dispatch loop를 벗어나지 않게 한다.
 - CTest label은 기존 `framework-zlink-*` 체계에 맞춘다.

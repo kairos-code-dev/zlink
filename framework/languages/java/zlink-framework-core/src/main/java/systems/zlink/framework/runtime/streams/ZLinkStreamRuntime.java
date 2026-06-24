@@ -54,11 +54,12 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer flow;
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final ZLinkStreamCodec defaultCodec;
-    private final Predicate<RoutingId> actorGatewayRouteReady;
+    private final Predicate<RoutingId> sessionRelayRouteReady;
     private final ZLinkSessionActorsRuntime.LocalActorDispatcher localActorDispatcher;
     private final List<ZLinkBackendStreamSocket> streams = new ArrayList<>();
     private final Map<String, ZLinkBackendStreamSocket> streamsByName = new HashMap<>();
-    private final Map<String, Boolean> streamActorGatewayAttached = new HashMap<>();
+    private final Map<String, Boolean> streamSessionRelayAttached = new HashMap<>();
+    private final Map<String, ZLinkBackendSpotNode> streamSessionRelaySpotNodes = new HashMap<>();
     private final Map<String, SessionState> sessions = new HashMap<>();
 
     public ZLinkStreamRuntime(
@@ -89,7 +90,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actors,
         ZLinkHandlerFactory handlerFactory,
-        Predicate<RoutingId> actorGatewayRouteReady,
+        Predicate<RoutingId> sessionRelayRouteReady,
         ZLinkSpotRuntime spots) {
         if (registration.streamNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one stream node is required");
@@ -104,8 +105,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             registration.dispatchOptions(), handlerFactory, this.handlerExecutor);
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.defaultCodec = defaultCodec(registration);
-        this.actorGatewayRouteReady =
-            actorGatewayRouteReady == null ? ignored -> true : actorGatewayRouteReady;
+        this.sessionRelayRouteReady =
+            sessionRelayRouteReady == null ? ignored -> true : sessionRelayRouteReady;
         this.localActorDispatcher = spots == null ? null : spots::dispatchLocalSessionActor;
         ZLinkChannelBackendAdapter channelAdapter =
             backendFactory.createChannelAdapter(adapterOptions);
@@ -120,31 +121,20 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 dispatchToSession(streamNode, routingId, header, payload));
             stream.onTransportError((routingId, nativeCode, message) ->
                 reportTransportError(streamNode, routingId, nativeCode, message));
-            ZLinkBackendSpotNode spotNode = resolveActorGatewayNode(streamNode, spotNodes);
-            if (spotNode != null) {
-                stream.attachActorGateway(spotNode);
-            }
+            ZLinkBackendSpotNode spotNode = resolveSessionRelayNode(spotNodes);
             streams.add(stream);
             streamsByName.put(streamNode.name(), stream);
-            streamActorGatewayAttached.put(
+            streamSessionRelayAttached.put(
                 streamNode.name(),
                 spotNode != null);
+            if (spotNode != null) {
+                streamSessionRelaySpotNodes.put(streamNode.name(), spotNode);
+            }
         }
     }
 
-    private static ZLinkBackendSpotNode resolveActorGatewayNode(
-        StreamNodeRegistration streamNode,
+    private static ZLinkBackendSpotNode resolveSessionRelayNode(
         Map<String, ZLinkBackendSpotNode> spotNodes) {
-        if (streamNode.actorGatewaySpotNodeName() != null) {
-            ZLinkBackendSpotNode spotNode =
-                spotNodes.get(streamNode.actorGatewaySpotNodeName());
-            if (spotNode == null) {
-                throw new ZLinkConfigurationException(
-                    "stream node actor gateway SpotNode is not running: "
-                        + streamNode.actorGatewaySpotNodeName());
-            }
-            return spotNode;
-        }
         return spotNodes.values().stream().findFirst().orElse(null);
     }
 
@@ -158,13 +148,14 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 "stream node is not running: " + streamNodeName);
         }
         return new ZLinkSessionActorsRuntime(
+            streamSessionRelaySpotNodes.get(streamNodeName),
             stream,
             sessionRid,
             actors,
             serializer,
-            actorGatewayRouteReady,
+            sessionRelayRouteReady,
             localActorDispatcher,
-            streamActorGatewayAttached.getOrDefault(streamNodeName, false),
+            streamSessionRelayAttached.getOrDefault(streamNodeName, false),
             defaultCodec);
     }
 
@@ -249,16 +240,17 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             streamNode.name(),
             stream,
             routingId,
-            actors == null && streamNode.actorGatewaySpotNodeName() == null
+            actors == null && !streamSessionRelayAttached.getOrDefault(streamNode.name(), false)
                 ? null
                 : new ZLinkSessionActorsRuntime(
+                    streamSessionRelaySpotNodes.get(streamNode.name()),
                     stream,
                     routingId,
                     actors,
                     serializer,
-                    actorGatewayRouteReady,
+                    sessionRelayRouteReady,
                     localActorDispatcher,
-                    streamActorGatewayAttached.getOrDefault(streamNode.name(), false),
+                    streamSessionRelayAttached.getOrDefault(streamNode.name(), false),
                     defaultCodec));
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
             new ZLinkSessionPacketDispatcherRuntime<>(
@@ -383,7 +375,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         public ZLinkSessionActors actors() {
             if (actors == null) {
                 throw new ZLinkConfigurationException(
-                    "stream node is not attached to an actor gateway");
+                    "stream node is not attached to a session relay");
             }
             return actors;
         }

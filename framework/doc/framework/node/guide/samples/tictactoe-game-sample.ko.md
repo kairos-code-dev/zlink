@@ -12,7 +12,7 @@
 ## 2. 서버 구성
 
 - `Api`: 인증과 game 생성 요청을 받는 client-server channel 서버.
-- `Play`: stream 노드 + ActorGateway + room Spot + Entry Spot을 한 서버에 둔다.
+- `Play`: stream 노드 + SessionRelay + room Spot + Entry Spot을 한 서버에 둔다.
   session은 framework typed session dispatch로 인증을 처리하고, 이후 packet은 actor
   gateway가 bound actor로 relay 한다.
 - 수동 endpoint 연결을 쓴다.

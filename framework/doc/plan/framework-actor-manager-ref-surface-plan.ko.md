@@ -218,7 +218,7 @@ actor factory 생성자나 외부 handler가 직접 해석하지 않는다. runt
 | A | actor manager가 `GetOrCreate`만 제공하고, Entry Spot join은 별도 public gateway API로 제공한다. | Spot 밖 코드에 admission 제어를 다시 노출하므로 취소한다. |
 | B | actor manager의 `GetOrCreate`가 생성 후 target Entry Spot admission까지 함께 수행할 수 있는 overload를 제공한다. | 호출부가 단순하지만 생성과 admission 의미가 섞이므로 채택하지 않는다. |
 
-최종 방향은 별도 actor gateway public API를 두지 않는 것이다. actor manager는 actor 생성과 조회만
+최종 방향은 별도 session relay public API를 두지 않는 것이다. actor manager는 actor 생성과 조회만
 맡고 `ActorRef`를 반환한다. actor join/admission은 Entry Spot이 소유한 workflow 또는 framework 내부
 runtime 경로에서만 처리한다.
 

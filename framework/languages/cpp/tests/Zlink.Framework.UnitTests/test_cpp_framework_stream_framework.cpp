@@ -91,24 +91,20 @@ int main ()
     zlink::framework::zlink_builder_t zlink;
     zlink.stream ("client-stream")
       .bind ("tcp://0.0.0.0:9200")
-      .register_session ("client")
-      .attach_actor_gateway ("session-actors");
-	    zlink::framework::serializer_registry_t serializers;
+      .register_session ("client");
+    zlink::framework::serializer_registry_t serializers;
     serializers.add<std::string> (
       [] (const std::string &value) {
           return zlink::framework::encoded_payload_t::from_string (value);
       },
       [] (const zlink::framework::encoded_payload_t &payload) { return payload.to_string (); });
-	    zlink::framework::detail::bind_stream_serializers (zlink, serializers);
+    zlink::framework::detail::bind_stream_serializers (zlink, serializers);
 
     const auto snapshots = zlink.streams ();
     if (snapshots.size () != 1 || snapshots[0].name != "client-stream"
         || snapshots[0].bind_endpoint != "tcp://0.0.0.0:9200"
-        || snapshots[0].packet_session_name != "client"
-        || !snapshots[0].actor_gateway_spot_node_name
-        || *snapshots[0].actor_gateway_spot_node_name != "session-actors") {
+        || snapshots[0].packet_session_name != "client")
         return 1;
-    }
 
     auto runtime = zlink::framework::detail::stream_runtime_t::from (zlink);
     zlink::framework::stream_metadata_t metadata;

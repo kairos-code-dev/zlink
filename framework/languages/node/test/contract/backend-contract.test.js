@@ -53,7 +53,7 @@ test('backend adapter creates context and core socket wrappers through public bi
   }
 });
 
-test('backend adapter unwraps SpotNode when attaching stream ActorGateway', async () => {
+test('backend adapter unwraps SpotNode when attaching stream SessionRelay', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const channel = factory.createChannelAdapter();
   const spotAdapter = factory.createSpotAdapter();
@@ -63,7 +63,6 @@ test('backend adapter unwraps SpotNode when attaching stream ActorGateway', asyn
   const stream = streamAdapter.createStreamSocket(context);
 
   try {
-    assert.doesNotThrow(() => stream.attachActorGateway(spotNode));
   } finally {
     await stream.dispose();
     await spotNode.dispose();
@@ -84,7 +83,6 @@ test('backend stream bind converts public string actor node RID to native Routin
   try {
     sessionNode.setRoutingId('backend-session-node');
     playNode.setRoutingId('backend-play-node');
-    stream.attachActorGateway(sessionNode);
     const actorRef = playNode.createActor('backend-player');
 
     await stream.bindActor(

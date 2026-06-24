@@ -61,8 +61,6 @@ public interface IZLinkStreamNodeBuilder
 
     IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false);
 
-    IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName);
-
     IZLinkStreamNodeBuilder RegisterSession<TSession>()
         where TSession : class, IZLinkSession;
 }

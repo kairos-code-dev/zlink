@@ -58,8 +58,8 @@ server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery().addReg
 
 ## 3. Spot/Actor regression
 
-`RemoteActorGatewayTest`, `ActorSessionStateTest`, `BoundSessionTest`는 testkit
-fake backend에서 ActorGateway attach, bind/unbind, bound push backend operation을
+`RemoteSessionRelayTest`, `ActorSessionStateTest`, `BoundSessionTest`는 testkit
+fake backend에서 session relay, bind/unbind, bound push backend operation을
 관찰해 session relay의 내부 계약을 고정한다. native backend 경로는
 `SessionActorsRuntimeIntegrationTest`가 단일 JVM 안에서 확인하고, 실제 client stream에
 도착하는 bound push는 Java/Kotlin sample e2e가 확인한다. 따라서 아래 표는 fake
@@ -101,9 +101,8 @@ backend, integration-single-process, sample regression 증거를 분리해 기�
 | actor Entry Spot route join handler | fake backend | `ActorRuntimeFakeBackendTest.actorEntrySpotRouteJoinHandlerCreatesLocalActorAndReturnsActorRefReply` | reserved route packet `__zlink.actor.joinEntrySpot` 처리 경로가 actor runtime에서 local actor를 생성하고 target node rid와 actor generation을 reply로 반환 |
 | framework가 소유하는 session context | fake backend / sample regression / contract | `StreamSessionTest.constructorSessionContextExposesClientAndActorsFromFrameworkRuntime` / `./framework/languages/java/samples/run_samples.sh` | STREAM session type은 framework가 소유하는 `ZLinkSessionContext` constructor를 받을 수 있고, context의 `client()`와 `actors()`는 backend stream send와 actor bind로 이어진다. sample은 `SampleSessionContext`, `SampleSessionActors`, `SampleBoundSession` 같은 local stand-in 없이 public framework session context를 사용한다 |
 | session packet dispatcher | fake backend / sample regression | `ZLinkFrameworkAutoConfigurationTest.springLifecycleAutoDiscoversSessionPacketHandlersForSessionDispatcher` / `StreamSessionTest.sessionPacketDispatcher_handlesRegisteredPacketsAndLetsSessionRelayUnhandledPackets` / `./framework/languages/java/samples/run_samples.sh` | Spring 안에서 구동되는 STREAM session type은 framework가 소유하는 `ZLinkSessionPacketDispatcher<ZLinkSessionContext>` constructor를 받을 수 있다. Spring auto-configuration은 같은 context type의 `ZLinkSessionPacketHandler`를 찾아 등록하고, 등록된 handler는 packet 이름으로 찾아 실행된다. 미등록 packet은 session이 actor relay, reject, ignore 같은 결정을 직접 내리도록 `false`를 반환한다 |
-| local managed session actor bind/relay | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncCanRelayLocalManagedActorWithoutActorGatewayAttach` | direct STREAM role은 `.NET` direct sample처럼 `attachActorGateway(...)` 없이 local actor instance를 bind하고 annotation-discovered actor packet handler로 relay한다 |
-| remote ActorGateway session actor bind | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncUsesStreamActorGatewayBindingPath` | native backend 위에서 remote ActorGateway binding path가 동작 |
-| session actor relay | fake backend / integration-single-process | `RemoteActorGatewayTest.sessionAndPlayServers_relaySucceeds` / `SessionActorsRuntimeIntegrationTest.sessionAndPlayServers_relaySucceeds` | fake backend는 bound-actor relay backend operation을 관찰하고, native integration은 gateway-attached remote stream binding을 단일 JVM에서 검증 |
+| remote SessionRelay session actor bind | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncUsesStreamSessionRelayBindingPath` | native backend 위에서 remote session relay binding path가 동작 |
+| session actor relay | fake backend / integration-single-process | `RemoteSessionRelayTest.sessionAndPlayServers_relaySucceeds` / `SessionActorsRuntimeIntegrationTest.sessionAndPlayServers_relaySucceeds` | fake backend는 bound-actor relay backend operation을 관찰하고, native integration은 gateway-attached remote stream binding을 단일 JVM에서 검증 |
 | stale binding token guard | fake backend | `ActorSessionStateTest.actorSessionState_filtersStaleDisconnect_andOnlyDisconnectsCurrentStream` | 이전 binding이 새 binding을 지우지 않음 |
 | bound session push | fake backend / integration-single-process / sample regression | `BoundSessionTest.playActorPush_arrivesAtClientStream` / `SessionActorsRuntimeIntegrationTest.playActorPush_withoutLiveClientStreamFailsNativeSend` / `./framework/languages/java/samples/run_samples.sh` | fake backend는 actor push가 session stream send operation으로 이어지는지 확인하고, live client stream이 없는 native integration은 실패를 숨기지 않으며, Java/Kotlin sample e2e는 실제 client가 `GameStateNotify`와 `PlayerJoinedNotify`를 받는지 확인 |
 

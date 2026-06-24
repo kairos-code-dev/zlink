@@ -462,8 +462,6 @@ public sealed class BuilderContracts
 
         public IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false) => this;
 
-        public IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName) => this;
-
         public IZLinkStreamNodeBuilder RegisterSession<TSession>()
             where TSession : class, IZLinkSession => this;
     }

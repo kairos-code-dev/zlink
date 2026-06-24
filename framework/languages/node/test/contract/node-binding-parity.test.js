@@ -20,7 +20,7 @@ test('node binding exposes the public API required by framework P2-P8', () => {
   }
 });
 
-test('node binding public API covers discovery registry monitor and actor gateway wrappers', () => {
+test('node binding public API covers discovery registry monitor and session relay wrappers', () => {
   const context = zlink.createContext();
   const closeables = [];
 
@@ -47,7 +47,6 @@ test('node binding public API covers discovery registry monitor and actor gatewa
     assert.equal(typeof spotNode.attachDiscovery, 'function');
     assert.equal(typeof spotNode.createActor, 'function');
     assert.equal(typeof stream.setPacketHandler, 'function');
-    assert.equal(typeof stream.attachActorGateway, 'function');
     assert.equal(typeof stream.bindActor, 'function');
     assert.equal(typeof stream.unbindActor, 'function');
     assert.equal(typeof stream.sendBoundActor, 'function');
@@ -57,8 +56,6 @@ test('node binding public API covers discovery registry monitor and actor gatewa
     assert.equal(typeof monitor.onEvent, 'function');
     assert.equal(typeof monitor.recv, 'function');
     assert.equal(typeof monitor.status, 'function');
-
-    stream.attachActorGateway(spotNode);
     const actor = spotNode.createActor('p15-actor');
     const sessionRid = zlink.RoutingId.from('p15-session');
     assert.equal(typeof stream.bindActor(sessionRid, actor.ref()).submit, 'function');

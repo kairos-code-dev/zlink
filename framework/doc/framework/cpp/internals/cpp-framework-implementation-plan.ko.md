@@ -217,7 +217,7 @@ Blueprint/Game Thread 표면만 담고, transport와 codec 구현은 `Private`�
   - Error contract: header validation failure, semantic validation failure, disconnected write.
   - Regression contract: session lifecycle, packet reply, invalid header drop, write backpressure, close cleanup.
 - Goal 14:
-  - Public contract: `actor_ref_t`, `bound_session_t`, actor context/result, ActorGateway attach API.
+  - Public contract: `actor_ref_t`, `bound_session_t`, actor context/result, session relay API.
   - Runtime owner: session actor manager가 actor binding, generation, remote ref, relay routing, cleanup을 소유한다.
   - Error contract: type mismatch, duplicate actor, stale generation, session disconnected.
   - Regression contract: session-to-actor relay, actor push, remote ref round-trip, disconnect cleanup.
@@ -814,7 +814,6 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R stream
 
 구현 항목:
 
-- `stream.attach_actor_gateway(spot_node_name)`
 - `actor_ref_t`
 - `session_actor_manager_t`
 - `session_actor_t`

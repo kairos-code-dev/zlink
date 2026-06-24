@@ -321,7 +321,6 @@ export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBui
 
 export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
   bind(endpoint: string | undefined): this;
-  attachActorGateway(spotNodeName: string | undefined): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }
 
@@ -874,11 +873,6 @@ class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestChildBuilder implements
 
   bind(endpoint: string | undefined): this {
     this.streamOptions.bind = endpoint;
-    return this;
-  }
-
-  attachActorGateway(spotNodeName: string | undefined): this {
-    this.streamOptions.attachActorGateway = spotNodeName;
     return this;
   }
 

@@ -29,17 +29,6 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         return this;
     }
 
-    public IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName)
-    {
-        if (string.IsNullOrWhiteSpace(spotNodeName))
-        {
-            throw new ZLinkConfigurationException("STREAM ActorGateway target SpotNode name must not be empty.");
-        }
-
-        registration.ActorGatewaySpotNodeName = spotNodeName;
-        return this;
-    }
-
     public IZLinkStreamNodeBuilder RegisterSession<TSession>()
         where TSession : class, IZLinkSession
     {

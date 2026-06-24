@@ -178,7 +178,7 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal missing timeout; do
+for mode in state1 state2 send normal missing timeout owner route-mesh; do
   run_client_mode "${mode}"
   sleep 2
 done

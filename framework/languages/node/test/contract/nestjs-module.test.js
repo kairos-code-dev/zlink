@@ -1111,7 +1111,6 @@ test('framework options builder maps dotnet-shaped registration flow into option
     builder.addRouteMesh('route').enableClient('tcp://127.0.0.1:9403');
     builder.addStreamNode('gateway')
       .bind('tcp://0.0.0.0:9404')
-      .attachActorGateway('game.stage')
       .registerSession(GatewaySession);
     const spot = builder.addSpotMesh('game.stage');
     spot.addSpotFactory(StageSpot)
@@ -1135,7 +1134,6 @@ test('framework options builder maps dotnet-shaped registration flow into option
   assert.equal(route.bind, 'tcp://0.0.0.0:9403');
   assert.deepEqual(route.manualConnections, ['tcp://127.0.0.1:9403']);
   assert.equal(streamNode.bind, 'tcp://0.0.0.0:9404');
-  assert.equal(streamNode.attachActorGateway, 'game.stage');
   assert.equal(streamNode.session, GatewaySession);
   assert.equal(registration.spotFactories.has(StageSpot), true);
   assert.equal(registration.spotFactories.has(LocalStageSpot), true);
@@ -1188,14 +1186,12 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
       .enableRouter('tcp://0.0.0.0:9110')
     .addStreamNode('client.stream')
       .bind('tcp://0.0.0.0:9100')
-      .attachActorGateway('game.spot')
       .registerSession(ClientHeaderSession)
     .build());
   const registration = await resolveFrameworkRegistration(module);
   const streamNode = registration.streamNodes.get('client.stream');
 
   assert.equal(streamNode.bind, 'tcp://0.0.0.0:9100');
-  assert.equal(streamNode.attachActorGateway, 'game.spot');
   assert.equal(streamNode.session, ClientHeaderSession);
   assert.equal(registration.spotNodes.get('game.spot').router.bind, 'tcp://0.0.0.0:9110');
 
@@ -1222,25 +1218,6 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
       .build()),
     /STREAM node 'missing-session' must register a header stream session/
   );
-  await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotMesh('game.spot')
-      .addStreamNode('client.stream')
-        .bind('tcp://0.0.0.0:9100')
-        .attachActorGateway('game.spot')
-        .registerSession(ClientHeaderSession)
-      .build())),
-    /does not enable router capability/
-  );
-  assert.throws(
-    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addStreamNode('client.stream')
-        .bind('tcp://0.0.0.0:9100')
-        .attachActorGateway('unknown.spot')
-        .registerSession(ClientHeaderSession)
-      .build()),
-    /references unknown ActorGateway target SpotNode 'unknown.spot'/
-  );
 });
 
 test('zlinkFramework builder maps stream node registration without raw server code', async () => {
@@ -1263,7 +1240,6 @@ test('zlinkFramework builder maps stream node registration without raw server co
         .enableRouter('tcp://0.0.0.0:9115')
       .addStreamNode('client.stream')
         .bind('tcp://0.0.0.0:9100')
-        .attachActorGateway('game.spot')
         .registerSession(ClientHeaderSession)
       .addSpotMesh('game.spot')
         .enableRouter('tcp://0.0.0.0:9110', 'game-node')
@@ -1277,7 +1253,6 @@ test('zlinkFramework builder maps stream node registration without raw server co
   const spotNode = registration.spotNodes.get('game.spot');
 
   assert.equal(streamNode.bind, 'tcp://0.0.0.0:9100');
-  assert.equal(streamNode.attachActorGateway, 'game.spot');
   assert.equal(streamNode.session, ClientHeaderSession);
   assert.equal(registration.actorFactories.get('player'), PlayerActorFactory);
   assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9110');
@@ -1597,7 +1572,6 @@ test('framework runtime host starts registered stream nodes and disposes their r
               },
               send() { return true; },
               disconnectPeer() {},
-              attachActorGateway() {},
               async bindActor() {},
               async unbindActor() {},
               sendBoundActor() { return true; },
@@ -1641,7 +1615,7 @@ test('framework runtime host starts registered stream nodes and disposes their r
   ]);
 });
 
-test('framework runtime host attaches stream ActorGateway to registered SpotNode runtime', async () => {
+test('framework runtime host attaches stream SessionRelay to registered SpotNode runtime', async () => {
   class ClientHeaderSession {
     constructor(context) {
       this.context = context;
@@ -1707,7 +1681,6 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
       streamNodes: {
         'client.stream': {
           bind: 'tcp://0.0.0.0:9100',
-          attachActorGateway: 'game.spot',
           session: ClientHeaderSession
         }
       }
@@ -1776,9 +1749,7 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
               onFramedPacket() {},
               send() { return true; },
               disconnectPeer() {},
-              attachActorGateway(node) {
                 assert.equal(node, spotNode);
-                calls.push('stream:attachActorGateway');
               },
               async bindActor() {},
               async unbindActor() {},
@@ -1813,7 +1784,6 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
   assert.deepEqual(calls, [
     'spot:create:2',
     'spot:setRouterBind:tcp://0.0.0.0:9110',
-    'stream:attachActorGateway',
     'stream:bind:tcp://0.0.0.0:9100',
     'monitor:dispose',
     'stream:dispose',
@@ -2616,7 +2586,7 @@ test('framework route transport sends Spot request through accepted Spot route c
   ]);
 });
 
-test('framework runtime host attaches Discovery for router-only ActorGateway SpotNode', async () => {
+test('framework runtime host attaches Discovery for router-only SessionRelay SpotNode', async () => {
   const calls = [];
   const spotNode = {
     nativeInstance: {},

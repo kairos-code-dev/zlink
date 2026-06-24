@@ -87,7 +87,6 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 | `add_fanout_channel(name)` | `enable_publisher(ep)` · `enable_subscriber([ep])` · `use_handler_group(g)` | [7 §6](07-channel-messaging.ko.md) |
 | `add_route_mesh(name)` | `enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` (ROUTER 공유, SpotMesh와 같은 프로세스면 자동 bridge) | [7 §7](07-channel-messaging.ko.md) |
 | `add_spot_mesh(name)` | `bind` · `enable_router` · `enable_pub_sub` · `use_discovery` · `add_entry_spot<T>` · `add_spot<T>` · `add_actor_factory<F>` · `enable_actor_gateway` | [8](08-spot.ko.md)·[9](09-actor-session.ko.md) |
-| `add_stream_node(name)` | `bind` · `register_session(name)`/`register_session<TSession>()` · `attach_actor_gateway` | [10](10-stream.ko.md) |
 | `http()` | `listen` · `configure_tls` · `map_get/post/...<T>` · `use<TMiddleware>` · `map_health/readiness/liveness` | [6](06-http-hosting.ko.md) |
 | `use_discovery()` | `add_registry_endpoint(ep)` | [11](11-registry.ko.md) |
 | `enable_registry(pub, router)` | registry 서버 | [11 §2](11-registry.ko.md) |
@@ -135,21 +134,18 @@ spot_context_t}`; `spot_create_state_t{existing, created, rejected}`.
 
 - **factory**: `spot_node_builder_t::add_actor_factory<TFactory>(actor_type)`로 등록(duck-typed: `create(actor_id)`).
 - **gateway**: 공개 `actor_gateway_t` 클래스는 없다. `spot_node` 쪽 `enable_actor_gateway()` +
-  stream 쪽 `attach_actor_gateway(spot_node)`로 **켜는 표면**만 있다([9 §5](09-actor-session.ko.md)).
 - "ensure" 명명 계약은 없다 — `get_or_create*` 의미로 대신한다.
 
 ## 5. STREAM session — session · stream · header
 
 | 타입 | 핵심 표면 |
 |------|----------|
-| `stream_builder_t` | `bind(ep)` · `register_session(name)` · `attach_actor_gateway(spot_node)` |
 | `packet_stream_session_t` | 순수 가상: `on_connected/on_disconnected/on_error/on_packet` (모두 `task_t<void>`) |
 | `stream_t` | `session_id()` · `close()` · `write_packet(payload)` · `reply_packet(payload)` |
 | `stream_dispatch_context_t` | `packet_name()` · `metadata()` · `can_reply()` |
 | `stream_error_t` | `error()` · `native_code()` · `message()` |
 
 옵션 레벨 등록: `stream_node_options_builder_t::register_session<TSession>()`(`packet_stream_session_t`
-파생 요구) · `attach_actor_gateway` · `bind`. push 는 `stream_t::write_packet`/`reply_packet`,
 actor → client push 는 Actor 도메인의 `bound_session_t`(§4). 코덱 `stream_codec_t{raw,json,
 message_pack,protobuf}`.
 

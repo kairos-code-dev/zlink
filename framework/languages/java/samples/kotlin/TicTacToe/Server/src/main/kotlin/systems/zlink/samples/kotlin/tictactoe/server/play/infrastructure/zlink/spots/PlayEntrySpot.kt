@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots
 
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.ZLinkAwait.await as awaitStage
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
@@ -35,6 +36,9 @@ class PlayEntrySpot(
         createRequest: ZLinkMessage,
         cancellationToken: CancellationToken,
     ) {
+        if (createRequest.isEmpty) {
+            return
+        }
         actor.applyPlayer(createRequest.decode(PlayerInfo::class.java))
     }
 
@@ -50,7 +54,7 @@ class PlayEntrySpot(
         cancellationToken: CancellationToken,
     ) {
         if (actor.destroyAfterEntrySpotJoin) {
-            context.destroyActor(actor).toCompletableFuture().join()
+            awaitStage(context.destroyActor(actor))
         }
     }
 

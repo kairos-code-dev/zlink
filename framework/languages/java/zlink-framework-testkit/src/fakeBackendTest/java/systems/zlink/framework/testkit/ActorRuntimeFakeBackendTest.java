@@ -289,7 +289,6 @@ final class ActorRuntimeFakeBackendTest {
                 node.addEntrySpot(EntrySpot.class);
                 node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
-            stream.attachActorGateway("play");
             stream.registerSession(DestroySession.class); };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -530,7 +529,6 @@ final class ActorRuntimeFakeBackendTest {
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
                 node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");}; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
-            stream.attachActorGateway("play");
             stream.registerSession(DestroySession.class); };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -570,7 +568,6 @@ final class ActorRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
-            stream.attachActorGateway("play");
             stream.registerSession(DestroySession.class); };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =

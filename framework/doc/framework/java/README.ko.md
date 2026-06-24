@@ -45,7 +45,7 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 | [handler-interfaces](spec/handler-interfaces.ko.md) | interface, annotation, context, options |
 | [spring-boot-channel-messaging](spec/spring-boot-channel-messaging.ko.md) | channel 등록, outbound client, dispatch |
 | [spring-boot-spot](spec/spring-boot-spot.ko.md) | Spot lifecycle, Entry Spot, timer |
-| [spring-boot-actor-session](spec/spring-boot-actor-session.ko.md) | actor factory, ActorGateway, bound session |
+| [spring-boot-actor-session](spec/spring-boot-actor-session.ko.md) | actor factory, SessionRelay, bound session |
 | [spring-boot-stream](spec/spring-boot-stream.ko.md) | stream node, header session |
 | [stream-connector](spec/stream-connector.ko.md) | Java/Kotlin Stream Connector |
 | [spring-boot-registry](spec/spring-boot-registry.ko.md) | embedded registry, remote query |

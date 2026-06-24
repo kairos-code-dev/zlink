@@ -335,7 +335,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void SessionActorDispatch_Does_Not_Require_ActorRemoteAddressResolver()
+    public void SessionActorDispatch_Registers_Stream_Node_Without_Explicit_Relay_Target()
     {
         var services = new ServiceCollection();
 
@@ -356,7 +356,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var stream = options.AddStreamNode("stream.node");
                 stream.Bind("tcp://127.0.0.1:9100");
-                stream.AttachActorGateway("actor-node");
                 stream.RegisterSession<TestHeaderSession>();
 
             }
@@ -367,41 +366,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         Assert.Single(registration.StreamNodes);
         Assert.Empty(registration.RouteChannels);
-        Assert.Equal(
-            "actor-node",
-            registration.StreamNodes["stream.node"].ActorGatewaySpotNodeName);
-    }
-
-    [Fact]
-    public void AddZLinkFramework_Throws_When_Stream_Attaches_ActorGateway_Node_Without_Router()
-    {
-        var services = new ServiceCollection();
-
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                {
-                    var mesh = options.AddSpotMesh("actor-node");
-                    {
-                        var spot = mesh;
-                        {
-                            var pubsub = spot.EnablePubSub("tcp://127.0.0.1:7301");
-
-                        }
-
-                    }
-
-                }
-                {
-                    var stream = options.AddStreamNode("stream.node");
-                    stream.Bind("tcp://127.0.0.1:9100");
-                    stream.AttachActorGateway("actor-node");
-                    stream.RegisterSession<TestHeaderSession>();
-
-                }
-            }));
-
-        Assert.Contains("does not enable router capability", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

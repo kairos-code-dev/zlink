@@ -217,13 +217,13 @@ client로 보내야 하면 먼저 그 actor에게 메시지를 보낸 뒤, 해�
 ## 5. 등록 골격
 
 session relay는 application route mesh channel로 흐르지 않는다. 같은 runtime 안에서
-만든 local managed actor instance를 bind하는 direct stream 역할은 attach 없이
-framework 내부 dispatch 경로를 사용한다. remote actor ref를 bind해야 하는 session
-gateway 역할에서는 STREAM session이 쓸 local SpotNode를 `attachActorGateway(...)`로
-지정하면, `bind(...)`가 remote actor locator를 core ActorGateway 경로에 bind한다.
+만든 local managed actor instance를 bind하는 direct stream 역할은 framework 내부 dispatch
+경로를 쓴다. remote actor ref를 bind해야 하는 session gateway 역할에서는, STREAM의 actor-gateway
+입구가 **같은 프로세스의 (router가 켜진) local SpotNode로 자동 연결**되고(별도 호출 없음),
+`bind(...)`가 remote actor locator를 core SessionRelay 경로에 bind한다.
 
-- **Session 서버**: `addSpotMesh`로 session-node(router)를 두고,
-  `addStreamNode(...).attachActorGateway("session-node")`로 relay 대상을 지정한다.
+- **Session 서버**: `addSpotMesh`로 session-node(router)를 두면 `addStreamNode(...)`의 gateway가
+  그 노드로 자동 연결된다.
 - **Play 서버**: `addActorFactory(...)` + `addSpotMesh`로 play-node에
   `addEntrySpot(...)`, `addSpotFactory(...)`를 등록한다.
 

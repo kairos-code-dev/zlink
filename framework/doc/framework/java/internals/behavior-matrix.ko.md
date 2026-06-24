@@ -43,7 +43,7 @@
 | Spot user handler | 같은 Spot 실행 문맥에서 직렬화 |
 | Entry Spot actor packet | Entry Spot 실행 줄에서 직렬화 |
 | STREAM session callback | 같은 session 안에서 직렬화 |
-| actor/session relay | ActorGateway 경로 사용 |
+| actor/session relay | SessionRelay 경로 사용 |
 
 ## 4. Sample 금지 회귀
 
@@ -75,7 +75,7 @@ Behavior Matrix의 판정은 Java framework의 JUnit 테스트로 고정한다. 
 | duplicate Entry Spot registration | `NodesAndServicesTest.addZLinkFramework_throws_whenSpotNodeRegistersMultipleEntrySpots` |
 | duplicate actor type factory | `NodesAndServicesTest.addZLinkFramework_throws_whenActorFactoryNameIsDuplicated` |
 | actor factory without SpotNode | `NodesAndServicesTest.addZLinkFramework_throws_whenActorFactoryWithoutSpotNode` |
-| stream ActorGateway node without router | `NodesAndServicesTest.addZLinkFramework_throws_whenStreamAttachesActorGatewayNodeWithoutRouter` |
+| stream SessionRelay node without router | `NodesAndServicesTest.addZLinkFramework_throws_whenStreamAttachesSessionRelayNodeWithoutRouter` |
 | local-only SpotNode 허용 | `NodesAndServicesTest.addZLinkFramework_allowsStandaloneLocalSpotNode` |
 | spot mesh가 전역 discovery 상속 허용 | `NodesAndServicesTest.addZLinkFramework_allowsSpotMeshToInheritGlobalDiscovery` |
 | monitoring source 이름 불일치 | `RegistryAndMonitoringTest.addZLinkMonitoring_throws_whenSocketSourceIsUnknownOnStartup` |

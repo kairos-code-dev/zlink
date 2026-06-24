@@ -36,7 +36,6 @@ public static class SessionServerHostFactory
                 .EnableRouter(session.RouterEndpoint)
                 .SetRouterRoutingId(session.RouterRoutingId);
             options.AddStreamNode(SampleNames.StreamNode)
-                .AttachActorGateway(SampleNames.RoomSpotDiscovery)
                 .Bind(session.StreamEndpoint)
                 .RegisterSession<Sessions.BingoSession>();
         });

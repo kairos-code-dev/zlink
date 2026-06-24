@@ -51,9 +51,6 @@ public final class MatchBingoActorHandler
         if (cancellationToken.isCancellationRequested()) {
             throw new IllegalStateException("MatchBingoReq was cancelled");
         }
-        if (joined.reply().state().status().equals("Running")) {
-            actor.push(new Messages.BingoGameStartedNotify(joined.reply().state()));
-        }
         return new Messages.MatchBingoRes(
             matched.roomId(),
             joined.reply().state(),

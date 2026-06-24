@@ -45,6 +45,9 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
         PlayActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken) {
+        if (createRequest.isEmpty()) {
+            return;
+        }
         actor.applyPlayer(createRequest.decode(PlayerInfo.class));
     }
 

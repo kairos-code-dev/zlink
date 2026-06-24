@@ -63,7 +63,7 @@ group/fan-out service, 메시지 DB.
 
 ```java
 ZLinkStreamNodeBuilder stream = options.addStreamNode("chat");
-stream.attachActorGateway("rooms");
+stream.bind("tcp://0.0.0.0:7710");
 stream.registerSession(ChatSession.class);
 
 options.addActorFactory("user", UserActorFactory.class);

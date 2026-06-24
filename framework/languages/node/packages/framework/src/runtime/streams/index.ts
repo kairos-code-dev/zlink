@@ -164,13 +164,7 @@ export class ZLinkStreamRuntimeManager {
     const streamAdapter = this.options.backendAdapterFactory.createStreamAdapter();
     const monitoringAdapter = this.options.backendAdapterFactory.createMonitoringAdapter();
     for (const [nodeName, streamNode] of this.options.registration.streamNodes.entries()) {
-      const actorGatewayNode = streamNode.attachActorGateway === undefined
-        ? this.defaultActorGatewayNode()
-        : this.requireActorGatewayNode(nodeName, streamNode.attachActorGateway);
       const socket = streamAdapter.createStreamSocket(this.options.context);
-      if (actorGatewayNode !== undefined) {
-        socket.attachActorGateway(actorGatewayNode);
-      }
       socket.bind(streamNode.bind!);
       const monitor = monitoringAdapter.openSocketMonitor(socket);
       const sessionType = streamNode.session!;
@@ -201,24 +195,6 @@ export class ZLinkStreamRuntimeManager {
     }
   }
 
-  private requireActorGatewayNode(nodeName: string, spotNodeName: string): ZLinkBackendSpotNode {
-    const node = this.options.spotNodes?.get(spotNodeName);
-    if (node !== undefined) {
-      return node;
-    }
-    throw new ZLinkConfigurationException(
-      `STREAM node '${nodeName}' references unavailable ActorGateway target SpotNode '${spotNodeName}'.`
-    );
-  }
-
-  private defaultActorGatewayNode(): ZLinkBackendSpotNode | undefined {
-    for (const [spotNodeName, spotNode] of this.options.registration.spotNodes) {
-      if (spotNode.router !== undefined) {
-        return this.options.spotNodes?.get(spotNodeName);
-      }
-    }
-    return undefined;
-  }
 }
 
 export class ZLinkManagedStream implements ZLinkStream {
@@ -909,7 +885,7 @@ export class ZLinkStreamBindingRuntime {
       const framePayloadMessage = this.frameMessages.createBinaryMessage(messageToBytes(payloadMessage));
       try {
         if (!route.context.stream.sendBoundActor(actor.actorId, [headerMessage, framePayloadMessage], 0)) {
-          throw new Error('Actor session relay failed because the ActorGateway route was not ready before timeout.');
+          throw new Error('Actor session relay failed because the session relay route was not ready before timeout.');
         }
       } finally {
         headerMessage.close();

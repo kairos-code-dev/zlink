@@ -81,7 +81,6 @@ dispatch 가 가져간다. **per-room lock 도, Redis 세션 라우팅 캐시도
 ```kotlin
 val stream = options.addStreamNode("session")
 stream.bind("tcp://0.0.0.0:9100")
-stream.attachActorGateway("play")
 stream.registerSession(GameSession::class.java)
 
 options.addActorFactory("player", PlayerActorFactory::class.java)

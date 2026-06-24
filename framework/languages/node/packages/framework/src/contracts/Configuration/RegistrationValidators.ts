@@ -268,20 +268,6 @@ function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
         `STREAM node '${streamNodeName}' must register a header stream session.`
       );
     }
-    if (streamNode.attachActorGateway === undefined || streamNode.attachActorGateway.trim().length === 0) {
-      continue;
-    }
-    const spotNode = registration.spotNodes.get(streamNode.attachActorGateway);
-    if (spotNode === undefined) {
-      throw new ZLinkConfigurationException(
-        `STREAM node '${streamNodeName}' references unknown ActorGateway target SpotNode '${streamNode.attachActorGateway}'.`
-      );
-    }
-    if (spotNode.router === undefined) {
-      throw new ZLinkConfigurationException(
-        `STREAM node '${streamNodeName}' attaches ActorGateway to SpotNode '${streamNode.attachActorGateway}' but that SpotNode does not enable router capability.`
-      );
-    }
   }
 }
 

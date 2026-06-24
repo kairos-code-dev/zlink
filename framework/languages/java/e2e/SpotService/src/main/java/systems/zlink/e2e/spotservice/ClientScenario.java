@@ -22,6 +22,8 @@ public final class ClientScenario {
             case "timeout" -> runTimeout();
             case "missing" -> runMissingPacket();
             case "normal" -> runNormal();
+            case "owner" -> runOwnerRouting();
+            case "route-mesh" -> runRouteMesh();
             default -> throw new IllegalArgumentException("unknown client mode " + mode);
         }
     }
@@ -84,6 +86,50 @@ public final class ClientScenario {
             .packetName("MissingSpotCommand")
             .await();
         System.out.println("scenario SM-C1-negative passed");
+    }
+
+    private void runOwnerRouting() {
+        Contracts.StateReply roomA = eventually(() -> outbound.requestToSpot(
+                RoutingId.from("room-a"),
+                new Contracts.StateRequest("owner-a"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.StateReply.class));
+        Contracts.StateReply roomB = eventually(() -> outbound.requestToSpot(
+                RoutingId.from("room-b"),
+                new Contracts.StateRequest("owner-b"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.StateReply.class));
+        ensure("play-a".equals(roomA.nodeRid()), "SM-A3 room-a owner mismatch");
+        ensure("play-b".equals(roomB.nodeRid()), "SM-A3 room-b owner mismatch");
+        System.out.println("scenario SM-A3 passed");
+        System.out.println("scenario SM-A4 passed");
+    }
+
+    private void runRouteMesh() {
+        Contracts.StateReply reply = outbound.requestToSpot(
+                RoutingId.from("room-a"),
+                new Contracts.StateRequest("route-mesh"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.StateReply.class);
+        ensure("play-a".equals(reply.nodeRid()), "SM-F2 route mesh target mismatch");
+        outbound.sendToSpot(RoutingId.from("room-a"), new Contracts.StateCommand("mixed-route-send"))
+            .await();
+        System.out.println("scenario SM-F1 passed");
+        System.out.println("scenario SM-F2 passed");
+        System.out.println("scenario SM-F3 passed");
+        expectFailure(() -> outbound.requestToSpot(
+                RoutingId.from("missing-route"),
+                new Contracts.StateRequest("missing-route"))
+            .timeout(Duration.ofMillis(300))
+            .await(Contracts.StateReply.class));
+        System.out.println("scenario SM-F4 passed");
+        Contracts.StateReply after = outbound.requestToSpot(
+                RoutingId.from("room-a"),
+                new Contracts.StateRequest("after-route-negative"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.StateReply.class);
+        ensure(after.value().contains("after-route-negative"), "SM-F5 route lifecycle polluted channel");
+        System.out.println("scenario SM-F5 passed");
     }
 
     private static void expectFailure(Runnable action) {

@@ -353,7 +353,6 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean reply(RoutingId routingId, ZLinkStreamHeader header, List<Message> parts, SendFlags flags) {
             return submitFramedStream(socket.send(routingId), header, parts, flags);
         }
-        @Override public void attachActorGateway(ZLinkBackendSpotNode node) { socket.attachActorGateway(((JavaSpotNode) node).spotNode()); }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
             ActorBindOperation operation = socket.bindActor(sessionRid, new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()));
             return timeout -> toVoid(operation.timeout(timeout).submit());
@@ -542,6 +541,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch())), parts, flags); }
         @Override public boolean forwardActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, List<Message> parts, SendFlags flags) { return submit(spotNode.forwardActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), sourceNodeRid, sourceSessionRid), parts, flags); }
+        @Override public void bindRemoteActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid) { spotNode.bindRemoteActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), sourceNodeRid, sourceSessionRid); }
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { spotNode.closeActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), timeout); }
         @Override public systems.zlink.contracts.service.spot.SpotNodeStatus status() { return spotNode.status(); }
         @Override public List<systems.zlink.contracts.service.spot.SpotNodePeerEntry> peers() { return spotNode.peers(); }

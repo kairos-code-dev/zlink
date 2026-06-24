@@ -30,7 +30,6 @@ final class FakeZLinkBackendAdapterTest {
             factory.createSpotAdapter(options).createSpotNode(context, ZLinkBackendSpotNodeMode.ALL);
         ZLinkBackendStreamSocket stream =
             factory.createStreamAdapter(options).createStreamSocket(context);
-        stream.attachActorGateway(spotNode);
 
         factory.createRegistryAdapter(options).createRegistry(context);
         factory.createMonitoringAdapter(options).openSocketMonitor(stream);
@@ -46,7 +45,6 @@ final class FakeZLinkBackendAdapterTest {
                 "create.spotNode",
                 "factory.stream",
                 "create.stream",
-                "stream.attachActorGateway.spotNode",
                 "factory.registry",
                 "create.registry",
                 "factory.monitoring",

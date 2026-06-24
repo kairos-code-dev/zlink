@@ -19,7 +19,7 @@ fanout subscriber, Spot actor join을 한 흐름으로 묶는다. payload codec�
 `Registry`, `DispatchApi`, `DispatchCenter`(+ background `DispatchWorker`/`WorkQueue`),
 `Courier`(A=`timeout-reassign`, B=`accept`, `--mode`로 선택), `Tracking`(channel server +
 fanout publisher + Spot mesh + customer actor + `DeliveryTrackingSpot`/`CustomerEntrySpot`),
-`Session`(stream + actor gateway + fanout subscriber + Spot mesh) 분리. Registry/Discovery
+`Session`(stream + session relay + fanout subscriber + Spot mesh) 분리. Registry/Discovery
 자동 발견.
 
 ## 3. 전체 흐름

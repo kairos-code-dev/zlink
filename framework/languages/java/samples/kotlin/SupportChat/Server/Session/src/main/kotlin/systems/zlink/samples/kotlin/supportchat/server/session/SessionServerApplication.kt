@@ -51,7 +51,6 @@ class SessionServerApplication {
             node.enablePubSub(SampleTopology.SessionSpotEndpoint)
                 .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionPubRid))
             options.addStreamNode(SampleNames.StreamNode)
-                .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.StreamEndpoint)
                 .registerSession(SupportChatSession::class.java)
                 .addSessionPacketHandler(AuthenticateSupportChatSessionHandler::class.java)

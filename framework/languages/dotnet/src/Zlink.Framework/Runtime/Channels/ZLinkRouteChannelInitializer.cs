@@ -92,7 +92,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         var bridge = spotRuntime.Node.CreateRouteBridge();
         try
         {
-            runtime.AttachSpotRouteBridge(bridge);
+            runtime.AttachSpotRouteBridge(bridge, spotRuntime);
             state.SpotRouteBridges.Add(bridge);
             state.SpotRouteBridgeOwners.Add(routedRegistration.RouterChannelId, spotRuntime);
         }

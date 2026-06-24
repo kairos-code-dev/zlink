@@ -126,14 +126,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             return null;
         }
 
-        var resolvedRouterChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
-            state,
-            options.RouterChannelId);
-        if (!string.Equals(resolvedRouterChannelId, routerChannelId, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
         lock (state.SyncRoot)
         {
             if (state.SpotDiscoveries.TryGetValue($"{options.Namespace}.registry-spot", out var discovery))
@@ -141,6 +133,9 @@ internal sealed partial class ZLinkFrameworkRuntime
                 return discovery;
             }
 
+            var resolvedRouterChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
+                state,
+                options.RouterChannelId);
             return ZLinkRegistryRouteRuntime.ResolveSpotDiscovery(state, resolvedRouterChannelId);
         }
     }

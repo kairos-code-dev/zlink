@@ -9,27 +9,43 @@ mkdir -p "$LOG_DIR"
 SERVER_PROJECT="$ROOT_DIR/Server/DiscoveryRegistryHa.Server.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/DiscoveryRegistryHa.Client.csproj"
 
-pick_port() {
-  python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-}
 
-REG1_HTTP_PORT="$(pick_port)"
-REG2_HTTP_PORT="$(pick_port)"
-REG3_HTTP_PORT="$(pick_port)"
-REG1_PUB_PORT="$(pick_port)"
-REG2_PUB_PORT="$(pick_port)"
-REG3_PUB_PORT="$(pick_port)"
-REG1_ROUTER_PORT="$(pick_port)"
-REG2_ROUTER_PORT="$(pick_port)"
-REG3_ROUTER_PORT="$(pick_port)"
-API_A_PORT="$(pick_port)"
-API_B_PORT="$(pick_port)"
+sockets = []
+try:
+    chosen = set()
+    while len(sockets) < 15:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        if port in chosen:
+            sock.close()
+            continue
+        chosen.add(port)
+        sockets.append(sock)
+    print(" ".join(str(sock.getsockname()[1]) for sock in sockets))
+finally:
+    for sock in sockets:
+        sock.close()
+PY
+)"
+
+REG1_HTTP_PORT="${PORTS[0]}"
+REG2_HTTP_PORT="${PORTS[1]}"
+REG3_HTTP_PORT="${PORTS[2]}"
+REG1_PUB_PORT="${PORTS[3]}"
+REG2_PUB_PORT="${PORTS[4]}"
+REG3_PUB_PORT="${PORTS[5]}"
+REG1_ROUTER_PORT="${PORTS[6]}"
+REG2_ROUTER_PORT="${PORTS[7]}"
+REG3_ROUTER_PORT="${PORTS[8]}"
+API_A_PORT="${PORTS[9]}"
+API_B_PORT="${PORTS[10]}"
+API_A_PHASE1_HTTP_PORT="${PORTS[11]}"
+API_B_PHASE1_HTTP_PORT="${PORTS[12]}"
+API_A_HTTP_PORT="${PORTS[13]}"
+API_B_HTTP_PORT="${PORTS[14]}"
 
 REG1_URL="http://127.0.0.1:$REG1_HTTP_PORT"
 REG2_URL="http://127.0.0.1:$REG2_HTTP_PORT"
@@ -91,23 +107,6 @@ start_registry() {
   pids+=("$!")
 }
 
-start_provider() {
-  local name="$1"
-  local endpoint="$2"
-  shift 2
-  ZLINK_E2E_RID="$name" dotnet run --project "$SERVER_PROJECT" -- \
-    --role provider \
-    --rid "$name" \
-    --http-url "http://127.0.0.1:$(pick_port)" \
-    --channel-endpoint "$endpoint" \
-    --evidence-file "$LOG_DIR/$name.evidence.log" \
-    --log-dir "$LOG_DIR" \
-    "$@" \
-    >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
-  pids+=("$!")
-  wait_health "http://127.0.0.1:${!#}" "$name"
-}
-
 stop_pid() {
   local pid="$1"
   if kill -0 "$pid" 2>/dev/null; then
@@ -126,7 +125,7 @@ wait_health "$REG1_URL" reg-1
 ZLINK_E2E_RID="api-a" dotnet run --project "$SERVER_PROJECT" -- \
   --role provider \
   --rid api-a \
-  --http-url "http://127.0.0.1:$(pick_port)" \
+  --http-url "http://127.0.0.1:$API_A_PHASE1_HTTP_PORT" \
   --channel-endpoint "$API_A" \
   --discovery-endpoint "$REG1_ROUTER" \
   --evidence-file "$LOG_DIR/api-a.phase1.evidence.log" \
@@ -138,7 +137,7 @@ pids+=("$api_a_phase1_pid")
 ZLINK_E2E_RID="api-b" dotnet run --project "$SERVER_PROJECT" -- \
   --role provider \
   --rid api-b \
-  --http-url "http://127.0.0.1:$(pick_port)" \
+  --http-url "http://127.0.0.1:$API_B_PHASE1_HTTP_PORT" \
   --channel-endpoint "$API_B" \
   --discovery-endpoint "$REG1_ROUTER" \
   --evidence-file "$LOG_DIR/api-b.phase1.evidence.log" \
@@ -172,7 +171,7 @@ wait_health "$REG3_URL" reg-3
 ZLINK_E2E_RID="api-a" dotnet run --project "$SERVER_PROJECT" -- \
   --role provider \
   --rid api-a \
-  --http-url "http://127.0.0.1:$(pick_port)" \
+  --http-url "http://127.0.0.1:$API_A_HTTP_PORT" \
   --channel-endpoint "$API_A" \
   --discovery-endpoint "$REG1_ROUTER" \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
@@ -183,7 +182,7 @@ pids+=("$!")
 ZLINK_E2E_RID="api-b" dotnet run --project "$SERVER_PROJECT" -- \
   --role provider \
   --rid api-b \
-  --http-url "http://127.0.0.1:$(pick_port)" \
+  --http-url "http://127.0.0.1:$API_B_HTTP_PORT" \
   --channel-endpoint "$API_B" \
   --discovery-endpoint "$REG3_ROUTER" \
   --evidence-file "$LOG_DIR/api-b.evidence.log" \

@@ -6,7 +6,7 @@ public static class RuntimeMonitoringNames
     public const string ChannelServerSource = "monitor.profile.server";
     public const string ChannelClientSource = "monitor.profile.client";
     public const string SpotChannel = "monitor.spot";
-    public const string SpotNode = "monitor.spot.node";
+    public const string SpotNode = SpotChannel;
 }
 
 public sealed record ProfileRequest(string Value, string Marker);

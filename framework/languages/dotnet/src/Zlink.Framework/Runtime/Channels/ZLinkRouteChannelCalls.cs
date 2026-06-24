@@ -215,22 +215,32 @@ internal sealed class ZLinkRouteChannelCalls
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        return await _submitter
-            .SubmitRequestAsync<TReply>(
-                parts,
-                (pending, complete, fail) => _router.Request(
-                    targetNodeRid,
-                    pending,
-                    (result, reply) => ZLinkEnvelopeReplyCompletion.Complete(
-                        result,
-                        reply,
-                        complete,
-                        fail,
-                        "ZLink routed request",
-                        _codecs),
-                    SendFlags.DontWait,
-                    timeout),
-                cancellationToken)
-            .ConfigureAwait(false);
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        try
+        {
+            return await _submitter
+                .SubmitRequestAsync<TReply>(
+                    parts,
+                    (pending, complete, fail) => _router.Request(
+                        targetNodeRid,
+                        pending,
+                        (result, reply) => ZLinkEnvelopeReplyCompletion.Complete(
+                            result,
+                            reply,
+                            complete,
+                            fail,
+                            "ZLink routed request",
+                            _codecs),
+                        SendFlags.DontWait,
+                        timeout),
+                    timeoutSource.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested
+            && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("ZLink routed request timed out.");
+        }
     }
 }

@@ -21,6 +21,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly ZLinkRouteChannelCalls _calls;
     private readonly ZLinkRouteSpotChannelCalls _spotRouteCalls;
     private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
+    private ZLinkSpotNodeRuntime? _spotRouteBridgeOwner;
     private Task? _receiveTask;
 
     public ZLinkRouteChannelRuntime(
@@ -99,7 +100,20 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         };
     }
 
-    public void AttachSpotRouteBridge(IZLinkBackendSpotRouteBridge bridge)
+    internal bool HasKnownRoutePeer(RoutingId targetNodeRid)
+    {
+        if (_discovery is null)
+        {
+            return false;
+        }
+
+        return _discovery.MemberPeers()
+            .Any(peer => peer.RoutingId == targetNodeRid);
+    }
+
+    public void AttachSpotRouteBridge(
+        IZLinkBackendSpotRouteBridge bridge,
+        ZLinkSpotNodeRuntime owner)
     {
         if (_spotRouteBridge is not null)
         {
@@ -111,6 +125,47 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             RouterChannelId,
             _router);
         _spotRouteBridge = bridge;
+        _spotRouteBridgeOwner = owner;
+    }
+
+    internal bool TrySendViaSpotRouteBridge(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts)
+    {
+        if (_spotRouteBridge is null)
+        {
+            return false;
+        }
+
+        return _spotRouteBridge.Send(
+            RouterChannelId,
+            targetNodeRid,
+            targetSpotRid,
+            parts,
+            SendFlags.None);
+    }
+
+    internal bool TryRequestViaSpotRouteBridge(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        TimeSpan timeout)
+    {
+        if (_spotRouteBridge is null)
+        {
+            return false;
+        }
+
+        return _spotRouteBridge.Request(
+            RouterChannelId,
+            targetNodeRid,
+            targetSpotRid,
+            parts,
+            callback,
+            SendFlags.None,
+            timeout);
     }
 
     public void Start()
@@ -229,12 +284,15 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         {
             try
             {
-                await _receiveTask.ConfigureAwait(false);
+                await _receiveTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
             }
             catch (ObjectDisposedException)
+            {
+            }
+            catch (TimeoutException)
             {
             }
         }

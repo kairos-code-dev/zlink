@@ -9,15 +9,24 @@ CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/SpotService.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 SCENARIO_SET="${SCENARIO_SET:-all}"
+NEED_SESSION_NODES=1
+NEED_PLAY_B=1
+case "$SCENARIO_SET" in
+  track-c|sm-e1-f4|sm-e2-e3|sm-a7-a8-c4|sm-e4)
+    NEED_SESSION_NODES=0
+    NEED_PLAY_B=0
+    ;;
+esac
 mkdir -p "$LOG_DIR"
 
 if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
   echo "log_dir=$LOG_DIR"
-  for child_set in baseline-1 track-c sm-q9 sm-e1-f4 sm-e2-e3 sm-a7-a8-c4 sm-e4 baseline-2b sm-g2 sm-g3 sm-g4 sm-g1; do
+  for child_set in baseline-1 track-c sm-q9 sm-e1-f4 sm-e2-e3 sm-a7-a8-c4 sm-e4 sm-a3-a6-b4-b7 sm-a5 sm-a1-a2-a4-f1-f2 sm-g2 sm-g3 sm-g4 sm-g1; do
     child_ok=0
     for attempt in 1 2; do
       echo "child scenario_set=${child_set} attempt=${attempt}"
-      if SCENARIO_SET="$child_set" ZLINK_SPOT_SERVICE_ALL_CHILD=1 "$0"; then
+      if timeout "${ZLINK_SPOT_SERVICE_CHILD_TIMEOUT:-180s}" \
+        env SCENARIO_SET="$child_set" ZLINK_SPOT_SERVICE_ALL_CHILD=1 "$0"; then
         child_ok=1
         break
       fi
@@ -68,7 +77,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 35:
+    while len(sockets) < 36:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -115,13 +124,14 @@ CLIENT_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[22]}"
 CLIENT_EXTERNAL_CHANNEL="tcp://127.0.0.1:${PORTS[23]}"
 CLIENT_SPOT_PUB="tcp://127.0.0.1:${PORTS[24]}"
 CLIENT_EXTERNAL_ROUTE_B="tcp://127.0.0.1:${PORTS[27]}"
-MULTI_HTTP="http://127.0.0.1:${PORTS[28]}"
+MULTI_A_HTTP="http://127.0.0.1:${PORTS[28]}"
 MULTI_ROUTE_A="tcp://127.0.0.1:${PORTS[29]}"
 MULTI_ROUTE_B="tcp://127.0.0.1:${PORTS[30]}"
 MULTI_SPOT_ROUTER_A="tcp://127.0.0.1:${PORTS[31]}"
 MULTI_SPOT_ROUTER_B="tcp://127.0.0.1:${PORTS[32]}"
 CLIENT_MULTI_ROUTE_A="tcp://127.0.0.1:${PORTS[33]}"
 CLIENT_MULTI_ROUTE_B="tcp://127.0.0.1:${PORTS[34]}"
+MULTI_B_HTTP="http://127.0.0.1:${PORTS[35]}"
 
 endpoint_port() {
   local endpoint="$1"
@@ -146,7 +156,8 @@ wait_port() {
   local port
   host="$(endpoint_host "$endpoint")"
   port="$(endpoint_port "$endpoint")"
-  for _ in $(seq 1 1000); do
+  local attempts="${ZLINK_SPOT_SERVICE_WAIT_PORT_ATTEMPTS:-200}"
+  for _ in $(seq 1 "$attempts"); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -204,6 +215,7 @@ wait_port play-a-control "$PLAY_A_CONTROL"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
 wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
 
+if [[ "$NEED_PLAY_B" == "1" ]]; then
 start_server play-b \
   --role play \
   --rid play-b \
@@ -219,7 +231,9 @@ wait_port play-b "$PLAY_B_HTTP"
 wait_port play-b-control "$PLAY_B_CONTROL"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
 wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
+fi
 
+if [[ "$NEED_SESSION_NODES" == "1" ]]; then
 start_server session-a \
   --role session \
   --rid session-a \
@@ -254,23 +268,33 @@ wait_port session-b-control "$SESSION_B_CONTROL"
 wait_port session-b-spot-router "$SESSION_B_SPOT_ROUTER"
 wait_port session-b-stream "$SESSION_B_STREAM"
 fi
+fi
 
 if [[ "$SCENARIO_SET" == "sm-q9" ]]; then
-start_server multi-node \
+start_server multi-node-a \
   --role multi-node \
-  --rid multi-node \
-  --http-url "$MULTI_HTTP" \
+  --rid multi-node-a \
+  --http-url "$MULTI_A_HTTP" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
   --multi-route-a-endpoint "$MULTI_ROUTE_A" \
-  --multi-route-b-endpoint "$MULTI_ROUTE_B" \
   --multi-spot-router-a-endpoint "$MULTI_SPOT_ROUTER_A" \
-  --multi-spot-router-b-endpoint "$MULTI_SPOT_ROUTER_B" \
-  --evidence-file "$LOG_DIR/multi-node.evidence.log" \
+  --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
   --log-dir "$LOG_DIR"
-wait_port multi-node "$MULTI_HTTP"
+wait_port multi-node-a "$MULTI_A_HTTP"
 wait_port multi-route-a "$MULTI_ROUTE_A"
-wait_port multi-route-b "$MULTI_ROUTE_B"
 wait_port multi-spot-router-a "$MULTI_SPOT_ROUTER_A"
+
+start_server multi-node-b \
+  --role multi-node \
+  --rid multi-node-b \
+  --http-url "$MULTI_B_HTTP" \
+  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --multi-route-b-endpoint "$MULTI_ROUTE_B" \
+  --multi-spot-router-b-endpoint "$MULTI_SPOT_ROUTER_B" \
+  --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
+  --log-dir "$LOG_DIR"
+wait_port multi-node-b "$MULTI_B_HTTP"
+wait_port multi-route-b "$MULTI_ROUTE_B"
 wait_port multi-spot-router-b "$MULTI_SPOT_ROUTER_B"
 fi
 
@@ -279,7 +303,7 @@ sleep 2
 run_client() {
   local scenario_set="$1"
   echo "client scenario_set=${scenario_set}" >>"$LOG_DIR/client.stdout.log"
-  dotnet "$CLIENT_DLL" \
+  timeout "${ZLINK_SPOT_SERVICE_CLIENT_TIMEOUT:-120s}" dotnet "$CLIENT_DLL" \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
@@ -288,11 +312,14 @@ run_client() {
     --play-b-evidence-url "$PLAY_B_HTTP/evidence" \
     --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
     --play-a-crash-url "$PLAY_A_HTTP/crash" \
-    --multi-evidence-url "$MULTI_HTTP/evidence" \
+    --multi-evidence-url "$MULTI_A_HTTP/evidence" \
+    --multi-b-evidence-url "$MULTI_B_HTTP/evidence" \
     --scenario-set "$scenario_set" \
     --play-a-rid play-a \
     --play-b-rid play-b \
     --session-a-rid session-a \
+    --play-a-control-endpoint "$PLAY_A_CONTROL" \
+    --play-b-control-endpoint "$PLAY_B_CONTROL" \
     --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
     --play-b-external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
     --play-a-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
@@ -319,7 +346,9 @@ elif [[ "$SCENARIO_SET" == "all" ]]; then
   run_client sm-q9
   run_client baseline-2a
   run_client sm-e4
-  run_client baseline-2b
+  run_client sm-a3-a6-b4-b7
+  run_client sm-a5
+  run_client sm-a1-a2-a4-f1-f2
   run_client sm-g2
   run_client sm-g3
   run_client sm-g4

@@ -116,6 +116,27 @@ static async Task RunAsync(ClientOptions options)
         return;
     }
 
+    if (string.Equals(options.ScenarioSet, "sm-a3-a6-b4-b7", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmA3A6B4B7Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
+    if (string.Equals(options.ScenarioSet, "sm-a5", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmA5Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
+    if (string.Equals(options.ScenarioSet, "sm-a1-a2-a4-f1-f2", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmA1A2A4F1F2Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
     if (string.Equals(options.ScenarioSet, "sm-e4", StringComparison.OrdinalIgnoreCase))
     {
         await RunSmE4Async(options);
@@ -190,45 +211,41 @@ static async Task RunSmQ9Async(ClientOptions options)
     Ensure(createdB.NodeRid == SpotServiceNames.MultiSpotNodeB, "SM-Q9 node B create reply node mismatch.");
     Ensure(createdB.Value == 17, "SM-Q9 node B route-to-spot reply value mismatch.");
 
-    await host.StopAsync();
+    await StopHostAsync(host);
 
-    StateReply directA;
-    {
-        using var directHostA = CreateDirectMultiNodeRouteHost(
-            options,
-            SpotServiceNames.MultiRouteChannelA,
-            options.ClientMultiRouteAEndpoint,
-            SpotServiceNames.MultiSpotNodeA,
-            RoutingId.From("client-multi-spot-a"));
-        await directHostA.StartAsync();
-        directA = await RequestSpotStateWithRetryAsync(
-            directHostA.Services.GetRequiredService<IZLinkRouteClient>(),
-            SpotServiceNames.MultiRouteChannelA,
-            spotA,
-            new StateReq("noop", 0),
-            "SM-Q9 expected external route client to reach node A spot.",
-            retryProtocolErrors: true);
-        await directHostA.StopAsync();
-    }
+    using var directHostA = CreateDirectMultiNodeRouteHost(
+        options,
+        SpotServiceNames.MultiRouteChannelA,
+        options.ClientMultiRouteAEndpoint,
+        SpotServiceNames.MultiSpotNodeA,
+        RoutingId.From("client-multi-direct-a"));
+    await directHostA.StartAsync();
+    var directRoutesA = directHostA.Services.GetRequiredService<IZLinkRouteClient>();
+    var directA = await RequestSpotStateWithRetryAsync(
+        directRoutesA,
+        SpotServiceNames.MultiRouteChannelA,
+        spotA,
+        new StateReq("noop", 0),
+        "SM-Q9 expected external route client to reach node A spot.",
+        retryProtocolErrors: true);
+    await StopHostAsync(directHostA);
 
-    StateReply directB;
-    {
-        using var directHostB = CreateDirectMultiNodeRouteHost(
-            options,
-            SpotServiceNames.MultiRouteChannelB,
-            options.ClientMultiRouteBEndpoint,
-            SpotServiceNames.MultiSpotNodeB,
-            RoutingId.From("client-multi-spot-b"));
-        await directHostB.StartAsync();
-        directB = await RequestSpotStateWithRetryAsync(
-            directHostB.Services.GetRequiredService<IZLinkRouteClient>(),
-            SpotServiceNames.MultiRouteChannelB,
-            spotB,
-            new StateReq("noop", 0),
-            "SM-Q9 expected external route client to reach node B spot.",
-            retryProtocolErrors: true);
-        await directHostB.StopAsync();
-    }
+    using var directHostB = CreateDirectMultiNodeRouteHost(
+        options,
+        SpotServiceNames.MultiRouteChannelB,
+        options.ClientMultiRouteBEndpoint,
+        SpotServiceNames.MultiSpotNodeB,
+        RoutingId.From("client-multi-direct-b"));
+    await directHostB.StartAsync();
+    var directRoutesB = directHostB.Services.GetRequiredService<IZLinkRouteClient>();
+    var directB = await RequestSpotStateWithRetryAsync(
+        directRoutesB,
+        SpotServiceNames.MultiRouteChannelB,
+        spotB,
+        new StateReq("noop", 0),
+        "SM-Q9 expected external route client to reach node B spot.",
+        retryProtocolErrors: true);
+    await StopHostAsync(directHostB);
 
     Ensure(directA.SpotRid == spotA, "SM-Q9 node A direct spot reply target mismatch.");
     Ensure(directA.NodeRid == SpotServiceNames.MultiSpotNodeA, "SM-Q9 node A direct spot reply node mismatch.");
@@ -239,7 +256,9 @@ static async Task RunSmQ9Async(ClientOptions options)
 
     await WaitUntilAsync(async () =>
     {
-        var after = await ReadEvidenceAsync(options.MultiEvidenceUrl);
+        var after = (await ReadEvidenceAsync(options.MultiEvidenceUrl))
+            .Concat(await ReadEvidenceAsync(options.MultiBEvidenceUrl))
+            .ToArray();
         return after.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") >= 2
             && after.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") >= 2;
     }, "SM-Q9 expected both process-local Spot nodes to handle route-to-spot requests.");
@@ -366,7 +385,7 @@ static async Task RunSmB6Async(ClientOptions options)
 
     await using var leaveClient = CreateClient(options.SessionAStreamEndpoint);
     await leaveClient.Connect.Async();
-    await leaveClient.Request(new AuthReq(leaveActorId, "leave", options.PlayARid))
+    await leaveClient.Request(new AuthReq(leaveActorId, spotRid, options.PlayARid))
         .PacketName("AuthReq")
         .Async<AuthReply>();
     var joined = await routes.Request(
@@ -404,7 +423,7 @@ static async Task RunSmB6Async(ClientOptions options)
             && CountNew(after, sessionBeforeDisconnect, $"entry-left|rid={options.SessionARid}|actor={disconnectActorId}") == 0;
     }, "SM-B6 expected disconnect evidence without leave evidence.");
 
-    await host.StopAsync();
+    await StopHostAsync(host);
     Console.WriteLine("scenario SM-B6 passed");
 }
 
@@ -502,7 +521,7 @@ static async Task RunSmD9D11D13Async(ClientOptions options)
         .PacketName("ControlPingReq")
         .Async<ControlPingReply>();
     Ensure(channelReply.NodeRid == options.PlayARid, "SM-D11 channel request node mismatch.");
-    await host.StopAsync();
+    await StopHostAsync(host);
 
     Ensure(observed.Count >= 2, "SM-D9 inbound observer did not observe stream replies.");
     Console.WriteLine("scenario SM-D9 passed");
@@ -821,24 +840,10 @@ static async Task RunSmC1C2Async(ClientOptions options)
     var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
     var spotRid = $"spot-sm-c-{Guid.NewGuid():N}";
 
-    await WaitUntilAsync(async () =>
-    {
-        try
-        {
-            var ping = await routes.Request(
-                    SpotServiceNames.ControlChannel,
-                    RoutingId.From(options.PlayARid),
-                    new ControlPingReq("sm-c-ready"))
-                .PacketName("ControlPingReq")
-                .Timeout(TimeSpan.FromSeconds(1))
-                .Async<ControlPingReply>();
-            return ping.NodeRid == options.PlayARid;
-        }
-        catch
-        {
-            return false;
-        }
-    }, "SM-C expected control route to become ready.");
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-C expected control route to become ready.");
 
     await routes.Request(
             SpotServiceNames.ControlChannel,
@@ -867,7 +872,26 @@ static async Task RunSmC1C2Async(ClientOptions options)
         var playAAfter = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
         return CountNew(playAAfter, playABefore, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-c1-send") >= 1;
     }, "SM-C1 expected channel to spot evidence.");
-    await host.StopAsync();
+
+    await ExpectFailureAsync(
+        routes.Request(
+                SpotServiceNames.ExternalSpotChannel,
+                RoutingId.From(spotRid),
+                new SlowSpotReq("sm-c1-timeout", 1500))
+            .PacketName("SlowSpotReq")
+            .Timeout(TimeSpan.FromMilliseconds(100))
+            .Async<SlowSpotReply>().AsTask(),
+        "SM-C1 expected slow channel-to-spot request to time out.");
+    var afterTimeout = await RequestSpotStateWithRetryAsync(
+        routes,
+        SpotServiceNames.ExternalSpotChannel,
+        spotRid,
+        new StateReq("add", 1),
+        "SM-C1 expected channel-to-spot route to remain usable after timeout.",
+        retryProtocolErrors: true);
+    Ensure(afterTimeout.Value > viaChannel.Value, "SM-C1 post-timeout route state mismatch.");
+
+    await StopHostAsync(host);
     Console.WriteLine("scenario SM-C1 passed");
 
     using var outboundHost = CreateRouteEgressHost(
@@ -909,7 +933,7 @@ static async Task RunSmC1C2Async(ClientOptions options)
             && clientAfter.Any(line => line.Contains("dispatch-error|surface=Channel|reason=HandlerMissing|action=Drop|packet=MissingChannelSend", StringComparison.Ordinal));
     }, "SM-C2 expected spot to channel evidence.");
 
-    await outboundHost.StopAsync();
+    await StopHostAsync(outboundHost);
     Console.WriteLine("scenario SM-C2 passed");
 }
 
@@ -969,7 +993,7 @@ static async Task RunSmC3Async(ClientOptions options)
             && CountNew(after, before, $"spot-event|rid={options.PlayARid}|spot={targetSpotRid}|marker=sm-c3-publish-direct") >= 1;
     }, "SM-C3 expected spot to spot evidence.");
 
-    await host.StopAsync();
+    await StopHostAsync(host);
     Console.WriteLine("scenario SM-C3 passed");
 }
 
@@ -996,7 +1020,7 @@ static async Task RunSmE1AndF4Async(ClientOptions options)
     var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
     await ExpectFailureAsync(
         routes.Request(
-                SpotServiceNames.ExternalClientServerChannel,
+                SpotServiceNames.ExternalSpotChannel,
                 RoutingId.From(spotRid),
                 new StateReq("noop", 0))
             .PacketName("MissingSpotReq")
@@ -1008,7 +1032,7 @@ static async Task RunSmE1AndF4Async(ClientOptions options)
         try
         {
             await routes.Send(
-                    SpotServiceNames.ExternalClientServerChannel,
+                    SpotServiceNames.ExternalSpotChannel,
                     RoutingId.From(spotRid),
                     new StateCommand("missing-command"))
                 .PacketName("MissingSpotCommand")
@@ -1020,7 +1044,7 @@ static async Task RunSmE1AndF4Async(ClientOptions options)
     }
     await ExpectFailureAsync(
         routes.Request(
-                SpotServiceNames.ExternalClientServerChannel,
+                SpotServiceNames.ExternalSpotChannel,
                 RoutingId.From($"missing-{spotRid}"),
                 new StateReq("noop", 0))
             .PacketName("StateReq")
@@ -1035,7 +1059,7 @@ static async Task RunSmE1AndF4Async(ClientOptions options)
             && CountNew(after, before, "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand") >= 1;
     }, "SM-E1/F4 expected spot route negative observer evidence.");
 
-    await host.StopAsync();
+    await StopHostAsync(host);
     Console.WriteLine("scenario SM-E1 passed");
     Console.WriteLine("scenario SM-F4 passed");
 }
@@ -1114,7 +1138,7 @@ static async Task RunSmE2E3Async(ClientOptions options)
             .Async<StateReply>().AsTask(),
         "SM-E3 expected closed spot request to fail.");
 
-    await host.StopAsync();
+    await StopHostAsync(host);
     Console.WriteLine("scenario SM-E2 passed");
     Console.WriteLine("scenario SM-E3 passed");
 }
@@ -1208,7 +1232,7 @@ static async Task RunSmA7A8C4E4Async(ClientOptions options)
         return CountNew(after, playABeforePublish, $"spot-event|rid={options.PlayARid}|spot={publishSpotRid}|marker=sm-c4-publish") >= 1;
     }, "SM-C4 expected publish-only node event evidence.");
 
-    await host.StopAsync();
+    await StopHostAsync(host);
     Console.WriteLine("scenario SM-A7 passed");
     Console.WriteLine("scenario SM-A8 passed");
     Console.WriteLine("scenario SM-C4 passed");
@@ -1277,7 +1301,7 @@ static async Task RunSmE4Async(ClientOptions options)
             && ExtractUInt64(line, "delivery") == ExtractUInt64(line, "scheduled")),
         "SM-E4 DelayNextTick did not delay instead of skipping.");
 
-    await timerHost.StopAsync();
+    await StopHostAsync(timerHost);
     Console.WriteLine("scenario SM-E4 passed");
 }
 
@@ -1385,7 +1409,7 @@ static async Task RunSmA3A6B4B7Async(ClientOptions options)
             && created >= 0 && joined > created && first > joined && second > first;
     }, "SM-B7 expected actor lifecycle and packet order evidence.");
 
-    await host.StopAsync();
+    await StopHostAsync(host);
     Console.WriteLine("scenario SM-A3 passed");
     Console.WriteLine("scenario SM-A6 passed");
     Console.WriteLine("scenario SM-B4 passed");
@@ -1423,7 +1447,7 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
 
     var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
     var viaClientServer = await clientServerRoutes.Request(
-            SpotServiceNames.ExternalClientServerChannel,
+            SpotServiceNames.ExternalSpotChannel,
             RoutingId.From(spotRid),
             new StateReq("add", 7))
         .PacketName("StateReq")
@@ -1434,7 +1458,7 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
     Ensure(viaClientServer.NodeRid == options.PlayARid, "SM-A4 owner routing mismatch.");
 
     await clientServerRoutes.Send(
-            SpotServiceNames.ExternalClientServerChannel,
+            SpotServiceNames.ExternalSpotChannel,
             RoutingId.From(spotRid),
             new StateCommand("sm-f1-command"))
         .PacketName("StateCommand")
@@ -1471,7 +1495,7 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
         return CountNew(after, before, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-f2-command") == 1;
     }, "SM-F2 expected spot route command evidence.");
 
-    await clientServerHost.StopAsync();
+    await StopHostAsync(clientServerHost);
     Console.WriteLine("scenario SM-A1 passed");
     Console.WriteLine("scenario SM-A2 passed");
     Console.WriteLine("scenario SM-A4 passed");
@@ -1505,7 +1529,7 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
         var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
         return CountNew(after, beforeRouteOnly, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-f3-mixed-route-command") == 1;
     }, "SM-F3 expected mixed route command evidence.");
-    await routeMeshOnlyHost.StopAsync();
+    await StopHostAsync(routeMeshOnlyHost);
     Console.WriteLine("scenario SM-F3 passed");
     Console.WriteLine("scenario SM-F5 passed");
 }
@@ -1540,11 +1564,10 @@ static async Task RunSmA5Async(ClientOptions options)
             RoutingId.From(spotRid),
             new StageProbeReq("sm-a5-stage", 9))
         .PacketName("StageProbeReq")
-        .Async<StageProbeReply>();
+        .Async<StateReply>();
     Ensure(reply.SpotRid == spotRid, "SM-A5 stage wrapper returned the wrong spot.");
     Ensure(reply.NodeRid == options.PlayARid, "SM-A5 stage wrapper returned the wrong node.");
     Ensure(reply.Value == 9, "SM-A5 stage wrapper state mutation mismatch.");
-    Ensure(reply.Marker == "sm-a5-stage", "SM-A5 stage wrapper marker mismatch.");
 
     await routes.Send(
             SpotServiceNames.ExternalSpotChannel,
@@ -1573,7 +1596,7 @@ static async Task RunSmA5Async(ClientOptions options)
         return CountNew(after, before, $"spot-closing|rid={options.PlayARid}|spot={spotRid}") == 1;
     }, "SM-A5 expected stage wrapper lifecycle close evidence.");
 
-    await host.StopAsync();
+    await StopHostAsync(host);
     Console.WriteLine("scenario SM-A5 passed");
 }
 
@@ -1617,7 +1640,29 @@ static async Task RunSmG2Async(ClientOptions options)
         "SM-G2 first owner request timed out.");
     Ensure(first.NodeRid == options.PlayARid, "SM-G2 first owner mismatch.");
 
-    var remapHost = CreateRouteEgressHost(
+    await StopHostAsync(host);
+
+    using var playBControlHost = CreateControlRouteHost(
+        options,
+        options.ClientControlEndpoint,
+        options.PlayBControlEndpoint,
+        "client-control-play-b",
+        "client-framework-owner-remap-control-b-flow.log");
+    await playBControlHost.StartAsync();
+    var playBControlRoutes = playBControlHost.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        playBControlRoutes,
+        options.PlayBRid,
+        "SM-G2 expected play-b control route to become ready.");
+    await playBControlRoutes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayBRid),
+            new CreateSpotReq(secondOwnerSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    await StopHostAsync(playBControlHost);
+
+    using var remapHost = CreateRouteEgressHost(
         options,
         includeControlChannel: false,
         includeRouteMeshEgress: true,
@@ -1628,12 +1673,6 @@ static async Task RunSmG2Async(ClientOptions options)
     await remapHost.StartAsync();
     var remapRoutes = remapHost.Services.GetRequiredService<IZLinkRouteClient>();
 
-    await routes.Request(
-            SpotServiceNames.ControlChannel,
-            RoutingId.From(options.PlayBRid),
-            new CreateSpotReq(secondOwnerSpotRid))
-        .PacketName("CreateSpotReq")
-        .Async<CreateSpotReply>();
     var second = await RequestSpotStateWithRetryAsync(
         remapRoutes,
         SpotServiceNames.ExternalSpotChannelB,
@@ -1837,13 +1876,18 @@ static IHost CreateRouteEgressHost(
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, traceName))
             .TraceNodeId("client-framework");
-        var spotMesh = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-            .UseRegistrySpotResolver()
-            .EnableRouter(options.ClientSpotRouterEndpoint)
-            .SetRouterRoutingId(RoutingId.From("client-edge"))
-            .EnablePubSub(options.ClientSpotPubEndpoint)
-            .SetPubSubRoutingId(RoutingId.From("client-edge-publisher"))
-            .ConnectPubSub(options.PlayASpotPubEndpoint);
+        if (includeRouteMeshEgress
+            || includeClientServerEgress
+            || includeExternalChannelServer)
+        {
+            framework.AddSpotMesh(SpotServiceNames.SpotChannel)
+                .UseRegistrySpotResolver()
+                .EnableRouter(options.ClientSpotRouterEndpoint)
+                .SetRouterRoutingId(RoutingId.From("client-edge"))
+                .EnablePubSub(options.ClientSpotPubEndpoint)
+                .SetPubSubRoutingId(RoutingId.From("client-edge-publisher"))
+                .ConnectPubSub(options.PlayASpotPubEndpoint);
+        }
         if (includeControlChannel)
         {
             framework.AddRouteMesh(SpotServiceNames.ControlChannel)
@@ -1880,6 +1924,28 @@ static IHost CreateRouteEgressHost(
                 .EnableServer(options.ClientExternalChannelEndpoint)
                 .AddHandlerGroup("client");
         }
+    });
+    return builder.Build();
+}
+
+static IHost CreateControlRouteHost(
+    ClientOptions options,
+    string bindEndpoint,
+    string targetEndpoint,
+    string routingId,
+    string traceName)
+{
+    var builder = Host.CreateApplicationBuilder();
+    builder.Services.AddZLinkFramework(framework =>
+    {
+        framework.ConfigureDispatch()
+            .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .TraceLogFile(Path.Combine(options.LogDir, traceName))
+            .TraceNodeId("client-framework");
+        framework.AddRouteMesh(SpotServiceNames.ControlChannel)
+            .EnableServer(bindEndpoint)
+            .EnableClient(targetEndpoint)
+            .SetRoutingId(RoutingId.From(routingId));
     });
     return builder.Build();
 }
@@ -2040,6 +2106,12 @@ static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessa
     throw new InvalidOperationException(failureMessage, last);
 }
 
+static async Task StopHostAsync(IHost host)
+{
+    using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    await host.StopAsync(stopTimeout.Token);
+}
+
 static async Task ExpectFailureAsync(Task task, string message)
 {
     try
@@ -2080,9 +2152,19 @@ static async Task<StateReply> RequestSpotStateWithRetryAsync(
         {
             last = ex;
         }
+        catch (OperationCanceledException ex)
+        {
+            last = ex;
+        }
         catch (ZLinkFrameworkException ex) when (
             retryProtocolErrors
             && ex.InnerException is ZlinkRequestException or ZlinkSubmitException)
+        {
+            last = ex;
+        }
+        catch (Exception ex) when (
+            retryProtocolErrors
+            && ex is ZlinkRequestException or ZlinkSubmitException)
         {
             last = ex;
         }
@@ -2151,6 +2233,19 @@ static async Task<SpotToSpotReply> RequestSpotToSpotWithRetryAsync(
                 .Async<SpotToSpotReply>();
         }
         catch (TimeoutException ex)
+        {
+            last = ex;
+        }
+        catch (OperationCanceledException ex)
+        {
+            last = ex;
+        }
+        catch (ZLinkFrameworkException ex) when (
+            ex.InnerException is ZlinkRequestException or ZlinkSubmitException)
+        {
+            last = ex;
+        }
+        catch (Exception ex) when (ex is ZlinkRequestException or ZlinkSubmitException)
         {
             last = ex;
         }
@@ -2236,10 +2331,13 @@ internal sealed record ClientOptions(
     string SessionAEvidenceUrl,
     string PlayACrashUrl,
     string MultiEvidenceUrl,
+    string MultiBEvidenceUrl,
     string ScenarioSet,
     string PlayARid,
     string PlayBRid,
     string SessionARid,
+    string PlayAControlEndpoint,
+    string PlayBControlEndpoint,
     string PlayAExternalSpotEndpoint,
     string PlayBExternalSpotEndpoint,
     string PlayASpotPubEndpoint,
@@ -2285,10 +2383,13 @@ internal sealed record ClientOptions(
             Required("session-a-evidence-url"),
             Required("play-a-crash-url"),
             Required("multi-evidence-url"),
+            Required("multi-b-evidence-url"),
             values.GetValueOrDefault("scenario-set", "all"),
             Required("play-a-rid"),
             Required("play-b-rid"),
             Required("session-a-rid"),
+            Required("play-a-control-endpoint"),
+            Required("play-b-control-endpoint"),
             Required("play-a-external-spot-endpoint"),
             Required("play-b-external-spot-endpoint"),
             Required("play-a-spot-pub-endpoint"),

@@ -26,9 +26,9 @@ else if (options.Scenario == "cluster")
     await RunDrA4Async(http, options);
     await RunDrB1Async(http, options);
     await RunDrB2Async(http, options);
-    await RunDrB3Async(http, options);
     await RunDrD2Async(http, options);
     await RunDrD4Async(http, options);
+    await RunDrB3Async(http, options);
     await RunDrD1Async(options);
     await RunDrD3Async(http, options);
     await RunDrC1Async(http, options);
@@ -176,6 +176,20 @@ static async Task RunDrB2Async(HttpClient http, ClientOptions options)
 
 static async Task RunDrB3Async(HttpClient http, ClientOptions options)
 {
+    await PostAsync(http, $"{options.Reg2Url}/shutdown");
+    await WaitUntilAsync(async () =>
+    {
+        try
+        {
+            using var response = await http.GetAsync($"{options.Reg2Url}/health");
+            return !response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException)
+        {
+            return true;
+        }
+    }, "DR-B3 expected existing reg-2 process to stop before flapping restart.");
+
     for (var i = 0; i < 2; i++)
     {
         await using var reg2 = StartRegistry(options, $"reg-2-flap-{i}");

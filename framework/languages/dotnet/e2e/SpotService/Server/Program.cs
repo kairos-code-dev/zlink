@@ -132,27 +132,42 @@ else if (options.Role == "multi-node")
 {
     builder.Services.AddZLinkFramework(framework =>
     {
+        var isNodeA = string.Equals(options.Rid, SpotServiceNames.MultiSpotNodeA, StringComparison.Ordinal);
+        var isNodeB = string.Equals(options.Rid, SpotServiceNames.MultiSpotNodeB, StringComparison.Ordinal);
+        if (!isNodeA && !isNodeB)
+        {
+            throw new InvalidOperationException(
+                $"multi-node role requires rid '{SpotServiceNames.MultiSpotNodeA}' or '{SpotServiceNames.MultiSpotNodeB}'.");
+        }
+
         framework.AddHandlersFromAssemblyOf(typeof(Program));
         framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
-        framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelA)
-            .EnableServer(Require(options.MultiRouteAEndpoint, "--multi-route-a-endpoint"))
-            .EnableClient()
-            .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
-            .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>("MultiNodeCreateSpotReq");
-        framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelB)
-            .EnableServer(Require(options.MultiRouteBEndpoint, "--multi-route-b-endpoint"))
-            .EnableClient()
-            .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
-            .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>("MultiNodeCreateSpotReq");
-        framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeA)
-            .UseRegistrySpotResolver()
-            .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
-            .SetRouterRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
-            .AddSpotFactory<MultiNodeSpotA>();
-        framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeB)
-            .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
-            .SetRouterRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
-            .AddSpotFactory<MultiNodeSpotB>();
+        if (isNodeA)
+        {
+            framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelA)
+                .EnableServer(Require(options.MultiRouteAEndpoint, "--multi-route-a-endpoint"))
+                .EnableClient()
+                .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
+                .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>("MultiNodeCreateSpotReq");
+            framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeA)
+                .UseRegistrySpotResolver()
+                .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
+                .SetRouterRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
+                .AddSpotFactory<MultiNodeSpotA>();
+        }
+        if (isNodeB)
+        {
+            framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelB)
+                .EnableServer(Require(options.MultiRouteBEndpoint, "--multi-route-b-endpoint"))
+                .EnableClient()
+                .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
+                .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>("MultiNodeCreateSpotReq");
+            framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeB)
+                .UseRegistrySpotResolver()
+                .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
+                .SetRouterRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
+                .AddSpotFactory<MultiNodeSpotB>();
+        }
     });
 }
 else
@@ -204,6 +219,7 @@ internal sealed class EnsureActorHandler(
             cancellationToken);
 
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
+        evidence.Add($"entry-joined|rid={node.Rid}|actor={request.ActorId}");
         return new EnsureActorReply(
             actor.ActorId,
             actor.NodeRid.ToString(),
@@ -308,10 +324,12 @@ internal sealed class JoinUserSpotActorHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
+            new ScenarioActorCreateRequest(request.SpotRid),
             cancellationToken);
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
             + $"|actor={request.ActorId}|accepted=True");
+        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={request.SpotRid}|actor={request.ActorId}");
         return new JoinUserSpotActorReply(
             request.SpotRid,
             actor.ActorId,
@@ -492,12 +510,12 @@ internal sealed class MultiNodeCreateSpotAHandler(
         var result = await spots.GetOrCreateAsync<MultiNodeSpotA>(
             RoutingId.From(request.SpotRid),
             cancellationToken);
-        var state = await routes.Request(
-                SpotServiceNames.MultiRouteChannelA,
-                RoutingId.From(request.SpotRid),
-                new StateReq("add", request.Delta))
-            .PacketName("StateReq")
-            .Async<StateReply>(cancellationToken);
+        var state = await MultiNodeScenario.RequestStateWithRetryAsync(
+            routes,
+            SpotServiceNames.MultiRouteChannelA,
+            request.SpotRid,
+            request.Delta,
+            cancellationToken);
         evidence.Add($"multi-create-spot|node={SpotServiceNames.MultiSpotNodeA}|spot={result.SpotRid}|state={result.State}");
         return new MultiNodeCreateSpotReply(
             result.SpotRid.ToString(),
@@ -522,18 +540,61 @@ internal sealed class MultiNodeCreateSpotBHandler(
         var result = await spots.GetOrCreateAsync<MultiNodeSpotB>(
             RoutingId.From(request.SpotRid),
             cancellationToken);
-        var state = await routes.Request(
-                SpotServiceNames.MultiRouteChannelB,
-                RoutingId.From(request.SpotRid),
-                new StateReq("add", request.Delta))
-            .PacketName("StateReq")
-            .Async<StateReply>(cancellationToken);
+        var state = await MultiNodeScenario.RequestStateWithRetryAsync(
+            routes,
+            SpotServiceNames.MultiRouteChannelB,
+            request.SpotRid,
+            request.Delta,
+            cancellationToken);
         evidence.Add($"multi-create-spot|node={SpotServiceNames.MultiSpotNodeB}|spot={result.SpotRid}|state={result.State}");
         return new MultiNodeCreateSpotReply(
             result.SpotRid.ToString(),
             SpotServiceNames.MultiSpotNodeB,
             result.State.ToString(),
             state.Value);
+    }
+}
+
+file static class MultiNodeScenario
+{
+    public static async Task<StateReply> RequestStateWithRetryAsync(
+        IZLinkRouteClient routes,
+        string channelName,
+        string spotRid,
+        int delta,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        Exception? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                return await routes.Request(
+                        channelName,
+                        RoutingId.From(spotRid),
+                        new StateReq("add", delta))
+                    .PacketName("StateReq")
+                    .Timeout(TimeSpan.FromSeconds(2))
+                    .Async<StateReply>(cancellationToken);
+            }
+            catch (TimeoutException ex)
+            {
+                last = ex;
+            }
+            catch (ZLinkFrameworkException ex) when (ex.InnerException is ZlinkRequestException or ZlinkSubmitException)
+            {
+                last = ex;
+            }
+            catch (Exception ex) when (ex is ZlinkRequestException or ZlinkSubmitException)
+            {
+                last = ex;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+        }
+
+        throw new TimeoutException($"Timed out waiting for multi-node spot route '{spotRid}' on '{channelName}'.", last);
     }
 }
 
@@ -579,17 +640,16 @@ internal sealed class MultiNodeSpotB(IZLinkSpotContext context, EvidenceStore ev
 
 internal sealed class ScenarioStage(ScenarioUserSpot spot)
 {
-    public StageProbeReply Apply(StageProbeReq request, EvidenceStore evidence)
+    public StateReply Apply(StageProbeReq request, EvidenceStore evidence)
     {
         var value = spot.Add(request.Delta);
         evidence.Add(
             $"stage-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|marker={request.Marker}|value={value}");
-        return new StageProbeReply(
+        return new StateReply(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
-            value,
-            request.Marker);
+            value);
     }
 
     public async ValueTask StartTimerAsync(
@@ -620,9 +680,9 @@ internal sealed class SpotEventHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("StageProbeReq")]
 internal sealed class StageProbeHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<ScenarioUserSpot, StageProbeReq, StageProbeReply>
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, StageProbeReq, StateReply>
 {
-    public ValueTask<StageProbeReply> HandleAsync(
+    public ValueTask<StateReply> HandleAsync(
         ScenarioUserSpot spot,
         StageProbeReq request,
         CancellationToken cancellationToken)
@@ -735,6 +795,24 @@ internal sealed class StateCommandHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-state-command|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
         return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkSpotRequestHandler("SlowSpotReq")]
+internal sealed class SlowSpotHandler(EvidenceStore evidence)
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, SlowSpotReq, SlowSpotReply>
+{
+    public async ValueTask<SlowSpotReply> HandleAsync(
+        ScenarioUserSpot spot,
+        SlowSpotReq request,
+        CancellationToken cancellationToken)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(request.DelayMs), cancellationToken);
+        evidence.Add($"slow-spot-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={request.Marker}");
+        return new SlowSpotReply(
+            spot.Context.SpotRid.ToString(),
+            spot.Context.NodeRid.ToString(),
+            request.Marker);
     }
 }
 
@@ -1031,6 +1109,32 @@ internal sealed class EntrySlowActorPingHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotActorRequestHandler("UserActorPingReq")]
+internal sealed class EntryUserActorPingHandler(EvidenceStore evidence)
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPingReq, ActorPingReply>
+{
+    public ValueTask<ActorPingReply> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        ActorPingReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        actor.Seen++;
+        evidence.Add(
+            $"actor-ping|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
+            + $"|spot={actor.DisplayName}|value={request.Value}|seen={actor.Seen}");
+        return ValueTask.FromResult(new ActorPingReply(
+            actor.ActorId,
+            entrySpot.Context.NodeRid.ToString(),
+            actor.DisplayName,
+            request.Value,
+            actor.Seen));
+    }
+}
+
+[ZLinkSpotActorRequestHandler("UserActorPingReq")]
 internal sealed class UserActorPingHandler(EvidenceStore evidence)
     : IZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPingReq, ActorPingReply>
 {
@@ -1053,6 +1157,30 @@ internal sealed class UserActorPingHandler(EvidenceStore evidence)
             spot.Context.SpotRid.ToString(),
             request.Value,
             actor.Seen));
+    }
+}
+
+[ZLinkSpotActorRequestHandler("LeaveReq")]
+internal sealed class EntryActorLeaveHandler(EvidenceStore evidence)
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, LeaveReq, LeaveReply>
+{
+    public ValueTask<LeaveReply> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        LeaveReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Leave request actor does not match dispatched actor.");
+        }
+
+        evidence.Add(
+            $"spot-actor-left|rid={entrySpot.Context.NodeRid}|spot={actor.DisplayName}|actor={actor.ActorId}");
+        return ValueTask.FromResult(new LeaveReply(actor.ActorId, true));
     }
 }
 
@@ -1154,6 +1282,32 @@ internal sealed class ActorPushHandler
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
             entrySpot.Context.SpotRid.ToString(),
+            request.Value,
+            actor.Seen);
+    }
+}
+
+[ZLinkSpotActorRequestHandler("UserActorPushReq")]
+internal sealed class EntryUserActorPushHandler
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPushReq, ActorPingReply>
+{
+    public async ValueTask<ActorPingReply> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        ActorPushReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        actor.Seen++;
+        await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
+            .PacketName("ActorPushNotify")
+            .Async();
+        return new ActorPingReply(
+            actor.ActorId,
+            entrySpot.Context.NodeRid.ToString(),
+            actor.DisplayName,
             request.Value,
             actor.Seen);
     }
@@ -1317,6 +1471,7 @@ internal sealed class AuthSessionHandler(
             cancellationToken);
 
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
+        evidence.Add($"entry-joined|rid={node.Rid}|actor={request.ActorId}");
         return new EnsureActorReply(
             actor.ActorId,
             actor.NodeRid.ToString(),
@@ -1392,12 +1547,13 @@ internal sealed class UserSpotAuthSessionHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
-            new ScenarioActorCreateRequest(request.DisplayName),
+            new ScenarioActorCreateRequest(request.SpotRid),
             cancellationToken);
 
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
             + $"|actor={request.ActorId}|accepted=True");
+        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={request.SpotRid}|actor={request.ActorId}");
         return new JoinUserSpotActorReply(
             request.SpotRid,
             actor.ActorId,

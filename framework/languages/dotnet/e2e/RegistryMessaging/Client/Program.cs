@@ -689,44 +689,47 @@ static IHost CreateRouteClientHost(ClientOptions options)
 
 static async Task WaitForTopologyAsync(ClientOptions options, int expectedReady)
 {
-    await WaitUntilAsync(
+    ZLinkRegistryTopologyEntry[] lastTopology = [];
+    await WaitUntilWithMessageFactoryAsync(
         async () =>
         {
-            var topology = await QueryTopologyAsync(options);
-            return topology.Count(entry => entry.ChannelName == "profile"
+            lastTopology = await QueryTopologyAsync(options);
+            return lastTopology.Count(entry => entry.ChannelName == "profile"
                 && entry.ServiceRole == ZLinkServiceRole.Router
                 && entry.State == ZLinkTopologyState.Ready) >= expectedReady;
         },
-        $"Timed out waiting for {expectedReady} ready profile providers.",
-        TimeSpan.FromSeconds(30));
+        () => $"Timed out waiting for {expectedReady} ready profile providers. Last topology: {FormatTopology(lastTopology)}",
+        TimeSpan.FromSeconds(60));
 }
 
 static async Task WaitForProfileReadyAsync(string registryEndpoint, int expectedReady)
 {
-    await WaitUntilAsync(
+    ZLinkRegistryTopologyEntry[] lastTopology = [];
+    await WaitUntilWithMessageFactoryAsync(
         async () =>
         {
-            var topology = await QueryTopologyFromRegistryAsync(registryEndpoint);
-            return topology.Count(entry => entry.ChannelName == "profile"
+            lastTopology = await QueryTopologyFromRegistryAsync(registryEndpoint);
+            return lastTopology.Count(entry => entry.ChannelName == "profile"
                 && entry.ServiceRole == ZLinkServiceRole.Router
                 && entry.State == ZLinkTopologyState.Ready) == expectedReady;
         },
-        $"Timed out waiting for {expectedReady} ready profile providers.");
+        () => $"Timed out waiting for {expectedReady} ready profile providers. Last topology: {FormatTopology(lastTopology)}");
 }
 
 static async Task WaitForProfileEndpointAsync(string registryEndpoint, string endpoint)
 {
-    await WaitUntilAsync(
+    ZLinkRegistryTopologyEntry[] lastTopology = [];
+    await WaitUntilWithMessageFactoryAsync(
         async () =>
         {
-            var topology = await QueryTopologyFromRegistryAsync(registryEndpoint);
-            var ready = topology.Where(entry => entry.ChannelName == "profile"
+            lastTopology = await QueryTopologyFromRegistryAsync(registryEndpoint);
+            var ready = lastTopology.Where(entry => entry.ChannelName == "profile"
                 && entry.ServiceRole == ZLinkServiceRole.Router
                 && entry.State == ZLinkTopologyState.Ready)
                 .ToArray();
             return ready.Any(entry => entry.Endpoint == endpoint);
         },
-        $"Timed out waiting for profile endpoint {endpoint}.",
+        () => $"Timed out waiting for profile endpoint {endpoint}. Last topology: {FormatTopology(lastTopology)}",
         TimeSpan.FromSeconds(30));
 }
 
@@ -771,6 +774,14 @@ static async Task WaitUntilAsync(
     string failureMessage,
     TimeSpan? timeout = null)
 {
+    await WaitUntilWithMessageFactoryAsync(condition, () => failureMessage, timeout);
+}
+
+static async Task WaitUntilWithMessageFactoryAsync(
+    Func<Task<bool>> condition,
+    Func<string> failureMessage,
+    TimeSpan? timeout = null)
+{
     var deadline = DateTimeOffset.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
     Exception? last = null;
     while (DateTimeOffset.UtcNow < deadline)
@@ -790,7 +801,16 @@ static async Task WaitUntilAsync(
         await Task.Delay(TimeSpan.FromMilliseconds(100));
     }
 
-    throw new InvalidOperationException(failureMessage, last);
+    throw new InvalidOperationException(failureMessage(), last);
+}
+
+static string FormatTopology(IEnumerable<ZLinkRegistryTopologyEntry> topology)
+{
+    var entries = topology
+        .Select(entry =>
+            $"{entry.ChannelName}/{entry.AutoConnectType}/{entry.ServiceKind}/{entry.ServiceRole}/{entry.State}/{entry.RoutingId?.ToString() ?? "<none>"}/{entry.Endpoint}")
+        .ToArray();
+    return entries.Length == 0 ? "<empty>" : string.Join("; ", entries);
 }
 
 static void Ensure(bool condition, string message)

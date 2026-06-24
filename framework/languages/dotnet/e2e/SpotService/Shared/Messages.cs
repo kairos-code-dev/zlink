@@ -39,8 +39,6 @@ public sealed record StateCommand(string Marker);
 
 public sealed record StageProbeReq(string Marker, int Delta);
 
-public sealed record StageProbeReply(string SpotRid, string NodeRid, int Value, string Marker);
-
 public sealed record StageTimerStartCommand(string Name, int PeriodMs);
 
 public sealed record SpotEvent(string Marker);
@@ -119,6 +117,10 @@ public sealed record SpotTypeMismatchReply(string SpotRid, bool Failed, string E
 public sealed record WorkerStartReq(string Marker, int DelayMs);
 
 public sealed record WorkerStartReply(string SpotRid, string NodeRid, string Marker);
+
+public sealed record SlowSpotReq(string Marker, int DelayMs);
+
+public sealed record SlowSpotReply(string SpotRid, string NodeRid, string Marker);
 
 public sealed record DestroyActorReq(string ActorId);
 

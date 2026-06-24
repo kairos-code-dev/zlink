@@ -11,14 +11,21 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
+import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
 
 public final class ClientScenario {
     private final ZLinkClient client;
+    private final ZLinkRegistryQueryClient registry;
     private final ObjectMapper json;
     private final HttpClient http = HttpClient.newHttpClient();
 
-    public ClientScenario(ZLinkClient client, ObjectMapper json) {
+    public ClientScenario(
+        ZLinkClient client,
+        ZLinkRegistryQueryClient registry,
+        ObjectMapper json) {
         this.client = client;
+        this.registry = registry;
         this.json = json;
     }
 
@@ -28,6 +35,9 @@ public final class ClientScenario {
         Set<String> providers = requestUntilProviders(Env.csv("ZLINK_JAVA_E2E_EXPECTED_RIDS"));
         if ("DR-C1".equals(scenario)) {
             expectHttpFailure(Env.get("ZLINK_JAVA_E2E_DEAD_HTTP_ENDPOINT"));
+        }
+        if ("DR-D4".equals(scenario)) {
+            expectRemoteTopologyMatchesProbe();
         }
         System.out.println("scenario " + scenario + " passed providers=" + providers);
     }
@@ -62,6 +72,50 @@ public final class ClientScenario {
             return rids;
         } catch (Exception error) {
             return Set.of();
+        }
+    }
+
+    private void expectRemoteTopologyMatchesProbe() {
+        if (registry == null) {
+            throw new IllegalStateException("remote registry query client is not configured");
+        }
+        Set<String> probeRids = topologyRids(Env.get("ZLINK_JAVA_E2E_TOPOLOGY_HTTP_ENDPOINT"));
+        try {
+            Set<String> remoteRids = new HashSet<>();
+            for (ZLinkRegistryTopologyEntry entry : registry.topology()
+                .toCompletableFuture()
+                .get(3, java.util.concurrent.TimeUnit.SECONDS)) {
+                if (Contracts.CHANNEL.equals(entry.channelName())) {
+                    remoteRids.add(entry.routingId().toString());
+                }
+            }
+            ensure(remoteRids.equals(probeRids),
+                "remote topology did not match in-process probe: remote="
+                    + remoteRids + " probe=" + probeRids);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("remote topology query interrupted", error);
+        } catch (Exception error) {
+            throw new IllegalStateException("remote topology query failed", error);
+        }
+    }
+
+    private Set<String> topologyRids(String probe) {
+        if (probe == null || probe.isBlank()) {
+            throw new IllegalStateException("topology probe endpoint is required");
+        }
+        try {
+            JsonNode root = json.readTree(get(probe + "/topology-rids"));
+            Set<String> rids = new HashSet<>();
+            for (JsonNode entry : root) {
+                String rid = entry.asText("");
+                if (!rid.isBlank()) {
+                    rids.add(rid);
+                }
+            }
+            return rids;
+        } catch (Exception error) {
+            throw new IllegalStateException("topology probe query failed: " + probe, error);
         }
     }
 

@@ -8,6 +8,10 @@ public final class Program {
         switch (Env.get("ZLINK_JAVA_E2E_ROLE", "client")) {
             case "registry" -> RegistryApplication.run(args);
             case "provider" -> ProviderApplication.run(args);
+            case "embedded" -> {
+                RegistryApplication.run(args);
+                ProviderApplication.run(args);
+            }
             case "client" -> ClientApplication.run(args);
             default -> throw new IllegalArgumentException(
                 "unknown role " + Env.get("ZLINK_JAVA_E2E_ROLE"));

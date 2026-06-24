@@ -1,12 +1,16 @@
 package systems.zlink.e2e.discoveryregistryha;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -53,9 +57,28 @@ public final class ClientApplication {
     }
 
     @Bean
+    ZLinkRegistryQueryClient registryQueryClient(ZLinkBackendAdapterFactory backendAdapterFactory) {
+        return ZLinkRemoteRegistryQueryClient.connect(
+            queryRegistryEndpoint(),
+            backendAdapterFactory);
+    }
+
+    private static String queryRegistryEndpoint() {
+        String endpoint = Env.get("ZLINK_JAVA_E2E_QUERY_REGISTRY_ROUTER", "");
+        if (endpoint.isBlank()) {
+            java.util.List<String> registries = Env.csv("ZLINK_JAVA_E2E_REGISTRY_ROUTERS");
+            if (!registries.isEmpty()) {
+                endpoint = registries.get(0);
+            }
+        }
+        return endpoint;
+    }
+
+    @Bean
     ClientScenario clientScenario(
         systems.zlink.framework.channels.ZLinkClient client,
+        ObjectProvider<ZLinkRegistryQueryClient> registry,
         ObjectMapper json) {
-        return new ClientScenario(client, json);
+        return new ClientScenario(client, registry.getIfAvailable(), json);
     }
 }

@@ -50,6 +50,13 @@ public final class RegistryProbeServer implements SmartLifecycle {
             server.createContext("/topology", exchange -> write(
                 exchange,
                 json.writeValueAsString(await(query.topology()))));
+            server.createContext("/topology-rids", exchange -> write(
+                exchange,
+                json.writeValueAsString(await(query.topology()).stream()
+                    .filter(entry -> Contracts.CHANNEL.equals(entry.channelName()))
+                    .map(entry -> entry.routingId().toString())
+                    .sorted()
+                    .toList())));
             server.start();
             running = true;
         } catch (Exception error) {

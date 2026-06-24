@@ -151,9 +151,15 @@ ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(app_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
+ZLINK_JAVA_E2E_ROLE=validation \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/validation.stdout.log" 2>"${log_dir}/validation.stderr.log"
+
 cat "${log_dir}/client.stdout.log"
+cat "${log_dir}/validation.stdout.log"
 grep -q "scenario MON-A1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A2 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A3 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-B1 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario MON-B2 passed" "${log_dir}/validation.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log

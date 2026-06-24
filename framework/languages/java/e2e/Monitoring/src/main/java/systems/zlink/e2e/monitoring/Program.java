@@ -9,6 +9,7 @@ public final class Program {
             case "registry" -> RegistryApplication.run(args);
             case "service" -> ServiceApplication.run(args);
             case "client" -> ClientApplication.run(args);
+            case "validation" -> MonitoringValidationApplication.run(args);
             default -> throw new IllegalArgumentException(
                 "unknown role " + Env.get("ZLINK_JAVA_E2E_ROLE"));
         }

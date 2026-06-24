@@ -36,7 +36,10 @@ internal sealed class ZLinkFrameworkRegistration
 
     public ZLinkDiscoveryRegistration? Discovery { get; set; }
 
-    public ZLinkSpotDiscoveryRegistration? SpotDiscovery { get; set; }
+    public Dictionary<string, ZLinkSpotDiscoveryRegistration> SpotDiscoveries { get; } = new(StringComparer.Ordinal);
+
+    public ZLinkSpotDiscoveryRegistration? SpotDiscovery
+        => SpotDiscoveries.Count == 1 ? SpotDiscoveries.Values.Single() : null;
 
     public TimeSpan ResolveChannelRequestTimeout(string channelName)
     {
@@ -190,6 +193,8 @@ internal sealed record ZLinkChannelHandlerRegistration(
 internal sealed class ZLinkSpotNodeRegistration
 {
     public required string SpotNodeName { get; init; }
+
+    public string? SpotDiscoveryChannelName { get; set; }
 
     public ZLinkSpotRouterCapabilityRegistration? Router { get; set; }
 

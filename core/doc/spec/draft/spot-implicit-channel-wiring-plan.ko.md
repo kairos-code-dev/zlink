@@ -22,7 +22,7 @@
 |---|------|------|
 | Q7 | **A. 전면 암묵(0 와이어링)** | B(단일 opt-in)·C(convention) 기각. 대신 가드레일(아래) 의무화 |
 | Q1 | **무게중심 = 코어(대부분 재사용) + framework thin handoff** | 코어 bridge가 채널명 키잉·relay·reply 이미 보유. framework는 채널명→소켓 handoff |
-| Q9 | **프로세스당 단일 `SpotNode`** (요청1) | `AddNode` 제거, `AddSpotMesh(name)`가 곧 노드. owner-selection을 자명하게 만들어 Q2를 trivial화 |
+| Q9 | **프로세스당 단일 `SpotNode`** (요청1) | `AddNode` 제거, `AddSpotMesh(name)`가 곧 노드. ~~owner-selection 자명화~~ → **정당화 정정**: 모호성 제거가 아니라 **구현 단순화**다(맨 끝 "재검토" 단락). 다중 노드 대안 있음 |
 | Q2 | **owner-selection = 자명(Q9 결과)** | 한 프로세스에 노드 1개 → route·pub 소유 노드 모호성 없음. 코어 전달 키 변경 불필요 |
 | Q8 | **타입별 namespace + 외부→spot route는 RouteMesh 단일 + DealerMesh 제거** | 이름 타입 넘어 재사용. straddle 소멸 |
 | Q6′ | **`AddRouteMeshChannel`→`AddRouteMesh` 리네임** (요청2) | mesh-계열은 "Channel" 접미사 제거(`AddSpotMesh`와 짝). ClientServer/Fanout은 유지 |
@@ -428,6 +428,68 @@ deprecate-then-remove(no-op 셤)는 채택 안 한다(draft 단계, 외부 소�
   `sendTo/requestTo` vs node `send/request`)는 **언어 특성 차이지 능력 갭이 아니다** → 강제 rename
   하지 않는다. 단 route target 파라미터(`targetNodeRid`/`target`)는 **문서에서 일관되게 "target
   spotRid"로 표기**해 의미만 통일한다(시그니처는 언어 idiom 유지).
+
+## 재검토 — 단일 노드(Q9)의 근거 정정 + 다중 노드 대안 (2026-06-24 추가)
+
+> **이 단락은 Q2/Q9의 *정당화*를 정정한다.** 앞에서 단일 노드를 "owner-selection 이 자명해진다
+> (모호성 제거)"로 정당화했는데, 검토 결과 **그건 과장**이다. 근본적 모호성은 없다. 단일 노드는
+> *정합성* 때문이 아니라 *구현 비용*을 줄이려는 단순화다. (결정 자체를 뒤집는 게 아니라 근거를
+> 정직하게 다시 적는다.)
+
+### 어디서도 근본적으로 모호하지 않다
+
+| "모호"라 했던 것 | 실제 — 모호 아님 |
+|------------------|------------------|
+| 외부→spot ingress: 어느 로컬 노드 spot? | **송신 측 resolver 가 spotRid→소유 노드 rid 로 이미 라우팅**(`ResolveSpot(spotRid).OwnerNodeRid`) → 받는 bridge 는 자기 노드 local 전달이 정답. 모호 아님 |
+| actor relay: 어느 노드 actor? | **bind 된 ref 가 actor 의 NodeRid 를 운반** → 그 노드로 |
+| ActorGateway return 입구: 어느 로컬 노드? | 로컬 노드 **아무거나** mesh router 면 됨(rid 라우팅) → 기본 1개 자동 선택, 필요 시 이름 override |
+
+core mesh 는 RoutingId 로 라우팅하므로 **로컬 노드와 원격 노드를 다르게 취급하지 않는다.** 채널은
+(타입+이름)으로 여러 개 등록되는데 spot 노드는 **전역 유일 rid** 라 오히려 더 깔끔하게 구분된다 —
+**다중 채널은 허용하면서 다중 노드만 막는 것은 비일관**이다.
+
+### 코드 검증 결과 (2026-06-24) — 다중 노드 route ingress 는 **framework-only**(core 불변)
+
+코드를 추적해 확인했다. **core 변경은 필요 없고, gap 은 전부 framework 에 있다.**
+
+- **egress(송신)는 이미 됨**: dispatcher 가 `routeChannel.Discovery.ResolveSpot(targetSpotRid).OwnerNodeRid`
+  로 **spotRid→소유 노드 rid 를 동적 해석**해 그 노드로 보낸다(`ZLinkSpotRouteEgressDispatcher.cs:103-110`,
+  core `discovery_registry_client.cpp:64,191`). 옛 static `EnableSpotRouteEgress(target)` 인자는 이미 없음.
+- **core bridge 는 이미 정확**: relay 가 owner 노드에 도착하므로 bridge 가 자기 노드 local 조회
+  (`find_spot_state_by_identity(own_node_rid, spot_rid)`, `service_spot_route_bridge_api.cpp:160-168`)
+  하는 게 **정답**이다. → **cross-node 전수 조회(이전에 적은 "Choice β")는 불필요.** relay 봉투엔 node rid
+  가 없고 spotRid 만 있다(`...codec_internal.cpp:49-68`) — owner 라우팅을 송신이 책임지기 때문.
+- **진짜 gap = framework 2곳**:
+  1. **single-owner 가드** — 프로세스에 router-가능 spot 노드가 2개 이상이면 시작 시 throw
+     (`ZLinkRouteChannelInitializer.cs:88-92`). 다중 노드 자체를 막는다.
+  2. **한 채널→한 bridge→한 노드** — route channel 런타임이 `_spotRouteBridge` 하나만 들고
+     (`ZLinkRouteChannelRuntime.cs:21,84-95`), 그 채널 inbound 를 그 bridge 로만 보낸다. relay 에 node rid
+     가 없으니, **공유 채널 하나는 한 노드만** 서빙 → 다른 노드 spot 은 그 채널로 ENOENT.
+
+### 다중 노드를 지원하려면 (framework 작업만)
+
+1. **노드별 route channel/bridge**: 각 노드가 자기 route channel(router 소켓+routing id+bridge)을 갖게 한다.
+   relay 가 node rid 를 안 실으니, "채널 ↔ 노드"가 1:1 이어야 inbound 가 owner 노드 bridge 로 간다.
+   egress 의 owner-node-rid → 올바른 per-node 채널 매핑이 discovery 로 풀려야 한다.
+2. **single-owner 가드 해제**(`ZLinkRouteChannelInitializer.cs:88-92`) + 빌더 가드 완화
+   (`AddSpotMesh` 다회 / `AddNode` 부활, `ZLinkFrameworkOptionsBuilder.cs:153`).
+3. **ActorGateway**: 로컬 노드 1개 자동 선택 + 명시 override → `AttachActorGateway` **생략 가능**.
+   actor 위치는 bind ref 가 운반하고 actor relay 의 cross-node 는 core 가 이미 지원(분리 토폴로지가 증거).
+4. 4언어 빌더·initializer 동일 적용.
+
+**핵심**: ~~core bridge cross-node 조회~~ 는 **불필요**(검증으로 철회). `.cpp` 변경 0. 전부 framework.
+
+### 정리 / 결정 상태
+
+- **결정**: 후속 작업은 **다중 노드 허용 + `AttachActorGateway` 생략 가능** 방향으로 진행한다.
+  `AddSpotMesh(name)`를 여러 번 호출해 노드별 route channel/bridge를 갖게 하고, core/bindings 는 바꾸지 않는다.
+- Q9(프로세스당 단일 노드)는 **모호성 제거가 아니라, 위 framework 작업(노드별 채널·가드 해제)을
+  생략하려는 단순화**다. (이전에 적은 "core 구현 생략"은 틀렸음 — core 는 어차피 안 바뀐다.)
+- 다중 노드 허용은 **core 불변 + framework 작업만**으로 되고 **다중 채널과 일관**된다.
+- **`AttachActorGateway` 는 단일이든 다중이든 자동 추론/생략 가능**(단일=유일 노드, 다중=기본+override).
+- → Q9 의 명시 대안으로 **"다중 노드 + 위 framework 작업"** 을 남긴다. 어느 쪽으로 갈지는 별도 결정
+  (단일=빨리·단순 / 다중=프로세스당 다역할·채널과 일관). codex 초기 리뷰의 "capability anchor 유지"
+  권고와 같은 결의 트레이드오프다.
 
 ## 관계 문서
 

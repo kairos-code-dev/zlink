@@ -37,6 +37,8 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 
     public List<IZLinkBackendSpotRouteBridge> SpotRouteBridges { get; } = [];
 
+    public Dictionary<string, ZLinkSpotNodeRuntime> SpotRouteBridgeOwners { get; } = new(StringComparer.Ordinal);
+
     public Dictionary<string, ZLinkSpotNodeRuntime> SpotNodes { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, IZLinkBackendDiscovery> SpotDiscoveries { get; } = new(StringComparer.Ordinal);

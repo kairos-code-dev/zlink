@@ -18,8 +18,9 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
 
         if (registration.RegistrySpotRemoteAddresses is not null
-            && (registration.SpotDiscovery is null
-                || ResolveSpotDiscoveryEndpoints(registration).Count == 0))
+            && (registration.SpotDiscoveries.Count == 0
+                || !registration.SpotDiscoveries.Values.Any(
+                    discovery => ResolveSpotDiscoveryEndpoints(registration, discovery).Count > 0)))
         {
             throw new ZLinkConfigurationException(
                 "Registry remote address resolver requires discovery endpoints from UseDiscovery(...AddRegistryEndpoint...) or AddSpotMesh(...).UseDiscovery(...AddRegistryEndpoint...).");
@@ -227,11 +228,18 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     }
 
     internal static IReadOnlyList<string> ResolveSpotDiscoveryEndpoints(
-        ZLinkFrameworkRegistration registration)
+        ZLinkFrameworkRegistration registration,
+        ZLinkSpotDiscoveryRegistration? discovery = null)
     {
-        if (registration.SpotDiscovery is { Endpoints.Count: > 0 })
+        if (discovery is { Endpoints.Count: > 0 })
         {
-            return registration.SpotDiscovery.Endpoints;
+            return discovery.Endpoints;
+        }
+
+        if (discovery is null
+            && registration.SpotDiscovery is { Endpoints.Count: > 0 } singleDiscovery)
+        {
+            return singleDiscovery.Endpoints;
         }
 
         return registration.Discovery?.Endpoints ?? [];

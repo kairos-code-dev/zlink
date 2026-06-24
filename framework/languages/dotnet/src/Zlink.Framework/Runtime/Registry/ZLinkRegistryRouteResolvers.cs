@@ -15,7 +15,9 @@ internal sealed class ZLinkRegistrySpotRemoteAddressResolver(
         var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
             state,
             options.RouterChannelId);
-        var discovery = ZLinkRegistryRouteRuntime.ResolveSingleSpotDiscovery(state);
+        var discovery = ZLinkRegistryRouteRuntime.ResolveSpotDiscovery(
+            state,
+            routerChannelId);
 
         try
         {

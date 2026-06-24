@@ -65,7 +65,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
         _spotRouteEgress = new ZLinkSpotRouteEgressDispatcher(
             _registration,
-            _channelFacade.GetRouteChannel);
+            _channelFacade.GetRouteChannel,
+            GetSpotRouteBridgeOwner);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;
@@ -93,6 +94,22 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
+
+    private ZLinkSpotNodeRuntime? GetSpotRouteBridgeOwner(string routerChannelId)
+    {
+        var state = _state;
+        if (state is null)
+        {
+            return null;
+        }
+
+        lock (state.SyncRoot)
+        {
+            return state.SpotRouteBridgeOwners.TryGetValue(routerChannelId, out var owner)
+                ? owner
+                : null;
+        }
+    }
 
     internal void DrainSpotRouteBridges()
     {

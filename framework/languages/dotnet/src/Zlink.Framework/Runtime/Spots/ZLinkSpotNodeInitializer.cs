@@ -39,7 +39,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                 state.Context,
                 channelAdapter,
                 node,
-                registration.SpotDiscovery?.ChannelName ?? spotNodeRegistration.SpotNodeName);
+                spotNodeRegistration.SpotDiscoveryChannelName ?? spotNodeRegistration.SpotNodeName);
 
             nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
             if (spotNodeRegistration.Router is not null
@@ -80,12 +80,17 @@ internal sealed class ZLinkSpotNodeInitializer(
         IZLinkBackendSpotNode node,
         ZLinkSpotNodeRuntime nodeRuntime)
     {
-        if (registration.SpotDiscovery is null)
+        if (string.IsNullOrWhiteSpace(spotNodeRegistration.SpotDiscoveryChannelName)
+            || !registration.SpotDiscoveries.TryGetValue(
+                spotNodeRegistration.SpotDiscoveryChannelName,
+                out var spotDiscovery))
         {
             return;
         }
 
-        var endpoints = ZLinkFrameworkRegistrationValidator.ResolveSpotDiscoveryEndpoints(registration);
+        var endpoints = ZLinkFrameworkRegistrationValidator.ResolveSpotDiscoveryEndpoints(
+            registration,
+            spotDiscovery);
         if (endpoints.Count == 0)
         {
             return;
@@ -94,7 +99,7 @@ internal sealed class ZLinkSpotNodeInitializer(
         var discovery = ZLinkBackendDiscoveryFactory.Create(
             channelAdapter,
             state.Context,
-            registration.SpotDiscovery.ChannelName,
+            spotDiscovery.ChannelName,
             ZLinkAutoConnectType.SpotMesh,
             endpoints);
         if (registration.RegistrySpotRemoteAddresses is not null)

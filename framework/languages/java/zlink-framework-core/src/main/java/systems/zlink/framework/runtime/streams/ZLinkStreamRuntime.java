@@ -120,22 +120,32 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 dispatchToSession(streamNode, routingId, header, payload));
             stream.onTransportError((routingId, nativeCode, message) ->
                 reportTransportError(streamNode, routingId, nativeCode, message));
-            if (streamNode.actorGatewaySpotNodeName() != null) {
-                ZLinkBackendSpotNode spotNode =
-                    spotNodes.get(streamNode.actorGatewaySpotNodeName());
-                if (spotNode == null) {
-                    throw new ZLinkConfigurationException(
-                        "stream node actor gateway SpotNode is not running: "
-                            + streamNode.actorGatewaySpotNodeName());
-                }
+            ZLinkBackendSpotNode spotNode = resolveActorGatewayNode(streamNode, spotNodes);
+            if (spotNode != null) {
                 stream.attachActorGateway(spotNode);
             }
             streams.add(stream);
             streamsByName.put(streamNode.name(), stream);
             streamActorGatewayAttached.put(
                 streamNode.name(),
-                streamNode.actorGatewaySpotNodeName() != null);
+                spotNode != null);
         }
+    }
+
+    private static ZLinkBackendSpotNode resolveActorGatewayNode(
+        StreamNodeRegistration streamNode,
+        Map<String, ZLinkBackendSpotNode> spotNodes) {
+        if (streamNode.actorGatewaySpotNodeName() != null) {
+            ZLinkBackendSpotNode spotNode =
+                spotNodes.get(streamNode.actorGatewaySpotNodeName());
+            if (spotNode == null) {
+                throw new ZLinkConfigurationException(
+                    "stream node actor gateway SpotNode is not running: "
+                        + streamNode.actorGatewaySpotNodeName());
+            }
+            return spotNode;
+        }
+        return spotNodes.values().stream().findFirst().orElse(null);
     }
 
     public ZLinkSessionActorsRuntime sessionActors(
@@ -248,7 +258,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     serializer,
                     actorGatewayRouteReady,
                     localActorDispatcher,
-                    streamNode.actorGatewaySpotNodeName() != null,
+                    streamActorGatewayAttached.getOrDefault(streamNode.name(), false),
                     defaultCodec));
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
             new ZLinkSessionPacketDispatcherRuntime<>(

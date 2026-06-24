@@ -46,6 +46,13 @@ static async Task RunAsync(ClientOptions options)
         return;
     }
 
+    if (string.Equals(options.ScenarioSet, "sm-q9", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmQ9Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
     if (string.Equals(options.ScenarioSet, "all-no-g", StringComparison.OrdinalIgnoreCase))
     {
         await RunBaselineAsync(options);
@@ -152,6 +159,46 @@ static async Task RunTrackCAsync(ClientOptions options)
 {
     await RunSmC1C2Async(options);
     await RunSmC3Async(options);
+}
+
+static async Task RunSmQ9Async(ClientOptions options)
+{
+    var spotA = $"spot-sm-q9-a-{Guid.NewGuid():N}";
+    var spotB = $"spot-sm-q9-b-{Guid.NewGuid():N}";
+
+    using var host = CreateMultiNodeRouteHost(options);
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+
+    var createdA = await CreateMultiNodeSpotWithRetryAsync(
+        routes,
+        SpotServiceNames.MultiRouteChannelA,
+        SpotServiceNames.MultiSpotNodeA,
+        spotA,
+        11,
+        "SM-Q9 expected node A route channel to create its local spot.");
+    Ensure(createdA.NodeRid == SpotServiceNames.MultiSpotNodeA, "SM-Q9 node A create reply node mismatch.");
+    Ensure(createdA.Value == 11, "SM-Q9 node A route-to-spot reply value mismatch.");
+
+    var createdB = await CreateMultiNodeSpotWithRetryAsync(
+        routes,
+        SpotServiceNames.MultiRouteChannelB,
+        SpotServiceNames.MultiSpotNodeB,
+        spotB,
+        17,
+        "SM-Q9 expected node B route channel to create its local spot.");
+    Ensure(createdB.NodeRid == SpotServiceNames.MultiSpotNodeB, "SM-Q9 node B create reply node mismatch.");
+    Ensure(createdB.Value == 17, "SM-Q9 node B route-to-spot reply value mismatch.");
+
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.MultiEvidenceUrl);
+        return after.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") == 1
+            && after.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") == 1;
+    }, "SM-Q9 expected both process-local Spot nodes to handle route-to-spot requests.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-Q9 passed");
 }
 
 static async Task RunBaseline2Async(ClientOptions options)
@@ -1791,6 +1838,24 @@ static IHost CreateRouteEgressHost(
     return builder.Build();
 }
 
+static IHost CreateMultiNodeRouteHost(ClientOptions options)
+{
+    var builder = Host.CreateApplicationBuilder();
+    builder.Services.AddZLinkFramework(framework =>
+    {
+        framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
+        framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelA)
+            .EnableServer(options.ClientMultiRouteAEndpoint)
+            .EnableClient()
+            .SetRoutingId(RoutingId.From("client-multi-route-a"));
+        framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelB)
+            .EnableServer(options.ClientMultiRouteBEndpoint)
+            .EnableClient()
+            .SetRoutingId(RoutingId.From("client-multi-route-b"));
+    });
+    return builder.Build();
+}
+
 static IZlinkStreamConnector CreateClient(
     string endpoint,
     Action<IZlinkStreamConnector>? configure = null,
@@ -1944,7 +2009,46 @@ static async Task<StateReply> RequestSpotStateWithRetryAsync(
         {
             last = ex;
         }
-        catch (ZLinkFrameworkException ex) when (retryProtocolErrors && ex.InnerException is ZlinkRequestException)
+        catch (ZLinkFrameworkException ex) when (
+            retryProtocolErrors
+            && ex.InnerException is ZlinkRequestException or ZlinkSubmitException)
+        {
+            last = ex;
+        }
+
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+    }
+
+    throw new TimeoutException(failureMessage, last);
+}
+
+static async Task<MultiNodeCreateSpotReply> CreateMultiNodeSpotWithRetryAsync(
+    IZLinkRouteClient routes,
+    string channelName,
+    string nodeRid,
+    string spotRid,
+    int delta,
+    string failureMessage)
+{
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+    Exception? last = null;
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        try
+        {
+            return await routes.Request(
+                    channelName,
+                    RoutingId.From(nodeRid),
+                    new MultiNodeCreateSpotReq(spotRid, delta))
+                .PacketName("MultiNodeCreateSpotReq")
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async<MultiNodeCreateSpotReply>();
+        }
+        catch (TimeoutException ex)
+        {
+            last = ex;
+        }
+        catch (ZLinkFrameworkException ex) when (ex.InnerException is ZlinkRequestException)
         {
             last = ex;
         }
@@ -2060,6 +2164,7 @@ internal sealed record ClientOptions(
     string PlayBEvidenceUrl,
     string SessionAEvidenceUrl,
     string PlayACrashUrl,
+    string MultiEvidenceUrl,
     string ScenarioSet,
     string PlayARid,
     string PlayBRid,
@@ -2073,6 +2178,8 @@ internal sealed record ClientOptions(
     string ClientExternalChannelEndpoint,
     string ClientSpotRouterEndpoint,
     string ClientSpotPubEndpoint,
+    string ClientMultiRouteAEndpoint,
+    string ClientMultiRouteBEndpoint,
     string LogDir)
 {
     public static ClientOptions Parse(string[] args)
@@ -2106,6 +2213,7 @@ internal sealed record ClientOptions(
             Required("play-b-evidence-url"),
             Required("session-a-evidence-url"),
             Required("play-a-crash-url"),
+            Required("multi-evidence-url"),
             values.GetValueOrDefault("scenario-set", "all"),
             Required("play-a-rid"),
             Required("play-b-rid"),
@@ -2119,6 +2227,8 @@ internal sealed record ClientOptions(
             Required("client-external-channel-endpoint"),
             Required("client-spot-router-endpoint"),
             Required("client-spot-pub-endpoint"),
+            Required("client-multi-route-a-endpoint"),
+            Required("client-multi-route-b-endpoint"),
             values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")));
     }
 }

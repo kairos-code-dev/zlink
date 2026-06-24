@@ -38,7 +38,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     public RoutingId ResolveAcceptedSpotRouteNodeRid(string targetSpotNodeChannelName)
     {
         var state = getState();
-        return ResolveSingleRouterSpotNode(state)?.Node.RoutingId
+        return ResolveRouterSpotNode(state, targetSpotNodeChannelName)?.Node.RoutingId
             ?? throw new ZLinkConfigurationException(
                 $"Routed SPOT target channel '{targetSpotNodeChannelName}' is not owned by a router-capable SPOT node in this process.");
     }
@@ -49,8 +49,8 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         out ZLinkSpotNodeRuntime spotNodeRuntime)
     {
-        var candidate = ResolveSingleRouterSpotNode(state);
-        if (candidate is not null && candidate.Node.RoutingId == targetNodeRid)
+        var candidate = ResolveRouterSpotNode(state, routerChannelId, targetNodeRid);
+        if (candidate is not null)
         {
             spotNodeRuntime = candidate;
             return true;
@@ -81,6 +81,32 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         }
 
         return matched;
+    }
+
+    private static ZLinkSpotNodeRuntime? ResolveRouterSpotNode(
+        ZLinkFrameworkRuntimeState state,
+        string routerChannelId,
+        RoutingId? targetNodeRid = null)
+    {
+        if (targetNodeRid is { } rid)
+        {
+            foreach (var candidate in state.SpotNodes.Values)
+            {
+                if (candidate.Registration.Router is not null
+                    && candidate.Node.RoutingId == rid)
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        if (state.SpotNodes.TryGetValue(routerChannelId, out var named)
+            && named.Registration.Router is not null)
+        {
+            return named;
+        }
+
+        return ResolveSingleRouterSpotNode(state);
     }
 
     private IRouterTarget ResolveTarget(string routerChannelId, RoutingId targetNodeRid)

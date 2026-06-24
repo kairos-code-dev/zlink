@@ -98,7 +98,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
   readonly routeTransport = new ZLinkRuntimeRouteTransport(
     () => this.channelRuntime,
-    (routerChannelId) => this.options.registration.routeChannels.has(routerChannelId)
+    (routerChannelId) => this.canUseRouterChannel(routerChannelId)
   );
   readonly spotPublisherTransport = new ZLinkRuntimeSpotPublisherTransport(() => this.spotNodeRuntime);
   readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
@@ -427,7 +427,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       },
       nativeJoinBoundSessionTargetResolver: (info: { sourceActor: ActorRef; sourceSpotRid?: RoutingId }) => {
         const routerChannelId = this.options.registration.registrySpotRemoteAddresses?.routerChannelId
-          ?? this.firstRouteMeshChannel();
+          ?? this.defaultRouterChannelId();
         if (routerChannelId === undefined) {
           return undefined;
         }
@@ -811,7 +811,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     const targetNodeRid = actorRef?.nodeRid as RoutingId | undefined
       ?? this.spotNodeRuntime?.primaryNode?.routingId as RoutingId | undefined;
     const routerChannelId = this.options.registration.registrySpotRemoteAddresses?.routerChannelId
-      ?? this.firstRouteMeshChannel();
+      ?? this.defaultRouterChannelId();
     const localNodeRid = this.spotNodeRuntime?.primaryNode?.routingId as RoutingId | undefined;
     if (targetNodeRid !== undefined && localNodeRid !== undefined && routingIdsEqual(targetNodeRid, localNodeRid)) {
       return undefined;
@@ -834,7 +834,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       return undefined;
     }
     const configured = this.options.registration.registrySpotRemoteAddresses;
-    const routerChannelId = configured?.routerChannelId ?? this.firstRouteMeshChannel();
+    const routerChannelId = configured?.routerChannelId ?? this.defaultRouterChannelId();
     if (routerChannelId === undefined) {
       return undefined;
     }
@@ -846,8 +846,19 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     };
   }
 
-  private firstRouteMeshChannel(): string | undefined {
-    return this.options.registration.routeChannels.values().next().value;
+  private defaultRouterChannelId(): string | undefined {
+    const candidates = [
+      ...this.options.registration.routeChannels,
+      ...[...this.options.registration.spotNodes.entries()]
+        .filter(([, spotNode]) => spotNode.router !== undefined)
+        .map(([spotNodeName]) => spotNodeName)
+    ];
+    return candidates.length === 1 ? candidates[0] : undefined;
+  }
+
+  private canUseRouterChannel(routerChannelId: string): boolean {
+    return this.options.registration.routeChannels.has(routerChannelId)
+      || this.options.registration.spotNodes.get(routerChannelId)?.router !== undefined;
   }
 }
 

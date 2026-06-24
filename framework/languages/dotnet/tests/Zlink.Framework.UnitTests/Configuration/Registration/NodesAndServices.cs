@@ -76,6 +76,44 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_AddSpotMesh_AllowsMultipleProcessLocalNodes()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotMesh("play-node")
+                .EnableRouter("tcp://127.0.0.1:9001")
+                .AddSpotFactory<TestSpot>();
+            options.AddSpotMesh("session-node")
+                .EnableRouter("tcp://127.0.0.1:9002")
+                .AddSpotFactory<OtherTestSpot>();
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        Assert.Equal(["play-node", "session-node"], registration.SpotNodes.Keys);
+        Assert.Equal(["play-node", "session-node"], registration.SpotDiscoveries.Keys);
+        Assert.Null(registration.SpotDiscovery);
+        Assert.Equal("play-node", registration.SpotNodes["play-node"].SpotDiscoveryChannelName);
+        Assert.Equal("session-node", registration.SpotNodes["session-node"].SpotDiscoveryChannelName);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenSpotMeshNameIsDuplicated()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddSpotMesh("play-node").EnableRouter("tcp://127.0.0.1:9001");
+                options.AddSpotMesh("play-node").EnableRouter("tcp://127.0.0.1:9002");
+            }));
+
+        Assert.Contains("Duplicate SPOT mesh channel name 'play-node'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_AllowsSpotMeshToInheritGlobalDiscovery()
     {
         var services = new ServiceCollection();

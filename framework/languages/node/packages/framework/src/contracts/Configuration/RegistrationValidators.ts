@@ -223,17 +223,21 @@ function validateRegistryRouteChannel(registration: ZLinkFrameworkRegistration):
 
   const routerChannelId = registration.registrySpotRemoteAddresses?.routerChannelId;
   if (routerChannelId !== undefined) {
-    if (!registration.routeChannels.has(routerChannelId)) {
+    if (!registration.routeChannels.has(routerChannelId)
+      && registration.spotNodes.get(routerChannelId)?.router === undefined) {
       throw new ZLinkConfigurationException(
-        `Registry SPOT remote address resolver references unknown route mesh channel '${routerChannelId}'.`
+        `Registry SPOT remote address resolver references unknown route mesh channel or router-capable SpotNode '${routerChannelId}'.`
       );
     }
     return;
   }
 
-  if (registration.routeChannels.size > 1) {
+  const routerSpotNodeCount = [...registration.spotNodes.values()]
+    .filter((spotNode) => spotNode.router !== undefined)
+    .length;
+  if (registration.routeChannels.size + routerSpotNodeCount !== 1) {
     throw new ZLinkConfigurationException(
-      'Registry SPOT remote address resolver requires RouterChannelId when more than one route mesh channel is registered.'
+      'Registry SPOT remote address resolver requires RouterChannelId when route mesh channel or router-capable SpotNode is ambiguous.'
     );
   }
 }

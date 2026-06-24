@@ -68,6 +68,19 @@ internal static class ZLinkRegistryRouteRuntime
             "Registry remote address resolver requires exactly one configured SPOT discovery.");
     }
 
+    public static IZLinkBackendDiscovery ResolveSpotDiscovery(
+        ZLinkFrameworkRuntimeState state,
+        string routerChannelId)
+    {
+        if (state.SpotNodes.TryGetValue(routerChannelId, out var spotNode)
+            && spotNode.SpotDiscovery is not null)
+        {
+            return spotNode.SpotDiscovery;
+        }
+
+        return ResolveSingleSpotDiscovery(state);
+    }
+
     public static async ValueTask RetryRouteOperationAsync(
         Action operation,
         string errorMessage,

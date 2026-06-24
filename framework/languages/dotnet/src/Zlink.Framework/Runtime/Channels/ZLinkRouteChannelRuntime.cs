@@ -34,6 +34,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _registration = registration;
         _router = router;
         _discovery = discovery;
+        var routeInternalPackets = internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance;
         _codecs = frameworkRegistration.Codecs;
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
         _taskRunner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), _stopSource.Token);
@@ -64,7 +65,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 handlers,
                 new ZLinkRouteHandlerInvoker(services, _codecs),
                 _codecs,
-                internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance,
+                routeInternalPackets,
                 new ZLinkDispatchErrorReporter(
                     frameworkRegistration.DispatchOptions,
                     services,

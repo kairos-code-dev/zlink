@@ -244,6 +244,11 @@ public abstract partial class RegistrationValidationSupport
         public IZLinkSpotContext Context { get; } = context;
     }
 
+    protected sealed class OtherTestSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+    }
+
     protected sealed class TestEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
     {
         public IZLinkEntrySpotContext Context { get; } = context;

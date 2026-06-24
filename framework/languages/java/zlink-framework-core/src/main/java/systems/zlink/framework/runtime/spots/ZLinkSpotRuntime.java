@@ -73,6 +73,7 @@ import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
@@ -167,7 +168,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final Duration defaultRequestTimeout;
     private final ZLinkChannelRuntime channels;
     private ZLinkActorRuntime actorRuntime;
-    private final List<String> routeMeshChannels = new ArrayList<>();
+    private final List<ChannelRegistration> routeMeshChannels = new ArrayList<>();
+    private final List<String> routerSpotNodeNames = new ArrayList<>();
     private final ThreadLocal<DefaultSpotOutbound> currentOutbound = new ThreadLocal<>();
     private final Map<RoutingId, CompletionStage<ZLinkSpotCreateResult>> pendingSpotCreates =
         new HashMap<>();
@@ -263,7 +265,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             backendFactory.createSpotAdapter(adapterOptions);
         this.context = channelAdapter.createContext();
         this.defaultRequestTimeout = registration.defaultRequestTimeout();
-        ZLinkBackendSpotNode routeBridgeNode = null;
+        Map<String, ZLinkBackendSpotNode> routeBridgeNodesByName = new HashMap<>();
         for (SpotNodeRegistration nodeRegistration : registration.spotNodes()) {
             ZLinkBackendSpotNode node =
                 spotAdapter.createSpotNode(context, resolveSpotNodeMode(nodeRegistration));
@@ -308,16 +310,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (nodeRegistration.pubSubEnabled()) {
                 publisherNodesByChannel.put(nodeRegistration.meshName(), node);
             }
-            if (routeBridgeNode == null && nodeRegistration.routerEnabled()) {
-                routeBridgeNode = node;
+            if (nodeRegistration.routerEnabled()) {
+                routeBridgeNodesByName.put(nodeRegistration.nodeName(), node);
+                routerSpotNodeNames.add(nodeRegistration.nodeName());
             }
         }
         for (var channel : registration.channels()) {
             if (channel.kind() == ChannelKind.ROUTE_MESH) {
-                routeMeshChannels.add(channel.name());
+                routeMeshChannels.add(channel);
             }
         }
-        attachRouteMeshSpotBridges(routeBridgeNode);
+        attachRouteMeshSpotBridges(routeBridgeNodesByName);
         this.primaryNode = nodes.get(0);
         this.primaryNodeSourceName = registration.spotNodes().get(0).nodeName();
         spotDiscoveryReconciler.start(timerExecutor);
@@ -1286,12 +1289,27 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             nodeRegistration.pubBind());
     }
 
-    private void attachRouteMeshSpotBridges(ZLinkBackendSpotNode routeBridgeNode) {
-        if (channels == null || routeMeshChannels.isEmpty() || routeBridgeNode == null) {
+    private void attachRouteMeshSpotBridges(Map<String, ZLinkBackendSpotNode> routeBridgeNodesByName) {
+        if (channels == null || routeMeshChannels.isEmpty() || routeBridgeNodesByName.isEmpty()) {
             return;
         }
-        for (String routeMeshChannel : routeMeshChannels) {
-            channels.attachSpotRouteBridgeToServer(routeMeshChannel, routeBridgeNode);
+        for (ChannelRegistration routeMeshChannel : routeMeshChannels) {
+            ZLinkBackendSpotNode routeBridgeNode =
+                routeBridgeNodesByName.get(routeMeshChannel.name());
+            if (routeBridgeNode == null && routeMeshChannel.routeRoutingId() != null) {
+                for (ZLinkBackendSpotNode candidate : routeBridgeNodesByName.values()) {
+                    if (routeMeshChannel.routeRoutingId().equals(candidate.routingId())) {
+                        routeBridgeNode = candidate;
+                        break;
+                    }
+                }
+            }
+            if (routeBridgeNode == null && routeBridgeNodesByName.size() == 1) {
+                routeBridgeNode = routeBridgeNodesByName.values().iterator().next();
+            }
+            if (routeBridgeNode != null) {
+                channels.attachSpotRouteBridgeToServer(routeMeshChannel.name(), routeBridgeNode);
+            }
         }
     }
 
@@ -2893,6 +2911,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             try {
                 ZLinkSpotRemoteAddress address =
                     resolveRegistrySpotRemoteAddress(null, egressChannelName, spotRid);
+                ZLinkBackendSpotNode routerNode = nodesByName.get(address.routerChannelId());
+                if (routerNode != null) {
+                    return new SpotToSpotSendCall(
+                        routerNode.entrySpot(),
+                        address.targetNodeRid(),
+                        address.spotRid(),
+                        payload,
+                        packetName)
+                        .submit();
+                }
                 return channels.sendToSpotViaRouterChannel(
                     address.routerChannelId(),
                     address.targetNodeRid(),
@@ -2968,6 +2996,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             try {
                 ZLinkSpotRemoteAddress address =
                     resolveRegistrySpotRemoteAddress(null, egressChannelName, spotRid);
+                ZLinkBackendSpotNode routerNode = nodesByName.get(address.routerChannelId());
+                if (routerNode != null) {
+                    return new SpotToSpotRequestCall(
+                        routerNode.entrySpot(),
+                        address.targetNodeRid(),
+                        address.spotRid(),
+                        payload,
+                        packetName,
+                        timeout)
+                        .submit(replyType);
+                }
                 return channels.requestToSpotViaRouterChannel(
                     address.routerChannelId(),
                     address.targetNodeRid(),
@@ -3117,10 +3156,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             return configuredRouterChannelId;
         }
         if (routeMeshChannels.size() == 1) {
-            return routeMeshChannels.get(0);
+            return routeMeshChannels.get(0).name();
+        }
+        if (routeMeshChannels.isEmpty() && routerSpotNodeNames.size() == 1) {
+            return routerSpotNodeNames.get(0);
         }
         throw new ZLinkConfigurationException(
-            "registry SPOT remote addresses require a single route mesh egress channel or an explicit routerChannelId");
+            "registry SPOT remote addresses require a single route mesh egress channel or router-capable SpotNode, or an explicit routerChannelId");
     }
 
     private ZLinkBackendDiscovery resolveSpotDiscovery(String namespaceName) {

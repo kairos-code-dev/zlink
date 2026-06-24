@@ -165,7 +165,7 @@ export class ZLinkStreamRuntimeManager {
     const monitoringAdapter = this.options.backendAdapterFactory.createMonitoringAdapter();
     for (const [nodeName, streamNode] of this.options.registration.streamNodes.entries()) {
       const actorGatewayNode = streamNode.attachActorGateway === undefined
-        ? undefined
+        ? this.defaultActorGatewayNode()
         : this.requireActorGatewayNode(nodeName, streamNode.attachActorGateway);
       const socket = streamAdapter.createStreamSocket(this.options.context);
       if (actorGatewayNode !== undefined) {
@@ -209,6 +209,15 @@ export class ZLinkStreamRuntimeManager {
     throw new ZLinkConfigurationException(
       `STREAM node '${nodeName}' references unavailable ActorGateway target SpotNode '${spotNodeName}'.`
     );
+  }
+
+  private defaultActorGatewayNode(): ZLinkBackendSpotNode | undefined {
+    for (const [spotNodeName, spotNode] of this.options.registration.spotNodes) {
+      if (spotNode.router !== undefined) {
+        return this.options.spotNodes?.get(spotNodeName);
+      }
+    }
+    return undefined;
   }
 }
 

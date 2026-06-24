@@ -13,7 +13,7 @@ mkdir -p "$LOG_DIR"
 
 if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
   echo "log_dir=$LOG_DIR"
-  for child_set in baseline-1 track-c sm-e1-f4 sm-e2-e3 sm-a7-a8-c4 sm-e4 baseline-2b sm-g2 sm-g3 sm-g4 sm-g1; do
+  for child_set in baseline-1 track-c sm-q9 sm-e1-f4 sm-e2-e3 sm-a7-a8-c4 sm-e4 baseline-2b sm-g2 sm-g3 sm-g4 sm-g1; do
     child_ok=0
     for attempt in 1 2; do
       echo "child scenario_set=${child_set} attempt=${attempt}"
@@ -68,7 +68,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 28:
+    while len(sockets) < 35:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -115,6 +115,13 @@ CLIENT_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[22]}"
 CLIENT_EXTERNAL_CHANNEL="tcp://127.0.0.1:${PORTS[23]}"
 CLIENT_SPOT_PUB="tcp://127.0.0.1:${PORTS[24]}"
 CLIENT_EXTERNAL_ROUTE_B="tcp://127.0.0.1:${PORTS[27]}"
+MULTI_HTTP="http://127.0.0.1:${PORTS[28]}"
+MULTI_ROUTE_A="tcp://127.0.0.1:${PORTS[29]}"
+MULTI_ROUTE_B="tcp://127.0.0.1:${PORTS[30]}"
+MULTI_SPOT_ROUTER_A="tcp://127.0.0.1:${PORTS[31]}"
+MULTI_SPOT_ROUTER_B="tcp://127.0.0.1:${PORTS[32]}"
+CLIENT_MULTI_ROUTE_A="tcp://127.0.0.1:${PORTS[33]}"
+CLIENT_MULTI_ROUTE_B="tcp://127.0.0.1:${PORTS[34]}"
 
 endpoint_port() {
   local endpoint="$1"
@@ -178,6 +185,7 @@ start_server registry \
 wait_port registry "$REGISTRY_HTTP"
 wait_port registry-router "$REGISTRY_ROUTER"
 
+if [[ "$SCENARIO_SET" != "sm-q9" ]]; then
 start_server play-a \
   --role play \
   --rid play-a \
@@ -245,6 +253,26 @@ wait_port session-b "$SESSION_B_HTTP"
 wait_port session-b-control "$SESSION_B_CONTROL"
 wait_port session-b-spot-router "$SESSION_B_SPOT_ROUTER"
 wait_port session-b-stream "$SESSION_B_STREAM"
+fi
+
+if [[ "$SCENARIO_SET" == "sm-q9" ]]; then
+start_server multi-node \
+  --role multi-node \
+  --rid multi-node \
+  --http-url "$MULTI_HTTP" \
+  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --multi-route-a-endpoint "$MULTI_ROUTE_A" \
+  --multi-route-b-endpoint "$MULTI_ROUTE_B" \
+  --multi-spot-router-a-endpoint "$MULTI_SPOT_ROUTER_A" \
+  --multi-spot-router-b-endpoint "$MULTI_SPOT_ROUTER_B" \
+  --evidence-file "$LOG_DIR/multi-node.evidence.log" \
+  --log-dir "$LOG_DIR"
+wait_port multi-node "$MULTI_HTTP"
+wait_port multi-route-a "$MULTI_ROUTE_A"
+wait_port multi-route-b "$MULTI_ROUTE_B"
+wait_port multi-spot-router-a "$MULTI_SPOT_ROUTER_A"
+wait_port multi-spot-router-b "$MULTI_SPOT_ROUTER_B"
+fi
 
 sleep 2
 
@@ -260,6 +288,7 @@ run_client() {
     --play-b-evidence-url "$PLAY_B_HTTP/evidence" \
     --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
     --play-a-crash-url "$PLAY_A_HTTP/crash" \
+    --multi-evidence-url "$MULTI_HTTP/evidence" \
     --scenario-set "$scenario_set" \
     --play-a-rid play-a \
     --play-b-rid play-b \
@@ -273,6 +302,8 @@ run_client() {
     --client-external-channel-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
     --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
     --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
+    --client-multi-route-a-endpoint "$CLIENT_MULTI_ROUTE_A" \
+    --client-multi-route-b-endpoint "$CLIENT_MULTI_ROUTE_B" \
     --log-dir "$LOG_DIR" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
@@ -285,6 +316,7 @@ if [[ "$SCENARIO_SET" == "track-g" ]]; then
 elif [[ "$SCENARIO_SET" == "all" ]]; then
   run_client baseline-1
   run_client track-c
+  run_client sm-q9
   run_client baseline-2a
   run_client sm-e4
   run_client baseline-2b

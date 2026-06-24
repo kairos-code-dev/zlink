@@ -143,6 +143,18 @@ public sealed class BuilderContracts
         Assert.Contains("play-spots", options.SpotMeshes);
     }
 
+    [Fact]
+    public void Spot_mesh_builder_allows_multiple_process_local_nodes()
+    {
+        var options = new FrameworkOptions();
+
+        options.AddSpotMesh("play-node").EnableRouter("tcp://127.0.0.1:5501");
+        options.AddSpotMesh("session-node").EnableRouter("tcp://127.0.0.1:5502");
+
+        Assert.Equal(["play-node", "session-node"], options.SpotMeshes);
+        Assert.Equal(["play-node", "session-node"], options.SpotNodes);
+    }
+
     private static void ConfigureSpotNode(IZLinkSpotNodeBuilder spot)
     {
         spot.EnableRouter("tcp://127.0.0.1:5501")

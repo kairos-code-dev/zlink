@@ -1141,9 +1141,40 @@ export class ZLinkChannelRuntimeManager {
     );
   }
 
+  private spotRouteNode(routerChannelId: string): ZLinkBackendSpotNode | undefined {
+    const routeChannel = this.registration.routeChannelOptions.get(routerChannelId);
+    if (routeChannel === undefined) {
+      return undefined;
+    }
+    const named = this.registration.spotNodes.get(routerChannelId);
+    if (named?.router !== undefined) {
+      return this.spotNodes?.get(routerChannelId);
+    }
+    if (routeChannel.routingId !== undefined) {
+      for (const [spotNodeName, spotNode] of this.registration.spotNodes.entries()) {
+        if (spotNode.router?.routingId === routeChannel.routingId) {
+          return this.spotNodes?.get(spotNodeName);
+        }
+      }
+    }
+    const routerNodeNames = [...this.registration.spotNodes.entries()]
+      .filter(([, spotNode]) => spotNode.router !== undefined)
+      .map(([spotNodeName]) => spotNodeName);
+    if (routerNodeNames.length === 1) {
+      return this.spotNodes?.get(routerNodeNames[0]);
+    }
+    return undefined;
+  }
+
   private spotNodeRouter(routerChannelId: string): ZLinkBackendSpot | undefined {
-    return this.spotRouteNode(routerChannelId)?.entrySpot()
-      ?? this.spotNodes?.get(routerChannelId)?.entrySpot();
+    if (this.registration.spotNodes.get(routerChannelId)?.router !== undefined) {
+      return this.spotNodes?.get(routerChannelId)?.entrySpot();
+    }
+    const routeBridgeNode = this.spotRouteNode(routerChannelId);
+    if (routeBridgeNode !== undefined) {
+      return routeBridgeNode.entrySpot();
+    }
+    return this.spotNodes?.get(routerChannelId)?.entrySpot();
   }
 
   canRouteChannel(routerChannelId: string): boolean {
@@ -1156,13 +1187,6 @@ export class ZLinkChannelRuntimeManager {
       return false;
     }
     return this.registration.routeChannels.has(routerChannelId);
-  }
-
-  private spotRouteNode(routerChannelId: string): ZLinkBackendSpotNode | undefined {
-    if (!this.registration.routeChannels.has(routerChannelId)) {
-      return undefined;
-    }
-    return this.spotNodes?.values().next().value;
   }
 
   private hasBoundRouteRouter(routerChannelId: string): boolean {

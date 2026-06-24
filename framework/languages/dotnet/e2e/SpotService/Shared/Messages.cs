@@ -15,6 +15,10 @@ public static class SpotServiceNames
     public const string SessionSpotNode = "session-node";
     public const string EdgeSpotNode = "edge-node";
     public const string EdgePublisherNode = "edge-publisher-node";
+    public const string MultiSpotNodeA = "multi-node-a";
+    public const string MultiSpotNodeB = "multi-node-b";
+    public const string MultiRouteChannelA = "multi-route-a";
+    public const string MultiRouteChannelB = "multi-route-b";
     public const string ActorType = "scenario-player";
     public const string ActorIdMetadata = "actor-id";
 }
@@ -129,3 +133,7 @@ public sealed record IdleCloseCommand(string Name, int PeriodMs);
 public sealed record SpotToSpotReq(string TargetSpotRid, string Marker);
 
 public sealed record SpotToSpotReply(string SourceSpotRid, string TargetSpotRid, int TargetValue);
+
+public sealed record MultiNodeCreateSpotReq(string SpotRid, int Delta);
+
+public sealed record MultiNodeCreateSpotReply(string SpotRid, string NodeRid, string State, int Value);

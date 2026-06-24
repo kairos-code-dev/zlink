@@ -606,7 +606,14 @@ function resolveRegistrySpotRouterChannelId(registration: ZLinkFrameworkRegistra
   for (const single of registration.routeChannels) {
     return single;
   }
-  throw new ZLinkConfigurationException('Registry SPOT remote address resolver requires a route mesh channel.');
+  for (const [spotNodeName, spotNode] of registration.spotNodes) {
+    if (spotNode.router !== undefined) {
+      return spotNodeName;
+    }
+  }
+  throw new ZLinkConfigurationException(
+    'Registry SPOT remote address resolver requires a route mesh channel or router-capable SpotNode.'
+  );
 }
 
 interface ZLinkOwnedBackendObject {

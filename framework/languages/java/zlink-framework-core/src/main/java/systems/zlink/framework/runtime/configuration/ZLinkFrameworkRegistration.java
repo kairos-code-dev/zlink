@@ -207,6 +207,15 @@ public final class ZLinkFrameworkRegistration {
         return null;
     }
 
+    private SpotNodeRegistration findRouterSpotNode(String nodeName) {
+        for (SpotNodeRegistration spotNode : spotNodes) {
+            if (spotNode.nodeName().equals(nodeName) && spotNode.routerEnabled()) {
+                return spotNode;
+            }
+        }
+        return null;
+    }
+
     private void validateRegistrySpotRemoteAddresses() {
         if (registrySpotRemoteAddresses == null) {
             return;
@@ -222,14 +231,13 @@ public final class ZLinkFrameworkRegistration {
         long routeChannels = channels.stream()
             .filter(channel -> channel.kind() == ChannelKind.ROUTE_MESH)
             .count();
-        if (routeChannels == 0) {
-            throw new ZLinkConfigurationException(
-                "registry SPOT remote addresses require addRouteMesh(...)");
-        }
+        long routerSpotNodes = spotNodes.stream()
+            .filter(SpotNodeRegistration::routerEnabled)
+            .count();
         if (registrySpotRemoteAddresses.routerChannelId() == null) {
-            if (routeChannels != 1) {
+            if (routeChannels + routerSpotNodes != 1) {
                 throw new ZLinkConfigurationException(
-                    "registry SPOT remote addresses require routerChannelId when route mesh channel is ambiguous");
+                    "registry SPOT remote addresses require routerChannelId when route mesh channel or router-capable SpotNode is ambiguous");
             }
             if (spotNodes.isEmpty()) {
                 return;
@@ -247,9 +255,10 @@ public final class ZLinkFrameworkRegistration {
         }
         ChannelRegistration routerChannel =
             findChannel(registrySpotRemoteAddresses.routerChannelId());
-        if (routerChannel == null || routerChannel.kind() != ChannelKind.ROUTE_MESH) {
+        if ((routerChannel == null || routerChannel.kind() != ChannelKind.ROUTE_MESH)
+            && findRouterSpotNode(registrySpotRemoteAddresses.routerChannelId()) == null) {
             throw new ZLinkConfigurationException(
-                "registry SPOT remote addresses routerChannelId must name a route mesh channel: "
+                "registry SPOT remote addresses routerChannelId must name a route mesh channel or router-capable SpotNode: "
                     + registrySpotRemoteAddresses.routerChannelId());
         }
     }

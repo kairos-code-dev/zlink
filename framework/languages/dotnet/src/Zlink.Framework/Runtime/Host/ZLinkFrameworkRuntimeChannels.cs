@@ -17,13 +17,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _channelFacade.GetRouteChannel(routerChannelId);
     }
 
-    internal ValueTask SubmitRouteSendAsync<TMessage>(
+    internal async ValueTask SubmitRouteSendAsync<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         string packetName,
         TMessage message,
         CancellationToken cancellationToken)
     {
+        var routeChannel = GetRouteChannel(routerChannelId);
         if (_spotRouteEgress.CanHandle(routerChannelId))
         {
             var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -34,18 +35,25 @@ internal sealed partial class ZLinkFrameworkRuntime
                 header,
                 message,
                 _registration.Codecs);
-            return _spotRouteEgress.SendAsync(
-                routerChannelId,
-                targetNodeRid,
-                parts,
-                cancellationToken);
+            if (await _spotRouteEgress.TrySendAsync(
+                    routerChannelId,
+                    targetNodeRid,
+                    parts,
+                    cancellationToken)
+                .ConfigureAwait(false))
+            {
+                return;
+            }
+
+            ZLinkMessageParts.DisposeAll(parts);
         }
 
-        return GetRouteChannel(routerChannelId).SubmitSendAsync(
-            targetNodeRid,
-            packetName,
-            message,
-            cancellationToken);
+        await routeChannel.SubmitSendAsync(
+                targetNodeRid,
+                packetName,
+                message,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal async ValueTask<TReply> SubmitRouteRequestAsync<TRequest, TReply>(
@@ -56,38 +64,44 @@ internal sealed partial class ZLinkFrameworkRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        if (!_spotRouteEgress.CanHandle(routerChannelId))
+        var routeChannel = GetRouteChannel(routerChannelId);
+        if (_spotRouteEgress.CanHandle(routerChannelId))
         {
-            return await GetRouteChannel(routerChannelId).RequestAsync<TRequest, TReply>(
+            var header = ZLinkClientCallCodec.CreateEnvelope(
+                ZLinkMessageKind.Request,
+                routerChannelId,
+                packetName,
+                timeout);
+            var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
+                header,
+                request,
+                _registration.Codecs);
+            var result = await _spotRouteEgress.TryRequestAsync(
+                    routerChannelId,
                     targetNodeRid,
-                    packetName,
-                    request,
+                    parts,
                     timeout,
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (result.WasHandled)
+            {
+                return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
+                    result.Reply,
+                    "Route SPOT reply was empty.",
+                    $"Route SPOT request failed for '{packetName}'.",
+                    _registration.Codecs);
+            }
+
+            ZLinkMessageParts.DisposeAll(parts);
         }
 
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Request,
-            routerChannelId,
-            packetName,
-            timeout);
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
-            header,
-            request,
-            _registration.Codecs);
-        var reply = await _spotRouteEgress.RequestAsync(
-                routerChannelId,
+        return await routeChannel.RequestAsync<TRequest, TReply>(
                 targetNodeRid,
-                parts,
+                packetName,
+                request,
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
-            reply,
-            "Route SPOT reply was empty.",
-            $"Route SPOT request failed for '{packetName}'.",
-            _registration.Codecs);
     }
 
     internal async ValueTask SendToSpotViaRouterChannelAsync(

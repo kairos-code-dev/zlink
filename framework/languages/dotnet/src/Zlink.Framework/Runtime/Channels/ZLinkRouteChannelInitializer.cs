@@ -77,24 +77,16 @@ internal sealed class ZLinkRouteChannelInitializer(
         ZLinkRouteChannelRegistration routedRegistration,
         ZLinkRouteChannelRuntime runtime)
     {
-        var owners = registration.SpotNodes.Values
-            .Where(spotNode => spotNode.Router is not null)
-            .ToArray();
-        if (owners.Length == 0)
+        var owner = ResolveSpotRouteBridgeOwner(routedRegistration);
+        if (owner is null)
         {
             return;
         }
 
-        if (owners.Length > 1)
+        if (!state.SpotNodes.TryGetValue(owner.SpotNodeName, out var spotRuntime))
         {
             throw new ZLinkConfigurationException(
-                $"Route channel '{routedRegistration.RouterChannelId}' cannot attach an implicit SPOT route bridge because multiple router-capable SPOT nodes are registered in this process.");
-        }
-
-        if (!state.SpotNodes.TryGetValue(owners[0].SpotNodeName, out var spotRuntime))
-        {
-            throw new ZLinkConfigurationException(
-                $"Route channel '{routedRegistration.RouterChannelId}' cannot attach an implicit SPOT route bridge because SPOT node '{owners[0].SpotNodeName}' is not started.");
+                $"Route channel '{routedRegistration.RouterChannelId}' cannot attach an implicit SPOT route bridge because SPOT node '{owner.SpotNodeName}' is not started.");
         }
 
         var bridge = spotRuntime.Node.CreateRouteBridge();
@@ -102,12 +94,51 @@ internal sealed class ZLinkRouteChannelInitializer(
         {
             runtime.AttachSpotRouteBridge(bridge);
             state.SpotRouteBridges.Add(bridge);
+            state.SpotRouteBridgeOwners.Add(routedRegistration.RouterChannelId, spotRuntime);
         }
         catch
         {
             _ = bridge.DisposeAsync();
             throw;
         }
+    }
+
+    private ZLinkSpotNodeRegistration? ResolveSpotRouteBridgeOwner(ZLinkRouteChannelRegistration routeChannel)
+    {
+        if (registration.SpotNodes.TryGetValue(routeChannel.RouterChannelId, out var named)
+            && named.Router is not null)
+        {
+            return named;
+        }
+
+        if (routeChannel.RoutingConfig.RoutingId.Size > 0)
+        {
+            foreach (var spotNode in registration.SpotNodes.Values)
+            {
+                if (spotNode.Router?.RoutingConfig.RoutingId == routeChannel.RoutingConfig.RoutingId)
+                {
+                    return spotNode;
+                }
+            }
+        }
+
+        ZLinkSpotNodeRegistration? owner = null;
+        foreach (var spotNode in registration.SpotNodes.Values)
+        {
+            if (spotNode.Router is null)
+            {
+                continue;
+            }
+
+            if (owner is not null)
+            {
+                return null;
+            }
+
+            owner = spotNode;
+        }
+
+        return owner;
     }
 
     private IZLinkBackendDiscovery? AttachDiscoveryIfNeeded(

@@ -62,7 +62,9 @@ flowchart LR
   router·pub/sub mesh 가 자동으로 이어진다(굵은 화살표). 다른 channel 로 나가는 연결은
   별도 함수가 필요하고, 아래 §2 그림에서 본다.
 - **한 `SpotNode` 는 한 channel 만 본다.** active SPOT channel view 가 정확히 하나라,
-  노드는 항상 하나의 channel 박스 안에 속한다.
+  노드는 항상 하나의 channel 박스 안에 속한다. 단 **한 프로세스는 여러 `SpotNode` 를 둘 수
+  있다**. `AddSpotMesh(...)` 를 channel 이름별로 여러 번 호출하면 각각 자기 channel 박스에
+  속한 별도 노드가 된다(§2). 같은 이름으로 두 번 부르면 시작 예외다.
 
 ## 2. SpotNode 등록
 
@@ -86,6 +88,21 @@ builder.Services.AddZLinkFramework(options =>
     options.AddClientServerChannel("orders").EnableClient();
 });
 ```
+
+> **여러 SpotNode 를 한 프로세스에.** `AddSpotMesh(...)` 는 호출마다 그 channel 의 노드 하나를
+> 만든다. 서로 다른 channel 이름으로 여러 번 부르면 한 프로세스가 **여러 SpotNode** 를 호스팅한다
+> (예: room 노드 + session gateway 노드 동거). 외부에서 spot 으로 보내는 route 도 다중 노드를
+> 지원한다. 보내는 쪽이 `spotRid` 의 소유 노드를 찾아 그 노드로 보내므로, 각 노드는 자기 spot 만 받는다.
+> 같은 channel 이름을 두 번 등록하면 시작 예외다.
+>
+> ```csharp
+> options.AddSpotMesh("game.room") // room spot 을 맡는 노드를 별도 channel 로 등록한다.
+>     .EnableRouter("tcp://0.0.0.0:9001")
+>     .AddSpotFactory<RoomSpot>();
+> options.AddSpotMesh("game.zone") // zone spot 은 다른 노드가 맡도록 channel 을 분리한다.
+>     .EnableRouter("tcp://0.0.0.0:9002")
+>     .AddSpotFactory<ZoneSpot>();
+> ```
 
 node 역할은 서로 독립이다.
 

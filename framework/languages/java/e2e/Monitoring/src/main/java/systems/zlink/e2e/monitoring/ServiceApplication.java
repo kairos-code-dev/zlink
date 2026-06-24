@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spring.ZLinkMonitoringLifecycle;
@@ -77,7 +78,7 @@ public final class ServiceApplication {
     @Bean
     ZLinkMonitoringOptionsCustomizer monitoringOptions() {
         return options -> {
-            options.addSocketEvents(Contracts.CHANNEL);
+            options.addSocketEvents(Contracts.CHANNEL, ZLinkSocketEventKind.CONNECTION_READY);
             options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100));
         };
     }

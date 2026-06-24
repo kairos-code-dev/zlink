@@ -94,6 +94,7 @@ public final class ClientApplication {
             waitForAnyEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "socket", Set.of(
                 "CONNECTED",
                 "CONNECTION_READY"));
+            ensureFilteredSocketEvents();
             waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "spot", Set.of(
                 "STATUS_CHANGED",
                 "PEERS_CHANGED",
@@ -102,6 +103,15 @@ public final class ClientApplication {
             System.out.println("scenario MON-A1 passed");
             System.out.println("scenario MON-A2 passed");
             System.out.println("scenario MON-A3 passed");
+            System.out.println("scenario MON-B1 passed");
+        }
+
+        private void ensureFilteredSocketEvents() {
+            Set<String> observed = events(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "socket");
+            ensure(observed.contains("CONNECTION_READY"),
+                "MON-B1 did not observe filtered CONNECTION_READY event");
+            ensure(observed.equals(Set.of("CONNECTION_READY")),
+                "MON-B1 socket filter allowed unexpected events: " + observed);
         }
 
         private void waitForEvent(String baseUrl, String surface, Set<String> expected) {

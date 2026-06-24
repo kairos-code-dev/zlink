@@ -58,9 +58,10 @@
   request/send가 동작하는지 검증한다.
 - `SM-F3`: 같은 route mesh channel에서 일반 route packet과 spot route packet이 함께 오가도 각각
   올바른 dispatcher로 분기되는지 검증한다.
-- `SM-F4`: handler 없는 spot route request와 slow spot timeout이 client-visible failure로 끝나고
-  후속 정상 spot route request가 복구되는지 검증한다. 존재하지 않는 target spot route 주입은 현재
-  core bridge가 장기 프로세스 상태를 오염시키므로 별도 core 결함으로 분리한다.
+- `SM-F4`: 존재하지 않는 target spot, handler 없는 spot route request, slow spot timeout이
+  client-visible failure로 끝나고 후속 정상 spot route request가 복구되는지 검증한다. v1 implicit
+  route에는 ingress opt-out이 없으므로 ingress 거부는 적용 대상이 아니다. malformed relay packet은
+  public typed route client로 만들 수 없어 raw-frame harness가 필요하다.
 - `SM-F5`: spot route negative 이후에도 같은 route channel의 정상 spot route와 이후 stream/crash
   시나리오가 계속 통과해 channel socket lifecycle이 유지되는지 검증한다.
 - `SM-G1`: actor와 stream session이 붙은 `play-a`를 실제 SIGKILL하고, 같은 gateway에 bind된

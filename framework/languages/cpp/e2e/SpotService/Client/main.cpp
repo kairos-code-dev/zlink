@@ -484,6 +484,18 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             .result ();
         ensure (!slow_spot_timeout.has_value (),
                 "SM-C1 slow spot route request unexpectedly succeeded");
+        const auto missing_spot = zlink::framework::spot_rid_t::from_string (
+          "user:play-b:missing-spot-route");
+        auto missing_spot_route =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
+                      missing_spot, e2e::direct_spot_req_t{"external-client", "missing-route"})
+            .packet_name ("DirectSpotReq")
+            .timeout (std::chrono::milliseconds (300))
+            .async<e2e::direct_spot_res_t> ()
+            .result ();
+        ensure (!missing_spot_route.has_value (),
+                "SM-F4 missing target spot route unexpectedly succeeded");
         auto recovery_after_negative =
           routes
             .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),

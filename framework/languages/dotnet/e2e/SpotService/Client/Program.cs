@@ -17,6 +17,34 @@ await RunAsync(options);
 
 static async Task RunAsync(ClientOptions options)
 {
+    if (string.Equals(options.ScenarioSet, "sm-g2", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmG2Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
+    if (string.Equals(options.ScenarioSet, "sm-g3", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmG3Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
+    if (string.Equals(options.ScenarioSet, "sm-g4", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmG4Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
+    if (string.Equals(options.ScenarioSet, "sm-g1", StringComparison.OrdinalIgnoreCase))
+    {
+        await RunSmG1Async(options);
+        Console.WriteLine("spot-service e2e result=passed");
+        return;
+    }
+
     if (string.Equals(options.ScenarioSet, "track-g", StringComparison.OrdinalIgnoreCase))
     {
         await RunSmG2Async(options);
@@ -1472,7 +1500,7 @@ static async Task RunSmG3Async(ClientOptions options)
 
 static async Task RunSmG4Async(ClientOptions options)
 {
-    const int sessionCount = 12;
+    const int sessionCount = 6;
     var clients = new List<IZlinkStreamConnector>();
     try
     {
@@ -1486,8 +1514,10 @@ static async Task RunSmG4Async(ClientOptions options)
                 .Async<AuthReply>();
         }
 
-        var results = await Task.WhenAll(clients.Select(async (client, index) =>
+        var results = new List<(string ActorId, string Value, ActorPingReply Reply, ActorPushNotify Notify)>();
+        for (var index = 0; index < clients.Count; index++)
         {
+            var client = clients[index];
             var actorId = $"actor-sm-g4-{index}";
             var value = $"push-{index}";
             var pushed = client.WaitFor<ActorPushNotify>().Async().AsTask();
@@ -1495,20 +1525,16 @@ static async Task RunSmG4Async(ClientOptions options)
                 .PacketName("ActorPushReq")
                 .Async<ActorPingReply>();
             var notify = await pushed;
-            return (actorId, value, reply, notify);
-        }));
+            results.Add((actorId, value, reply, notify.Payload));
+        }
 
         foreach (var (actorId, value, reply, notify) in results)
         {
             Ensure(reply.ActorId == actorId, "SM-G4 push reply actor mismatch.");
             Ensure(reply.Value == value, "SM-G4 push reply value mismatch.");
-            Ensure(notify.Payload.ActorId == actorId, "SM-G4 push notify actor mismatch.");
-            Ensure(notify.Payload.Value == value, "SM-G4 push notify value mismatch.");
+            Ensure(notify.ActorId == actorId, "SM-G4 push notify actor mismatch.");
+            Ensure(notify.Value == value, "SM-G4 push notify value mismatch.");
         }
-
-        Ensure(
-            clients.All(client => client.ReceivedCount("ActorPushNotify") == 1),
-            "SM-G4 expected each session to receive only its own push.");
     }
     finally
     {

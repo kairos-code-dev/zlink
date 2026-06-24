@@ -158,7 +158,7 @@ class user_spot_t : public zlink::framework::spot_t
                        request.key);
         return zlink::framework::spot_actor_join_response_t::accept (
           e2e::join_res_t{.spot_rid = std::string (_context.spot_rid ().value ()),
-                          .owner_node_rid = std::string (_context.node_rid ().value ()),
+                          .owner_node_rid = _state.node_rid,
                           .actor_id = actor.actor_id,
                           .display_name = actor.display_name,
                           .level = actor.level,
@@ -196,7 +196,7 @@ class user_spot_t : public zlink::framework::spot_t
         _state.record ("StateMutated", actor.actor_id, std::string (_context.spot_rid ().value ()),
                        std::to_string (_value));
         return {.spot_rid = std::string (_context.spot_rid ().value ()),
-                .owner_node_rid = std::string (_context.node_rid ().value ()),
+                .owner_node_rid = _state.node_rid,
                 .value = _value,
                 .sequence = _sequence};
     }
@@ -272,7 +272,7 @@ class user_spot_t : public zlink::framework::spot_t
         _state.record ("SpotToSpotRequest", request.source_actor_id,
                        std::string (_context.spot_rid ().value ()), request.value);
         return {.spot_rid = std::string (_context.spot_rid ().value ()),
-                .owner_node_rid = std::string (_context.node_rid ().value ()),
+                .owner_node_rid = _state.node_rid,
                 .value = request.value + ":reply"};
     }
 
@@ -288,7 +288,7 @@ class user_spot_t : public zlink::framework::spot_t
         _state.record ("SpotToSpotSlow", {}, std::string (_context.spot_rid ().value ()),
                        request.value);
         return {.spot_rid = std::string (_context.spot_rid ().value ()),
-                .owner_node_rid = std::string (_context.node_rid ().value ()),
+                .owner_node_rid = _state.node_rid,
                 .value = request.value + ":slow"};
     }
 

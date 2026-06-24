@@ -36,6 +36,7 @@ SERVER="$BUILD_DIR/zlink_cpp_e2e_spot_service_server"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_spot_service_client"
 PIDS=()
 PLAY_A_PID=""
+PLAY_B_PID=""
 SESSION_A_PID=""
 
 cleanup() {
@@ -139,6 +140,9 @@ start_play() {
   if [[ "$rid" == "play-a" ]]; then
     PLAY_A_PID="$pid"
   fi
+  if [[ "$rid" == "play-b" ]]; then
+    PLAY_B_PID="$pid"
+  fi
   wait_port "$rid-route" "$route"
   wait_port "$rid-spot" "$spot"
   wait_port "$rid-http" "$http"
@@ -200,6 +204,7 @@ ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
 ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
 ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
 ZLINK_CPP_E2E_SCENARIO_MODE=base \
+ZLINK_CPP_E2E_CLIENT_RID="client-base" \
 ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
@@ -220,6 +225,7 @@ ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
 ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT="$STREAM_B" \
 ZLINK_CPP_E2E_SCENARIO_MODE=stream \
+ZLINK_CPP_E2E_CLIENT_RID="client-stream" \
 ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" >"$LOG_DIR/stream-client.stdout.log" 2>"$LOG_DIR/stream-client.stderr.log"
@@ -337,7 +343,15 @@ wait_port_closed session-a-route "$ROUTE_SESSION_A"
 wait_port_closed session-a-spot "$SPOT_SESSION_A"
 wait_port_closed session-a-stream "$STREAM_A"
 wait_port_closed session-a-http "$HTTP_SESSION_A"
+if [[ -n "$PLAY_B_PID" ]] && kill -0 "$PLAY_B_PID" >/dev/null 2>&1; then
+  kill -9 "$PLAY_B_PID" >/dev/null 2>&1 || true
+  wait "$PLAY_B_PID" >/dev/null 2>&1 || true
+fi
+wait_port_closed play-b-route "$ROUTE_B"
+wait_port_closed play-b-spot "$SPOT_B"
+wait_port_closed play-b-http "$HTTP_B"
 start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
+start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
 start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
 sleep 20
 
@@ -354,6 +368,7 @@ ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
 ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
 ZLINK_CPP_E2E_SCENARIO_MODE=crash-setup \
+ZLINK_CPP_E2E_CLIENT_RID="client-crash-setup" \
 ZLINK_CPP_E2E_CRASH_READY_FILE="$CRASH_READY" \
 ZLINK_CPP_E2E_CRASH_GO_FILE="$CRASH_GO" \
 ZLINK_CPP_E2E_CRASH_OBSERVED_FILE="$CRASH_OBSERVED" \
@@ -380,6 +395,7 @@ ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
 ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
 ZLINK_CPP_E2E_SCENARIO_MODE=crash-recover \
+ZLINK_CPP_E2E_CLIENT_RID="client-crash-recover" \
 ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" >"$LOG_DIR/crash-recover-client.stdout.log" 2>"$LOG_DIR/crash-recover-client.stderr.log"

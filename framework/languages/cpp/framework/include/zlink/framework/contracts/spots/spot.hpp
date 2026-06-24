@@ -11,6 +11,7 @@
 #include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
+#include <zlink/framework/contracts/spots/spot_identity.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
 #include <zlink/framework/contracts/workers/worker.hpp>
 
@@ -329,34 +330,6 @@ enum class spot_handler_kind_t
     packet,
     subscription,
     actor_packet
-};
-
-class node_rid_t
-{
-  public:
-    node_rid_t () = default;
-    explicit node_rid_t (std::string value);
-
-    static node_rid_t from_string (std::string value);
-    std::string_view value () const noexcept;
-    bool empty () const noexcept;
-
-  private:
-    std::string _value;
-};
-
-class spot_rid_t
-{
-  public:
-    spot_rid_t () = default;
-    explicit spot_rid_t (std::string value);
-
-    static spot_rid_t from_string (std::string value);
-    std::string_view value () const noexcept;
-    bool empty () const noexcept;
-
-  private:
-    std::string _value;
 };
 
 struct spot_route_t

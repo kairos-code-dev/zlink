@@ -73,6 +73,22 @@ wait_port() {
   return 1
 }
 
+wait_port_closed() {
+  local name="$1"
+  local endpoint="$2"
+  local host="127.0.0.1"
+  local port
+  port="$(port_of "$endpoint")"
+  for _ in $(seq 1 100); do
+    if ! (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  echo "Timed out waiting for $name to close at $endpoint" >&2
+  return 1
+}
+
 wait_marker() {
   local file="$1"
   for _ in $(seq 1 200); do
@@ -99,9 +115,11 @@ start_subscriber() {
   local id="$1"
   local topics="$2"
   local http="$3"
+  local delay="${4:-0}"
   ZLINK_CPP_E2E_ROLE=subscriber \
   ZLINK_CPP_E2E_SUBSCRIBER_ID="$id" \
   ZLINK_CPP_E2E_TOPICS="$topics" \
+  ZLINK_CPP_E2E_HANDLER_DELAY_MS="$delay" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
@@ -110,6 +128,14 @@ start_subscriber() {
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$id-http" "$http"
+}
+
+stop_pid() {
+  local pid="$1"
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    kill "$pid" >/dev/null 2>&1 || true
+    wait "$pid" >/dev/null 2>&1 || true
+  fi
 }
 
 stop_all_subscribers() {
@@ -206,6 +232,32 @@ elif mode == "late":
             not any(value.startswith("before-late-") for value in late)
         return early_ok and late_ok
     wait_for(ok, "PS-A3 evidence check failed")
+elif mode == "reconnect":
+    def ok(ss):
+        by_id = {s["subscriber_id"]: s for s in ss}
+        sub1 = values(by_id["sub-1"], "fanout")
+        sub2 = values(by_id["sub-2"], "fanout")
+        sub3 = values(by_id["sub-3"], "fanout")
+        during = [f"during-reconnect-{i}" for i in range(5)]
+        after = [f"after-reconnect-{i}" for i in range(8)]
+        stable_ok = all(value in sub1 and value in sub2 for value in during + after)
+        rejoined_ok = all(value in sub3 for value in after) and \
+            not any(value in sub3 for value in during)
+        return stable_ok and rejoined_ok
+    wait_for(ok, "PS-A4 evidence check failed")
+elif mode == "slow":
+    def ok(ss):
+        by_id = {s["subscriber_id"]: s for s in ss}
+        fast1 = values(by_id["sub-2"], "fanout")
+        fast2 = values(by_id["sub-3"], "fanout")
+        expected = [f"slow-isolation-{i}" for i in range(16)]
+        return all(value in fast1 and value in fast2 for value in expected)
+    wait_for(ok, "PS-B1 evidence check failed")
+elif mode == "publisher-restart":
+    def ok(ss):
+        expected = [f"publisher-restart-{i}" for i in range(8)]
+        return all(all(value in values(s, "fanout") for value in expected) for s in ss)
+    wait_for(ok, "PS-B2 evidence check failed")
 elif mode == "negative":
     def ok(ss):
         for snapshot in ss:
@@ -279,6 +331,77 @@ touch "$CONTINUE"
 wait "$LATE_CLIENT_PID"
 cat "$LOG_DIR/client-late.stdout.log"
 verify late "$HTTP_1" "$HTTP_2" "$HTTP_3"
+stop_all_subscribers
+
+START_READY="$LOG_DIR/ps-a4-start-ready"
+START_CONTINUE="$LOG_DIR/ps-a4-start-continue"
+READY="$LOG_DIR/ps-a4-ready"
+CONTINUE="$LOG_DIR/ps-a4-continue"
+RESTART_READY="$LOG_DIR/ps-a4-restart-ready"
+RESTART_CONTINUE="$LOG_DIR/ps-a4-restart-continue"
+start_client_waiting reconnect reconnect "$START_READY" "$START_CONTINUE" \
+  ZLINK_CPP_E2E_READY_FILE="$READY" \
+  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
+  ZLINK_CPP_E2E_RESTART_READY_FILE="$RESTART_READY" \
+  ZLINK_CPP_E2E_RESTART_CONTINUE_FILE="$RESTART_CONTINUE"
+RECONNECT_CLIENT_PID="$LAST_PID"
+wait_marker "$START_READY"
+start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
+start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+start_subscriber sub-3 fanout "$HTTP_3"; SUB3_PID="$LAST_PID"; SUB_PIDS+=("$LAST_PID")
+sleep 1
+touch "$START_CONTINUE"
+wait_marker "$READY"
+stop_pid "$SUB3_PID"
+wait_port_closed sub-3-http "$HTTP_3"
+touch "$CONTINUE"
+wait_marker "$RESTART_READY"
+start_subscriber sub-3 fanout "$HTTP_3"; SUB3_PID="$LAST_PID"; SUB_PIDS+=("$LAST_PID")
+sleep 1
+touch "$RESTART_CONTINUE"
+wait "$RECONNECT_CLIENT_PID"
+cat "$LOG_DIR/client-reconnect.stdout.log"
+verify reconnect "$HTTP_1" "$HTTP_2" "$HTTP_3"
+stop_all_subscribers
+
+START_READY="$LOG_DIR/ps-b1-start-ready"
+START_CONTINUE="$LOG_DIR/ps-b1-start-continue"
+start_client_waiting slow slow "$START_READY" "$START_CONTINUE"
+SLOW_CLIENT_PID="$LAST_PID"
+wait_marker "$START_READY"
+start_subscriber sub-1 fanout "$HTTP_1" 250; SUB_PIDS+=("$LAST_PID")
+start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
+sleep 1
+touch "$START_CONTINUE"
+wait "$SLOW_CLIENT_PID"
+cat "$LOG_DIR/client-slow.stdout.log"
+verify slow "$HTTP_1" "$HTTP_2" "$HTTP_3"
+stop_all_subscribers
+
+START_READY="$LOG_DIR/ps-b2-start-ready"
+START_CONTINUE="$LOG_DIR/ps-b2-start-continue"
+start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
+start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
+start_client_waiting publisher-restart publisher-before "$START_READY" "$START_CONTINUE"
+PUB_RESTART_CLIENT_PID="$LAST_PID"
+wait_marker "$START_READY"
+sleep 1
+touch "$START_CONTINUE"
+wait "$PUB_RESTART_CLIENT_PID"
+cat "$LOG_DIR/client-publisher-before.stdout.log"
+sleep 1
+START_READY="$LOG_DIR/ps-b2-restart-ready"
+START_CONTINUE="$LOG_DIR/ps-b2-restart-continue"
+start_client_waiting publisher-restart publisher-after "$START_READY" "$START_CONTINUE"
+PUB_RESTART_CLIENT_PID="$LAST_PID"
+wait_marker "$START_READY"
+sleep 1
+touch "$START_CONTINUE"
+wait "$PUB_RESTART_CLIENT_PID"
+cat "$LOG_DIR/client-publisher-after.stdout.log"
+verify publisher-restart "$HTTP_1" "$HTTP_2" "$HTTP_3"
 stop_all_subscribers
 
 START_READY="$LOG_DIR/ps-c1-start-ready"

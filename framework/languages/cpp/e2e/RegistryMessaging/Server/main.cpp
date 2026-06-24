@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -25,6 +26,19 @@ std::string env_or (const char *name, std::string fallback = {})
         return value;
     }
     return fallback;
+}
+
+std::vector<std::string> split_csv (const std::string &text)
+{
+    std::vector<std::string> result;
+    std::stringstream input (text);
+    std::string item;
+    while (std::getline (input, item, ',')) {
+        if (!item.empty ()) {
+            result.push_back (item);
+        }
+    }
+    return result;
 }
 
 class scenario_state_t
@@ -195,7 +209,9 @@ int main (int argc, char **argv)
         options.handlers ()
           .add<profile_request_handler_t> (e2e::handler_group)
           .add_send<profile_command_handler_t> (e2e::handler_group);
-        options.use_discovery ().add_registry_endpoint (registry_router);
+        for (const auto &endpoint : split_csv (registry_router)) {
+            options.use_discovery ().add_registry_endpoint (endpoint);
+        }
         if (!api_endpoint.empty ()) {
             options.add_client_server_channel (e2e::api_channel)
               .enable_server (api_endpoint)

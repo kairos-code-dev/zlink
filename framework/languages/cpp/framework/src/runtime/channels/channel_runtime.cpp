@@ -3,6 +3,7 @@
 #include "channel_runtime.hpp"
 
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
+#include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink.hpp>
 
 #include "runtime/channels/channel_outbound_exchange.hpp"
@@ -936,6 +937,130 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
       });
 }
 
+task_t<void> route_client_t::submit_spot_send_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  const std::string &router_channel_id,
+  const zlink::routing_id_t &target_node_rid,
+  const spot_rid_t &target_spot_rid,
+  const std::string &packet_name,
+  std::type_index message_type,
+  const void *message,
+  const route_send_call_t::metadata_map_t &metadata)
+{
+    if (!state || !state->runtime || state->serializers == nullptr) {
+        return task_t<void> (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error, "route client is not configured"));
+    }
+    runtime::messaging::message_parts_t parts;
+    const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
+    try {
+        detail::channel_runtime_manager_t manager (state->runtime);
+        auto &runtime = manager.get_route_channel (router_channel_id);
+        runtime::messaging::client_call_codec_t codec;
+        auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
+                                             router_channel_id, packet_name);
+        header.metadata = metadata;
+        detail::message_flow_tracer_t (state->runtime->dispatch)
+          .trace (message_flow_phase_t::sent, [&] {
+              return message_flow_event_t{message_flow_phase_t::sent,
+                                          dispatch_error_surface_t::spot_route,
+                                          dispatch_message_kind_t::send,
+                                          packet_name,
+                                          router_channel_id,
+                                          std::nullopt,
+                                          header.correlation_id,
+                                          target_node_rid.to_string (),
+                                          spot_rid.to_string (),
+                                          std::nullopt,
+                                          std::nullopt};
+          });
+        runtime::messaging::envelope_codec_t envelope;
+        parts = envelope.encode_parts (header, message_type, message, *state->serializers);
+    }
+    catch (const framework_exception_t &error) {
+        return task_t<void> (
+          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+    }
+    return runtime::handler_coroutine_executor ().submit<void> (
+      [state, router_channel_id, target_node_rid,
+       spot_rid, parts = std::move (parts)] () mutable -> boost::asio::awaitable<result_t<void>> {
+          try {
+              detail::channel_runtime_manager_t manager (state->runtime);
+              auto &runtime = manager.get_route_channel (router_channel_id);
+              co_return runtime.submit_spot_send_parts (target_node_rid, spot_rid,
+                                                        std::move (parts));
+          }
+          catch (const framework_exception_t &error) {
+              co_return result_t<void>::failure (error.kind (), error.what (),
+                                                 error.is_retriable ());
+          }
+      });
+}
+
+task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  const std::string &router_channel_id,
+  const zlink::routing_id_t &target_node_rid,
+  const spot_rid_t &target_spot_rid,
+  const std::string &packet_name,
+  std::type_index request_type,
+  const void *request,
+  std::chrono::milliseconds timeout,
+  const route_request_call_t::metadata_map_t &metadata)
+{
+    if (!state || !state->runtime || state->serializers == nullptr) {
+        return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (
+          framework_error_kind_t::request_protocol_error, "route client is not configured"));
+    }
+    runtime::messaging::message_parts_t parts;
+    const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
+    try {
+        detail::channel_runtime_manager_t manager (state->runtime);
+        auto &runtime = manager.get_route_channel (router_channel_id);
+        const auto effective_timeout = timeout > std::chrono::milliseconds::zero ()
+                                         ? timeout
+                                         : runtime.default_request_timeout ();
+        runtime::messaging::client_call_codec_t codec;
+        auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
+                                             router_channel_id, packet_name, effective_timeout);
+        header.metadata = metadata;
+        detail::message_flow_tracer_t (state->runtime->dispatch)
+          .trace (message_flow_phase_t::sent, [&] {
+              return message_flow_event_t{message_flow_phase_t::sent,
+                                          dispatch_error_surface_t::spot_route,
+                                          dispatch_message_kind_t::request,
+                                          packet_name,
+                                          router_channel_id,
+                                          std::nullopt,
+                                          header.correlation_id,
+                                          target_node_rid.to_string (),
+                                          spot_rid.to_string (),
+                                          std::nullopt,
+                                          std::nullopt};
+          });
+        runtime::messaging::envelope_codec_t envelope;
+        parts = envelope.encode_parts (header, request_type, request, *state->serializers);
+    }
+    catch (const framework_exception_t &error) {
+        return task_t<std::uint64_t> (
+          result_t<std::uint64_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+    }
+    return runtime::handler_coroutine_executor ().submit<std::uint64_t> (
+      [state, router_channel_id, target_node_rid,
+       spot_rid, parts = std::move (parts)] () mutable -> boost::asio::awaitable<result_t<std::uint64_t>> {
+          try {
+              detail::channel_runtime_manager_t manager (state->runtime);
+              auto &runtime = manager.get_route_channel (router_channel_id);
+              co_return runtime.request_to_spot_parts (target_node_rid, spot_rid,
+                                                       std::move (parts));
+          }
+          catch (const framework_exception_t &error) {
+              co_return result_t<std::uint64_t>::failure (error.kind (), error.what (),
+                                                          error.is_retriable ());
+          }
+      });
+}
+
 task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
   const std::shared_ptr<detail::route_client_state_t> &state,
   std::string router_channel_id,
@@ -1028,6 +1153,112 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                                                 reply_header.value ().correlation_id,
                                                 target_node_rid.to_string (),
                                                 std::nullopt,
+                                                std::nullopt,
+                                                std::nullopt};
+                });
+              co_return result_t<zlink::message_t>::success (body.value ());
+          }
+          catch (const framework_exception_t &error) {
+              co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
+                                                             error.is_retriable ());
+          }
+      });
+}
+
+task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  std::string router_channel_id,
+  zlink::routing_id_t target_node_rid,
+  spot_rid_t target_spot_rid,
+  std::string packet_name,
+  std::type_index request_type,
+  const void *request,
+  std::chrono::milliseconds timeout,
+  std::map<std::string, std::string> metadata)
+{
+    if (!state || !state->runtime || state->serializers == nullptr) {
+        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_protocol_error, "route client is not configured"));
+    }
+    runtime::messaging::message_parts_t parts;
+    auto effective_timeout = timeout;
+    const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
+    try {
+        detail::channel_runtime_manager_t manager (state->runtime);
+        auto &runtime = manager.get_route_channel (router_channel_id);
+        effective_timeout = timeout > std::chrono::milliseconds::zero ()
+                              ? timeout
+                              : runtime.default_request_timeout ();
+        runtime::messaging::client_call_codec_t codec;
+        auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
+                                             router_channel_id, packet_name, effective_timeout);
+        header.metadata = std::move (metadata);
+        detail::message_flow_tracer_t (state->runtime->dispatch)
+          .trace (message_flow_phase_t::sent, [&] {
+              return message_flow_event_t{message_flow_phase_t::sent,
+                                          dispatch_error_surface_t::spot_route,
+                                          dispatch_message_kind_t::request,
+                                          packet_name,
+                                          router_channel_id,
+                                          std::nullopt,
+                                          header.correlation_id,
+                                          target_node_rid.to_string (),
+                                          spot_rid.to_string (),
+                                          std::nullopt,
+                                          std::nullopt};
+          });
+        runtime::messaging::envelope_codec_t envelope;
+        parts = envelope.encode_parts (header, request_type, request, *state->serializers);
+    }
+    catch (const framework_exception_t &error) {
+        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+          error.kind (), error.what (), error.is_retriable ()));
+    }
+    return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
+      [state, router_channel_id = std::move (router_channel_id),
+       target_node_rid = std::move (target_node_rid), spot_rid = std::move (spot_rid),
+       packet_name = std::move (packet_name), parts = std::move (parts),
+       effective_timeout] () mutable -> boost::asio::awaitable<result_t<zlink::message_t>> {
+          try {
+              detail::channel_runtime_manager_t manager (state->runtime);
+              auto &runtime = manager.get_route_channel (router_channel_id);
+              runtime::messaging::envelope_codec_t envelope;
+              auto reply = runtime.request_reply_spot_parts (
+                target_node_rid, spot_rid, std::move (parts), effective_timeout);
+              if (!reply) {
+                  co_return result_t<zlink::message_t>::failure (
+                    reply.error_kind (),
+                    reply.error () ? reply.error ()->what () : "route spot request failed");
+              }
+              auto reply_header = envelope.decode_header (reply.value ());
+              if (!reply_header) {
+                  co_return result_t<zlink::message_t>::failure (
+                    reply_header.error_kind (), reply_header.error ()
+                                                  ? reply_header.error ()->what ()
+                                                  : "route spot reply header decode failed");
+              }
+              if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
+                  co_return result_t<zlink::message_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    reply_header.value ().error_message.value_or ("route spot request failed"));
+              }
+              auto body = envelope.decode_body (reply.value ());
+              if (!body) {
+                  co_return result_t<zlink::message_t>::failure (
+                    body.error_kind (),
+                    body.error () ? body.error ()->what () : "route spot reply body decode failed");
+              }
+              detail::message_flow_tracer_t (state->runtime->dispatch)
+                .trace (message_flow_phase_t::reply_received, [&] {
+                    return message_flow_event_t{message_flow_phase_t::reply_received,
+                                                dispatch_error_surface_t::spot_route,
+                                                dispatch_message_kind_t::response,
+                                                packet_name,
+                                                router_channel_id,
+                                                std::nullopt,
+                                                reply_header.value ().correlation_id,
+                                                target_node_rid.to_string (),
+                                                spot_rid.to_string (),
                                                 std::nullopt,
                                                 std::nullopt};
                 });

@@ -4,6 +4,7 @@
 
 #include <zlink/framework.hpp>
 
+#include <atomic>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -17,6 +18,9 @@ namespace e2e = zlink::framework::e2e::registration_codec;
 
 namespace
 {
+
+std::atomic<int> next_dependency_id{1};
+std::atomic<int> scoped_dependency_destroyed{0};
 
 std::string env_or (const char *name, std::string fallback = {})
 {
@@ -44,6 +48,24 @@ class scenario_state_t
   private:
     mutable std::mutex _mutex;
     std::vector<e2e::evidence_entry_t> _entries;
+};
+
+class singleton_dependency_t
+{
+  public:
+    singleton_dependency_t () : id (next_dependency_id.fetch_add (1)) {}
+
+    int id;
+};
+
+class scoped_dependency_t
+{
+  public:
+    scoped_dependency_t () : id (next_dependency_id.fetch_add (1)) {}
+
+    ~scoped_dependency_t () { scoped_dependency_destroyed.fetch_add (1); }
+
+    int id;
 };
 
 class auto_request_handler_t
@@ -80,6 +102,150 @@ class auto_send_handler_t
 
   private:
     scenario_state_t &_state;
+};
+
+class scoped_lifecycle_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scoped_dependency_t, singleton_dependency_t>;
+    using request_type = e2e::scoped_lifecycle_req_t;
+    using reply_type = e2e::scoped_lifecycle_reply_t;
+
+    scoped_lifecycle_handler_t (scoped_dependency_t &scoped, singleton_dependency_t &singleton) :
+        _scoped (scoped), _singleton (singleton)
+    {
+    }
+
+    e2e::scoped_lifecycle_reply_t handle (const e2e::scoped_lifecycle_req_t &)
+    {
+        return {.scoped_id = _scoped.id,
+                .singleton_id = _singleton.id,
+                .destroyed_before = scoped_dependency_destroyed.load ()};
+    }
+
+  private:
+    scoped_dependency_t &_scoped;
+    singleton_dependency_t &_singleton;
+};
+
+class scoped_lifecycle_stats_handler_t
+{
+  public:
+    using request_type = e2e::scoped_lifecycle_stats_req_t;
+    using reply_type = e2e::scoped_lifecycle_stats_reply_t;
+
+    e2e::scoped_lifecycle_stats_reply_t handle (const e2e::scoped_lifecycle_stats_req_t &)
+    {
+        return {.destroyed_count = scoped_dependency_destroyed.load ()};
+    }
+};
+
+class filter_order_state_t
+{
+  public:
+    void reset ()
+    {
+        std::lock_guard lock (_mutex);
+        _order.clear ();
+    }
+
+    void add (std::string value)
+    {
+        std::lock_guard lock (_mutex);
+        _order.push_back (std::move (value));
+    }
+
+    std::vector<std::string> snapshot () const
+    {
+        std::lock_guard lock (_mutex);
+        return _order;
+    }
+
+  private:
+    mutable std::mutex _mutex;
+    std::vector<std::string> _order;
+};
+
+class filter_order_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<filter_order_state_t>;
+    using request_type = e2e::filter_order_req_t;
+    using reply_type = e2e::filter_order_reply_t;
+
+    explicit filter_order_handler_t (filter_order_state_t &state) : _state (state) {}
+
+    e2e::filter_order_reply_t handle (const e2e::filter_order_req_t &request)
+    {
+        _state.add ("handler");
+        return {.value = request.value, .order = _state.snapshot ()};
+    }
+
+  private:
+    filter_order_state_t &_state;
+};
+
+class first_filter_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<filter_order_state_t>;
+
+    explicit first_filter_t (filter_order_state_t &state) : _state (state) {}
+
+    zlink::framework::task_t<zlink::message_t>
+    invoke (const zlink::framework::handler_invocation_context_t &context,
+            zlink::framework::handler_next_t next)
+    {
+        if (context.descriptor.packet_name != e2e::filter_order_req_t::packet_name) {
+            co_return co_await next ();
+        }
+
+        _state.reset ();
+        _state.add ("first-before");
+        auto reply = co_await next ();
+        _state.add ("first-after");
+        co_return rewrite_order (reply, _state.snapshot ());
+    }
+
+  private:
+    static zlink::framework::result_t<zlink::message_t>
+    rewrite_order (const zlink::message_t &reply, const std::vector<std::string> &order)
+    {
+        auto payload = zlink::framework::detail::encoded_payload_from_raw (reply);
+        auto json = nlohmann::json::parse (payload.to_string ());
+        json["order"] = order;
+        return zlink::framework::result_t<zlink::message_t>::success (
+          zlink::framework::detail::encoded_payload_to_raw (
+            zlink::framework::encoded_payload_t::from_string (json.dump ())));
+    }
+
+    filter_order_state_t &_state;
+};
+
+class second_filter_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<filter_order_state_t>;
+
+    explicit second_filter_t (filter_order_state_t &state) : _state (state) {}
+
+    zlink::framework::task_t<zlink::message_t>
+    invoke (const zlink::framework::handler_invocation_context_t &context,
+            zlink::framework::handler_next_t next)
+    {
+        if (context.descriptor.packet_name != e2e::filter_order_req_t::packet_name) {
+            co_return co_await next ();
+        }
+
+        _state.add ("second-before");
+        auto reply = co_await next ();
+        _state.add ("second-after");
+        co_return reply;
+    }
+
+  private:
+    filter_order_state_t &_state;
 };
 
 class json_roundtrip_handler_t
@@ -177,6 +343,12 @@ void add_json_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::echo_manual_reply_t> ()
       .add_json<e2e::json_roundtrip_t> ()
       .add_json<e2e::json_roundtrip_reply_t> ()
+      .add_json<e2e::scoped_lifecycle_req_t> ()
+      .add_json<e2e::scoped_lifecycle_reply_t> ()
+      .add_json<e2e::scoped_lifecycle_stats_req_t> ()
+      .add_json<e2e::scoped_lifecycle_stats_reply_t> ()
+      .add_json<e2e::filter_order_req_t> ()
+      .add_json<e2e::filter_order_reply_t> ()
       .add_json<e2e::evidence_entry_t> ()
       .add_json<e2e::evidence_snapshot_t> ();
 }
@@ -262,14 +434,21 @@ int main (int argc, char **argv)
                 configure_invalid (options, invalid_mode, api_endpoint);
                 return;
             }
+            options.use_filter<first_filter_t> ().use_filter<second_filter_t> ();
             options.services ().add_singleton<scenario_state_t> (
               std::make_unique<scenario_state_t> ());
+            options.services ().add_singleton<singleton_dependency_t> ();
+            options.services ().add_singleton<filter_order_state_t> ();
+            options.services ().add_scoped<scoped_dependency_t> ();
             options.services ().add_transient<manual_route_handler_t> ();
             add_json_codecs (options.codecs ());
             add_custom_codecs (options.codecs ());
             options.handlers ()
               .add<auto_request_handler_t> (e2e::handler_group)
               .add_send<auto_send_handler_t> (e2e::handler_group)
+              .add<scoped_lifecycle_handler_t> (e2e::handler_group)
+              .add<scoped_lifecycle_stats_handler_t> (e2e::handler_group)
+              .add<filter_order_handler_t> (e2e::handler_group)
               .add<json_roundtrip_handler_t> (e2e::handler_group)
               .add<custom_roundtrip_handler_t> (e2e::handler_group)
               .add<mismatch_roundtrip_handler_t> (e2e::handler_group);

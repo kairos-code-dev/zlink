@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace e2e = zlink::framework::e2e::pubsub;
@@ -66,8 +67,8 @@ std::string action_name (zlink::framework::dispatch_error_action_t value)
 class evidence_state_t
 {
   public:
-    explicit evidence_state_t (std::string subscriber_id) :
-        subscriber_id (std::move (subscriber_id))
+    evidence_state_t (std::string subscriber_id, int handler_delay_ms) :
+        subscriber_id (std::move (subscriber_id)), handler_delay_ms (handler_delay_ms)
     {
     }
 
@@ -104,6 +105,7 @@ class evidence_state_t
     }
 
     std::string subscriber_id;
+    int handler_delay_ms = 0;
 
   private:
     mutable std::mutex _mutex;
@@ -123,6 +125,9 @@ template <const char *Topic> class event_handler_t
     void handle (const e2e::event_notify_t &event,
                  const zlink::framework::publish_context_t &context)
     {
+        if (_state.handler_delay_ms > 0) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (_state.handler_delay_ms));
+        }
         _state.record_event (context.topic, event.value);
     }
 
@@ -194,8 +199,9 @@ int main (int argc, char **argv)
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
     const auto publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
+    const auto handler_delay_ms = std::stoi (env_or ("ZLINK_CPP_E2E_HANDLER_DELAY_MS", "0"));
 
-    auto state = std::make_unique<evidence_state_t> (subscriber_id);
+    auto state = std::make_unique<evidence_state_t> (subscriber_id, handler_delay_ms);
     auto *state_ptr = state.get ();
     app.logging ()
       .use_file (log_dir + "/" + subscriber_id + ".log")

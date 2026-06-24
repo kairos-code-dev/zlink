@@ -259,8 +259,12 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                           .display_name = "Alice",
                                                           .level = 7,
                                                           .tags = {"alpha", "local"}});
-        ensure (local_join.owner_node_rid == "play-a", "SM-A1/SM-B1 owner mismatch");
-        ensure (local_join.spot_rid == "user:play-a:a-room", "SM-A1 spot rid mismatch");
+        ensure (local_join.owner_node_rid == "play-a",
+                "SM-A1/SM-B1 owner mismatch: owner=" + local_join.owner_node_rid
+                  + " spot=" + local_join.spot_rid);
+        ensure (local_join.spot_rid == "user:play-a:a-room",
+                "SM-A1 spot rid mismatch: owner=" + local_join.owner_node_rid
+                  + " spot=" + local_join.spot_rid);
         ensure (local_join.actor_id == "alice" && local_join.display_name == "Alice"
                   && local_join.level == 7 && local_join.tags.size () == 2
                   && local_join.tags[0] == "alpha" && local_join.tags[1] == "local",
@@ -341,6 +345,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           relay_request<e2e::state_res_t> (remote, "StateReq", e2e::state_req_t{"add", 11});
         ensure (remote_state.owner_node_rid == "play-b" && remote_state.value == 11,
                 "SM-B4 remote actor request mismatch");
+        std::cout << "scenario SM-A3 passed\n";
         std::cout << "scenario SM-A4 passed\n";
         std::cout << "scenario SM-B2 passed\n";
         std::cout << "scenario SM-B4 passed\n";
@@ -371,7 +376,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto left =
           relay_request<e2e::leave_res_t> (local, "LeaveReq", e2e::leave_req_t{"client-left"});
         ensure (left.left && left.actor_id == "alice", "SM-B6 leave reply mismatch");
-        std::cout << "scenario SM-B6 leave passed\n";
+        std::cout << "scenario SM-B6 passed\n";
         local = refresh_actor ("alice");
 
         auto destroyed = relay_request<e2e::destroy_actor_res_t> (
@@ -408,6 +413,91 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                   && spot_to_spot.timeout_rejected,
                 "SM-C3 flags mismatch");
         std::cout << "scenario SM-C3 passed\n";
+
+        const auto remote_spot = zlink::framework::spot_rid_t::from_string (remote_join.spot_rid);
+        auto direct_route_reply =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
+                      remote_spot, e2e::direct_spot_req_t{"external-client", "route-direct"})
+            .packet_name ("DirectSpotReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::direct_spot_res_t> ()
+            .result ();
+        ensure (direct_route_reply.has_value (), "SM-C1/SM-F1 direct spot request failed");
+        ensure (direct_route_reply.value ().spot_rid == remote_join.spot_rid
+                  && direct_route_reply.value ().owner_node_rid == "play-b"
+                  && direct_route_reply.value ().value == "route-direct:reply",
+                "SM-C1/SM-F1 direct spot reply mismatch");
+        auto direct_route_send =
+          routes
+            .send (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
+                   remote_spot,
+                   e2e::direct_spot_command_t{"external-client", "route-direct:command"})
+            .packet_name ("DirectSpotCommand")
+            .async ()
+            .result ();
+        ensure (direct_route_send.has_value (), "SM-C1/SM-F1 direct spot send failed");
+        std::cout << "scenario SM-C1 passed\n";
+        std::cout << "scenario SM-F1 passed\n";
+        std::cout << "scenario SM-F2 passed\n";
+
+        auto normal_route_after_spot =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
+                      e2e::ensure_actor_req_t{"route-mixed-f3", "Route Mixed"})
+            .packet_name ("EnsureActor")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::ensure_actor_res_t> ()
+            .result ();
+        ensure (normal_route_after_spot.has_value (),
+                "SM-F3 normal route packet failed after spot route");
+        auto spot_route_after_normal =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
+                      remote_spot, e2e::direct_spot_req_t{"external-client", "route-mixed"})
+            .packet_name ("DirectSpotReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::direct_spot_res_t> ()
+            .result ();
+        ensure (spot_route_after_normal.has_value ()
+                  && spot_route_after_normal.value ().value == "route-mixed:reply",
+                "SM-F3 spot route packet failed after normal route");
+        std::cout << "scenario SM-F3 passed\n";
+
+        auto missing_spot_handler =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
+                      remote_spot, e2e::unhandled_spot_req_t{"missing"})
+            .packet_name ("MissingSpotReq")
+            .timeout (std::chrono::milliseconds (1000))
+            .async<e2e::direct_spot_res_t> ()
+            .result ();
+        ensure (!missing_spot_handler.has_value (),
+                "SM-E1 missing spot route handler unexpectedly succeeded");
+        auto slow_spot_timeout =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
+                      remote_spot, e2e::slow_spot_req_t{"external-timeout"})
+            .packet_name ("SlowSpotReq")
+            .timeout (std::chrono::milliseconds (50))
+            .async<e2e::direct_spot_res_t> ()
+            .result ();
+        ensure (!slow_spot_timeout.has_value (),
+                "SM-C1 slow spot route request unexpectedly succeeded");
+        auto recovery_after_negative =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
+                      remote_spot, e2e::direct_spot_req_t{"external-client", "route-recovery"})
+            .packet_name ("DirectSpotReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::direct_spot_res_t> ()
+            .result ();
+        ensure (recovery_after_negative.has_value ()
+                  && recovery_after_negative.value ().value == "route-recovery:reply",
+                "SM-F4 recovery spot route request failed");
+        std::cout << "scenario SM-E1 passed\n";
+        std::cout << "scenario SM-F4 passed\n";
+        std::cout << "scenario SM-F5 passed\n";
 
         auto publish_only = publisher
                               .publish (e2e::publisher_channel, e2e::mesh_topic,
@@ -1256,6 +1346,7 @@ int main (int argc, char **argv)
     const auto alternate_stream_endpoint = env_or ("ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT");
     const auto scenario_mode = env_or ("ZLINK_CPP_E2E_SCENARIO_MODE");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto client_rid = env_or ("ZLINK_CPP_E2E_CLIENT_RID", "client-session");
     const auto crash_ready_file = env_or ("ZLINK_CPP_E2E_CRASH_READY_FILE");
     const auto crash_go_file = env_or ("ZLINK_CPP_E2E_CRASH_GO_FILE");
     const auto crash_observed_file = env_or ("ZLINK_CPP_E2E_CRASH_OBSERVED_FILE");
@@ -1287,7 +1378,7 @@ int main (int argc, char **argv)
         options.add_fanout_channel (e2e::publisher_channel).enable_publisher (publisher_endpoint);
         auto route = options.add_route_mesh (e2e::route_channel)
                        .enable_server (route_endpoint)
-                       .set_routing_id (zlink::routing_id_t::from (std::string ("client-session")))
+                       .set_routing_id (zlink::routing_id_t::from (client_rid))
                        .enable_client ();
         if (!route_a_endpoint.empty ()) {
             route.enable_client (route_a_endpoint);
@@ -1298,10 +1389,10 @@ int main (int argc, char **argv)
         options.add_spot_mesh (e2e::spot_mesh)
           .use_registry_spot_resolver (e2e::route_channel)
           .enable_router (spot_router_endpoint,
-                          zlink::routing_id_t::from (std::string ("client-session")))
+                          zlink::routing_id_t::from (client_rid))
           .enable_actor_gateway ()
           .enable_pub_sub (pubsub_endpoint,
-                           zlink::routing_id_t::from (std::string ("client-session")));
+                           zlink::routing_id_t::from (client_rid));
     });
     app.add_hosted_service (std::move (scenario));
     const auto code = app.run (argc, argv);

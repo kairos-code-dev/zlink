@@ -792,6 +792,20 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_context_t> ().message),
                  std::shared_ptr<const zlink::message_t>>);
 
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ().send (
+                   "sample.route", std::declval<zlink::routing_id_t> (),
+                   std::declval<zlink::framework::spot_rid_t> (),
+                   std::declval<named_request_t> ())),
+                 zlink::framework::route_send_call_t>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ().request (
+                   "sample.route", std::declval<zlink::routing_id_t> (),
+                   std::declval<zlink::framework::spot_rid_t> (),
+                   std::declval<named_request_t> ())),
+                 zlink::framework::route_request_call_t>);
+
 } // namespace
 
 int main ()

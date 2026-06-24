@@ -13,15 +13,21 @@
 - `DR-A3`: registry 3대를 peer로 묶고 provider A는 `reg-1`, provider B는 `reg-3`에만 광고한다.
   세 registry의 colocated evidence가 두 provider를 모두 보고하고, 각 registry만 보는 consumer가
   두 provider에 모두 request를 성공시키는지 검증한다.
+- `DR-B1`: 미리 peer endpoint를 선언한 뒤 `reg-2`를 늦게 시작해, late-start registry가
+  기존 provider를 `member_peers`로 합산하고 그 registry만 보는 consumer가 messaging에
+  성공하는지 검증한다.
+- `DR-B2`: provider가 살아 있는 registry에도 직접 광고된 상태에서 registry 한 대를 정지하고,
+  살아 있는 registry endpoint로 discovery와 messaging이 계속 성공하는지 검증한다.
 - `DR-C1`: registry 2대 중 하나를 종료한 뒤 살아 있는 registry endpoint로 discovery와 messaging이
   계속 성공하고, 죽은 registry의 evidence endpoint가 bounded timeout 안에 실패하는지 검증한다.
+- `DR-C2`: 정지했던 registry를 같은 peer 설정으로 다시 시작한 뒤 peer broadcast를 다시 구독해
+  provider를 `member_peers`로 합산하고, 복구된 registry만 보는 consumer가 messaging에
+  성공하는지 검증한다.
 - `DR-D2`: registry를 별도 standalone 프로세스로 띄운 구성에서 discovery와 messaging이 동작하는지
   `DR-A1`과 같은 배포로 검증한다.
 
 ## C++에서 제외한 시나리오
 
-- `DR-B1`, `DR-C2`: late-start와 복구 후 재합류는 선언된 peer endpoint의 재연결을 더 오래 관측하는
-  harness가 필요하다. 현재 runner는 peer 합산과 1대 장애 지속성까지만 고정한다.
-- `DR-A4`, `DR-B2`, `DR-B3`, `DR-C3`, `DR-D1`, `DR-D3`, `DR-D4`: 충돌 광고, registry 정지 시
-  multi-endpoint consumer 지속성, peer link flapping, 전체 registry outage, embedded registry,
+- `DR-A4`, `DR-B3`, `DR-C3`, `DR-D1`, `DR-D3`, `DR-D4`: 충돌 광고, peer link flapping,
+  전체 registry outage, embedded registry,
   혼합 cluster, in-process/remote topology 동등성은 별도 장기/혼합 배포 harness가 필요하다.

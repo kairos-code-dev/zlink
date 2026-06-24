@@ -8,6 +8,7 @@
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
+#include <zlink/framework/contracts/spots/spot_identity.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -36,7 +37,6 @@ class route_channel_builder_state_t;
 } // namespace detail
 
 class spot_context_t;
-
 enum class channel_capability_t
 {
     server,
@@ -612,6 +612,26 @@ class route_client_t
           });
     }
 
+    template <typename TMessage>
+    route_send_call_t send (std::string router_channel_id,
+                            zlink::routing_id_t target_node_rid,
+                            spot_rid_t target_spot_rid,
+                            TMessage message)
+    {
+        auto state = _state;
+        return route_send_call_t (
+          detail::message_name<TMessage> (),
+          [state, router_channel_id = std::move (router_channel_id),
+           target_node_rid = std::move (target_node_rid),
+           target_spot_rid = std::move (target_spot_rid), message = std::move (message)] (
+            const std::string &packet_name,
+            const route_send_call_t::metadata_map_t &metadata) -> task_t<void> {
+              return submit_spot_send_erased (
+                state, router_channel_id, target_node_rid, target_spot_rid, packet_name,
+                std::type_index (typeid (TMessage)), &message, metadata);
+          });
+    }
+
     template <typename TRequest>
     route_request_call_t
     request (std::string router_channel_id, zlink::routing_id_t target_node_rid, TRequest request)
@@ -634,6 +654,35 @@ class route_client_t
             const route_request_call_t::metadata_map_t &metadata) mutable -> task_t<zlink::message_t> {
               return submit_request_reply_message_erased (
                 state, router_channel_id, target_node_rid, packet_name,
+                std::type_index (typeid (TRequest)), request_value.get (), timeout, metadata);
+          });
+    }
+
+    template <typename TRequest>
+    route_request_call_t request (std::string router_channel_id,
+                                  zlink::routing_id_t target_node_rid,
+                                  spot_rid_t target_spot_rid,
+                                  TRequest request)
+    {
+        auto state = _state;
+        auto request_value = std::make_shared<TRequest> (std::move (request));
+        return route_request_call_t (
+          detail::message_name<TRequest> (),
+          [state, router_channel_id = std::move (router_channel_id),
+           target_node_rid = std::move (target_node_rid),
+           target_spot_rid = std::move (target_spot_rid), request_value] (
+            const std::string &packet_name, std::chrono::milliseconds timeout,
+            const route_request_call_t::metadata_map_t &metadata) -> task_t<std::uint64_t> {
+              return submit_spot_request_erased (
+                state, router_channel_id, target_node_rid, target_spot_rid, packet_name,
+                std::type_index (typeid (TRequest)), request_value.get (), timeout, metadata);
+          },
+          _serializers,
+          [state, router_channel_id, target_node_rid, target_spot_rid, request_value] (
+            const std::string &packet_name, std::chrono::milliseconds timeout,
+            const route_request_call_t::metadata_map_t &metadata) mutable -> task_t<zlink::message_t> {
+              return submit_spot_request_reply_message_erased (
+                state, router_channel_id, target_node_rid, target_spot_rid, packet_name,
                 std::type_index (typeid (TRequest)), request_value.get (), timeout, metadata);
           });
     }
@@ -662,6 +711,27 @@ class route_client_t
                            std::chrono::milliseconds timeout,
                            const route_request_call_t::metadata_map_t &metadata);
 
+    static task_t<void>
+    submit_spot_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
+                             const std::string &router_channel_id,
+                             const zlink::routing_id_t &target_node_rid,
+                             const spot_rid_t &target_spot_rid,
+                             const std::string &packet_name,
+                             std::type_index message_type,
+                             const void *message,
+                             const route_send_call_t::metadata_map_t &metadata);
+
+    static task_t<std::uint64_t>
+    submit_spot_request_erased (const std::shared_ptr<detail::route_client_state_t> &state,
+                                const std::string &router_channel_id,
+                                const zlink::routing_id_t &target_node_rid,
+                                const spot_rid_t &target_spot_rid,
+                                const std::string &packet_name,
+                                std::type_index request_type,
+                                const void *request,
+                                std::chrono::milliseconds timeout,
+                                const route_request_call_t::metadata_map_t &metadata);
+
     template <typename TReply>
     static task_t<TReply>
     submit_request_reply_erased (const std::shared_ptr<detail::route_client_state_t> &state,
@@ -683,6 +753,17 @@ class route_client_t
                                          const void *request,
                                          std::chrono::milliseconds timeout,
                                          std::map<std::string, std::string> metadata);
+
+    static task_t<zlink::message_t> submit_spot_request_reply_message_erased (
+      const std::shared_ptr<detail::route_client_state_t> &state,
+      std::string router_channel_id,
+      zlink::routing_id_t target_node_rid,
+      spot_rid_t target_spot_rid,
+      std::string packet_name,
+      std::type_index request_type,
+      const void *request,
+      std::chrono::milliseconds timeout,
+      std::map<std::string, std::string> metadata);
 
     std::shared_ptr<detail::route_client_state_t> _state;
     serializer_registry_t *_serializers = nullptr;

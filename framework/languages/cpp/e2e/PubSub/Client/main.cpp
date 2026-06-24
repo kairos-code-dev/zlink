@@ -74,16 +74,22 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             touch_file (env_or ("ZLINK_CPP_E2E_START_READY_FILE"));
             wait_for_file (env_or ("ZLINK_CPP_E2E_START_CONTINUE_FILE"));
             std::this_thread::sleep_for (std::chrono::milliseconds (1000));
-            const auto scenario = env_or ("ZLINK_CPP_E2E_SCENARIO", "basic");
-            if (scenario == "basic") {
-                run_basic (publisher);
-            } else if (scenario == "topic") {
-                run_topic (publisher);
-            } else if (scenario == "late") {
-                run_late (publisher);
-            } else if (scenario == "negative") {
-                run_negative (publisher);
-            } else {
+        const auto scenario = env_or ("ZLINK_CPP_E2E_SCENARIO", "basic");
+        if (scenario == "basic") {
+            run_basic (publisher);
+        } else if (scenario == "topic") {
+            run_topic (publisher);
+        } else if (scenario == "late") {
+            run_late (publisher);
+        } else if (scenario == "reconnect") {
+            run_reconnect (publisher);
+        } else if (scenario == "slow") {
+            run_slow_subscriber (publisher);
+        } else if (scenario == "publisher-restart") {
+            run_publisher_restart (publisher);
+        } else if (scenario == "negative") {
+            run_negative (publisher);
+        } else {
                 throw std::runtime_error ("unknown scenario " + scenario);
             }
             passed = true;
@@ -147,6 +153,42 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             publish (publisher, e2e::topic_fanout, "after-late-" + std::to_string (index));
         }
         std::cout << "scenario PS-A3 passed\n";
+    }
+
+    void run_reconnect (zlink::framework::publisher_t &publisher)
+    {
+        for (int index = 0; index < 5; ++index) {
+            publish (publisher, e2e::topic_fanout, "before-reconnect-" + std::to_string (index));
+        }
+        touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
+        wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+        for (int index = 0; index < 5; ++index) {
+            publish (publisher, e2e::topic_fanout, "during-reconnect-" + std::to_string (index));
+        }
+        touch_file (env_or ("ZLINK_CPP_E2E_RESTART_READY_FILE"));
+        wait_for_file (env_or ("ZLINK_CPP_E2E_RESTART_CONTINUE_FILE"));
+        std::this_thread::sleep_for (std::chrono::milliseconds (500));
+        for (int index = 0; index < 8; ++index) {
+            publish (publisher, e2e::topic_fanout, "after-reconnect-" + std::to_string (index));
+        }
+        std::cout << "scenario PS-A4 passed\n";
+    }
+
+    void run_slow_subscriber (zlink::framework::publisher_t &publisher)
+    {
+        for (int index = 0; index < 16; ++index) {
+            publish (publisher, e2e::topic_fanout, "slow-isolation-" + std::to_string (index));
+        }
+        std::cout << "scenario PS-B1 passed\n";
+    }
+
+    void run_publisher_restart (zlink::framework::publisher_t &publisher)
+    {
+        for (int index = 0; index < 8; ++index) {
+            publish (publisher, e2e::topic_fanout,
+                    "publisher-restart-" + std::to_string (index));
+        }
+        std::cout << "scenario PS-B2 passed\n";
     }
 
     void run_negative (zlink::framework::publisher_t &publisher)

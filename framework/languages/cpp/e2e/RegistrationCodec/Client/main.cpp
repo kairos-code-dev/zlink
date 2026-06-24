@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace e2e = zlink::framework::e2e::registration_codec;
 
@@ -59,7 +60,13 @@ void add_json_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::echo_manual_t> ()
       .add_json<e2e::echo_manual_reply_t> ()
       .add_json<e2e::json_roundtrip_t> ()
-      .add_json<e2e::json_roundtrip_reply_t> ();
+      .add_json<e2e::json_roundtrip_reply_t> ()
+      .add_json<e2e::scoped_lifecycle_req_t> ()
+      .add_json<e2e::scoped_lifecycle_reply_t> ()
+      .add_json<e2e::scoped_lifecycle_stats_req_t> ()
+      .add_json<e2e::scoped_lifecycle_stats_reply_t> ()
+      .add_json<e2e::filter_order_req_t> ()
+      .add_json<e2e::filter_order_reply_t> ();
 }
 
 void add_custom_codecs (zlink::framework::codec_options_builder_t codecs)
@@ -108,6 +115,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             auto &routes = services.get_required<zlink::framework::route_client_t> ();
             run_auto_registration (channels);
             run_manual_registration (routes);
+            run_scoped_lifecycle (channels);
+            run_filter_order (channels);
             run_json_roundtrip (channels);
             run_custom_coexistence (channels);
             run_mismatch_negative (channels);
@@ -156,6 +165,54 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (request.result ().value ().content_type == "application/json",
                 "RC-A3 content type mismatch");
         std::cout << "scenario RC-A3 passed\n";
+    }
+
+    void run_scoped_lifecycle (zlink::framework::channel_client_t &channels)
+    {
+        auto first =
+          channels.request (e2e::api_channel, e2e::scoped_lifecycle_req_t{.value = "first"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::scoped_lifecycle_reply_t> ();
+        ensure (first.result ().has_value (), "RC-A4 first request failed");
+
+        auto second =
+          channels.request (e2e::api_channel, e2e::scoped_lifecycle_req_t{.value = "second"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::scoped_lifecycle_reply_t> ();
+        ensure (second.result ().has_value (), "RC-A4 second request failed");
+
+        const auto first_reply = first.result ().value ();
+        const auto second_reply = second.result ().value ();
+        ensure (first_reply.scoped_id != second_reply.scoped_id,
+                "RC-A4 scoped dependency was reused");
+        ensure (first_reply.singleton_id == second_reply.singleton_id,
+                "RC-A4 singleton dependency was recreated");
+        ensure (second_reply.destroyed_before >= first_reply.destroyed_before + 1,
+                "RC-A4 scoped dependency was not destroyed after request");
+
+        auto stats =
+          channels.request (e2e::api_channel, e2e::scoped_lifecycle_stats_req_t{.value = "stats"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::scoped_lifecycle_stats_reply_t> ();
+        ensure (stats.result ().has_value (), "RC-A4 stats request failed");
+        ensure (stats.result ().value ().destroyed_count >= 2,
+                "RC-A4 scoped dependency destruction count mismatch");
+        std::cout << "scenario RC-A4 passed\n";
+    }
+
+    void run_filter_order (zlink::framework::channel_client_t &channels)
+    {
+        auto request =
+          channels.request (e2e::api_channel, e2e::filter_order_req_t{.value = "filter-order"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::filter_order_reply_t> ();
+        ensure (request.result ().has_value (), "RC-A5 request failed");
+        const auto reply = request.result ().value ();
+        const std::vector<std::string> expected{
+          "first-before", "second-before", "handler", "second-after", "first-after"};
+        ensure (reply.value == "filter-order", "RC-A5 reply value mismatch");
+        ensure (reply.order == expected, "RC-A5 filter order mismatch");
+        std::cout << "scenario RC-A5 passed\n";
     }
 
     void run_json_roundtrip (zlink::framework::channel_client_t &channels)

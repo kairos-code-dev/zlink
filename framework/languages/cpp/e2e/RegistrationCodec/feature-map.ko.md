@@ -11,11 +11,18 @@
 - `RC-A3`: route mesh builder의
   `add_request_handler<TOwner, TRequest, TReply>("EchoManual", ...)`로 명시 packet 이름을
   등록하고 실제 route request로 검증한다.
+- `RC-A4`: request handler마다 새 invocation scope가 만들어지고 scoped dependency가
+  요청 뒤 dispose되는지 검증한다. singleton dependency는 같은 서버 수명 동안 유지되는지도
+  함께 확인한다.
+- `RC-A5`: handler filter pipeline의 실행 순서가 등록 순서와 역순 unwind를 따르는지
+  검증한다. 필터는 대상 packet 이름을 확인한 뒤 해당 시나리오 응답에만 순서 증거를 남긴다.
 - `RC-A6`: 잘못된 설정이 startup에서 실패하는지 검증한다. 중복 handler 등록,
   fanout channel에 send handler group을 연결하는 잘못된 조합, handler group 없이
   client/server server를 여는 조합을 별도 프로세스로 실행한다.
 - `RC-B1`: JSON serializer roundtrip을 검증한다.
-- `RC-B4`: JSON serializer와 custom serializer가 같은 channel에서 공존하는지 검증한다.
+- `RC-B4` 일부: JSON serializer와 custom serializer가 같은 channel에서 공존하는지 검증한다.
+  공통 시나리오가 요구하는 Protobuf/MessagePack content type 공존은 `RC-B2`/`RC-B3`과 같은
+  C++ content type 제한 때문에 아직 제외한다.
 - `RC-B5`: client와 server가 서로 다른 reply serializer를 등록했을 때 typed request가
   decode failure로 실패하는지 검증한다.
 
@@ -24,11 +31,8 @@
 - `RC-A2`: attribute 기반 handler discovery는 `.NET`의 attribute 표면이다. C++에는
   런타임 attribute나 assembly scan 공개 API가 없으므로 `RC-A1`의 handler group 등록이
   C++의 대응 표면이다.
-- `RC-A4`: C++ E2E는 singleton state 주입과 evidence endpoint만 사용한다. 공통 시나리오가
-  요구하는 request별 scoped dependency와 dispose count를 고정하는 public DI scope/dispose
-  harness가 아직 없다.
-- `RC-A5`: C++ framework에는 handler filter pipeline 공개 API가 아직 없다.
-- `RC-B2`, `RC-B3`: C++ framework에는 protobuf/messagepack extension 헤더가 있지만 현재
+- `RC-B2`, `RC-B3`, `RC-B4`의 Protobuf/MessagePack 공존 부분: C++ framework에는
+  protobuf/messagepack extension 헤더가 있지만 현재
   channel message envelope의 공개 content type은 `application/json`으로 고정되어 있다.
   extension은 payload serializer 등록만 제공하므로 `application/x-protobuf` 또는
   messagepack content type을 공개 channel API로 검증할 수 없다.

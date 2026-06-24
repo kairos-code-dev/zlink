@@ -235,7 +235,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             ensure (task.result ().value ().value == "profile:" + payload,
                     "RM-C8 reply payload mismatch for payload size " + std::to_string (size));
         }
-        std::cout << "scenario RM-C8 roundtrip passed\n";
+        std::cout << "scenario RM-C8 passed\n";
     }
 
     void run_route_mesh (zlink::framework::route_client_t &routes)

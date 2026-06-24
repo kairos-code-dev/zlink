@@ -107,3 +107,4 @@ cat "$LOG_DIR/client.stdout.log"
 run_invalid duplicate
 run_invalid wrong-group
 run_invalid unsupported-channel
+echo "scenario RC-A6 passed"

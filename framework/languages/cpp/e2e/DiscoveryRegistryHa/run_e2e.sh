@@ -73,6 +73,14 @@ wait_port() {
   return 1
 }
 
+stop_pid() {
+  local pid="$1"
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    kill "$pid" >/dev/null 2>&1 || true
+  fi
+  wait "$pid" >/dev/null 2>&1 || true
+}
+
 start_registry() {
   local name="$1"
   local pub="$2"
@@ -200,13 +208,45 @@ read -r R1_PUB R1_ROUTER R1_HTTP R2_PUB R2_ROUTER R2_HTTP A_ENDPOINT <<<"$(ports
 R1_PUB="tcp://127.0.0.1:$R1_PUB"; R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"; R1_HTTP="http://127.0.0.1:$R1_HTTP"
 R2_PUB="tcp://127.0.0.1:$R2_PUB"; R2_ROUTER="tcp://127.0.0.1:$R2_ROUTER"; R2_HTTP="http://127.0.0.1:$R2_HTTP"
 A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"
+start_registry dr-b1-reg1 "$R1_PUB" "$R1_ROUTER" "$R1_HTTP" "$R2_PUB"
+start_provider api-a "$A_ENDPOINT" "$R1_ROUTER"
+wait_member_peers "$R1_HTTP" 1
+run_client dr-b1-client-before "$R1_ROUTER" "api-a"
+start_registry dr-b1-reg2 "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+wait_member_peers "$R2_HTTP" 1
+run_client dr-b1-client-after "$R2_ROUTER" "api-a"
+echo "scenario DR-B1 passed"
+kill "${PIDS[@]}" >/dev/null 2>&1 || true
+wait >/dev/null 2>&1 || true
+PIDS=()
+
+read -r R1_PUB R1_ROUTER R1_HTTP R2_PUB R2_ROUTER R2_HTTP A_ENDPOINT <<<"$(ports 7)"
+R1_PUB="tcp://127.0.0.1:$R1_PUB"; R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"; R1_HTTP="http://127.0.0.1:$R1_HTTP"
+R2_PUB="tcp://127.0.0.1:$R2_PUB"; R2_ROUTER="tcp://127.0.0.1:$R2_ROUTER"; R2_HTTP="http://127.0.0.1:$R2_HTTP"
+A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"
+start_registry dr-b2-reg1 "$R1_PUB" "$R1_ROUTER" "$R1_HTTP" "$R2_PUB"
+start_registry dr-b2-reg2 "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+REG2_PID="$LAST_PID"
+start_provider api-a "$A_ENDPOINT" "$R1_ROUTER,$R2_ROUTER"
+wait_member_peers "$R1_HTTP" 1
+wait_member_peers "$R2_HTTP" 1
+stop_pid "$REG2_PID"
+run_client dr-b2-client "$R1_ROUTER" "api-a"
+echo "scenario DR-B2 passed"
+kill "${PIDS[@]}" >/dev/null 2>&1 || true
+wait >/dev/null 2>&1 || true
+PIDS=()
+
+read -r R1_PUB R1_ROUTER R1_HTTP R2_PUB R2_ROUTER R2_HTTP A_ENDPOINT <<<"$(ports 7)"
+R1_PUB="tcp://127.0.0.1:$R1_PUB"; R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"; R1_HTTP="http://127.0.0.1:$R1_HTTP"
+R2_PUB="tcp://127.0.0.1:$R2_PUB"; R2_ROUTER="tcp://127.0.0.1:$R2_ROUTER"; R2_HTTP="http://127.0.0.1:$R2_HTTP"
+A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"
 start_registry dr-c1-reg1 "$R1_PUB" "$R1_ROUTER" "$R1_HTTP" "$R2_PUB"
 start_registry dr-c1-reg2 "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
 REG2_PID="$LAST_PID"
 start_provider api-a "$A_ENDPOINT" "$R1_ROUTER"
 wait_member_peers "$R1_HTTP" 1
-kill "$REG2_PID" >/dev/null 2>&1 || true
-wait "$REG2_PID" >/dev/null 2>&1 || true
+stop_pid "$REG2_PID"
 run_client dr-c1-client "$R1_ROUTER" "api-a"
 if python3 - "$R2_HTTP" <<'PY'
 import sys, urllib.request
@@ -221,4 +261,8 @@ then
   exit 1
 fi
 echo "scenario DR-C1 passed"
+start_registry dr-c2-reg2 "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+wait_member_peers "$R2_HTTP" 1
+run_client dr-c2-client "$R2_ROUTER" "api-a"
+echo "scenario DR-C2 passed"
 echo "scenario DR-D2 passed"

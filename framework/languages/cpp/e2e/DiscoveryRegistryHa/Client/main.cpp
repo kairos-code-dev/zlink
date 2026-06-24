@@ -40,6 +40,19 @@ std::set<std::string> split_expected (const std::string &text)
     return result;
 }
 
+std::vector<std::string> split_csv (const std::string &text)
+{
+    std::vector<std::string> result;
+    std::stringstream input (text);
+    std::string item;
+    while (std::getline (input, item, ',')) {
+        if (!item.empty ()) {
+            result.push_back (item);
+        }
+    }
+    return result;
+}
+
 void ensure (bool condition, const std::string &message)
 {
     if (!condition) {
@@ -131,7 +144,9 @@ int main (int argc, char **argv)
           .trace_log_file (log_dir + "/client-flow.log")
           .trace_node_id ("cpp-dr-client");
         configure_codecs (options.codecs ());
-        options.use_discovery ().add_registry_endpoint (registry_router);
+        for (const auto &endpoint : split_csv (registry_router)) {
+            options.use_discovery ().add_registry_endpoint (endpoint);
+        }
         options.add_client_server_channel (rm::api_channel).enable_client ();
     });
     app.add_hosted_service (std::move (scenario));

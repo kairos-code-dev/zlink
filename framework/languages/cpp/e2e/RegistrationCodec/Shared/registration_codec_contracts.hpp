@@ -75,6 +75,42 @@ struct mismatch_roundtrip_reply_t
     std::string value;
 };
 
+struct scoped_lifecycle_req_t
+{
+    static constexpr const char *packet_name = "ScopedLifecycle";
+    std::string value;
+};
+
+struct scoped_lifecycle_reply_t
+{
+    int scoped_id = 0;
+    int singleton_id = 0;
+    int destroyed_before = 0;
+};
+
+struct scoped_lifecycle_stats_req_t
+{
+    static constexpr const char *packet_name = "ScopedLifecycleStats";
+    std::string value;
+};
+
+struct scoped_lifecycle_stats_reply_t
+{
+    int destroyed_count = 0;
+};
+
+struct filter_order_req_t
+{
+    static constexpr const char *packet_name = "FilterOrder";
+    std::string value;
+};
+
+struct filter_order_reply_t
+{
+    std::string value;
+    std::vector<std::string> order;
+};
+
 struct evidence_entry_t
 {
     std::string marker;
@@ -198,6 +234,71 @@ inline void to_json (nlohmann::json &json, const mismatch_roundtrip_reply_t &val
 inline void from_json (const nlohmann::json &json, mismatch_roundtrip_reply_t &value)
 {
     json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const scoped_lifecycle_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, scoped_lifecycle_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const scoped_lifecycle_reply_t &value)
+{
+    json = nlohmann::json{{"scoped_id", value.scoped_id},
+                          {"singleton_id", value.singleton_id},
+                          {"destroyed_before", value.destroyed_before}};
+}
+
+inline void from_json (const nlohmann::json &json, scoped_lifecycle_reply_t &value)
+{
+    json.at ("scoped_id").get_to (value.scoped_id);
+    json.at ("singleton_id").get_to (value.singleton_id);
+    json.at ("destroyed_before").get_to (value.destroyed_before);
+}
+
+inline void to_json (nlohmann::json &json, const scoped_lifecycle_stats_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, scoped_lifecycle_stats_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const scoped_lifecycle_stats_reply_t &value)
+{
+    json = nlohmann::json{{"destroyed_count", value.destroyed_count}};
+}
+
+inline void from_json (const nlohmann::json &json, scoped_lifecycle_stats_reply_t &value)
+{
+    json.at ("destroyed_count").get_to (value.destroyed_count);
+}
+
+inline void to_json (nlohmann::json &json, const filter_order_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, filter_order_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const filter_order_reply_t &value)
+{
+    json = nlohmann::json{{"value", value.value}, {"order", value.order}};
+}
+
+inline void from_json (const nlohmann::json &json, filter_order_reply_t &value)
+{
+    json.at ("value").get_to (value.value);
+    json.at ("order").get_to (value.order);
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

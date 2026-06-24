@@ -169,8 +169,13 @@ bool native_route_backend_t::handle_router_received (
     if (!_spot_route_bridge) {
         return false;
     }
-    return _spot_route_bridge->handle_router_received (_spot_route_channel_name,
-                                                       source_node_rid, parts, request_seq);
+    try {
+        return _spot_route_bridge->handle_router_received (_spot_route_channel_name,
+                                                           source_node_rid, parts, request_seq);
+    }
+    catch (const std::exception &) {
+        return true;
+    }
 }
 
 } // namespace zlink::framework::detail::backend

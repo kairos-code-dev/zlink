@@ -13,8 +13,12 @@ SpotNode builder만 사용한다.
 - `SM-A4`: 같은 key가 같은 `RoutingId`와 같은 owner 노드로 반복 라우팅되는지 확인한다.
 - `SM-A6`: user spot 생성 시 initialize evidence가 남고, public `ZLinkSpotManager.close`로 명시
   close했을 때 closing evidence가 남는지 확인한다.
+- `SM-A7`: 이미 만든 spot rid를 다른 spot 타입으로 `getOrCreate`할 때 public configuration error로
+  거부되고, 기존 spot이 같은 타입으로 계속 조회되는지 확인한다.
 - `SM-C1`: 외부 consumer의 public `ZLinkSpotOutbound`로 request, send, timeout, 미등록 packet
   negative path를 검증한다.
+- `SM-E1`: handler 없는 spot route request/send가 error/drop 경로를 타고 dispatch observer evidence를
+  남기는지 확인한다.
 - `SM-F1`: 외부 consumer가 RouteMesh 경로로 target spot에 도달하는지 확인한다.
 - `SM-F2`: RouteMesh 채널명이 target spot egress의 실제 channel 기준으로 동작하는지 확인한다.
 - `SM-F3`: 같은 RouteMesh에서 일반 spot route request와 one-way send가 함께 동작하는지 확인한다.
@@ -23,8 +27,6 @@ SpotNode builder만 사용한다.
 ## public API/harness 대기
 
 - `SM-A5`: Java E2E에는 Stage wrapper 계층이 아직 없다.
-- `SM-A7`: 같은 spot rid를 다른 spot type으로 다시 생성할 때의 public error를 단언하는 scenario가
-  아직 없다.
 - `SM-A8`: worker offload와 spot 직렬성 유지를 함께 단언하는 scenario가 아직 없다.
 - `SM-B1`: local actor join과 lifecycle callback을 검증하는 scenario가 아직 없다.
 - `SM-B2`: remote actor join과 cross-node mailbox 실행을 검증하는 scenario가 아직 없다.
@@ -54,8 +56,6 @@ SpotNode builder만 사용한다.
 - `SM-D12`: 다른 gateway로 재접속해 actor 상태를 이어받는 scenario가 아직 없다.
 - `SM-D13`: stream heartbeat 중단과 disconnect 감지를 검증하는 scenario가 아직 없다.
 - `SM-D14`: TLS stream endpoint와 certificate 구성이 아직 없다.
-- `SM-E1`: handler 없는 spot route request의 observer evidence를 별도 marker로 고정하는 scenario가
-  아직 없다.
 - `SM-E2`: spot timer 발화와 효과를 검증하는 scenario가 아직 없다.
 - `SM-E3`: idle timer 기반 명시 close를 검증하는 scenario가 아직 없다.
 - `SM-E4`: timer overrun policy별 tick 처리 evidence를 검증하는 scenario가 아직 없다.

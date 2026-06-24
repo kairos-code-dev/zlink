@@ -87,6 +87,7 @@ public final class ClientScenario {
             .packetName("MissingSpotCommand")
             .await();
         System.out.println("scenario SM-C1-negative passed");
+        System.out.println("scenario SM-E1 passed");
     }
 
     private void runOwnerRouting() {

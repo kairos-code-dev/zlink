@@ -549,7 +549,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         ZLinkMessage request) {
         requireRegistered(spotType);
         requireRoutingId(spotRid);
-        if (spots.containsKey(spotRid)) {
+        SpotActivation existing = spots.get(spotRid);
+        if (existing != null) {
+            if (existing.spot.getClass() != spotType) {
+                throw new ZLinkConfigurationException(
+                    "spot type mismatch: " + spotRid);
+            }
             return CompletableFuture.completedFuture(
                 new ZLinkSpotCreateResult(spotRid, ZLinkSpotCreateState.EXISTING, null));
         }

@@ -163,6 +163,20 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
+assert_type_mismatch() {
+  local endpoint="$1"
+  local rid="$2"
+  python3 - "${endpoint}/admin/type-mismatch?rid=${rid}" <<'PY'
+import sys
+import urllib.request
+request = urllib.request.Request(sys.argv[1], method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    body = response.read().decode("utf-8")
+    if '"mismatch":true' not in body:
+        raise SystemExit("spot type mismatch did not report mismatch=true: " + body)
+PY
+}
+
 read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B HTTP_A HTTP_B <<<"$(reserve_ports)"
 
 gradle_run installDist
@@ -196,6 +210,8 @@ for mode in state1 state2 send normal missing timeout owner route-mesh; do
   run_client_mode "${mode}"
   sleep 2
 done
+assert_type_mismatch "${HTTP_A}" room-a
+echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
 close_spot "${HTTP_A}" room-a
 echo "scenario SM-A6 passed" >>"${log_dir}/client.stdout.log"
 
@@ -206,3 +222,5 @@ grep -Rq "message flow" "${log_dir}"/*-flow.log
 grep -q "DispatchError" "${log_dir}/play-a-evidence.json"
 grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"
 grep -q "SpotClosing" "${log_dir}/play-a-evidence.json"
+grep -q "SpotTypeMismatch" "${log_dir}/play-a-evidence.json"
+grep -q "SpotTypeMismatchStateOk" "${log_dir}/play-a-evidence.json"

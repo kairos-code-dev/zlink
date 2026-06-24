@@ -69,6 +69,42 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 }
                 write(exchange, 200, "{\"closed\":" + closed + "}\n");
             });
+            server.createContext("/admin/type-mismatch", exchange -> {
+                String rid = queryValue(exchange.getRequestURI(), "rid");
+                if (rid == null || rid.isBlank()) {
+                    write(exchange, 400, "missing rid\n");
+                    return;
+                }
+                try {
+                    spots.getOrCreate(MismatchedSpot.class, RoutingId.from(rid))
+                        .toCompletableFuture()
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS);
+                    write(exchange, 500, "{\"mismatch\":false}\n");
+                    return;
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("spot type mismatch interrupted", error);
+                } catch (java.util.concurrent.ExecutionException error) {
+                    state.record("SpotTypeMismatch", rid, error.getCause().getMessage());
+                } catch (java.util.concurrent.TimeoutException error) {
+                    throw new IllegalStateException("spot type mismatch timed out", error);
+                } catch (RuntimeException error) {
+                    state.record("SpotTypeMismatch", rid, error.getMessage());
+                }
+                try {
+                    spots.getOrCreate(UserSpot.class, RoutingId.from(rid))
+                        .toCompletableFuture()
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS);
+                    state.record("SpotTypeMismatchStateOk", rid, "existing");
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("spot type mismatch follow-up interrupted", error);
+                } catch (java.util.concurrent.ExecutionException
+                         | java.util.concurrent.TimeoutException error) {
+                    throw new IllegalStateException("spot type mismatch follow-up failed", error);
+                }
+                write(exchange, 200, "{\"mismatch\":true}\n");
+            });
             server.start();
             running = true;
         } catch (Exception error) {

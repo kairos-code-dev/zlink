@@ -81,6 +81,7 @@ public final class PlayApplication {
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
                 .setRouterRoutingId(RoutingId.from(nodeRid));
             node.addSpotFactory(UserSpot.class);
+            node.addSpotFactory(MismatchedSpot.class);
         };
     }
 

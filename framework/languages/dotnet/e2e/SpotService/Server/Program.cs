@@ -213,6 +213,24 @@ internal sealed class CreateSpotHandler(
 }
 
 [ZLinkHandlerGroup("play")]
+internal sealed class CloseSpotHandler(
+    IZLinkSpotManager spots,
+    EvidenceStore evidence)
+    : IZLinkRouteRequestHandler<CloseSpotReq, CloseSpotReply>
+{
+    public async ValueTask<CloseSpotReply> HandleAsync(
+        CloseSpotReq request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        var closed = await spots.CloseAsync(RoutingId.From(request.SpotRid), cancellationToken);
+        evidence.Add($"close-spot|rid={evidence.Rid}|spot={request.SpotRid}|closed={closed}");
+        return new CloseSpotReply(request.SpotRid, closed);
+    }
+}
+
+[ZLinkHandlerGroup("play")]
 internal sealed class SpotTypeMismatchHandler(
     IZLinkSpotManager spots,
     EvidenceStore evidence)
@@ -537,6 +555,105 @@ internal sealed class OverrunTimerHandler(EvidenceStore evidence)
     }
 }
 
+[ZLinkSpotPacketHandler("TimerStartCommand")]
+internal sealed class TimerStartHandler
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, TimerStartCommand>
+{
+    public async ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        TimerStartCommand request,
+        CancellationToken cancellationToken)
+    {
+        await spot.Context.AddTimer<BasicTimerHandler>(
+            request.Name,
+            TimeSpan.FromMilliseconds(request.PeriodMs),
+            cancellationToken: cancellationToken);
+    }
+}
+
+internal sealed class BasicTimerHandler(EvidenceStore evidence)
+    : IZLinkSpotTimerHandler<ScenarioUserSpot>
+{
+    public ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"timer-basic|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}"
+            + $"|delivery={tick.DeliveryIndex}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkSpotPacketHandler("IdleCloseCommand")]
+internal sealed class IdleCloseHandler
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, IdleCloseCommand>
+{
+    public async ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        IdleCloseCommand request,
+        CancellationToken cancellationToken)
+    {
+        await spot.Context.AddTimer<IdleCloseTimerHandler>(
+            request.Name,
+            TimeSpan.FromMilliseconds(request.PeriodMs),
+            cancellationToken: cancellationToken);
+    }
+}
+
+internal sealed class IdleCloseTimerHandler(EvidenceStore evidence)
+    : IZLinkSpotTimerHandler<ScenarioUserSpot>
+{
+    public async ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        if (tick.DeliveryIndex > 1)
+        {
+            return;
+        }
+
+        var closed = await spot.Context.CloseAsync(cancellationToken);
+        evidence.Add(
+            $"timer-idle-close|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}|closed={closed}");
+    }
+}
+
+[ZLinkSpotRequestHandler("SpotToSpotReq")]
+internal sealed class SpotToSpotHandler(EvidenceStore evidence)
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotReply>
+{
+    public async ValueTask<SpotToSpotReply> HandleAsync(
+        ScenarioUserSpot spot,
+        SpotToSpotReq request,
+        CancellationToken cancellationToken)
+    {
+        var targetRid = RoutingId.From(request.TargetSpotRid);
+        var reply = await spot.Context.Outbound
+            .RequestToSpot(targetRid, new StateReq("add", 3))
+            .PacketName("StateReq")
+            .Async<StateReply>(cancellationToken);
+        await spot.Context.Outbound
+            .SendToSpot(targetRid, new StateCommand($"sm-c3-send-{request.Marker}"))
+            .PacketName("StateCommand")
+            .Async(cancellationToken);
+        await spot.Context.Outbound
+            .Publish(SpotServiceNames.SpotEventTopic, new SpotEvent($"sm-c3-publish-{request.Marker}"))
+            .PacketName("SpotEvent")
+            .Async(cancellationToken);
+        evidence.Add(
+            $"spot-to-spot|rid={evidence.Rid}|source={spot.Context.SpotRid}"
+            + $"|target={request.TargetSpotRid}|value={reply.Value}");
+        return new SpotToSpotReply(
+            spot.Context.SpotRid.ToString(),
+            request.TargetSpotRid,
+            reply.Value);
+    }
+}
+
 [ZLinkSpotPacketHandler("SpotOutboundReq")]
 internal sealed class SpotOutboundHandler(EvidenceStore evidence)
     : IZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundReq>
@@ -609,7 +726,7 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotActorRequestHandler("ActorPingReq")]
-internal sealed class EntryActorPingHandler
+internal sealed class EntryActorPingHandler(EvidenceStore evidence)
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPingReq, ActorPingReply>
 {
     public ValueTask<ActorPingReply> HandleAsync(
@@ -622,6 +739,9 @@ internal sealed class EntryActorPingHandler
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         actor.Seen++;
+        evidence.Add(
+            $"actor-ping|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
+            + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
         return ValueTask.FromResult(new ActorPingReply(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
@@ -632,7 +752,7 @@ internal sealed class EntryActorPingHandler
 }
 
 [ZLinkSpotActorRequestHandler("UserActorPingReq")]
-internal sealed class UserActorPingHandler
+internal sealed class UserActorPingHandler(EvidenceStore evidence)
     : IZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPingReq, ActorPingReply>
 {
     public ValueTask<ActorPingReply> HandleAsync(
@@ -645,6 +765,9 @@ internal sealed class UserActorPingHandler
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         actor.Seen++;
+        evidence.Add(
+            $"actor-ping|rid={spot.Context.NodeRid}|actor={actor.ActorId}"
+            + $"|spot={spot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
         return ValueTask.FromResult(new ActorPingReply(
             actor.ActorId,
             spot.Context.NodeRid.ToString(),
@@ -817,21 +940,21 @@ internal sealed class ScenarioSession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (await handlers.TryHandleAsync(Context, header, payload, cancellationToken))
+        if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
         {
             return;
         }
 
-        var actorId = header.Metadata.Get(SpotServiceNames.ActorIdMetadata);
+        var actorId = dispatch.Metadata.Find(SpotServiceNames.ActorIdMetadata);
         var actor = string.IsNullOrWhiteSpace(actorId)
             ? RequireSingleBoundActor()
             : Context.Actors.Find(actorId)
               ?? throw new InvalidOperationException($"Actor route not found: {actorId}");
-        await actor.RelayAsync(header, payload, cancellationToken);
+        await actor.RelayAsync(payload, cancellationToken);
     }
 
     private IZLinkSessionActor RequireSingleBoundActor()
@@ -856,11 +979,11 @@ internal sealed class AuthSessionHandler(
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         var request = payload.Decode<AuthReq>();
         var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
             ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
@@ -910,11 +1033,11 @@ internal sealed class MultiBindSessionHandler(
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         var request = payload.Decode<MultiBindReq>();
         foreach (var actorId in new[] { request.FirstActorId, request.SecondActorId })
         {

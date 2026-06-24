@@ -21,13 +21,17 @@ static async Task RunAsync(ClientOptions options)
     await RunSmB6Async(options);
     await RunSmB8Async(options);
     await RunSmD7Async(options);
+    await RunSmD9D11D13Async(options);
     await RunSmD1AndD6Async(options);
     await RunSmD4Async(options);
     await RunSmD5Async(options);
     await RunSmD12Async(options);
     await RunSmC1C2Async(options);
+    await RunSmC3Async(options);
     await RunSmE1AndF4Async(options);
+    await RunSmE2E3Async(options);
     await RunSmA7A8C4E4Async(options);
+    await RunSmA3A6B4B7Async(options);
     await RunSmA1A2A4F1F2Async(options);
     Console.WriteLine("spot-service e2e result=passed");
 }
@@ -216,6 +220,62 @@ static async Task RunSmD7Async(ClientOptions options)
     Ensure(reply.ActorId == "actor-sm-d7", "SM-D7 relay actor mismatch.");
     Ensure(reply.Value == "auth-ok", "SM-D7 relay value mismatch.");
     Console.WriteLine("scenario SM-D7 passed");
+}
+
+static async Task RunSmD9D11D13Async(ClientOptions options)
+{
+    var observed = new ConcurrentQueue<string>();
+    await using var stream = CreateClient(
+        options.SessionAStreamEndpoint,
+        connector =>
+        {
+            connector.ObserveInbound((observation, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                observed.Enqueue(observation.Name);
+                return ValueTask.CompletedTask;
+            });
+        },
+        heartbeat: new ZlinkStreamHeartbeatOptions
+        {
+            Enabled = true,
+            Interval = TimeSpan.FromMilliseconds(200),
+            Timeout = TimeSpan.FromSeconds(2),
+        });
+    await stream.Connect.Async();
+    await stream.Request(new AuthReq("actor-sm-d9-d11-d13", "observer", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    await Task.Delay(600);
+
+    var streamReply = await stream.Request(new ActorPingReq("stream-side"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(streamReply.ActorId == "actor-sm-d9-d11-d13", "SM-D11 stream request actor mismatch.");
+    Ensure(stream.IsConnected, "SM-D13 heartbeat-enabled stream disconnected.");
+
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: false,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-stream-channel-mix-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    var channelReply = await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new ControlPingReq("channel-side"))
+        .PacketName("ControlPingReq")
+        .Async<ControlPingReply>();
+    Ensure(channelReply.NodeRid == options.PlayARid, "SM-D11 channel request node mismatch.");
+    await host.StopAsync();
+
+    Ensure(observed.Count >= 2, "SM-D9 inbound observer did not observe stream replies.");
+    Console.WriteLine("scenario SM-D9 passed");
+    Console.WriteLine("scenario SM-D11 passed");
+    Console.WriteLine("scenario SM-D13 passed");
 }
 
 static async Task RunSmD1AndD6Async(ClientOptions options)
@@ -454,6 +514,67 @@ static async Task RunSmC1C2Async(ClientOptions options)
     Console.WriteLine("scenario SM-C2 passed");
 }
 
+static async Task RunSmC3Async(ClientOptions options)
+{
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-spot-spot-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-C3 expected control route to become ready.");
+
+    var sourceSpotRid = $"spot-sm-c3-source-{Guid.NewGuid():N}";
+    var targetSpotRid = $"spot-sm-c3-target-{Guid.NewGuid():N}";
+    foreach (var spotRid in new[] { sourceSpotRid, targetSpotRid })
+    {
+        await routes.Request(
+                SpotServiceNames.ControlChannel,
+                RoutingId.From(options.PlayARid),
+                new CreateSpotReq(spotRid))
+            .PacketName("CreateSpotReq")
+            .Async<CreateSpotReply>();
+    }
+
+    var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var reply = await routes.Request(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(sourceSpotRid),
+            new SpotToSpotReq(targetSpotRid, "direct"))
+        .PacketName("SpotToSpotReq")
+        .Async<SpotToSpotReply>();
+    Ensure(reply.SourceSpotRid == sourceSpotRid, "SM-C3 source spot mismatch.");
+    Ensure(reply.TargetSpotRid == targetSpotRid, "SM-C3 target spot mismatch.");
+    Ensure(reply.TargetValue == 3, "SM-C3 target state mismatch.");
+
+    await ExpectFailureAsync(
+        routes.Request(
+                SpotServiceNames.ExternalSpotChannel,
+                RoutingId.From(sourceSpotRid),
+                new SpotToSpotReq($"missing-{targetSpotRid}", "missing"))
+            .PacketName("SpotToSpotReq")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<SpotToSpotReply>().AsTask(),
+        "SM-C3 expected missing target spot request to fail.");
+
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, before, $"spot-to-spot|rid={options.PlayARid}|source={sourceSpotRid}|target={targetSpotRid}|value=3") == 1
+            && CountNew(after, before, $"spot-state-command|rid={options.PlayARid}|spot={targetSpotRid}|marker=sm-c3-send-direct") == 1
+            && CountNew(after, before, $"spot-event|rid={options.PlayARid}|spot={targetSpotRid}|marker=sm-c3-publish-direct") >= 1;
+    }, "SM-C3 expected spot to spot evidence.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-C3 passed");
+}
+
 static async Task RunSmE1AndF4Async(ClientOptions options)
 {
     using var host = CreateRouteEgressHost(
@@ -510,6 +631,78 @@ static async Task RunSmE1AndF4Async(ClientOptions options)
     await host.StopAsync();
     Console.WriteLine("scenario SM-E1 passed");
     Console.WriteLine("scenario SM-F4 passed");
+}
+
+static async Task RunSmE2E3Async(ClientOptions options)
+{
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-spot-timer-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-E2/E3 expected control route to become ready.");
+
+    var timerSpotRid = $"spot-sm-e2-{Guid.NewGuid():N}";
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(timerSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    var beforeTimer = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await routes.Send(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(timerSpotRid),
+            new TimerStartCommand("sm-e2-basic", 50))
+        .PacketName("TimerStartCommand")
+        .Async();
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, beforeTimer, $"timer-basic|rid={options.PlayARid}|spot={timerSpotRid}|name=sm-e2-basic") >= 2;
+    }, "SM-E2 expected basic timer evidence.");
+
+    var idleSpotRid = $"spot-sm-e3-{Guid.NewGuid():N}";
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(idleSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    var beforeIdle = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await routes.Send(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(idleSpotRid),
+            new IdleCloseCommand("sm-e3-idle", 50))
+        .PacketName("IdleCloseCommand")
+        .Async();
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, beforeIdle, $"timer-idle-close|rid={options.PlayARid}|spot={idleSpotRid}|name=sm-e3-idle|closed=True") == 1
+            && CountNew(after, beforeIdle, $"spot-closing|rid={options.PlayARid}|spot={idleSpotRid}") == 1;
+    }, "SM-E3 expected idle close evidence.");
+
+    await ExpectFailureAsync(
+        routes.Request(
+                SpotServiceNames.ExternalSpotChannel,
+                RoutingId.From(idleSpotRid),
+                new StateReq("noop", 0))
+            .PacketName("StateReq")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<StateReply>().AsTask(),
+        "SM-E3 expected closed spot request to fail.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-E2 passed");
+    Console.WriteLine("scenario SM-E3 passed");
 }
 
 static async Task RunSmA7A8C4E4Async(ClientOptions options)
@@ -654,6 +847,117 @@ static async Task RunSmA7A8C4E4Async(ClientOptions options)
     Console.WriteLine("scenario SM-E4 passed");
 }
 
+static async Task RunSmA3A6B4B7Async(ClientOptions options)
+{
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-spot-route-lifecycle-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-A3/A6 expected play-a control route to become ready.");
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayBRid,
+        "SM-B4 expected play-b control route to become ready.");
+
+    var routedSpotRid = $"spot-sm-a3-{Guid.NewGuid():N}";
+    var playABeforeRoute = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var playBBeforeRoute = await ReadEvidenceAsync(options.PlayBEvidenceUrl);
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(routedSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    var routeReply = await RequestSpotStateWithRetryAsync(
+        routes,
+        SpotServiceNames.ExternalSpotChannel,
+        routedSpotRid,
+        new StateReq("add", 1),
+        "SM-A3 routed spot request timed out.");
+    Ensure(routeReply.NodeRid == options.PlayARid, "SM-A3 route resolver picked the wrong node.");
+    await WaitUntilAsync(async () =>
+    {
+        var playAAfter = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        var playBAfter = await ReadEvidenceAsync(options.PlayBEvidenceUrl);
+        return CountNew(playAAfter, playABeforeRoute, $"spot-state-request|rid={options.PlayARid}|spot={routedSpotRid}|value=1") == 1
+            && CountNew(playBAfter, playBBeforeRoute, $"spot-state-request|rid={options.PlayBRid}|spot={routedSpotRid}") == 0;
+    }, "SM-A3 expected only owner node evidence.");
+
+    var lifecycleSpotRid = $"spot-sm-a6-{Guid.NewGuid():N}";
+    var beforeLifecycle = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(lifecycleSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    var closed = await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CloseSpotReq(lifecycleSpotRid))
+        .PacketName("CloseSpotReq")
+        .Async<CloseSpotReply>();
+    Ensure(closed.Closed, "SM-A6 close reply mismatch.");
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, beforeLifecycle, $"spot-initialize|rid={options.PlayARid}|spot={lifecycleSpotRid}") == 1
+            && CountNew(after, beforeLifecycle, $"spot-closing|rid={options.PlayARid}|spot={lifecycleSpotRid}") == 1;
+    }, "SM-A6 expected initialize and close evidence.");
+
+    await using var remote = CreateClient(options.SessionAStreamEndpoint);
+    await remote.Connect.Async();
+    await remote.Request(new AuthReq("actor-sm-b4-remote", "remote actor request", options.PlayBRid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var remoteReply = await remote.Request(new ActorPingReq("sm-b4"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(remoteReply.NodeRid == options.PlayBRid, "SM-B4 remote actor request node mismatch.");
+
+    var beforeOrder = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await using var ordered = CreateClient(options.SessionAStreamEndpoint);
+    await ordered.Connect.Async();
+    await ordered.Request(new AuthReq("actor-sm-b7-order", "order", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    await ordered.Request(new ActorPingReq("order-1"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    await ordered.Request(new ActorPingReq("order-2"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        var created = FindIndex(after, "entry-created|rid=play-a|actor=actor-sm-b7-order");
+        var joined = FindIndex(after, "entry-joined|rid=play-a|actor=actor-sm-b7-order");
+        var first = FindIndex(after, "actor-ping|rid=play-a|actor=actor-sm-b7-order|");
+        var second = FindIndex(after, "actor-ping|rid=play-a|actor=actor-sm-b7-order|");
+        if (first >= 0)
+        {
+            first = FindIndex(after, "value=order-1|seen=1");
+            second = FindIndex(after, "value=order-2|seen=2");
+        }
+        return CountNew(after, beforeOrder, "entry-created|rid=play-a|actor=actor-sm-b7-order") == 1
+            && created >= 0 && joined > created && first > joined && second > first;
+    }, "SM-B7 expected actor lifecycle and packet order evidence.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-A3 passed");
+    Console.WriteLine("scenario SM-A6 passed");
+    Console.WriteLine("scenario SM-B4 passed");
+    Console.WriteLine("scenario SM-B7 passed");
+}
+
 static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
 {
     var key = $"order-sm-a4-{Guid.NewGuid():N}";
@@ -738,6 +1042,38 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
     Console.WriteLine("scenario SM-A2 passed");
     Console.WriteLine("scenario SM-A4 passed");
     Console.WriteLine("scenario SM-F2 passed");
+
+    using var routeMeshOnlyHost = CreateRouteEgressHost(
+        options,
+        includeControlChannel: false,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-spot-route-ownership-flow.log");
+    await routeMeshOnlyHost.StartAsync();
+    var routeMeshOnlyRoutes = routeMeshOnlyHost.Services.GetRequiredService<IZLinkRouteClient>();
+    var beforeRouteOnly = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var routeOnly = await routeMeshOnlyRoutes.Request(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(spotRid),
+            new StateReq("add", 2))
+        .PacketName("StateReq")
+        .Async<StateReply>();
+    Ensure(routeOnly.Value == 14, "SM-F5 route mesh did not survive client/server host stop.");
+    await routeMeshOnlyRoutes.Send(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(spotRid),
+            new StateCommand("sm-f3-mixed-route-command"))
+        .PacketName("StateCommand")
+        .Async();
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, beforeRouteOnly, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-f3-mixed-route-command") == 1;
+    }, "SM-F3 expected mixed route command evidence.");
+    await routeMeshOnlyHost.StopAsync();
+    Console.WriteLine("scenario SM-F3 passed");
+    Console.WriteLine("scenario SM-F5 passed");
 }
 
 static IHost CreateRouteEgressHost(
@@ -802,15 +1138,21 @@ static IHost CreateRouteEgressHost(
     return builder.Build();
 }
 
-static IZlinkStreamConnector CreateClient(string endpoint)
+static IZlinkStreamConnector CreateClient(
+    string endpoint,
+    Action<IZlinkStreamConnector>? configure = null,
+    ZlinkStreamHeartbeatOptions? heartbeat = null)
 {
-    return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+    var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
     {
         Endpoint = new Uri(endpoint),
         ConnectTimeout = TimeSpan.FromSeconds(5),
         RequestTimeout = TimeSpan.FromSeconds(5),
+        Heartbeat = heartbeat ?? new ZlinkStreamHeartbeatOptions { Enabled = false },
         DispatchMode = ZlinkStreamDispatchMode.Immediate,
     });
+    configure?.Invoke(connector);
+    return connector;
 }
 
 static async Task<string[]> ReadEvidenceAsync(string url)

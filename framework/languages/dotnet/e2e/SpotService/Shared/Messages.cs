@@ -47,6 +47,10 @@ public sealed record CreateSpotReq(string SpotRid);
 
 public sealed record CreateSpotReply(string SpotRid, string NodeRid, string State);
 
+public sealed record CloseSpotReq(string SpotRid);
+
+public sealed record CloseSpotReply(string SpotRid, bool Closed);
+
 public sealed record JoinUserSpotActorReq(string SpotRid, string ActorId);
 
 public sealed record JoinUserSpotActorReply(string SpotRid, string ActorId, bool Accepted);
@@ -105,3 +109,11 @@ public sealed record DestroyActorReq(string ActorId);
 public sealed record DestroyActorReply(string ActorId, bool Destroyed);
 
 public sealed record OverrunStartCommand(string Name, string Policy, int PeriodMs);
+
+public sealed record TimerStartCommand(string Name, int PeriodMs);
+
+public sealed record IdleCloseCommand(string Name, int PeriodMs);
+
+public sealed record SpotToSpotReq(string TargetSpotRid, string Marker);
+
+public sealed record SpotToSpotReply(string SourceSpotRid, string TargetSpotRid, int TargetValue);

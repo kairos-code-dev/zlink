@@ -66,7 +66,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         _spotRouteEgress = new ZLinkSpotRouteEgressDispatcher(
             _registration,
             _channelFacade.GetRouteChannel,
-            GetSpotRouteBridgeOwner);
+            GetSpotRouteBridgeOwner,
+            GetRegistrySpotDiscovery);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;
@@ -108,6 +109,39 @@ internal sealed partial class ZLinkFrameworkRuntime
             return state.SpotRouteBridgeOwners.TryGetValue(routerChannelId, out var owner)
                 ? owner
                 : null;
+        }
+    }
+
+    private IZLinkBackendDiscovery? GetRegistrySpotDiscovery(string routerChannelId)
+    {
+        var state = _state;
+        if (state is null)
+        {
+            return null;
+        }
+
+        var options = _registration.RegistrySpotRemoteAddresses;
+        if (options is null)
+        {
+            return null;
+        }
+
+        var resolvedRouterChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
+            state,
+            options.RouterChannelId);
+        if (!string.Equals(resolvedRouterChannelId, routerChannelId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        lock (state.SyncRoot)
+        {
+            if (state.SpotDiscoveries.TryGetValue($"{options.Namespace}.registry-spot", out var discovery))
+            {
+                return discovery;
+            }
+
+            return ZLinkRegistryRouteRuntime.ResolveSpotDiscovery(state, resolvedRouterChannelId);
         }
     }
 

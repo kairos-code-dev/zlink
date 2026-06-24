@@ -3,7 +3,8 @@ namespace Zlink.Framework.Runtime.Host;
 internal sealed class ZLinkSpotRouteEgressDispatcher(
     ZLinkFrameworkRegistration registration,
     Func<string, ZLinkRouteChannelRuntime> getRouteChannel,
-    Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner)
+    Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner,
+    Func<string, IZLinkBackendDiscovery?> getRegistrySpotDiscovery)
 {
     public bool CanHandle(string localEgressChannelName)
     {
@@ -61,7 +62,8 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             return new RouteEgressTarget(
                 localEgressChannelName,
                 getRouteChannel,
-                getRouteBridgeOwner);
+                getRouteBridgeOwner,
+                getRegistrySpotDiscovery);
         }
 
         throw new ZLinkConfigurationException(
@@ -91,7 +93,8 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
     private sealed class RouteEgressTarget(
         string localEgressChannelName,
         Func<string, ZLinkRouteChannelRuntime> getRouteChannel,
-        Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner)
+        Func<string, ZLinkSpotNodeRuntime?> getRouteBridgeOwner,
+        Func<string, IZLinkBackendDiscovery?> getRegistrySpotDiscovery)
         : IEgressTarget
     {
         public bool TryResolveTargetPeerRid(
@@ -111,7 +114,37 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             }
             catch (ZlinkConfigException error) when (error.NativeErrno is 2 or 95)
             {
+                if (TryResolveRegistrySpotDiscovery(
+                        targetSpotRid,
+                        out targetPeerRid))
+                {
+                    return true;
+                }
+
                 return TryResolveBridgeOwnerRid(out targetPeerRid);
+            }
+        }
+
+        private bool TryResolveRegistrySpotDiscovery(
+            RoutingId targetSpotRid,
+            out RoutingId targetPeerRid)
+        {
+            var discovery = getRegistrySpotDiscovery(localEgressChannelName);
+            if (discovery is null)
+            {
+                targetPeerRid = default;
+                return false;
+            }
+
+            try
+            {
+                targetPeerRid = discovery.ResolveSpot(targetSpotRid).OwnerNodeRid;
+                return true;
+            }
+            catch (ZlinkConfigException error) when (error.NativeErrno is 2 or 95)
+            {
+                targetPeerRid = default;
+                return false;
             }
         }
 
@@ -188,7 +221,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             IReadOnlyList<Message> parts)
         {
             var owner = getRouteBridgeOwner(localEgressChannelName);
-            if (owner is null || owner.Node.RoutingId != targetPeerRid)
+            if (owner is null)
             {
                 return false;
             }
@@ -222,7 +255,7 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             CancellationToken cancellationToken)
         {
             var owner = getRouteBridgeOwner(localEgressChannelName);
-            if (owner is null || owner.Node.RoutingId != targetPeerRid)
+            if (owner is null)
             {
                 return null;
             }

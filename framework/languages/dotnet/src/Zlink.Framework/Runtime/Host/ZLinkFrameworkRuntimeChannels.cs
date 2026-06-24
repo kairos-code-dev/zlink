@@ -25,7 +25,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var routeChannel = GetRouteChannel(routerChannelId);
-        if (_spotRouteEgress.CanHandle(routerChannelId))
+        if (!routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Command, packetName)
+            && _spotRouteEgress.CanHandle(routerChannelId))
         {
             var header = ZLinkClientCallCodec.CreateEnvelope(
                 ZLinkMessageKind.Command,
@@ -65,7 +66,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var routeChannel = GetRouteChannel(routerChannelId);
-        if (_spotRouteEgress.CanHandle(routerChannelId))
+        if (!routeChannel.CanDispatchRoutePacket(ZLinkMessageKind.Request, packetName)
+            && _spotRouteEgress.CanHandle(routerChannelId))
         {
             var header = ZLinkClientCallCodec.CreateEnvelope(
                 ZLinkMessageKind.Request,

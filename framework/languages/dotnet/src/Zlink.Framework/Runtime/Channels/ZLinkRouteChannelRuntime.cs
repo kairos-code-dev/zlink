@@ -16,6 +16,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly IZLinkBackendDiscovery? _discovery;
     private readonly ZLinkCodecRegistryBuilder _codecs;
+    private readonly ZLinkRouteHandlerRegistry _handlers;
+    private readonly IZLinkRouteInternalPacketDispatcher _internalPackets;
     private readonly ZLinkRouteChannelCalls _calls;
     private readonly ZLinkRouteSpotChannelCalls _spotRouteCalls;
     private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
@@ -34,7 +36,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _registration = registration;
         _router = router;
         _discovery = discovery;
-        var routeInternalPackets = internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance;
+        _handlers = handlers;
+        _internalPackets = internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance;
         _codecs = frameworkRegistration.Codecs;
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
         _taskRunner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), _stopSource.Token);
@@ -65,7 +68,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 handlers,
                 new ZLinkRouteHandlerInvoker(services, _codecs),
                 _codecs,
-                routeInternalPackets,
+                _internalPackets,
                 new ZLinkDispatchErrorReporter(
                     frameworkRegistration.DispatchOptions,
                     services,
@@ -81,6 +84,20 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     public IZLinkBackendDiscovery? Discovery => _discovery;
 
     internal bool HasSpotRouteBridge => _spotRouteBridge is not null;
+
+    internal bool CanDispatchRoutePacket(
+        ZLinkMessageKind kind,
+        string packetName)
+    {
+        return kind switch
+        {
+            ZLinkMessageKind.Command => _internalPackets.CanHandleSend(packetName)
+                || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
+            ZLinkMessageKind.Request => _internalPackets.CanHandleRequest(packetName)
+                || _handlers.TryGet(RouterChannelId, kind, packetName, out _),
+            _ => false
+        };
+    }
 
     public void AttachSpotRouteBridge(IZLinkBackendSpotRouteBridge bridge)
     {

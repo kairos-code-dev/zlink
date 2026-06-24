@@ -161,6 +161,7 @@ internal sealed class ZLinkRouteChannelInitializer(
             routedRegistration.RouterChannelId,
             ZLinkAutoConnectType.RouteMesh,
             discoveryEndpoints);
+        discovery.SpotOwnerSyncEnabled = true;
         router.AttachDiscovery(discovery);
         return discovery;
     }

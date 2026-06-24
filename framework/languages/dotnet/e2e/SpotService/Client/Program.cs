@@ -190,14 +190,60 @@ static async Task RunSmQ9Async(ClientOptions options)
     Ensure(createdB.NodeRid == SpotServiceNames.MultiSpotNodeB, "SM-Q9 node B create reply node mismatch.");
     Ensure(createdB.Value == 17, "SM-Q9 node B route-to-spot reply value mismatch.");
 
+    await host.StopAsync();
+
+    StateReply directA;
+    {
+        using var directHostA = CreateDirectMultiNodeRouteHost(
+            options,
+            SpotServiceNames.MultiRouteChannelA,
+            options.ClientMultiRouteAEndpoint,
+            SpotServiceNames.MultiSpotNodeA,
+            RoutingId.From("client-multi-spot-a"));
+        await directHostA.StartAsync();
+        directA = await RequestSpotStateWithRetryAsync(
+            directHostA.Services.GetRequiredService<IZLinkRouteClient>(),
+            SpotServiceNames.MultiRouteChannelA,
+            spotA,
+            new StateReq("noop", 0),
+            "SM-Q9 expected external route client to reach node A spot.",
+            retryProtocolErrors: true);
+        await directHostA.StopAsync();
+    }
+
+    StateReply directB;
+    {
+        using var directHostB = CreateDirectMultiNodeRouteHost(
+            options,
+            SpotServiceNames.MultiRouteChannelB,
+            options.ClientMultiRouteBEndpoint,
+            SpotServiceNames.MultiSpotNodeB,
+            RoutingId.From("client-multi-spot-b"));
+        await directHostB.StartAsync();
+        directB = await RequestSpotStateWithRetryAsync(
+            directHostB.Services.GetRequiredService<IZLinkRouteClient>(),
+            SpotServiceNames.MultiRouteChannelB,
+            spotB,
+            new StateReq("noop", 0),
+            "SM-Q9 expected external route client to reach node B spot.",
+            retryProtocolErrors: true);
+        await directHostB.StopAsync();
+    }
+
+    Ensure(directA.SpotRid == spotA, "SM-Q9 node A direct spot reply target mismatch.");
+    Ensure(directA.NodeRid == SpotServiceNames.MultiSpotNodeA, "SM-Q9 node A direct spot reply node mismatch.");
+    Ensure(directA.Value == 11, "SM-Q9 node A direct spot reply value mismatch.");
+    Ensure(directB.SpotRid == spotB, "SM-Q9 node B direct spot reply target mismatch.");
+    Ensure(directB.NodeRid == SpotServiceNames.MultiSpotNodeB, "SM-Q9 node B direct spot reply node mismatch.");
+    Ensure(directB.Value == 17, "SM-Q9 node B direct spot reply value mismatch.");
+
     await WaitUntilAsync(async () =>
     {
         var after = await ReadEvidenceAsync(options.MultiEvidenceUrl);
-        return after.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") == 1
-            && after.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") == 1;
+        return after.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") >= 2
+            && after.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") >= 2;
     }, "SM-Q9 expected both process-local Spot nodes to handle route-to-spot requests.");
 
-    await host.StopAsync();
     Console.WriteLine("scenario SM-Q9 passed");
 }
 
@@ -1852,6 +1898,31 @@ static IHost CreateMultiNodeRouteHost(ClientOptions options)
             .EnableServer(options.ClientMultiRouteBEndpoint)
             .EnableClient()
             .SetRoutingId(RoutingId.From("client-multi-route-b"));
+    });
+    return builder.Build();
+}
+
+static IHost CreateDirectMultiNodeRouteHost(
+    ClientOptions options,
+    string routeChannelName,
+    string bindEndpoint,
+    string registryNamespace,
+    RoutingId localSpotNodeRid)
+{
+    var builder = Host.CreateApplicationBuilder();
+    builder.Services.AddZLinkFramework(framework =>
+    {
+        framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
+        framework.UseRegistrySpotRemoteAddresses(registryNamespace).RouterChannelId = routeChannelName;
+        framework.AddRouteMesh(routeChannelName)
+            .EnableServer(bindEndpoint)
+            .EnableClient()
+            .SetRoutingId(RoutingId.From($"{routeChannelName}-direct-client"));
+        var spotMesh = framework.AddSpotMesh(registryNamespace);
+        spotMesh.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
+        spotMesh
+            .EnableRouter(options.ClientSpotRouterEndpoint)
+            .SetRouterRoutingId(localSpotNodeRid);
     });
     return builder.Build();
 }

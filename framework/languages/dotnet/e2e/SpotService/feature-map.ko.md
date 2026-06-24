@@ -31,7 +31,7 @@
 | SM-D5 | 구현 | explicit disconnect notification marker가 있다. |
 | SM-D6 | 구현 | bound session push targeting marker가 있다. |
 | SM-D7 | 구현 | stream auth and dispatch marker가 있다. |
-| SM-D8 | public API/harness 대기 | stream server transport를 E2E 중 강제로 close/restart하는 harness가 없어 connector 자동 reconnect를 같은 run에서 유도할 수 없다. |
+| SM-D8 | 구현 | stream 연결 종료 중 pending request 실패를 확인하고 새 session에서 reauth/rebind 후 messaging 재개 marker를 확인한다. |
 | SM-D9 | 구현 | stream inbound observer marker가 있다. |
 | SM-D10 | public API/harness 대기 | framework stream gateway public API에 session push backpressure를 결정적으로 포화시키는 테스트 hook이 없다. |
 | SM-D11 | 구현 | 같은 run에서 stream actor request와 channel route request를 함께 수행하는 marker가 있다. |

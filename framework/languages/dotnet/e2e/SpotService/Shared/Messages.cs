@@ -63,6 +63,8 @@ public sealed record JoinUserSpotActorReply(string SpotRid, string ActorId, bool
 
 public sealed record ActorPingReq(string Value);
 
+public sealed record SlowActorPingReq(string Value, int DelayMs);
+
 public sealed record ActorPingReply(string ActorId, string NodeRid, string SpotRid, string Value, int Seen);
 
 public sealed record ActorPushReq(string Value);

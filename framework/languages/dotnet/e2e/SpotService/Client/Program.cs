@@ -21,6 +21,7 @@ static async Task RunAsync(ClientOptions options)
     await RunSmB6Async(options);
     await RunSmB8Async(options);
     await RunSmD7Async(options);
+    await RunSmD8Async(options);
     await RunSmD9D11D13Async(options);
     await RunSmD1AndD6Async(options);
     await RunSmD3Async(options);
@@ -278,6 +279,41 @@ static async Task RunSmD9D11D13Async(ClientOptions options)
     Console.WriteLine("scenario SM-D9 passed");
     Console.WriteLine("scenario SM-D11 passed");
     Console.WriteLine("scenario SM-D13 passed");
+}
+
+static async Task RunSmD8Async(ClientOptions options)
+{
+    const string actorId = "actor-sm-d8-reconnect";
+
+    await using var first = CreateClient(options.SessionAStreamEndpoint);
+    await first.Connect.Async();
+    await first.Request(new AuthReq(actorId, "stream reconnect", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+
+    var pending = first.Request(new SlowActorPingReq("before-disconnect", 1000))
+        .PacketName("SlowActorPingReq")
+        .Timeout(TimeSpan.FromSeconds(10))
+        .Async<ActorPingReply>()
+        .AsTask();
+    await Task.Delay(TimeSpan.FromMilliseconds(100));
+    await first.Close.Async();
+    await ExpectFailureAsync(pending, "SM-D8 expected pending request to fail after stream disconnect.");
+    await Task.Delay(TimeSpan.FromMilliseconds(1200));
+
+    await using var second = CreateClient(options.SessionAStreamEndpoint);
+    await second.Connect.Async();
+    await second.Request(new AuthReq(actorId, "stream reconnect", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var resumed = await second.Request(new ActorPingReq("after-reconnect"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(resumed.ActorId == actorId, "SM-D8 reconnected actor mismatch.");
+    Ensure(resumed.NodeRid == options.PlayARid, "SM-D8 reconnected node mismatch.");
+    Ensure(resumed.Value == "after-reconnect", "SM-D8 reconnected value mismatch.");
+
+    Console.WriteLine("scenario SM-D8 passed");
 }
 
 static async Task RunSmD1AndD6Async(ClientOptions options)

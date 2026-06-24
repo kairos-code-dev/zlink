@@ -823,6 +823,32 @@ internal sealed class EntryActorPingHandler(EvidenceStore evidence)
     }
 }
 
+[ZLinkSpotActorRequestHandler("SlowActorPingReq")]
+internal sealed class EntrySlowActorPingHandler(EvidenceStore evidence)
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, SlowActorPingReq, ActorPingReply>
+{
+    public async ValueTask<ActorPingReply> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        SlowActorPingReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        await Task.Delay(TimeSpan.FromMilliseconds(request.DelayMs), cancellationToken);
+        actor.Seen++;
+        evidence.Add(
+            $"actor-slow-ping|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
+            + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
+        return new ActorPingReply(
+            actor.ActorId,
+            entrySpot.Context.NodeRid.ToString(),
+            entrySpot.Context.SpotRid.ToString(),
+            request.Value,
+            actor.Seen);
+    }
+}
+
 [ZLinkSpotActorRequestHandler("UserActorPingReq")]
 internal sealed class UserActorPingHandler(EvidenceStore evidence)
     : IZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPingReq, ActorPingReply>

@@ -46,7 +46,6 @@ int main (void)
     CHECK (zlink_recv_part != NULL);
     CHECK (zlink_publish_part != NULL);
     CHECK (zlink_subscribe_part != NULL);
-    CHECK (zlink_stream_attach_actor_gateway != NULL);
     CHECK (zlink_spot_node_set_router_bind != NULL);
     CHECK (zlink_spot_node_set_pub_bind != NULL);
     CHECK (zlink_spot_node_spot_get_or_new != NULL);

@@ -39,35 +39,6 @@ func TestPublishDontWaitReturnsErrorWhenUnroutable(t *testing.T) {
 	}
 }
 
-func TestStreamAttachActorGatewayRequiresRoutedNode(t *testing.T) {
-	ctx := newContext(t)
-	defer ctx.Close()
-
-	stream, err := ctx.StreamSocket()
-	if err != nil {
-		t.Fatalf("StreamSocket() error = %v", err)
-	}
-	defer stream.Close()
-
-	node, err := ctx.SpotNodeWithOptions(zlink.SpotNodeOptions{Mode: zlink.SpotNodeModePubSub})
-	if err != nil {
-		t.Fatalf("SpotNodeWithOptions() error = %v", err)
-	}
-	defer node.Close()
-
-	err = stream.AttachActorGateway(node)
-	if err == nil {
-		t.Fatalf("AttachActorGateway should fail for pubsub-only SpotNode")
-	}
-	var configErr *zlink.ConfigError
-	if !errors.As(err, &configErr) {
-		t.Fatalf("AttachActorGateway error type = %T, want *ConfigError", err)
-	}
-	if configErr.Result != zlink.ConfigNotSupported {
-		t.Fatalf("AttachActorGateway result = %v, want %v", configErr.Result, zlink.ConfigNotSupported)
-	}
-}
-
 func TestReplyAPIsRejectUnsupportedFlags(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

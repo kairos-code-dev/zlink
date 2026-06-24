@@ -13,8 +13,7 @@ public delegate void StreamPacketHandler(RoutingId routingId, Message header,
     Message body);
 
 /// <summary>
-/// Contract for a STREAM socket: exchanges framed packets with raw TCP peers
-/// and can host actor gateways over those streams.
+/// Contract for a STREAM socket: exchanges framed packets with raw TCP peers.
 /// </summary>
 public interface IStreamSocket : IRoutedMessageSocket
 {
@@ -50,12 +49,6 @@ public interface IStreamSocket : IRoutedMessageSocket
     /// Disconnects the peer identified by <paramref name="peerRid"/>.
     /// </summary>
     void DisconnectRid(RoutingId peerRid);
-
-    /// <summary>
-    /// Attaches an actor gateway so <paramref name="node"/>'s actors can be
-    /// reached over this stream socket.
-    /// </summary>
-    void AttachActorGateway(ISpotNode node);
 
     /// <summary>
     /// Binds <paramref name="actor"/> to the session

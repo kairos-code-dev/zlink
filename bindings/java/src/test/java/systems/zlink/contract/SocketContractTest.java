@@ -764,9 +764,6 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(StreamSocket.class, "attachStreamRaw"));
         assertFalse(hasPublicMethod(StreamSocket.class, "connect"));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachDiscovery"));
-        assertEquals(void.class, StreamSocket.class
-            .getMethod("attachActorGateway", SpotNode.class)
-            .getReturnType());
         assertEquals(SendOperation.class, StreamSocket.class
             .getMethod("send", RoutingId.class).getReturnType());
         assertEquals(ActorBindOperation.class, StreamSocket.class

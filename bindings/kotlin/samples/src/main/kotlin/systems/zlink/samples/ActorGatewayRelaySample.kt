@@ -41,7 +41,6 @@ fun main() {
                         }
 
                         stream.bind(endpoint)
-                        stream.attachActorGateway(node)
                         SampleSupport.connectRawTcp(endpoint).use { client ->
                             SampleSupport.waitStreamConnected(monitor)
                             SampleSupport.sendRawTcp(client, "hello".toByteArray())

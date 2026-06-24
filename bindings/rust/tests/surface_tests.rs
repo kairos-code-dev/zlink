@@ -233,7 +233,6 @@ fn stream_typed_options() {
     let _get = StreamSocket::routing_id;
     let _disconnect_rid = StreamSocket::disconnect_rid;
     let _on_packet = StreamSocket::on_packet::<fn(RoutingId, Message, Message)>;
-    let _attach_actor_gateway = StreamSocket::attach_actor_gateway;
 }
 
 #[test]

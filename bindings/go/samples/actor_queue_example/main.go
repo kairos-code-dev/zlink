@@ -42,7 +42,6 @@ func main() {
 
 	// 스트림 게이트웨이에 actor를 세션으로 바인딩한다. 실제 서버에서 session은
 	// 게이트웨이로 접속한 클라이언트의 라우팅 ID다 — 여기선 고정값으로 만든다.
-	must(stream.AttachActorGateway(node))
 	session := zlink.NewRoutingIDString("single-player-session")
 	bindCh, err := stream.BindActor(session, actor.Ref()).Timeout(time.Second).SubmitAsync(nil)
 	must(err)

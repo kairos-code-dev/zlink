@@ -24,7 +24,6 @@ fun main() {
                     val player = node.createActor("player")
                     val processed = mutableListOf<String>()
 
-                    stream.attachActorGateway(node)
                     val session = RoutingId.from("player-session")
                     // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
                     stream.bindActor(session, player.ref()).timeout(Duration.ofSeconds(2))

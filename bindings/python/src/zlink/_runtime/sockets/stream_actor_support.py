@@ -33,13 +33,6 @@ class StreamActorSupport:
         self._pending = {}
         self._reply_handler = None
 
-    def attach_gateway(self, node):
-        rc = lib().zlink_stream_attach_actor_gateway(
-            self._socket._handle, node._handle
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
     def send_bound_actor(self, session_rid, actor_id, parts, flags):
         native_session = _copy_routing_id(session_rid)
         native_parts = _spot_clone_payload(parts)

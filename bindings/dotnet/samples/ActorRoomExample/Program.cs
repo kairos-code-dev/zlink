@@ -16,7 +16,6 @@ internal static class Program
         using var stream = ctx.CreateStreamSocket();
         List<string> received = new();
 
-        stream.AttachActorGateway(node);
         RoutingId session = RoutingId.From("game-room-session");
         Zlink.MultipartClose(await stream.BindActor(session, player1.Ref)
             .Timeout(TimeSpan.FromSeconds(2)).Async());

@@ -148,12 +148,6 @@ final class NativeDealerRequestSupport {
             }
 
             @Override
-            public void streamAttachActorGateway(StreamSocket socket,
-                                                 SpotNode node) {
-                NativeStreamActorSupport.attachActorGateway(socket, node);
-            }
-
-            @Override
             public List<ActorRef> streamBoundActors(StreamSocket socket,
                                                     RoutingId sessionRid) {
                 return NativeStreamActorSupport.boundActors(socket, sessionRid);

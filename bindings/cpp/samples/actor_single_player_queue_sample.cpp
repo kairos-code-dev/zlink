@@ -23,7 +23,6 @@ int main ()
     zlink::service::actor_t actor = node.create_actor ("single-player");
     zlink::actor_ref_t ref = actor.ref ();
     actor_sample_stream_session_t stream_session (ctx);
-    stream_session.stream.attach_actor_gateway (node);
     (void) stream_session.stream.bind_actor (stream_session.session, ref)
       .timeout (std::chrono::milliseconds (1000))
       .async ()

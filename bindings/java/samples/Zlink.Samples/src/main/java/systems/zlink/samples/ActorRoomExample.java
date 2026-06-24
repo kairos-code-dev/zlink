@@ -33,7 +33,6 @@ public final class ActorRoomExample {
             Actor player2 = node.createActor("player-2");
             List<String> received = new ArrayList<>();
 
-            stream.attachActorGateway(node);
             RoutingId session = RoutingId.from("game-room-session");
             stream.bindActor(session, player1.ref()).submit().toCompletableFuture().join().forEach(Message::close);
             stream.bindActor(session, player2.ref()).submit().toCompletableFuture().join().forEach(Message::close);

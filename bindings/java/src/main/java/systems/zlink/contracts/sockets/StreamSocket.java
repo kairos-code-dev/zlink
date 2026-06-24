@@ -11,7 +11,7 @@ import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.service.spot.SpotNode;
 import java.util.List;
 
-/** Exchanges framed packets with raw TCP peers and can host actor gateways. */
+/** Exchanges framed packets with raw TCP peers. */
 public interface StreamSocket extends Socket {
     void bind(String endpoint);
     void unbind(String endpoint);
@@ -20,7 +20,6 @@ public interface StreamSocket extends Socket {
     SendOperation send(RoutingId rid);
     boolean recv(Received result, RecvFlags flags);
     void onPacket(StreamPacketHandler handler);
-    void attachActorGateway(SpotNode node);
     ActorBindOperation bindActor(RoutingId sessionRid, ActorRef actor);
     ActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId);
     SendOperation sendBoundActor(RoutingId sessionRid, String actorId);

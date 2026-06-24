@@ -28,7 +28,6 @@ async function main() {
   const received = [];
 
   try {
-    stream.attachActorGateway(node);
     const session = zlink.RoutingId.from(Buffer.from('game-room-session'));
     await stream.bindActor(session, player1.ref()).timeout(2000).submit();
     await stream.bindActor(session, player2.ref()).timeout(2000).submit();

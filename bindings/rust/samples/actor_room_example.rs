@@ -97,7 +97,6 @@ fn main() {
     let mut player1 = node.create_actor("player-1").unwrap();
     let mut player2 = node.create_actor("player-2").unwrap();
     let stream = ctx.stream_socket().unwrap();
-    stream.attach_actor_gateway(&node).unwrap();
     let session = RoutingId::from(b"game-room-session");
 
     bind(&stream, &session, &player1);

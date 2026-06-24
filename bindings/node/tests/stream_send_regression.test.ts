@@ -239,7 +239,6 @@ test('actor bound session send from spot-to-spot dispatch flushes final frame wi
     requester.setRoutingId(zlink.RoutingId.from(Buffer.from('bound-requester-spot')));
     actor = responderNode.createActor('bound-target');
     stream.bind(streamEndpoint);
-    stream.attachActorGateway(responderNode);
     responderNode.setRouterBind(responderRouterEndpoint);
     responderNode.setPubBind(responderPeerEndpoint);
     requesterNode.setRouterBind(requesterRouterEndpoint);

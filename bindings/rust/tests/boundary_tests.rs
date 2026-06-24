@@ -5,10 +5,7 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
 
-use zlink::{
-    AutoConnectType, ConfigResult, Context, Discovery, Message, RoutingId, SpotNode, SpotNodeMode,
-    SpotNodeOptions,
-};
+use zlink::{AutoConnectType, Context, Discovery, Message, RoutingId, SpotNode};
 
 fn assert_send_sync<T: Send + Sync>() {}
 
@@ -177,22 +174,4 @@ fn spot_node_endpoint_over_255_rejected() {
     let endpoint = format!("tcp://{}", "1".repeat(250));
     let result = node.set_pub_bind(&endpoint);
     assert!(result.is_err(), "endpoint over 255 bytes must be rejected");
-}
-
-#[test]
-fn stream_attach_actor_gateway_requires_routed_node() {
-    let ctx = Context::new().unwrap();
-    let stream = ctx.stream_socket().unwrap();
-    let node = SpotNode::new_with_options(
-        &ctx,
-        SpotNodeOptions {
-            mode: Some(SpotNodeMode::PubSub),
-        },
-    )
-    .unwrap();
-
-    let err = stream
-        .attach_actor_gateway(&node)
-        .expect_err("pubsub-only SpotNode must not attach as ActorGateway owner");
-    assert_eq!(err.code(), ConfigResult::NotSupported);
 }

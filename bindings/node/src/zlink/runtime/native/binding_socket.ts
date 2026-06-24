@@ -159,7 +159,6 @@ export interface SocketNativeBinding {
   ) => { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
   socketUnbind: (socket: NativeHandle, endpoint: string) => void;
   socketUnsetSubscription: (socket: NativeHandle, topic: string) => void;
-  streamAttachActorGateway: (socket: NativeHandle, node: NativeHandle) => void;
   spotNodeActorBindRemoteSession: (
     node: NativeHandle,
     actor: ActorRefRaw,

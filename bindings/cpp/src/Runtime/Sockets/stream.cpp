@@ -72,13 +72,6 @@ void stream_socket_t::get_routing_id (routing_id_t &routing_id_) const
         throw config_error_t (detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
 }
 
-void stream_socket_t::attach_actor_gateway (service::spot_node_t &node_)
-{
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_stream_attach_actor_gateway (
-        detail::native_handle (*this), detail::native_handle (node_))));
-}
-
 service::actor_bind_operation_t stream_socket_t::bind_actor (const routing_id_t &session_rid_,
                                                              const actor_ref_t &actor_)
 {

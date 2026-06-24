@@ -1060,7 +1060,6 @@ unsafe extern "C" {
         handler: zlink_stream_packet_handler_fn,
         userdata: *mut c_void,
     ) -> c_int;
-    pub fn zlink_stream_attach_actor_gateway(stream: *mut c_void, node: *mut c_void) -> c_int;
     pub fn zlink_stream_bind_actor(
         stream: *mut c_void,
         session_rid: *const zlink_routing_id_t,

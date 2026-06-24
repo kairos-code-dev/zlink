@@ -2,7 +2,6 @@ use std::ffi::c_void;
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use crate::SpotNode;
 use crate::actor_models::ActorRef;
 use crate::core_context::Context;
 use crate::error::{ConfigError, HandlerError};
@@ -77,18 +76,6 @@ where
     }
     stream_inner_mut(socket).packet_cb = Some(cb);
     Ok(())
-}
-
-pub(crate) fn stream_attach_actor_gateway(
-    socket: &StreamSocket,
-    node: &SpotNode,
-) -> Result<(), ConfigError> {
-    check_config_rc(unsafe {
-        ffi::zlink_stream_attach_actor_gateway(
-            stream_inner(socket).handle,
-            crate::service::spot_node_handle(node),
-        )
-    })
 }
 
 pub(crate) fn stream_bind_actor(

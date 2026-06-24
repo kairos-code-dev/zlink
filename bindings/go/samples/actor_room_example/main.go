@@ -37,7 +37,6 @@ func main() {
 	stream, err := ctx.StreamSocket()
 	must(err)
 	defer stream.Close()
-	must(stream.AttachActorGateway(node))
 	session := zlink.NewRoutingIDString("game-room-session")
 
 	// 한 방에 두 플레이어가 들어온다.

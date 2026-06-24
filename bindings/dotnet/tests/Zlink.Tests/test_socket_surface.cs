@@ -226,8 +226,6 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(IRouterSocket),
             nameof(IConnectableSocket.DisconnectRid), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(IStreamSocket),
-            nameof(IStreamSocket.AttachActorGateway), typeof(ISpotNode)));
-        Assert.True(HasPublicInstanceMethod(typeof(IStreamSocket),
             nameof(IStreamSocket.BindActor), typeof(RoutingId),
             typeof(ActorRef)));
         Assert.True(HasPublicInstanceMethod(typeof(IStreamSocket),

@@ -7,8 +7,7 @@ from . import socket as _socket_contract
 
 @runtime_checkable
 class StreamSocket(_socket_contract._SocketContract, Protocol):
-    """STREAM socket: exchanges framed packets with raw TCP peers and can host
-    actor gateways over those streams."""
+    """STREAM socket: exchanges framed packets with raw TCP peers."""
 
     @property
     def stream_options(self):
@@ -23,11 +22,6 @@ class StreamSocket(_socket_contract._SocketContract, Protocol):
     def recv_into(self, received, *, flags=0):
         """Receive a message into ``received`` storage; ``False`` when
         ``DONT_WAIT`` is set and none is available."""
-        ...
-
-    def attach_actor_gateway(self, node):
-        """Attach an actor gateway so ``node``'s actors can be reached over this
-        stream socket."""
         ...
 
     def bind_actor(self, session_id, actor_id, *, callback=None):

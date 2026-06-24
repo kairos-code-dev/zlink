@@ -23,7 +23,6 @@ internal static class Program
         });
 
         using var stream = ctx.CreateStreamSocket();
-        stream.AttachActorGateway(node);
         RoutingId sessionRid = SampleSupport.RoutingIdUtf8("room-session");
         Zlink.MultipartClose(await stream.BindActor(sessionRid, actor.Ref)
             .Timeout(TimeSpan.FromSeconds(2))

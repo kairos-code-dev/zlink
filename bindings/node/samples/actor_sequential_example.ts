@@ -22,7 +22,6 @@ async function main() {
   const processed: string[] = [];
 
   try {
-    stream.attachActorGateway(node);
     const session = zlink.RoutingId.from(Buffer.from('player-session'));
     // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
     await stream.bindActor(session, player.ref()).timeout(2000).submit();

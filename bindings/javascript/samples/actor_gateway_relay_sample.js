@@ -57,7 +57,6 @@ async function main() {
         payloads.push(part.message.data().toString());
       }
     });
-    stream.attachActorGateway(node);
     stream.bind(endpoint);
     actor = node.createActor('play-session-actor');
     client = net.createConnection({ host: '127.0.0.1', port });

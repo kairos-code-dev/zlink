@@ -4,11 +4,11 @@ use crate::runtime_bridge::SocketStorage;
 use crate::spot_operations::{ActorBindOp, ActorUnbindOp};
 use crate::{
     ActorRef, BindError, CommonSocketOptions, ConfigError, ConnectError, Empty, HandlerError,
-    Message, Received, RecvError, RecvFlags, RoutingId, SendOp, SpotNode, StreamSocketOptions,
+    Message, Received, RecvError, RecvFlags, RoutingId, SendOp, StreamSocketOptions,
 };
 
-/// STREAM socket: exchanges framed packets with raw TCP peers (addressed by
-/// routing id) and can host actor gateways over those streams.
+/// STREAM socket: exchanges framed packets with raw TCP peers addressed by
+/// routing id.
 pub struct StreamSocket {
     pub(crate) inner: Box<dyn SocketStorage>,
 }
@@ -61,12 +61,6 @@ impl StreamSocket {
         F: Fn() + Send + 'static,
     {
         crate::socket::stream_inner_mut(self).on_send_ready(handler)
-    }
-
-    /// Attaches an actor gateway so `node`'s actors can be reached over this
-    /// stream socket.
-    pub fn attach_actor_gateway(&self, node: &SpotNode) -> Result<(), ConfigError> {
-        crate::socket::stream_attach_actor_gateway(self, node)
     }
 
     /// Binds `actor` to the session `session_rid`; submit the returned operation

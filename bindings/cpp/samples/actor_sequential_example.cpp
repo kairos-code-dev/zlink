@@ -28,7 +28,6 @@ int main ()
     zlink::service::actor_t player = node.create_actor ("player");
     zlink::stream_socket_t stream (ctx);
 
-    stream.attach_actor_gateway (node);
     zlink::routing_id_t session = zlink::routing_id_t::from (std::string ("player-session"));
     // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
     (void) stream.bind_actor (session, player.ref ()).async ().get ();

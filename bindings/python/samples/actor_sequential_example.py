@@ -20,7 +20,6 @@ def main():
         player = node.actor("player")
         processed = []
 
-        stream.attach_actor_gateway(node)
         session = zlink.RoutingId.from_("player-session")
 
         # dispatch 핸들러: join을 수락하고, STREAM이 relay한 메시지를 모은다.

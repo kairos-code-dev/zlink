@@ -209,6 +209,26 @@ final class SpotNodeActorOperations {
         return new ForwardBoundSessionBuilder(actor, sourceNodeRid, sourceSessionRid);
     }
 
+    void bindRemoteActorBoundSession(
+        ActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid) {
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
+        Objects.requireNonNull(sourceSessionRid, "sourceSessionRid");
+        node.ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeActorBindRemoteSession(
+                node.handle(),
+                ActorInterop.actorRefToNative(arena, actor),
+                ActorInterop.nativeRoutingId(arena, sourceNodeRid),
+                ActorInterop.nativeRoutingId(arena, sourceSessionRid));
+            if (rc != 0) {
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
+            }
+        }
+    }
+
     void closeActorBoundSession(ActorRef actor, Duration timeout) {
         Objects.requireNonNull(actor, "actor");
         node.ensureOpen();

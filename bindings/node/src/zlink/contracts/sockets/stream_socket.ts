@@ -9,8 +9,8 @@ import type { StreamSocketOptions } from './socket_options';
 import type { Socket } from './socket';
 
 /**
- * STREAM socket: exchanges framed packets with raw TCP peers (addressed by
- * routing id) and can host actor gateways over those streams.
+ * STREAM socket: exchanges framed packets with raw TCP peers addressed by
+ * routing id.
  */
 export interface StreamSocket extends Socket {
   /** The STREAM-specific typed options facade. */
@@ -39,8 +39,6 @@ export interface StreamSocket extends Socket {
   getRoutingId(): RoutingId;
   /** Disconnect the peer identified by `routingId`. */
   disconnectRid(routingId: RoutingId): void;
-  /** Attach an actor gateway so `node`'s actors can be reached over this stream socket. */
-  attachActorGateway(node: SpotNode): void;
   /** Bind `actor` to the session `sessionRid`; submit the returned operation to apply the binding. */
   bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOperation;
   /** Remove the binding of `actorId` from the session `sessionRid`; submit the returned operation to apply it. */

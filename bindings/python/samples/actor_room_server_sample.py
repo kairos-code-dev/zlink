@@ -49,7 +49,6 @@ def main():
                         message.close()
 
                 with zlink.create_stream_socket(ctx) as stream:
-                    stream.attach_actor_gateway(node)
                     with stream.monitor_open(zlink.MonitorEventMask.ACCEPTED) as monitor:
                         stream.bind(endpoint)
                         with socket.create_connection(("127.0.0.1", port), timeout=3) as client:

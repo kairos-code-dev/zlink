@@ -34,18 +34,6 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
   ctx.close();
 });
 
-test('stream attach actor gateway requires routed node', () => {
-  const ctx = zlink.createContext();
-  const stream = zlink.createStreamSocket(ctx);
-  const node = zlink.createSpotNode(ctx, zlink.SpotNodeMode.PubSub);
-
-  assert.throws(() => stream.attachActorGateway(node), /not supported/i);
-
-  node.close();
-  stream.close();
-  ctx.close();
-});
-
 test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
   const ctx = zlink.createContext();
   const pair = zlink.createPairSocket(ctx);

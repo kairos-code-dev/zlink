@@ -779,9 +779,6 @@ class StreamSocket(
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
-    def attach_actor_gateway(self, node):
-        self._actor_support.attach_gateway(node)
-
     def bind_actor(self, session_rid, actor):
         """Async Actor bind. The stream is bound to its session/actor mapping
         here. A bind does not require nor imply a Spot join."""

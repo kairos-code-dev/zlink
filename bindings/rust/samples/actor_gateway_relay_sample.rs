@@ -47,9 +47,6 @@ fn main() {
         .expect("dispatch handler failed");
 
     let stream = ctx.stream_socket().expect("stream socket failed");
-    stream
-        .attach_actor_gateway(&gateway_node)
-        .expect("stream actor gateway attach failed");
     let session = zlink::RoutingId::from(b"gateway-session");
     let actor_ref = actor.actor_ref().expect("actor ref failed");
     let (bind_tx, bind_rx) = mpsc::channel();

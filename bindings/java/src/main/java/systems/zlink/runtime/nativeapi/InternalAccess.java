@@ -122,7 +122,6 @@ public final class InternalAccess {
         void routerReplyToSpot(RouterSocket socket, RoutingId destNodeRid,
                                RoutingId destSpotRid, long requestSeq,
                                List<Message> parts, SendFlags flags);
-        void streamAttachActorGateway(StreamSocket socket, SpotNode node);
         List<ActorRef> streamBoundActors(StreamSocket socket,
                                          RoutingId sessionRid);
         boolean streamSubmitBind(StreamSocket socket, RoutingId sessionRid,
@@ -624,11 +623,6 @@ public final class InternalAccess {
             long requestSeq, List<Message> parts, SendFlags flags) {
         runtimeSocketAccess().routerReplyToSpot(socket, destNodeRid, destSpotRid,
             requestSeq, parts, flags);
-    }
-
-    public static void streamAttachActorGateway(StreamSocket socket,
-                                                SpotNode node) {
-        runtimeSocketAccess().streamAttachActorGateway(socket, node);
     }
 
     public static List<ActorRef> streamBoundActors(StreamSocket socket,

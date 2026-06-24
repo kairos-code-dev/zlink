@@ -447,6 +447,16 @@ public final class NativeSpotNode implements SpotNode {
             sourceSessionRid);
     }
 
+    public void bindRemoteActorBoundSession(
+        ActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid) {
+        actorOperations.bindRemoteActorBoundSession(
+            actor,
+            sourceNodeRid,
+            sourceSessionRid);
+    }
+
     public void closeActorBoundSession(ActorRef actor, Duration timeout) {
         actorOperations.closeActorBoundSession(actor, timeout);
     }

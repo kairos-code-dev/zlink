@@ -26,7 +26,6 @@ int main ()
     zlink::service::actor_t player2 = node.create_actor ("player-2");
     zlink::stream_socket_t stream (ctx);
 
-    stream.attach_actor_gateway (node);
     zlink::routing_id_t session = zlink::routing_id_t::from (std::string ("game-room-session"));
     (void) stream.bind_actor (session, player1.ref ()).async ().get ();
     (void) stream.bind_actor (session, player2.ref ()).async ().get ();

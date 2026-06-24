@@ -50,7 +50,6 @@ fun main() {
                     val player2 = node.createActor("player-2")
                     val received = mutableListOf<String>()
 
-                    stream.attachActorGateway(node)
                     val session = RoutingId.from("game-room-session")
                     stream.bindActor(session, player1.ref()).submit().toCompletableFuture().join().forEach(Message::close)
                     stream.bindActor(session, player2.ref()).submit().toCompletableFuture().join().forEach(Message::close)

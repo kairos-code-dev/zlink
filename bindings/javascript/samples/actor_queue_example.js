@@ -31,7 +31,6 @@ async function main() {
   try {
     // 스트림 게이트웨이에 actor를 세션으로 바인딩한다. 실제 서버에서 session은
     // 게이트웨이로 접속한 클라이언트의 라우팅 ID다 — 여기선 고정값으로 만든다.
-    stream.attachActorGateway(node);
     const session = zlink.RoutingId.from(Buffer.from('single-player-session'));
     await stream.bindActor(session, actor.ref()).timeout(2000).submit();
 

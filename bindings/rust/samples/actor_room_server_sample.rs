@@ -37,9 +37,6 @@ fn main() {
         .create_actor("room-player-1")
         .expect("actor creation failed");
     let stream = ctx.stream_socket().expect("stream socket failed");
-    stream
-        .attach_actor_gateway(&node)
-        .expect("stream actor gateway attach failed");
     let session = zlink::RoutingId::from(b"room-session");
 
     let (tx, rx) = mpsc::channel();

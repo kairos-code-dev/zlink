@@ -62,7 +62,6 @@ void define_core_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("socketTrySubscriptionEvent", socket_try_subscription_event),
       ZLINK_METHOD ("subscriptionAt", subscription_at),
       ZLINK_METHOD ("socketStreamAttach", socket_stream_attach),
-      ZLINK_METHOD ("streamAttachActorGateway", stream_attach_actor_gateway),
       ZLINK_METHOD ("streamBindActor", stream_bind_actor),
       ZLINK_METHOD ("streamUnbindActor", stream_unbind_actor),
       ZLINK_METHOD ("streamSendBoundActorPart", stream_send_bound_actor_part),

@@ -3,19 +3,18 @@
 package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
-import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.runtime.nativeapi.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.ActorRequestCallbacks;
+import systems.zlink.runtime.nativeapi.DurationConversions;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
@@ -31,16 +30,6 @@ import java.util.Objects;
 
 final class NativeStreamActorSupport {
     private NativeStreamActorSupport() {
-    }
-
-    public static void attachActorGateway(StreamSocket socket, SpotNode node) {
-        Objects.requireNonNull(socket, "socket");
-        Objects.requireNonNull(node, "node");
-        int rc = Native.streamAttachActorGateway(
-            InternalAccess.socketHandle(socket), InternalAccess.spotNodeHandle(node));
-        if (rc != 0) {
-            throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-        }
     }
 
     public static List<ActorRef> boundActors(StreamSocket socket,
@@ -129,10 +118,10 @@ final class NativeStreamActorSupport {
     }
 
     public static boolean sendBoundActorReceiveds(StreamSocket socket,
-                                              RoutingId sessionRid,
-                                              String actorId,
-                                              List<Message> parts,
-                                              SendFlags flags) {
+                                                  RoutingId sessionRid,
+                                                  String actorId,
+                                                  List<Message> parts,
+                                                  SendFlags flags) {
         Objects.requireNonNull(socket, "socket");
         Objects.requireNonNull(sessionRid, "sessionRid");
         Objects.requireNonNull(actorId, "actorId");
@@ -172,5 +161,4 @@ final class NativeStreamActorSupport {
             return true;
         }
     }
-
 }

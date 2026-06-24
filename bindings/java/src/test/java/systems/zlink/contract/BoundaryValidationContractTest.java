@@ -25,14 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class BoundaryValidationContractTest {
     @Test
-    public void streamAttachActorGatewayRequiresRoutedNode() {
         TestSupport.assumeNative();
 
         try (Context ctx = Zlink.createContext();
              StreamSocket stream = ctx.createStreamSocket();
              SpotNode node = ctx.createSpotNode(SpotNodeMode.PUBSUB)) {
             ZlinkConfigException error = assertThrows(ZlinkConfigException.class,
-                () -> stream.attachActorGateway(node));
             assertEquals(ConfigResult.NOT_SUPPORTED, error.getResult());
         }
     }

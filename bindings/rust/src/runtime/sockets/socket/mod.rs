@@ -12,8 +12,8 @@ pub(crate) use pair::{pair_handle, pair_inner, pair_inner_mut};
 pub(crate) use pub_socket::{pub_inner, pub_inner_mut};
 pub(crate) use router::{recv_router_once, router_inner, router_inner_mut};
 pub(crate) use stream::{
-    stream_attach_actor_gateway, stream_bind_actor, stream_bound_actors, stream_inner,
-    stream_inner_mut, stream_on_packet, stream_send_bound_actor, stream_unbind_actor,
+    stream_bind_actor, stream_bound_actors, stream_inner, stream_inner_mut, stream_on_packet,
+    stream_send_bound_actor, stream_unbind_actor,
 };
 pub(crate) use sub::{sub_inner, sub_inner_mut};
 pub(crate) use xpub::{xpub_inner, xpub_inner_mut};

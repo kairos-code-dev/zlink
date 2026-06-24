@@ -38,7 +38,6 @@ fn main() {
     // 생성 직후 actor는 Entry Spot(로비)에 위치한다.
     let mut player = node.create_actor("player").unwrap();
     let stream = ctx.stream_socket().unwrap();
-    stream.attach_actor_gateway(&node).unwrap();
     let session = RoutingId::from(b"player-session");
 
     // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).

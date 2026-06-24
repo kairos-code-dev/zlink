@@ -41,7 +41,6 @@ func main() {
 	stream, err := ctx.StreamSocket()
 	must(err)
 	defer stream.Close()
-	must(stream.AttachActorGateway(node))
 	session := zlink.NewRoutingIDString("player-session")
 
 	// 생성 직후 actor는 Entry Spot(로비)에 위치한다.

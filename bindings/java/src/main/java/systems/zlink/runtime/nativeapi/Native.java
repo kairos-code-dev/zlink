@@ -147,10 +147,6 @@ public final class Native {
             "zlink_stream_packet_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_ATTACH_ACTOR_GATEWAY = downcall(
-            "zlink_stream_attach_actor_gateway",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_ATTACH_LEN32BE = downcall("zlink_stream_attach_len32be",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
@@ -892,17 +888,6 @@ public final class Native {
               sessionRid, actor, handler, userdata, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_bind_actor failed", t);
-        }
-    }
-
-    public static int streamAttachActorGateway(MemorySegment stream,
-                                               MemorySegment node) {
-        try {
-            return (int) MH_STREAM_ATTACH_ACTOR_GATEWAY.invokeExact(stream,
-              node);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_stream_attach_actor_gateway failed", t);
         }
     }
 
@@ -2397,6 +2382,20 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_actor_forward_bound_session_part failed", t);
+        }
+    }
+
+    public static int spotNodeActorBindRemoteSession(
+                                                       MemorySegment node,
+                                                       MemorySegment actor,
+                                                       MemorySegment sourceNodeRid,
+                                                       MemorySegment sourceSessionRid) {
+        try {
+            return (int) NativeSpotSymbols.MH_SPOT_NODE_ACTOR_BIND_REMOTE_SESSION.invokeExact(
+              node, actor, sourceNodeRid, sourceSessionRid);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_actor_bind_remote_session failed", t);
         }
     }
 

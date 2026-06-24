@@ -109,11 +109,6 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
             super.close();
         }
     }
-    public void attachActorGateway(SpotNode node) {
-        Objects.requireNonNull(node, "node");
-        InternalAccess.streamAttachActorGateway(this, node);
-    }
-
     public ActorBindOperation bindActor(RoutingId sessionRid, ActorRef actor) {
         Objects.requireNonNull(sessionRid, "sessionRid");
         Objects.requireNonNull(actor, "actor");

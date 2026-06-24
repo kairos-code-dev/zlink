@@ -29,7 +29,7 @@ type (
 	XPubSocket = impl.XPubSocket
 	// XSubSocket is a subscriber whose subscriptions are carried as messages.
 	XSubSocket = impl.XSubSocket
-	// StreamSocket exchanges framed packets with raw TCP peers and can host actor gateways.
+	// StreamSocket exchanges framed packets with raw TCP peers.
 	StreamSocket = impl.StreamSocket
 	// SendOp builds a multipart send; submitting consumes the added parts.
 	SendOp = impl.SendOp

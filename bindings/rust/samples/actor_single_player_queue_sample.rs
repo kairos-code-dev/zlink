@@ -39,9 +39,6 @@ fn main() {
         .create_actor("single-player")
         .expect("actor creation failed");
     let stream = ctx.stream_socket().expect("stream socket failed");
-    stream
-        .attach_actor_gateway(&node)
-        .expect("stream actor gateway attach failed");
     let session = zlink::RoutingId::from(b"single-player-session");
 
     let (first_tx, first_rx) = mpsc::channel();

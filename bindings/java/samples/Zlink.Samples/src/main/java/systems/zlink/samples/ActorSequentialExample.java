@@ -35,7 +35,6 @@ public final class ActorSequentialExample {
             Actor player = node.createActor("player");
             List<String> processed = new ArrayList<>();
 
-            stream.attachActorGateway(node);
             RoutingId session = RoutingId.from("player-session");
             // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
             stream.bindActor(session, player.ref()).submit().toCompletableFuture().join().forEach(Message::close);

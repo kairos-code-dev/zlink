@@ -26,7 +26,6 @@ func main() {
 	stream, err := ctx.StreamSocket()
 	samplecommon.Must(err)
 	defer stream.Close()
-	samplecommon.Must(stream.AttachActorGateway(node))
 	session := zlink.NewRoutingIDString("single-player-session")
 
 	var mu sync.Mutex

@@ -148,7 +148,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.Spot, "actors"))
         self.assertTrue(hasattr(zlink.StreamSocket, "bind_actor"))
         self.assertTrue(hasattr(zlink.StreamSocket, "unbind_actor"))
-        self.assertTrue(hasattr(zlink.StreamSocket, "attach_actor_gateway"))
         self.assertTrue(hasattr(zlink.StreamSocket, "send_bound_actor"))
         self.assertTrue(hasattr(zlink.Discovery, "resolve_actor"))
         self.assertTrue(hasattr(zlink.Discovery, "bind_route"))

@@ -26,7 +26,6 @@ int main (void)
     capture.node = node;
     assert (zlink_spot_dispatch_event_handler (spot, actor_sample_dispatch, &capture)
             == ZLINK_HANDLER_OK);
-    assert (zlink_stream_attach_actor_gateway (stream, node) == ZLINK_CONFIG_OK);
     assert (
       zlink_stream_bind_actor (stream, &session_rid, &actor, actor_sample_reply, &capture, 1000)
       == ZLINK_SUBMIT_OK);

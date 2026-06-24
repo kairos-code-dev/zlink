@@ -192,11 +192,6 @@ export class StreamSocket extends SocketBase {
       native.socketDisconnectRid(getNativeHandle(this), normalizedRoutingId);
     });
   }
-  attachActorGateway(node: SpotNodeHandle): void {
-    configCall('stream actor gateway attachment failed', () => {
-      native.streamAttachActorGateway(getNativeHandle(this), getNativeHandle(node));
-    });
-  }
   bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOperation {
     const handle = getNativeHandle(this);
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');

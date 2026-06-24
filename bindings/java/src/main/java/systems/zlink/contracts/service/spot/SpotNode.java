@@ -119,6 +119,11 @@ public interface SpotNode extends AutoCloseable {
       RoutingId sourceNodeRid,
       RoutingId sourceSessionRid);
 
+    void bindRemoteActorBoundSession(
+      ActorRef actor,
+      RoutingId sourceNodeRid,
+      RoutingId sourceSessionRid);
+
     void closeActorBoundSession(ActorRef actor, Duration timeout);
 
     AutoHwmProfile routerHwmProfile();

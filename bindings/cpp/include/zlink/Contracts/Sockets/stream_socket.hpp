@@ -9,7 +9,7 @@
 namespace zlink
 {
 
-/// @brief Exchanges framed packets with raw TCP peers and can host actor gateways.
+/// @brief Exchanges framed packets with raw TCP peers.
 class stream_socket_t : public routed_message_socket_t
 {
   public:
@@ -34,8 +34,6 @@ class stream_socket_t : public routed_message_socket_t
     void get_routing_id (routing_id_t &routing_id_) const;
 
     stream_socket_options_t options () { return stream_socket_options_t (*this); }
-
-    void attach_actor_gateway (service::spot_node_t &node_);
 
     service::actor_bind_operation_t bind_actor (const routing_id_t &session_rid_,
                                                 const actor_ref_t &actor_);

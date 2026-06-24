@@ -28,7 +28,6 @@ int main (void)
     actor_sample_set_rid (&session_rid, "gateway-session");
     zlink_routing_id_t play_node_rid;
     assert (zlink_get_routing_id (play_node, &play_node_rid) == ZLINK_CONFIG_OK);
-    assert (zlink_stream_attach_actor_gateway (stream, gateway_node) == ZLINK_CONFIG_OK);
     assert (
       zlink_stream_bind_actor (stream, &session_rid, &actor, actor_sample_reply, &capture, 1000)
       == ZLINK_SUBMIT_OK);

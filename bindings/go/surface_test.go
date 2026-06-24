@@ -518,10 +518,7 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.StreamSocket)(nil), "BindActor") {
 		t.Fatalf("StreamSocket should expose BindActor")
 	}
-	if !hasMethod((*zlink.StreamSocket)(nil), "AttachActorGateway") {
-		t.Fatalf("StreamSocket should expose AttachActorGateway")
-	}
-	if !hasMethod((*zlink.StreamSocket)(nil), "UnbindActor") {
+		if !hasMethod((*zlink.StreamSocket)(nil), "UnbindActor") {
 		t.Fatalf("StreamSocket should expose UnbindActor")
 	}
 	if !hasMethod((*zlink.StreamSocket)(nil), "SendBoundActor") {

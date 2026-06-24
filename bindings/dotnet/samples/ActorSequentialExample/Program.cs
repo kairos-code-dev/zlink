@@ -18,7 +18,6 @@ internal static class Program
         using var stream = ctx.CreateStreamSocket();
         List<string> processed = new();
 
-        stream.AttachActorGateway(node);
         RoutingId session = RoutingId.From("player-session");
         // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
         Zlink.MultipartClose(await stream.BindActor(session, player.Ref)

@@ -18,7 +18,6 @@ def main():
         player2 = node.actor("player-2")
         received = []
 
-        stream.attach_actor_gateway(node)
         session = zlink.RoutingId.from_("game-room-session")
 
         # dispatch 핸들러: join 요청을 수락하고, 도착한 메시지를 모은다.

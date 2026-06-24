@@ -40,6 +40,7 @@ public final class ClientScenario {
         runManualClientServer();
         runCrossChannelDiscovery();
         runMessageSizeVariation();
+        runBackpressureObservation();
         runRouteMesh();
     }
 
@@ -160,6 +161,37 @@ public final class ClientScenario {
             ensure(reply.value().equals("profile:" + payload), "RM-C8 payload mismatch for " + size);
         }
         System.out.println("scenario RM-C8 roundtrip passed");
+    }
+
+    private void runBackpressureObservation() {
+        java.util.List<java.util.concurrent.CompletionStage<Contracts.ProfileReply>> requests =
+            new java.util.ArrayList<>();
+        for (int index = 0; index < 40; index++) {
+            requests.add(client.requestToChannel(
+                    Contracts.API_CHANNEL,
+                    new Contracts.ProfileRequest("slow-c9-" + index))
+                .timeout(Duration.ofMillis(150))
+                .submit(Contracts.ProfileReply.class));
+        }
+
+        int failed = 0;
+        for (var request : requests) {
+            try {
+                request.toCompletableFuture().get(2, TimeUnit.SECONDS);
+            } catch (Exception expected) {
+                failed++;
+            }
+        }
+        ensure(failed > 0, "RM-C9 did not observe bounded backpressure/timeout");
+        sleep(5000);
+
+        Contracts.ProfileReply recovered = request(
+            Contracts.WORKFLOW_CHANNEL,
+            new Contracts.ProfileRequest("c9-recovered"),
+            Duration.ofSeconds(5));
+        ensure("profile:c9-recovered".equals(recovered.value()),
+            "RM-C9 connection did not recover after pressure");
+        System.out.println("scenario RM-C9 passed");
     }
 
     private void runRouteMesh() {

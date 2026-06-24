@@ -19,7 +19,7 @@ public final class ProfileRequestHandler
     public Contracts.ProfileReply handle(
         Contracts.ProfileRequest request,
         ZLinkRequestContext context) {
-        if ("slow".equals(request.value())) {
+        if (request.value().startsWith("slow")) {
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException error) {

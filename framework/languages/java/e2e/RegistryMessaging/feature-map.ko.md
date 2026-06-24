@@ -22,8 +22,9 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행
 - `RM-C8`: public typed client로 소형, 대형, near-large payload 왕복을 검증한다. max size 초과
   거부는 framework channel runtime의 max message size 적용이 public typed channel 경로에 배선된
   뒤 같은 scenario의 추가 marker로 확장한다.
+- `RM-C9`: 느린 handler에 다량 request를 짧은 timeout으로 동시에 제출해 bounded timeout/public
+  error를 관측하고, 적체 뒤 정상 request가 다시 성공하는지 검증한다.
 
 ## public API/harness 대기
 
 - `RM-C6`: 제거된 mesh 경로는 RegistryMessaging public API 대기 항목에서 제외한다.
-- `RM-C9`: HWM 포화와 backpressure를 안정적으로 유도하는 public 테스트 제어 API가 아직 없다.

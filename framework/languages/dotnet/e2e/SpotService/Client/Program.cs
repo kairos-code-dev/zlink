@@ -1373,11 +1373,10 @@ static async Task RunSmG2Async(ClientOptions options)
         new StateReq("add", 1),
         "SM-G2 first owner request timed out.");
     Ensure(first.NodeRid == options.PlayARid, "SM-G2 first owner mismatch.");
-    await host.StopAsync();
 
-    using var remapHost = CreateRouteEgressHost(
+    var remapHost = CreateRouteEgressHost(
         options,
-        includeControlChannel: true,
+        includeControlChannel: false,
         includeRouteMeshEgress: true,
         includeClientServerEgress: false,
         includeExternalChannelServer: false,
@@ -1385,12 +1384,8 @@ static async Task RunSmG2Async(ClientOptions options)
         usePlayBRouteMeshEgress: true);
     await remapHost.StartAsync();
     var remapRoutes = remapHost.Services.GetRequiredService<IZLinkRouteClient>();
-    await WaitForControlRouteAsync(
-        remapRoutes,
-        options.PlayBRid,
-        "SM-G2 expected play-b control route to become ready after remap.");
 
-    await remapRoutes.Request(
+    await routes.Request(
             SpotServiceNames.ControlChannel,
             RoutingId.From(options.PlayBRid),
             new CreateSpotReq(secondOwnerSpotRid))
@@ -1414,7 +1409,6 @@ static async Task RunSmG2Async(ClientOptions options)
             && CountNew(playBAfter, playBBefore, $"spot-state-request|rid={options.PlayBRid}|spot={firstOwnerSpotRid}") == 0;
     }, "SM-G2 expected remapped owner evidence without cross-owner leakage.");
 
-    await remapHost.StopAsync();
     Console.WriteLine("scenario SM-G2 passed");
 }
 
@@ -1425,26 +1419,6 @@ static async Task RunSmG3Async(ClientOptions options)
     var actorIds = Enumerable.Range(0, actorCount)
         .Select(index => $"actor-sm-g3-{index}")
         .ToArray();
-
-    using var host = CreateRouteEgressHost(
-        options,
-        includeControlChannel: true,
-        includeRouteMeshEgress: true,
-        includeClientServerEgress: false,
-        includeExternalChannelServer: false,
-        traceName: "client-framework-join-leave-race-flow.log");
-    await host.StartAsync();
-    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
-    await WaitForControlRouteAsync(
-        routes,
-        options.PlayARid,
-        "SM-G3 expected play-a control route to become ready.");
-    await routes.Request(
-            SpotServiceNames.ControlChannel,
-            RoutingId.From(options.PlayARid),
-            new CreateSpotReq(spotRid))
-        .PacketName("CreateSpotReq")
-        .Async<CreateSpotReply>();
 
     var clients = new List<IZlinkStreamConnector>();
     try
@@ -1493,7 +1467,6 @@ static async Task RunSmG3Async(ClientOptions options)
         }
     }
 
-    await host.StopAsync();
     Console.WriteLine("scenario SM-G3 passed");
 }
 

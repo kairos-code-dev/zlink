@@ -22,7 +22,6 @@
   검증한다.
 - `SM-B5`: handler 없는 actor packet request가 client-visible error로 끝나고
   `HandlerMissing` dispatch error marker가 play 노드 로그에 남는지 검증한다.
-- `SM-B6`: 명시적 leave request와 spot evidence를 검증한다.
 - `SM-B8`: entry spot의 public `destroyActor`로 actor를 명시 파괴하고, mailbox 제거와
   post-destroy request 실패를 검증한다.
 - `SM-C2`: spot handler가 외부 channel로 request/send를 내보내고, SPOT mesh publish를 수행하는
@@ -60,6 +59,9 @@
 - `SM-A3`: 특정 spot id를 직접 지정해 해당 owner 노드에서만 처리되는지 확인하는 독립 scenario
   marker가 아직 없다. owner mapping은 `SM-A4`가 검증한다.
 - `SM-A5`: C++ framework에는 Stage wrapper 공개 계층이 아직 없다.
+- `SM-B6`: 현재 runner에는 명시적 leave marker만 있다. 비정상 disconnect 통지는 `SM-D5`에서
+  별도 검증하지만, 공통 `SM-B6`이 요구하는 leave와 disconnect callback 비교를 한 scenario로
+  묶은 검증은 아직 없다.
 - `SM-B7`: actor lifecycle callback과 packet handler 순서를 독립적으로 단언하는 scenario marker가
   아직 없다. local/remote join 자체는 `SM-B1`/`SM-B2`가 검증한다.
 - `SM-D3`: entry spot에 actor를 bind하는 공개 예제/runner 경로가 아직 없다. user spot actor bind는

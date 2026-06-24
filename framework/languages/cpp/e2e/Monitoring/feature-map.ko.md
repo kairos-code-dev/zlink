@@ -3,11 +3,12 @@
 이 문서는 Config 7 공통 시나리오를 C++ framework 공개 API와 현재 E2E harness로 어디까지
 검증하는지 정리한다.
 
-## 구현한 시나리오
+## 공통 외 보조 검증
 
-- `MON-Baseline`: 실제 PubSub 배포에서 message flow tracing을 `key_transitions`로 켜고,
-  dispatch error evidence와 flow log가 생성되는지 검증한다. 이는 공통 README의 필수 관측 로그
-  요건을 C++ E2E에서 고정한다.
+- Monitoring runner는 실제 PubSub 배포에서 message flow tracing을 `key_transitions`로 켜고,
+  dispatch error evidence와 flow log가 생성되는지 검증한다. 이 검증은 공통 Config 7의
+  monitoring source event 시나리오 ID가 아니라, 공통 README의 필수 관측 로그 요건을 C++ E2E에서
+  고정하는 보조 runner다.
 
 ## C++에서 제외한 시나리오
 

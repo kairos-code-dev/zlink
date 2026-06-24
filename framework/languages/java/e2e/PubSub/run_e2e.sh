@@ -129,15 +129,42 @@ start_subscriber() {
   local rid="$1"
   local topics="$2"
   local http="$3"
+  local delay="${4:-}"
   ZLINK_JAVA_E2E_ROLE=subscriber \
   ZLINK_JAVA_E2E_SUBSCRIBER_RID="${rid}" \
   ZLINK_JAVA_E2E_TOPICS="${topics}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
+  ZLINK_JAVA_E2E_HANDLER_DELAY_MS="${delay}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
     "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
-  pids+=("$!")
+  LAST_PID="$!"
+  pids+=("${LAST_PID}")
   wait_port "${rid}-http" "${http}"
+}
+
+stop_pid() {
+  local pid="$1"
+  if kill -0 "${pid}" >/dev/null 2>&1; then
+    kill "${pid}" >/dev/null 2>&1 || true
+    wait "${pid}" >/dev/null 2>&1 || true
+  fi
+}
+
+run_publisher_mode() {
+  local mode="$1"
+  local suffix="$2"
+  ZLINK_JAVA_E2E_ROLE=publisher \
+  ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
+  ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
+  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
+  ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
+  ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
+  ZLINK_JAVA_E2E_LATE_CONTINUE_FILE="${LATE_CONTINUE}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    "$(app_bin)" >"${log_dir}/publisher-${suffix}.stdout.log" 2>"${log_dir}/publisher-${suffix}.stderr.log"
+  cat "${log_dir}/publisher-${suffix}.stdout.log"
 }
 
 read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER_ENDPOINT SUB1_HTTP SUB2_HTTP SUB3_HTTP <<<"$(reserve_ports)"
@@ -169,17 +196,39 @@ pids+=("${CLIENT_PID}")
 wait_marker "${PUBLISHER_READY}"
 wait_port publisher "${PUBLISHER_ENDPOINT}"
 start_subscriber sub-1 alpha "${SUB1_HTTP}"
+SUB1_PID="${LAST_PID}"
 start_subscriber sub-2 beta "${SUB2_HTTP}"
+SUB2_PID="${LAST_PID}"
 sleep 2
 touch "${PRELATE_CONTINUE}"
 
 wait_marker "${LATE_READY}"
 start_subscriber sub-3 gamma "${SUB3_HTTP}"
+SUB3_PID="${LAST_PID}"
 sleep 2
 touch "${LATE_CONTINUE}"
 
 wait "${CLIENT_PID}"
 cat "${log_dir}/publisher.stdout.log"
+
+stop_pid "${SUB1_PID}"
+rm -f "${LATE_CONTINUE}"
+run_publisher_mode subscriber-restarted ps-a4 &
+PS_A4_PID="$!"
+sleep 1
+start_subscriber sub-1 alpha "${SUB1_HTTP}"
+SUB1_PID="${LAST_PID}"
+sleep 2
+touch "${LATE_CONTINUE}"
+wait "${PS_A4_PID}"
+
+stop_pid "${SUB1_PID}"
+start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
+SUB1_PID="${LAST_PID}"
+sleep 2
+run_publisher_mode slow-subscriber ps-b1
+
+run_publisher_mode publisher-restarted ps-b2
 
 python3 - "${SUB1_HTTP}/evidence" >"${log_dir}/sub-1-evidence.json" <<'PY'
 import sys
@@ -201,4 +250,4 @@ with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
 PY
 
 grep -Rq "message flow" "${log_dir}"/*-flow.log
-grep -q "HANDLER_MISSING/DROP/MissingEventNotify" "${log_dir}/sub-1-evidence.json"
+grep -q "HANDLER_MISSING/DROP/MissingEventNotify" "${log_dir}/sub-2-evidence.json"

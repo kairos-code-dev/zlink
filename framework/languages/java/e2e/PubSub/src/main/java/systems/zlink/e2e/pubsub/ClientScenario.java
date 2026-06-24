@@ -27,6 +27,20 @@ public final class ClientScenario {
     }
 
     public void run() {
+        String mode = Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", "default");
+        if ("subscriber-restarted".equals(mode)) {
+            runSubscriberRestartAfterReconnect();
+            return;
+        }
+        if ("slow-subscriber".equals(mode)) {
+            runSlowSubscriberIsolation();
+            return;
+        }
+        if ("publisher-restarted".equals(mode)) {
+            runPublisherRestartRecovery();
+            return;
+        }
+
         touch(Env.get("ZLINK_JAVA_E2E_PUBLISHER_READY_FILE"));
         waitForFile(Env.get("ZLINK_JAVA_E2E_PRELATE_CONTINUE_FILE"));
 
@@ -40,6 +54,38 @@ public final class ClientScenario {
         runTopicFilter();
         runLateSubscriber();
         runMissingPacket();
+    }
+
+    private void runSubscriberRestartAfterReconnect() {
+        publish("all", new Contracts.EventNotify("ps-a4-down", 1, "while-sub-1-down"));
+        waitForEvent("sub-2", "ps-a4-down", 1);
+
+        waitForFile(Env.get("ZLINK_JAVA_E2E_LATE_CONTINUE_FILE"));
+
+        publish("all", new Contracts.EventNotify("ps-a4-after", 2, "after-sub-1-restart"));
+        waitForEvent("sub-1", "ps-a4-after", 2);
+        waitForEvent("sub-2", "ps-a4-after", 2);
+        Contracts.EvidenceSnapshot restarted = snapshot("sub-1");
+        ensure(!hasEvent(restarted, "ps-a4-down", 1),
+            "PS-A4 restarted subscriber received event from disconnected interval");
+        System.out.println("scenario PS-A4 passed");
+    }
+
+    private void runSlowSubscriberIsolation() {
+        for (int sequence = 0; sequence < 8; sequence++) {
+            publish("all", new Contracts.EventNotify("ps-b1", sequence, "slow-isolation-" + sequence));
+        }
+        waitForEvent("sub-2", "ps-b1", 7);
+        waitForEvent("sub-3", "ps-b1", 7);
+        System.out.println("scenario PS-B1 passed");
+    }
+
+    private void runPublisherRestartRecovery() {
+        publish("all", new Contracts.EventNotify("ps-b2", 1, "after-publisher-restart"));
+        waitForEvent("sub-1", "ps-b2", 1);
+        waitForEvent("sub-2", "ps-b2", 1);
+        waitForEvent("sub-3", "ps-b2", 1);
+        System.out.println("scenario PS-B2 passed");
     }
 
     private void runFanoutBasicDelivery() {

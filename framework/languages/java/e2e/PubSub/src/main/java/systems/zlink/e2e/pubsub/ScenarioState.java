@@ -23,6 +23,19 @@ public final class ScenarioState {
         return topics.contains(topic);
     }
 
+    public void delayIfConfigured(String scenario) {
+        String delay = Env.get("ZLINK_JAVA_E2E_HANDLER_DELAY_MS");
+        if (delay.isBlank() || !"ps-b1".equals(scenario)) {
+            return;
+        }
+        try {
+            Thread.sleep(Long.parseLong(delay));
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("subscriber delay interrupted", error);
+        }
+    }
+
     public synchronized void record(
         String marker,
         String topic,

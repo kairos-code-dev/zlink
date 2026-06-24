@@ -22,6 +22,7 @@ public final class EventNotifyHandler
         if (!state.accepts(context.topic())) {
             return;
         }
+        state.delayIfConfigured(message.scenario());
         state.record(
             "EventNotify",
             context.topic(),

@@ -9,7 +9,8 @@
         "native/src/addon_core_perf.cc",
         "native/src/addon_discovery.cc",
         "native/src/addon_exports.cc",
-        "native/src/addon_spot.cc"
+        "native/src/addon_spot.cc",
+        "native/src/addon_spot_request_callbacks.cc"
       ],
       "include_dirs": [ "../../core/include" ],
       "variables": {

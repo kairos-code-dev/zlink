@@ -31,6 +31,16 @@ public final class Contracts {
     public record EchoManualCommand(String value) {
     }
 
+    public record DiLifecycleRequest(String value) {
+    }
+
+    public record DiLifecycleReply(
+        String value,
+        int scopedId,
+        int singletonId,
+        int disposedCount) {
+    }
+
     public record JsonEchoRequest(String value) {
     }
 

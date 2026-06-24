@@ -58,21 +58,32 @@ cleanup() {
 trap cleanup EXIT
 
 reserve_ports() {
-  python3 - <<'PY'
+  local count="${1:-3}"
+  python3 - "${count}" <<'PY'
 import socket
+import sys
+count = int(sys.argv[1])
 sockets = []
 ports = []
 try:
-    for _ in range(3):
+    for _ in range(count):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
         ports.append(sock.getsockname()[1])
-    print(f"tcp://127.0.0.1:{ports[0]} http://127.0.0.1:{ports[1]} tcp://127.0.0.1:{ports[2]}")
+    print(" ".join(str(port) for port in ports))
 finally:
     for sock in sockets:
         sock.close()
 PY
+}
+
+tcp() {
+  echo "tcp://127.0.0.1:$1"
+}
+
+http() {
+  echo "http://127.0.0.1:$1"
 }
 
 port_of() {
@@ -102,7 +113,12 @@ app_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/install/registration-codec/bin/registration-codec"
 }
 
-read -r SERVER_ENDPOINT HTTP_ENDPOINT INVALID_ENDPOINT <<<"$(reserve_ports)"
+read -r SERVER_PORT HTTP_PORT INVALID_PORT MISMATCH_PORT MISMATCH_HTTP_PORT <<<"$(reserve_ports 5)"
+SERVER_ENDPOINT="$(tcp "${SERVER_PORT}")"
+HTTP_ENDPOINT="$(http "${HTTP_PORT}")"
+INVALID_ENDPOINT="$(tcp "${INVALID_PORT}")"
+MISMATCH_ENDPOINT="$(tcp "${MISMATCH_PORT}")"
+MISMATCH_HTTP_ENDPOINT="$(http "${MISMATCH_HTTP_PORT}")"
 
 gradle_run installDist
 
@@ -149,3 +165,37 @@ grep -Rq "message flow" "${log_dir}"/*-flow.log
 grep -q "EchoAuto" "${log_dir}/server-evidence.json"
 grep -q "ProtobufEcho" "${log_dir}/server-evidence.json"
 grep -q "MsgpackEcho" "${log_dir}/server-evidence.json"
+
+stop_current() {
+  set +e
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    kill "${pids[$i]}" >/dev/null 2>&1 || true
+  done
+  wait >/dev/null 2>&1 || true
+  pids=()
+  set -e
+}
+
+stop_current
+
+ZLINK_JAVA_E2E_ROLE=server \
+ZLINK_JAVA_E2E_CODEC_MODE=json-only \
+ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
+ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
+pids+=("$!")
+wait_port mismatch-server "${MISMATCH_ENDPOINT}"
+wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
+sleep 1
+
+ZLINK_JAVA_E2E_ROLE=client \
+ZLINK_JAVA_E2E_CLIENT_MODE=codec-mismatch \
+ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
+ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/mismatch-client.stdout.log" 2>"${log_dir}/mismatch-client.stderr.log"
+
+cat "${log_dir}/mismatch-client.stdout.log"
+grep -q "scenario RC-A4 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario RC-B5 passed" "${log_dir}/mismatch-client.stdout.log"

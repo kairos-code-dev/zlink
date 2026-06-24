@@ -21,6 +21,10 @@ public final class ClientScenario {
     }
 
     public void run() {
+        if ("codec-mismatch".equals(Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", ""))) {
+            runCodecMismatch();
+            return;
+        }
         runRegistrationVariants();
         runCodecVariants();
     }
@@ -67,6 +71,24 @@ public final class ClientScenario {
             .await();
         waitForEvidence("Send", "EchoManual", "manual-send");
         System.out.println("scenario RC-A3 passed");
+
+        java.util.List<Contracts.DiLifecycleReply> diReplies = new java.util.ArrayList<>();
+        for (int index = 0; index < 3; index++) {
+            diReplies.add(client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.DiLifecycleRequest("di-" + index))
+                .packetName("DiLifecycle")
+                .timeout(REQUEST_TIMEOUT)
+                .await(Contracts.DiLifecycleReply.class));
+        }
+        ensure(diReplies.stream().map(Contracts.DiLifecycleReply::scopedId).distinct().count() == 3,
+            "RC-A4 scoped dependency was not recreated per request: " + diReplies);
+        ensure(diReplies.stream().map(Contracts.DiLifecycleReply::singletonId).distinct().count() == 1,
+            "RC-A4 singleton dependency changed between requests: " + diReplies);
+        ensure(diReplies.get(2).disposedCount() == 3,
+            "RC-A4 dispose count mismatch: " + diReplies);
+        waitForEvidenceValueSuffix("DI", "DiLifecycle", ":di-2");
+        System.out.println("scenario RC-A4 passed");
 
         Contracts.EchoReply filtered = client.requestToChannel(
                 Contracts.CHANNEL,
@@ -124,6 +146,41 @@ public final class ClientScenario {
         System.out.println("scenario RC-B4 passed");
     }
 
+    private void runCodecMismatch() {
+        Contracts.EchoReply jsonReply = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.JsonEchoRequest("json-after-mismatch"))
+            .packetName("JsonEcho")
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.EchoReply.class);
+        ensure("echo:json-after-mismatch".equals(jsonReply.value()),
+            "RC-B5 JSON baseline failed");
+
+        try {
+            Contracts.PackedEchoReply mismatchReply = client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.PackedEchoRequest("msgpack-mismatch"))
+                .packetName("MsgpackEcho")
+                .timeout(REQUEST_TIMEOUT)
+                .await(Contracts.PackedEchoReply.class);
+            ensure("echo:msgpack-mismatch".equals(mismatchReply.value()),
+                "RC-B5 fallback reply mismatch: " + mismatchReply.value());
+        } catch (RuntimeException expected) {
+            System.out.println("scenario RC-B5 mismatch ended with public error: "
+                + expected.getClass().getSimpleName());
+        }
+
+        Contracts.EchoReply secondJson = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.JsonEchoRequest("json-still-ok"))
+            .packetName("JsonEcho")
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.EchoReply.class);
+        ensure("echo:json-still-ok".equals(secondJson.value()),
+            "RC-B5 JSON traffic did not recover after mismatch");
+        System.out.println("scenario RC-B5 passed");
+    }
+
     private void waitForEvidence(String marker, String packetName, String value) {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         while (System.nanoTime() < deadline) {
@@ -137,6 +194,21 @@ public final class ClientScenario {
         }
         throw new IllegalStateException(
             "timed out waiting for evidence " + marker + "/" + packetName + "/" + value);
+    }
+
+    private void waitForEvidenceValueSuffix(String marker, String packetName, String suffix) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (snapshot().entries().stream().anyMatch(entry ->
+                marker.equals(entry.marker())
+                    && packetName.equals(entry.packetName())
+                    && entry.value().endsWith(suffix))) {
+                return;
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException(
+            "timed out waiting for evidence " + marker + "/" + packetName + "/*" + suffix);
     }
 
     private Contracts.EvidenceSnapshot snapshot() {

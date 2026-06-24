@@ -6,7 +6,10 @@ import java.util.Set;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Scope;
+import systems.zlink.e2e.registrationcodec.handlers.DiLifecycleRequestHandler;
 import systems.zlink.e2e.registrationcodec.handlers.AttrEchoHandler;
 import systems.zlink.e2e.registrationcodec.handlers.AutoRequestHandler;
 import systems.zlink.e2e.registrationcodec.handlers.AutoSendHandler;
@@ -59,8 +62,10 @@ public final class ServerApplication {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
             options.codecs().addJson();
-            options.codecs().use(ZLinkProtobufCodec.defaultCodec());
-            options.codecs().use(ZLinkMessagePackCodec.forPayloadTypes(ServerApplication::isPackedType));
+            if (!"json-only".equals(Env.get("ZLINK_JAVA_E2E_CODEC_MODE", ""))) {
+                options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+                options.codecs().use(ZLinkMessagePackCodec.forPayloadTypes(ServerApplication::isPackedType));
+            }
             options.useFilter(FirstOrderFilter.class);
             options.useFilter(SecondOrderFilter.class);
             options.configureDispatch()
@@ -81,6 +86,11 @@ public final class ServerApplication {
                 ManualSendHandler.class,
                 Contracts.EchoManualCommand.class,
                 "EchoManual");
+            channel.addRequestHandler(
+                DiLifecycleRequestHandler.class,
+                Contracts.DiLifecycleRequest.class,
+                Contracts.DiLifecycleReply.class,
+                "DiLifecycle");
             channel.addRequestHandler(
                 JsonRequestHandler.class,
                 Contracts.JsonEchoRequest.class,
@@ -123,6 +133,16 @@ public final class ServerApplication {
     @Bean AttrEchoHandler attrEchoHandler(ScenarioState state) { return new AttrEchoHandler(state); }
     @Bean ManualRequestHandler manualRequestHandler(ScenarioState state) { return new ManualRequestHandler(state); }
     @Bean ManualSendHandler manualSendHandler(ScenarioState state) { return new ManualSendHandler(state); }
+    @Bean DiLifecycleRequestHandler diLifecycleRequestHandler(
+        org.springframework.beans.factory.ObjectProvider<DiScopedDependency> scoped,
+        DiSingletonDependency singleton,
+        ScenarioState state) {
+        return new DiLifecycleRequestHandler(scoped, singleton, state);
+    }
+    @Bean DiSingletonDependency diSingletonDependency() { return new DiSingletonDependency(); }
+    @Bean
+    @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+    DiScopedDependency diScopedDependency(ScenarioState state) { return new DiScopedDependency(state); }
     @Bean JsonRequestHandler jsonRequestHandler(ScenarioState state) { return new JsonRequestHandler(state); }
     @Bean JsonSendHandler jsonSendHandler(ScenarioState state) { return new JsonSendHandler(state); }
     @Bean ProtobufRequestHandler protobufRequestHandler(ScenarioState state) { return new ProtobufRequestHandler(state); }

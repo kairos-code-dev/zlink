@@ -22,6 +22,7 @@ static async Task RunAsync(ClientOptions options)
     await RunSmB8Async(options);
     await RunSmD7Async(options);
     await RunSmD8Async(options);
+    await RunSmD10Async(options);
     await RunSmD9D11D13Async(options);
     await RunSmD1AndD6Async(options);
     await RunSmD3Async(options);
@@ -357,6 +358,57 @@ static async Task RunSmD1AndD6Async(ClientOptions options)
     Console.WriteLine("scenario SM-D1 passed");
     Console.WriteLine("scenario SM-D2 passed");
     Console.WriteLine("scenario SM-D6 passed");
+}
+
+static async Task RunSmD10Async(ClientOptions options)
+{
+    await using var congested = CreateClient(
+        options.SessionAStreamEndpoint,
+        maxReceivedMessages: 1);
+    await using var isolated = CreateClient(options.SessionBStreamEndpoint);
+    await congested.Connect.Async();
+    await isolated.Connect.Async();
+
+    await congested.Request(new AuthReq("actor-sm-d10-congested", "stream backpressure", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    await isolated.Request(new AuthReq("actor-sm-d10-isolated", "stream backpressure peer", options.PlayBRid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+
+    for (var index = 0; index < 8; index++)
+    {
+        var reply = await congested.Request(new ActorPushReq($"burst-{index}"))
+            .PacketName("ActorPushReq")
+            .Async<ActorPingReply>();
+        Ensure(reply.ActorId == "actor-sm-d10-congested", "SM-D10 congested reply actor mismatch.");
+    }
+
+    Ensure(
+        congested.ReceivedCount("ActorPushNotify") <= 1,
+        "SM-D10 expected bounded received-message queue for congested session.");
+    var retained = await congested.WaitFor<ActorPushNotify>()
+        .Where(message => message.Payload.ActorId == "actor-sm-d10-congested")
+        .Timeout(TimeSpan.FromSeconds(2))
+        .Async();
+    Ensure(retained.Payload.Value == "burst-7", "SM-D10 expected the newest congested push to be retained.");
+
+    var stillAlive = await congested.Request(new ActorPingReq("after-backpressure"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(stillAlive.ActorId == "actor-sm-d10-congested", "SM-D10 congested session stopped routing.");
+    Ensure(stillAlive.Value == "after-backpressure", "SM-D10 congested session reply mismatch.");
+
+    var isolatedPush = isolated.WaitFor<ActorPushNotify>().Async().AsTask();
+    var isolatedReply = await isolated.Request(new ActorPushReq("isolated-push"))
+        .PacketName("ActorPushReq")
+        .Async<ActorPingReply>();
+    var isolatedNotify = await isolatedPush;
+    Ensure(isolatedReply.ActorId == "actor-sm-d10-isolated", "SM-D10 isolated reply actor mismatch.");
+    Ensure(isolatedNotify.Payload.ActorId == "actor-sm-d10-isolated", "SM-D10 isolated push actor mismatch.");
+    Ensure(isolatedNotify.Payload.Value == "isolated-push", "SM-D10 isolated session push mismatch.");
+
+    Console.WriteLine("scenario SM-D10 passed");
 }
 
 static async Task RunSmD4Async(ClientOptions options)
@@ -1295,7 +1347,8 @@ static IHost CreateRouteEgressHost(
 static IZlinkStreamConnector CreateClient(
     string endpoint,
     Action<IZlinkStreamConnector>? configure = null,
-    ZlinkStreamHeartbeatOptions? heartbeat = null)
+    ZlinkStreamHeartbeatOptions? heartbeat = null,
+    int? maxReceivedMessages = null)
 {
     var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
     {
@@ -1304,6 +1357,7 @@ static IZlinkStreamConnector CreateClient(
         RequestTimeout = TimeSpan.FromSeconds(5),
         Heartbeat = heartbeat ?? new ZlinkStreamHeartbeatOptions { Enabled = false },
         DispatchMode = ZlinkStreamDispatchMode.Immediate,
+        MaxReceivedMessages = maxReceivedMessages ?? 1024,
     });
     configure?.Invoke(connector);
     return connector;

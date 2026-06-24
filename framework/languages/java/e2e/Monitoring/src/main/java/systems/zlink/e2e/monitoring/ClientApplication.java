@@ -100,10 +100,12 @@ public final class ClientApplication {
                 "PEERS_CHANGED",
                 "SUBJECTS_CHANGED",
                 "TIMER_HANDLER_FAILED"));
+            ensureMonitoringHandlerFailureIsIsolated();
             System.out.println("scenario MON-A1 passed");
             System.out.println("scenario MON-A2 passed");
             System.out.println("scenario MON-A3 passed");
             System.out.println("scenario MON-B1 passed");
+            System.out.println("scenario MON-C1 passed");
         }
 
         private void ensureFilteredSocketEvents() {
@@ -112,6 +114,18 @@ public final class ClientApplication {
                 "MON-B1 did not observe filtered CONNECTION_READY event");
             ensure(observed.equals(Set.of("CONNECTION_READY")),
                 "MON-B1 socket filter allowed unexpected events: " + observed);
+        }
+
+        private void ensureMonitoringHandlerFailureIsIsolated() {
+            waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "monitoring", Set.of(
+                "HandlerFailureInjected"));
+            Contracts.WorkReply reply = client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.WorkRequest("c1-after-handler-failure"))
+                .timeout(Duration.ofSeconds(3))
+                .await(Contracts.WorkReply.class);
+            ensure(reply.value().equals("work:c1-after-handler-failure"),
+                "MON-C1 follow-up reply mismatch");
         }
 
         private void waitForEvent(String baseUrl, String surface, Set<String> expected) {

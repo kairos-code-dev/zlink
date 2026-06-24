@@ -27,6 +27,25 @@ public final class MonitoringEventHandlers {
         }
     }
 
+    public static final class FailingSocketRecorder
+        implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
+        private final EvidenceState state;
+
+        public FailingSocketRecorder(EvidenceState state) {
+            this.state = state;
+        }
+
+        @Override
+        public void handle(ZLinkSocketEvent event) {
+            state.record(
+                "monitoring",
+                event.sourceName(),
+                "HandlerFailureInjected",
+                event.event().name());
+            throw new IllegalStateException("intentional monitoring handler failure");
+        }
+    }
+
     public static final class RegistryRecorder
         implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
         private final EvidenceState state;

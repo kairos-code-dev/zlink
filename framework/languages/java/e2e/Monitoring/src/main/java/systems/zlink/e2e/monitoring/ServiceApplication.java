@@ -115,6 +115,11 @@ public final class ServiceApplication {
     }
 
     @Bean
+    MonitoringEventHandlers.FailingSocketRecorder failingSocketRecorder(EvidenceState state) {
+        return new MonitoringEventHandlers.FailingSocketRecorder(state);
+    }
+
+    @Bean
     MonitoringEventHandlers.SpotRecorder spotRecorder(EvidenceState state) {
         return new MonitoringEventHandlers.SpotRecorder(state);
     }

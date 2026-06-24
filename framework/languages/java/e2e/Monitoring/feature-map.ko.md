@@ -18,11 +18,12 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
   필터에 포함한 kind만 기록되는지 확인한다.
 - `MON-B2`: monitoring 등록 검증에서 비양수 polling interval은 구성 시점에 실패하고, 미존재
   socket/spot source는 host 시작 시점에 명확한 오류로 실패하는지 확인한다.
+- `MON-C1`: monitoring event handler가 예외를 던져도 dispatcher가 예외를 격리하고, 그 뒤 channel
+  messaging이 계속 성공하는지 확인한다.
 
 ## public API/harness 대기
 
 - `MON-A4`: failover/drain 전이를 socket/registry monitoring event로 묶어 보는 runner가 아직 없다.
 - `MON-A5`: handshake failure, status transition, timer stopped kind를 안정적으로 유발하는 trigger가
   아직 없다.
-- `MON-C1`: event handler 실패 격리와 runtime error sink 보고를 단언하는 scenario가 아직 없다.
 - `MON-D1`: 장애/복구 반복 중 monitoring event 연속성을 보는 장시간 harness가 아직 없다.

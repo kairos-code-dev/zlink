@@ -103,8 +103,15 @@ wait_health "$API_B_URL" api-b
 
 dotnet run --project "$CLIENT_PROJECT" -- \
   --registry-router-endpoint "$REG_ROUTER" \
+  --registry-url "http://127.0.0.1:$REG_HTTP_PORT" \
+  --registry-pub-endpoint "$REG_PUB" \
   --provider-a-url "$API_A_URL" \
   --provider-b-url "$API_B_URL" \
+  --provider-a-endpoint "$API_A" \
+  --provider-b-endpoint "$API_B" \
+  --provider-a-evidence-file "$LOG_DIR/api-a.evidence.log" \
+  --provider-b-evidence-file "$LOG_DIR/api-b.evidence.log" \
+  --server-project "$SERVER_PROJECT" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

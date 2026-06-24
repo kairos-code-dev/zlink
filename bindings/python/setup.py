@@ -36,17 +36,28 @@ def _compile_args() -> list[str]:
     return ["-O3", "-pthread"]
 
 
+def _native_extension(name: str, source: str) -> Extension:
+    return Extension(
+        name,
+        [source],
+        include_dirs=[str(CORE / "include")],
+        library_dirs=[str(CORE_BUILD_LIB)],
+        libraries=["zlink"],
+        runtime_library_dirs=_runtime_library_dirs(),
+        extra_compile_args=_compile_args(),
+        extra_link_args=["-pthread"] if not sys.platform == "win32" else [],
+    )
+
+
 setup(
     ext_modules=[
-        Extension(
+        _native_extension(
             "zlink._native._zlink_native",
-            ["src/zlink/_native/_zlink_native.c"],
-            include_dirs=[str(CORE / "include")],
-            library_dirs=[str(CORE_BUILD_LIB)],
-            libraries=["zlink"],
-            runtime_library_dirs=_runtime_library_dirs(),
-            extra_compile_args=_compile_args(),
-            extra_link_args=["-pthread"] if not sys.platform == "win32" else [],
-        )
+            "src/zlink/_native/_zlink_native.c",
+        ),
+        _native_extension(
+            "zlink._native._zlink_perf_native",
+            "src/zlink/_native/_zlink_perf_native.c",
+        ),
     ]
 )

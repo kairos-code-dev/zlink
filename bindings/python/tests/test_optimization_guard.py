@@ -126,6 +126,7 @@ def test_python_hot_paths_prefer_private_native_bridge():
     socket_base = SRC / "_runtime" / "sockets" / "socket_base.py"
     bridge = SRC / "_native" / "bridge.py"
     extension = SRC / "_native" / "_zlink_native.c"
+    perf_extension = SRC / "_native" / "_zlink_perf_native.c"
     setup = ROOT / "setup.py"
 
     socket_text = socket_base.read_text(encoding="utf-8")
@@ -144,6 +145,7 @@ def test_python_hot_paths_prefer_private_native_bridge():
 
     bridge_text = bridge.read_text(encoding="utf-8")
     assert "from . import _zlink_native" in bridge_text
+    assert "from . import _zlink_perf_native" in bridge_text
     assert "def send_parts(" in bridge_text
     assert "def send_parts_rid(" in bridge_text
     assert "def publish_parts(" in bridge_text
@@ -174,13 +176,15 @@ def test_python_hot_paths_prefer_private_native_bridge():
     assert "zlink_spot_publish_part" in extension_text
     assert "zlink_spot_send_channel_part" in extension_text
     assert "zlink_spot_send_spot_part" in extension_text
-    assert "py_multi_spot_sendsend_roundtrip" in extension_text
-    assert "py_multi_spot_reqrep_roundtrip" in extension_text
-    assert "py_single_socket_one_way" in extension_text
-    assert "zlink_stream_packet_handler" in extension_text
-    assert "stream_echo_packet_handler" in extension_text
     assert "for (Py_ssize_t j = i; j < prepared.count; ++j)" in extension_text
     assert "for (Py_ssize_t j = i + 1; j < prepared.count; ++j)" not in extension_text
+
+    perf_extension_text = perf_extension.read_text(encoding="utf-8")
+    assert "py_multi_spot_sendsend_roundtrip" in perf_extension_text
+    assert "py_multi_spot_reqrep_roundtrip" in perf_extension_text
+    assert "py_single_socket_one_way" in perf_extension_text
+    assert "zlink_stream_packet_handler" in perf_extension_text
+    assert "stream_echo_packet_handler" in perf_extension_text
 
     spot_receive = SRC / "_runtime" / "service" / "spot" / "spot_receive.py"
     spot_receive_text = spot_receive.read_text(encoding="utf-8")
@@ -191,6 +195,7 @@ def test_python_hot_paths_prefer_private_native_bridge():
     setup_text = setup.read_text(encoding="utf-8")
     assert "Extension(" in setup_text
     assert '"zlink._native._zlink_native"' in setup_text
+    assert '"zlink._native._zlink_perf_native"' in setup_text
 
 def test_public_socket_contracts_keep_builder_only_send_publish_surface():
     contract_files = [

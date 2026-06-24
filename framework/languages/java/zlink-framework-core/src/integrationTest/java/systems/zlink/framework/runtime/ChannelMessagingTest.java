@@ -1041,7 +1041,7 @@ final class ChannelMessagingTest {
         { var discovery = apiOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
         { var channel = apiOptions.addClientServerChannel("api").enableServer(apiEndpoint);
             channel.addRequestHandler(NestedRouteApiHandler.class, String.class, String.class, "NestedApi"); };
-        { var route = apiOptions.addRouteMeshChannel("route");
+        { var route = apiOptions.addRouteMesh("route");
             route.enableServer(apiRouteEndpoint);
             route.enableClient();
             route.setRoutingId(apiRouteRid); };
@@ -1049,7 +1049,7 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions playOptions = new DefaultZLinkFrameworkOptions();
         playOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
         { var discovery = playOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var route = playOptions.addRouteMeshChannel("route");
+        { var route = playOptions.addRouteMesh("route");
             route.enableServer(playRouteEndpoint);
             route.enableClient();
             route.setRoutingId(playRouteRid);
@@ -1095,7 +1095,7 @@ final class ChannelMessagingTest {
         { var discovery = playOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
         { var channel = playOptions.addClientServerChannel("api"); channel.enableClient(); };
         { var mesh = playOptions.addSpotMesh("game");
-            { var node = mesh.addNode("play-node");
+            { var node = mesh;
                 node.addSpotFactory(OutboundChannelSpot.class); }; };
 
         try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
@@ -1125,34 +1125,29 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         sourceOptions.codecs().addJson();
         { var channel = sourceOptions.addClientServerChannel("egress");
-            channel.enableClient(ingressEndpoint);
-            channel.enableSpotRouteEgress("ingress"); };
-        { var channel = sourceOptions.addRouteMeshChannel("route");
+            channel.enableClient(ingressEndpoint);};
+        { var channel = sourceOptions.addRouteMesh("route");
             channel.enableServer(routeSourceEndpoint);
             channel.enableClient(routeTargetEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-source-route")); };
         { var mesh = sourceOptions.addSpotMesh("game");
-            { var node = mesh.addNode("source-node");
+            { var node = mesh;
                 node.enableRouter(sourceSpotEndpoint)
-                    .setRouterRoutingId(RoutingId.from("spot-egress-source-node"));
-                node.acceptSpotRoutesFromChannel("route", routeSourceEndpoint);
-                node.addSpotFactory(OutboundChannelSpot.class); }; };
+                    .setRouterRoutingId(RoutingId.from("spot-egress-source-node"));node.addSpotFactory(OutboundChannelSpot.class); }; };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.codecs().addJson();
         { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
             channel.serverRoutingId(RoutingId.from("spot-egress-target-node"));
             channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Noop"); };
-        { var channel = targetOptions.addRouteMeshChannel("route");
+        { var channel = targetOptions.addRouteMesh("route");
             channel.enableServer(routeTargetEndpoint);
             channel.enableClient(routeSourceEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-target-route")); };
         { var mesh = targetOptions.addSpotMesh("game");
-            { var node = mesh.addNode("target-node");
+            { var node = mesh;
                 node.enableRouter(targetSpotEndpoint)
                     .setRouterRoutingId(RoutingId.from("spot-egress-target-node"));
-                node.acceptSpotRoutesFromChannel("route", routeTargetEndpoint);
-                node.acceptSpotRoutesFromChannel("ingress", ingressEndpoint);
                 node.addSpotFactory(RemoteStateSpot.class); }; };
 
         try (ZLinkFrameworkRuntime source =
@@ -1273,12 +1268,12 @@ final class ChannelMessagingTest {
         ROUTE_REQUEST_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
@@ -1302,13 +1297,13 @@ final class ChannelMessagingTest {
         RoutingId targetRid = RoutingId.from("route-scanned-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addHandlerGroup("route-shared"); };
@@ -1331,13 +1326,13 @@ final class ChannelMessagingTest {
         FILTER_PACKET.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.useFilter(ReplyDecoratingFilter.class);
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
@@ -1363,12 +1358,12 @@ final class ChannelMessagingTest {
         RoutingId targetRid = RoutingId.from("route-seq-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(DelayedRouteEchoHandler.class, String.class, String.class, "SharedPacket"); };
@@ -1409,12 +1404,12 @@ final class ChannelMessagingTest {
         ROUTE_SEND_SOURCE.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = sourceOptions.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = targetOptions.addRouteMesh("route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addSendHandler(RouteNoticeHandler.class, String.class, "Notice"); };

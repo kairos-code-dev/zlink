@@ -51,7 +51,7 @@ class session_server_host_factory_t
               .enable_router (topology.session_router_endpoint, topology.session_router_rid)
               .enable_actor_gateway ()
               .enable_pub_sub (topology.session_spot_endpoint, topology.session_pub_rid);
-            options.add_route_mesh_channel (sample_names_t::actor_session_route_channel)
+            options.add_route_mesh (sample_names_t::actor_session_route_channel)
               .enable_server (topology.session_actor_route_endpoint)
               .set_routing_id (topology.session_router_rid)
               .enable_client ();

@@ -196,9 +196,8 @@ handler는 constructor injection을 사용한다. context에 Spring `Application
 |----------------|--------------|
 | `AddClientServerChannel` | `addClientServerChannel` |
 | `AddFanoutChannel` | `addFanoutChannel` |
-| `AddDealerMeshChannel` | `addDealerMeshChannel` |
-| `AddRouteMeshChannel` | `addRouteMeshChannel` |
-| `AddSpotMesh(...).AddNode(...)` | `addSpotMesh(...).addNode(...)` |
+| `AddRouteMesh` | `addRouteMesh` |
+| `AddSpotMesh(...)` | `addSpotMesh(...)` |
 | `AddStreamNode` | `addStreamNode` |
 | `UseDiscovery` | `addRegistryEndpoint` |
 | `UseFilter` | `useFilter` |

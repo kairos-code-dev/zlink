@@ -48,8 +48,7 @@ channel 은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`ho
 |------|------|-----------|
 | client-server | `add_client_server_channel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 붙는다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
 | fanout | `add_fanout_channel` | publisher → 다수 subscriber, topic (PUB / SUB) |
-| dealer mesh | `add_dealer_mesh_channel` | dealer ↔ dealer — round-robin 분산 (외부 LB 없이 수평 확장) |
-| route mesh | `add_route_mesh_channel` | router ↔ router — routing id 로 특정 주소에 라우팅 (SPOT node 가 이 route mesh 로 구성된다: [8장](08-spot.ko.md)) |
+| route mesh | `add_route_mesh` | router ↔ router — routing id 로 특정 주소에 라우팅 (SPOT node 가 이 route mesh 로 구성된다: [8장](08-spot.ko.md)) |
 
 **소켓 구조 한눈에** — 어떤 소켓이 어떻게 붙는지가 네 종류의 차이다.
 
@@ -69,15 +68,6 @@ graph LR
     P["publisher<br/>PUB"] --> S1["subscriber A<br/>SUB"]
     P --> S2["subscriber B<br/>SUB"]
     P --> S3["subscriber C<br/>SUB"]
-```
-
-- **dealer mesh** — DEALER 끼리 붙어, 한 요청을 서버들에 **round-robin으로 분산**(아무 서버나).
-
-```mermaid
-graph LR
-    C["client<br/>DEALER"] -->|"round-robin"| A["server A<br/>DEALER"]
-    C --> B["server B<br/>DEALER"]
-    C --> D["server C<br/>DEALER"]
 ```
 
 - **route mesh** — ROUTER 끼리 붙어, **routing id 로 지정한 주소에만** 보낸다(분산 아님). SPOT node 가 이 구조로 구성된다.
@@ -301,7 +291,6 @@ graph LR
 같은 스레드가 즉시 B 를 처리하고, A 는 응답이 오면 resume 된다.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
 sequenceDiagram
     participant W as worker 스레드
     participant H1 as 핸들러 A (코루틴)

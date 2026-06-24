@@ -165,7 +165,7 @@ missing proxy 패턴은 사용 시점까지 오류를 늦춘다. bound session f
 ZLinkModule.forRoot(
   zlinkFramework()
     .actorFactory('player', PlayerActorFactory)
-    .addSpotNode('play-node')
+    .addSpotMesh('play-node')
       .enablePubSub('tcp://127.0.0.1:9000')
       .addEntrySpot(GameEntrySpot)
     .build()
@@ -197,7 +197,7 @@ resolver 구현을 DI 로 제공할 수 있지만, local spot 문맥이 없으�
 `ZLinkSpotOutbound` 를 주입받으면 안 된다.
 
 > 참고: registry 기반 remote address resolver 를 쓰는 경우, validation 은 추가로 route
-> mesh channel(`.addRouteMeshChannel(...)`)과 non-empty registry endpoint
+> mesh channel(`.addRouteMesh(...)`)과 non-empty registry endpoint
 > (`.useDiscovery().addRegistryEndpoint(...)`)를 요구한다. 둘 중 하나라도 없으면
 > `ZLinkConfigurationException` 으로 실패한다.
 

@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Configuration.Builders;
 
 internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registration)
-    : IZLinkSpotNodeBuilder, IZLinkSpotMeshNodeBuilder
+    : IZLinkSpotNodeBuilder
 {
     public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
     {
@@ -90,41 +90,6 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return EnsurePubSub().SubscriberConfig;
     }
 
-    public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName)
-    {
-        EnsureSpotPublisherClient(channelName);
-        return this;
-    }
-
-    public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint)
-    {
-        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
-            EnsureSpotPublisherClient(channelName).ManualConnections,
-            endpoint,
-            "Attached SPOT publisher channel endpoint must not be empty.");
-        return this;
-    }
-
-    public IZLinkSocketConfig ConfigureSpotPublisherClientSocket(string channelName)
-    {
-        return EnsureSpotPublisherClient(channelName).SocketConfig;
-    }
-
-    public IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName)
-    {
-        EnsureAcceptedRouteChannel(channelName);
-        return this;
-    }
-
-    public IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName, string endpoint)
-    {
-        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
-            EnsureAcceptedRouteChannel(channelName).ManualConnections,
-            endpoint,
-            "Manual SPOT route channel endpoint must not be empty.");
-        return this;
-    }
-
     private ZLinkSpotRouterCapabilityRegistration EnsureRouter()
     {
         registration.Router ??= new ZLinkSpotRouterCapabilityRegistration();
@@ -145,40 +110,6 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     {
         registration.PubSub ??= new ZLinkSpotPubSubCapabilityRegistration();
         return registration.PubSub;
-    }
-
-    private ZLinkSpotPublisherClientRegistration EnsureSpotPublisherClient(string channelName)
-    {
-        if (string.IsNullOrWhiteSpace(channelName))
-        {
-            throw new ZLinkConfigurationException("Attached SPOT publisher channel name must not be empty.");
-        }
-
-        if (!registration.AttachedSpotPublisherClients.TryGetValue(channelName, out var attached))
-        {
-            attached = new ZLinkSpotPublisherClientRegistration { ChannelName = channelName };
-            registration.AttachedSpotPublisherClients.Add(channelName, attached);
-        }
-
-        return attached;
-    }
-
-    private ZLinkSpotRouteChannelAcceptanceRegistration EnsureAcceptedRouteChannel(string channelName)
-    {
-        if (string.IsNullOrWhiteSpace(channelName))
-        {
-            throw new ZLinkConfigurationException("Accepted SPOT route channel name must not be empty.");
-        }
-
-        if (!registration.AcceptedSpotRouteChannels.TryAdd(
-                channelName,
-                new ZLinkSpotRouteChannelAcceptanceRegistration { ChannelName = channelName }))
-        {
-            throw new ZLinkConfigurationException(
-                $"Duplicate accepted SPOT route channel '{channelName}' on node '{registration.SpotNodeName}'.");
-        }
-
-        return registration.AcceptedSpotRouteChannels[channelName];
     }
 
     public IZLinkEntrySpotOptions ConfigureEntrySpot()

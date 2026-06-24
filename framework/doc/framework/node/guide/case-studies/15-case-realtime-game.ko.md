@@ -80,7 +80,7 @@ dispatch 가 가져간다. **per-room lock 도, Redis 세션 라우팅 캐시도
 ZLinkModule.forRoot(
   zlinkFramework()
     .actorFactory('player', PlayerActorFactory)
-    .addSpotNode('play')
+    .addSpotMesh('play')
       .enableRouter('tcp://0.0.0.0:9200')
       .addEntrySpot(PlayerEntrySpot)
       .addSpotFactory(MatchSpot)
@@ -206,7 +206,6 @@ export class GameSession implements ZLinkSession {
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as WS gateway
@@ -224,7 +223,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant S as Session 서버

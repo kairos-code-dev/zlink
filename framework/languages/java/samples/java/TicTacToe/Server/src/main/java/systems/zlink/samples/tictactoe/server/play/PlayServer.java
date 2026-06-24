@@ -35,19 +35,14 @@ public final class PlayServer {
             options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(settings.playChannelEndpoint())
                 .addHandlerGroup(SampleNames.PlayChannel);
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.RouteChannel);
+            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.RouteChannel);
             route.enableServer(settings.routeEndpoint())
-                .enableClient(settings.peerRouteEndpoint())
-                .enableSpotRouteEgress(SampleNames.RouteChannel)
-                .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
-            options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver.class);
+                .enableClient(settings.peerRouteEndpoint())options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh)
-                .addNode(SampleNames.PlayNode);
+                ;
             node.enableRouter(settings.spotEndpoint())
                 .setRouterRoutingId(RoutingId.from(settings.playSpotNodeRid()));
-            node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid()), settings.peerSpotEndpoint());
-            node.acceptSpotRoutesFromChannel(SampleNames.RouteChannel, settings.peerRouteEndpoint());
-            node.enablePubSub(settings.spotPubSubEndpoint())
+            node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid()), settings.peerSpotEndpoint());node.enablePubSub(settings.spotPubSubEndpoint())
                 .setPubSubRoutingId(RoutingId.from(settings.playSpotNodeRid() + "-pub"));
             node.connectPeerPub(settings.peerSpotPubSubEndpoint());
             node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId));

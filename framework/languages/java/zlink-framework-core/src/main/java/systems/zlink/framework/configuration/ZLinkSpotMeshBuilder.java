@@ -1,9 +1,7 @@
 package systems.zlink.framework.configuration;
 
-public interface ZLinkSpotMeshBuilder {
+public interface ZLinkSpotMeshBuilder extends ZLinkSpotNodeBuilder {
     ZLinkDiscoveryBuilder useDiscovery();
 
     ZLinkSpotMeshBuilder useRegistrySpotResolver();
-
-    ZLinkSpotNodeBuilder addNode(String spotNodeName);
 }

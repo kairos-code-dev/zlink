@@ -62,11 +62,8 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             ConnectDiscoveredPubSubPeers);
         _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections);
         _bundles = new ZLinkSpotNodeBundleRegistry(
-            registration.SpotNodeName,
             frameworkRegistration,
-            registration,
             node,
-            _peerConnections,
             _stopSource.Token,
             ConnectDiscoveredPubSubPeers);
         _spots = new ZLinkSpotNodeCatalog(
@@ -137,11 +134,6 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     public void StartDiscoveryPeerReconciliation()
     {
         _discoveryLoop.StartIfNeeded(() => SpotDiscovery is not null);
-    }
-
-    public bool HasPublisherClient(string channelName)
-    {
-        return _registration.AttachedSpotPublisherClients.ContainsKey(channelName);
     }
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()

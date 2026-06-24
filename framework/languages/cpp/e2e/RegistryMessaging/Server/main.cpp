@@ -177,7 +177,6 @@ int main (int argc, char **argv)
     const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
     const auto workflow_endpoint = env_or ("ZLINK_CPP_E2E_WORKFLOW_ENDPOINT");
     const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
-    const auto dealer_endpoint = env_or ("ZLINK_CPP_E2E_DEALER_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
 
@@ -209,13 +208,8 @@ int main (int argc, char **argv)
               .server_routing_id (zlink::routing_id_t::from (provider_rid))
               .use_handler_group (e2e::handler_group);
         }
-        if (!dealer_endpoint.empty ()) {
-            options.add_dealer_mesh_channel (e2e::dealer_channel)
-              .enable_server (dealer_endpoint)
-              .use_handler_group (e2e::handler_group);
-        }
         if (!route_endpoint.empty ()) {
-            options.add_route_mesh_channel (e2e::route_channel)
+            options.add_route_mesh (e2e::route_channel)
               .enable_server (route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (provider_rid))
               .add_request_handler<route_ping_handler_t, e2e::route_ping_t, e2e::route_pong_t> (

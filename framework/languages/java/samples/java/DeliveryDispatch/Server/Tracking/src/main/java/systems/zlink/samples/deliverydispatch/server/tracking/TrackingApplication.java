@@ -71,19 +71,17 @@ public final class TrackingApplication {
                 .addHandlerGroup("tracking");
             options.addFanoutChannel(SampleNames.StatusFanoutChannel)
                 .enablePublisher(SampleTopology.StatusFanoutEndpoint);
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SpotRouteChannel);
+            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.SpotRouteChannel);
             route.enableServer(SampleTopology.TrackingSpotRouteEndpoint);
             route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.DeliverySpotDiscovery)
                 .setRouterChannelId(SampleNames.SpotRouteChannel);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)
-                .addNode(SampleNames.TrackingSpotNode);
+                ;
             node.enableRouter(SampleTopology.TrackingSpotRouterEndpoint)
                 .setRouterRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid));
-            node.enablePubSub(SampleTopology.TrackingSpotEndpoint);
-            node.acceptSpotRoutesFromChannel(SampleNames.SpotRouteChannel);
-            node.addEntrySpot(CustomerEntrySpot.class);
+            node.enablePubSub(SampleTopology.TrackingSpotEndpoint);node.addEntrySpot(CustomerEntrySpot.class);
             node.addSpotFactory(DeliveryTrackingSpot.class);
         };
     }

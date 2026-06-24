@@ -10,11 +10,8 @@ using Zlink.Framework.Runtime.Registry;
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotNodeBundleRegistry(
-    string nodeName,
     ZLinkFrameworkRegistration frameworkRegistration,
-    ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
-    ZLinkSpotPeerConnectionSet peerConnections,
     CancellationToken stopToken,
     Action connectDiscoveredPubSubPeers) : IAsyncDisposable
 {
@@ -48,54 +45,24 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
                 return existing;
             }
 
-            var attached = RequireAttachedSpotPublisherClient(channelName);
-
             connectDiscoveredPubSubPeers();
 
-            var bundle = CreatePublisherBundle(attached);
-            ConnectPublisherManualPeers(attached);
+            var bundle = CreatePublisherBundle();
 
             _publisherBundles.Add(channelName, bundle);
             return bundle;
         }
     }
 
-    private ZLinkSpotPublisherClientRegistration RequireAttachedSpotPublisherClient(string channelName)
-    {
-        return registration.AttachedSpotPublisherClients.TryGetValue(channelName, out var attached)
-            ? attached
-            : throw new ZLinkConfigurationException(
-                $"SPOT node '{nodeName}' publisher client '{channelName}' is not registered.");
-    }
-
-    private ZLinkSpotPublisherBundle CreatePublisherBundle(
-        ZLinkSpotPublisherClientRegistration attached)
+    private ZLinkSpotPublisherBundle CreatePublisherBundle()
     {
         var publisher = node.CreateSpot();
         return new ZLinkSpotPublisherBundle(
             publisher,
             new ZLinkAsyncSubmitter(
                 publisher.OnSendReady,
-                attached.SocketConfig.SendTimeout ?? frameworkRegistration.DefaultSocketSendTimeout,
+                frameworkRegistration.DefaultSocketSendTimeout,
                 stopToken));
-    }
-
-    private void ConnectPublisherManualPeers(ZLinkSpotPublisherClientRegistration attached)
-    {
-        foreach (var endpoint in attached.ManualConnections)
-        {
-            if (peerConnections.TryAddPubSubManual(endpoint))
-            {
-                try
-                {
-                    node.ConnectPeer(endpoint);
-                }
-                catch (ZlinkConnectException error)
-                    when (error.Result == ZlinkConnectException.ErrorCode.Busy)
-                {
-                }
-            }
-        }
     }
 
     public async ValueTask DisposeAsync()

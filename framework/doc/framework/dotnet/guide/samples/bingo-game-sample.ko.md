@@ -75,7 +75,7 @@ direct 샘플은 첫 범위에서 제외한다. session 과 spot 을 한 인스�
 현재 샘플의 `ApiServer` 는 room 생성/배정 요청을 `PlayServer` 의 server channel 로
 보낸다. 즉 allocation 단계는 `IZLinkChannelClient.RequestToChannel(...)`를 쓰는 일반
 channel-to-channel request 이다. `IZLinkChannelClient`는 등록된 channel 이름을 보고
-client-server 또는 dealer mesh outbound socket 을 선택한다. `PlayServer` 쪽 handler 가 요청을 받은 뒤
+client-server outbound socket 을 선택한다. `PlayServer` 쪽 handler 가 요청을 받은 뒤
 `BingoRoomSpot` 을 만들거나 기존 room 을 찾아 Entry Spot 에 join 을 요청한다.
 
 Session/API handler 가 actor 를 만들거나 찾은 뒤 Entry Spot 으로 join 하면

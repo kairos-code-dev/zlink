@@ -96,7 +96,7 @@ const decision = await client
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .addSpotNode('books')
+    .addSpotMesh('books')
       .enableRouter('tcp://0.0.0.0:7800')
       .enablePubSub('tcp://0.0.0.0:7801')
       .addSpotFactory(SymbolBookSpot)
@@ -178,7 +178,6 @@ Disruptor/Aeron 으로 남긴다.
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as algo client
   participant GW as order gw
@@ -195,7 +194,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as algo client
   participant GW as order gw

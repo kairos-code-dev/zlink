@@ -143,16 +143,15 @@ public class OutboundOnlyConfig implements ZLinkFrameworkConfigurer {
 
 이 경우 local `ROUTER(server)`는 열지 않고 outbound `DEALER(client)`만 만든다.
 
-## 6. Dealer mesh와 route mesh
+## 6. Route mesh
 
-Java framework도 `.NET`과 같이 channel을 네 종류로 나눈다.
+Java framework도 `.NET`과 같이 channel을 세 종류로 나눈다.
 
 | Builder | 용도 |
 |---------|------|
 | `addClientServerChannel(...)` | 일반 server/client request-send |
 | `addFanoutChannel(...)` | pub/sub fanout |
-| `addDealerMeshChannel(...)` | dealer끼리 직접 연결되는 mesh client |
-| `addRouteMeshChannel(...)` | target node `RoutingId`를 지정하는 routed channel |
+| `addRouteMesh(...)` | target node `RoutingId`를 지정하는 routed channel |
 
 route mesh는 session actor relay를 대체하지 않는다. application이 특정 node로
 route send/request를 보내야 할 때 쓴다. 같은 runtime 안의 local managed actor
@@ -160,10 +159,9 @@ binding은 framework 내부 dispatch를 사용하고, remote actor binding은 st
 `attachActorGateway(...)`와 core ActorGateway 경로를 사용한다.
 
 ```java
-RouteMeshChannelBuilder route = framework.addRouteMeshChannel("play-route")
+RouteMeshChannelBuilder route = framework.addRouteMesh("play-route")
     .enableServer("tcp://0.0.0.0:7300");
 route.setRoutingId(RoutingId.from("play-node"));
-route.enableSpotRouteEgress("game.stage");
 ```
 
 Registry-backed Spot remote address 기본 구현을 쓰려면 route mesh channel이 필요하다.

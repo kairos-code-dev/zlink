@@ -334,7 +334,7 @@ final class KotlinSuspendAnnotationHandlerTest {
         val options = DefaultZLinkFrameworkOptions()
         options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
         options.addActorFactory("player", PlayerActorFactory::class.java)
-        val node = options.addSpotMesh("rooms").addNode("room-node")
+        val node = options.addSpotMesh("rooms")
         node.enableRouter("inproc://rooms")
         node.addSpotFactory(InterfaceSpot::class.java)
 

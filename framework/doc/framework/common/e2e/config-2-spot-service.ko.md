@@ -275,13 +275,13 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 - 미등록: 대상 spot에 handler 없음 → error/drop + observer marker.
 - 세부 동작: spot 간 직접 messaging 전체 verb + negative.
 
-#### SM-C4 spot publisher client (local spot 없는 노드의 publish)
+#### SM-C4 SpotMesh pub/sub publisher capability (local spot 없는 노드의 publish)
 
 우선순위: `P1`
 
-**한마디로:** local spot을 하나도 호스팅하지 않는 노드도 `AttachSpotPublisherClient`로 SPOT mesh에 publish할 수 있고, 그 mesh의 구독 spot이 받는가.
+**한마디로:** local spot을 하나도 호스팅하지 않는 노드도 SpotMesh의 pub/sub capability로 SPOT mesh에 publish할 수 있고, 그 mesh의 구독 spot이 받는가.
 
-- 절차: local spot이 없는 노드가 `AttachSpotPublisherClient("mesh")`로 SPOT mesh publisher를 붙이고 topic으로 publish한다.
+- 절차: local spot이 없는 노드가 `AddSpotMesh("mesh").EnablePubSub(...)`로 SPOT mesh publisher를 열고 topic으로 publish한다.
 - 검증: 그 SPOT mesh의 구독 spot 전원이 이벤트를 받는다(publish-only 노드 — local spot 호스팅 불필요). 미구독 spot은 받지 않는다.
 - 세부 동작: spot 호스팅 없는 publish-only 노드의 SPOT mesh publish. (SM-C2의 spot→mesh publish와 달리, publisher가 spot이 아닌 일반 노드.)
 
@@ -494,9 +494,9 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 
 - 외부(spot 아닌) 코드는 `IZLinkRouteClient.Request(channelName, spotRid, req)`로 spot을 RoutingId로
   타깃한다(spot↔spot은 `Context.Outbound.RequestToSpot/SendToSpot`).
-- 송신 노드는 channel에 `EnableSpotRouteEgress("api")`, 수신 SpotNode는
-  `AcceptSpotRoutesFromChannel("api")`로 **같은 이름을 짝지어** 연결한다. client/server·route mesh
-  두 channel 종류 모두 `EnableSpotRouteEgress`를 지원한다.
+- 송신 노드는 route client로 target SpotNode와 spot RoutingId를 지정한다. 수신 프로세스에
+  같은 RouteMesh와 SpotMesh가 있으면 framework가 route packet과 spot route packet을 자동으로
+  분기한다.
 - low-level relay packet은 직접 조립하지 않는다(framework가 처리).
 
 > Track C(messaging 방향)와의 관계: Track C는 channel↔spot의 verb(send/request/publish)와 방향을
@@ -504,15 +504,15 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 > route 없음·거부·malformed 에러 계약, channel socket 소유권 독립**처럼 bridge가 새로 보장하는
 > 부분을 콕 집어 고정한다.
 
-#### SM-F1 client/server channel → target spot (DEALER egress)
+#### SM-F1 route client → target spot
 
 우선순위: `P0`
 
 **한마디로:** 외부 코드가 route client로 특정 spot의 RoutingId를 찍어 send/request를 보내면, 그 spot에서 처리되고 request는 reply가 돌아오는가.
 
-- 절차: 송신 노드의 client/server channel에 `EnableSpotRouteEgress("game.stage")`를 켜고, 수신 SpotNode는 `AcceptSpotRoutesFromChannel("game.stage")`로 받는다. 외부 consumer가 `IZLinkRouteClient.Request(channel, spotRid, req)`로 target spot RoutingId에 request와 send(one-way)를 보낸다.
+- 절차: 수신 프로세스가 RouteMesh와 SpotMesh를 함께 등록한다. 외부 consumer가 `IZLinkRouteClient.Request(channel, spotRid, req)`로 target spot RoutingId에 request와 send(one-way)를 보낸다.
 - 검증: request는 지정한 spot에서 처리되어 정확한 reply가 온다. send는 reply 없이 그 spot evidence에 command로 기록된다. 지정하지 않은 다른 spot에는 도달하지 않는다.
-- 세부 동작: client/server(DEALER) channel을 통한 target spot egress.
+- 세부 동작: route client를 통한 target spot request/send.
 
 #### SM-F2 route mesh channel → target spot (ROUTER egress, target node 지정)
 
@@ -520,7 +520,7 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 
 **한마디로:** route mesh channel로 target SpotNode(peer routing id)를 지정해 그 노드의 특정 spot으로 보내면, 노드 경계를 넘어 그 spot에서 처리되고 reply가 돌아오는가.
 
-- 절차: 송신 노드의 route mesh channel에 `EnableSpotRouteEgress(...)`를 켜고, 외부 consumer가 route client로 target node(`play-b`)의 peer routing id를 지정해 그 노드의 target spot RoutingId로 request와 send를 보낸다(수신 노드는 `AcceptSpotRoutesFromChannel`).
+- 절차: 외부 consumer가 route client로 target node(`play-b`)의 peer routing id를 지정해 그 노드의 target spot RoutingId로 request와 send를 보낸다. 수신 노드는 RouteMesh와 SpotMesh를 함께 등록해 자동 route ingress를 사용한다.
 - 검증: request가 target node로 relay되어 그 노드의 spot에서 처리되고 reply가 돌아온다. send는 그 노드 spot evidence에 기록된다. 지정하지 않은 노드에는 도달하지 않는다.
 - 세부 동작: route mesh(ROUTER) channel을 통한 cross-node target spot egress. (SM-F1과 같은 spot routing 의미를 channel 종류만 바꿔 확인 — 동등성.)
 
@@ -530,7 +530,7 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 
 **한마디로:** 같은 channel이 일반 application channel packet과 spot route packet을 함께 받아도, 각각 제 dispatcher(channel handler / 해당 spot)로 정확히 갈리는가.
 
-- 절차: `AcceptSpotRoutesFromChannel`로 spot route ingress를 등록한 channel에, (a) 일반 channel request와 (b) target spot으로 가는 spot route request를 섞어 보낸다.
+- 절차: RouteMesh와 SpotMesh를 함께 등록한 channel에, (a) 일반 channel request와 (b) target spot으로 가는 spot route request를 섞어 보낸다.
 - 검증: 일반 channel packet은 channel handler가, spot route packet은 target spot이 처리한다. 서로 오배달·간섭이 없고 두 종류 모두 각자 정상 reply를 받는다.
 - 세부 동작: 한 socket에서 application channel packet과 spot relay packet 공존 분기(channel inbound 허용 설정).
 

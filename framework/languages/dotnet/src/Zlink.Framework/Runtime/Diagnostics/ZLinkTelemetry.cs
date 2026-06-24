@@ -120,7 +120,6 @@ internal static class ZLinkTelemetry
         {
             "Session" => "zlink.session.dispatch",
             "Channel" => "zlink.channel.dispatch",
-            "DealerMeshChannel" => "zlink.dealer_mesh.dispatch",
             "RouteMeshChannel" => "zlink.route.dispatch",
             "Spot" => "zlink.spot.dispatch",
             "Actor" => "zlink.actor.dispatch",

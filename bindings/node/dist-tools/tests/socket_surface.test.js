@@ -142,9 +142,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     const spot = spotNode.createSpot();
     const bridge = spotNode.createRouteBridge();
     const publisher = spotNode.createPublisher();
-    assert.equal(typeof bridge.attachDealerChannel, 'function');
     assert.equal(typeof bridge.attachRouterChannel, 'function');
-    assert.equal(typeof bridge.setTargetNode, 'function');
     assert.equal(typeof bridge.send, 'function');
     assert.equal(typeof bridge.request, 'function');
     assert.equal(typeof bridge.close, 'function');
@@ -220,8 +218,8 @@ test('spot operation builders keep payload and single-submit validation centrali
     assert.throws(() => spot.sendToChannel('svc').submit(), /requires at least one message/);
     const bridge = node.createRouteBridge();
     const publisher = node.createPublisher();
-    assert.throws(() => bridge.send('svc', rid).submit(), /requires at least one message/);
-    assert.throws(() => bridge.request('svc', rid).submit(), /requires at least one message/);
+    assert.throws(() => bridge.send('svc', rid, rid).submit(), /requires at least one message/);
+    assert.throws(() => bridge.request('svc', rid, rid).submit(), /requires at least one message/);
     assert.throws(() => publisher.publish('topic').submit(), /requires at least one message/);
     publisher.close();
     bridge.close();

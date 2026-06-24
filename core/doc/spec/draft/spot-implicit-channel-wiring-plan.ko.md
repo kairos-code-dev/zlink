@@ -231,6 +231,10 @@ DEALER reply 분기, dealer 전용 endpoint capability.
 > 라이브러리를 bindings로 배포) → bindings 수정 → framework** 순으로 내려간다.
 > **각 단계에서 그 변경으로 죽은 코드(미사용 분기·orphan 테스트·dead path)를 반드시 동반
 > 제거**한다 — clean cutover의 일부다.
+>
+> 또한 **각 레이어(코어 / bindings / framework)의 기능 변경이 그린이 된 직후 POSD 기반
+> 리팩토링 패스를 한 번 돈다**(§1R·§2R·§5R). 방식은 일관되게 — **codex 에이전트로 그 변경분의
+> POSD 위반 요소를 리스트업 → 항목별 리팩토링(동작 불변) → 테스트 재그린**.
 
 ### D. DealerMesh 채널 타입 제거 (framework-level, 독립 — 먼저 가능)
 
@@ -252,6 +256,15 @@ C-API와 무관(코어 DEALER 소켓은 유지). namespace 분리와 묶는다. 
   제거 검토. `send`/`request`에 `target_node_rid`, `handle_router_received`에 `request_seq` 추가.
 - 구현 분기 정리(dealer attach/receive·reply, summary/drain/set_target/handle 변종), dealer endpoint capability.
 - 코어 테스트(detach 중 late reply, 제거 경로 회귀). **core 빌드.**
+
+### 1R. POSD 리팩토링 — 코어 변경분 (codex 주도)
+
+코어가 그린이 된 직후 1패스:
+1. **codex 에이전트로 리팩토링 요소 리스트업** — 이번 변경 범위(bridge 표면 축소·pending-reply·
+   dealer/summary/set_target 제거·`...bridge_api.cpp`/`..._channel_reply_internal.cpp`)에서
+   god-file·과결합·얕은 모듈·중복·명명/주석 등 POSD 위반을 항목화.
+2. 항목별 리팩토링(**동작 불변**, 코어 테스트 그린 유지).
+3. 코어 테스트 재그린 + 재빌드로 닫는다. (이후 §2 dev_sync는 이 리팩토링까지 반영된 core를 배포.)
 
 ### 2. bindings 동기화·수정 (framework 전에)
 
@@ -275,6 +288,14 @@ C-API와 무관(코어 DEALER 소켓은 유지). namespace 분리와 묶는다. 
   `bindings/cpp/.../spot_node.hpp`, `bindings/python/.../{ffi.py,spot_route_bridge.py}`, node
   `native/src/addon_spot*`, rust `spot_route_bridge.rs`. kotlin/javascript는 java/node 공유.
 - 각 바인딩 샘플·테스트(`test_core_api_alignment`, `test_socket_surface`, python 샘플 등) 갱신·그린.
+
+### 2R. POSD 리팩토링 — bindings 변경분 (codex 주도)
+
+bindings 정렬이 그린이 된 직후 1패스:
+1. **codex로 리팩토링 요소 리스트업** — 변경된 각 언어 바인딩 FFI/래퍼(spot_route_bridge 표면)에서
+   god-file·반복 마샬링·얕은 래퍼·명명/주석 등 POSD 위반 항목화.
+2. 항목별 리팩토링(동작 불변, 바인딩 테스트 그린 유지).
+3. 바인딩 테스트 재그린으로 닫는다.
 
 ### 3. dotnet framework cutover (레퍼런스 — bindings 위에서)
 
@@ -319,6 +340,15 @@ C-API와 무관(코어 DEALER 소켓은 유지). namespace 분리와 묶는다. 
   + AddRouteMesh + DealerMesh + 자동 경로) + 샘플·e2e·문서. java SpotService(`ClientApplication.java`/
   `PlayApplication.java`의 `enableSpotRouteEgress`/`acceptSpotRoutesFromChannel`)·node contract test
   포함. 언어 간 일시 비대칭 허용, 마지막에 parity 수렴.
+
+### 5R. POSD 리팩토링 — framework 변경분 (codex 주도)
+
+**전 언어 framework 작업(§3~§5)이 완료·그린**이 된 직후 1패스(언어별 또는 일괄):
+1. **codex로 리팩토링 요소 리스트업** — 변경된 framework 코드(builder·initializer·validator·
+   dispatcher·egress resolver·backend wrapper·namespace 재구성)에서 god-file·과결합·얕은 모듈·
+   중복·명명/주석 등 POSD 위반 항목화. (기존 POSD 리팩토링 이력 — node god-file 분해 등 — 참고)
+2. 항목별 리팩토링(동작 불변, 빌드·테스트·샘플 그린 유지).
+3. 4언어 테스트·샘플 재그린으로 닫는다.
 
 ### 6. Q6 naming 통일
 

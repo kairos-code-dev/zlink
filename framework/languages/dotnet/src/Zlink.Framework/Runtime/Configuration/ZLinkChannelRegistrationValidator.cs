@@ -19,43 +19,16 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         if (channel.Client is not null)
         {
-            if (channel.AutoConnectType != ZLinkAutoConnectType.DealerMesh
-                && !string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
+            if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
             {
                 throw new ZLinkConfigurationException(
-                    $"channel '{channel.ChannelName}' client bind endpoint is only valid for dealer mesh channels.");
+                    $"channel '{channel.ChannelName}' client cannot define a bind endpoint.");
             }
 
-            // dealer mesh 는 DEALER ↔ DEALER 대칭이라 bind(= 제공/server, 다른 peer 가 이 노드로
-            // connect) 자체가 유효한 peer path 다. bind 한 dealer mesh 노드는 discovery 나 manual
-            // connection 없이 server 로만 동작할 수 있다. connect(소비/client)로만 쓰는 노드만
-            // peer source 가 필요하다.
-            var dealerMeshProvidesByBind =
-                channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
-                && !string.IsNullOrWhiteSpace(channel.Client.BindEndpoint);
-
-            if (!dealerMeshProvidesByBind)
-            {
-                ZLinkPeerAcquisitionPolicy.RequirePeerSource(
-                    $"channel '{channel.ChannelName}' client",
-                    discoveryConfigured,
-                    channel.Client.ManualConnections);
-            }
-        }
-
-        if (channel.SpotRouteEgress is not null)
-        {
-            if (channel.AutoConnectType != ZLinkAutoConnectType.ClientServer)
-            {
-                throw new ZLinkConfigurationException(
-                    $"channel '{channel.ChannelName}' cannot enable routed SPOT egress.");
-            }
-
-            if (channel.Client is null)
-            {
-                throw new ZLinkConfigurationException(
-                    $"client/server channel '{channel.ChannelName}' routed SPOT egress requires client capability.");
-            }
+            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
+                $"channel '{channel.ChannelName}' client",
+                discoveryConfigured,
+                channel.Client.ManualConnections);
         }
 
         if (channel.Publisher is not null && string.IsNullOrWhiteSpace(channel.Publisher.BindEndpoint))
@@ -88,9 +61,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 break;
             case ZLinkAutoConnectType.Fanout:
                 ValidateFanoutHandlerExposure(channel, handlerGroups);
-                break;
-            case ZLinkAutoConnectType.DealerMesh:
-                ValidateDealerMeshHandlerExposure(channel, handlerGroups);
                 break;
         }
 
@@ -184,27 +154,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             throw new ZLinkConfigurationException(
                 $"fanout channel '{channel.ChannelName}' cannot register send or request handlers.");
         }
-    }
-
-    private static void ValidateDealerMeshHandlerExposure(
-        ZLinkChannelRegistration channel,
-        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups)
-    {
-        if (channel.PublishHandlers.Count > 0
-            || ChannelGroupsExposeAny(channel, handlerGroups, ZLinkMessageKind.Publish))
-        {
-            throw new ZLinkConfigurationException(
-                $"dealer mesh channel '{channel.ChannelName}' cannot expose publish handlers.");
-        }
-
-        ValidateMappedGroups(
-            channel,
-            handlerGroups,
-            new HashSet<ZLinkMessageKind>
-            {
-                ZLinkMessageKind.Command,
-                ZLinkMessageKind.Request,
-            });
     }
 
     private static void ValidateMappedGroups(
@@ -344,9 +293,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             case ZLinkAutoConnectType.Fanout:
                 RequireFanoutShape(channel);
                 break;
-            case ZLinkAutoConnectType.DealerMesh:
-                RequireDealerMeshShape(channel);
-                break;
             case ZLinkAutoConnectType.Invalid:
                 throw new ZLinkConfigurationException(
                     $"channel '{channel.ChannelName}' must declare a concrete auto connect type.");
@@ -386,18 +332,4 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
     }
 
-    private static void RequireDealerMeshShape(ZLinkChannelRegistration channel)
-    {
-        if (channel.Client is null)
-        {
-            throw new ZLinkConfigurationException(
-                $"dealer mesh channel '{channel.ChannelName}' must enable client capabilities.");
-        }
-
-        if (channel.Server is not null || channel.Publisher is not null || channel.Subscriber is not null)
-        {
-            throw new ZLinkConfigurationException(
-                $"dealer mesh channel '{channel.ChannelName}' can only enable client capabilities.");
-        }
-    }
 }

@@ -160,7 +160,6 @@ public enum ZLinkMessageFlowLogMode
 public enum ZLinkDispatchErrorSurface
 {
     Channel,
-    DealerMeshChannel,
     RouteMeshChannel,
     SpotRoute,
     SpotSubscription,

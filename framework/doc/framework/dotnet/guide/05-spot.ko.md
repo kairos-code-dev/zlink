@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Channel Messaging](04-channel-messaging.ko.md) | [다음: Actor · Session Actor Dispatch](06-actor-session.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Channel Messaging](04-channel-messaging.ko.md) | [다음: Actor & Spot 호스팅](06-actor-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 5. SPOT — room · stage · zone
@@ -14,8 +14,6 @@
 ## 현재 구현 기준
 
 외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
-`ISpotRouteBridge`를 내부에서 사용한다. 사용자는 받는 쪽 `AcceptSpotRoutesFromChannel(...)`과
-보내는 쪽 `EnableSpotRouteEgress(...)`의 이름만 맞추면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에
 attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
 publisher client를 주입해서 사용한다.
 
@@ -80,7 +78,7 @@ builder.Services.AddZLinkFramework(options =>
     // "connect" 코드 없이 §1 그림의 굵은 화살표(SpotNode A <==> B)가 생긴다.
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-    var node = mesh.AddNode("stage-node");
+    var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");   // 이 endpoint 가 registry 에 광고됨 → peer 들이 여기로 연결
     node.EnablePubSub("tcp://0.0.0.0:9000");   // 이 endpoint 도 광고됨 → 같은 channel pub/sub mesh 자동 구성
     node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
@@ -98,12 +96,9 @@ node 역할은 서로 독립이다.
 | `AddClientServerChannel(name).EnableClient()` | 이 노드가 일반 channel server 로 send/request 하는 client 역할 활성화 |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
-| `AcceptSpotRoutesFromChannel(name)` | named 외부 channel(client-server server·route mesh 의 ROUTER)을 이 노드 router 에 **route bridge**(transport peer)해서, 그 channel 의 client 가 spot 으로 routed send/request 하게 함. 짝: 그 channel 쪽 `EnableSpotRouteEgress("game.stage")` |
-| `AttachSpotPublisherClient(channelName)` | **local spot 이 없는 노드·코드**(`IZLinkSpotPublisherClient` 주입)가 named SPOT channel 의 pub mesh 로 topic 을 publish 하도록 publisher client 부착(노드 pub 소켓 경유). 짝: 그 channel 노드의 `EnablePubSub` |
 
 SpotNode 함수는 두 부류다 — 🟦 **이 노드가 자기 SPOT channel mesh 에 참여하는 소켓**
 (`EnableRouter`·`EnablePubSub`)과, 🟧 **다른 channel·외부 client 와 잇는 bridge/client**
-(`AcceptSpotRoutesFromChannel`·`AttachSpotPublisherClient`·`AddClientServerChannel`). 각
 함수가 무엇을 켜고 메시지가 어디로 흐르는지 보면 이렇다(점선 = 함수가 켠다).
 
 ```mermaid
@@ -128,8 +123,6 @@ flowchart LR
   %% 어떤 함수가 무엇을 켜나
   fRouter["EnableRouter(ep)"] -. 켠다 .-> rsock
   fPubSub["EnablePubSub(ep)"] -. 켠다 .-> psock
-  fAccept{{"AcceptSpotRoutesFromChannel(api)"}} -. "api channel 의 ROUTER 를<br/>이 노드 router 에 bridge" .-> rsock
-  fAttach{{"AttachSpotPublisherClient(game.stage)"}} -. "이 channel 로 publish 하는<br/>client 부착" .-> publess
   fClient{{"AddClientServerChannel(name).EnableClient()"}} -. 켠다 .-> csock
 
   classDef ownMesh fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
@@ -142,8 +135,6 @@ flowchart LR
 > `EnableRouter`(같은 channel 의 다른 SpotNode 와 spot↔spot send/request),
 > `EnablePubSub`(같은 channel 의 topic). local spot 의 `Outbound.Send/Publish` 가 이 소켓을 쓴다.
 > 🟧 **주황(육각)** = **다른 channel·외부 client 와 잇는 bridge/client** —
-> `AcceptSpotRoutesFromChannel`(외부 channel→spot route bridge),
-> `AttachSpotPublisherClient`(spot 없는 노드가 이 channel 로 publish),
 > `AddClientServerChannel().EnableClient()`(일반 channel server 로 send/request).
 
 ### 함수 하나씩 — 글 설명과 그림
@@ -175,22 +166,18 @@ flowchart LR
   class f,p m;
 ```
 
-**🟧 `AcceptSpotRoutesFromChannel(name)`** — **다른 channel** 을 spot 으로 잇는 다리(route
 bridge)를 놓는다. 지정한 외부 channel(client-server server 또는 route mesh 의 ROUTER)을 이
 노드 router 에 bridge 해서, 그 channel 의 client 가 spot 으로 **send(단방향) / request(요청→응답
 왕복)** 할 수 있게 한다. request 면 spot 의 **reply 가 같은 다리로 client 까지 되돌아온다**.
-application handler mapping 이 아니라 transport 연결이고, 그 channel 쪽은 `EnableSpotRouteEgress(...)` 로 짝을 맞춘다.
 
 ```mermaid
 flowchart LR
-  f["AcceptSpotRoutesFromChannel(api)"] -. "api 의 ROUTER 를<br/>router 에 bridge" .-> r(["router 소켓"])
   api["외부 channel(api) 의 client"] ==>|"① send / request"| r ==> spot["내 Spot"]
   spot -.->|"② request 면 reply 돌아감"| api
   classDef b fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
   class f b;
 ```
 
-**🟧 `AttachSpotPublisherClient(channelName)`** — **spot 이 없는 노드·코드**가 그 channel 로
 topic 을 publish 할 수 있게 publisher client 를 붙인다. 주입받은 `IZLinkSpotPublisherClient`
 로 publish 하면 노드의 pub 소켓을 거쳐 그 channel 의 구독 spot 에게 전달된다. 단, **publish 는
 단방향(fire-and-forget)이라 reply 가 없다** — 이 client 는 보내기만 하고 받지는 않는다(구독
@@ -198,7 +185,6 @@ spot 이 응답하려면 route 같은 별도 경로를 쓴다). spot **안**에�
 
 ```mermaid
 flowchart LR
-  f["AttachSpotPublisherClient(game.stage)"] -. 부착 .-> pc["publisher client<br/>(IZLinkSpotPublisherClient)"]
   pc ==>|"topic publish (단방향 · reply 없음)"| p(["game.stage 의<br/>pub mesh"]) ==> spot["구독 Spot"]
   classDef b fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
   class f,pc b;
@@ -221,8 +207,8 @@ spot↔spot·actor 까지 포함한 전체 연결 짝 매트릭스는 §6(연결
 
 > top-level `UseDiscovery().AddRegistryEndpoint(...)` 를 등록하면 `AddSpotMesh` 는 그 discovery endpoint 를
 > 기본으로 상속한다. mesh 단위로 다른 endpoint 를 쓰려는 경우에만 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 를
-> 따로 둔다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)` 안에
-> `AddNode(...)` 하나로 표현한다.
+> 따로 둔다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)`가 반환한
+> builder 에 router, pub/sub, factory 를 바로 설정한다.
 
 ## 3. Spot 작성 — handler 등록과 lifecycle
 
@@ -509,7 +495,7 @@ public sealed class BattleSimHandler : IZLinkSpotTimerHandler<BattleRoomSpot>
 ### 예외와 종료
 
 timer handler 에서 처리하지 않은 예외가 나면 runtime monitoring 에
-`TimerHandlerFailed` 이벤트가 발생한다([09-monitoring](09-monitoring.ko.md)).
+`TimerHandlerFailed` 이벤트가 발생한다([10-monitoring](10-monitoring.ko.md)).
 기본값에서는 다음 tick 을 계속 시도한다. 같은 예외가 반복될 수 있는 작업이라면
 handler 안에서 application 상태를 점검하고 직접 복구하거나, timer 를 중단하도록
 설정한다.
@@ -617,8 +603,6 @@ flowchart LR
     spotB["Spot"] --- rB(["router"])
   end
   rA <==>|"이미 연결됨: 양쪽 EnableRouter + discovery<br/>spot packet: SendToSpot / RequestToSpot"| rB
-  api["API 서버<br/>(일반 channel)"] -->|"연결: EnableSpotRouteEgress ↔ AcceptSpotRoutesFromChannel<br/>spot packet: IZLinkRouteClient"| rA
-  edge["edge 노드<br/>(local spot 없음)"] -->|"연결: AttachSpotPublisherClient ↔ EnablePubSub<br/>topic: IZLinkSpotPublisherClient"| nodeA
   strm["STREAM 노드<br/>(client session)"] -->|"연결: AttachActorGateway ↔ EnableRouter<br/>actor packet: actorRef.RelayAsync"| rA
 ```
 
@@ -626,8 +610,6 @@ flowchart LR
 
 | 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 배선 (양쪽 짝) |
 |------|---------------------------|----------------------------|------------------------|---------------------|
-| topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(ch, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | `AttachSpotPublisherClient(ch)` ↔ `EnablePubSub` |
-| spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(ch, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: 보내는 쪽 `EnableSpotRouteEgress(name)` ↔ 받는 쪽 `AcceptSpotRoutesFromChannel(name)`(같은 `name`) |
 | actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM `AttachActorGateway(node)` ↔ `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
 | 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel 의 handler, [04](04-channel-messaging.ko.md)) | 그 channel 의 handler | `AddClientServerChannel(name).EnableClient()` ↔ 그 channel server |
 
@@ -699,7 +681,6 @@ app.MapPost("/stage/publish", async (
 });
 ```
 
-연결: 보내는 노드 `AttachSpotPublisherClient("game.stage")` ↔ 받는 노드 `EnablePubSub`.
 spot 안에서 자기 channel 로 `Publish` 만 할 거면 자기 노드 `EnablePubSub` 하나면 된다.
 
 ### spot packet — send / request
@@ -745,9 +726,7 @@ public sealed class StageQueryAdapter(IZLinkRouteClient routes)
 외부→spot 은 mesh 밖이라 **양쪽 노드를 같은 이름으로 짝지어** 연결을 직접 만들어야 한다.
 방향을 나눠 보면 이렇다.
 
-- **보내는 쪽**(외부 channel 의 client)은 `EnableSpotRouteEgress("api")` 를 켠다 — "이 channel
   의 client 가 spot 으로도 보낼 수 있게 한다"는 뜻이다.
-- **받는 쪽**(SpotNode)은 `AcceptSpotRoutesFromChannel("api")` 를 켠다 — "그 channel 에서 오는
   요청을 내 router 로 받아 spot 에 넘긴다"는 뜻이다.
 
 두 곳의 `"api"` 라는 이름이 같아야 서로를 찾아 이어지고, 그제서야 request 가 spot 까지
@@ -758,11 +737,9 @@ public sealed class StageQueryAdapter(IZLinkRouteClient routes)
 flowchart LR
   subgraph ext["외부 노드 (local spot 없음)"]
     h["route/HTTP handler<br/>routes.Request(ch, spotRid, req)"]
-    eg["channel client<br/>EnableSpotRouteEgress('api')<br/>= spot 으로 보내기 허용"]
     h --> eg
   end
   subgraph sn["SpotNode · game.stage"]
-    rt["router<br/>EnableRouter +<br/>AcceptSpotRoutesFromChannel('api')<br/>= 이 channel 요청 받기"]
     sp["Spot<br/>AddPacket&lt;GetStageStateHandler&gt;"]
     rt --> sp
   end
@@ -774,12 +751,10 @@ flowchart LR
 // ── 보내는 노드 (API 서버) ──
 var gateway = options.AddClientServerChannel("gateway.client");
 gateway.EnableClient("tcp://play-node-1:9001");
-gateway.EnableSpotRouteEgress("api");        // ← spot 으로 보내기 허용. 받는 노드와 같은 이름
 
 // ── 받는 노드 (SpotNode) ──
-var node = mesh.AddNode("play-node");
+var node = mesh;
 node.EnableRouter("tcp://0.0.0.0:9001");
-node.AcceptSpotRoutesFromChannel("api");     // ← 그 channel 요청 받기. 위와 같은 "api" 이름
 ```
 
 ### actor packet
@@ -815,7 +790,7 @@ var actorRef = Context.Actors.Find(actorId)
 await actorRef.RelayAsync(payload, ct);
 ```
 
-자세한 actor bind/dispatch 흐름은 [06-actor-session](06-actor-session.ko.md)에서 다룬다.
+자세한 actor bind/dispatch 흐름은 [06-actor-spot](06-actor-spot.ko.md)에서 다룬다.
 
 ### 일반 channel — spot 이 다른 channel 호출
 
@@ -840,10 +815,9 @@ builder.Services.AddZLinkFramework(options =>
     var mesh = options.AddSpotMesh("game.stage");
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-    var node = mesh.AddNode("play-node");
+    var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");                // spot packet · actor packet 수신
     node.EnablePubSub("tcp://0.0.0.0:9000");                // topic publish/subscribe
-    node.AcceptSpotRoutesFromChannel("api");                // 외부 channel 에서 오는 spot 요청 받기 (spot packet)
     node.AddEntrySpot<StageEntrySpot>();                    // actor packet — entry spot
     node.AddSpotFactory<StageSpot>();
 });
@@ -857,13 +831,11 @@ builder.Services.AddZLinkFramework(options =>
     // topic — local spot 없이 game.stage 로 publish
     var mesh = options.AddSpotMesh("game.stage");
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
-    var edge = mesh.AddNode("edge-node");
-    edge.AttachSpotPublisherClient("game.stage");          // ▶ 받는 노드 EnablePubSub 와 짝
+    var edge = mesh;
 
     // spot packet — play-node 가 "api" 로 연 입구로 보낸다
     var gateway = options.AddClientServerChannel("gateway.client");
     gateway.EnableClient("tcp://play-node-1:9001");
-    gateway.EnableSpotRouteEgress("api");                  // ▶ 받는 노드 AcceptSpotRoutesFromChannel("api") 와 짝
 
     // actor packet — client stream session 의 owner gateway 지정
     var stream = options.AddStreamNode("client-stream");
@@ -872,9 +844,6 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-핵심은 **짝**이다. `EnableSpotRouteEgress("api")` 의 인자는 local 이름이 아니라
-받는 노드가 `AcceptSpotRoutesFromChannel("api")` 로 연 입구 이름과 같아야 하고,
-`AttachSpotPublisherClient("game.stage")` 는 받는 노드의 `EnablePubSub` 와,
 `AttachActorGateway("play-node")` 는 그 SpotNode 의 `EnableRouter`/`AddEntrySpot` 와
 짝을 이뤄야 한다. 한쪽만 켜면 호출은 컴파일은 되지만 런타임에 도달하지 못한다
 (§7 "자주 막히는 곳" 참고).
@@ -892,8 +861,6 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 ## 7. 자주 막히는 곳
 
 - **`Publish` 가 안 된다** → 노드에 `EnablePubSub(endpoint)` 가 없다.
-- **routed 호출이 안 나간다** → 보내는 쪽(`EnableSpotRouteEgress`)과 받는 쪽
-  (`AcceptSpotRoutesFromChannel`) 이름이 짝이 맞는지, target ROUTER 에 실제로
   연결돼 있는지 확인한다.
 - **Spot factory 타입 중복** → 같은 `SpotNode` 안에서 같은 타입을 두 번 등록하면 시작 예외.
 - **spot 상태에 lock 을 걸어야 하나?** → 같은 user Spot 내부 callback 끼리는 직렬
@@ -901,13 +868,13 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 
 ## 8. 더 보기
 
-- 이 챕터 계약의 실행 검증 예문(spot/context/client/handler): [11-interface-catalog](11-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
-- 노드/채널 builder 계약: [11-interface-catalog](11-interface-catalog.ko.md) §2.3 — 검증 클래스 `BuilderContracts`
+- 이 챕터 계약의 실행 검증 예문(spot/context/client/handler): [12-interface-catalog](12-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
+- 노드/채널 builder 계약: [12-interface-catalog](12-interface-catalog.ko.md) §2.3 — 검증 클래스 `BuilderContracts`
 - 정식 계약: [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md), [spec/spot-node](../spec/spot-node.ko.md)
 - 실행 가능한 전체 예제(room/stage/zone): [guide/samples/spot-samples](samples/spot-samples.ko.md)
-- spot 안의 참가자별 상태/세션이 필요하면: [06-actor-session](06-actor-session.ko.md)
+- spot 안의 참가자별 상태/세션이 필요하면: [06-actor-spot](06-actor-spot.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Channel Messaging](04-channel-messaging.ko.md) | [다음: Actor · Session Actor Dispatch](06-actor-session.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Channel Messaging](04-channel-messaging.ko.md) | [다음: Actor & Spot 호스팅](06-actor-spot.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

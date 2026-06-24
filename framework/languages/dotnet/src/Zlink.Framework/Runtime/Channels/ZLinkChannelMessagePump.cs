@@ -47,18 +47,4 @@ internal sealed class ZLinkChannelMessagePump
         return _receiveLoop.RunSubscriberLoopAsync(channelName, subscriber, cancellationToken);
     }
 
-    public Task RunDealerMeshLoopAsync(
-        string channelName,
-        IZLinkBackendDealerSocket dealer,
-        ZLinkDealerMeshPendingRequests pendingRequests,
-        SemaphoreSlim receiveGate,
-        CancellationToken cancellationToken)
-    {
-        return _receiveLoop.RunDealerMeshLoopAsync(
-            channelName,
-            dealer,
-            pendingRequests,
-            receiveGate,
-            cancellationToken);
-    }
 }

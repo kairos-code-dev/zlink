@@ -14,8 +14,9 @@
 
 ## 현재 구현 기준
 
-`accept_routes_from_channel(...)`과 Spot egress runtime은 core legacy `SpotNode`
-attach/connect API를 호출하지 않는다. C++ framework runtime은 C++ binding의 public
+RouteMesh와 SpotMesh가 같은 프로세스에 있으면 framework runtime이 route bridge를
+자동으로 붙인다. 사용자는 route ingress/egress를 따로 선언하지 않는다.
+C++ framework runtime은 C++ binding의 public
 `spot_node_t::create_route_bridge()` / `spot_route_bridge_t` 표면으로 channel socket을
 bridge에 연결한다. channel socket은 channel runtime이 계속 소유하며, bridge는 SPOT
 relay packet만 분류한다. local `SpotNode` topic plane으로 외부 publish가 필요하면 raw
@@ -63,24 +64,22 @@ app.add_zlink_framework([](auto &options) {
     options.add_fanout_channel("game.stage")
       .enable_publisher("tcp://0.0.0.0:7001");
     options.add_spot_mesh("game.stage")
-      .add_node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()
-      .attach_publisher("game.stage")
       .add_entry_spot<player_entry_spot_t>()
       .add_actor_factory<player_actor_factory_t>("player")
       .add_spot<stage_spot_t>("stage");
 });
 ```
 
-`spot_node.use_discovery(channel_name)`의 `channel_name`은 active SPOT channel view를
-뜻한다. 같은 SPOT node가 여러 channel 역할을 attach할 수 있으므로 discovery
-대상 이름을 생략하지 않는다.
+`add_spot_mesh(name)`이 프로세스의 단일 Spot node를 만든다. 이 호출은 같은 이름의
+discovery view를 자동으로 설정하므로 별도의 노드 추가 호출이 없다.
 
-registry discovery를 쓰지 않는 topology에서는 attach별 manual endpoint를 명시한다.
+registry discovery를 쓰지 않는 topology에서는 Spot router/pub-sub 역할 자체의 manual
+endpoint를 명시한다.
 
 ```cpp
-options.add_spot_mesh("game.stage").add_node("stage-spot-node")
+options.add_spot_mesh("game.stage")
   .enable_router("tcp://0.0.0.0:9000", zlink::routing_id_t::from("stage-router"))
   .connect_router("tcp://127.0.0.1:9001")
   .enable_pub_sub("tcp://0.0.0.0:9002")
@@ -89,9 +88,9 @@ options.add_spot_mesh("game.stage").add_node("stage-spot-node")
 
 `connect_router(...)`와 `connect_pub_sub(...)`의 manual endpoint는
 SPOT 역할 자체의 peer다. client/server channel의 client endpoint는 channel builder의
-`enable_client(...)`에서 설정한다. `attach_publisher(...)`,
-`accept_routes_from_channel(...)`에 주는 manual endpoint는 각각 publisher client와
-accepted route ingress의 peer이므로 같은 값으로 섞어 표현하지 않는다.
+`enable_client(...)`에서 설정한다. 외부 코드가 Spot으로 routed request를 보내야 하면
+`add_route_mesh(...)`를 구성한다. 같은 프로세스의 SpotMesh와 RouteMesh는 자동으로
+연결된다.
 
 ## 3. Spot context
 

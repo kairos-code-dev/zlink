@@ -117,9 +117,8 @@ test('backend adapter converts public string route bridge target RIDs to native 
     router.setRoutingId('backend-bridge-source');
     bridge.attachRouterChannel('mesh', router, { capabilities: 3 });
 
-    assert.doesNotThrow(() => bridge.setTargetNode('mesh', 'backend-bridge-target'));
-    assert.equal(typeof bridge.send('mesh', 'backend-bridge-target').message, 'function');
-    assert.equal(typeof bridge.request('mesh', 'backend-bridge-target').message, 'function');
+    assert.equal(typeof bridge.send('mesh', 'backend-bridge-target', 'backend-bridge-spot').message, 'function');
+    assert.equal(typeof bridge.request('mesh', 'backend-bridge-target', 'backend-bridge-spot').message, 'function');
   } finally {
     await bridge.dispose();
     await router.dispose();

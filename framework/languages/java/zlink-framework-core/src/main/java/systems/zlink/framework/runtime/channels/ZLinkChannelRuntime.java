@@ -26,8 +26,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointCapabilities;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
@@ -480,9 +478,7 @@ public final class ZLinkChannelRuntime
         ZLinkBackendSpotRouteBridge bridge = node.createRouteBridge();
         bridge.attachRouterChannel(
             channelName,
-            router,
-            new SpotRouteBridgeEndpointOptions()
-                .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+            router);
         spotRouteBridges.put(channelName, bridge);
         startSpotRouteBridgeDrainLoop(channelName, bridge);
         return true;
@@ -519,47 +515,6 @@ public final class ZLinkChannelRuntime
         }
     }
 
-    public CompletionStage<Void> sendToSpotViaEgressChannel(
-        String localEgressChannelName,
-        RoutingId targetSpotRid,
-        List<Message> spotParts) {
-        return sendToSpotViaEgressChannel(
-            localEgressChannelName,
-            null,
-            targetSpotRid,
-            spotParts);
-    }
-
-    public CompletionStage<Void> sendToSpotViaEgressChannel(
-        String localEgressChannelName,
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        List<Message> spotParts) {
-        ChannelRegistration registration = requireSpotRouteEgress(localEgressChannelName);
-        try {
-            ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(localEgressChannelName);
-            RoutingId targetPeerRid = resolveSpotRouteBridgeTargetNode(
-                registration,
-                localEgressChannelName,
-                targetNodeRid);
-            List<Message> bridgeParts = copyMessages(spotParts);
-            return CompletableFuture.runAsync(() -> {
-                try {
-                    if (targetPeerRid != null) {
-                        bridge.setTargetNode(localEgressChannelName, targetPeerRid);
-                    }
-                    bridge.send(localEgressChannelName, targetSpotRid, bridgeParts, SendFlags.NONE);
-                } finally {
-                    bridgeParts.forEach(Message::close);
-                }
-            });
-        } catch (RuntimeException ex) {
-            CompletableFuture<Void> result = new CompletableFuture<>();
-            result.completeExceptionally(ex);
-            return result;
-        }
-    }
-
     public CompletionStage<Void> sendToSpotViaRouterChannel(
         String routerChannelId,
         RoutingId targetNodeRid,
@@ -575,75 +530,13 @@ public final class ZLinkChannelRuntime
             List<Message> bridgeParts = copyMessages(spotParts);
             return CompletableFuture.runAsync(() -> {
                 try {
-                    bridge.setTargetNode(routerChannelId, targetNodeRid);
-                    bridge.send(routerChannelId, targetSpotRid, bridgeParts, SendFlags.NONE);
+                    bridge.send(routerChannelId, targetNodeRid, targetSpotRid, bridgeParts, SendFlags.NONE);
                 } finally {
                     bridgeParts.forEach(Message::close);
                 }
             });
         } catch (RuntimeException ex) {
             CompletableFuture<Void> result = new CompletableFuture<>();
-            result.completeExceptionally(ex);
-            return result;
-        }
-    }
-
-    public CompletionStage<List<Message>> requestToSpotViaEgressChannel(
-        String localEgressChannelName,
-        RoutingId targetSpotRid,
-        List<Message> spotParts,
-        Duration timeout) {
-        return requestToSpotViaEgressChannel(
-            localEgressChannelName,
-            null,
-            targetSpotRid,
-            spotParts,
-            timeout);
-    }
-
-    public CompletionStage<List<Message>> requestToSpotViaEgressChannel(
-        String localEgressChannelName,
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        List<Message> spotParts,
-        Duration timeout) {
-        ChannelRegistration registration = requireSpotRouteEgress(localEgressChannelName);
-        CompletableFuture<List<Message>> result = new CompletableFuture<>();
-        trackPendingRequest(result, timeout);
-        try {
-            ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(localEgressChannelName);
-            RoutingId targetPeerRid = resolveSpotRouteBridgeTargetNode(
-                registration,
-                localEgressChannelName,
-                targetNodeRid);
-            List<Message> bridgeParts = copyMessages(spotParts);
-            if (targetPeerRid != null) {
-                bridge.setTargetNode(localEgressChannelName, targetPeerRid);
-            }
-            try {
-                bridge.request(
-                    localEgressChannelName,
-                    targetSpotRid,
-                    bridgeParts,
-                    reply -> {
-                        try {
-                            if (reply.result() != ZLinkBackendRequestResult.OK) {
-                                result.completeExceptionally(new ZLinkFrameworkException(
-                                    "SPOT egress request failed: " + reply.result()));
-                                return;
-                            }
-                            result.complete(copyMessages(reply.parts()));
-                        } catch (RuntimeException ex) {
-                            result.completeExceptionally(ex);
-                        } finally {
-                            reply.parts().forEach(Message::close);
-                        }
-                    }, SendFlags.NONE, timeout);
-            } finally {
-                bridgeParts.forEach(Message::close);
-            }
-            return result;
-        } catch (RuntimeException ex) {
             result.completeExceptionally(ex);
             return result;
         }
@@ -665,11 +558,11 @@ public final class ZLinkChannelRuntime
         try {
             ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
             List<Message> bridgeParts = copyMessages(spotParts);
-            bridge.setTargetNode(routerChannelId, targetNodeRid);
             enqueueRawSpotRouteBridgeReply(routerChannelId, result);
             try {
                 boolean submitted = bridge.request(
                     routerChannelId,
+                    targetNodeRid,
                     targetSpotRid,
                     bridgeParts,
                     reply -> {
@@ -789,7 +682,6 @@ public final class ZLinkChannelRuntime
             case CLIENT_SERVER -> ZLinkBackendAutoConnectType.CLIENT_SERVER;
             case FANOUT -> ZLinkBackendAutoConnectType.FANOUT;
             case ROUTE_MESH -> ZLinkBackendAutoConnectType.ROUTE_MESH;
-            case DEALER_MESH -> ZLinkBackendAutoConnectType.DEALER_MESH;
         };
     }
 
@@ -816,15 +708,10 @@ public final class ZLinkChannelRuntime
         if (registration != null && registration.kind() == ChannelKind.ROUTE_MESH) {
             bridge.attachRouterChannel(
                 channelName,
-                requireRouteRouter(channelName),
-                new SpotRouteBridgeEndpointOptions()
-                    .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+                requireRouteRouter(channelName));
         } else {
-            bridge.attachDealerChannel(
-                channelName,
-                requireClient(channelName),
-                new SpotRouteBridgeEndpointOptions()
-                    .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_ONLY));
+            throw new ZLinkConfigurationException(
+                "SPOT route bridge requires a router channel: " + channelName);
         }
         spotRouteBridges.put(channelName, bridge);
         startSpotRouteBridgeDrainLoop(channelName, bridge);
@@ -870,15 +757,6 @@ public final class ZLinkChannelRuntime
         return router;
     }
 
-    private ChannelRegistration requireSpotRouteEgress(String channelName) {
-        ChannelRegistration registration = registrationsByName.get(channelName);
-        if (registration == null || registration.spotRouteEgressTarget() == null) {
-            throw new ZLinkConfigurationException(
-                "routed SPOT egress channel is not configured: " + channelName);
-        }
-        return registration;
-    }
-
     private static List<Message> copyMessages(List<Message> parts) {
         List<Message> copy = new ArrayList<>(parts.size());
         try {
@@ -890,133 +768,6 @@ public final class ZLinkChannelRuntime
             copy.forEach(Message::close);
             throw ex;
         }
-    }
-
-    private RoutingId resolveSpotRouteBridgeTargetNode(
-        ChannelRegistration registration,
-        String localEgressChannelName,
-        RoutingId targetNodeRid) {
-        if (registration.kind() != ChannelKind.ROUTE_MESH) {
-            return null;
-        }
-        return targetNodeRid == null
-            ? resolveRouteEgressPeerRid(
-                localEgressChannelName,
-                registration.spotRouteEgressTarget())
-            : targetNodeRid;
-    }
-
-    private RoutingId resolveRouteEgressPeerRid(
-        String localEgressChannelName,
-        String targetSpotNodeChannelName) {
-        ChannelRegistration target = registrationsByName.get(targetSpotNodeChannelName);
-        if (target != null
-            && target.kind() == ChannelKind.ROUTE_MESH
-            && target.routeRoutingId() != null) {
-            return target.routeRoutingId();
-        }
-        RoutingId discoveryRid = resolveRouteEgressPeerRidFromDiscovery(
-            localEgressChannelName,
-            targetSpotNodeChannelName);
-        if (discoveryRid != null) {
-            return discoveryRid;
-        }
-        RoutingId registryRid = resolveRouteEgressPeerRidFromRegistry(targetSpotNodeChannelName);
-        if (registryRid != null) {
-            return registryRid;
-        }
-        throw new ZLinkConfigurationException(
-            "routed SPOT route mesh egress channel '"
-                + localEgressChannelName
-                + "' cannot find a target route peer routing id for target SPOT node channel '"
-                + targetSpotNodeChannelName
-                + "'");
-    }
-
-    private RoutingId resolveRouteEgressPeerRidFromDiscovery(
-        String localEgressChannelName,
-        String targetSpotNodeChannelName) {
-        ZLinkBackendDiscovery discovery = discoveriesByName.get(localEgressChannelName);
-        if (discovery == null) {
-            return null;
-        }
-        RoutingId matched = null;
-        boolean matchedWithoutRoutingId = false;
-        for (ZLinkBackendRegistryMemberPeerEntry peer : discovery.memberPeers()) {
-            if (!targetSpotNodeChannelName.equals(peer.channelName())) {
-                continue;
-            }
-            if (peer.serviceRole() != ServiceRole.ROUTER) {
-                continue;
-            }
-            if (peer.routingId() == null) {
-                matchedWithoutRoutingId = true;
-                continue;
-            }
-            if (matched != null && !matched.equals(peer.routingId())) {
-                throw new ZLinkConfigurationException(
-                    "routed SPOT route mesh egress found multiple discovery route peers for target channel: "
-                        + targetSpotNodeChannelName);
-            }
-            matched = peer.routingId();
-        }
-        if (matched == null && matchedWithoutRoutingId) {
-            throw new ZLinkConfigurationException(
-                "routed SPOT route mesh egress found discovery target channel without routing id: "
-                    + targetSpotNodeChannelName);
-        }
-        return matched;
-    }
-
-    private RoutingId resolveRouteEgressPeerRidFromRegistry(String targetSpotNodeChannelName) {
-        if (backendFactory == null || adapterOptions == null || registryEndpoints.isEmpty()) {
-            return null;
-        }
-        ZLinkRegistryBackendAdapter registryAdapter =
-            backendFactory.createRegistryAdapter(adapterOptions);
-        RoutingId matched = null;
-        boolean matchedWithoutRoutingId = false;
-        for (String endpoint : registryEndpoints) {
-            ZLinkBackendRegistryQueryClient client =
-                registryAdapter.createRegistryQueryClient(context);
-            try {
-                client.connect(endpoint);
-                for (ZLinkBackendRegistryTopologyEntry entry :
-                    client.topology(new ZLinkBackendRegistryQueryFilter(
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(ServiceRole.ROUTER),
-                        Optional.of(targetSpotNodeChannelName),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()))) {
-                    if (!targetSpotNodeChannelName.equals(entry.channelName())) {
-                        continue;
-                    }
-                    if (entry.serviceRole() != ServiceRole.ROUTER) {
-                        continue;
-                    }
-                    if (entry.routingId() == null) {
-                        matchedWithoutRoutingId = true;
-                        continue;
-                    }
-                    if (matched != null && !matched.equals(entry.routingId())) {
-                        throw new ZLinkConfigurationException(
-                            "routed SPOT route mesh egress found multiple route peers for target channel: "
-                                + targetSpotNodeChannelName);
-                    }
-                    matched = entry.routingId();
-                }
-            } finally {
-                client.close();
-            }
-        }
-        if (matched == null && matchedWithoutRoutingId) {
-            throw new ZLinkConfigurationException(
-                "routed SPOT route mesh egress found target channel without routing id: "
-                    + targetSpotNodeChannelName);
-        }
-        return matched;
     }
 
     private void startRequestLoop(String channelName, ZLinkBackendRouterSocket router) {

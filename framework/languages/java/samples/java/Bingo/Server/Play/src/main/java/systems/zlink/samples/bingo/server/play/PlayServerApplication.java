@@ -55,7 +55,7 @@ public final class PlayServerApplication {
             options.addHandlersFromPackageOf(PlayServerApplication.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
+            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.PlayChannel);
             route.enableServer(SampleTopology.selectedPlayRouteEndpoint());
             route.enableClient();
             route.addHandlerGroup("play-route");
@@ -63,13 +63,11 @@ public final class PlayServerApplication {
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .useRegistrySpotResolver()
-                .addNode(SampleTopology.selectedPlayNodeRid());
+                );
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
                 .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
-            node.acceptSpotRoutesFromChannel(SampleNames.PlayChannel);
-            node.addEntrySpot(BingoEntrySpot.class);
+                .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);
         };
     }

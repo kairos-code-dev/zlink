@@ -37,21 +37,6 @@ internal sealed class ZLinkRouteChannelInitializer(
         {
             yield return endpoint;
         }
-
-        foreach (var spotNode in registration.SpotNodes.Values)
-        {
-            if (!spotNode.AcceptedSpotRouteChannels.TryGetValue(
-                    routedRegistration.RouterChannelId,
-                    out var acceptance))
-            {
-                continue;
-            }
-
-            foreach (var endpoint in acceptance.ManualConnections)
-            {
-                yield return endpoint;
-            }
-        }
     }
 
     private ZLinkRouteChannelRuntime CreateRuntime(
@@ -93,7 +78,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         ZLinkRouteChannelRuntime runtime)
     {
         var owners = registration.SpotNodes.Values
-            .Where(spotNode => spotNode.AcceptedSpotRouteChannels.ContainsKey(routedRegistration.RouterChannelId))
+            .Where(spotNode => spotNode.Router is not null)
             .ToArray();
         if (owners.Length == 0)
         {
@@ -103,13 +88,13 @@ internal sealed class ZLinkRouteChannelInitializer(
         if (owners.Length > 1)
         {
             throw new ZLinkConfigurationException(
-                $"Route channel '{routedRegistration.RouterChannelId}' is accepted by multiple SPOT nodes in this process.");
+                $"Route channel '{routedRegistration.RouterChannelId}' cannot attach an implicit SPOT route bridge because multiple router-capable SPOT nodes are registered in this process.");
         }
 
         if (!state.SpotNodes.TryGetValue(owners[0].SpotNodeName, out var spotRuntime))
         {
             throw new ZLinkConfigurationException(
-                $"Route channel '{routedRegistration.RouterChannelId}' is accepted by SPOT node '{owners[0].SpotNodeName}', but that SPOT node is not started.");
+                $"Route channel '{routedRegistration.RouterChannelId}' cannot attach an implicit SPOT route bridge because SPOT node '{owners[0].SpotNodeName}' is not started.");
         }
 
         var bridge = spotRuntime.Node.CreateRouteBridge();

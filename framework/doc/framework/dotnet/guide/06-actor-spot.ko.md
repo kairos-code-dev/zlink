@@ -58,7 +58,8 @@ actor 는 factory 로 만든다. factory 는 `actorType` 짧은 문자열로 등
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate 가 이 키로 factory 를 고른다.
-    // Entry Spot / user Spot 등록은 SpotNode 쪽에서 (§4)
+    // Entry Spot / user Spot 등록(AddEntrySpot / AddSpotFactory)은 SpotNode 쪽에서
+    // ([07-actor-session](07-actor-session.ko.md) §6 등록 코드)
 });
 
 public sealed class PlayerActorFactory : IZLinkActorFactory
@@ -120,10 +121,13 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 
 ### actor packet handler 등록과 시그니처
 
-actor packet handler 는 actor 클래스가 아니라 **그 actor 를 호스팅하는 Spot 의 `Configure()`** 에서
-등록하거나(`AddActorPacket<THandler, TActor>()`) handler class 에 attribute 를 붙여 자동 등록한다
-([05 §3 자동 등록](05-spot.ko.md)). handler 는 첫 두 인자로 **(spot, actor)** 를 받는다 — Entry
-Spot 은 `entrySpot`, user Spot 은 그 user Spot 이다.
+actor packet handler 는 actor 클래스가 아니라 **그 actor 를 호스팅하는 Spot 쪽**에 등록한다. 두
+방법이다 — Spot 의 `Configure()` 에서 `AddActorPacket<THandler, TActor>()` 로 **수동** 등록하거나,
+handler class 에 `[ZLinkSpotActorRequestHandler("...")]`/`[ZLinkSpotActorSendHandler("...")]` attribute
+를 붙이고 그 assembly 를 `options.AddHandlersFromAssemblyOf<...>()` 로 등록해 **자동** 등록한다(Bingo
+가 이 attribute 방식). Entry Spot 용인지 user Spot 용인지는 handler interface 가
+`IZLinkEntrySpotActor...` 냐 `IZLinkSpotActor...` 냐로 갈린다. handler 는 첫 두 인자로 **(spot, actor)**
+를 받는다 — Entry Spot 은 `entrySpot`, user Spot 은 그 user Spot 이다.
 
 ```csharp
 // user Spot: (spot, actor, context, payload). room 상태를 함께 만진다.
@@ -261,7 +265,7 @@ match handler → `JoinSpot`→ room `OnActorJoin`(admission)/`OnJoined` → 게
 
 ## 5. 더 보기
 
-- session ↔ actor relay(인증·binding·bound session push·등록 골격): [07-actor-session](07-actor-session.ko.md)
+- session ↔ actor relay(인증·binding·bound session push·등록 코드): [07-actor-session](07-actor-session.ko.md)
 - 이 챕터 계약의 실행 검증 예문(actor/context/factory/handler): [12-interface-catalog](12-interface-catalog.ko.md) §4 — 검증 클래스 `ActorContracts`
 - 정식 계약: [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)
 - 전체 예제: [bingo 샘플](samples/bingo-game-sample.ko.md), [tictactoe 샘플](samples/tictactoe-game-sample.ko.md)

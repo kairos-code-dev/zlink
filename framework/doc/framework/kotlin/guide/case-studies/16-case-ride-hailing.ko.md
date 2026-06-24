@@ -183,7 +183,6 @@ class DriverSession(
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant D as driver
   participant I as ingest gw
@@ -200,7 +199,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant D as driver
   participant I as ingest STREAM

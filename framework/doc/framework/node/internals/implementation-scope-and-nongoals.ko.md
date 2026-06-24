@@ -25,12 +25,12 @@
   (options 의 `server`, `client`, `publisher`, `subscriber` 설정 키)
 - 채널 등록의 형태별 분기 — client/server channel, fanout channel,
   dealer mesh channel, route mesh channel (`.addClientServerChannel(...)`,
-  `.addFanoutChannel(...)`, `.addDealerMeshChannel(...)`,
-  `.addRouteMeshChannel(...)`)
+  `.addFanoutChannel(...)`,
+  `.addRouteMesh(...)`)
 - 전역 discovery 설정(`.useDiscovery().addRegistryEndpoint(...)`)
 - channel 의 startup manual connection 설정(`.enableClient(endpoint)` 같은 역할 메서드 인자)
 - 클라이언트/퍼블리셔 표면인 `ZLinkChannelClient`, `ZLinkFanoutClient`
-- spot node 등록 표면(`.addSpotNode(...)`, `.enableRouter(...)`, `.enablePubSub(...)`)
+- spot node 등록 표면(`.addSpotMesh(...)`, `.enableRouter(...)`, `.enablePubSub(...)`)
   `SPOT`[^spot] 등록 표면
 - `ZLinkSpotManager`, `ZLinkSpotPublisherClient`
 - handler group mapping 모델. 즉 handler class decorator group

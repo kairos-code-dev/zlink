@@ -78,10 +78,10 @@ class SupportChatSession implements ZLinkSession {
     request: object,
     signal?: AbortSignal
   ): Promise<unknown> {
-    if (this.actorId === null || this.displayName === null) {
+    if (this.actorId === null || this.displayName === null || this.role === null) {
       throw new Error(`Client must authenticate before relaying packet '${packetName}'.`);
     }
-    const payload = withUserIdentity(request, this.actorId, this.displayName);
+    const payload = withUserIdentity(request, this.actorId, this.displayName, this.role);
     return await retry(() => this.channelClient
         .requestToChannel(channelName, payload)
         .packetName(packetName)

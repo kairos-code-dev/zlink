@@ -51,8 +51,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             services,
             frameworkRegistration,
             registration.RouterChannelId,
-            _submitter,
-            () => _spotRouteBridge);
+            router,
+            _submitter);
         _connections = new ZLinkRouteConnectionSet(router);
         _receivePump = new ZLinkRouteReceivePump(
             router,
@@ -91,11 +91,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
         bridge.AttachRouterChannel(
             RouterChannelId,
-            _router,
-            new SpotRouteBridgeEndpointOptions
-            {
-                Capabilities = SpotRouteBridgeEndpointCapabilities.RouteWithChannelInbound
-            });
+            _router);
         _spotRouteBridge = bridge;
     }
 

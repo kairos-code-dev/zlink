@@ -83,11 +83,10 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 | `services()` | DI 등록 (`add_singleton/scoped/transient<T>`) | [4장](04-di-container.ko.md) |
 | `handlers()` | 핸들러 그룹 등록 (`add<T>("group")`) | [3 §6.1](03-concepts.ko.md) |
 | `codecs()` | `add_json` / `use(extension)` / `add_serializer<T>` | [7 §2](07-channel-messaging.ko.md) |
-| `add_client_server_channel(name)` | `enable_server(ep)` · `server_routing_id(rid)` · `enable_client([ep])` · `use_handler_group(g)` · `enable_spot_route_egress(t)` | [7](07-channel-messaging.ko.md) |
+| `add_client_server_channel(name)` | `enable_server(ep)` · `server_routing_id(rid)` · `enable_client([ep])` · `use_handler_group(g)` | [7](07-channel-messaging.ko.md) |
 | `add_fanout_channel(name)` | `enable_publisher(ep)` · `enable_subscriber([ep])` · `use_handler_group(g)` | [7 §6](07-channel-messaging.ko.md) |
-| `add_dealer_mesh_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` (DEALER 공유) | [7 §5](07-channel-messaging.ko.md) |
-| `add_route_mesh_channel(name)` | `enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` · `enable_spot_route_egress(t)` (ROUTER 공유) | [7 §7](07-channel-messaging.ko.md) |
-| `add_spot_mesh(...).add_node(name)` / `add_spot_node(name)` | `bind` · `enable_router` · `enable_pub_sub` · `use_discovery` · `accept_routes_from_channel` · `attach_publisher` · `add_entry_spot<T>` · `add_spot<T>` · `add_actor_factory<F>` · `enable_actor_gateway` | [8](08-spot.ko.md)·[9](09-actor-session.ko.md) |
+| `add_route_mesh(name)` | `enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` (ROUTER 공유, SpotMesh와 같은 프로세스면 자동 bridge) | [7 §7](07-channel-messaging.ko.md) |
+| `add_spot_mesh(name)` | `bind` · `enable_router` · `enable_pub_sub` · `use_discovery` · `add_entry_spot<T>` · `add_spot<T>` · `add_actor_factory<F>` · `enable_actor_gateway` | [8](08-spot.ko.md)·[9](09-actor-session.ko.md) |
 | `add_stream_node(name)` | `bind` · `register_session(name)`/`register_session<TSession>()` · `attach_actor_gateway` | [10](10-stream.ko.md) |
 | `http()` | `listen` · `configure_tls` · `map_get/post/...<T>` · `use<TMiddleware>` · `map_health/readiness/liveness` | [6](06-http-hosting.ko.md) |
 | `use_discovery()` | `add_registry_endpoint(ep)` | [11](11-registry.ko.md) |

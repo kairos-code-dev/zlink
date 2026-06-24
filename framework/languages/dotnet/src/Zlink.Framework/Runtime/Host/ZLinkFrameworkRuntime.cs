@@ -62,17 +62,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         _actors = components.Actors;
         _channelFacade = components.ChannelFacade;
         _spotFacade = components.SpotFacade;
-        var spotRouteBridges = new ZLinkSpotRouteBridgeProvider(
-            _registration,
-            _backendAdapterFactory,
-            GetOrStartState,
-            _channelFacade.GetOrCreateClientBundle,
-            _channelFacade.GetRouteChannel);
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
         _spotRouteEgress = new ZLinkSpotRouteEgressDispatcher(
             _registration,
-            _channelFacade.GetOrCreateClientBundle,
-            spotRouteBridges);
+            _channelFacade.GetRouteChannel);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;

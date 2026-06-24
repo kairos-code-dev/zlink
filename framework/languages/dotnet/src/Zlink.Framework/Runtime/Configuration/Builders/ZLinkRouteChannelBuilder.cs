@@ -106,12 +106,6 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         return this;
     }
 
-    public IZLinkRouteMeshChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetSpotNodeChannelName);
-        registration.SpotRouteEgress = new ZLinkSpotRouteEgressRegistration(targetSpotNodeChannelName);
-        return this;
-    }
 }
 
 internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(

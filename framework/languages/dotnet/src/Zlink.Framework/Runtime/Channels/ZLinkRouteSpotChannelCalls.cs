@@ -9,20 +9,20 @@ namespace Zlink.Framework.Runtime.Channels;
 internal sealed class ZLinkRouteSpotChannelCalls
 {
     private readonly string _routerChannelId;
+    private readonly IZLinkBackendRouterSocket _router;
     private readonly ZLinkAsyncSubmitter _submitter;
-    private readonly Func<IZLinkBackendSpotRouteBridge?> _getBridge;
     private readonly ZLinkMessageFlowTracer _flow;
 
     public ZLinkRouteSpotChannelCalls(
         IServiceProvider services,
         ZLinkFrameworkRegistration frameworkRegistration,
         string routerChannelId,
-        ZLinkAsyncSubmitter submitter,
-        Func<IZLinkBackendSpotRouteBridge?> getBridge)
+        IZLinkBackendRouterSocket router,
+        ZLinkAsyncSubmitter submitter)
     {
         _routerChannelId = routerChannelId;
+        _router = router;
         _submitter = submitter;
-        _getBridge = getBridge;
         _flow = new ZLinkMessageFlowTracer(
             frameworkRegistration.DispatchOptions,
             services,
@@ -35,12 +35,10 @@ internal sealed class ZLinkRouteSpotChannelCalls
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        var bridge = RequireBridge();
-        bridge.SetTargetNode(_routerChannelId, targetNodeRid);
         return _submitter.Async(
             parts,
-            pending => bridge.Send(
-                _routerChannelId,
+            pending => _router.SendToSpot(
+                targetNodeRid,
                 targetSpotRid,
                 pending,
                 SendFlags.None),
@@ -54,9 +52,6 @@ internal sealed class ZLinkRouteSpotChannelCalls
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var bridge = RequireBridge();
-        bridge.SetTargetNode(_routerChannelId, targetNodeRid);
-
         string? correlationId = null;
         string? packetName = null;
         if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
@@ -70,8 +65,8 @@ internal sealed class ZLinkRouteSpotChannelCalls
         var reply = await _submitter
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,
-                (pending, complete, fail) => bridge.Request(
-                    _routerChannelId,
+                (pending, complete, fail) => _router.RequestToSpot(
+                    targetNodeRid,
                     targetSpotRid,
                     pending,
                     (result, reply) => ZLinkRawReplyCompletion.Complete(
@@ -100,13 +95,6 @@ internal sealed class ZLinkRouteSpotChannelCalls
         }
 
         return reply;
-    }
-
-    private IZLinkBackendSpotRouteBridge RequireBridge()
-    {
-        return _getBridge()
-            ?? throw new ZLinkConfigurationException(
-                $"Route channel '{_routerChannelId}' is not attached to a SPOT route bridge.");
     }
 
     private void TraceSent(

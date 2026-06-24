@@ -26,21 +26,18 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkFrameworkRuntimeState state,
         string channelName)
     {
-        foreach (var node in state.SpotNodes.Values)
+        if (state.SpotNodes.TryGetValue(channelName, out var node))
         {
             if (node.TryGetPublisherBundle(channelName, out var bundle))
             {
                 return bundle;
             }
 
-            if (node.HasPublisherClient(channelName))
-            {
-                return node.GetOrCreatePublisherBundle(channelName);
-            }
+            return node.GetOrCreatePublisherBundle(channelName);
         }
 
         throw new ZLinkConfigurationException(
-            $"SPOT publisher client channel '{channelName}' is not registered.");
+            $"SPOT publisher mesh '{channelName}' is not registered.");
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(

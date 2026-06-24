@@ -7,7 +7,6 @@ from enum import IntFlag
 from ...._native.ffi import (
     ZlinkSpotRouteBridgeEndpointOptions,
     ZlinkSpotRouteBridgeOptions,
-    ZlinkSpotRouteBridgeSummary,
     lib,
 )
 from ....contracts.errors.codes import CloseResult, ConfigResult
@@ -37,9 +36,7 @@ from .spot_ops import PublishOp, RequestOp, SendOp
 class SpotRouteBridgeEndpointCapabilities(IntFlag):
     NONE = 0
     SPOT_ROUTE = 0x00000001
-    CHANNEL_INBOUND = 0x00000002
     ROUTE_ONLY = SPOT_ROUTE
-    ROUTE_WITH_CHANNEL_INBOUND = SPOT_ROUTE | CHANNEL_INBOUND
 
 
 @dataclass(frozen=True)
@@ -55,15 +52,6 @@ class SpotRouteBridgeEndpointOptions:
         SpotRouteBridgeEndpointCapabilities.ROUTE_ONLY
     )
     inbound_relay_policy: int = 0
-
-
-@dataclass(frozen=True)
-class SpotRouteBridgeSummary:
-    attached_channel_count: int
-    pending_request_count: int
-    rejected_inbound_count: int
-    malformed_inbound_count: int
-    routed_send_failure_count: int
 
 
 class SpotRouteBridge:
@@ -92,14 +80,6 @@ class SpotRouteBridge:
             lambda: bool(self._pending_requests),
         )
 
-    def attach_dealer_channel(self, channel_name, dealer, options=None):
-        self._attach_channel(
-            channel_name,
-            dealer,
-            options,
-            lib().zlink_spot_route_bridge_attach_dealer_channel,
-        )
-
     def attach_router_channel(self, channel_name, router, options=None):
         self._attach_channel(
             channel_name,
@@ -108,29 +88,19 @@ class SpotRouteBridge:
             lib().zlink_spot_route_bridge_attach_router_channel,
         )
 
-    def set_target_node(self, channel_name, target_node_rid):
-        native_rid = _copy_routing_id(target_node_rid)
-        rc = lib().zlink_spot_route_bridge_set_target_node(
-            self._handle,
-            _validated_c_string_value(channel_name, field="channel_name", max_length=255),
-            ctypes.byref(native_rid),
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def send(self, channel_name, target_spot_rid):
+    def send(self, channel_name, target_node_rid, target_spot_rid):
         return SendOp(
             self,
             lambda parts, flags=0: self._send_submit(
-                channel_name, target_spot_rid, parts, flags
+                channel_name, target_node_rid, target_spot_rid, parts, flags
             ),
         )
 
-    def request(self, channel_name, target_spot_rid):
+    def request(self, channel_name, target_node_rid, target_spot_rid):
         return RequestOp(
             self,
             lambda parts, callback, *, flags=0, timeout=0: self._request_submit(
-                channel_name, target_spot_rid, parts, callback, flags=flags, timeout=timeout
+                channel_name, target_node_rid, target_spot_rid, parts, callback, flags=flags, timeout=timeout
             ),
         )
 
@@ -138,20 +108,6 @@ class SpotRouteBridge:
         rc = lib().zlink_spot_route_bridge_drain(self._handle)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def summary(self):
-        raw = ZlinkSpotRouteBridgeSummary()
-        raw.struct_size = ctypes.sizeof(ZlinkSpotRouteBridgeSummary)
-        rc = lib().zlink_spot_route_bridge_summary(self._handle, ctypes.byref(raw))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return SpotRouteBridgeSummary(
-            attached_channel_count=int(raw.attached_channel_count),
-            pending_request_count=int(raw.pending_request_count),
-            rejected_inbound_count=int(raw.rejected_inbound_count),
-            malformed_inbound_count=int(raw.malformed_inbound_count),
-            routed_send_failure_count=int(raw.routed_send_failure_count),
-        )
 
     def close(self):
         if not self._handle:
@@ -194,17 +150,19 @@ class SpotRouteBridge:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         self._endpoint_handles[channel_bytes] = socket._handle
 
-    def _send_submit(self, channel_name, target_spot_rid, payload, flags=0):
+    def _send_submit(self, channel_name, target_node_rid, target_spot_rid, payload, flags=0):
         native_parts = _clone_payload(payload)
         parts_array = _prepare_native_parts(native_parts)
-        native_rid = _copy_routing_id(target_spot_rid)
+        native_target_node_rid = _copy_routing_id(target_node_rid)
+        native_target_spot_rid = _copy_routing_id(target_spot_rid)
         try:
             rc = lib().zlink_spot_route_bridge_send(
                 self._handle,
                 _validated_c_string_value(
                     channel_name, field="channel_name", max_length=255
                 ),
-                ctypes.byref(native_rid),
+                ctypes.byref(native_target_node_rid),
+                ctypes.byref(native_target_spot_rid),
                 parts_array,
                 len(parts_array),
                 int(flags),
@@ -221,7 +179,7 @@ class SpotRouteBridge:
             for part in native_parts:
                 lib().zlink_msg_close(ctypes.byref(part))
 
-    def _request_submit(self, channel_name, target_spot_rid, payload, callback, *, flags=0, timeout=0):
+    def _request_submit(self, channel_name, target_node_rid, target_spot_rid, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
         handle = id(pending)
         self._pending_requests[handle] = pending
@@ -230,12 +188,14 @@ class SpotRouteBridge:
         )
         native_parts = _clone_payload(payload)
         parts_array = _prepare_native_parts(native_parts)
-        native_rid = _copy_routing_id(target_spot_rid)
+        native_target_node_rid = _copy_routing_id(target_node_rid)
+        native_target_spot_rid = _copy_routing_id(target_spot_rid)
         try:
             rc = lib().zlink_spot_route_bridge_request(
                 self._handle,
                 channel_bytes,
-                ctypes.byref(native_rid),
+                ctypes.byref(native_target_node_rid),
+                ctypes.byref(native_target_spot_rid),
                 parts_array,
                 len(parts_array),
                 self._reply_handler,

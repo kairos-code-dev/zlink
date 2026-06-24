@@ -15,9 +15,8 @@
 
 ## 현재 구현 기준
 
-`.acceptSpotRoutesFromChannel(...)`과 `outbound.sendToSpot(...)` /
-`outbound.requestToSpot(...)`의 public API 이름은 유지한다. 내부 구현은 core legacy
-`SpotNode` attach/connect API를 호출하지 않고, `bindings/node`의 public
+`outbound.sendToSpot(...)` / `outbound.requestToSpot(...)` 호출은 명시 route wiring 없이
+동작한다. 내부 구현은 core legacy `SpotNode` attach/connect API를 호출하지 않고, `bindings/node`의 public
 `createRouteBridge()` / `SpotRouteBridge` 표면으로 channel socket을 bridge에 연결한다.
 channel socket은 channel runtime이 계속 소유하며, bridge는 SPOT relay packet만 분류한다.
 
@@ -151,10 +150,9 @@ registry 에 필요한 handler 를 연결한다. Spot 이 어떤 메시지를 �
       zlinkFramework()
         .useDiscovery()
           .addRegistryEndpoint('tcp://registry1:5551')
-        .addSpotNode('stage-node')
+        .addSpotMesh('stage-node')
           .enableRouter('tcp://0.0.0.0:9001')
           .enablePubSub('tcp://0.0.0.0:9000')
-          .attachSpotPublisherClient('game.stage')
           .addEntrySpot(StageEntrySpot)
           .addSpotFactory(StageSpot)
         .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
@@ -186,7 +184,7 @@ export class AppModule {}
   Registry 기반 spot remote address resolver 등록
 - host shutdown 시 lifecycle 정리
 
-`.addSpotNode(name)` 은 실행할 `SpotNode` 를 이름으로 등록한다. 여러 `SpotNode` 가
+`.addSpotMesh(name)` 은 실행할 `SpotNode` 를 이름으로 등록한다. 여러 `SpotNode` 가
 필요하면 builder 에서 여러 번 호출한다. Discovery endpoint 가 없는 로컬
 단일 노드도 같은 방식으로 표현한다. 이 경우 `discovery` 를 생략하고 필요한
 `SpotNode` 만 등록한다.
@@ -201,10 +199,8 @@ export class AppModule {}
     `context.outbound.publish(...)` 를 쓰려면 이 역할이 필요하다.
 - `orders` channel 로 outbound send / request 를 보내려면 top-level
   `addClientServerChannel("orders").enableClient(...)`에서 client 역할을 켠다.
-- `.attachSpotPublisherClient("game.stage")` (dotnet
-  `AttachSpotPublisherClient("game.stage")`)
-  - local spot 인스턴스를 갖지 않는 외부 노드가 `game.stage` SPOT channel 로
-    publish 할 수 있도록 별도의 publisher client 를 붙인다.
+- Spot publisher client
+  - `enablePubSub(...)`를 켠 SpotMesh 이름으로 외부 publish client가 노출된다.
 - `.addEntrySpot(StageEntrySpot)` (dotnet `AddEntrySpot<StageEntrySpot>()`)
   - 이 노드의 자동 Entry Spot 에 붙일 application registry 를 등록한다.
   - Entry Spot 자체의 native 생성과 소멸은 framework 가 관리한다.
@@ -229,12 +225,12 @@ export class AppModule {}
 `SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
 설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
 
-- `.addSpotNode(name)` 등록과 `.useDiscovery()` 가 노드의 channel 정체성을 닫는다.
+- `.addSpotMesh(name)` 등록과 `.useDiscovery()` 가 노드의 channel 정체성을 닫는다.
 - 다른 channel 호출은 별도로 attach 된 client 경로를 통해 푼다.
 
 이 모델에서 중요한 점은 다음과 같다.
 
-- `.addSpotNode('stage-node')` 가 이 노드의 런타임 범위를 정한다.
+- `.addSpotMesh('stage-node')` 가 이 노드의 런타임 범위를 정한다.
 - 같은 `SpotNode` 에 active SPOT channel view 는 하나만 둔다.
 - `router` 와 `pubSub` 는 별개의 역할이다.
 - 다른 channel 에 대한 send / request 는 attach 된 client 가 담당한다.
@@ -255,7 +251,7 @@ application 은 raw Entry Spot handle 을 직접 만들거나 보관하지 않�
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .addSpotNode('stage-node')
+    .addSpotMesh('stage-node')
       .enablePubSub('tcp://0.0.0.0:9000')
       .configureEntrySpot({ routingId: 'entry' })
       .addEntrySpot(StageEntrySpot)
@@ -418,10 +414,9 @@ ZLinkModule.forRoot(
   zlinkFramework()
     .useDiscovery()
       .addRegistryEndpoint('tcp://registry1:5551')
-    .addSpotNode('stage-node')
+    .addSpotMesh('stage-node')
       .enableRouter(undefined, undefined, 'tcp://10.0.0.10:9000')
       .enablePubSub('tcp://0.0.0.0:9000', undefined, 'tcp://10.0.0.20:9100')
-      .attachSpotPublisherClient('game.stage', 'tcp://10.0.0.40:9300')
       .addEntrySpot(StageEntrySpot)
       .addSpotFactory(StageSpot)
     .build()
@@ -471,10 +466,9 @@ ZLinkModule.forRoot(
     .options({ requestTimeoutMs: 5_000 })
     .useDiscovery()
       .addRegistryEndpoint('tcp://registry1:5551')
-    .addSpotNode('stage-node')
+    .addSpotMesh('stage-node')
       .enableRouter('tcp://0.0.0.0:9001')
       .enablePubSub('tcp://0.0.0.0:9000')
-      .attachSpotPublisherClient('game.stage')
       .addSpotFactory(StageSpot)
     .build()
 );
@@ -961,9 +955,9 @@ channel 의 `ROUTER(server)` 를 `rid` 로 직접 지정해서 호출하는 모�
 이 절은 `SpotNode` 가 어떻게 channel 정체성을 닫는지, 그리고 그 결정이 discovery
 와 어떻게 묶이는지를 짧게 정리한다.
 
-최신 topology 에서는 `.addSpotNode(name)` 이 실행할 `SpotNode` 를 직접 등록하고,
+최신 topology 에서는 `.addSpotMesh(name)` 이 실행할 `SpotNode` 를 직접 등록하고,
 전역 `discovery` 가 active channel view 를 공급한다. SPOT network 를 구성하는
-모든 node 는 `.addSpotNode(...)` 로 등록한다. STREAM ActorGateway 는 별도 node
+모든 node 는 `.addSpotMesh(...)` 로 등록한다. STREAM ActorGateway 는 별도 node
 builder 가 아니라, stream 이 router
 역할을 켠 SpotNode 를 `.attachActorGateway(spotNodeName)` 으로 참조하는
 방식으로 연결한다(자세한 내용은 [nestjs-stream.ko.md](nestjs-stream.ko.md)).
@@ -1006,42 +1000,20 @@ route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 
 
 ## 11. Router channel route 수신
 
-`ZLinkSpotRemoteAddress.routerChannelId` 는 resolver 가 반환한 위치 정보 중
-하나다. 이 값은 metadata 로만 남으면 안 되고, 실제 transport 로 사용할
-router-capable channel 을 가리켜야 한다. `SpotNode` 가 그 channel 에서 오는 SPOT
-route 를 받으려면 node builder 에 다음 구성을 둔다(dotnet
-`AcceptSpotRoutesFromChannel(...)`).
+`ZLinkSpotRemoteAddress.routerChannelId` 는 resolver 가 반환한 위치 정보 중 하나다. 이 값은
+metadata 로만 남으면 안 되고, 실제 transport 로 사용할 RouteMesh channel 을 가리켜야 한다.
+같은 프로세스에 RouteMesh와 SpotMesh가 있으면 framework가 route bridge를 자동으로 붙인다.
 
 ```ts
 zlinkFramework()
-  .addSpotNode('stage-node')
+  .addRouteMesh('api')
+    .enableRouter('tcp://0.0.0.0:7000')
+  .addSpotMesh('stage-node')
     .enableRouter('tcp://0.0.0.0:9001')
-    .acceptSpotRoutesFromChannel('api')
 ```
 
-`.acceptSpotRoutesFromChannel(...)` 는 두 channel 종류를 router-capable 대상으로 본다.
-
-- client-server channel 의 server `ROUTER`
-- route mesh channel 의 route mesh `ROUTER`
-
-수동 endpoint 를 써야 하면 같은 표면 아래에서 명시한다.
-
-```ts
-zlinkFramework()
-  .addSpotNode('stage-node')
-    .acceptSpotRoutesFromChannel('api', 'tcp://10.0.0.20:7000')
-```
-
-수동 endpoint 가 없으면 framework discovery view 를 통해 자동 연결한다. 같은
-route 수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup validation
-오류다. fanout channel 과 dealer mesh channel 은 router 역할이 없으므로
-지정할 수 없다.
-
-`.acceptSpotRoutesFromChannel(...)` 는 application handler mapping 이 아니다. 이 설정은
-target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode router
-사이에 transport peer 를 만든다. handler group 이 없어도 transport 전용 channel
-로 사용할 수 있고, 반대로 handler group 을 매핑해도 Spot route ingress 가 자동으로
-켜지지는 않는다.
+fanout channel과 client-server channel은 SPOT route 수신 대상으로 쓰지 않는다. RouteMesh에
+handler group을 매핑해도 일반 route packet과 SPOT relay packet은 bridge demux로 분리된다.
 
 Spot callback 밖의 channel handler, HTTP handler, background service 에는 target
 Spot 으로 직접 send / request 하는 별도 public client 를 두지 않는다. 이 경로에서
@@ -1050,25 +1022,19 @@ session 이 필요하면 그 ref 로 session actor handle 을 bind 한다. curre
 callback 안에서 다른 Spot 으로 보내야 할 때만 `spot.context.outbound.sendToSpot(...)`
 또는 `spot.context.outbound.requestToSpot(...)` 을 사용한다.
 
-local egress channel 은 client-server channel 의 client DEALER 이거나 route mesh
-channel 일 수 있다. 두 경우 모두 channel 옵션에 target SpotNode ingress channel
-이름을 명시한다. route mesh channel 을 egress 로 쓸 때는 실제 target ROUTER
-endpoint 에 연결되어 있어야 하고, target ROUTER 의 `RoutingId` 는 discovery /
-query metadata 또는 같은 process 안의 명시적 route channel 등록으로 확인할 수
-있어야 한다. 주소만 알고 연결하지 않은 상태에서는 routed Spot 메시지를 보낼 수
-없다.
+local egress channel 은 RouteMesh channel 이다. route mesh channel 을 egress 로 쓸 때는 실제 target
+ROUTER endpoint 에 연결되어 있어야 하고, target ROUTER 의 `RoutingId` 는 discovery / query metadata
+또는 같은 process 안의 route channel 등록으로 확인할 수 있어야 한다. 주소만 알고 연결하지 않은
+상태에서는 routed Spot 메시지를 보낼 수 없다.
 
 ```ts
 zlinkFramework()
-  .addClientServerChannel('gateway.client')
-    .enableClient('tcp://play-node-1:7201')
+  .addRouteMesh('play.route')
+    .connect('tcp://play-node-1:7201')
 ```
 
-node 에는 별도 `enableSpotRouteEgress`/`spotRouteEgress` 표면이 없다. egress 쪽은 위처럼
-outbound channel(client DEALER 또는 `addRouteMeshChannel`)만 등록하고, target SpotNode
-process 가 자기 쪽에서 `.acceptSpotRoutesFromChannel('play.route')` 로 ingress channel 을
-연다. 실제 전송은 `outbound.sendToSpot(spotRid, ...)` / `outbound.requestToSpot(spotRid, ...)`
-으로 하며, target Spot 은 문자열 overload 없이 `RoutingId` 로 지정한다.
+node 에는 별도 route egress 표면이 없다. 실제 전송은 `outbound.sendToSpot(spotRid, ...)` /
+`outbound.requestToSpot(spotRid, ...)`으로 하며, target Spot 은 문자열 overload 없이 `RoutingId`로 지정한다.
 
 ## 12. 회귀 테스트
 

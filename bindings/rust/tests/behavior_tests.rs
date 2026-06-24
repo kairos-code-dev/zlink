@@ -101,25 +101,31 @@ fn dealer_router_roundtrip() {
 }
 
 #[test]
-fn spot_route_bridge_dealer_send_reaches_router() {
+fn spot_route_bridge_router_send_reaches_router() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let mut bridge = node.create_route_bridge().unwrap();
     let router = ctx.router_socket().unwrap();
-    let dealer = ctx.dealer_socket().unwrap();
-    dealer
-        .set_routing_id(&RoutingId::from(b"rust-bridge-dealer"))
+    let bridge_router = ctx.router_socket().unwrap();
+    let target_node = RoutingId::from(b"rust-bridge-server");
+    bridge_router
+        .set_routing_id(&RoutingId::from(b"rust-bridge-client"))
+        .unwrap();
+    router
+        .set_routing_id(&target_node)
         .unwrap();
     router.bind("inproc://rust-spot-route-bridge").unwrap();
-    dealer.connect("inproc://rust-spot-route-bridge").unwrap();
+    bridge_router
+        .connect("inproc://rust-spot-route-bridge")
+        .unwrap();
     thread::sleep(Duration::from_millis(50));
-    bridge.attach_dealer_channel("api", &dealer).unwrap();
+    bridge.attach_router_channel("api", &bridge_router).unwrap();
 
     let target = RoutingId::from(b"target-spot");
     let mut parts = vec![Message::try_from(b"hello-bridge").unwrap()];
     assert!(
         bridge
-            .send("api", &target, &mut parts, SendFlags::NONE)
+            .send("api", &target_node, &target, &mut parts, SendFlags::NONE)
             .unwrap()
     );
 
@@ -141,27 +147,33 @@ fn spot_route_bridge_dealer_send_reaches_router() {
 }
 
 #[test]
-fn spot_route_bridge_dealer_request_receives_router_reply() {
+fn spot_route_bridge_router_request_receives_router_reply() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let spot = node.create_spot().unwrap();
     let mut bridge = node.create_route_bridge().unwrap();
     let router = ctx.router_socket().unwrap();
-    let dealer = ctx.dealer_socket().unwrap();
+    let bridge_router = ctx.router_socket().unwrap();
+    let target_node = RoutingId::from(b"rust-bridge-request-server");
+    bridge_router
+        .set_routing_id(&RoutingId::from(b"rust-bridge-request-client"))
+        .unwrap();
+    router.set_routing_id(&target_node).unwrap();
     router
         .bind("inproc://rust-spot-route-bridge-request")
         .unwrap();
-    dealer
+    bridge_router
         .connect("inproc://rust-spot-route-bridge-request")
         .unwrap();
     thread::sleep(Duration::from_millis(50));
-    bridge.attach_dealer_channel("api", &dealer).unwrap();
+    bridge.attach_router_channel("api", &bridge_router).unwrap();
 
     let (reply_tx, reply_rx) = std::sync::mpsc::channel();
     let mut parts = vec![Message::try_from(b"request-payload").unwrap()];
     bridge
         .request(
             "api",
+            &target_node,
             &spot.routing_id().unwrap(),
             &mut parts,
             SendFlags::NONE,

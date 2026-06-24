@@ -453,11 +453,11 @@ The user-facing rule is simple.
 - PUB/SUB fanout channels and DEALER mesh channels are not SPOT routed-send
   anchors.
 
-When using the framework, configure this with
-`AcceptSpotRoutesFromChannel(...)`. When using the raw core API directly,
-create a route bridge and attach the router channel socket to the bridge.
-`SpotNode` no longer owns external router channel peers directly as public
-usage.
+When using the framework, register the RouteMesh and SpotMesh in the same
+process; the runtime wires that receive relationship automatically. When using
+the raw core API directly, create a route bridge and attach the router channel
+socket to the bridge. `SpotNode` no longer owns external router channel peers
+directly as public usage.
 
 > For the full contract, see
 > [Peer weight](../spec/core/socket/router.md#peer-weight),

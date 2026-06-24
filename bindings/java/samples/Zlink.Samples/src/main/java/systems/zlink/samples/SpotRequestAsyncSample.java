@@ -1,11 +1,9 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
-import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.service.spot.SpotNode;
@@ -20,16 +18,20 @@ public final class SpotRequestAsyncSample {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
         String channelName = "orders";
+        RoutingId clientRid = RoutingId.from("spot-async-client");
+        RoutingId serverRid = RoutingId.from("spot-async-server");
 
         try (Context ctx = Zlink.createContext();
              SpotNode requesterNode = ctx.createSpotNode();
-             DealerSocket requesterDealer = ctx.createDealerSocket();
+             RouterSocket requesterChannel = ctx.createRouterSocket();
              RouterSocket requesterRouter = ctx.createRouterSocket();
              var requester = requesterNode.createSpot();
              SpotRouteBridge bridge = requesterNode.createRouteBridge()) {
+            requesterChannel.setRoutingId(clientRid);
+            requesterRouter.setRoutingId(serverRid);
             requesterRouter.bind(endpoint);
-            requesterDealer.connect(endpoint);
-            bridge.attachDealerChannel(channelName, requesterDealer);
+            requesterChannel.connect(endpoint);
+            bridge.attachRouterChannel(channelName, requesterChannel);
 
             Thread responder = new Thread(() -> {
                 try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
@@ -51,7 +53,7 @@ public final class SpotRequestAsyncSample {
             final List<Message>[] replyHolder = new List[] { List.of() };
             final RequestResult[] resultHolder = new RequestResult[] { RequestResult.TIMED_OUT };
             try (Message request = Message.from("spot-ping")) {
-                bridge.request(channelName, requester.getRoutingId())
+                bridge.request(channelName, serverRid, requester.getRoutingId())
                     .message(request)
                     .timeout(Duration.ofSeconds(5))
                     .submit((requestResult, replyParts) -> {

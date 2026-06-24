@@ -628,7 +628,7 @@ ZLinkModule.forRoot(
   zlinkFramework()
     .useDiscovery()
       .addRegistryEndpoint('tcp://127.0.0.1:5551')
-    .addRouteMeshChannel('play')
+    .addRouteMesh('play')
       .enableRouter('tcp://0.0.0.0:7201')
     .options({
       registrySpotRemoteAddresses: { namespace: 'game' },

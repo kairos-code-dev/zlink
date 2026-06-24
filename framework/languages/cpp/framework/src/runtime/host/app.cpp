@@ -359,7 +359,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     const bool has_spot_publisher_client =
       std::any_of (spot_node_snapshot.begin (), spot_node_snapshot.end (),
                    [] (const spot_node_snapshot_t &spot_node) {
-                       return !spot_node.attached_publishers.empty ();
+                       return spot_node.pub_bind_endpoint.has_value ();
                    });
     if (has_spot_publisher_client
         && !_state->services.contains (std::type_index (typeid (spot_publisher_client_t)))) {

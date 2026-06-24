@@ -61,8 +61,6 @@
 | `channel.AddHandlerGroup("...")`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | `[ZLinkHandlerGroup("...")]` attribute와 매핑을 조합해서 노출 범위를 제한한다 |
 | 같은 channel에 여러 그룹 매핑 | 허용 | `AddHandlerGroup`을 여러 번 호출해 그룹들의 합집합을 한 채널에 노출한다 |
 | `AddHandlerGroup`이 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 |
-| client-server channel에서 `EnableSpotRouteEgress(...)`만 등록하고 client 역할 없음 | 비허용 | routed Spot egress 는 local client DEALER 가 필요하다 |
-| route mesh channel에서 `EnableSpotRouteEgress(...)` 등록 | 허용 | target SpotNode ingress channel 로 routed Spot relay 를 보낼 수 있다. 실제 target ROUTER 연결과 target ROUTER `RoutingId` metadata 가 모두 필요하다 |
 
 ## 4. Spot Capability Matrix
 
@@ -70,13 +68,13 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddSpotMesh` 호출 | 허용 | mesh가 활성 SPOT[^spot] channel view와 node 집합을 함께 소유한다 |
+| `AddSpotMesh` 호출 | 허용 | mesh가 활성 SPOT[^spot] channel view와 단일 node를 함께 소유한다 |
 | `AddSpotMesh`에 `UseDiscovery().AddRegistryEndpoint(...)` 없음 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
 | `AddSpotMesh` + 빈 `UseDiscovery` + local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
 | top-level standalone node 등록 | 비허용 | public 등록 표면에는 top-level standalone node 등록 API 가 없다. SPOT node 는 항상 `AddSpotMesh` 안에서 등록한다 |
-| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | SPOT discovery 와 node 집합은 `AddSpotMesh`가 함께 등록·소유한다 |
-| 같은 mesh에 `AddNode(...)` 여러 개 | 허용 | 같은 channel view를 공유하는 여러 SpotNode를 등록한다 |
-| 같은 mesh의 router-capable `AddNode(...)`를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
+| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | SPOT discovery 와 단일 node는 `AddSpotMesh`가 함께 등록·소유한다 |
+| 같은 프로세스에 SPOT node 여러 개 | 비허용 | Q9 모델에서는 `AddSpotMesh(channelName)` 이 그 프로세스의 단일 SpotNode 이다 |
+| router-capable `AddSpotMesh(...)`를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
 | 같은 `SpotNode`에 Entry Spot[^entry-spot] registry 중복 등록 | 비허용 | startup validation 오류 |
 | `router` 역할만 등록 | 허용 | inbound routed call만 받는다 |
@@ -100,9 +98,9 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddRouteMeshChannel` + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
-| `AddRouteMeshChannel` + `EnableClient(endpoint)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
-| `AddRouteMeshChannel` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| `AddRouteMesh` + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
+| `AddRouteMesh` + `EnableClient(endpoint)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
+| `AddRouteMesh` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점에 오류 |

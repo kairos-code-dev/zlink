@@ -42,7 +42,7 @@ Java framework에는 ASP.NET 같은 HTTP 경계가 없으므로 dotnet의 HTTP `
 self-check은 `deliverydispatch.api` client-server channel(`CreateDeliveryRequest → DeliveryCreated`,
 `ServerAssertionReq → ServerAssertionRes`)로 모델링한다. 역할·메시지 의미는 spec대로 유지한다.
 cross-process Session↔Tracking spot routing은 route-mesh channel + `useRegistrySpotRemoteAddresses` +
-`acceptSpotRoutesFromChannel` 관용구를 쓴다.
+RouteMesh와 SpotMesh 자동 연결 관용구를 쓴다.
 
 ## 6. Client self-check
 

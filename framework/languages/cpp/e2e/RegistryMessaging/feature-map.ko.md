@@ -16,7 +16,7 @@
 | `RM-C3` | 구현 | 수동 multi-endpoint client-server channel에서 두 provider가 모두 처리하는지 검증한다. |
 | `RM-C4` | 구현 | timeout 뒤 정상 request가 late reply에 오염되지 않는지 검증한다. |
 | `RM-C5` | 구현 | 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. |
-| `RM-C6` | 구현 | dealer mesh peer 두 개에 request가 분산되는지 검증한다. |
+| `RM-C6` | 제거 | DealerMesh 채널 타입 제거로 시나리오가 제거됐다. 다중 provider 분산은 RM-C3에서 client-server multi-endpoint로 검증한다. |
 | `RM-C7` | 미지원 | C++ framework의 public channel builder가 server socket weight 설정을 노출하지 않는다. bindings socket option을 우회 호출하지 않는다. |
 | `RM-C8` | 부분 구현 | public typed client로 소형, 대형, near-large payload 왕복을 검증한다. max size 초과 거부는 framework channel runtime에 max message size 적용이 배선된 뒤 추가한다. |
 | `RM-C9` | 미지원 | C++ framework public channel API에는 HWM 포화와 backpressure를 안정적으로 유도하는 테스트용 제어 API가 없다. |

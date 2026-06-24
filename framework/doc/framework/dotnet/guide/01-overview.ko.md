@@ -29,7 +29,7 @@ HTTP pipeline 전용이므로, ZLink handler 앞뒤의 로깅·검증·권한 �
 > 위에서 상호 호출한다(예: room 서버 C++, API 서버 .NET·Java). 이 가이드는 `.NET`
 > binding 기준이며 `.NET` 구현을 reference 로 삼는다. 다른 언어로 구현된 서비스도
 > 같은 channel 계약 위에서 함께 통신한다. 자세한 cross-language 모델은
-> [12-grpc-alternative §2.1](12-grpc-alternative.ko.md)이 다룬다.
+> [13-grpc-alternative §2.1](13-grpc-alternative.ko.md)이 다룬다.
 
 ### 어떤 문제를 푸는가
 
@@ -166,7 +166,6 @@ runtime이 처리한다.
 
 - **client/server** — ROUTER 서버에 DEALER 클라이언트가 붙는 request-reply 또는 단방향 send.
 - **fanout (pub/sub)** — publisher가 보내면 여러 subscriber에게 전달.
-- **dealer mesh** — server/client 역할이 같은 DEALER 소켓을 공유하고, peer 사이에서 부하 분산을 처리.
 - **route mesh** — ROUTER끼리 연결하고, routing id로 특정 서버나 상태 단위에 고정 라우팅한다.
 
 [4장 →](04-channel-messaging.ko.md)
@@ -183,7 +182,6 @@ channel·spot 선언에 맞춰 생성·bind·connect 한다. 그래서 가이드
 |----------------|-----------|------|
 | client-server channel | `DEALER → ROUTER` | 1:1 request/response·단방향 send |
 | fanout channel | `PUB → SUB` | 이벤트 fan-out (여러 구독자) |
-| dealer mesh channel | `DEALER ↔ DEALER` | 로드밸런싱 |
 | route mesh channel | `ROUTER ↔ ROUTER` | routing id 기반 엔티티 라우팅 |
 | STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연동 |
 
@@ -209,7 +207,7 @@ Actor는 연결 하나 또는 사용자 하나를 대표하는 서버 쪽 객체
 client 연결을 받고, actor는 SPOT에 입장해 상태 처리에 참여한다. 서버 간 actor relay도
 가능하므로 session 서버와 domain 서버를 나눌 수 있다.
 
-[6장 →](06-actor-session.ko.md)
+[6장 →](06-actor-spot.ko.md)
 
 ### Stream — 클라이언트 실시간 연결
 
@@ -217,7 +215,7 @@ client 연결을 받고, actor는 SPOT에 입장해 상태 처리에 참여한�
 접속을 받고, 연결마다 session 인스턴스를 생성한다. client 측 접속은 별도 산출물인
 Stream Connector가 담당한다.
 
-[7장 →](07-stream.ko.md)
+[7장 →](08-stream.ko.md)
 
 ### Registry / Discovery — 주소 자동 연결
 
@@ -225,7 +223,7 @@ Stream Connector가 담당한다.
 Registry 서버가 등록된 서버 목록을 관리하고, client 역할의 서버가 Discovery로 현재
 살아 있는 서버를 동적으로 찾는다.
 
-[8장 →](08-registry.ko.md)
+[8장 →](09-registry.ko.md)
 
 ### 통합 4축 한눈에
 
@@ -244,9 +242,9 @@ flowchart LR
 | channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkChannelClient`, `IZLinkHandlerFilter` | [04-channel-messaging](04-channel-messaging.ko.md) |
 | PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkFanoutClient` | [04-channel-messaging](04-channel-messaging.ko.md) |
 | SPOT | typed spot factory, Spot context outbound, timer | [05-spot](05-spot.ko.md) |
-| actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-session](06-actor-session.ko.md) |
-| STREAM | framework session packet, Stream Connector | [07-stream](07-stream.ko.md) |
-| 인프라 | Registry topology, runtime monitoring | [08-registry](08-registry.ko.md), [09-monitoring](09-monitoring.ko.md) |
+| actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-spot](06-actor-spot.ko.md) |
+| STREAM | framework session packet, Stream Connector | [08-stream](08-stream.ko.md) |
+| 인프라 | Registry topology, runtime monitoring | [09-registry](09-registry.ko.md), [10-monitoring](10-monitoring.ko.md) |
 
 ## 3. 전체 토폴로지
 
@@ -347,13 +345,13 @@ handler registration 이 정한다. 자세한 규칙은
 2. [03-concepts](03-concepts.ko.md) — 핵심 개념 (channel, 역할, DI)
 3. [04-channel-messaging](04-channel-messaging.ko.md) — request/send/pub-sub 상세
 4. [05-spot](05-spot.ko.md) — room/stage/zone, timer, routed Spot 호출
-5. [06-actor-session](06-actor-session.ko.md) — actor lifecycle, session actor dispatch
-6. [07-stream](07-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
-7. [08-registry](08-registry.ko.md) — Registry 구동과 topology 조회
-8. [09-monitoring](09-monitoring.ko.md) — runtime 이벤트 관찰
-9. [10-feature-map](10-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
-10. [11-interface-catalog](11-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-11. [12-grpc-alternative](12-grpc-alternative.ko.md) — **ZLink 을 어디에 쓰나**(사용처·문제 신호·경계 + 케이스 허브, 도입 판단 문서)
+5. [06-actor-spot](06-actor-spot.ko.md) — actor lifecycle, session actor dispatch
+6. [08-stream](08-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
+7. [09-registry](09-registry.ko.md) — Registry 구동과 topology 조회
+8. [10-monitoring](10-monitoring.ko.md) — runtime 이벤트 관찰
+9. [11-feature-map](11-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
+10. [12-interface-catalog](12-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
+11. [13-grpc-alternative](13-grpc-alternative.ko.md) — **ZLink 을 어디에 쓰나**(사용처·문제 신호·경계 + 케이스 허브, 도입 판단 문서)
 12. 케이스 스터디 — 도입 판단과 아키텍처 매핑:
     [13 전자상거래](case-studies/13-case-ecommerce-checkout.ko.md) ·
     [14 mesh+운영](case-studies/14-case-microservice-mesh.ko.md) ·

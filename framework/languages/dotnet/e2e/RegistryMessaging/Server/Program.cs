@@ -74,7 +74,7 @@ else if (options.Role == "provider")
 
         if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))
         {
-            var route = framework.AddRouteMeshChannel("profile.route")
+            var route = framework.AddRouteMesh("profile.route")
                 .EnableServer(options.RouteEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid));
             foreach (var peer in options.RoutePeers)
@@ -85,18 +85,6 @@ else if (options.Role == "provider")
             route.AddRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
         }
 
-        if (!string.IsNullOrWhiteSpace(options.DealerEndpoint))
-        {
-            var dealer = framework.AddDealerMeshChannel("profile.mesh")
-                .EnableServer(options.DealerEndpoint);
-            dealer.ConfigureSocket().Weight = options.Weight;
-            foreach (var peer in options.DealerPeers)
-            {
-                dealer.EnableClient(peer);
-            }
-
-            dealer.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
-        }
     });
 }
 else
@@ -283,16 +271,13 @@ internal sealed record ServerOptions(
     string? ChannelEndpoint,
     string? WorkflowEndpoint,
     string? RouteEndpoint,
-    string? DealerEndpoint,
     int Weight,
-    IReadOnlyList<string> RoutePeers,
-    IReadOnlyList<string> DealerPeers)
+    IReadOnlyList<string> RoutePeers)
 {
     public static ServerOptions Parse(string[] args)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var routePeers = new List<string>();
-        var dealerPeers = new List<string>();
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -311,10 +296,6 @@ internal sealed record ServerOptions(
             if (key == "--route-peer")
             {
                 routePeers.Add(value);
-            }
-            else if (key == "--dealer-peer")
-            {
-                dealerPeers.Add(value);
             }
             else
             {
@@ -335,9 +316,7 @@ internal sealed record ServerOptions(
             values.GetValueOrDefault("channel-endpoint"),
             values.GetValueOrDefault("workflow-endpoint"),
             values.GetValueOrDefault("route-endpoint"),
-            values.GetValueOrDefault("dealer-endpoint"),
             int.TryParse(values.GetValueOrDefault("weight"), out var weight) ? weight : 100,
-            routePeers,
-            dealerPeers);
+            routePeers);
     }
 }

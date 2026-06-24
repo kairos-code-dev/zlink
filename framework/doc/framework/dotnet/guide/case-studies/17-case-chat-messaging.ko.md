@@ -4,7 +4,7 @@
 
 # 케이스 — 채팅·메시징 플랫폼
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > room 을 **주소 가능한 노드(SPOT)** 로 두어 membership 과 fan-out 결정을 직렬화하는
 > 사례다. 실제 client push 는 각 user actor 의 `BoundSession` 이 맡고,
 > **메시지 영속 저장은 그대로 DB** 다. 이 문서는 채팅 도메인의
@@ -135,7 +135,7 @@ public sealed class UserActor(string actorId, IZLinkActorContext context) : IZLi
 }
 options.AddActorFactory<UserActorFactory>("user");
 {
-    var n = options.AddSpotMesh("rooms").AddNode("room-node");
+    var n = options.AddSpotMesh("rooms");
         n.EnableRouter("tcp://0.0.0.0:7700");
         n.EnablePubSub("tcp://0.0.0.0:7701");   // presence/fan-out
     n.AddSpotFactory<ChatRoomSpot>();
@@ -146,7 +146,7 @@ options.AddActorFactory<UserActorFactory>("user");
 > 연결 레지스트리("누가 어디 붙었나")를 응용이 직접 조회하지 않는다. session↔actor
 > binding 은 framework 가 들고, room membership 과 fan-out 순서는 room SPOT 이
 > 소유한다. 다른 actor 의 client 로 보내려면 해당 actor 가 자기 `BoundSession` 으로
-> push 한다([6](../06-actor-session.ko.md) §4). presence 는 같은 room SPOT 상태 변화나
+> push 한다([7](../07-actor-session.ko.md) §3). presence 는 같은 room SPOT 상태 변화나
 > 별도 pub/sub 토픽으로 표현할 수 있다.
 
 ## 4. 양쪽 코드 비교 — "room 에 한 마디"
@@ -202,7 +202,6 @@ room 에 한 마디 보내는 흐름이다.
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as WS gateway
@@ -219,7 +218,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant S as Session 서버
@@ -244,7 +242,7 @@ fan-out 순서를 소유하고, 각 user actor 가 자기 `BoundSession` 으로 
 - **그대로 남는 것:** **메시지 durable 저장(DB)**, 순서/전달 보장 정책, read
   receipt 같은 의미. pub/sub 는 transport fan-out 이라 영속/replay 가 필요하면
   broker 가 맞다. 공통 경계는
-  [12-grpc-alternative](../12-grpc-alternative.ko.md)의 §4 경계 절 참고.
+  [13-grpc-alternative](../13-grpc-alternative.ko.md)의 §4 경계 절 참고.
 
 ## 7. 실행 가능한 샘플 — SupportChat
 
@@ -291,8 +289,8 @@ client-facing endpoint 를 열지 않는다(케이스 §3 의 gateway 경계를 
 
 ## 8. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
-- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [05-spot](../05-spot.ko.md), [06-actor-session](../06-actor-session.ko.md), [07-stream](../07-stream.ko.md)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
+- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [05-spot](../05-spot.ko.md), [06-actor-spot](../06-actor-spot.ko.md), [08-stream](../08-stream.ko.md)
 - 상세 채팅 케이스: [Marketplace](17-1-case-marketplace-chat.ko.md),
   [Live commerce](17-2-case-live-commerce-chat.ko.md),
   [Game chat](17-3-case-game-chat.ko.md)

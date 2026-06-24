@@ -124,23 +124,6 @@ bool spot_route_bridge_t::valid () const noexcept
     return _impl && _impl->handle != nullptr;
 }
 
-void spot_route_bridge_t::attach_dealer_channel (const std::string &channel_name_,
-                                                 zlink::dealer_socket_t &dealer_)
-{
-    attach_dealer_channel (channel_name_, dealer_, endpoint_capabilities_t::route_only);
-}
-
-void spot_route_bridge_t::attach_dealer_channel (const std::string &channel_name_,
-                                                 zlink::dealer_socket_t &dealer_,
-                                                 endpoint_capabilities_t capabilities_)
-{
-    validate_channel_name (channel_name_);
-    zlink_spot_route_bridge_endpoint_options_t options = endpoint_options (capabilities_);
-    throw_config_rc (zlink_spot_route_bridge_attach_dealer_channel (
-      _impl->handle, channel_name_.c_str (), zlink::detail::native_handle (dealer_), &options));
-    _impl->endpoint_handles[channel_name_] = zlink::detail::native_handle (dealer_);
-}
-
 void spot_route_bridge_t::attach_router_channel (const std::string &channel_name_,
                                                  zlink::router_socket_t &router_)
 {
@@ -158,15 +141,8 @@ void spot_route_bridge_t::attach_router_channel (const std::string &channel_name
     _impl->endpoint_handles[channel_name_] = zlink::detail::native_handle (router_);
 }
 
-void spot_route_bridge_t::set_target_node (const std::string &channel_name_,
-                                           const routing_id_t &target_node_rid_)
-{
-    validate_channel_name (channel_name_);
-    throw_config_rc (zlink_spot_route_bridge_set_target_node (
-      _impl->handle, channel_name_.c_str (), zlink::detail::routing_id_native (target_node_rid_)));
-}
-
 bool spot_route_bridge_t::send (const std::string &channel_name_,
+                                const routing_id_t &target_node_rid_,
                                 const routing_id_t &target_spot_rid_,
                                 std::vector<message_t> &parts_,
                                 send_flags_t flags_)
@@ -176,6 +152,7 @@ bool spot_route_bridge_t::send (const std::string &channel_name_,
       parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
           return zlink_spot_route_bridge_send (
             _impl->handle, channel_name_.c_str (),
+            zlink::detail::routing_id_native (target_node_rid_),
             zlink::detail::routing_id_native (target_spot_rid_), native_parts_, part_count_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
@@ -191,6 +168,7 @@ bool spot_route_bridge_t::send (const std::string &channel_name_,
 
 async_result_t<std::vector<message_t>>
 spot_route_bridge_t::request (const std::string &channel_name_,
+                              const routing_id_t &target_node_rid_,
                               const routing_id_t &target_spot_rid_,
                               std::vector<message_t> &parts_,
                               std::chrono::milliseconds timeout_)
@@ -205,6 +183,7 @@ spot_route_bridge_t::request (const std::string &channel_name_,
       parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
           return zlink_spot_route_bridge_request (
             _impl->handle, channel_name_.c_str (),
+            zlink::detail::routing_id_native (target_node_rid_),
             zlink::detail::routing_id_native (target_spot_rid_), native_parts_, part_count_,
             &detail::request_callback_trampoline, state.get (), ZLINK_SEND_FLAGS_NONE,
             timeout_ms);
@@ -222,6 +201,7 @@ spot_route_bridge_t::request (const std::string &channel_name_,
 }
 
 bool spot_route_bridge_t::request (const std::string &channel_name_,
+                                   const routing_id_t &target_node_rid_,
                                    const routing_id_t &target_spot_rid_,
                                    std::vector<message_t> &parts_,
                                    request_callback_t callback_,
@@ -238,6 +218,7 @@ bool spot_route_bridge_t::request (const std::string &channel_name_,
       parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
           return zlink_spot_route_bridge_request (
             _impl->handle, channel_name_.c_str (),
+            zlink::detail::routing_id_native (target_node_rid_),
             zlink::detail::routing_id_native (target_spot_rid_), native_parts_, part_count_,
             &detail::request_callback_trampoline, state.get (),
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)), timeout_ms);
@@ -270,15 +251,9 @@ bool spot_route_bridge_t::handle_router_received (const std::string &channel_nam
         zlink::detail::restore_parts_from_native (parts_, native_parts.data (), native_parts.size ());
     };
 
-    const int rc = request_seq_
-      ? zlink_spot_route_bridge_handle_router_received_with_metadata (
-          _impl->handle, channel_name_.c_str (),
-          zlink::detail::routing_id_native (source_node_rid_), *request_seq_, native_parts.data (),
-          native_parts.size (), &handled)
-      : zlink_spot_route_bridge_handle_router_received (
-          _impl->handle, channel_name_.c_str (),
-          zlink::detail::routing_id_native (source_node_rid_), native_parts.data (),
-          native_parts.size (), &handled);
+    const int rc = zlink_spot_route_bridge_handle_router_received (
+      _impl->handle, channel_name_.c_str (), zlink::detail::routing_id_native (source_node_rid_),
+      request_seq_.value_or (0), native_parts.data (), native_parts.size (), &handled);
     if (rc != 0) {
         restore ();
         throw zlink::detail::last_error ();

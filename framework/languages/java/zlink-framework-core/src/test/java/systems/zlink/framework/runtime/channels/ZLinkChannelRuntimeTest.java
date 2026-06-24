@@ -19,7 +19,6 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -50,9 +49,8 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeRawRequestCompletesWhenRouteLoopReceivesRawReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
-            .enableServer("inproc://play-route")
-            .enableSpotRouteEgress("play");
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
@@ -99,34 +97,6 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToChannel("api", "payload")
                 .timeout(Duration.ofMillis(300))
                 .submit(String.class);
-
-            ExecutionException error = org.junit.jupiter.api.Assertions.assertThrows(
-                ExecutionException.class,
-                () -> request.toCompletableFuture().get(1, TimeUnit.SECONDS));
-            assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
-        }
-    }
-
-    @Test
-    void spotEgressRequestCompletesExceptionallyWhenBridgeResultIsNotOk() throws Exception {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addClientServerChannel("egress")
-            .enableClient("inproc://egress")
-            .enableSpotRouteEgress("ingress");
-        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
-        backend.bridge.requestResult = ZLinkBackendRequestResult.TIMED_OUT;
-        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
-            backend,
-            options.registration(),
-            new ZLinkJsonMessageSerializer())) {
-            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
-
-            var request = runtime.requestToSpotViaEgressChannel(
-                "egress",
-                RoutingId.from("room-spot"),
-                List.of(Message.from("raw-request".getBytes())),
-                Duration.ofMillis(300));
 
             ExecutionException error = org.junit.jupiter.api.Assertions.assertThrows(
                 ExecutionException.class,
@@ -313,11 +283,9 @@ final class ZLinkChannelRuntimeTest {
         boolean completeRequests = true;
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
 
-        @Override public void attachDealerChannel(String channelName, ZLinkBackendDealerSocket dealer, SpotRouteBridgeEndpointOptions options) { }
-        @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router, SpotRouteBridgeEndpointOptions options) { }
-        @Override public void setTargetNode(String channelName, RoutingId targetNodeRid) { }
-        @Override public boolean send(String channelName, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) { return true; }
-        @Override public boolean request(String channelName, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+        @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router) { }
+        @Override public boolean send(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) { return true; }
+        @Override public boolean request(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             if (!completeRequests) {
                 return true;
             }

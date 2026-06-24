@@ -44,7 +44,6 @@ import systems.zlink.contracts.service.spot.SpotKind;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeMode;
 import systems.zlink.contracts.service.spot.SpotRouteBridge;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
@@ -565,20 +564,14 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
 
     private record JavaSpotRouteBridge(SpotRouteBridge bridge) implements ZLinkBackendSpotRouteBridge {
         @Override public String name() { return "spotRouteBridge"; }
-        @Override public void attachDealerChannel(String channelName, ZLinkBackendDealerSocket dealer, SpotRouteBridgeEndpointOptions options) {
-            bridge.attachDealerChannel(channelName, ((JavaDealerSocket) dealer).socket(), options);
+        @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router) {
+            bridge.attachRouterChannel(channelName, ((JavaRouterSocket) router).socket());
         }
-        @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router, SpotRouteBridgeEndpointOptions options) {
-            bridge.attachRouterChannel(channelName, ((JavaRouterSocket) router).socket(), options);
+        @Override public boolean send(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
+            return submit(bridge.send(channelName, targetNodeRid, targetSpotRid), parts, flags);
         }
-        @Override public void setTargetNode(String channelName, RoutingId targetNodeRid) {
-            bridge.setTargetNode(channelName, targetNodeRid);
-        }
-        @Override public boolean send(String channelName, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
-            return submit(bridge.send(channelName, targetSpotRid), parts, flags);
-        }
-        @Override public boolean request(String channelName, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            return submitRequest(bridge.request(channelName, targetSpotRid), parts, callback, flags, timeout);
+        @Override public boolean request(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            return submitRequest(bridge.request(channelName, targetNodeRid, targetSpotRid), parts, callback, flags, timeout);
         }
         @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) {
             return bridge.handleRouterReceived(channelName, sourceNodeRid, requestSeq, parts);
@@ -654,7 +647,6 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         return switch (type) {
             case ROUTE_MESH -> AutoConnectType.ROUTE_MESH;
             case CLIENT_SERVER -> AutoConnectType.CLIENT_SERVER;
-            case DEALER_MESH -> AutoConnectType.DEALER_MESH;
             case FANOUT -> AutoConnectType.FANOUT;
             case SPOT_MESH -> AutoConnectType.SPOT_MESH;
         };

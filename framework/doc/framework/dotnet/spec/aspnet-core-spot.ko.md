@@ -10,7 +10,6 @@
 
 ## 현재 구현 기준
 
-`AcceptSpotRoutesFromChannel(...)`과 SPOT egress builder는 core의 deprecated
 `SpotNode` attach/connect API를 호출하지 않는다. .NET framework runtime은
 `bindings/dotnet`의 public `CreateRouteBridge(...)` / `ISpotRouteBridge` 표면으로
 channel socket을 bridge에 연결한다. channel socket의 lifecycle은 channel runtime이
@@ -132,10 +131,9 @@ builder.Services.AddZLinkFramework(options =>
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
-            var node =         mesh.AddNode("stage-node");
+            var node = mesh;
             node.EnableRouter("tcp://0.0.0.0:9001");
             node.EnablePubSub("tcp://0.0.0.0:9000");
-            node.AttachSpotPublisherClient("game.stage");
             node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>();
 
@@ -163,20 +161,20 @@ builder.Services.AddZLinkFramework(options =>
   spot remote address resolver 등록
 - host shutdown 시 lifecycle 정리
 
-`AddSpotMesh` 는 같은 channel 에 속하는 여러 `SpotNode` 를 하나의 묶음으로
-등록한다. 그 묶음 안에서 각 항목이 맡는 역할은 다음과 같다.
+`AddSpotMesh` 는 SPOT channel 이름을 등록하고, 같은 프로세스의 단일
+`SpotNode` 를 함께 만든다. 그 노드가 맡는 역할은 다음과 같다.
 
-- mesh 안에서는 `mesh.AddNode(name)` 로 노드를 추가한다.
 - mesh 단위의 discovery 설정은 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 가 담당한다.
 
-같은 채널을 가리키는 `SpotNode` 묶음을 한 mesh 에 모아 두는 모양이다. 덕분에
-한 앱 안에서 서로 다른 channel mesh 를 따로 등록할 수도 있고, 한 mesh 안에 같은
-channel 을 공유하는 여러 노드를 함께 둘 수도 있다.
+같은 프로세스 안에는 하나의 `SpotNode` 만 둔다. `AddSpotMesh(channelName)` 의
+`channelName` 이 그 로컬 노드 이름으로도 쓰이므로, route·publish 소유 노드를
+따로 고르는 설정이 필요하지 않다.
 
 discovery endpoint 가 없는 로컬 단일 노드도 `AddSpotMesh` 안에서 표현한다.
-이 경우 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 로 mesh 소유권만 닫고, 필요한 노드를
-`mesh.AddNode` 로 등록한다. public 등록 표면은 항상 `AddSpotMesh` 가
-SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
+이 경우 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 를 생략하고, `AddSpotMesh`
+가 반환한 builder 에 바로 router, pub/sub, factory 를 설정한다. public 등록
+표면은 항상 `AddSpotMesh` 가 SPOT channel 이름과 단일 node 를 함께 소유하도록
+유지한다.
 
 이 등록 함수들은 각각 다음과 같이 역할이 나뉜다.
 
@@ -189,7 +187,6 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 - `AddClientServerChannel("orders").EnableClient(...)`
   - `orders` channel로 outbound[^outbound] send/request를 보낼
     channel client 역할을 켠다.
-- `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스를 갖지 않는 외부 노드가 `game.stage` SPOT channel로
     publish할 수 있도록 별도의 publisher client를 붙인다.
 - `AddEntrySpot<StageEntrySpot>()`
@@ -240,7 +237,7 @@ builder.Services.AddZLinkFramework(options =>
     {
         var mesh =     options.AddSpotMesh("game.stage");
         {
-            var node =         mesh.AddNode("stage-node");
+            var node = mesh;
             node.EnablePubSub("tcp://0.0.0.0:9000");
 
             {
@@ -379,14 +376,13 @@ builder.Services.AddZLinkFramework(options =>
     var mesh = options.AddSpotMesh("game.stage");
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-    var node = mesh.AddNode("stage-node");
+    var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");
     node.ConnectRouter("tcp://10.0.0.10:9000");
 
     node.EnablePubSub("tcp://0.0.0.0:9000");
     node.ConnectPeerPub("tcp://10.0.0.20:9100");
 
-    node.AttachSpotPublisherClient("game.stage", "tcp://10.0.0.40:9300");
 
     node.AddEntrySpot<StageEntrySpot>();
     node.AddSpotFactory<StageSpot>();
@@ -462,7 +458,6 @@ placement 코드가 먼저 spot rid 를 결정해 두어야 한다.
 - `channel.ConfigureClientSocket()`, `channel.ConfigureClientRouting()`
   - route bridge channel socket의 공통 socket 설정과 routed outbound 설정을 나눠
     구성한다.
-- `node.ConfigureSpotPublisherClientSocket(channelName)`
   - SpotNode publisher handle의 publish ingress 기본값을 정한다.
 
 예시를 풀어 보면 다음처럼 읽힌다.
@@ -474,7 +469,7 @@ builder.Services.AddZLinkFramework(options =>
     var mesh = options.AddSpotMesh("game.stage");
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-    var node = mesh.AddNode("stage-node");
+    var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");
 
     var routerSocket = node.ConfigureRouterSocket();
@@ -508,8 +503,6 @@ builder.Services.AddZLinkFramework(options =>
     var channelRouting = orders.ConfigureClientRouting();
     channelRouting.ProbeRouterOnConnect = true;
 
-    node.AttachSpotPublisherClient("game.stage");
-    var publishSocket = node.ConfigureSpotPublisherClientSocket("game.stage");
     publishSocket.SendHighWaterMark = 20_000;
     publishSocket.Immediate = true;
 
@@ -1002,8 +995,8 @@ channel view 를 공급한다. 그 view 가 같은 channel 에 속한 peer mesh 
 mesh 안에서 동작한다고 이해하면 된다.
 
 SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경로는
-제공하지 않는다. SPOT network 를 구성하는 모든 node 는
-`AddSpotMesh` 안에서 `mesh.AddNode` 로 등록한다. STREAM
+제공하지 않는다. SPOT network 를 구성하는 로컬 node 는
+`AddSpotMesh` 호출과 동시에 등록된다. STREAM
 ActorGateway 는 별도 node builder 가 아니라, stream 이 router 역할을
 켠 SpotNode 를 `AttachActorGateway(spotNodeName)` 로 참조하는 방식으로 연결한다.
 
@@ -1052,25 +1045,21 @@ metadata로만 남으면 안 되고, 실제 transport로 사용할 router-capabl
 
 ```csharp
 node.EnableRouter("tcp://0.0.0.0:9001");
-node.AcceptSpotRoutesFromChannel("api");
 ```
 
-`AcceptSpotRoutesFromChannel`은 두 channel 종류를 router-capable 대상으로 본다.
 
 - `AddClientServerChannel`의 server `ROUTER`
-- `AddRouteMeshChannel`의 route mesh `ROUTER`
+- `AddRouteMesh`의 route mesh `ROUTER`
 
 수동 endpoint를 써야 하면 같은 표면 아래에서 명시한다.
 
 ```csharp
-node.AcceptSpotRoutesFromChannel("api", "tcp://10.0.0.20:7000");
 ```
 
 수동 endpoint가 없으면 framework discovery view를 통해 자동 연결한다. 같은 route
 수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup validation 오류다.
-fanout channel과 dealer mesh channel은 router 역할이 없으므로 지정할 수 없다.
+fanout channel은 router 역할이 없으므로 지정할 수 없다.
 
-`AcceptSpotRoutesFromChannel`은 application handler mapping 이 아니다. 이 설정은
 target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode router 사이에
 transport peer 를 만든다. handler group 이 없어도 transport 전용 channel 로 사용할 수
 있고, 반대로 handler group 을 매핑해도 Spot route ingress 가 자동으로 켜지지는 않는다.
@@ -1093,13 +1082,10 @@ channel 등록으로 확인할 수 있어야 한다. 주소만 알고 연결하�
 {
     var channel = options.AddClientServerChannel("gateway.client");
     channel.EnableClient("tcp://play-node-1:7201");
-    channel.EnableSpotRouteEgress("play.route");
 
 }
 ```
 
-`EnableSpotRouteEgress("play.route")`의 값은 local channel 이름이 아니다. target
-SpotNode process 에서 `AcceptSpotRoutesFromChannel("play.route")`로 연 ingress channel
 이름이다. target Spot 은 string overload 없이 `RoutingId` 로 지정한다.
 
 ## 12. 회귀 테스트

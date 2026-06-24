@@ -319,8 +319,8 @@ options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint); // 
 | 표면 개념 정리(channel, 역할, DI) | [03-concepts](03-concepts.ko.md) |
 | request/send/pub-sub 전체 사용법 | [04-channel-messaging](04-channel-messaging.ko.md) |
 | room/stage 같은 동적 노드 | [05-spot](05-spot.ko.md) |
-| 외부 game/mobile client 받기 | [07-stream](07-stream.ko.md) |
-| 자동 연결과 Registry 운영 | [08-registry](08-registry.ko.md) |
+| 외부 game/mobile client 받기 | [08-stream](08-stream.ko.md) |
+| 자동 연결과 Registry 운영 | [09-registry](09-registry.ko.md) |
 | 실행 가능한 전체 예제 | [guide/samples](samples/channel-messaging-samples.ko.md) |
 
 ---

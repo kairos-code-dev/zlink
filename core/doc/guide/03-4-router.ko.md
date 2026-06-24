@@ -738,10 +738,10 @@ SPOT route를 받겠다고 선언해야 한다.
 - route mesh channel의 `ROUTER`에서 특정 `Spot`으로 보낼 수 있다.
 - PUB/SUB fanout channel과 DEALER mesh channel은 SPOT routed send의 anchor가 아니다.
 
-framework를 사용할 때는 `AcceptSpotRoutesFromChannel(...)`로 이 수신 관계를
-설정한다. raw core API를 직접 사용할 때는 route bridge를 만들고 router channel
-socket을 bridge에 등록한다. `SpotNode`가 외부 router channel peer를 직접
-소유하는 방식은 더 이상 공개 사용법이 아니다.
+framework를 사용할 때는 같은 프로세스에 RouteMesh와 SpotMesh를 함께 등록하면 이
+수신 관계를 런타임이 자동으로 연결한다. raw core API를 직접 사용할 때는 route
+bridge를 만들고 router channel socket을 bridge에 등록한다. `SpotNode`가 외부
+router channel peer를 직접 소유하는 방식은 더 이상 공개 사용법이 아니다.
 
 > 상세 규약은 ROUTER spec
 > [router.ko.md](../spec/core/socket/router.ko.md)의 "피어 가중치",

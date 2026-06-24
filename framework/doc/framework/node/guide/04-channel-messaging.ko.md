@@ -93,7 +93,7 @@ zlinkFramework()
   .addFanoutChannel('events')
     .enableSubscriber(eventsEndpoint)
     .addPublishHandler('RoomChanged', RoomChangedHandler)
-  .addRouteMeshChannel('route')
+  .addRouteMesh('route')
     .enableRouter(routeEndpoint)
     .addSendHandler('ActorLeft', ActorLeftRouteHandler)
     .addRequestHandler('ActorLookup', ActorLookupRouteHandler);

@@ -91,15 +91,6 @@ function validateChannelCapabilities(
     if (channel.client !== undefined) {
       requirePeerSource(`channel '${channelName}' client`, channel.client.manualConnections, discoveryConfigured);
     }
-    if (channel.dealerMesh !== undefined) {
-      if (channel.client !== undefined) {
-        throw new ZLinkConfigurationException(`Channel '${channelName}' cannot define both client and dealerMesh client capability.`);
-      }
-      if (channel.dealerMesh.bind !== undefined) {
-        requireEndpoint(`channel '${channelName}' dealer mesh`, channel.dealerMesh.bind);
-      }
-      requirePeerSource(`channel '${channelName}' dealer mesh client`, channel.dealerMesh.client?.manualConnections, discoveryConfigured);
-    }
     if (channel.subscriber !== undefined) {
       requirePeerSource(`channel '${channelName}' subscriber`, channel.subscriber.manualConnections, discoveryConfigured);
     }
@@ -139,8 +130,6 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
     }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' router`, spotNode.router);
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
-    validateAttachedSpotPublisherClients(spotNodeName, spotNode);
-    validateAcceptedSpotRouteChannels(spotNodeName, spotNode, registration);
     validateEntrySpot(spotNodeName, spotNode);
     validateSpotNodeFactories(spotNodeName, spotNode);
     if (
@@ -170,46 +159,6 @@ function validateSpotNodeFactories(spotNodeName: string, spotNode: ZLinkSpotNode
       );
     }
     seen.add(factory);
-  }
-}
-
-function validateAttachedSpotPublisherClients(
-  spotNodeName: string,
-  spotNode: ZLinkSpotNodeOptions
-): void {
-  for (const [channelName, attached] of Object.entries(spotNode.attachedSpotPublisherClients ?? {})) {
-    requireName(`SpotNode '${spotNodeName}' attached SPOT publisher channel name`, channelName);
-    validateManualConnections(
-      `SpotNode '${spotNodeName}' attached SPOT publisher '${channelName}'`,
-      attached.manualConnections
-    );
-  }
-}
-
-function validateAcceptedSpotRouteChannels(
-  spotNodeName: string,
-  spotNode: ZLinkSpotNodeOptions,
-  registration: ZLinkFrameworkRegistration
-): void {
-  for (const [channelName, acceptance] of Object.entries(spotNode.acceptedSpotRouteChannels ?? {})) {
-    requireName(`SpotNode '${spotNodeName}' accepted SPOT route channel name`, channelName);
-    validateManualConnections(
-      `SpotNode '${spotNodeName}' accepted SPOT route channel '${channelName}'`,
-      acceptance.manualConnections
-    );
-    validateRouterPeerConnections(
-      `SpotNode '${spotNodeName}' accepted SPOT route channel '${channelName}'`,
-      acceptance.manualPeerConnections
-    );
-    if (registration.routeChannelOptions.has(channelName)) {
-      continue;
-    }
-    if (registration.channels.get(channelName)?.server !== undefined) {
-      continue;
-    }
-    throw new ZLinkConfigurationException(
-      `Accepted SPOT route channel '${channelName}' is not router-capable.`
-    );
   }
 }
 

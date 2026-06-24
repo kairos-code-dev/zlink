@@ -368,7 +368,7 @@ public sealed class RegressionTests
         Assert.Contains("AttachActorGateway", text, StringComparison.Ordinal);
         if (!allowRouteMeshChannel)
         {
-            Assert.DoesNotContain("AddRouteMeshChannel", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddRouteMesh", text, StringComparison.Ordinal);
         }
         Assert.DoesNotContain("AddScoped<IBingoSessionHandler", text, StringComparison.Ordinal);
         Assert.DoesNotContain("AddScoped<ISessionRelayPacketHandler", text, StringComparison.Ordinal);

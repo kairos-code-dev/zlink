@@ -61,7 +61,7 @@ public final class SupportServerApplication {
                 .addHandlerGroup("support");
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SupportRouteChannel);
+            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.SupportRouteChannel);
             route.enableServer(SampleTopology.SupportRouteEndpoint);
             route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.SupportRid));
@@ -69,12 +69,10 @@ public final class SupportServerApplication {
                 .setRouterChannelId(SampleNames.SupportRouteChannel);
             options.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
-                .addNode(SampleNames.SupportEntrySpotNode);
+                ;
             node.enableRouter(SampleTopology.SupportSpotRouterEndpoint)
                 .setRouterRoutingId(RoutingId.from(SampleTopology.SupportRid));
-            node.enablePubSub(SampleTopology.SupportSpotEndpoint);
-            node.acceptSpotRoutesFromChannel(SampleNames.SupportRouteChannel);
-            node.addEntrySpot(SupportEntrySpot.class);
+            node.enablePubSub(SampleTopology.SupportSpotEndpoint);node.addEntrySpot(SupportEntrySpot.class);
             node.addSpotFactory(ConversationSpot.class);
         };
     }

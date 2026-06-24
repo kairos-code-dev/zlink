@@ -331,8 +331,6 @@ class recording_dispatch_observer_t : public zlink::framework::message_dispatch_
         switch (surface) {
             case zlink::framework::dispatch_error_surface_t::channel:
                 return "channel";
-            case zlink::framework::dispatch_error_surface_t::dealer_mesh_channel:
-                return "dealer_mesh_channel";
             case zlink::framework::dispatch_error_surface_t::route_mesh_channel:
                 return "route_mesh_channel";
             case zlink::framework::dispatch_error_surface_t::spot_route:
@@ -2361,7 +2359,6 @@ int main ()
     public_route_builder.route_channel ("public.route")
       .bind ("tcp://public-bind:7700")
       .connect ("tcp://public-peer:7701")
-      .enable_spot_route_egress ("play.route")
       .add_handler_group ("public")
       .add_request_handler<local_handler_t, request_t, reply_t> (
         "request", &local_handler_t::handle_route_request)
@@ -2374,9 +2371,7 @@ int main ()
       zlink::framework::detail::channel_runtime_manager_t::from (public_route_builder);
     public_manager.initialize_route_channels (public_route_builder);
     auto &public_route = public_manager.get_route_channel ("public.route");
-    if (!public_route.running () || public_route.list_connections ().size () != 2
-        || !public_route.spot_route_egress_target ()
-        || *public_route.spot_route_egress_target () != "play.route") {
+    if (!public_route.running () || public_route.list_connections ().size () != 2) {
         return 57;
     }
     auto public_route_client = public_route_builder.route_client (serializers);

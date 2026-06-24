@@ -20,7 +20,7 @@
 | 서버 간 request/response | 낮음 | 서비스 A가 서비스 B의 결과가 필요할 때 | [7](07-channel-messaging.ko.md) |
 | 서버 간 단방향 send | 낮음 | 응답 없는 작업 위임/통지 | [7](07-channel-messaging.ko.md) |
 | pub/sub 이벤트 fan-out | 낮음 | domain event를 여러 구독자에게 전파 | [7 §6](07-channel-messaging.ko.md#6-fanout-publishsubscribe) |
-| dealer mesh (수평 확장) | 중간 | 외부 LB 없이 같은 채널에 노드 추가·분산 | [7 §5](07-channel-messaging.ko.md#5-dealer-mesh-외부-로드밸런서-없이-수평-확장) |
+| client/server 다중 endpoint | 중간 | 같은 채널에 같은 서비스 노드를 여러 개 연결 | [7 §5](07-channel-messaging.ko.md#5-clientserver-같은-서비스-여러-대에-연결) |
 | route mesh (주소 라우팅) | 높음 | routing id로 특정 노드 고정 라우팅(SPOT 백본) | [7 §7](07-channel-messaging.ko.md#7-route-mesh-고급) |
 | SPOT(room/stage/zone) | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | [8](08-spot.ko.md) |
 | channel handler에서 target Spot 호출 | 중간 | HTTP/session gateway가 current Spot 없이 특정 Spot 호출 | [8 §6](08-spot.ko.md#6-spot에서-바깥으로-보내기) |
@@ -54,7 +54,7 @@ flowchart TD
 - **서비스끼리 호출만** → request/response 또는 send. 난이도 낮음,
   [2장 Getting Started](02-getting-started.ko.md)로 충분.
 - **이벤트를 흩뿌린다** → pub/sub.
-- **처리량을 늘린다(같은 서비스 N개)** → dealer mesh.
+- **처리량을 늘린다(같은 서비스 N개)** → client/server channel에 여러 server endpoint를 연결.
 - **방/판/존 같은 동적 단위** → SPOT. 그 안에 참가자별 상태/session이 있으면 actor.
 - **일반 handler에서 Spot 흐름으로** → actor 생성 또는 Entry Spot join으로 `actor_ref_t` 확보.
 - **외부 게임/모바일 client** → STREAM(서버) + Stream Connector(client).

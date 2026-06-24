@@ -878,10 +878,7 @@ test('runtime host relays bound remote actor request through route channel and c
       routeChannels: [{ routerChannelId: 'room.route' }],
       spotNodes: {
         session: {
-          router: { bind: 'tcp://127.0.0.1:1', routingId: 'session-node' },
-          acceptedSpotRouteChannels: {
-            'room.route': {}
-          }
+          router: { bind: 'tcp://127.0.0.1:1', routingId: 'session-node' }
         }
       }
     })

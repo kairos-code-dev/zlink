@@ -4,7 +4,7 @@
 
 # 케이스 — 트레이딩 시스템
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > "심볼별 오더북 = 결정적 직렬 처리" 가 SPOT 의 단일 실행 큐와 맞는 사례이자,
 > **마이크로초 HFT hot path는 ZLink 영역이 아니라는 경계**가 가장 분명한 사례다.
 > 실행 가능한 샘플이 아니라, ZLink 를 쓰기 좋은 경계와 쓰면 안 되는 경계를 가르는
@@ -107,7 +107,7 @@ var decision = await client
 ```csharp
 // 등록 골격(정식은 04·05·07): symbol SpotMesh + 시세 fanout + 주변부 channel
 {
-    var n = options.AddSpotMesh("books").AddNode("book-node");
+    var n = options.AddSpotMesh("books");
         n.EnableRouter("tcp://0.0.0.0:7800");
         n.EnablePubSub("tcp://0.0.0.0:7801");   // md.{symbol} 시세 배포
     n.AddSpotFactory<SymbolBookSpot>();
@@ -118,7 +118,7 @@ options.AddClientServerChannel("risk").EnableClient();
 
 주문 라우팅·리스크 점검은 channel messaging(`RequestToChannel`/`SendToChannel`; `Timeout` 은 request 에)으로,
 리테일/알고 client 수용은 STREAM 으로 받는다([4](../04-channel-messaging.ko.md),
-[7](../07-stream.ko.md)). 단 **마이크로초 매칭 hot loop는 이 channel 경로 밖**에서
+[7](../08-stream.ko.md)). 단 **마이크로초 매칭 hot loop는 이 channel 경로 밖**에서
 Disruptor/Aeron 으로 남긴다.
 
 ## 4. 양쪽 코드 비교 — "주문 제출 → 매칭 → 시세"
@@ -188,7 +188,6 @@ Disruptor/Aeron 으로 남긴다.
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as algo client
   participant GW as order gw
@@ -205,7 +204,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as algo client
   participant GW as order gw
@@ -227,12 +225,12 @@ sequenceDiagram
 - **그대로 남는 것:** **마이크로초 HFT 매칭 코어**(Aeron/Disruptor/SBE/colocation),
   **FIX 외부 연동**, **regulatory audit 영속(DB/event store)**. ZLink 는 이 hot path
   latency tier 를 노리지 않는다. 공통 경계는
-  [12-grpc-alternative](../12-grpc-alternative.ko.md)의 §4 경계 절 참고.
+  [13-grpc-alternative](../13-grpc-alternative.ko.md)의 §4 경계 절 참고.
 
 ## 7. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
-- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [05-spot](../05-spot.ko.md), [07-stream](../07-stream.ko.md)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
+- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [05-spot](../05-spot.ko.md), [08-stream](../08-stream.ko.md)
 - 전체 인터페이스 카탈로그(spec): [spec/handler-interfaces](../../spec/handler-interfaces.ko.md)
 
 ---

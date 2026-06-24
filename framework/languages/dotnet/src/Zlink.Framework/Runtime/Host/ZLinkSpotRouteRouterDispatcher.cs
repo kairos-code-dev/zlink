@@ -38,27 +38,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     public RoutingId ResolveAcceptedSpotRouteNodeRid(string targetSpotNodeChannelName)
     {
         var state = getState();
-        ZLinkSpotNodeRuntime? matched = null;
-        foreach (var spotNode in state.Registration.SpotNodes.Values)
-        {
-            if (!spotNode.AcceptedSpotRouteChannels.ContainsKey(targetSpotNodeChannelName)
-                || !state.SpotNodes.TryGetValue(spotNode.SpotNodeName, out var runtime))
-            {
-                continue;
-            }
-
-            if (matched is not null)
-            {
-                throw new ZLinkConfigurationException(
-                    $"Routed SPOT target channel '{targetSpotNodeChannelName}' is accepted by multiple SPOT nodes in this process.");
-            }
-
-            matched = runtime;
-        }
-
-        return matched?.Node.RoutingId
+        return ResolveSingleRouterSpotNode(state)?.Node.RoutingId
             ?? throw new ZLinkConfigurationException(
-                $"Routed SPOT target channel '{targetSpotNodeChannelName}' is not accepted by a SPOT node in this process.");
+                $"Routed SPOT target channel '{targetSpotNodeChannelName}' is not owned by a router-capable SPOT node in this process.");
     }
 
     private static bool TryResolveLocalAcceptedSpotNode(
@@ -67,18 +49,38 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         out ZLinkSpotNodeRuntime spotNodeRuntime)
     {
-        foreach (var candidate in state.SpotNodes.Values)
+        var candidate = ResolveSingleRouterSpotNode(state);
+        if (candidate is not null && candidate.Node.RoutingId == targetNodeRid)
         {
-            if (candidate.Node.RoutingId == targetNodeRid
-                && candidate.Registration.AcceptedSpotRouteChannels.ContainsKey(routerChannelId))
-            {
-                spotNodeRuntime = candidate;
-                return true;
-            }
+            spotNodeRuntime = candidate;
+            return true;
         }
 
         spotNodeRuntime = null!;
         return false;
+    }
+
+    private static ZLinkSpotNodeRuntime? ResolveSingleRouterSpotNode(
+        ZLinkFrameworkRuntimeState state)
+    {
+        ZLinkSpotNodeRuntime? matched = null;
+        foreach (var candidate in state.SpotNodes.Values)
+        {
+            if (candidate.Registration.Router is null)
+            {
+                continue;
+            }
+
+            if (matched is not null)
+            {
+                throw new ZLinkConfigurationException(
+                    "Routed SPOT dispatch requires exactly one router-capable SPOT node in this process.");
+            }
+
+            matched = candidate;
+        }
+
+        return matched;
     }
 
     private IRouterTarget ResolveTarget(string routerChannelId, RoutingId targetNodeRid)
@@ -263,9 +265,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         {
             try
             {
-                bridge.SetTargetNode(routerChannelId, targetNodeRid);
                 if (!bridge.Send(
                         routerChannelId,
+                        targetNodeRid,
                         targetSpotRid,
                         parts,
                         SendFlags.None))
@@ -298,9 +300,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             {
                 try
                 {
-                    bridge.SetTargetNode(routerChannelId, targetNodeRid);
                     if (!bridge.Request(
                             routerChannelId,
+                            targetNodeRid,
                             targetSpotRid,
                             parts,
                             (result, reply) => ZLinkRawReplyCompletion.Complete(

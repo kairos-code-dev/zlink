@@ -55,7 +55,7 @@ else if (options.Role == "play")
             .TraceNodeId(options.Rid);
         framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
         framework.AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
-        framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
+        framework.AddRouteMesh(SpotServiceNames.ControlChannel)
             .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
             .EnableClient()
             .SetRoutingId(RoutingId.From(options.Rid))
@@ -65,7 +65,7 @@ else if (options.Role == "play")
             : SpotServiceNames.ExternalSpotChannel;
         if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
         {
-            framework.AddRouteMeshChannel(externalSpotChannel)
+            framework.AddRouteMesh(externalSpotChannel)
                 .EnableServer(options.ExternalSpotEndpoint)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
@@ -78,19 +78,13 @@ else if (options.Role == "play")
 
         var spot = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
             .UseRegistrySpotResolver()
-            .AddNode(SpotServiceNames.PlaySpotNode)
             .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
             .SetRouterRoutingId(RoutingId.From(options.Rid))
             .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
             .SetPubSubRoutingId(RoutingId.From(options.Rid))
-            .AcceptSpotRoutesFromChannel(SpotServiceNames.ControlChannel)
             .AddEntrySpot<ScenarioEntrySpot>()
             .AddSpotFactory<ScenarioUserSpot>()
             .AddSpotFactory<ScenarioAlternateSpot>();
-        if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
-        {
-            spot.AcceptSpotRoutesFromChannel(externalSpotChannel);
-        }
         if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))
         {
             spot.ConnectPubSub(options.ClientSpotPubEndpoint);
@@ -110,14 +104,13 @@ else if (options.Role == "session")
             .TraceNodeId(options.Rid);
         framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
         framework.AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
-        framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
+        framework.AddRouteMesh(SpotServiceNames.ControlChannel)
             .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
             .EnableClient()
             .SetRoutingId(RoutingId.From(options.Rid))
             .AddHandlerGroup("play");
         framework.AddSpotMesh(SpotServiceNames.SpotChannel)
             .UseRegistrySpotResolver()
-            .AddNode(SpotServiceNames.SessionSpotNode)
             .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
             .SetRouterRoutingId(RoutingId.From(options.Rid))
             .AddEntrySpot<ScenarioEntrySpot>();

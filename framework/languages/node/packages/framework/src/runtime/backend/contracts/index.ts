@@ -278,24 +278,18 @@ export interface ZLinkBackendSocketMonitor extends ZLinkBackendObject {
 }
 
 export interface ZLinkBackendSpotRouteBridge extends ZLinkBackendObject {
-  attachDealerChannel(
-    channelName: string,
-    dealer: ZLinkBackendDealerSocket,
-    options?: { readonly capabilities?: number }
-  ): void;
   attachRouterChannel(
     channelName: string,
     router: ZLinkBackendRouterSocket,
     options?: { readonly capabilities?: number }
   ): void;
-  setTargetNode(channelName: string, targetNodeRid: RoutingId): void;
-  send(channelName: string, targetSpotRid: RoutingId): ZLinkBackendSendOperation;
-  request(channelName: string, targetSpotRid: RoutingId): ZLinkBackendRequestOperation;
+  send(channelName: string, targetNodeRid: RoutingId, targetSpotRid: RoutingId): ZLinkBackendSendOperation;
+  request(channelName: string, targetNodeRid: RoutingId, targetSpotRid: RoutingId): ZLinkBackendRequestOperation;
   handleRouterReceived(
     channelName: string,
     sourceNodeRid: RoutingId,
-    parts: readonly MessageLike[],
-    requestSeq?: bigint | number
+    requestSeq: bigint | number,
+    parts: readonly MessageLike[]
   ): boolean;
   dispose(): Promise<void>;
 }

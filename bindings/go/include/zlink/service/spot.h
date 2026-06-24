@@ -231,11 +231,7 @@ zlink_spot_node_disconnect_peer_rid (void *node, const zlink_routing_id_t *targe
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node, void *discovery);
 
 #define ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE 0x00000001u
-#define ZLINK_SPOT_ROUTE_BRIDGE_CAP_CHANNEL_INBOUND 0x00000002u
-
 #define ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_ONLY ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE
-#define ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND                                      \
-    (ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE | ZLINK_SPOT_ROUTE_BRIDGE_CAP_CHANNEL_INBOUND)
 
 typedef struct zlink_spot_route_bridge_options_t
 {
@@ -252,24 +248,8 @@ typedef struct zlink_spot_route_bridge_endpoint_options_t
     int inbound_relay_policy;
 } zlink_spot_route_bridge_endpoint_options_t;
 
-typedef struct zlink_spot_route_bridge_summary_t
-{
-    uint32_t struct_size;
-    uint32_t attached_channel_count;
-    uint64_t pending_request_count;
-    uint64_t rejected_inbound_count;
-    uint64_t malformed_inbound_count;
-    uint64_t routed_send_failure_count;
-} zlink_spot_route_bridge_summary_t;
-
 ZLINK_EXPORT void *zlink_spot_route_bridge_new (
   void *ctx_, void *spot_node_, const zlink_spot_route_bridge_options_t *options_);
-
-ZLINK_EXPORT int zlink_spot_route_bridge_attach_dealer_channel (
-  void *bridge_,
-  const char *channel_name_,
-  void *dealer_socket_,
-  const zlink_spot_route_bridge_endpoint_options_t *options_);
 
 ZLINK_EXPORT int zlink_spot_route_bridge_attach_router_channel (
   void *bridge_,
@@ -277,11 +257,9 @@ ZLINK_EXPORT int zlink_spot_route_bridge_attach_router_channel (
   void *router_socket_,
   const zlink_spot_route_bridge_endpoint_options_t *options_);
 
-ZLINK_EXPORT int zlink_spot_route_bridge_set_target_node (
-  void *bridge_, const char *channel_name_, const zlink_routing_id_t *target_node_rid_);
-
 ZLINK_EXPORT int zlink_spot_route_bridge_send (void *bridge_,
                                                const char *channel_name_,
+                                               const zlink_routing_id_t *target_node_rid_,
                                                const zlink_routing_id_t *target_spot_rid_,
                                                zlink_msg_t *parts_,
                                                size_t part_count_,
@@ -289,6 +267,7 @@ ZLINK_EXPORT int zlink_spot_route_bridge_send (void *bridge_,
 
 ZLINK_EXPORT int zlink_spot_route_bridge_request (void *bridge_,
                                                   const char *channel_name_,
+                                                  const zlink_routing_id_t *target_node_rid_,
                                                   const zlink_routing_id_t *target_spot_rid_,
                                                   zlink_msg_t *parts_,
                                                   size_t part_count_,
@@ -301,38 +280,12 @@ ZLINK_EXPORT int zlink_spot_route_bridge_handle_router_received (
   void *bridge_,
   const char *channel_name_,
   const zlink_routing_id_t *source_node_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  bool *handled_);
-
-ZLINK_EXPORT int zlink_spot_route_bridge_handle_router_received_with_metadata (
-  void *bridge_,
-  const char *channel_name_,
-  const zlink_routing_id_t *source_node_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  bool *handled_);
-
-ZLINK_EXPORT int zlink_spot_route_bridge_handle_dealer_received (void *bridge_,
-                                                                 const char *channel_name_,
-                                                                 zlink_msg_t *parts_,
-                                                                 size_t part_count_,
-                                                                 bool *handled_);
-
-ZLINK_EXPORT int zlink_spot_route_bridge_handle_dealer_received_with_metadata (
-  void *bridge_,
-  const char *channel_name_,
-  uint8_t message_type_,
   uint64_t request_seq_,
   zlink_msg_t *parts_,
   size_t part_count_,
   bool *handled_);
 
 ZLINK_EXPORT int zlink_spot_route_bridge_drain (void *bridge_);
-
-ZLINK_EXPORT int zlink_spot_route_bridge_summary (void *bridge_,
-                                                  zlink_spot_route_bridge_summary_t *out_);
 
 ZLINK_EXPORT int zlink_spot_route_bridge_close (void *bridge_);
 

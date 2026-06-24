@@ -25,7 +25,6 @@ type (
 	SpotRouteBridgeEndpointCapabilities = impl.SpotRouteBridgeEndpointCapabilities
 	SpotRouteBridgeOptions              = impl.SpotRouteBridgeOptions
 	SpotRouteBridgeEndpointOptions      = impl.SpotRouteBridgeEndpointOptions
-	SpotRouteBridgeSummary              = impl.SpotRouteBridgeSummary
 	SpotNodePublisher                   = impl.SpotNodePublisher
 	MonitorEventMask                    = impl.MonitorEventMask
 	MonitorSourceKind                   = impl.MonitorSourceKind
@@ -155,9 +154,7 @@ const (
 	SpotNodeModeAll                         = impl.SpotNodeModeAll
 	SpotRouteBridgeCapabilityNone           = impl.SpotRouteBridgeCapabilityNone
 	SpotRouteBridgeCapabilitySpotRoute      = impl.SpotRouteBridgeCapabilitySpotRoute
-	SpotRouteBridgeCapabilityChannelInbound = impl.SpotRouteBridgeCapabilityChannelInbound
 	SpotRouteBridgeRouteOnly                = impl.SpotRouteBridgeRouteOnly
-	SpotRouteBridgeRouteWithChannelInbound  = impl.SpotRouteBridgeRouteWithChannelInbound
 	SocketTypeAny                           = impl.SocketTypeAny
 	SocketTypePair                          = impl.SocketTypePair
 	SocketTypePub                           = impl.SocketTypePub

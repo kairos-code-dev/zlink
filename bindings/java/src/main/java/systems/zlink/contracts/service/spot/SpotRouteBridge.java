@@ -4,19 +4,11 @@ package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.RouterSocket;
 import java.util.List;
 
 /** Bridges caller-owned channel sockets to the local SPOT routed plane. */
 public interface SpotRouteBridge extends AutoCloseable {
-    void attachDealerChannel(String channelName, DealerSocket dealer);
-
-    void attachDealerChannel(
-        String channelName,
-        DealerSocket dealer,
-        SpotRouteBridgeEndpointOptions options);
-
     void attachRouterChannel(String channelName, RouterSocket router);
 
     void attachRouterChannel(
@@ -24,16 +16,15 @@ public interface SpotRouteBridge extends AutoCloseable {
         RouterSocket router,
         SpotRouteBridgeEndpointOptions options);
 
-    void setTargetNode(String channelName, RoutingId targetNodeRid);
-
-    SendOperation send(String channelName, RoutingId targetSpotRid);
-
-    RequestOperation request(String channelName, RoutingId targetSpotRid);
-
-    boolean handleRouterReceived(
+    SendOperation send(
         String channelName,
-        RoutingId sourceNodeRid,
-        List<Message> parts);
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid);
+
+    RequestOperation request(
+        String channelName,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid);
 
     boolean handleRouterReceived(
         String channelName,

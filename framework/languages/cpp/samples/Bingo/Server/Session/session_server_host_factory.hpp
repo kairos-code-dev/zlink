@@ -58,7 +58,7 @@ class session_server_host_factory_t
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client ();
-            options.add_route_mesh_channel (sample_names_t::play_channel)
+            options.add_route_mesh (sample_names_t::play_channel)
               .enable_server (topology.selected_session_route_endpoint ())
               .set_routing_id (
                 zlink::routing_id_t::from (topology.selected_session_route_rid ()))

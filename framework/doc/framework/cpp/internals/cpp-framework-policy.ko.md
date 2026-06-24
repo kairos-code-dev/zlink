@@ -638,7 +638,6 @@ app.add_zlink_framework([](auto &options) {
       .enable_server("tcp://0.0.0.0:7001")
       .use_handler_group("orders-api");
     options.add_spot_mesh("orders")
-      .add_node("orders-spot")
       .enable_router("tcp://0.0.0.0:7101");
 });
 ```

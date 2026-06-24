@@ -129,7 +129,6 @@ export const MESSAGE_FLOW_MODE_RANK: Record<ZLinkMessageFlowLogMode, number> = {
 
 export enum ZLinkDispatchErrorSurface {
   Channel = 'channel',
-  DealerMeshChannel = 'dealerMeshChannel',
   RouteMeshChannel = 'routeMeshChannel',
   SpotRoute = 'spotRoute',
   SpotSubscription = 'spotSubscription',

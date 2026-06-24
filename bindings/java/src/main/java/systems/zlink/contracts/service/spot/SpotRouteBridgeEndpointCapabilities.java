@@ -6,9 +6,7 @@ package systems.zlink.contracts.service.spot;
 public enum SpotRouteBridgeEndpointCapabilities {
     NONE(0),
     SPOT_ROUTE(0x00000001),
-    CHANNEL_INBOUND(0x00000002),
-    ROUTE_ONLY(SPOT_ROUTE.value),
-    ROUTE_WITH_CHANNEL_INBOUND(SPOT_ROUTE.value | CHANNEL_INBOUND.value);
+    ROUTE_ONLY(SPOT_ROUTE.value);
 
     private final int value;
 

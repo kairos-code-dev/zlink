@@ -82,7 +82,7 @@ auto topology = client.topology(filter);
 Registry 기본 구현은 Spot owner 조회와 Spot RID directory를 돕는다.
 
 `C++` framework는 `.NET`의 `UseRegistrySpotRemoteAddresses`,
-`AddRouteMeshChannel`, `AddSpotMesh`에 대응하는 아래 표면을 제공한다. 사용자는
+`AddRouteMesh`, `AddSpotMesh`에 대응하는 아래 표면을 제공한다. 사용자는
 낮은 수준 `zlink_builder_t::spot_node(...)`를 직접 열지 않고 framework options에서
 registry, route mesh, spot mesh를 한 번에 표현한다.
 
@@ -90,35 +90,31 @@ registry, route mesh, spot mesh를 한 번에 표현한다.
 app.add_zlink_framework([](auto &options) {
     options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     options.use_registry_spot_remote_addresses("game.route");
-    options.add_route_mesh_channel("game.route")
+    options.add_route_mesh("game.route")
       .enable_server("tcp://0.0.0.0:7200")
       .set_routing_id(zlink::routing_id_t::from("7200"))
       .enable_client("tcp://peer:7201");
     options.add_spot_mesh("game.spots")
-      .add_node("play-actors")
-      .enable_router("tcp://0.0.0.0:7300")
-      .accept_routes_from_channel("game.route");
+      .enable_router("tcp://0.0.0.0:7300");
 });
 ```
 
-registry discovery를 쓰지 않고 accepted route peer를 직접 지정할 때는 route별 manual endpoint를
-준다.
+registry discovery를 쓰지 않을 때는 RouteMesh와 Spot router 역할의 peer endpoint를
+각 역할에 맞게 직접 지정한다.
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.add_client_server_channel("api")
+    options.add_route_mesh("api")
       .enable_server("tcp://0.0.0.0:7001");
-    options.spot_node("play-actors")
+    options.add_spot_mesh("play-actors")
       .enable_router("tcp://0.0.0.0:7300")
-      .connect_router("tcp://127.0.0.1:7301")
-      .accept_routes_from_channel("api", "tcp://0.0.0.0:7001");
+      .connect_router("tcp://127.0.0.1:7301");
 });
 ```
 
-`connect_router(...)`의 manual endpoint는 SPOT router 역할 peer다.
-`accept_routes_from_channel(..., endpoint)`의 manual endpoint는 accepted route channel peer다.
-둘은 같은 endpoint 문자열을 쓸 수 있어도 서로 다른 설정 의도를 표현하므로 하나의 필드로 합치지
-않는다.
+`connect_router(...)`의 manual endpoint는 SPOT router 역할 peer다. RouteMesh의
+manual peer는 `add_route_mesh(...).enable_client(endpoint)`에서 설정한다. 두 endpoint는
+서로 다른 역할이므로 하나의 필드로 합치지 않는다.
 
 중요한 제한은 다음과 같다.
 

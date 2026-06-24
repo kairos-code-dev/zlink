@@ -200,21 +200,11 @@ options.add_client_server_channel ("inventory.service")
 // check_stock_handler_t, reserve_item_handler_t 가 DB를 조회하고 응답
 ```
 
-채널 패턴은 네 가지다.
+채널 패턴은 세 가지다.
 
 - **client/server** — 1:1 request-reply 또는 단방향 send.
 - **fanout (pub/sub)** — publisher가 보내면 모든 subscriber에게 전달.
   상태 변화를 여러 서버에 알리는 데 쓴다.
-- **dealer mesh** — **별도 로드밸런서 없이 수평 확장.** 같은 채널에 서버 N개를
-  연결하면 클라이언트 요청이 자동으로 분산된다.
-
-  ```
-  클라이언트 ──→ dealer mesh ──→ inventory-server-A
-                             └──→ inventory-server-B   ← 요청 자동 분산
-  ```
-
-  서버를 추가하면 분산 비율이 늘어난다. nginx 같은 외부 LB 없이 처리량을 선형으로 늘릴 수 있다.
-
 - **route mesh** — routing ID로 특정 서버에 고정 라우팅. 주문 ID → 주문 담당
   서버처럼 엔티티 친화성(affinity)이 필요한 패턴.
 

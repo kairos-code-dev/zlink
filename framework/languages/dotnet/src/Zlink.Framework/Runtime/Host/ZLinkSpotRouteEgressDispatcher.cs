@@ -2,15 +2,11 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkSpotRouteEgressDispatcher(
     ZLinkFrameworkRegistration registration,
-    Func<string, ZLinkChannelRuntimeBundle> getClientBundle,
-    ZLinkSpotRouteBridgeProvider bridges)
+    Func<string, ZLinkRouteChannelRuntime> getRouteChannel)
 {
     public bool CanHandle(string localEgressChannelName)
     {
-        return registration.Channels.TryGetValue(localEgressChannelName, out var channel)
-                && channel.SpotRouteEgress is not null
-            || registration.RouteChannels.TryGetValue(localEgressChannelName, out var routeChannel)
-                && routeChannel.SpotRouteEgress is not null;
+        return registration.RouteChannels.ContainsKey(localEgressChannelName);
     }
 
     public ValueTask SendAsync(
@@ -42,23 +38,13 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
 
     private IEgressTarget ResolveTarget(string localEgressChannelName)
     {
-        if (registration.Channels.TryGetValue(localEgressChannelName, out var channel)
-            && channel.SpotRouteEgress is not null)
+        if (registration.RouteChannels.ContainsKey(localEgressChannelName))
         {
-            return new ClientEgressTarget(localEgressChannelName, getClientBundle, bridges);
-        }
-
-        if (registration.RouteChannels.TryGetValue(localEgressChannelName, out var routeChannel)
-            && routeChannel.SpotRouteEgress is { } routeEgress)
-        {
-            return new RouteEgressTarget(
-                localEgressChannelName,
-                routeEgress.TargetSpotNodeChannelName,
-                bridges);
+            return new RouteEgressTarget(localEgressChannelName, getRouteChannel);
         }
 
         throw new ZLinkConfigurationException(
-            $"Routed SPOT egress channel '{localEgressChannelName}' is not registered.");
+            $"Routed SPOT egress channel '{localEgressChannelName}' is not a registered RouteMesh channel.");
     }
 
     private interface IEgressTarget
@@ -75,65 +61,9 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             CancellationToken cancellationToken);
     }
 
-    private sealed class ClientEgressTarget(
-        string localEgressChannelName,
-        Func<string, ZLinkChannelRuntimeBundle> getClientBundle,
-        ZLinkSpotRouteBridgeProvider bridges)
-        : IEgressTarget
-    {
-        public async ValueTask SendAsync(
-            RoutingId targetSpotRid,
-            IReadOnlyList<Message> parts,
-            CancellationToken cancellationToken)
-        {
-            var bundle = getClientBundle(localEgressChannelName);
-            var bridge = bridges.GetOrCreateClientBridge(localEgressChannelName);
-            await (bundle.Submitter
-                    ?? throw new InvalidOperationException("ZLink routed SPOT egress submitter is not initialized."))
-                .Async(
-                    parts,
-                    pending => bridge.Send(
-                        localEgressChannelName,
-                        targetSpotRid,
-                        pending,
-                        SendFlags.DontWait),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        public async ValueTask<IReadOnlyList<Message>> RequestAsync(
-            RoutingId targetSpotRid,
-            IReadOnlyList<Message> parts,
-            TimeSpan timeout,
-            CancellationToken cancellationToken)
-        {
-            var bundle = getClientBundle(localEgressChannelName);
-            var bridge = bridges.GetOrCreateClientBridge(localEgressChannelName);
-            return await (bundle.Submitter
-                    ?? throw new InvalidOperationException("ZLink routed SPOT egress submitter is not initialized."))
-                .SubmitRequestAsync<IReadOnlyList<Message>>(
-                    parts,
-                    (pending, complete, fail) => bridge.Request(
-                        localEgressChannelName,
-                        targetSpotRid,
-                        pending,
-                        (result, reply) => ZLinkRawReplyCompletion.Complete(
-                            result,
-                            reply,
-                            complete,
-                            fail,
-                            $"Routed SPOT egress channel '{localEgressChannelName}' request failed with result '{result}'."),
-                        SendFlags.DontWait,
-                        timeout),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
     private sealed class RouteEgressTarget(
         string localEgressChannelName,
-        string targetSpotNodeChannelName,
-        ZLinkSpotRouteBridgeProvider bridges)
+        Func<string, ZLinkRouteChannelRuntime> getRouteChannel)
         : IEgressTarget
     {
         public async ValueTask SendAsync(
@@ -141,8 +71,9 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             IReadOnlyList<Message> parts,
             CancellationToken cancellationToken)
         {
-            var targetPeerRid = await ResolveTargetPeerRidAsync().ConfigureAwait(false);
-            await bridges.GetRouteChannelWithBridge(localEgressChannelName)
+            var routeChannel = getRouteChannel(localEgressChannelName);
+            var targetPeerRid = ResolveTargetPeerRid(routeChannel, targetSpotRid);
+            await routeChannel
                 .SubmitSpotRouteSendPartsAsync(
                     targetPeerRid,
                     targetSpotRid,
@@ -157,8 +88,9 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
-            var targetPeerRid = await ResolveTargetPeerRidAsync().ConfigureAwait(false);
-            return await bridges.GetRouteChannelWithBridge(localEgressChannelName)
+            var routeChannel = getRouteChannel(localEgressChannelName);
+            var targetPeerRid = ResolveTargetPeerRid(routeChannel, targetSpotRid);
+            return await routeChannel
                 .RequestToSpotPartsAsync(
                     targetPeerRid,
                     targetSpotRid,
@@ -168,11 +100,13 @@ internal sealed class ZLinkSpotRouteEgressDispatcher(
                 .ConfigureAwait(false);
         }
 
-        private ValueTask<RoutingId> ResolveTargetPeerRidAsync()
+        private static RoutingId ResolveTargetPeerRid(
+            ZLinkRouteChannelRuntime routeChannel,
+            RoutingId targetSpotRid)
         {
-            return bridges.CreateEgressResolver().ResolveTargetPeerRidAsync(
-                localEgressChannelName,
-                targetSpotNodeChannelName);
+            return routeChannel.Discovery?.ResolveSpot(targetSpotRid).OwnerNodeRid
+                ?? throw new ZLinkConfigurationException(
+                    $"RouteMesh channel '{routeChannel.RouterChannelId}' cannot resolve target SPOT '{targetSpotRid}'. Configure registry discovery for SPOT ownership before routed SPOT egress.");
         }
     }
 }

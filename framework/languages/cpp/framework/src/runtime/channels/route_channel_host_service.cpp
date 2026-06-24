@@ -142,6 +142,7 @@ class route_channel_host_service_t::route_loop_t
                     + _runtime->bind_endpoint () + ": " + error.what ());
             }
         }
+        const bool accepts_spot_routes = accepts_spot_routes_from (spot_nodes);
         const bool use_route_discovery = !discovery.registry_endpoints.empty ();
         if (use_route_discovery) {
             try {
@@ -149,7 +150,7 @@ class route_channel_host_service_t::route_loop_t
                   *_context, _route_channel_id, discovery);
                 _spot_route_discovery->connect_registries ();
                 _router->attach_discovery (_spot_route_discovery->discovery ());
-                if (_runtime->spot_route_egress_target ()) {
+                if (accepts_spot_routes) {
                     registry.attach_spot_route_discovery (_route_channel_id,
                                                           _spot_route_discovery);
                 }
@@ -244,6 +245,18 @@ class route_channel_host_service_t::route_loop_t
         zlink::framework::runtime::messaging::message_parts_t parts;
     };
 
+    bool accepts_spot_routes_from (
+      const std::vector<route_channel_host_service_t::spot_node_runtime_t> &spot_nodes) const
+    {
+        return std::any_of (spot_nodes.begin (), spot_nodes.end (), [this] (const auto &spot_node) {
+            return std::any_of (spot_node.snapshot.accepted_route_channels.begin (),
+                                spot_node.snapshot.accepted_route_channels.end (),
+                                [this] (const accepted_spot_route_channel_t &accepted) {
+                                    return accepted.channel_name == _route_channel_id;
+                                });
+        });
+    }
+
     void attach_spot_route_bridge (
       const std::vector<route_channel_host_service_t::spot_node_runtime_t> &spot_nodes)
     {
@@ -268,9 +281,7 @@ class route_channel_host_service_t::route_loop_t
               std::make_unique<zlink::service::spot_route_bridge_t> (
                 native_node->create_route_bridge ());
             bridge->attach_router_channel (
-              _route_channel_id, *_router,
-              zlink::service::spot_route_bridge_t::endpoint_capabilities_t::
-                route_with_channel_inbound);
+              _route_channel_id, *_router);
             _backend->attach_spot_route_bridge (std::move (bridge), _route_channel_id);
             return;
         }

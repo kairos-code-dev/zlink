@@ -427,7 +427,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       },
       nativeJoinBoundSessionTargetResolver: (info: { sourceActor: ActorRef; sourceSpotRid?: RoutingId }) => {
         const routerChannelId = this.options.registration.registrySpotRemoteAddresses?.routerChannelId
-          ?? this.firstAcceptedSpotRouteChannel();
+          ?? this.firstRouteMeshChannel();
         if (routerChannelId === undefined) {
           return undefined;
         }
@@ -811,7 +811,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     const targetNodeRid = actorRef?.nodeRid as RoutingId | undefined
       ?? this.spotNodeRuntime?.primaryNode?.routingId as RoutingId | undefined;
     const routerChannelId = this.options.registration.registrySpotRemoteAddresses?.routerChannelId
-      ?? this.firstAcceptedSpotRouteChannel();
+      ?? this.firstRouteMeshChannel();
     const localNodeRid = this.spotNodeRuntime?.primaryNode?.routingId as RoutingId | undefined;
     if (targetNodeRid !== undefined && localNodeRid !== undefined && routingIdsEqual(targetNodeRid, localNodeRid)) {
       return undefined;
@@ -834,7 +834,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       return undefined;
     }
     const configured = this.options.registration.registrySpotRemoteAddresses;
-    const routerChannelId = configured?.routerChannelId ?? this.firstAcceptedSpotRouteChannel();
+    const routerChannelId = configured?.routerChannelId ?? this.firstRouteMeshChannel();
     if (routerChannelId === undefined) {
       return undefined;
     }
@@ -846,14 +846,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     };
   }
 
-  private firstAcceptedSpotRouteChannel(): string | undefined {
-    for (const spotNode of this.options.registration.spotNodes.values()) {
-      const channelName = Object.keys(spotNode.acceptedSpotRouteChannels ?? {})[0];
-      if (Object.keys(spotNode.acceptedSpotRouteChannels ?? {}).length > 0) {
-        return channelName;
-      }
-    }
-    return undefined;
+  private firstRouteMeshChannel(): string | undefined {
+    return this.options.registration.routeChannels.values().next().value;
   }
 }
 

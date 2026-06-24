@@ -10,7 +10,6 @@ actor와 바인딩된다. 이후 클라이언트의 패킷은 actor를 통해 sp
 spot의 알림은 역방향으로 클라이언트까지 흘러간다.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
 sequenceDiagram
     participant C as 게임 클라이언트
     participant SS as stream session

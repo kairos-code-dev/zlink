@@ -3265,23 +3265,15 @@ void *zlink_spot_route_bridge_new(
     void *ctx,
     void *spot_node,
     const zlink_spot_route_bridge_options_t *options);
-int zlink_spot_route_bridge_attach_dealer_channel(
-    void *bridge,
-    const char *channel_name,
-    void *dealer,
-    const zlink_spot_route_bridge_endpoint_options_t *options);
 int zlink_spot_route_bridge_attach_router_channel(
     void *bridge,
     const char *channel_name,
     void *router,
     const zlink_spot_route_bridge_endpoint_options_t *options);
-int zlink_spot_route_bridge_set_target_node(
-    void *bridge,
-    const char *channel_name,
-    const zlink_routing_id_t *target_node_rid);
 int zlink_spot_route_bridge_send(
     void *bridge,
     const char *channel_name,
+    const zlink_routing_id_t *target_node_rid,
     const zlink_routing_id_t *target_spot_rid,
     zlink_msg_t *parts,
     size_t part_count,
@@ -3289,6 +3281,7 @@ int zlink_spot_route_bridge_send(
 int zlink_spot_route_bridge_request(
     void *bridge,
     const char *channel_name,
+    const zlink_routing_id_t *target_node_rid,
     const zlink_routing_id_t *target_spot_rid,
     zlink_msg_t *parts,
     size_t part_count,
@@ -3300,19 +3293,11 @@ int zlink_spot_route_bridge_handle_router_received(
     void *bridge,
     const char *channel_name,
     const zlink_routing_id_t *source_node_rid,
-    zlink_msg_t *parts,
-    size_t part_count,
-    bool *handled_out);
-int zlink_spot_route_bridge_handle_dealer_received(
-    void *bridge,
-    const char *channel_name,
+    uint64_t request_seq,
     zlink_msg_t *parts,
     size_t part_count,
     bool *handled_out);
 int zlink_spot_route_bridge_drain(void *bridge);
-int zlink_spot_route_bridge_summary(
-    void *bridge,
-    zlink_spot_route_bridge_summary_t *out);
 int zlink_spot_route_bridge_close(void *bridge);
 
 void *zlink_spot_node_publisher_new(void *node);
@@ -3360,15 +3345,14 @@ typed option/property로 이 두 값을 노출하고, raw option bag을 canonica
 - `Spot` 은 `SpotNode` 위에 올라가는 facade 다. `SpotNode` 해제 시 `Spot` 도 무효가 된다.
 - The SPOT channel view is closed through `attach_discovery()`.
 - Cross-channel SPOT send/request and SPOT relay ingress use `SpotRouteBridge`.
-  A `DEALER` or `ROUTER` socket registered with the bridge remains owned by the
-  caller or channel runtime.
+  A `ROUTER` socket registered with the bridge remains owned by the caller or
+  channel runtime.
 - `zlink_socket_set_channel_name()` / `zlink_socket_get_channel_name()` 은
   logical channel metadata for a channel socket.
   바인딩은 이를 socket의 명시적 property/method로 노출한다.
-- The channel runtime calls `handle_router_received()` or
-  `handle_dealer_received()` from its receive loop. When `handled == true`, the
-  bridge has taken ownership of the payload and the caller must not process the
-  same received object again.
+- The channel runtime calls `handle_router_received()` from its receive loop.
+  When `handled == true`, the bridge has taken ownership of the payload and the
+  caller must not process the same received object again.
 - `SpotNodePublisher` lets external code publish into the SpotNode topic ingress
   without attaching a raw `PUB` socket to `SpotNode`.
 - `Spot.publish(topic).message(...).submit()`은 `SpotNode` 자신의 topic publish
@@ -5267,24 +5251,23 @@ otherwise they must be removed during alignment.
 ## Spot Route Bridge APIs
 
 Bindings must expose `SpotRouteBridge` or an equivalent typed handle so
-`SpotNode` does not own channel sockets. The bridge references `DEALER` or
-`ROUTER` sockets owned by the caller or channel runtime. It sends Spot route
-packets and hands SPOT relay packets from the channel receive loop to SpotNode.
+`SpotNode` does not own channel sockets. The bridge references `ROUTER` sockets
+owned by the caller or channel runtime. It sends Spot route packets and hands
+SPOT relay packets from the channel receive loop to SpotNode.
 Closing the bridge must not close the registered channel sockets.
 
 Language APIs must preserve these meanings:
 
 - `createRouteBridge(options)` or an equivalent constructor
-- `attachDealerChannel(channelName, dealerSocket)`
 - `attachRouterChannel(channelName, routerSocket)`
-- `sendToSpot(address, parts)`
-- `requestToSpot(address, parts, replyHandler, timeout)`
-- `handleRouterReceived(channelName, received)` / `handleDealerReceived(channelName, received)`
+- `sendToSpot(targetNode, targetSpot, parts)`
+- `requestToSpot(targetNode, targetSpot, parts, replyHandler, timeout)`
+- `handleRouterReceived(channelName, received)`
 - `close` or `dispose`
 
-`timeout == 0` means the bridge default timeout. When `handle*Received` returns
-a handled result, the binding must make it clear that payload ownership moved to
-the bridge.
+`timeout == 0` means the bridge default timeout. When `handleRouterReceived`
+returns a handled result, the binding must make it clear that payload ownership
+moved to the bridge.
 
 The old C APIs that attached router channel peers directly to `SpotNode` are
 not public contract APIs. Framework adapters must not use that route for the new

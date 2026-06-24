@@ -75,7 +75,7 @@ builder.Services.AddZLinkFramework(options =>
         var mesh =     options.AddSpotMesh("game.stage");
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry-1:5551");
         {
-            var spot =         mesh.AddNode("stage-node");
+            var spot = mesh;
             spot.EnablePubSub("tcp://0.0.0.0:9000");
 
         }

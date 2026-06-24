@@ -12,19 +12,18 @@
 
 ## SpotNode 등록
 
-dotnet 의 `AddSpotNode(name)` / `AddSpotMesh(channel)` fluent builder 는
+dotnet 의 `AddSpotMesh(name)` / `AddSpotMesh(channel)` fluent builder 는
 NestJS 의 `zlinkFramework()` builder 로 1:1 매핑한다. builder 메서드 한 개가
 node builder 메서드 한 개에 대응한다.
 
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .addSpotNode('game.node')
+    .addRouteMesh('game.route')
+      .enableRouter('tcp://0.0.0.0:7501')
+    .addSpotMesh('game.node')
       .enableRouter('tcp://0.0.0.0:7401', 'game-node')
       .enablePubSub('tcp://0.0.0.0:7402', 'game-pub')
-      .attachSpotPublisherClient('price')
-      .attachSpotPublisherClient('game.stage')
-      .acceptSpotRoutesFromChannel('game.route', ['tcp://10.0.0.21:7501'])
       .configureEntrySpot({ routingId: 'entry' })
       .addEntrySpot(GameEntrySpot)
       .addSpotFactory(StageSpot)
@@ -40,8 +39,7 @@ dotnet builder 메서드와 node builder 메서드의 대응은 다음과 같다
 | `EnableRouter(...)` | `enableRouter(endpoint, routingId?)` | spot router 역할 |
 | `EnablePubSub(...)` | `enablePubSub(endpoint, routingId?)` | spot pub/sub 역할 |
 | client/server channel client | `addClientServerChannel(...).enableClient(...)` | SPOT handler의 channel send/request가 공유하는 channel client 설정 |
-| `AttachSpotPublisherClient(name)` | `attachSpotPublisherClient(name, endpoint?)` | spot publisher client 부착 |
-| `AcceptSpotRoutesFromChannel(name)` | `acceptSpotRoutesFromChannel(name, endpoint?)` | router channel route 수신 |
+| RouteMesh 자동 연결 | `addRouteMesh(...).enableRouter(...)` + `addSpotMesh(...)` | 같은 프로세스의 RouteMesh route 수신 |
 | `ConfigureEntrySpot()` | `configureEntrySpot(...)` | Entry Spot facade 설정 |
 | `AddEntrySpot<TEntrySpot>()` | `addEntrySpot(TEntrySpot)` | Entry Spot handler registry 타입 |
 | `AddSpotFactory<TSpot>()` | `addSpotFactory(TSpot)` | 이 node 가 만들 수 있는 spot 타입 |
@@ -59,12 +57,10 @@ dotnet builder 메서드와 node builder 메서드의 대응은 다음과 같다
 | `ConfigureSubscriber(s => ...)` | `subscriber: {...}` | pub/sub 전용 |
 | `ConnectRouter(ep)` / `ConnectPeerPub(ep)` | `connectRouter(ep)` / `connectPeerPub(ep)` 또는 `enable*(..., ep)` | 수동 연결 endpoint |
 
-`.acceptSpotRoutesFromChannel(name)` 은 dotnet `AcceptSpotRoutesFromChannel` 에
-대응하며, 수동 endpoint 는 메서드의 endpoint 인자로 옮긴다. 같은
-channel 이름을 중복 등록하면 dotnet 과 동일하게 startup 시점에 설정 예외를
-던진다(`Duplicate accepted SPOT route channel`).
+RouteMesh와 SpotMesh가 같은 프로세스에 있으면 framework가 route bridge를 자동으로 붙인다.
+외부 publish client는 SpotMesh의 `enablePubSub(...)` 설정을 기준으로 같은 이름에 노출된다.
 
-`.addSpotNode(name)` 은 dotnet `AddSpotMesh(channel).AddNode(name)` 에 대응한다.
+`.addSpotMesh(name)` 은 dotnet `AddSpotMesh(name)` 에 대응한다.
 Discovery 는 `.useDiscovery().addRegistryEndpoint(...)` 로 등록하고, 각 node 는 같은
 SpotNode builder 메서드 집합을 쓴다.
 
@@ -72,7 +68,7 @@ SpotNode builder 메서드 집합을 쓴다.
 zlinkFramework()
   .useDiscovery()
     .addRegistryEndpoint('tcp://registry1:5551')
-  .addSpotNode('game.node')
+  .addSpotMesh('game.node')
     .enableRouter('tcp://0.0.0.0:7401')
 ```
 
@@ -171,7 +167,7 @@ framework 는 Entry Spot routing id 설정을 `.configureEntrySpot(...)` 으로
 
 ```ts
 zlinkFramework()
-  .addSpotNode('game.node')
+  .addSpotMesh('game.node')
     .configureEntrySpot({ routingId: 'entry' })
 ```
 

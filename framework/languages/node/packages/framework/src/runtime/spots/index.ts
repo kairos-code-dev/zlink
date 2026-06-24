@@ -497,7 +497,7 @@ class ZLinkSpotNodeConnector {
 
   configure(node: ZLinkBackendSpotNode, spotNodeName: string, spotNode: ZLinkSpotNodeOptions): void {
     this.applySpotNodeOptions(node, spotNodeName, spotNode);
-    this.initializeSpotPublisherClients(node, spotNode);
+    this.initializeSpotPublisherClient(node, spotNodeName, spotNode);
   }
 
   private applySpotNodeOptions(node: ZLinkBackendSpotNode, spotNodeName: string, spotNode: ZLinkSpotNodeOptions): void {
@@ -544,16 +544,18 @@ class ZLinkSpotNodeConnector {
     }
   }
 
-  private initializeSpotPublisherClients(node: ZLinkBackendSpotNode, spotNode: ZLinkSpotNodeOptions): void {
-    for (const [channelName, attached] of Object.entries(spotNode.attachedSpotPublisherClients ?? {})) {
-      const publisher = node.createSpot();
-      const submitter = new ZLinkAsyncSubmitter((handler) => publisher.onSendReady(handler));
-      this.options.ownedObjects.push(publisher);
-      this.options.publisherBundles.set(channelName, { node, spot: publisher, submitter });
-      for (const endpoint of attached.manualConnections ?? []) {
-        node.connectPeer(endpoint);
-      }
+  private initializeSpotPublisherClient(
+    node: ZLinkBackendSpotNode,
+    spotNodeName: string,
+    spotNode: ZLinkSpotNodeOptions
+  ): void {
+    if (spotNode.pubSub === undefined) {
+      return;
     }
+    const publisher = node.createSpot();
+    const submitter = new ZLinkAsyncSubmitter((handler) => publisher.onSendReady(handler));
+    this.options.ownedObjects.push(publisher);
+    this.options.publisherBundles.set(spotNodeName, { node, spot: publisher, submitter });
   }
 
   private createDiscovery(

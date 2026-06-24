@@ -200,7 +200,7 @@ builder.Services.AddZLinkFramework(options =>
 {
         options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
 
-        options.AddRouteMeshChannel("play")
+        options.AddRouteMesh("play")
             .EnableServer("tcp://0.0.0.0:7201");
 
     // 이 호출이 있어야 Registry 기반 SPOT resolver 가 켜진다(AddRegistryEndpoint 만으론 자동 등록 안 됨).

@@ -8,7 +8,6 @@ import java.util.concurrent.Executor;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
-import systems.zlink.framework.configuration.DealerMeshChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
@@ -85,16 +84,7 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public DealerMeshChannelBuilder addDealerMeshChannel(String channelName)
-    {
-        addChannel(channelName);
-        ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.DEALER_MESH);
-        registration.channels().add(channel);
-        return ChannelBuilders.dealerMesh(channel);
-    }
-
-    @Override
-    public RouteMeshChannelBuilder addRouteMeshChannel(String channelName)
+    public RouteMeshChannelBuilder addRouteMesh(String channelName)
     {
         addChannel(channelName);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.ROUTE_MESH);
@@ -107,7 +97,9 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     {
         String meshName = requireName(channelName, "spot mesh");
         addUnique(spotMeshNames, meshName, "spot mesh");
-        return SpotBuilders.mesh(meshName, registration, this::addSpotFactoryType);
+        SpotNodeRegistration node = new SpotNodeRegistration(meshName, meshName);
+        registration.spotNodes().add(node);
+        return SpotBuilders.mesh(meshName, node, registration, this::addSpotFactoryType);
     }
 
     @Override

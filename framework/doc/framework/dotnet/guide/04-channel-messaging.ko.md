@@ -46,8 +46,8 @@ gRPC 의 네 가지 호출 형태를 얻는다.
 | Unary RPC | request/response | §2·§4 |
 | Unary `Empty` / fire-and-forget | one-way send | §2·§4 |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | §4 |
-| Client/Bidi streaming | STREAM session | [07-stream](07-stream.ko.md) |
-| Service discovery(DNS/xDS) | Registry + Discovery | [08-registry](08-registry.ko.md) |
+| Client/Bidi streaming | STREAM session | [08-stream](08-stream.ko.md) |
+| Service discovery(DNS/xDS) | Registry + Discovery | [09-registry](09-registry.ko.md) |
 | Interceptor | handler filter | §5 |
 | Deadline | request timeout | §4 |
 
@@ -76,14 +76,14 @@ var placed = await client
 ```
 
 이 호출 표면(`RequestToChannel`/`SendToChannel`/`Publish` + 종결자)은
-[11-interface-catalog](11-interface-catalog.ko.md) §1.6 의 계약 테스트
+[12-interface-catalog](12-interface-catalog.ko.md) §1.6 의 계약 테스트
 `ChannelContracts.Channel_messaging_replaces_grpc_unary_command_and_streaming_for_web_services`
 로 검증된다. 아래 본문 예제는 같은 표면을 profile/account/user 등 다른 웹 도메인으로
 보여 준다.
 
 > 비슷한 서비스를 새로 만들 때의 케이스 스터디·플래그십 워크스루·솔직한 경계
 > (여전히 gRPC 가 맞는 곳)와 도입 판단은
-> [12-grpc-alternative](12-grpc-alternative.ko.md) 가 다룬다.
+> [13-grpc-alternative](13-grpc-alternative.ko.md) 가 다룬다.
 
 ## 1. channel 종류
 
@@ -91,17 +91,13 @@ var placed = await client
 |-------------|-----------|------------|------|
 | `AddClientServerChannel` | ROUTER 서버 ← DEALER 클라이언트 | `EnableServer` / `EnableClient` | request, send |
 | `AddFanoutChannel` | PUB → SUB | `EnablePublisher` / `EnableSubscriber` | event fan-out |
-| `AddDealerMeshChannel` | DEALER mesh | `EnableServer` / `EnableClient` | round-robin 분산 (§8) |
-| `AddRouteMeshChannel` | ROUTER mesh | `EnableServer` / `EnableClient` | routing id 주소 라우팅 (§9) |
+| `AddRouteMesh` | ROUTER mesh | `EnableServer` / `EnableClient` | routing id 주소 라우팅 (§9) |
 
 이 챕터 §2~§7 은 가장 흔한 **client-server**(request/send)와 **fanout**(pub/sub)을
-다룬다. 수평 확장용 **dealer mesh** 는 같은 `IZLinkChannelClient` 호출 표면을 쓰되
-채널 선언만 다르다. 주소 라우팅용 **route mesh** 는 대상 `RoutingId` 를 함께 지정해야
+다룬다. 수평 확장은 client-server channel 에 여러 endpoint 를 연결하거나 discovery 를
+사용해서 처리한다. 주소 라우팅용 **route mesh** 는 대상 `RoutingId` 를 함께 지정해야
 하므로 `IZLinkRouteClient` 와 route 전용 handler 를 쓴다.
-[§8](#8-dealer-mesh--외부-로드밸런서-없이-수평-확장)·[§9](#9-route-mesh--주소-라우팅)에서 따로 다룬다.
-두 mesh channel 은 역할을 `EnableServer`/`EnableClient` 로 나눠 선언하지만, 한 노드가
-둘 다 켜면 framework 는 해당 mesh channel 의 같은 하부 transport 설정에 두 역할을
-함께 붙인다.
+[§8](#8-client-server-수평-확장)·[§9](#9-route-mesh--주소-라우팅)에서 따로 다룬다.
 소켓 구조 그림은 [03-concepts §1](03-concepts.ko.md#1-channel--서버-간-연결).
 
 ## 2. handler 작성
@@ -431,7 +427,7 @@ app.MapPost("/admin/channels/orders/restore",
   끝까지 처리·reply 하고, 그 시점 이후 peer 들이 그 노드를 새 요청 대상에서 뺀다.
   registry 에서 빠지지도 않는다(graceful drain).
 - `Weight = 100` 으로 정상 복귀한다. `1..99` 로 두면 연결된 peer 의 분배 비율을 낮춘다(weighted).
-- 같은 `Weight` 를 **build-time 초기값**으로도 쓰고, route mesh·dealer mesh serving 역할도 같은
+- 같은 `Weight` 를 **build-time 초기값**으로도 쓰고, route mesh serving 역할도 같은
   `ConfigureSocket` 접근자 패턴으로 연다(접근자별 대상은 아래 주석 참고):
 
 ```csharp
@@ -440,10 +436,9 @@ builder.AddClientServerChannel("orders").ConfigureServerSocket().Weight = 30;
 
 // 같은 패턴 — channel 종류만 다르다
 options.RouteMeshChannel(name).ConfigureSocket();    // route mesh serving 역할 socket
-options.DealerMeshChannel(name).ConfigureSocket();   // dealer mesh serving 역할 socket
 ```
 - drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer 가
-  실제로 후보에서 뺀 시점은 모니터링(`PeerAdmissionChanged` 이벤트, [09-monitoring](09-monitoring.ko.md))
+  실제로 후보에서 뺀 시점은 모니터링(`PeerAdmissionChanged` 이벤트, [10-monitoring](10-monitoring.ko.md))
   으로 확인한다. `drain`/`restore` 라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
   에 이름을 붙여 노출하면 된다.
 
@@ -496,50 +491,43 @@ options.Codecs.AddSerializer("application/avro", new AvroOrderSerializer());
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro 로 처리된다.
 다른 언어의 등록 표면은 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
 
-## 8. dealer mesh — 외부 로드밸런서 없이 수평 확장
+## 8. client-server 수평 확장
 
-처리량을 늘리려면 같은 channel 에 노드를 더 붙인다. nginx·HAProxy 같은 별도 LB 없이
-요청이 **round-robin 방식으로 분산**된다. client-server channel 과 똑같이 **받는 노드는
-`EnableServer`(bind + handler), 보내는 노드는 `EnableClient`(연결)** 로 역할을 나눈다.
-다른 점은 채널 선언이 `AddDealerMeshChannel` 이라는 것뿐이다.
+처리량을 늘리려면 같은 client-server channel 이름으로 provider 를 여러 개 띄우고,
+호출 노드는 discovery 또는 여러 `EnableClient(endpoint)` 호출로 provider endpoint 를 붙인다.
+호출자는 여전히 `IZLinkChannelClient.RequestToChannel(...)` / `SendToChannel(...)` 를 사용한다.
 
 ```csharp
-// 처리 노드 — server 역할(bind + handler group)
+// 처리 노드 A
 {
-    var channel = options.AddDealerMeshChannel("image.resize");
-        channel.EnableServer("tcp://0.0.0.0:5600");
-    channel.AddHandlerGroup("resize");                 // dealer mesh 는 request/send handler
-
+    var channel = options.AddClientServerChannel("image.resize");
+    channel.EnableServer("tcp://0.0.0.0:5600");
+    channel.AddHandlerGroup("resize"); // request/send handler 등록
 }
 ```
 
 ```csharp
-// 호출 노드 — client 역할. 여러 peer 에 연결하면 요청이 라운드로빈으로 분산
+// 호출 노드 — 여러 provider endpoint 를 같은 channel client 에 연결
 {
-    var channel = options.AddDealerMeshChannel("image.resize")
+    var channel = options.AddClientServerChannel("image.resize")
         .EnableClient("tcp://10.30.1.10:5600")
         .EnableClient("tcp://10.30.1.10:5601");
 }
 
 // 또는 Discovery 로 자동 발견 — 노드 추가 시 호출자 재시작 불필요
 options.UseDiscovery().AddRegistryEndpoint("tcp://10.30.1.5:7000");
-options.AddDealerMeshChannel("image.resize").EnableClient();
+options.AddClientServerChannel("image.resize").EnableClient();
 ```
-
-호출 표면은 client-server 와 **같다** — `IZLinkChannelClient.RequestToChannel("image.resize", …)`.
-channel 선언만 `AddDealerMeshChannel` 로 바꾸면 된다.
 
 ```mermaid
 graph LR
-    C["호출 노드<br/>dealer mesh client"] -->|"요청 1"| A["처리 노드 A<br/>:5600"]
+    C["호출 노드<br/>channel client"] -->|"요청 1"| A["처리 노드 A<br/>:5600"]
     C -->|"요청 2"| B["처리 노드 B<br/>:5601"]
     C -->|"요청 3 (다시 A)"| A
     C -.->|"노드 추가 시<br/>Discovery 자동 발견"| D["처리 노드 C<br/>:5602"]
 ```
 
-> **route mesh 와 차이**: dealer mesh 는 아무 노드나 받아도 되는 stateless 서비스용
-> (분산). 특정 엔티티(주문 ID·사용자 ID)가 늘 같은 노드로 가야 하면 route mesh(§9).
-> dealer mesh handler 는 **request/send 만** — publish handler 는 등록할 수 없다.
+특정 엔티티(주문 ID·사용자 ID)가 늘 같은 노드로 가야 하면 route mesh(§9)를 사용한다.
 
 ## 9. route mesh — 주소 라우팅
 
@@ -550,7 +538,7 @@ SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([05-spot](05
 
 ```csharp
 {
-    var routed = options.AddRouteMeshChannel("tictactoe.router")
+    var routed = options.AddRouteMesh("tictactoe.router")
         .EnableServer(playRouterEndpoint)  // 이 노드가 받을 endpoint
         .EnableClient(peerRouterEndpoint)  // 다른 노드로 나가는 연결
         .SetRoutingId(RoutingId.From(playRouterId)); // 이 노드의 논리 주소 — 다른 노드가 이 RoutingId 로 지목해 보낸다
@@ -700,11 +688,11 @@ public sealed class UserCacheRefreshedEventHandler
 - **handler 없는 packet 으로 보냈을 때(런타임)** → 시작 단계 검증과 별개로, 실행 중 등록되지
   않은 packet 이름이 도착하면 **request 는 error reply 로 실패**(client 는 예외로 받음),
   **send 는 조용히 drop** 된다. 그 이유/동작은 dispatch error observer 에 marker
-  (`HandlerMissing` / `ReplyError`·`Drop`)로 남는다([09-monitoring](09-monitoring.ko.md)).
+  (`HandlerMissing` / `ReplyError`·`Drop`)로 남는다([10-monitoring](10-monitoring.ko.md)).
 
 ## 12. 더 보기
 
-- 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [11-interface-catalog](11-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
+- 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [12-interface-catalog](12-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
 - dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)
 - 실행 가능한 전체 예제: [guide/samples/channel-messaging-samples](samples/channel-messaging-samples.ko.md)

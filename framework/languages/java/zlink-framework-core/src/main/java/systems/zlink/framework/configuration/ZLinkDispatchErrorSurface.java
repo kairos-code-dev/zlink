@@ -2,7 +2,6 @@ package systems.zlink.framework.configuration;
 
 public enum ZLinkDispatchErrorSurface {
     CHANNEL,
-    DEALER_MESH_CHANNEL,
     ROUTE_MESH_CHANNEL,
     SPOT_ROUTE,
     SPOT_SUBSCRIPTION,

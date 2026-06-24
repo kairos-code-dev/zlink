@@ -50,7 +50,7 @@ public final class ClientApplication {
             options.addClientServerChannel("registry.messaging.api.manual.multi")
                 .enableClient(Env.get("ZLINK_JAVA_E2E_API_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_API_B_ENDPOINT"));
-            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
+            options.addRouteMesh(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_CLIENT_ROUTE_ENDPOINT"))
                 .setRoutingId(RoutingId.from("client"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))

@@ -28,16 +28,15 @@ public static class SessionServerHostFactory
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
-            options.AddRouteMeshChannel(SampleNames.PlayChannel)
+            options.AddRouteMesh(SampleNames.PlayChannel)
                 .EnableServer(session.PlayRouteEndpoint)
                 .EnableClient()
                 .SetRoutingId(session.PlayRouteRid);
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
-                .AddNode(SampleNames.SessionSpotNode)
                 .EnableRouter(session.RouterEndpoint)
                 .SetRouterRoutingId(session.RouterRoutingId);
             options.AddStreamNode(SampleNames.StreamNode)
-                .AttachActorGateway(SampleNames.SessionSpotNode)
+                .AttachActorGateway(SampleNames.RoomSpotDiscovery)
                 .Bind(session.StreamEndpoint)
                 .RegisterSession<Sessions.BingoSession>();
         });

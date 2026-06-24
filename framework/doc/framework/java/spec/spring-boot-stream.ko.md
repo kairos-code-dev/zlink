@@ -30,17 +30,15 @@ public class StreamConfig {
     @Bean
     ZLinkFrameworkConfigurer streamOptions() {
         return options -> {
-            ZLinkSpotMeshBuilder mesh = options.addSpotMesh("game.stage");
-            mesh.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
-
-            ZLinkSpotNodeBuilder node = mesh.addNode("play");
+            ZLinkSpotMeshBuilder node = options.addSpotMesh("game.stage");
+            node.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
             node.enableRouter("tcp://0.0.0.0:9001");
             node.addEntrySpot(GameEntrySpot.class);
             node.addSpotFactory(GameRoomSpot.class);
 
             ZLinkStreamNodeBuilder stream = options.addStreamNode("gateway");
             stream.bind("tcp://0.0.0.0:7201");
-            stream.attachActorGateway("play");
+            stream.attachActorGateway("game.stage");
             stream.registerSession(GameStreamSession.class);
         };
     }

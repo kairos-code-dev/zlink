@@ -24,14 +24,6 @@ public interface ZLinkSpotNodeBuilder {
 
     ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
 
-    ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName);
-
-    ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName, String endpoint);
-
-    ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName);
-
-    ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName, String endpoint);
-
     ZLinkEntrySpotOptions configureEntrySpot();
 
     ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot<?>> spotType);

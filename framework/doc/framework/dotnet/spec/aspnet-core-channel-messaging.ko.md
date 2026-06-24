@@ -211,7 +211,7 @@ channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는�
 수동 `connect`, `disconnect`, `unbind`, `close` 를 받지 않는다. 따라서 framework 역시
 같은 channel runtime 안에서 두 방식을 섞는 모델로 설명할 수 없다.
 
-> route channel (`AddRouteMeshChannel`) 은 일반 channel 과 정책이 다르다. 같은 routed
+> route channel (`AddRouteMesh`) 은 일반 channel 과 정책이 다르다. 같은 routed
 > channel 안에서 전역 Discovery 와 수동 연결이 동시에 있으면, startup validation
 > 단계에서 차단된다. 일반 client / subscriber 는 "수동이 있으면 수동 우선" 정책으로
 > 둘이 공존해도 받아들인다.
@@ -220,16 +220,14 @@ channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는�
 
 SPOT으로 들어오는 routed 메시지는 `ROUTER` 역할이 필요하다. 따라서
 `SpotNode`가 특정 channel에서 오는 SPOT route를 받으려면
-`AcceptSpotRoutesFromChannel(channelName)`을 사용한다.
 
 대상 channel은 두 종류다.
 
 - `AddClientServerChannel`의 server `ROUTER`
-- `AddRouteMeshChannel`의 route mesh `ROUTER`
+- `AddRouteMesh`의 route mesh `ROUTER`
 
-`AddFanoutChannel`과 `AddDealerMeshChannel`은 router 역할이 없으므로
-SPOT route 수신 대상이 아니다. `ClientServerChannel`의 server `ROUTER`에서도
-SPOT으로 보낼 수 있으므로, 이 기능은 `RouteMeshChannel` 전용으로 제한하지 않는다.
+`AddFanoutChannel`은 router 역할이 없으므로 SPOT route 수신 대상이 아니다.
+외부에서 SPOT으로 들어가는 route는 RouteMesh 단일 경로로 정리된다.
 
 #### 수동 연결은 channel이 아니라 역할 단위다
 
@@ -712,7 +710,7 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 
 | 인터페이스 | 대응 channel 타입 | 호출 키 | 용도 |
 | --- | --- | --- | --- |
-| `IZLinkChannelClient` | `AddClientServerChannel`, `AddDealerMeshChannel` | `channelName` | 1:1 request / send (DEALER 측) |
+| `IZLinkChannelClient` | `AddClientServerChannel` | `channelName` | 1:1 request / send (DEALER 측) |
 | `IZLinkFanoutClient` | `AddFanoutChannel` | `channelName + topic` | event publish (PUB 측) |
 
 두 client 모두 `IZLinkChannelClient` 와 같은 fluent builder 결을 따른다. 사용 패턴은 다음과
@@ -727,9 +725,8 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 ### 5.2 IZLinkChannelClient
 
 `AddClientServerChannel` 로 선언한 client-server channel 에 1:1 호출을 보낼 때
-쓴다. dealer mesh channel 도 같은 request/send 표면을 쓴다. 호출자는 **channel 이름**
-만 넘기고, runtime 은 그 이름에 해당하는 등록과 runtime bundle 을 찾아 client-server
-DEALER 또는 dealer mesh DEALER 를 선택한다.
+쓴다. 호출자는 **channel 이름**만 넘기고, runtime 은 그 이름에 해당하는 등록과
+runtime bundle 을 찾아 client-server DEALER 를 선택한다.
 
 - 기본 packet key 는 request / message 타입 이름이다.
 - 특정 channel 의 ROUTER (server) 를 `rid` 로 직접 지정해서 호출하는 표면은 두지
@@ -778,7 +775,7 @@ app.MapPost("/profiles/refresh", async (
 
 ### 5.4 routed channel transport helper
 
-`AddRouteMeshChannel` 로 선언한 routed channel 의 위치는 actor, spot,
+`AddRouteMesh` 로 선언한 routed channel 의 위치는 actor, spot,
 session actor dispatch[^session-actor-dispatch] 같은
 framework 기능이 내부 transport 로 쓴다.
 

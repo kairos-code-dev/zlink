@@ -14,7 +14,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.RequestCallback;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
@@ -53,31 +52,6 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
     }
 
     @Override
-    public void attachDealerChannel(String channelName, DealerSocket dealer) {
-        attachDealerChannel(channelName, dealer, null);
-    }
-
-    @Override
-    public void attachDealerChannel(
-        String channelName,
-        DealerSocket dealer,
-        SpotRouteBridgeEndpointOptions options) {
-        Objects.requireNonNull(dealer, "dealer");
-        String normalized = requireChannelName(channelName);
-        MemorySegment dealerHandle = InternalAccess.socketHandle(dealer);
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotRouteBridgeAttachDealerChannel(handle(),
-                NativeHelpers.toCString(arena, normalized), dealerHandle,
-                nativeEndpointOptions(arena, options));
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_route_bridge_attach_dealer_channel");
-            }
-        }
-        endpointHandles.put(normalized, dealerHandle);
-    }
-
-    @Override
     public void attachRouterChannel(String channelName, RouterSocket router) {
         attachRouterChannel(channelName, router, null);
     }
@@ -103,65 +77,31 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
     }
 
     @Override
-    public void setTargetNode(String channelName, RoutingId targetNodeRid) {
-        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotRouteBridgeSetTargetNode(handle(),
-                NativeHelpers.toCString(arena, requireChannelName(channelName)),
-                ActorInterop.nativeRoutingId(arena, targetNodeRid));
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_route_bridge_set_target_node");
-            }
-        }
-    }
-
-    @Override
-    public SendOperation send(String channelName, RoutingId targetSpotRid) {
+    public SendOperation send(
+        String channelName,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid) {
         String normalized = requireChannelName(channelName);
+        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
         Objects.requireNonNull(targetSpotRid, "targetSpotRid");
         return MessageOperations.send((parts, flags) ->
-            sendInternal(normalized, targetSpotRid, parts, flags));
+            sendInternal(normalized, targetNodeRid, targetSpotRid, parts, flags));
     }
 
     @Override
-    public RequestOperation request(String channelName, RoutingId targetSpotRid) {
+    public RequestOperation request(
+        String channelName,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid) {
         String normalized = requireChannelName(channelName);
+        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
         Objects.requireNonNull(targetSpotRid, "targetSpotRid");
         return MessageOperations.request(
             (parts, flags, timeout) ->
-                requestAsync(normalized, targetSpotRid, parts, flags, timeout),
+                requestAsync(normalized, targetNodeRid, targetSpotRid, parts, flags, timeout),
             (parts, callback, flags, timeout) ->
-                requestCallback(normalized, targetSpotRid, parts, callback,
+                requestCallback(normalized, targetNodeRid, targetSpotRid, parts, callback,
                     flags, timeout));
-    }
-
-    @Override
-    public boolean handleRouterReceived(
-        String channelName,
-        RoutingId sourceNodeRid,
-        List<Message> parts) {
-        String normalized = requireChannelName(channelName);
-        Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
-        Objects.requireNonNull(parts, "parts");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeParts = copyParts(arena, parts);
-            MemorySegment handledOut = arena.allocate(ValueLayout.JAVA_BYTE);
-            int rc = Native.spotRouteBridgeHandleRouterReceived(handle(),
-                NativeHelpers.toCString(arena, normalized),
-                ActorInterop.nativeRoutingId(arena, sourceNodeRid), nativeParts,
-                parts.size(), handledOut);
-            if (rc != 0) {
-                MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
-                throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_route_bridge_handle_router_received");
-            }
-            boolean handled = handledOut.get(ValueLayout.JAVA_BYTE, 0) != 0;
-            if (!handled) {
-                MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
-            }
-            return handled;
-        }
     }
 
     @Override
@@ -176,14 +116,14 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeParts = copyParts(arena, parts);
             MemorySegment handledOut = arena.allocate(ValueLayout.JAVA_BYTE);
-            int rc = Native.spotRouteBridgeHandleRouterReceivedWithMetadata(
+            int rc = Native.spotRouteBridgeHandleRouterReceived(
                 handle(), NativeHelpers.toCString(arena, normalized),
                 ActorInterop.nativeRoutingId(arena, sourceNodeRid), requestSeq,
                 nativeParts, parts.size(), handledOut);
             if (rc != 0) {
                 MessagePartsBuffer.closeNativeArray(nativeParts, parts.size());
                 throw InternalAccess.zlinkExceptionFromLastError(
-                    "zlink_spot_route_bridge_handle_router_received_with_metadata");
+                    "zlink_spot_route_bridge_handle_router_received");
             }
             boolean handled = handledOut.get(ValueLayout.JAVA_BYTE, 0) != 0;
             if (!handled) {
@@ -218,16 +158,21 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
         }
     }
 
-    private boolean sendInternal(String channelName, RoutingId targetSpotRid,
-                                 List<Message> parts, SendFlags flags) {
+    private boolean sendInternal(
+        String channelName,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> parts,
+        SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeParts =
                 RoutedRequestSupport.movePayloadToNative(arena, parts);
             int rc = Native.spotRouteBridgeSend(handle(),
                 NativeHelpers.toCString(arena, channelName),
-                ActorInterop.nativeRoutingId(arena, targetSpotRid), nativeParts,
-                parts.size(), flags.value());
+                ActorInterop.nativeRoutingId(arena, targetNodeRid),
+                ActorInterop.nativeRoutingId(arena, targetSpotRid),
+                nativeParts, parts.size(), flags.value());
             if (rc != 0) {
                 NativeMessage.multipartClose(nativeParts, parts.size());
                 throw InternalAccess.zlinkExceptionFromLastError(
@@ -238,8 +183,12 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
     }
 
     private CompletableFuture<List<Message>> requestAsync(
-        String channelName, RoutingId targetSpotRid, List<Message> parts,
-        SendFlags flags, Duration timeout) {
+        String channelName,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> parts,
+        SendFlags flags,
+        Duration timeout) {
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = RoutedRequestSupport.nextRequestId();
         CompletableFuture<systems.zlink.contracts.messaging.Received> future =
@@ -249,7 +198,7 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
         RequestProgressPump.trackSpotRouteBridgeRequest(future,
             handle(), "zlink-spot-route-bridge-drain");
         try {
-            submitRequest(channelName, targetSpotRid, parts, flags,
+            submitRequest(channelName, targetNodeRid, targetSpotRid, parts, flags,
                 RequestReplySupport.toTimeoutInt(timeoutMs), requestId);
         } catch (RuntimeException ex) {
             RoutedRequestSupport.removePending(requestId);
@@ -259,12 +208,15 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
         return future.thenApply(InternalAccess::receivedTakeParts);
     }
 
-    private boolean requestCallback(String channelName, RoutingId targetSpotRid,
-                                    List<Message> parts,
-                                    RequestCallback callback,
-                                    SendFlags flags,
-                                    Duration timeout) {
-        requestAsync(channelName, targetSpotRid, parts, flags, timeout)
+    private boolean requestCallback(
+        String channelName,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        Duration timeout) {
+        requestAsync(channelName, targetNodeRid, targetSpotRid, parts, flags, timeout)
             .whenComplete((reply, error) -> {
                 if (error != null) {
                     callback.onComplete(RequestReplySupport.requestResult(error),
@@ -276,15 +228,21 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
         return true;
     }
 
-    private void submitRequest(String channelName, RoutingId targetSpotRid,
-                               List<Message> parts, SendFlags flags,
-                               int timeoutMs, long requestId) {
+    private void submitRequest(
+        String channelName,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> parts,
+        SendFlags flags,
+        int timeoutMs,
+        long requestId) {
         Objects.requireNonNull(flags, "flags");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeParts =
                 RoutedRequestSupport.movePayloadToNative(arena, parts);
             int rc = Native.spotRouteBridgeRequest(handle(),
                 NativeHelpers.toCString(arena, channelName),
+                ActorInterop.nativeRoutingId(arena, targetNodeRid),
                 ActorInterop.nativeRoutingId(arena, targetSpotRid), nativeParts,
                 parts.size(), RoutedRequestSupport.replyCallback(),
                 RoutedRequestSupport.userData(requestId), flags.value(),

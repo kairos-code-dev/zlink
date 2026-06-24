@@ -15,6 +15,4 @@ public interface IZLinkChannelRuntimeOptions
     IZLinkClientServerChannelOptions ClientServerChannel(string channelName);
 
     IZLinkRouteMeshChannelOptions RouteMeshChannel(string channelName);
-
-    IZLinkDealerMeshChannelOptions DealerMeshChannel(string channelName);
 }

@@ -48,31 +48,12 @@ inline void validate_framework_options (const framework_options_state_t &options
                                            + "' must enable server or client capability");
         }
     }
-    for (const auto &[channel_name, _] : options.client_server_spot_route_egress_targets) {
-        if (!options.client_server_channels.contains (channel_name)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "client/server channel '" + channel_name
-                                           + "' routed SPOT egress is not registered");
-        }
-        if (!options.client_server_channels_with_client.contains (channel_name)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "client/server channel '" + channel_name
-                                           + "' routed SPOT egress requires client capability");
-        }
-    }
     for (const auto &channel_name : options.fanout_channels) {
         if (!options.fanout_channels_with_publisher.contains (channel_name)
             && !options.fanout_channels_with_subscriber.contains (channel_name)) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "fanout channel '" + channel_name
                                            + "' must enable publisher or subscriber capability");
-        }
-    }
-    for (const auto &channel_name : options.dealer_mesh_channels) {
-        if (!options.dealer_mesh_channels_with_peer_path.contains (channel_name)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "dealer mesh channel '" + channel_name
-                                           + "' requires a bind or connect endpoint");
         }
     }
     for (const auto &channel_name : options.route_mesh_channels) {
@@ -89,31 +70,9 @@ inline void validate_framework_options (const framework_options_state_t &options
                                            + "' must enable router or pub/sub capability");
         }
     }
-    std::set<std::string> attached_publisher_channels;
-    for (const auto &[spot_node_name, channel_names] : options.attached_publishers_by_node) {
-        if (!options.spot_nodes_with_pub_sub.contains (spot_node_name)) {
-            throw framework_exception_t (
-              framework_error_kind_t::request_protocol_error,
-              "SPOT node '" + spot_node_name
-                + "' attaches publisher clients but must enable pub/sub capability");
-        }
-        for (const auto &channel_name : channel_names) {
-            if (!attached_publisher_channels.insert (channel_name).second) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "duplicate SPOT publisher client channel '"
-                                               + channel_name + "'");
-            }
-            if (!options.fanout_channels.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "SPOT node '" + spot_node_name + "' publisher client '"
-                                               + channel_name + "' is not registered");
-            }
-            if (!options.fanout_channels_with_publisher.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "SPOT node '" + spot_node_name + "' publisher client '"
-                                               + channel_name + "' requires publisher capability");
-            }
-        }
+    if (options.spot_nodes.size () > 1) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "only one SPOT node can be configured per process");
     }
     for (const auto &[spot_node_name, channel_names] :
          options.accepted_spot_route_channels_by_node) {
@@ -132,8 +91,7 @@ inline void validate_framework_options (const framework_options_state_t &options
                     + "' is ambiguous because both a client/server channel and a route mesh "
                       "channel use the same name");
             }
-            if (options.fanout_channels.contains (channel_name)
-                || options.dealer_mesh_channels.contains (channel_name)) {
+            if (options.fanout_channels.contains (channel_name)) {
                 throw framework_exception_t (
                   framework_error_kind_t::request_protocol_error,
                   "SPOT route channel '" + channel_name
@@ -143,14 +101,6 @@ inline void validate_framework_options (const framework_options_state_t &options
                 throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                              "SPOT route channel '" + channel_name
                                                + "' is not registered");
-            }
-            if (options.registry_discovery_endpoints.empty ()
-                && !has_manual_connections (options.accepted_spot_route_manual_connections_by_node,
-                                            spot_node_name, channel_name)) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_protocol_error,
-                  "SPOT route channel '" + channel_name + "' on node '" + spot_node_name
-                    + "' requires registry discovery or manual connections");
             }
         }
     }

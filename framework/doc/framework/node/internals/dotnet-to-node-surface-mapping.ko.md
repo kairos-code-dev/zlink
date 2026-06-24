@@ -244,9 +244,8 @@ dotnet `IZLinkFrameworkOptions` 의 등록 메서드를 node fluent builder 표�
 |------|------|------|
 | `AddClientServerChannel(name)` | `addClientServerChannel(name)` | [nestjs-channel-messaging](../spec/nestjs-channel-messaging.ko.md) |
 | `AddFanoutChannel(name)` | `addFanoutChannel(name)` | nestjs-channel-messaging |
-| `AddDealerMeshChannel(name)` | `addDealerMeshChannel(name)` | nestjs-channel-messaging |
-| `AddRouteMeshChannel(name)` | `addRouteMeshChannel(name)` | nestjs-channel-messaging |
-| `AddSpotNode(name)` / `AddSpotMesh(...)` | `addSpotNode(name)` | [nestjs-spot](../spec/nestjs-spot.ko.md) |
+| `AddRouteMesh(name)` | `addRouteMesh(name)` | nestjs-channel-messaging |
+| `AddSpotMesh(name)` | `addSpotMesh(name)` | [nestjs-spot](../spec/nestjs-spot.ko.md) |
 | `AddStreamNode(name)` | `addStreamNode(name)` | [nestjs-stream](../spec/nestjs-stream.ko.md) |
 | `useDiscovery().addRegistryEndpoint(...)` | `useDiscovery().addRegistryEndpoint(...)` | [nestjs-registry](../spec/nestjs-registry.ko.md) |
 | `UseFilter<TFilter>()` | `filters: [FilterClass]` | [handler-interfaces §filter](../spec/handler-interfaces.ko.md) |

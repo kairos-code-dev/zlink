@@ -152,16 +152,14 @@ template <typename BridgeT> class has_spot_route_bridge_surface_t
     template <typename T>
     static auto test (int)
       -> decltype (
-        std::declval<T &> ().attach_dealer_channel (std::declval<const std::string &> (),
-                                                    std::declval<zlink::dealer_socket_t &> ()),
         std::declval<T &> ().attach_router_channel (std::declval<const std::string &> (),
                                                     std::declval<zlink::router_socket_t &> ()),
-        std::declval<T &> ().set_target_node (std::declval<const std::string &> (),
-                                              std::declval<const zlink::routing_id_t &> ()),
         std::declval<T &> ().send (std::declval<const std::string &> (),
+                                   std::declval<const zlink::routing_id_t &> (),
                                    std::declval<const zlink::routing_id_t &> (),
                                    std::declval<std::vector<zlink::message_t> &> ()),
         std::declval<T &> ().request (std::declval<const std::string &> (),
+                                      std::declval<const zlink::routing_id_t &> (),
                                       std::declval<const zlink::routing_id_t &> (),
                                       std::declval<std::vector<zlink::message_t> &> (),
                                       std::declval<std::chrono::milliseconds> ()),

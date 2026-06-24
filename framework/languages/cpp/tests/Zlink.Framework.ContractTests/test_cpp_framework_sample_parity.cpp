@@ -841,7 +841,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
     EXPECT_NE (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
     EXPECT_NE (api_factory.find (".enable_client (topology.selected_play_endpoint ())"),
                std::string::npos);
-    EXPECT_NE (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
+    EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),

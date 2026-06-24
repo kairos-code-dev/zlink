@@ -38,7 +38,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("stage-node");
                 {
-                    var spot = mesh.AddNode("stage-node");
+                    var spot = mesh;
                 {
                     var router = spot.EnableRouter("tcp://127.0.0.1:9000");
 
@@ -86,7 +86,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("game.stage");
                 {
-                    var spot = mesh.AddNode("stage-node");
+                    var spot = mesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:9000");
 
@@ -115,7 +115,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     var mesh = options.AddSpotMesh("game.stage");
                     mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                     {
-                        var spot = mesh.AddNode("stage-node-a");
+                        var spot = mesh;
                         {
                             var router = spot.EnableRouter("tcp://127.0.0.1:6101");
 
@@ -124,7 +124,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
                     }
                     {
-                        var spot = mesh.AddNode("stage-node-b");
+                        var spot = mesh;
                         {
                             var router = spot.EnableRouter("tcp://127.0.0.1:6102");
 
@@ -150,7 +150,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 {
                     var mesh = options.AddSpotMesh("game.stage");
                     {
-                        var spot = mesh.AddNode("stage-node");
+                        var spot = mesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:6101");
 
@@ -229,7 +229,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("stage-node");
                 {
-                    var spot = mesh.AddNode("stage-node");
+                    var spot = mesh;
                 {
                     var router = spot.EnableRouter("tcp://127.0.0.1:6200");
 
@@ -255,7 +255,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("stage-node");
                 {
-                    var spot = mesh.AddNode("stage-node");
+                    var spot = mesh;
                 {
                     var router = spot.EnableRouter("tcp://127.0.0.1:6203");
 
@@ -281,7 +281,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("actor-node");
                 {
-                    var spot = mesh.AddNode("actor-node");
+                    var spot = mesh;
                 {
                     var router = spot.EnableRouter("tcp://127.0.0.1:6201");
 
@@ -306,7 +306,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("actor-node");
                 {
-                    var spot = mesh.AddNode("actor-node");
+                    var spot = mesh;
                 {
                     var router = spot.EnableRouter("tcp://127.0.0.1:7302");
 
@@ -345,7 +345,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 {
                     var mesh = options.AddSpotMesh("actor-node");
                     {
-                        var spot = mesh.AddNode("actor-node");
+                        var spot = mesh;
                         {
                             var pubsub = spot.EnablePubSub("tcp://127.0.0.1:7301");
 
@@ -382,7 +382,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("stage-node");
                 {
-                    var spot = mesh.AddNode("stage-node");
+                    var spot = mesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:6204");
 
@@ -450,7 +450,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_DoesNot_Register_SpotPublisher_Without_PublisherCapability()
+    public void AddZLinkFramework_Registers_SpotPublisher_Client()
     {
         var services = new ServiceCollection();
 
@@ -459,37 +459,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("stage-node");
                 {
-                    var spot = mesh.AddNode("stage-node");
+                    var spot = mesh;
                 {
                     var router = spot.EnableRouter("tcp://127.0.0.1:6204");
 
                 }
-
-                }
-
-            }
-        });
-
-        using var provider = services.BuildServiceProvider();
-        Assert.Null(provider.GetService<IZLinkSpotPublisherClient>());
-    }
-
-    [Fact]
-    public void AddZLinkFramework_Registers_SpotPublisher_When_PublisherCapability_Exists()
-    {
-        var services = new ServiceCollection();
-
-        services.AddZLinkFramework(options =>
-        {
-            {
-                var mesh = options.AddSpotMesh("game.stage");
-                {
-                    var spot = mesh.AddNode("stage-node");
-                    {
-                        var pubsub = spot.EnablePubSub("tcp://127.0.0.1:6205");
-
-                    }
-                    spot.AttachSpotPublisherClient("game.stage");
 
                 }
 
@@ -509,7 +483,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
-                var routed = options.AddRouteMeshChannel("gateway");
+                var routed = options.AddRouteMesh("gateway");
                 routed.EnableServer("tcp://127.0.0.1:6202");
 
             }

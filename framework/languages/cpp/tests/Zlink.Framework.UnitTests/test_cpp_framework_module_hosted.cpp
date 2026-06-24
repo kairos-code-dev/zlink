@@ -581,16 +581,11 @@ int main ()
       .enable_subscriber ("tcp://127.0.0.1:9105")
       .enable_subscriber ("tcp://127.0.0.1:9108")
       .use_handler_group ("events");
-    options.add_dealer_mesh_channel ("mesh-channel")
-      .enable_server ("tcp://127.0.0.1:9106")
-      .enable_client ("tcp://127.0.0.1:9107")
-      .use_handler_group ("api");
-    options.add_dealer_mesh_channel ("mesh-discovery-channel").enable_client ();
     options.add_client_server_channel ("play-channel").enable_client ();
     options.add_client_server_channel ("profile-channel")
       .enable_client ("tcp://127.0.0.1:9109")
       .enable_client ("tcp://127.0.0.1:9110");
-    options.add_route_mesh_channel ("route-channel")
+    options.add_route_mesh ("route-channel")
       .enable_server ("tcp://127.0.0.1:9112")
       .set_routing_id (zlink::routing_id_t::from ("route-node"))
       .enable_client ()
@@ -935,34 +930,6 @@ int main ()
         return 58;
     }
 
-    bool duplicate_cross_group_packet_handler_failed = false;
-    try {
-        zlink::framework::service_collection_t invalid_services;
-        zlink::framework::handler_registry_t invalid_handlers;
-        zlink::framework::serializer_registry_t invalid_serializers;
-        zlink::framework::zlink_builder_t invalid_zlink;
-        zlink::framework::monitoring_builder_t invalid_monitoring;
-        zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
-          invalid_monitoring);
-        invalid_options.handlers ().add_send<options_send_handler_t> ("api");
-        invalid_options.handlers ().add_send<alias_options_send_handler_t> ("api-alias");
-        invalid_options.add_client_server_channel ("duplicate-packet-api")
-          .enable_server ("tcp://127.0.0.1:9342")
-          .use_handler_group ("api")
-          .use_handler_group ("api-alias");
-        invalid_options.apply ();
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        duplicate_cross_group_packet_handler_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("duplicate handler registration")
-               != std::string::npos;
-    }
-    if (!duplicate_cross_group_packet_handler_failed) {
-        return 59;
-    }
-
     bool missing_server_handler_group_failed = false;
     try {
         zlink::framework::service_collection_t invalid_services;
@@ -997,13 +964,14 @@ int main ()
         zlink::framework::zlink_framework_options_t valid_options (
           valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
         valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9304");
-        valid_options.add_client_server_channel ("spot-route")
-          .enable_server ("tcp://127.0.0.1:9301");
+        valid_options.add_route_mesh ("spot-route").enable_server ("tcp://127.0.0.1:9301");
         valid_options.add_spot_mesh ("spot-routes")
-          .add_node ("route-node")
-          .enable_router ("tcp://127.0.0.1:9302")
-          .accept_routes_from_channel ("spot-route");
+          .enable_router ("tcp://127.0.0.1:9302");
         valid_options.apply ();
+        const auto spots = valid_zlink.spot_nodes ();
+        accepted_spot_route_without_handlers_succeeded =
+          spots.size () == 1 && spots[0].accepted_route_channels.size () == 1
+          && spots[0].accepted_route_channels[0].channel_name == "spot-route";
     }
     catch (const zlink::framework::framework_exception_t &) {
         accepted_spot_route_without_handlers_succeeded = false;
@@ -1021,19 +989,15 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (
           valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.add_client_server_channel ("manual-spot-route")
-          .enable_server ("tcp://127.0.0.1:9343");
+        valid_options.add_route_mesh ("manual-spot-route").enable_server ("tcp://127.0.0.1:9343");
         valid_options.add_spot_mesh ("manual-spots")
-          .add_node ("route-node")
-          .enable_router ("tcp://127.0.0.1:9344")
-          .accept_routes_from_channel ("manual-spot-route", "tcp://127.0.0.1:9343");
+          .enable_router ("tcp://127.0.0.1:9344");
         valid_options.apply ();
         const auto spots = valid_zlink.spot_nodes ();
         accepted_spot_route_manual_without_discovery_succeeded =
           spots.size () == 1 && spots[0].accepted_route_channels.size () == 1
           && spots[0].accepted_route_channels[0].channel_name == "manual-spot-route"
-          && spots[0].accepted_route_channels[0].manual_connections.size () == 1
-          && spots[0].accepted_route_channels[0].manual_connections[0] == "tcp://127.0.0.1:9343";
+          && spots[0].accepted_route_channels[0].manual_connections.empty ();
     }
     catch (const zlink::framework::framework_exception_t &) {
         accepted_spot_route_manual_without_discovery_succeeded = false;
@@ -1076,7 +1040,7 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.add_route_mesh_channel ("missing-route")
+        invalid_options.add_route_mesh ("missing-route")
           .set_routing_id (zlink::routing_id_t::from ("missing"));
         invalid_options.apply ();
     }
@@ -1098,7 +1062,7 @@ int main ()
         zlink::framework::monitoring_builder_t valid_monitoring;
         zlink::framework::zlink_framework_options_t valid_options (
           valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.add_route_mesh_channel ("route-no-discovery")
+        valid_options.add_route_mesh ("route-no-discovery")
           .enable_server ("tcp://127.0.0.1:9322")
           .enable_client ();
         valid_options.apply ();
@@ -1113,30 +1077,6 @@ int main ()
         return 65;
     }
 
-    bool dealer_no_arg_client_still_requires_discovery_failed = false;
-    try {
-        zlink::framework::service_collection_t invalid_services;
-        zlink::framework::handler_registry_t invalid_handlers;
-        zlink::framework::serializer_registry_t invalid_serializers;
-        zlink::framework::zlink_builder_t invalid_zlink;
-        zlink::framework::monitoring_builder_t invalid_monitoring;
-        zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
-          invalid_monitoring);
-        invalid_options.add_dealer_mesh_channel ("dealer-discovery").enable_client ();
-        invalid_options.apply ();
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        dealer_no_arg_client_still_requires_discovery_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find (
-               "dealer_mesh_channel 'dealer-discovery' client requires registry discovery")
-               != std::string::npos;
-    }
-    if (!dealer_no_arg_client_still_requires_discovery_failed) {
-        return 66;
-    }
-
     bool missing_spot_capability_failed = false;
     try {
         zlink::framework::service_collection_t invalid_services;
@@ -1148,7 +1088,6 @@ int main ()
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
         invalid_options.add_spot_mesh ("empty-spots")
-          .add_node ("empty-node")
           .add_spot<stage_spot_t> ("stage");
         invalid_options.apply ();
     }
@@ -1234,7 +1173,7 @@ int main ()
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.add_spot_mesh (" ");
           },
-          "SPOT mesh channel name is required")) {
+          "SPOT node name is required")) {
         return 44;
     }
 
@@ -1272,199 +1211,12 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.add_client_server_channel ("api")
-                .enable_server ("tcp://127.0.0.1:9320")
-                .enable_spot_route_egress ("play.route");
-          },
-          "routed SPOT egress requires client capability")) {
-        return 62;
-    }
-
-    bool attach_publisher_succeeded = true;
-    try {
-        zlink::framework::service_collection_t valid_services;
-        zlink::framework::handler_registry_t valid_handlers;
-        zlink::framework::serializer_registry_t valid_serializers;
-        zlink::framework::zlink_builder_t valid_zlink;
-        zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (
-          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9319");
-        valid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9320");
-        valid_options.add_spot_mesh ("spots")
-          .add_node ("spot-node")
-          .enable_pub_sub ("tcp://127.0.0.1:9321")
-          .attach_publisher ("events");
-        valid_options.apply ();
-        const auto snapshots = valid_zlink.spot_nodes ();
-        attach_publisher_succeeded = snapshots.size () == 1
-                                     && snapshots[0].attached_publishers.size () == 1
-                                     && snapshots[0].attached_publishers[0] == "events";
-    }
-    catch (const zlink::framework::framework_exception_t &) {
-        attach_publisher_succeeded = false;
-    }
-    if (!attach_publisher_succeeded) {
-        return 47;
-    }
-
-    bool attach_publisher_manual_succeeded = true;
-    try {
-        zlink::framework::service_collection_t valid_services;
-        zlink::framework::handler_registry_t valid_handlers;
-        zlink::framework::serializer_registry_t valid_serializers;
-        zlink::framework::zlink_builder_t valid_zlink;
-        zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (
-          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.add_fanout_channel ("manual-events")
-          .enable_publisher ("tcp://127.0.0.1:9347");
-        valid_options.add_spot_mesh ("spots")
-          .add_node ("spot-node")
-          .enable_pub_sub ("tcp://127.0.0.1:9348")
-          .attach_publisher ("manual-events", "tcp://127.0.0.1:9347");
-        valid_options.apply ();
-        const auto snapshots = valid_zlink.spot_nodes ();
-        attach_publisher_manual_succeeded =
-          snapshots.size () == 1 && snapshots[0].attached_publishers.size () == 1
-          && snapshots[0].attached_publishers[0] == "manual-events"
-          && snapshots[0].attached_publisher_details.size () == 1
-          && snapshots[0].attached_publisher_details[0].channel_name == "manual-events"
-          && snapshots[0].attached_publisher_details[0].manual_connections.size () == 1
-          && snapshots[0].attached_publisher_details[0].manual_connections[0]
-               == "tcp://127.0.0.1:9347";
-    }
-    catch (const zlink::framework::framework_exception_t &) {
-        attach_publisher_manual_succeeded = false;
-    }
-    if (!attach_publisher_manual_succeeded) {
-        return 62;
-    }
-
-    if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9328");
-              invalid_options.add_fanout_channel ("events").enable_publisher (
-                "tcp://127.0.0.1:9329");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_router ("tcp://127.0.0.1:9330")
-                .attach_publisher ("events");
-          },
-          "must enable pub/sub capability")) {
-        return 51;
-    }
-
-    if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9331");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_pub_sub ("tcp://127.0.0.1:9332")
-                .attach_publisher ("missing");
-          },
-          "publisher client 'missing' is not registered")) {
-        return 52;
-    }
-
-    if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9333");
-              invalid_options.add_fanout_channel ("events").enable_subscriber (
-                "tcp://127.0.0.1:9334");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_pub_sub ("tcp://127.0.0.1:9335")
-                .attach_publisher ("events");
-          },
-          "requires publisher capability")) {
-        return 53;
-    }
-
-    if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9336");
-              invalid_options.add_fanout_channel ("events").enable_publisher (
-                "tcp://127.0.0.1:9337");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("first")
-                .enable_pub_sub ("tcp://127.0.0.1:9338")
-                .attach_publisher ("events");
-              invalid_options.add_spot_node ("second")
-                .enable_pub_sub ("tcp://127.0.0.1:9339")
-                .attach_publisher ("events");
+              invalid_options.add_spot_mesh ("first").enable_pub_sub ("tcp://127.0.0.1:9338");
+              invalid_options.add_spot_mesh ("second").enable_pub_sub ("tcp://127.0.0.1:9339");
           },
-          "duplicate SPOT publisher client channel")) {
+          "only one SPOT node can be configured per process")) {
         return 54;
-    }
-
-    if (!accepted_route_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9305");
-              invalid_options.add_client_server_channel ("api").enable_server (
-                "tcp://127.0.0.1:9306");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_pub_sub ("tcp://127.0.0.1:9307")
-                .accept_routes_from_channel ("api");
-          },
-          "must enable router capability")) {
-        return 36;
-    }
-
-    if (!accepted_route_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9308");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_router ("tcp://127.0.0.1:9309")
-                .accept_routes_from_channel ("missing");
-          },
-          "is not registered")) {
-        return 37;
-    }
-
-    if (!accepted_route_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9310");
-              invalid_options.add_fanout_channel ("events").enable_publisher (
-                "tcp://127.0.0.1:9311");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_router ("tcp://127.0.0.1:9312")
-                .accept_routes_from_channel ("events");
-          },
-          "must be a client/server channel or a route mesh channel")) {
-        return 38;
-    }
-
-    if (!accepted_route_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9313");
-              invalid_options.add_client_server_channel ("route").enable_server (
-                "tcp://127.0.0.1:9314");
-              invalid_options.add_route_mesh_channel ("route").enable_server (
-                "tcp://127.0.0.1:9315");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_router ("tcp://127.0.0.1:9316")
-                .accept_routes_from_channel ("route");
-          },
-          "ambiguous")) {
-        return 39;
-    }
-
-    if (!accepted_route_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.add_client_server_channel ("api").enable_server (
-                "tcp://127.0.0.1:9317");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_router ("tcp://127.0.0.1:9318")
-                .accept_routes_from_channel ("api");
-          },
-          "requires registry discovery or manual connections")) {
-        return 40;
     }
 
     bool missing_discovery_failed = false;
@@ -1537,29 +1289,6 @@ int main ()
         return 64;
     }
 
-    bool missing_dealer_peer_path_failed = false;
-    try {
-        zlink::framework::service_collection_t invalid_services;
-        zlink::framework::handler_registry_t invalid_handlers;
-        zlink::framework::serializer_registry_t invalid_serializers;
-        zlink::framework::zlink_builder_t invalid_zlink;
-        zlink::framework::monitoring_builder_t invalid_monitoring;
-        zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
-          invalid_monitoring);
-        invalid_options.add_dealer_mesh_channel ("missing-mesh");
-        invalid_options.apply ();
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        missing_dealer_peer_path_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("requires a bind or connect endpoint")
-               != std::string::npos;
-    }
-    if (!missing_dealer_peer_path_failed) {
-        return 28;
-    }
-
     const auto discovery = zlink.discovery_options ();
     if (discovery.registry_endpoints.size () != 1
         || discovery.registry_endpoints.front () != "tcp://127.0.0.1:9102") {
@@ -1579,18 +1308,11 @@ int main ()
     const auto event_channel =
       std::find_if (channels.begin (), channels.end (),
                     [] (const auto &channel) { return channel.name == "event-channel"; });
-    const auto mesh_channel =
-      std::find_if (channels.begin (), channels.end (),
-                    [] (const auto &channel) { return channel.name == "mesh-channel"; });
-    const auto mesh_discovery_channel = std::find_if (
-      channels.begin (), channels.end (),
-      [] (const auto &channel) { return channel.name == "mesh-discovery-channel"; });
     const auto profile_channel =
       std::find_if (channels.begin (), channels.end (),
                     [] (const auto &channel) { return channel.name == "profile-channel"; });
-    if (channels.size () != 6 || api_channel == channels.end () || play_channel == channels.end ()
-        || event_channel == channels.end () || mesh_channel == channels.end ()
-        || mesh_discovery_channel == channels.end () || profile_channel == channels.end ()
+    if (channels.size () != 4 || api_channel == channels.end () || play_channel == channels.end ()
+        || event_channel == channels.end () || profile_channel == channels.end ()
         || !api_channel->server.enabled
         || api_channel->server.bind_endpoints.front () != "tcp://127.0.0.1:9103"
         || !api_channel->client.enabled || !api_channel->client.discovery
@@ -1600,12 +1322,6 @@ int main ()
         || event_channel->subscriber.connect_endpoints.size () != 2
         || event_channel->subscriber.connect_endpoints[0] != "tcp://127.0.0.1:9105"
         || event_channel->subscriber.connect_endpoints[1] != "tcp://127.0.0.1:9108"
-        || !mesh_channel->server.enabled
-        || mesh_channel->server.bind_endpoints.front () != "tcp://127.0.0.1:9106"
-        || !mesh_channel->client.enabled
-        || mesh_channel->client.connect_endpoints.front () != "tcp://127.0.0.1:9107"
-        || mesh_discovery_channel->server.enabled || !mesh_discovery_channel->client.enabled
-        || !mesh_discovery_channel->client.discovery
         || !play_channel->client.enabled || !play_channel->client.discovery
         || !profile_channel->client.enabled || profile_channel->client.discovery
         || profile_channel->client.connect_endpoints.size () != 2

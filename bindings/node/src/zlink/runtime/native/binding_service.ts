@@ -180,26 +180,16 @@ export interface ServiceNativeBinding {
   spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
   spotRouteBridgeNew: (ctx: NativeHandle, node: NativeHandle) => NativeHandle;
   spotRouteBridgeClose: (bridge: NativeHandle) => void;
-  spotRouteBridgeAttachDealerChannel: (
-    bridge: NativeHandle,
-    channelName: string,
-    dealer: NativeHandle,
-    capabilities: number
-  ) => void;
   spotRouteBridgeAttachRouterChannel: (
     bridge: NativeHandle,
     channelName: string,
     router: NativeHandle,
     capabilities: number
   ) => void;
-  spotRouteBridgeSetTargetNode: (
-    bridge: NativeHandle,
-    channelName: string,
-    targetNodeRid: Buffer
-  ) => void;
   spotRouteBridgeSend: (
     bridge: NativeHandle,
     channelName: string,
+    targetNodeRid: Buffer,
     targetSpotRid: Buffer,
     parts: unknown,
     flags: number
@@ -207,6 +197,7 @@ export interface ServiceNativeBinding {
   spotRouteBridgeRequest: (
     bridge: NativeHandle,
     channelName: string,
+    targetNodeRid: Buffer,
     targetSpotRid: Buffer,
     parts: unknown,
     callback: NativeRequestCallback,
@@ -214,12 +205,6 @@ export interface ServiceNativeBinding {
     timeoutMs: number
   ) => void;
   spotRouteBridgeHandleRouterReceived: (
-    bridge: NativeHandle,
-    channelName: string,
-    sourceNodeRid: Buffer,
-    parts: unknown
-  ) => boolean;
-  spotRouteBridgeHandleRouterReceivedWithMetadata: (
     bridge: NativeHandle,
     channelName: string,
     sourceNodeRid: Buffer,

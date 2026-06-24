@@ -372,12 +372,6 @@ struct accepted_spot_route_channel_t
     std::vector<std::string> manual_connections;
 };
 
-struct attached_publisher_t
-{
-    std::string channel_name;
-    std::vector<std::string> manual_connections;
-};
-
 struct spot_packet_descriptor_t
 {
     std::string packet_name;
@@ -413,8 +407,6 @@ struct spot_node_snapshot_t
     std::vector<std::string> pub_sub_manual_connections;
     bool actor_gateway_enabled = false;
     std::optional<std::string> discovery_channel_name;
-    std::vector<std::string> attached_publishers;
-    std::vector<attached_publisher_t> attached_publisher_details;
     std::vector<std::string> spot_names;
     std::optional<std::string> entry_spot_name;
     bool registry_spot_remote_addresses_enabled = false;
@@ -1130,14 +1122,6 @@ class spot_node_builder_t
     spot_node_builder_t &use_registry_spot_remote_addresses (std::string route_channel_name);
     spot_node_builder_t &use_registry_spot_resolver ();
     spot_node_builder_t &use_registry_spot_resolver (std::string route_channel_name);
-    spot_node_builder_t &accept_routes_from_channel (std::string route_channel_name,
-                                                     std::string endpoint);
-    spot_node_builder_t &
-    accept_routes_from_channel (std::string route_channel_name,
-                                std::vector<std::string> manual_connections = {});
-    spot_node_builder_t &attach_publisher (std::string channel_name,
-                                           std::vector<std::string> manual_connections = {});
-
     template <typename TSpot> spot_node_builder_t &add_spot (std::string spot_name)
     {
         static_assert (std::is_base_of_v<spot_t, TSpot>,
@@ -1271,6 +1255,7 @@ class spot_node_builder_t
   private:
     friend class zlink_builder_t;
     friend class detail::spot_node_runtime_t;
+    friend class spot_node_options_builder_t;
     explicit spot_node_builder_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
     spot_create_result_t create_spot_raw (std::string spot_name, zlink::message_t request);
     spot_create_result_t
@@ -1278,6 +1263,9 @@ class spot_node_builder_t
 
     spot_node_builder_t &
     add_spot_factory (std::string spot_name, std::type_index spot_type, bool entry_spot);
+    spot_node_builder_t &
+    accept_implicit_route_mesh (std::string route_channel_name,
+                                std::vector<std::string> manual_connections = {});
     spot_node_builder_t &add_actor_factory_erased (
       std::string actor_type,
       std::type_index actor_instance_type,

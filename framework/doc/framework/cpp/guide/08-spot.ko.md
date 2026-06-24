@@ -5,10 +5,10 @@
 ## 현재 구현 기준
 
 외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
-`spot_route_bridge_t`를 내부에서 사용한다. 사용자는 `accept_routes_from_channel(...)`과
-egress 설정 이름을 맞추면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에
-attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
-publisher client를 주입해서 사용한다.
+`spot_route_bridge_t`를 내부에서 사용한다. 같은 프로세스에 RouteMesh와 SpotMesh가
+있으면 framework가 자동으로 bridge를 붙인다. 사용자는 raw `DEALER`, `ROUTER`, `PUB`
+socket을 `SpotNode`에 attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할
+때는 일반 channel publisher client를 주입해서 사용한다.
 
 ## 1. SPOT이 하는 일
 
@@ -62,7 +62,6 @@ flowchart LR
   핸들러를 실행한다. 룸 하나가 외부 응답을 기다린다고 서버가 멈추지 않는다.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
 sequenceDiagram
     participant Q as room-3187 큐
     participant W as worker 풀
@@ -110,7 +109,6 @@ spot은 spot mesh(디스커버리 채널) 아래 노드로 선언한다. Bingo P
 
 ```cpp
 options.add_spot_mesh ("bingo.room.discovery")
-  .add_node ("bingo.room.node")
   .enable_router (topology.play_spot_router_endpoint, topology.play_rid)
   .enable_pub_sub (topology.play_spot_endpoint)
   .add_entry_spot<bingo_entry_spot_t> ()
@@ -119,12 +117,12 @@ options.add_spot_mesh ("bingo.room.discovery")
 
 | 빌더 | 의미 |
 |------|------|
-| `add_node(name)` | spot 노드 추가 |
+| `add_spot_mesh(name)` | 프로세스의 단일 spot 노드와 discovery view 선언 |
 | `enable_router(endpoint, rid)` | 노드 간 라우팅 수신 |
 | `enable_pub_sub(endpoint)` | spot 토픽 pub/sub endpoint |
-| `use_discovery(channel)` | registry 기반 노드 발견 ([11장](11-registry.ko.md)) — `add_spot_mesh().add_node()` 패턴에서는 자동 적용됨 |
-| `accept_routes_from_channel(channel, endpoint)` | route mesh 채널에서 라우트 수신 ([7장 §7](07-channel-messaging.ko.md)) |
-| channel `enable_client(...)` / `attach_publisher(name)` | spot 코드에서 쓸 채널 client/publisher 연결 |
+| `use_discovery(channel)` | registry 기반 노드 발견 ([11장](11-registry.ko.md)) — `add_spot_mesh()`에서는 기본으로 mesh 이름을 사용함 |
+| `add_route_mesh(name)` | 같은 프로세스의 SpotMesh로 들어오는 외부 routed 호출 수신 ([7장 §7](07-channel-messaging.ko.md)) |
+| channel `enable_client(...)` | spot 코드에서 쓸 외부 channel client 연결 |
 | `add_entry_spot<T>()` | 입장 spot 등록 (노드당 1개) |
 | `add_spot<T>(name)` | spot 타입 등록 |
 | `add_actor_factory<F>(type)` | actor factory 등록 ([9장](09-actor-session.ko.md)) |
@@ -186,7 +184,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 노드 핸들러(채널·HTTP)와의 핵심 차이 — spot_t 메서드에는
 `request_type`/`reply_type`/`topic_name`이 없고 `dependency_types` DI도 없다.
 필요한 채널 client는 channel 선언의 `enable_client(...)`로 켜고, publisher는 노드 선언의
-`attach_publisher(...)`로 연결한다([§6](#6-spot에서-바깥으로-보내기)).
+`enable_pub_sub(...)`로 Spot pub/sub 역할을 켜서 사용한다([§6](#6-spot에서-바깥으로-보내기)).
 
 ## 4. entry spot: 매칭과 룸 배정
 
@@ -262,7 +260,7 @@ void configure (zlink::framework::spot_context_t &context)
 
 - client/server channel에 `enable_client(...)`를 설정하면 spot 코드에서 그
   채널로 request/send를 보낼 수 있다.
-- `attach_publisher(channel)`로 fanout publish 경로를 연결한다.
+- `enable_pub_sub(...)`로 Spot topic publish 경로를 연다.
 - local spot을 만들지 않는 노드에서 SPOT mesh로 publish하려면
   `spot_publisher_client_t`를 주입받아 `publish(channel, topic, event)`를 호출한다.
 - 토픽 구독자(클라이언트)에게 가는 알림은 `enable_pub_sub` endpoint를 통해
@@ -279,9 +277,8 @@ timer 등록, 같은 Spot callback의 직렬 실행)을 제공하고, wrapper는
 ## 8. 자주 막히는 곳
 
 - **`publish`가 안 된다** → 노드에 `enable_pub_sub`가 없다.
-- **routed 호출이 안 나간다** → egress(`enable_spot_route_egress`)와 ingress
-  (`accept_routes_from_channel`) 이름이 짝이 맞는지, target ROUTER에 실제로 연결돼
-  있는지 확인한다([7장 §7](07-channel-messaging.ko.md)).
+- **routed 호출이 안 나간다** → 대상 이름이 RouteMesh인지, 같은 프로세스의 SpotMesh가
+  router 역할을 켰는지, target ROUTER에 실제로 연결돼 있는지 확인한다([7장 §7](07-channel-messaging.ko.md)).
 - **spot factory 타입 중복** → 같은 노드 안에서 같은 타입을 두 번 등록하면 시작 예외.
 - **spot 상태에 lock을 걸어야 하나?** → actor 패킷·join/leave처럼 같은 spot 큐에서
   도는 callback끼리는 직렬 실행이라 불필요(§1.1). timer tick이나 외부에서

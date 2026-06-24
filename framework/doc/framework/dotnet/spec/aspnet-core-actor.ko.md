@@ -917,7 +917,7 @@ stream 연결을 향한 proxy 이므로 `Zlink.Framework.Contracts.Streams` 에 
 3. bound session owner 가 local 이면 해당 STREAM session 으로 바로 보내고, remote 이면
    owner gateway 로 내부 relay 를 보낸다.
 
-ActorGateway 내부 relay packet 은 application `AddRouteMeshChannel` handler group 으로
+ActorGateway 내부 relay packet 은 application `AddRouteMesh` handler group 으로
 노출되지 않는다. application route mesh channel 은 일반 routed messaging 용도로 남고,
 session actor relay 의 public 설정 조건이 아니다.
 
@@ -1002,7 +1002,7 @@ builder.Services.AddZLinkFramework(options =>
         var mesh =     options.AddSpotMesh("game.session");
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
         {
-            var node =         mesh.AddNode("session-node");
+            var node = mesh;
             node.EnableRouter("tcp://0.0.0.0:7201");
 
         }
@@ -1031,7 +1031,7 @@ builder.Services.AddZLinkFramework(options =>
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
-            var node =         mesh.AddNode("play-node");
+            var node = mesh;
             node.EnableRouter("tcp://0.0.0.0:9000");
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>();
@@ -1088,8 +1088,8 @@ public interface IZLinkFrameworkOptions
 | --- | --- | --- |
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
 | `AddSpotRemoteAddressResolver<>()` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
-| `AddSpotMesh(...).AddNode(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
-| `AddSpotMesh(...).AddNode(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
+| `AddSpotMesh(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
+| `AddSpotMesh(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
 
 ## 11. 다른 문서와의 관계
 
@@ -1194,7 +1194,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
     주고받는 방식이다. request / send는 요청-응답과 단방향 전달을, event
     messaging은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
 
-[^routed]: **routed channel**은 `AddRouteMeshChannel`로 선언하는 양방향 채널이다. 일반 client-server
+[^routed]: **routed channel**은 `AddRouteMesh`로 선언하는 양방향 채널이다. 일반 client-server
     채널과 달리 호출 시점에 목적지 노드의 `RoutingId`를 직접 지정한다. 자세한
     내용은
     [aspnet-core-channel-messaging.ko.md](aspnet-core-channel-messaging.ko.md)

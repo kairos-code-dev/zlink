@@ -9,7 +9,7 @@
 # ZLink Framework .NET Channel Messaging Samples
 
 > 이 문서는 실행 가능한 sample 중심 문서다. ZLink 를 어디에 쓸지 판단하는 설명은
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)와 각 케이스 스터디가 맡고,
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)와 각 케이스 스터디가 맡고,
 > 이 문서는 channel 등록, handler, client 호출 흐름을 따라 하는 데 집중한다.
 
 ## 1. 이 문서의 목적
@@ -519,9 +519,6 @@ public sealed class UserCacheRefreshedEvent
 - `account`, `profile` 처럼 client 역할을 둔 channel 은, 그 channel 전용의
   `Discovery` 와 outbound `DEALER(client)` socket 을 가진다. 이 socket은 channel
   runtime 소유이며 `SpotNode`에 직접 attach하지 않는다.
-- dealer mesh channel 도 request/send 호출 표면은 `IZLinkChannelClient`를 그대로 쓴다. 차이는
-  channel 등록이 `AddDealerMeshChannel`이고, runtime 이 그 channel 의 mesh DEALER 를
-  선택한다는 점이다.
 - 기본 packet key 는 payload 타입 이름이다. timeout 과 packet override 는 builder 에
   이어 붙인다.
 - 같은 `IZLinkChannelClient` 를, ZLink handler 와 HTTP handler 가 함께 쓴다.

@@ -85,15 +85,4 @@ bool channel_runtime_bundle_t::receive_active () const noexcept
     return _receive_active.load ();
 }
 
-channel_pending_requests_t &channel_runtime_bundle_t::dealer_mesh_pending_requests () noexcept
-{
-    return _dealer_mesh_pending_requests;
-}
-
-const channel_pending_requests_t &
-channel_runtime_bundle_t::dealer_mesh_pending_requests () const noexcept
-{
-    return _dealer_mesh_pending_requests;
-}
-
 } // namespace zlink::framework::detail

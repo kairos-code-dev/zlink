@@ -41,7 +41,7 @@ final class StreamSessionTest {
     void streamNodeAttachActorGatewayUsesJavaBindingPublicApi() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                 node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-" + System.nanoTime());
             stream.attachActorGateway("play");
@@ -90,7 +90,7 @@ final class StreamSessionTest {
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);

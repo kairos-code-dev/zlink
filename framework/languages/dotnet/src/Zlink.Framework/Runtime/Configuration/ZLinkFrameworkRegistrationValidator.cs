@@ -5,7 +5,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     public static void Validate(ZLinkFrameworkRegistration registration)
     {
         var globalSpotFactories = new HashSet<Type>();
-        var globalSpotPublisherChannels = new HashSet<string>(StringComparer.Ordinal);
         var channelHandlerEndpoints = ScanChannelHandlerEndpoints(registration);
         var routeHandlerEndpoints = ScanRouteHandlerEndpoints(registration);
         var handlerGroups = BuildHandlerGroupCatalog(channelHandlerEndpoints, routeHandlerEndpoints);
@@ -37,7 +36,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateChannel(
                 channel,
                 registration.Discovery is not null,
-                IsAcceptedSpotRouteChannel(registration, channel.ChannelName),
+                false,
                 handlerGroups,
                 channelHandlerEndpoints);
         }
@@ -52,7 +51,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateRouteChannel(
                 routed,
                 registration.Discovery is not null,
-                IsAcceptedSpotRouteChannel(registration, routed.RouterChannelId),
+                registration.SpotNodes.Values.Any(static spotNode => spotNode.Router is not null),
                 handlerGroups,
                 routeHandlerEndpoints);
         }
@@ -62,8 +61,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateSpotNode(
                 spotNode,
                 registration,
-                globalSpotFactories,
-                globalSpotPublisherChannels);
+                globalSpotFactories);
         }
     }
 
@@ -160,14 +158,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
 
         entries.Add(entry);
-    }
-
-    private static bool IsAcceptedSpotRouteChannel(
-        ZLinkFrameworkRegistration registration,
-        string channelName)
-    {
-        return registration.SpotNodes.Values.Any(
-            spotNode => spotNode.AcceptedSpotRouteChannels.ContainsKey(channelName));
     }
 
     private static void ValidateRegistryRouteChannel(

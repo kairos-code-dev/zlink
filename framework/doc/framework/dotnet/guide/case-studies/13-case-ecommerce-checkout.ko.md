@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink 을 어디에 쓰나](../12-grpc-alternative.ko.md) | [다음: 케이스 — 내부 마이크로서비스 mesh + 운영](14-case-microservice-mesh.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: ZLink 을 어디에 쓰나](../13-grpc-alternative.ko.md) | [다음: 케이스 — 내부 마이크로서비스 mesh + 운영](14-case-microservice-mesh.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 케이스 — 전자상거래 체크아웃
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다. 이
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다. 이
 > 문서는 실행 가능한 샘플이 아니라 **도입 판단과 아키텍처 매핑**을 위한 사례다.
 > "ZLink 가 무엇을 줄이고 **무엇은 그대로 남는지**" 를 가장 분명히 보여 준다.
 > 사용법 정식은 [04-channel-messaging](../04-channel-messaging.ko.md)이 다루고,
@@ -268,7 +268,6 @@ public sealed class PlaceOrderHandler(
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as gateway
@@ -288,7 +287,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as gateway
@@ -369,11 +367,11 @@ InventoryReservedEvent → PaymentAuthorizedEvent → OrderConfirmedEvent` appen
 
 ## 8. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md) (공통 경계는 §4 경계 절)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md) (공통 경계는 §4 경계 절)
 - 사용법 정식: [04-channel-messaging](../04-channel-messaging.ko.md)
 - 다음 케이스: [14-case-microservice-mesh](14-case-microservice-mesh.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink 을 어디에 쓰나](../12-grpc-alternative.ko.md) | [다음: 케이스 — 내부 마이크로서비스 mesh + 운영](14-case-microservice-mesh.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: ZLink 을 어디에 쓰나](../13-grpc-alternative.ko.md) | [다음: 케이스 — 내부 마이크로서비스 mesh + 운영](14-case-microservice-mesh.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

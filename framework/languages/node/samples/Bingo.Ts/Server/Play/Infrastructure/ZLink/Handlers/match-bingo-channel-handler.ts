@@ -1,6 +1,7 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
+import { PlayerActorFactory } from '../Actors/player-actor-factory';
 import { BingoEntrySpot } from '../Spots/bingo-entry-spot';
 import { SampleNames } from '../../../../Configuration/sample-names';
 import {
@@ -14,6 +15,7 @@ import {
 class MatchBingoChannelHandler implements ZLinkRequestHandler<MatchBingoReq & PlayerIdentity, MatchBingoRes> {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager,
+    @Inject(PlayerActorFactory) private readonly actorFactory: PlayerActorFactory,
     @Inject(BingoEntrySpot) private readonly entrySpot: BingoEntrySpot
   ) {}
 
@@ -23,7 +25,8 @@ class MatchBingoChannelHandler implements ZLinkRequestHandler<MatchBingoReq & Pl
       SampleNames.playerActorType,
       request
     );
-    return await this.entrySpot.matchActor(actorRef, request);
+    const actor = this.actorFactory.get(actorRef.actorId);
+    return await this.entrySpot.matchActor(actor, request);
   }
 }
 

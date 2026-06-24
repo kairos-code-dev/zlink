@@ -27,8 +27,6 @@ type (
 	SpotRouteBridgeOptions = impl.SpotRouteBridgeOptions
 	// SpotRouteBridgeEndpointOptions are options for one borrowed bridge endpoint.
 	SpotRouteBridgeEndpointOptions = impl.SpotRouteBridgeEndpointOptions
-	// SpotRouteBridgeSummary is a bridge counter snapshot.
-	SpotRouteBridgeSummary = impl.SpotRouteBridgeSummary
 	// SpotNodePublisher publishes into a local SpotNode topic plane without exposing a raw PUB socket.
 	SpotNodePublisher = impl.SpotNodePublisher
 	// ActorRef references an actor: the node hosting it, its id, and its generation.
@@ -114,12 +112,8 @@ const (
 	SpotRouteBridgeCapabilityNone = impl.SpotRouteBridgeCapabilityNone
 	// SpotRouteBridgeCapabilitySpotRoute allows SPOT route relay traffic.
 	SpotRouteBridgeCapabilitySpotRoute = impl.SpotRouteBridgeCapabilitySpotRoute
-	// SpotRouteBridgeCapabilityChannelInbound allows non-bridge channel inbound handoff.
-	SpotRouteBridgeCapabilityChannelInbound = impl.SpotRouteBridgeCapabilityChannelInbound
 	// SpotRouteBridgeRouteOnly allows only SPOT route relay traffic.
 	SpotRouteBridgeRouteOnly = impl.SpotRouteBridgeRouteOnly
-	// SpotRouteBridgeRouteWithChannelInbound allows route relay and channel inbound handoff.
-	SpotRouteBridgeRouteWithChannelInbound = impl.SpotRouteBridgeRouteWithChannelInbound
 	// SpotNodeSocketOwnerAny matches any owner (no filter).
 	SpotNodeSocketOwnerAny = impl.SpotNodeSocketOwnerAny
 	// SpotNodeSocketOwnerNode matches sockets owned by the node itself.

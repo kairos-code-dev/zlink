@@ -144,13 +144,14 @@
 | [guide/03-concepts.ko.md](guide/03-concepts.ko.md) | 핵심 개념과 공통 스펙 매핑 |
 | [guide/04-channel-messaging.ko.md](guide/04-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
 | [guide/05-spot.ko.md](guide/05-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
-| [guide/06-actor-session.ko.md](guide/06-actor-session.ko.md) | actor lifecycle 과 session actor dispatch 사용법 |
-| [guide/07-stream.ko.md](guide/07-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
-| [guide/08-registry.ko.md](guide/08-registry.ko.md) | Registry 구동, clustering, topology 조회 사용법 |
-| [guide/09-monitoring.ko.md](guide/09-monitoring.ko.md) | socket / registry / spot runtime 이벤트 관찰 사용법 |
-| [guide/10-feature-map.ko.md](guide/10-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
-| [guide/11-interface-catalog.ko.md](guide/11-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
-| [guide/12-grpc-alternative.ko.md](guide/12-grpc-alternative.ko.md) | **ZLink 을 어디에 쓰나** — 사용처·문제 신호·경계 + 케이스 허브(도입 판단 문서) |
+| [guide/06-actor-spot.ko.md](guide/06-actor-spot.ko.md) | actor 모델과 Spot 의 actor 호스팅(lifecycle 콜백·트리거 함수, location 축) |
+| [guide/07-actor-session.ko.md](guide/07-actor-session.ko.md) | session ↔ actor relay·binding·bound session push (binding 축) |
+| [guide/08-stream.ko.md](guide/08-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
+| [guide/09-registry.ko.md](guide/09-registry.ko.md) | Registry 구동, clustering, topology 조회 사용법 |
+| [guide/10-monitoring.ko.md](guide/10-monitoring.ko.md) | socket / registry / spot runtime 이벤트 관찰 사용법 |
+| [guide/11-feature-map.ko.md](guide/11-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
+| [guide/12-interface-catalog.ko.md](guide/12-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
+| [guide/13-grpc-alternative.ko.md](guide/13-grpc-alternative.ko.md) | **ZLink 을 어디에 쓰나** — 사용처·문제 신호·경계 + 케이스 허브(도입 판단 문서) |
 | [guide/case-studies/13-case-ecommerce-checkout.ko.md](guide/case-studies/13-case-ecommerce-checkout.ko.md) | 케이스: 전자상거래 체크아웃 — channel messaging 도입 판단 + 양쪽 비교 |
 | [guide/case-studies/14-case-microservice-mesh.ko.md](guide/case-studies/14-case-microservice-mesh.ko.md) | 케이스: 내부 마이크로서비스 mesh + 운영(discovery/topology) |
 | [guide/case-studies/15-case-realtime-game.ko.md](guide/case-studies/15-case-realtime-game.ko.md) | 케이스: 실시간 멀티플레이 게임 — STREAM + SPOT + actor |
@@ -176,7 +177,6 @@
 | 문서 | 다루는 범위 |
 |------|------------|
 | [aspnet-core-channel-messaging.ko.md](spec/aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, router-capable channel의 SPOT route 수신, lifecycle, middleware / filter |
-| [aspnet-core-spot.ko.md](spec/aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish / subscribe, discovery, `AcceptSpotRoutesFromChannel` |
 | [spot-node.ko.md](spec/spot-node.ko.md) | Entry Spot routing id 설정, `ConfigureEntrySpot(...)` 적용 순서, Spot route kind 보존 규칙 |
 | [aspnet-core-actor.ko.md](spec/aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkBoundSession, session actor dispatch (gateway) 패턴 |
 | [session-actor-dispatch.ko.md](spec/session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkBoundSession`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../common/spec/session-actor-dispatch.ko.md) 에서 다룬다. |

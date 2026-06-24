@@ -7,14 +7,14 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use zlink::{Context, Message, RecvFlags, SendFlags, SpotNode};
+use zlink::{Context, Message, RecvFlags, RoutingId, SendFlags, SpotNode};
 
 fn main() {
     let ctx = Context::new().expect("context creation failed");
 
     let requester_node = SpotNode::new(&ctx).expect("requester node failed");
     let requester = requester_node.create_spot().expect("requester spot failed");
-    let requester_dealer = ctx.dealer_socket().expect("requester dealer failed");
+    let requester_router = ctx.router_socket().expect("requester router failed");
     let responder = ctx.router_socket().expect("responder router failed");
     let mut bridge = requester_node
         .create_route_bridge()
@@ -22,11 +22,19 @@ fn main() {
     let channel_name = "orders";
 
     let endpoint = sample_support::tcp_endpoint();
+    let requester_rid = RoutingId::from(b"spot-request-client");
+    let responder_rid = RoutingId::from(b"spot-request-server");
+    requester_router
+        .set_routing_id(&requester_rid)
+        .expect("requester routing id failed");
+    responder
+        .set_routing_id(&responder_rid)
+        .expect("responder routing id failed");
     responder.bind(&endpoint).expect("bind failed");
-    requester_dealer.connect(&endpoint).expect("connect failed");
+    requester_router.connect(&endpoint).expect("connect failed");
     bridge
-        .attach_dealer_channel(channel_name, &requester_dealer)
-        .expect("attach dealer channel failed");
+        .attach_router_channel(channel_name, &requester_router)
+        .expect("attach router channel failed");
 
     let (server_done_tx, server_done_rx) = mpsc::channel();
     thread::spawn(move || {
@@ -51,6 +59,7 @@ fn main() {
     bridge
         .request(
             channel_name,
+            &responder_rid,
             &requester.routing_id().expect("requester routing id failed"),
             &mut request_parts,
             SendFlags::NONE,

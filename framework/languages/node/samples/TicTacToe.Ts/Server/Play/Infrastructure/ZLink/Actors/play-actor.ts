@@ -26,12 +26,12 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
   private nextSeq: number;
   private client: PlayClient | undefined;
 
-  constructor(actorId: string, displayName: string, context: ZLinkActorContext) {
+  constructor(actorId: string, displayName: string, context: ZLinkActorContext, level = 0, wins = 0) {
     this.actorId = actorId;
     this.context = context;
     this.displayName = displayName;
-    this.level = 0;
-    this.wins = 0;
+    this.level = level;
+    this.wins = wins;
     this.destroyAfterEntrySpotJoin = false;
     this.disconnected = false;
     this.nextSeq = 0;

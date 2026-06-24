@@ -4,7 +4,7 @@
 
 # 케이스 — 마켓플레이스 구매자·판매자 채팅
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > 거래나 문의 단위로 생기는 1:1 또는 소규모 group conversation 을 독립 채팅
 > 시스템으로 구축하는 예다. 실행 가능한 샘플이 아니라, marketplace 채팅에서 ZLink 가
 > 맡는 통신·상태 경계와 남는 책임을 판단하기 위한 문서다.
@@ -269,7 +269,7 @@ public sealed class SendMarketplaceMessageHandler(
 
 ## 7. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
 - 공통 채팅 개요: [17-case-chat-messaging](17-case-chat-messaging.ko.md)
 - 다음 케이스: [17-2-case-live-commerce-chat](17-2-case-live-commerce-chat.ko.md)
 

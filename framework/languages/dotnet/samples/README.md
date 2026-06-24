@@ -67,7 +67,6 @@ Discovery auto-connect types:
 | API | Meaning |
 |-----|---------|
 | `AddClientServerChannel` | DEALER clients connect to ROUTER servers. |
-| `AddDealerMeshChannel` | DEALER clients form a peer mesh. |
 | `AddFanoutChannel` | SUB subscribers connect to PUB publishers. |
-| `AddRouteMeshChannel` | ROUTER peers form a route mesh. |
+| `AddRouteMesh` | ROUTER peers form a route mesh. |
 | `AddSpotMesh` | SPOT nodes form a SPOT mesh. |

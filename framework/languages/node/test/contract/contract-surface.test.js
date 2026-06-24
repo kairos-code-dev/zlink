@@ -79,7 +79,6 @@ test('NestJS module options expose only builder-created opaque configuration', (
   const forbidden = [
     'clientServerChannels',
     'fanoutChannels',
-    'dealerMeshChannels',
     'routerMeshes',
     'spotNodes',
     'streams',
@@ -97,7 +96,6 @@ test('NestJS public declarations do not export object-shaped module option types
   const forbiddenExports = [
     'ZLinkNestClientServerChannelOptions',
     'ZLinkNestFanoutChannelOptions',
-    'ZLinkNestDealerMeshChannelOptions',
     'ZLinkNestRouterMeshOptions'
   ];
   const exposed = forbiddenExports.filter((name) =>

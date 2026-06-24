@@ -99,12 +99,6 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
         return this;
     }
 
-    public IZLinkClientServerChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetSpotNodeChannelName);
-        registration.SpotRouteEgress = new ZLinkSpotRouteEgressRegistration(targetSpotNodeChannelName);
-        return this;
-    }
 }
 
 internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registration)
@@ -152,92 +146,6 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
         where THandler : class
     {
         ZLinkChannelHandlerRegistrationBuilder.AddPublishHandler<THandler>(
-            registration,
-            packetName);
-        return this;
-    }
-}
-
-internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration registration)
-    : IZLinkDealerMeshChannelBuilder
-{
-    public IZLinkDealerMeshChannelBuilder EnableServer(string endpoint)
-    {
-        // dealer mesh 의 server·client 는 같은 DEALER 소켓을 공유한다. server(제공) 설정도
-        // client capability registration(= 그 DEALER)에 기록한다. ROUTER 를 만드는
-        // registration.Server 는 쓰지 않는다.
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        new ZLinkDealerMeshChannelServerCapabilityBuilder(registration.Client).Bind(endpoint);
-        return this;
-    }
-
-    public IZLinkDealerMeshChannelBuilder EnableClient()
-    {
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        return this;
-    }
-
-    public IZLinkDealerMeshChannelBuilder EnableClient(string endpoint)
-    {
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
-            registration.Client.ManualConnections,
-            endpoint,
-            "Dealer mesh channel client endpoint must not be empty.");
-        return this;
-    }
-
-    public IZLinkSocketConfig ConfigureSocket()
-    {
-        // dealer mesh 는 server·client 가 같은 DEALER 소켓을 공유한다(= Client registration).
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        return registration.Client.SocketConfig;
-    }
-
-    public IZLinkDealerMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout)
-    {
-        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
-        registration.DefaultRequestTimeout = timeout;
-        return this;
-    }
-
-    public IZLinkDealerMeshChannelBuilder AddHandlerGroup(string groupName)
-    {
-        ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
-        return this;
-    }
-
-    public IZLinkDealerMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
-        where THandler : class, IZLinkSendHandler<TMessage>
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler, TMessage>(
-            registration,
-            packetName);
-        return this;
-    }
-
-    public IZLinkDealerMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
-        where THandler : class
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler>(
-            registration,
-            packetName);
-        return this;
-    }
-
-    public IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-        where THandler : class, IZLinkRequestHandler<TRequest, TReply>
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler, TRequest, TReply>(
-            registration,
-            packetName);
-        return this;
-    }
-
-    public IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
-        where THandler : class
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler>(
             registration,
             packetName);
         return this;
@@ -396,24 +304,6 @@ internal sealed class ZLinkChannelServerCapabilityBuilder(ZLinkChannelServerCapa
         if (string.IsNullOrWhiteSpace(endpoint))
         {
             throw new ZLinkConfigurationException("Channel server bind endpoint must not be empty.");
-        }
-
-        registration.BindEndpoint = endpoint;
-    }
-
-    public IZLinkSocketConfig ConfigureSocket()
-    {
-        return registration.SocketConfig;
-    }
-}
-
-internal sealed class ZLinkDealerMeshChannelServerCapabilityBuilder(ZLinkChannelClientCapabilityRegistration registration)
-{
-    public void Bind(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            throw new ZLinkConfigurationException("Dealer mesh channel server bind endpoint must not be empty.");
         }
 
         registration.BindEndpoint = endpoint;

@@ -10,12 +10,13 @@
 
 ## 현재 구현 기준
 
-`acceptSpotRoutesFromChannel(...)`과 Spot egress runtime은 core legacy
-`SpotNode` attach/connect API를 호출하지 않는다. Java framework runtime은
+외부 route channel에서 특정 Spot으로 들어오는 send/request는 framework가 core
+`SpotRouteBridge`를 내부에서 사용해 자동으로 연결한다. Java framework runtime은
 `bindings/java`의 public `createRouteBridge()` / `SpotRouteBridge` 표면으로
-channel socket을 bridge에 연결한다. channel socket은 channel runtime이 계속
-소유하며, bridge는 SPOT relay packet만 분류한다. local `SpotNode` topic plane으로
-외부 publish가 필요하면 raw `PUB` attach가 아니라 public publisher handle을 사용한다.
+같은 프로세스의 RouteMesh channel socket을 bridge에 연결한다. channel socket은
+channel runtime이 계속 소유하며, bridge는 SPOT relay packet만 분류한다. local
+`SpotNode` topic plane으로 외부 publish가 필요하면 raw `PUB` attach가 아니라 public
+publisher handle을 사용한다.
 
 ## 1. 방향
 
@@ -27,7 +28,7 @@ channel socket을 bridge에 연결한다. channel socket은 channel runtime이 �
 - current channel publish/subscribe와 route bridge channel socket 경로
 - local spot 인스턴스가 없는 외부 노드용 publisher client 경로
 - Entry Spot과 user Spot factory
-- accepted route channel과 Spot route egress
+- 같은 프로세스의 RouteMesh channel과 SpotNode 자동 연결
 - 필요할 때만 spot-to-spot routed 호출 허용
 
 현재 공통 정책 기준으로는 아래를 같이 지켜야 한다.
@@ -54,13 +55,10 @@ channel socket을 bridge에 연결한다. channel socket은 channel runtime이 �
 public class SpotConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        ZLinkSpotMeshBuilder mesh = framework.addSpotMesh("game.stage");
-        mesh.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
-
-        ZLinkSpotNodeBuilder node = mesh.addNode("play");
+        ZLinkSpotMeshBuilder node = framework.addSpotMesh("game.stage");
+        node.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
         node.enableRouter("tcp://0.0.0.0:9000");
         node.enablePubSub("tcp://0.0.0.0:9001");
-        node.acceptSpotRoutesFromChannel("play-route");
         node.configureEntrySpot()
             .setRoutingId(RoutingId.from("play.entry"));
         node.addEntrySpot(GameEntrySpot.class);

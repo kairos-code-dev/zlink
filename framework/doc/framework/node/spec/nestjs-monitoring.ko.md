@@ -97,7 +97,7 @@ framework 등록은 module options 의 `monitoring` 키로 둔다. `.NET` 의
         .addClientServerChannel('profile')
           .enableServer('tcp://0.0.0.0:7101')
           .enableClient()
-        .addSpotNode('stage-node')
+        .addSpotMesh('stage-node')
           .enablePubSub('tcp://0.0.0.0:9000')
         .options({
           monitoring: {
@@ -133,7 +133,7 @@ export class AppModule {}
 
 `monitoring` 키는 source 등록만 맡는다. 즉 실제 socket, registry, spot source 는
 같은 애플리케이션의 `.addClientServerChannel(...)`, `.addFanoutChannel(...)`,
-`.addRouteMeshChannel(...)`, `.addSpotNode(...)`, `.useDiscovery()`(또는 별도 registry
+`.addRouteMesh(...)`, `.addSpotMesh(...)`, `.useDiscovery()`(또는 별도 registry
 module) 로 이미 올라와 있어야 한다.
 
 > `.NET` 의 `AddZLinkMonitoring(...)` 은 `AddZLinkFramework(...)` 와 분리된 두 번째
@@ -360,7 +360,7 @@ snapshot DTO 의 정식 필드는 [nestjs-spot](nestjs-spot.ko.md) 가 소유한
   `lastChangedMs`.
 
 `ZLinkSpotNodeStatus` 와 `ZLinkSpotNodePeerEntry` 의 첫 필드는 `channelName` 이다.
-spot node 에서 채널 이름은 `.addSpotNode(...)` 로 등록한 node 이름(예: `"stage-node"`)을
+spot node 에서 채널 이름은 `.addSpotMesh(...)` 로 등록한 node 이름(예: `"stage-node"`)을
 기준으로 들어간다.
 
 ## 5. 샘플 코드

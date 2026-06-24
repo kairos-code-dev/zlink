@@ -38,7 +38,7 @@ public static class SessionServerHostFactory
             {
                 var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
                 {
-                    var node = mesh.AddNode(SampleNames.SessionSpotNode);
+                    var node = mesh;
                     {
                         var router = node.EnableRouter(session.RouterEndpoint);
                         router.SetRouterRoutingId(session.RouterRoutingId);
@@ -55,7 +55,7 @@ public static class SessionServerHostFactory
             }
             {
                 var stream = options.AddStreamNode(SampleNames.StreamNode);
-                stream.AttachActorGateway(SampleNames.SessionSpotNode);
+                stream.AttachActorGateway(SampleNames.SupportSpotDiscovery);
                 stream.Bind(session.StreamEndpoint);
                 stream.RegisterSession<SupportChatSession>();
 

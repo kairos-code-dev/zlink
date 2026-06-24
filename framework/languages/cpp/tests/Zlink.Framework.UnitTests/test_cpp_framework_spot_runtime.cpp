@@ -641,7 +641,6 @@ int main ()
       .connect_pub_sub ("tcp://127.0.0.1:9005")
       .enable_actor_gateway ()
       .use_discovery ("game.stage")
-      .attach_publisher ("game.stage")
       .add_entry_spot<entry_spot_t> ()
       .add_actor_factory<player_actor_factory_t> ("player")
       .add_spot<stage_spot_t> ("stage");
@@ -658,10 +657,6 @@ int main ()
         || snapshots[0].pub_sub_manual_connections[0] != "tcp://127.0.0.1:9005"
         || !snapshots[0].actor_gateway_enabled || !snapshots[0].discovery_channel_name
         || *snapshots[0].discovery_channel_name != "game.stage"
-        || snapshots[0].attached_publishers.size () != 1
-        || snapshots[0].attached_publisher_details.size () != 1
-        || snapshots[0].attached_publisher_details[0].channel_name != "game.stage"
-        || !snapshots[0].attached_publisher_details[0].manual_connections.empty ()
         || snapshots[0].spot_names.size () != 2 || snapshots[0].entry_spot_name != "entry"
         || snapshots[0].actor_types.size () != 1) {
         return 1;
@@ -701,7 +696,6 @@ int main ()
     auto create_factory_spot = [] { return std::make_shared<factory_spot_t> ("factory-reply"); };
     builder.bind ("tcp://0.0.0.0:9001")
       .use_discovery ("game.stage")
-      .attach_publisher ("game.stage")
       .add_entry_spot<entry_spot_t> ()
       .add_actor_factory<player_actor_factory_t> ("player")
       .add_spot<stage_spot_t> ("stage")
@@ -1604,33 +1598,6 @@ int main ()
     if (peer_pub_alias.snapshot ().pub_sub_manual_connections.size () != 1
         || peer_pub_alias.snapshot ().pub_sub_manual_connections[0] != "tcp://127.0.0.1:9006") {
         return 410;
-    }
-
-    bool empty_publisher_attach_failed = false;
-    try {
-        zlink::framework::spot_node_builder_t invalid;
-        invalid.attach_publisher (" ");
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        empty_publisher_attach_failed =
-          error.kind () == framework_error_kind_t::request_protocol_error;
-    }
-    if (!empty_publisher_attach_failed) {
-        return 31;
-    }
-
-    bool empty_publisher_attach_endpoint_failed = false;
-    try {
-        zlink::framework::spot_node_builder_t invalid;
-        const std::vector<std::string> invalid_endpoints{" "};
-        invalid.attach_publisher ("events", invalid_endpoints);
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        empty_publisher_attach_endpoint_failed =
-          error.kind () == framework_error_kind_t::request_protocol_error;
-    }
-    if (!empty_publisher_attach_endpoint_failed) {
-        return 33;
     }
 
     context.register_packet<state_update_t> ("state.update");

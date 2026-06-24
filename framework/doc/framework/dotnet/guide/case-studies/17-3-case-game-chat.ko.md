@@ -4,7 +4,7 @@
 
 # 케이스 — 게임 채팅
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > 게임 안에서 private chat, party chat, guild chat, battle chat, system alert 를
 > 독립 채팅 시스템으로 구축하는 예다. 실행 가능한 샘플이 아니라, game chat 도메인에
 > ZLink 의 STREAM·actor·room 모델을 어디까지 넣을지 판단하는 케이스 스터디다.
@@ -300,7 +300,7 @@ public sealed class SendPartyChatHandler
 
 ## 7. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
 - 게임 서버 케이스: [15-case-realtime-game](15-case-realtime-game.ko.md)
 - 공통 채팅 개요: [17-case-chat-messaging](17-case-chat-messaging.ko.md)
 - 이전 케이스: [17-2-case-live-commerce-chat](17-2-case-live-commerce-chat.ko.md)

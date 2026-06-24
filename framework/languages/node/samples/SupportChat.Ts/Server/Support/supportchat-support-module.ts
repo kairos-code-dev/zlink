@@ -62,7 +62,7 @@ function createSupportChatSupportModule(config: {
             .enableServer(config.notificationEndpoint)
             .addHandlerGroup('notifications')
           .actorFactory(SampleNames.supportActorType, SupportUserActorFactory)
-          .addSpotNode(SampleNames.conversationSpotType)
+          .addSpotMesh(SampleNames.conversationSpotType)
             .addEntrySpot(SupportEntrySpot)
             .addSpotFactory(ConversationSpot)
           .build();

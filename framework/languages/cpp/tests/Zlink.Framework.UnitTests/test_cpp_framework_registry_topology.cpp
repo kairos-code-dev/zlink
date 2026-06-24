@@ -286,18 +286,15 @@ int main ()
     const auto framework_pub_endpoint = unique_tcp ("framework-pub");
     options.use_discovery ().add_registry_endpoint ("tcp://registry:5551");
     options.use_registry_spot_remote_addresses ("game.route");
-    options.add_route_mesh_channel ("game.route")
+    options.add_route_mesh ("game.route")
       .enable_server (framework_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from ("7200"))
-      .enable_client ("tcp://peer:7201")
-      .enable_spot_route_egress ("game.route");
+      .enable_client ("tcp://peer:7201");
     options.add_spot_mesh ("game.spots")
-      .add_node ("game-node")
       .enable_router (framework_router_endpoint, zlink::routing_id_t::from ("7300"))
       .connect_router ("tcp://router-peer:7302")
       .enable_pub_sub (framework_pub_endpoint, zlink::routing_id_t::from ("7301"))
       .connect_pub_sub ("tcp://pub-peer:7303")
-      .accept_routes_from_channel ("game.route")
       .add_spot<stage_spot_t> ("stage");
     options.apply ();
     if (framework_zlink.route_channels ().size () != 1
@@ -305,7 +302,7 @@ int main ()
         return 17;
     }
     const auto framework_spots = framework_zlink.spot_nodes ();
-    if (framework_spots.size () != 1 || framework_spots[0].name != "game-node"
+    if (framework_spots.size () != 1 || framework_spots[0].name != "game.spots"
         || framework_spots[0].bind_endpoint != framework_router_endpoint
         || !framework_spots[0].router_bind_endpoint
         || *framework_spots[0].router_bind_endpoint != framework_router_endpoint
@@ -337,8 +334,6 @@ int main ()
     route_manager.initialize_route_channels (framework_zlink);
     const auto &route_runtime = route_manager.get_route_channel ("game.route");
     if (!route_runtime.routing_id () || route_runtime.routing_id ()->to_string () != "7200"
-        || !route_runtime.spot_route_egress_target ()
-        || *route_runtime.spot_route_egress_target () != "game.route"
         || route_runtime.list_connections ().size () != 2
         || route_runtime.list_connections ()[0] != framework_route_endpoint
         || route_runtime.list_connections ()[1] != "tcp://peer:7201") {
@@ -350,19 +345,15 @@ int main ()
       services, handlers, serializers, manual_route_zlink, monitoring);
     const auto manual_route_endpoint = unique_tcp ("manual-accepted-route");
     const auto manual_route_router_endpoint = unique_tcp ("manual-accepted-router");
-    manual_route_options.add_client_server_channel ("manual.api")
-      .enable_server (manual_route_endpoint);
-    manual_route_options.add_spot_node ("manual-node")
-      .enable_router (manual_route_router_endpoint)
-      .accept_routes_from_channel ("manual.api", manual_route_endpoint);
+    manual_route_options.add_route_mesh ("manual.api").enable_server (manual_route_endpoint);
+    manual_route_options.add_spot_mesh ("manual-node")
+      .enable_router (manual_route_router_endpoint);
     manual_route_options.apply ();
     const auto manual_route_spots = manual_route_zlink.spot_nodes ();
     if (manual_route_spots.size () != 1
         || manual_route_spots[0].accepted_route_channels.size () != 1
         || manual_route_spots[0].accepted_route_channels[0].channel_name != "manual.api"
-        || manual_route_spots[0].accepted_route_channels[0].manual_connections.size () != 1
-        || manual_route_spots[0].accepted_route_channels[0].manual_connections[0]
-             != manual_route_endpoint) {
+        || !manual_route_spots[0].accepted_route_channels[0].manual_connections.empty ()) {
         return 22;
     }
 
@@ -373,12 +364,11 @@ int main ()
     const auto late_router_endpoint = unique_tcp ("late-router");
     const auto late_pub_endpoint = unique_tcp ("late-pub");
     late_options.use_discovery ().add_registry_endpoint ("tcp://registry:5551");
-    late_options.add_route_mesh_channel ("late.route")
+    late_options.add_route_mesh ("late.route")
       .enable_server (late_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from ("7400"))
       .enable_client ();
     late_options.add_spot_mesh ("late.spots")
-      .add_node ("late-node")
       .enable_router (late_router_endpoint)
       .enable_pub_sub (late_pub_endpoint)
       .add_spot<stage_spot_t> ("stage");

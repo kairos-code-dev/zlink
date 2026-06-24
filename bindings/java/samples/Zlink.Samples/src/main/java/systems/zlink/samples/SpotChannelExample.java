@@ -1,18 +1,18 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 //
-// 자립형 가이드 예제: SPOT → 채널(DEALER→ROUTER) 요청.
+// 자립형 가이드 예제: SPOT → 채널(ROUTER→ROUTER) 요청.
 // 게임룸(Spot)이 API 서버(채널 서비스)에 outgame 데이터를 요청한다.
 //   bindings/java/gradlew -p . :samples:runSpotChannelExample --no-daemon
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotRouteBridge;
-import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RouterSocket;
 import java.net.InetAddress;
@@ -26,17 +26,21 @@ public final class SpotChannelExample {
         try (Context ctx = Zlink.createContext();
              SpotNode roomNode = ctx.createSpotNode();
              Spot room = roomNode.createSpot();
-             DealerSocket roomDealer = ctx.createDealerSocket();
+             RouterSocket roomRouter = ctx.createRouterSocket();
              RouterSocket apiRouter = ctx.createRouterSocket();
              SpotRouteBridge bridge = roomNode.createRouteBridge()) {
             String channel = "api";
             String endpoint = uniqueTcp();
+            RoutingId roomRouterRid = RoutingId.from("room-channel-client");
+            RoutingId apiRouterRid = RoutingId.from("room-channel-server");
+            roomRouter.setRoutingId(roomRouterRid);
+            apiRouter.setRoutingId(apiRouterRid);
             apiRouter.bind(endpoint);
-            roomDealer.connect(endpoint);
-            bridge.attachDealerChannel(channel, roomDealer);
+            roomRouter.connect(endpoint);
+            bridge.attachRouterChannel(channel, roomRouter);
 
             // 게임룸 노드의 route bridge가 API 채널로 outgame 요청을 보낸다.
-            var replyFuture = bridge.request(channel, room.getRoutingId())
+            var replyFuture = bridge.request(channel, apiRouterRid, room.getRoutingId())
                 .message(Message.from("get-profile"))
                 .timeout(Duration.ofSeconds(5))
                 .submit();

@@ -139,19 +139,21 @@ public sealed class test_callback_delivery
 
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateSpotNode();
-        using var dealer = ctx.CreateDealerSocket();
-        using var router = ctx.CreateRouterSocket();
+        using var bridgeRouter = ctx.CreateRouterSocket();
+        using var peerRouter = ctx.CreateRouterSocket();
         using var bridge = node.CreateRouteBridge();
         using var callbackSignal = new ManualResetEventSlim(false);
         using var callbackContext = new SingleThreadSynchronizationContext();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "callback-delivery-spot-route-bridge");
-        dealer.SetRoutingId(CoreTestSupport.RoutingIdUtf8("bridge-req-dealer"));
-        router.Bind(endpoint);
-        dealer.Connect(endpoint);
+        RoutingId peerRid = CoreTestSupport.RoutingIdUtf8("bridge-req-peer");
+        bridgeRouter.SetRoutingId(CoreTestSupport.RoutingIdUtf8("bridge-req-local"));
+        peerRouter.SetRoutingId(peerRid);
+        peerRouter.Bind(endpoint);
+        bridgeRouter.Connect(endpoint);
         Thread.Sleep(100);
-        bridge.AttachDealerChannel("svc", dealer);
+        bridge.AttachRouterChannel("svc", bridgeRouter);
 
         int callbackThreadId = -1;
         int callbackCount = 0;
@@ -164,7 +166,7 @@ public sealed class test_callback_delivery
             using Message request = Message.From("ping");
             RoutingId targetSpotRid =
                 CoreTestSupport.RoutingIdUtf8("callback-target-spot");
-            Assert.True(bridge.Request("svc", targetSpotRid,
+            Assert.True(bridge.Request("svc", peerRid, targetSpotRid,
                 new[] { request }, (result, parts) =>
             {
                 callbackThreadId = Environment.CurrentManagedThreadId;
@@ -190,7 +192,7 @@ public sealed class test_callback_delivery
 
         using var received = Received.Create();
         Assert.True(CoreTestSupport.WaitUntil(
-            () => router.Recv(received, RecvFlags.DontWait),
+            () => peerRouter.Recv(received, RecvFlags.DontWait),
             timeoutMs: 5000));
         try
         {
@@ -200,7 +202,7 @@ public sealed class test_callback_delivery
             Assert.Equal("ping", received.Parts[2].GetString());
             Assert.True(received.RequestSeq.HasValue);
             using Message reply = Message.From("pong");
-            router.Reply(
+            peerRouter.Reply(
                 received.RoutingId ?? throw new InvalidOperationException(
                     "missing routing id"), received.RequestSeq.Value)
                 .Message(reply).Submit();

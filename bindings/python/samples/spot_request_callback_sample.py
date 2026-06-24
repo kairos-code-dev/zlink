@@ -17,14 +17,18 @@ def main():
     with zlink.create_context() as ctx:
         with zlink.create_spot_node(ctx) as requester_node:
             with requester_node.create_spot() as requester:
-                with zlink.create_dealer_socket(ctx) as requester_dealer:
+                with zlink.create_router_socket(ctx) as requester_router:
                     with zlink.create_router_socket(ctx) as responder_router:
                         with requester_node.create_route_bridge() as bridge:
+                            requester_rid = b"spot-request-client"
+                            responder_rid = b"spot-request-server"
+                            requester_router.set_routing_id(requester_rid)
+                            responder_router.set_routing_id(responder_rid)
                             responder_router.bind(endpoint)
-                            requester_dealer.connect(endpoint)
-                            bridge.attach_dealer_channel(
+                            requester_router.connect(endpoint)
+                            bridge.attach_router_channel(
                                 CHANNEL_NAME,
-                                requester_dealer,
+                                requester_router,
                             )
 
                             def respond():
@@ -42,7 +46,7 @@ def main():
                             responder_thread.start()
                             reply_queue = queue.Queue()
                             (
-                                bridge.request(CHANNEL_NAME, requester.routing_id)
+                                bridge.request(CHANNEL_NAME, responder_rid, requester.routing_id)
                                 .message(REQUEST_PAYLOAD)
                                 .timeout(2.0)
                                 .submit(lambda result, parts: reply_queue.put((result, parts)))

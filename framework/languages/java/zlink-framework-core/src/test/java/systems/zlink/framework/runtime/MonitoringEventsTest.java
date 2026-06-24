@@ -22,7 +22,6 @@ import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeState;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.service.spot.SpotRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -470,29 +469,16 @@ final class MonitoringEventsTest {
 
     private static final class FakeSpotRouteBridge implements ZLinkBackendSpotRouteBridge {
         @Override
-        public void attachDealerChannel(
-            String channelName,
-            ZLinkBackendDealerSocket dealer,
-            SpotRouteBridgeEndpointOptions options) {
-            throw unused();
-        }
-
-        @Override
         public void attachRouterChannel(
             String channelName,
-            ZLinkBackendRouterSocket router,
-            SpotRouteBridgeEndpointOptions options) {
-            throw unused();
-        }
-
-        @Override
-        public void setTargetNode(String channelName, RoutingId targetNodeRid) {
+            ZLinkBackendRouterSocket router) {
             throw unused();
         }
 
         @Override
         public boolean send(
             String channelName,
+            RoutingId targetNodeRid,
             RoutingId targetSpotRid,
             List<Message> parts,
             SendFlags flags) {
@@ -502,6 +488,7 @@ final class MonitoringEventsTest {
         @Override
         public boolean request(
             String channelName,
+            RoutingId targetNodeRid,
             RoutingId targetSpotRid,
             List<Message> parts,
             ZLinkBackendRequestCallback callback,

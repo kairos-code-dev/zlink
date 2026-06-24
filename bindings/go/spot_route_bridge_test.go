@@ -8,7 +8,7 @@ import (
 	zlink "zlink.systems/zlink/contracts"
 )
 
-func TestSpotRouteBridgeDealerSendEmitsRelayPacket(t *testing.T) {
+func TestSpotRouteBridgeRouterSendEmitsRelayPacket(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
 
@@ -17,11 +17,11 @@ func TestSpotRouteBridgeDealerSendEmitsRelayPacket(t *testing.T) {
 		t.Fatalf("SpotNode() error = %v", err)
 	}
 	defer node.Close()
-	dealer, err := ctx.DealerSocket()
+	bridgeRouter, err := ctx.RouterSocket()
 	if err != nil {
-		t.Fatalf("DealerSocket() error = %v", err)
+		t.Fatalf("RouterSocket() error = %v", err)
 	}
-	defer dealer.Close()
+	defer bridgeRouter.Close()
 	router, err := ctx.RouterSocket()
 	if err != nil {
 		t.Fatalf("RouterSocket() error = %v", err)
@@ -34,21 +34,28 @@ func TestSpotRouteBridgeDealerSendEmitsRelayPacket(t *testing.T) {
 	defer bridge.Close()
 
 	endpoint := inprocEndpoint("go-spot-route-bridge")
+	targetNode := zlink.NewRoutingID([]byte("go-bridge-server"))
+	if err := bridgeRouter.SetRoutingID(zlink.NewRoutingID([]byte("go-bridge-client"))); err != nil {
+		t.Fatalf("bridgeRouter SetRoutingID() error = %v", err)
+	}
+	if err := router.SetRoutingID(targetNode); err != nil {
+		t.Fatalf("router SetRoutingID() error = %v", err)
+	}
 	if err := router.Bind(endpoint); err != nil {
 		t.Fatalf("Bind() error = %v", err)
 	}
-	if err := dealer.Connect(endpoint); err != nil {
+	if err := bridgeRouter.Connect(endpoint); err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if err := bridge.AttachDealerChannel("api", dealer, nil); err != nil {
-		t.Fatalf("AttachDealerChannel() error = %v", err)
+	if err := bridge.AttachRouterChannel("api", bridgeRouter, nil); err != nil {
+		t.Fatalf("AttachRouterChannel() error = %v", err)
 	}
 
 	targetSpot := zlink.NewRoutingID([]byte("target-spot"))
 	payload := newMessage(t, "hello-bridge")
 	defer payload.Close()
-	ok, err := bridge.Send("api", targetSpot, zlink.SendFlagsNone, payload)
+	ok, err := bridge.Send("api", targetNode, targetSpot, zlink.SendFlagsNone, payload)
 	if err != nil {
 		t.Fatalf("bridge.Send() error = %v", err)
 	}

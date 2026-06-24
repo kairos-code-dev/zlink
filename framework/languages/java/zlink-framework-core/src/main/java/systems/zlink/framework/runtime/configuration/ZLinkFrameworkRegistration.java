@@ -19,7 +19,6 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
-import systems.zlink.framework.runtime.spots.SpotRouteChannelAcceptanceRegistration;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 
@@ -183,7 +182,6 @@ public final class ZLinkFrameworkRegistration {
         workers.validate();
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(handlerPackageMarkers);
-        Set<String> spotPublisherChannels = new LinkedHashSet<>();
         validateRegistrySpotRemoteAddresses();
         if (!actorFactories.isEmpty() && spotNodes.isEmpty()) {
             throw new ZLinkConfigurationException(
@@ -194,46 +192,9 @@ public final class ZLinkFrameworkRegistration {
         }
         for (SpotNodeRegistration spotNode : spotNodes) {
             spotNode.validate();
-            for (SpotRouteChannelAcceptanceRegistration acceptance :
-                spotNode.acceptedSpotRouteChannels().values()) {
-                validateAcceptedSpotRouteChannel(spotNode, acceptance);
-            }
-            for (String channelName : spotNode.attachedSpotPublisherClients().keySet()) {
-                if (!spotPublisherChannels.add(channelName)) {
-                    throw new ZLinkConfigurationException(
-                        "duplicate SPOT publisher channel: " + channelName);
-                }
-            }
         }
         for (StreamNodeRegistration streamNode : streamNodes) {
             streamNode.validate(spotNodes);
-        }
-    }
-
-    private void validateAcceptedSpotRouteChannel(
-        SpotNodeRegistration spotNode,
-        SpotRouteChannelAcceptanceRegistration acceptance) {
-        if (!spotNode.routerEnabled()) {
-            throw new ZLinkConfigurationException(
-                "accepted SPOT route channel requires router capability: "
-                    + spotNode.nodeName() + "/" + acceptance.channelName());
-        }
-        ChannelRegistration channel = findChannel(acceptance.channelName());
-        if (channel == null) {
-            throw new ZLinkConfigurationException(
-                "accepted SPOT route channel is not registered: "
-                    + acceptance.channelName());
-        }
-        if (channel.kind() != ChannelKind.CLIENT_SERVER
-            && channel.kind() != ChannelKind.ROUTE_MESH) {
-            throw new ZLinkConfigurationException(
-                "accepted SPOT route channel must be client/server or route mesh: "
-                    + acceptance.channelName());
-        }
-        if (!discoveryEnabled() && acceptance.manualConnections().isEmpty()) {
-            throw new ZLinkConfigurationException(
-                "accepted SPOT route channel requires discovery or manual connections: "
-                    + acceptance.channelName());
         }
     }
 
@@ -263,7 +224,7 @@ public final class ZLinkFrameworkRegistration {
             .count();
         if (routeChannels == 0) {
             throw new ZLinkConfigurationException(
-                "registry SPOT remote addresses require AddRouteMeshChannel(...)");
+                "registry SPOT remote addresses require addRouteMesh(...)");
         }
         if (registrySpotRemoteAddresses.routerChannelId() == null) {
             if (routeChannels != 1) {

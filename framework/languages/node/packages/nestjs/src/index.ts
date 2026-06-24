@@ -272,8 +272,8 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   useDiscovery(): ZLinkNestDiscoveryBuilder;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
-  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder;
-  addSpotNode(name: string): ZLinkNestSpotNodeBuilder;
+  addRouteMesh(name: string): ZLinkNestRouterMeshBuilder;
+  addSpotMesh(name: string): ZLinkNestSpotNodeBuilder;
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder;
   build(): ZLinkModuleOptions;
 }
@@ -333,9 +333,6 @@ export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   connectPeerPub(endpoint: string): this;
   connectPubSub(endpoint: string): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
-  attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this;
-  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
-  acceptSpotRoutesFromChannel(channelName: string, peerRid: string, endpoint: string): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
 }
@@ -601,12 +598,12 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     return new DefaultZLinkNestFanoutChannelBuilder(this, this.fanoutChannels[name]);
   }
 
-  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
+  addRouteMesh(name: string): ZLinkNestRouterMeshBuilder {
     this.routerMeshes[name] ??= {};
     return new DefaultZLinkNestRouterMeshBuilder(this, this.routerMeshes[name]);
   }
 
-  addSpotNode(name: string): ZLinkNestSpotNodeBuilder {
+  addSpotMesh(name: string): ZLinkNestSpotNodeBuilder {
     this.spotNodes[name] ??= {};
     return new DefaultZLinkNestSpotNodeBuilder(this, this.spotNodes[name]);
   }
@@ -673,12 +670,12 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
     return this.root.addFanoutChannel(name);
   }
 
-  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
-    return this.root.addRouteMeshChannel(name);
+  addRouteMesh(name: string): ZLinkNestRouterMeshBuilder {
+    return this.root.addRouteMesh(name);
   }
 
-  addSpotNode(name: string): ZLinkNestSpotNodeBuilder {
-    return this.root.addSpotNode(name);
+  addSpotMesh(name: string): ZLinkNestSpotNodeBuilder {
+    return this.root.addSpotMesh(name);
   }
 
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
@@ -953,38 +950,6 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
 
   configureEntrySpot(options: ZLinkEntrySpotOptions): this {
     this.spotOptions.entrySpot = { ...options };
-    return this;
-  }
-
-  attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this {
-    this.spotOptions.attachedSpotPublisherClients = {
-      ...(this.spotOptions.attachedSpotPublisherClients ?? {}),
-      [channelName]: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) }
-    };
-    return this;
-  }
-
-  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
-  acceptSpotRoutesFromChannel(channelName: string, peerRid: string, endpoint: string): this;
-  acceptSpotRoutesFromChannel(channelName: string, peerRidOrEndpoint?: string | readonly string[], endpoint?: string): this {
-    if (endpoint !== undefined && typeof peerRidOrEndpoint === 'string') {
-      const existing = this.spotOptions.acceptedSpotRouteChannels?.[channelName];
-      this.spotOptions.acceptedSpotRouteChannels = {
-        ...(this.spotOptions.acceptedSpotRouteChannels ?? {}),
-        [channelName]: {
-          ...(existing ?? {}),
-          manualPeerConnections: [
-            ...(existing?.manualPeerConnections ?? []),
-            { peerRid: peerRidOrEndpoint, endpoint }
-          ]
-        }
-      };
-      return this;
-    }
-    this.spotOptions.acceptedSpotRouteChannels = {
-      ...(this.spotOptions.acceptedSpotRouteChannels ?? {}),
-      [channelName]: peerRidOrEndpoint === undefined ? {} : { manualConnections: endpointList(peerRidOrEndpoint) }
-    };
     return this;
   }
 

@@ -220,12 +220,6 @@ function resolveBackendSpotNodeProperty(target: unknown, property: string | symb
       (target as unknown as { createRouteBridge(): { close(): void } }).createRouteBridge()
     ) as unknown as ZLinkBackendSpotRouteBridge;
   }
-  if (property === 'attachDealerChannel') {
-    return (channelName: string, dealer: ZLinkBackendDealerSocket, options?: { readonly capabilities?: number }) =>
-      (target as unknown as {
-        attachDealerChannel(channelName: string, dealer: unknown, options?: { readonly capabilities?: number }): void;
-      }).attachDealerChannel(channelName, unwrapBackendObject(dealer), options);
-  }
   if (property === 'attachRouterChannel') {
     return (channelName: string, router: ZLinkBackendRouterSocket, options?: { readonly capabilities?: number }) =>
       (target as unknown as {
@@ -281,35 +275,29 @@ function resolveBackendRouteBridgeProperty(target: unknown, property: string | s
     return (
       channelName: string,
       sourceNodeRid: unknown,
-      parts: readonly unknown[],
-      requestSeq?: bigint | number
+      requestSeq: bigint | number,
+      parts: readonly unknown[]
     ) =>
       (target as unknown as {
         handleRouterReceived(
           channelName: string,
           sourceNodeRid: unknown,
-          parts: readonly unknown[],
-          requestSeq?: bigint | number
+          requestSeq: bigint | number,
+          parts: readonly unknown[]
         ): boolean;
-      }).handleRouterReceived(channelName, toNativeRoutingId(sourceNodeRid), parts, requestSeq);
-  }
-  if (isSpotRouteBridgeTarget(target) && property === 'setTargetNode') {
-    return (channelName: string, targetNodeRid: unknown) =>
-      (target as unknown as {
-        setTargetNode(channelName: string, targetNodeRid: unknown): void;
-      }).setTargetNode(channelName, toNativeRoutingId(targetNodeRid));
+      }).handleRouterReceived(channelName, toNativeRoutingId(sourceNodeRid), BigInt(requestSeq), parts);
   }
   if (isSpotRouteBridgeTarget(target) && property === 'send') {
-    return (channelName: string, targetSpotRid: unknown) =>
+    return (channelName: string, targetNodeRid: unknown, targetSpotRid: unknown) =>
       (target as unknown as {
-        send(channelName: string, targetSpotRid: unknown): unknown;
-      }).send(channelName, toNativeRoutingId(targetSpotRid));
+        send(channelName: string, targetNodeRid: unknown, targetSpotRid: unknown): unknown;
+      }).send(channelName, toNativeRoutingId(targetNodeRid), toNativeRoutingId(targetSpotRid));
   }
   if (isSpotRouteBridgeTarget(target) && property === 'request') {
-    return (channelName: string, targetSpotRid: unknown) =>
+    return (channelName: string, targetNodeRid: unknown, targetSpotRid: unknown) =>
       (target as unknown as {
-        request(channelName: string, targetSpotRid: unknown): unknown;
-      }).request(channelName, toNativeRoutingId(targetSpotRid));
+        request(channelName: string, targetNodeRid: unknown, targetSpotRid: unknown): unknown;
+      }).request(channelName, toNativeRoutingId(targetNodeRid), toNativeRoutingId(targetSpotRid));
   }
   return undefined;
 }
@@ -416,7 +404,6 @@ function isSpotRouteBridgeTarget(target: unknown): boolean {
   return target !== null &&
     typeof target === 'object' &&
     'attachRouterChannel' in target &&
-    'setTargetNode' in target &&
     'handleRouterReceived' in target;
 }
 

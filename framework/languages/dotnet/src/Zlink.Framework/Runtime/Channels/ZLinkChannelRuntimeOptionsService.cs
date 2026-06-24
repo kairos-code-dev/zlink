@@ -142,12 +142,6 @@ internal sealed class ZLinkRouteMeshRuntimeOptions(IZLinkSocketConfig socket)
     public IZLinkSocketConfig ConfigureSocket() => socket;
 }
 
-internal sealed class ZLinkDealerMeshRuntimeOptions(IZLinkSocketConfig socket)
-    : IZLinkDealerMeshChannelOptions
-{
-    public IZLinkSocketConfig ConfigureSocket() => socket;
-}
-
 internal sealed class ZLinkChannelRuntimeOptions(ZLinkFrameworkRuntime runtime)
     : IZLinkChannelRuntimeOptions
 {
@@ -161,11 +155,5 @@ internal sealed class ZLinkChannelRuntimeOptions(ZLinkFrameworkRuntime runtime)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
         return new ZLinkRouteMeshRuntimeOptions(runtime.ResolveRouteMeshSocketConfig(channelName));
-    }
-
-    public IZLinkDealerMeshChannelOptions DealerMeshChannel(string channelName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
-        return new ZLinkDealerMeshRuntimeOptions(runtime.ResolveDealerMeshSocketConfig(channelName));
     }
 }

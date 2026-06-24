@@ -120,7 +120,7 @@ handler 안에서 blocking wait를 쓰지 않는다.
   reply writer를 통해 response/error envelope로 변환하고 command/send는 reply 없이
   handler dispatch만 수행한다.
 - channel 역할 runtime bundle은 `channel_runtime_bundle_t`가 맡는다. manual
-  connection set, dealer-mesh pending request owner, receive gate는 한 역할의 내부
+  connection set, channel pending request owner, receive gate는 한 역할의 내부
   상태로 묶고 public builder나 call object에 노출하지 않는다.
 - channel 역할 생성과 조회는 `channel_bundle_factory_t`와
   `channel_runtime_manager_t`가 맡는다. manager는 `.NET`처럼 client/publisher bundle을
@@ -139,18 +139,13 @@ handler 안에서 blocking wait를 쓰지 않는다.
   `route_channel_initializer_t`가 맡는다. `.NET`은 reflection scanner와 assembly marker로
   descriptor를 수집하지만, C++는 typed handler installer를 registration에 저장한 뒤
   initializer가 `route_handler_registry_t`로 변환한다. 프레임워크 사용자는
-  `options.add_route_mesh_channel(name)`으로 server endpoint, routing id, client endpoint,
+  `options.add_route_mesh(name)`으로 server endpoint, routing id, client endpoint,
   handler group을 설정한다. route mesh channel은 local route endpoint를 열기 위해
   `enable_server(endpoint)`가 필요하다.
-  SPOT route ingress에서 `accept_routes_from_channel(name)`으로 참조할 수 있는 channel은
-  client/server channel 또는 route mesh channel뿐이다. 참조한 node는 router 역할과
-  registry discovery 또는 accepted route manual endpoint를 가져야 한다.
+  SPOT route ingress는 같은 프로세스에 RouteMesh와 SpotMesh가 함께 있을 때 자동으로
+  연결된다. 외부에서 Spot으로 들어오는 routed 호출은 RouteMesh만 사용한다.
   `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework
   내부와 고급 확장용 낮은 수준 표면으로 남긴다.
-- dealer mesh channel은 `options.add_dealer_mesh_channel(name)`으로 선언하되
-  `enable_server(endpoint)`, `enable_client(endpoint)`(manual), 또는 `enable_client()`
-  (registry discovery) 중 하나 이상을 함께 둔다. peer 획득 경로가 없으면 framework
-  options 적용 시점에 실패한다.
 - client/server channel은 server 또는 client 역할 중 하나 이상이 필요하고, fanout
   channel은 publisher 또는 subscriber 역할 중 하나 이상이 필요하다. 아무 역할도 없는
   channel 선언은 framework options 적용 시점에 실패한다.

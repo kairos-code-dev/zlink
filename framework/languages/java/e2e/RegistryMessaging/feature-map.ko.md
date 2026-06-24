@@ -23,7 +23,6 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행
 
 ## public API/harness 대기
 
-- `RM-C6`: Java `DealerMeshChannelBuilder`는 client endpoint 등록만 공개하고 server bind API를
-  공개하지 않아 provider를 public API만으로 dealer mesh peer로 띄울 수 없다.
+- `RM-C6`: 제거된 mesh 경로는 RegistryMessaging public API 대기 항목에서 제외한다.
 - `RM-C7`: Java channel builder에는 server socket weight 설정 API가 공개되어 있지 않다.
 - `RM-C9`: HWM 포화와 backpressure를 안정적으로 유도하는 public 테스트 제어 API가 아직 없다.

@@ -67,8 +67,7 @@ else if (options.Role == "service")
         {
             var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
             spotMesh.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
-            spotMesh.AddNode(RuntimeMonitoringNames.SpotNode)
-                .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+            spotMesh.EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
                 .SetRouterRoutingId(RoutingId.From(options.Rid))
                 .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
                 .SetPubSubRoutingId(RoutingId.From(options.Rid))

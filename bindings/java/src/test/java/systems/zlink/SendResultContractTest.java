@@ -4,12 +4,10 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointCapabilities;
 import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;
@@ -88,26 +86,30 @@ public class SendResultContractTest {
     }
 
     @Test
-    public void spotRouteBridgeRequestUsesCallerOwnedDealerSocket()
+    public void spotRouteBridgeRequestUsesCallerOwnedRouterSocket()
         throws Exception {
         TestSupport.assumeNative();
 
         try (Context ctx = Zlink.createContext();
              SpotNode node = ctx.createSpotNode();
              Spot spot = node.createSpot();
-             DealerSocket dealer = ctx.createDealerSocket();
+             RouterSocket bridgeRouter = ctx.createRouterSocket();
              RouterSocket router = ctx.createRouterSocket();
              SpotRouteBridge bridge = node.createRouteBridge()) {
             String endpoint = TestSupport.tcpEndpoint();
+            RoutingId bridgeRid = RoutingId.from("spot-bridge-client");
+            RoutingId routerRid = RoutingId.from("spot-bridge-server");
+            bridgeRouter.setRoutingId(bridgeRid);
+            router.setRoutingId(routerRid);
             router.bind(endpoint);
-            dealer.connect(endpoint);
-            bridge.attachDealerChannel("api", dealer);
+            bridgeRouter.connect(endpoint);
+            bridge.attachRouterChannel("api", bridgeRouter);
 
             for (int i = 0; i < 2; i++) {
                 String requestText = "spot-ping-" + i;
                 String replyText = "spot-pong-" + i;
                 CompletionStage<List<Message>> replyFuture =
-                    bridge.request("api", spot.getRoutingId())
+                    bridge.request("api", routerRid, spot.getRoutingId())
                         .message(Message.from(requestText))
                         .timeout(Duration.ofSeconds(2))
                         .submit();
@@ -133,7 +135,7 @@ public class SendResultContractTest {
         }
     }
 
-    public void spotRouteBridgeRouterDrainCompletesDealerBridgeRequest()
+    public void spotRouteBridgeRouterDrainCompletesRouterBridgeRequest()
         throws Exception {
         TestSupport.assumeNative();
 
@@ -141,28 +143,30 @@ public class SendResultContractTest {
              SpotNode targetNode = ctx.createSpotNode();
              Spot targetSpot = targetNode.createSpot();
              RouterSocket targetRouter = ctx.createRouterSocket();
-             SpotRouteBridge targetBridge = targetNode.createRouteBridge()) {
+            SpotRouteBridge targetBridge = targetNode.createRouteBridge()) {
             targetSpot.setRoutingId(RoutingId.from("target-spot"));
             String endpoint = TestSupport.tcpEndpoint();
+            RoutingId targetRouterRid = RoutingId.from("target-router");
+            targetRouter.setRoutingId(targetRouterRid);
             targetRouter.bind(endpoint);
             targetBridge.attachRouterChannel(
                 "api",
                 targetRouter,
-                new SpotRouteBridgeEndpointOptions().capabilities(
-                    SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+                new SpotRouteBridgeEndpointOptions());
 
             try (SpotNode sourceNode = ctx.createSpotNode();
-                 DealerSocket sourceDealer = ctx.createDealerSocket();
+                 RouterSocket sourceRouter = ctx.createRouterSocket();
                  SpotRouteBridge sourceBridge = sourceNode.createRouteBridge()) {
-                sourceDealer.connect(endpoint);
+                sourceRouter.setRoutingId(RoutingId.from("source-router"));
+                sourceRouter.connect(endpoint);
                 Thread.sleep(50);
-                sourceBridge.attachDealerChannel("api", sourceDealer);
+                sourceBridge.attachRouterChannel("api", sourceRouter);
 
                 for (int i = 0; i < 2; i++) {
                     String requestText = "bridge-ping-" + i;
                     String replyText = "bridge-pong-" + i;
                     CompletionStage<List<Message>> replyStage =
-                        sourceBridge.request("api", targetSpot.getRoutingId())
+                        sourceBridge.request("api", targetRouterRid, targetSpot.getRoutingId())
                             .message(Message.from(requestText))
                             .timeout(Duration.ofSeconds(2))
                             .submit();
@@ -209,7 +213,7 @@ public class SendResultContractTest {
     }
 
     @Test
-    public void spotRouteBridgeRouterDrainCompletesDealerBridgeRequestAcrossContexts()
+    public void spotRouteBridgeRouterDrainCompletesRouterBridgeRequestAcrossContexts()
         throws Exception {
         TestSupport.assumeNative();
 
@@ -221,22 +225,24 @@ public class SendResultContractTest {
              SpotRouteBridge targetBridge = targetNode.createRouteBridge();
              Context sourceCtx = Zlink.createContext();
              SpotNode sourceNode = sourceCtx.createSpotNode();
-             DealerSocket sourceDealer = sourceCtx.createDealerSocket();
+             RouterSocket sourceRouter = sourceCtx.createRouterSocket();
              SpotRouteBridge sourceBridge = sourceNode.createRouteBridge()) {
             targetSpot.setRoutingId(RoutingId.from("target-spot-cross-context"));
+            RoutingId targetRouterRid = RoutingId.from("target-router-cross-context");
+            targetRouter.setRoutingId(targetRouterRid);
+            sourceRouter.setRoutingId(RoutingId.from("source-router-cross-context"));
             targetRouter.bind(endpoint);
             targetBridge.attachRouterChannel(
                 "ingress",
                 targetRouter,
-                new SpotRouteBridgeEndpointOptions().capabilities(
-                    SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+                new SpotRouteBridgeEndpointOptions());
 
-            sourceDealer.connect(endpoint);
+            sourceRouter.connect(endpoint);
             Thread.sleep(50);
-            sourceBridge.attachDealerChannel("egress", sourceDealer);
+            sourceBridge.attachRouterChannel("egress", sourceRouter);
 
             CompletionStage<List<Message>> replyStage =
-                sourceBridge.request("egress", targetSpot.getRoutingId())
+                sourceBridge.request("egress", targetRouterRid, targetSpot.getRoutingId())
                     .message(Message.from("cross-context-ping"))
                     .timeout(Duration.ofSeconds(2))
                     .submit();
@@ -281,7 +287,7 @@ public class SendResultContractTest {
     }
 
     @Test
-    public void spotRouteBridgeRouterDrainCompletesRequestsFromSequentialDealerContexts()
+    public void spotRouteBridgeRouterDrainCompletesRequestsFromSequentialRouterContexts()
         throws Exception {
         TestSupport.assumeNative();
 
@@ -292,26 +298,28 @@ public class SendResultContractTest {
              RouterSocket targetRouter = targetCtx.createRouterSocket();
              SpotRouteBridge targetBridge = targetNode.createRouteBridge()) {
             targetSpot.setRoutingId(RoutingId.from("target-spot-sequential-contexts"));
+            RoutingId targetRouterRid = RoutingId.from("target-router-sequential-contexts");
+            targetRouter.setRoutingId(targetRouterRid);
             targetRouter.bind(endpoint);
             targetBridge.attachRouterChannel(
                 "ingress",
                 targetRouter,
-                new SpotRouteBridgeEndpointOptions().capabilities(
-                    SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+                new SpotRouteBridgeEndpointOptions());
 
             for (int i = 0; i < 2; i++) {
                 String requestText = "sequential-ping-" + i;
                 String replyText = "sequential-pong-" + i;
                 try (Context sourceCtx = Zlink.createContext();
                      SpotNode sourceNode = sourceCtx.createSpotNode();
-                     DealerSocket sourceDealer = sourceCtx.createDealerSocket();
+                     RouterSocket sourceRouter = sourceCtx.createRouterSocket();
                      SpotRouteBridge sourceBridge = sourceNode.createRouteBridge()) {
-                    sourceDealer.connect(endpoint);
+                    sourceRouter.setRoutingId(RoutingId.from("source-router-sequential-" + i));
+                    sourceRouter.connect(endpoint);
                     Thread.sleep(50);
-                    sourceBridge.attachDealerChannel("egress", sourceDealer);
+                    sourceBridge.attachRouterChannel("egress", sourceRouter);
 
                     CompletionStage<List<Message>> replyStage =
-                        sourceBridge.request("egress", targetSpot.getRoutingId())
+                        sourceBridge.request("egress", targetRouterRid, targetSpot.getRoutingId())
                             .message(Message.from(requestText))
                             .timeout(Duration.ofSeconds(2))
                             .submit();

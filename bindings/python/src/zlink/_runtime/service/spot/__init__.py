@@ -61,7 +61,6 @@ from .spot_route_bridge import (
     SpotRouteBridgeEndpointCapabilities,
     SpotRouteBridgeEndpointOptions,
     SpotRouteBridgeOptions,
-    SpotRouteBridgeSummary,
 )
 
 __all__ = [
@@ -98,7 +97,6 @@ __all__ = [
     "SpotRouteBridgeEndpointCapabilities",
     "SpotRouteBridgeEndpointOptions",
     "SpotRouteBridgeOptions",
-    "SpotRouteBridgeSummary",
     "SpotNodeActorEntry",
     "SpotNodePeerEntry",
     "SpotNodePeerFilter",

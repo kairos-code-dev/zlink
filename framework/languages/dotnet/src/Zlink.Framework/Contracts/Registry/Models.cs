@@ -5,7 +5,6 @@ public enum ZLinkAutoConnectType
     Invalid = 0,
     RouteMesh = 1,
     ClientServer = 2,
-    DealerMesh = 3,
     Fanout = 4,
     SpotMesh = 5,
 }

@@ -1285,11 +1285,10 @@ int main (int argc, char **argv)
           .server_routing_id (zlink::routing_id_t::from (std::string ("client-api")))
           .use_handler_group (e2e::handler_group);
         options.add_fanout_channel (e2e::publisher_channel).enable_publisher (publisher_endpoint);
-        auto route = options.add_route_mesh_channel (e2e::route_channel)
+        auto route = options.add_route_mesh (e2e::route_channel)
                        .enable_server (route_endpoint)
                        .set_routing_id (zlink::routing_id_t::from (std::string ("client-session")))
-                       .enable_client ()
-                       .enable_spot_route_egress (e2e::route_channel);
+                       .enable_client ();
         if (!route_a_endpoint.empty ()) {
             route.enable_client (route_a_endpoint);
         }
@@ -1298,13 +1297,11 @@ int main (int argc, char **argv)
         }
         options.add_spot_mesh (e2e::spot_mesh)
           .use_registry_spot_resolver (e2e::route_channel)
-          .add_node ("client-session")
           .enable_router (spot_router_endpoint,
                           zlink::routing_id_t::from (std::string ("client-session")))
           .enable_actor_gateway ()
           .enable_pub_sub (pubsub_endpoint,
-                           zlink::routing_id_t::from (std::string ("client-session")))
-          .attach_publisher (e2e::publisher_channel);
+                           zlink::routing_id_t::from (std::string ("client-session")));
     });
     app.add_hosted_service (std::move (scenario));
     const auto code = app.run (argc, argv);

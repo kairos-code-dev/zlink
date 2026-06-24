@@ -573,13 +573,11 @@ The underlying `SpotNode` is not affected.
 ## 14. Receiving From Router Channels
 
 In addition to the regular SPOT mesh, a router-capable channel's `ROUTER` can
-send messages to a target `Spot`. The `SpotNode` must explicitly accept routes
-from that router channel.
+send messages to a target `Spot`. In the framework, a RouteMesh and SpotMesh in
+the same process are wired automatically for this receive path.
 
-In the framework, use `AcceptSpotRoutesFromChannel(...)`. The same surface
-covers a client/server channel's server `ROUTER` and a route mesh channel's
-`ROUTER`. Fanout channels and dealer mesh channels do not have the router
-capability needed for this path.
+Fanout channels and dealer mesh channels do not have the router capability
+needed for this path.
 
 When using the core API directly, register the caller-owned channel socket on a
 `zlink_spot_route_bridge_*` handle. Applications do not need to know internal

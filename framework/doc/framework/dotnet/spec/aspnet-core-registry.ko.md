@@ -474,7 +474,7 @@ builder.Services.AddZLinkFramework(options =>
         options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
 
     {
-        var channel =     options.AddRouteMeshChannel("play");
+        var channel =     options.AddRouteMesh("play");
         channel.Bind("tcp://0.0.0.0:7201");
 
     }

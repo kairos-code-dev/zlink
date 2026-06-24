@@ -81,12 +81,12 @@ dispatch 가 가져간다. **per-room lock 도, Redis 세션 라우팅 캐시도
 ```kotlin
 val stream = options.addStreamNode("session")
 stream.bind("tcp://0.0.0.0:9100")
-stream.attachActorGateway("play-node")
+stream.attachActorGateway("play")
 stream.registerSession(GameSession::class.java)
 
 options.addActorFactory("player", PlayerActorFactory::class.java)
 
-val node = options.addSpotMesh("play").addNode("play-node")
+val node = options.addSpotMesh("play")
 node.enableRouter("tcp://0.0.0.0:9200")
 node.addEntrySpot(PlayerEntrySpot::class.java)
 node.addSpotFactory(MatchSpot::class.java)
@@ -200,7 +200,6 @@ class GameSession(
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as WS gateway
@@ -218,7 +217,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant S as Session 서버

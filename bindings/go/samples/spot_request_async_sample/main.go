@@ -16,9 +16,9 @@ func main() {
 	requesterNode, err := ctx.SpotNode()
 	samplecommon.MustStep("requesterNode", err)
 	defer func() { samplecommon.MustStep("requesterNode.Close", requesterNode.Close()) }()
-	requesterDealer, err := ctx.DealerSocket()
-	samplecommon.MustStep("requesterDealer", err)
-	defer func() { samplecommon.MustStep("requesterDealer.Close", requesterDealer.Close()) }()
+	requesterRouter, err := ctx.RouterSocket()
+	samplecommon.MustStep("requesterRouter", err)
+	defer func() { samplecommon.MustStep("requesterRouter.Close", requesterRouter.Close()) }()
 	responderRouter, err := ctx.RouterSocket()
 	samplecommon.MustStep("responderRouter", err)
 	defer func() { samplecommon.MustStep("responderRouter.Close", responderRouter.Close()) }()
@@ -30,11 +30,15 @@ func main() {
 	const requestPayload = "spot-ping"
 	const replyPayload = "spot-pong"
 	endpoint := samplecommon.UniqueTCP("spot-request-async")
+	requesterRID := zlink.NewRoutingID([]byte("spot-request-client"))
+	responderRID := zlink.NewRoutingID([]byte("spot-request-server"))
+	samplecommon.MustStep("requesterRouter.SetRoutingID", requesterRouter.SetRoutingID(requesterRID))
+	samplecommon.MustStep("responderRouter.SetRoutingID", responderRouter.SetRoutingID(responderRID))
 	samplecommon.MustStep("responderRouter.Bind", responderRouter.Bind(endpoint))
-	samplecommon.MustStep("requesterDealer.Connect", requesterDealer.Connect(endpoint))
+	samplecommon.MustStep("requesterRouter.Connect", requesterRouter.Connect(endpoint))
 	samplecommon.MustStep(
-		"bridge.AttachDealerChannel",
-		bridge.AttachDealerChannel(channelName, requesterDealer, nil),
+		"bridge.AttachRouterChannel",
+		bridge.AttachRouterChannel(channelName, requesterRouter, nil),
 	)
 
 	serverDone := make(chan error, 1)
@@ -67,7 +71,7 @@ func main() {
 		replyParts    []*zlink.Message
 	}
 	replyCh := make(chan result, 1)
-	_, reqErr := bridge.Request(channelName, zlink.NewRoutingID([]byte("requester-spot")), zlink.SendFlagsNone, 5*time.Second, func(requestResult zlink.RequestResult, replyParts []*zlink.Message) {
+	_, reqErr := bridge.Request(channelName, responderRID, zlink.NewRoutingID([]byte("requester-spot")), zlink.SendFlagsNone, 5*time.Second, func(requestResult zlink.RequestResult, replyParts []*zlink.Message) {
 		replyCh <- result{requestResult: requestResult, replyParts: replyParts}
 	}, samplecommon.Message(requestPayload))
 	samplecommon.MustStep("bridge.Request", reqErr)

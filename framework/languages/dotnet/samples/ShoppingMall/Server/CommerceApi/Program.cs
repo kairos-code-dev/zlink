@@ -43,7 +43,7 @@ internal static class Program
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
-                var route = options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel);
+                var route = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel);
                 route.EnableServer(instance.RouteEndpoint);
                 route.SetRoutingId(instance.RouteRid);
 

@@ -4,10 +4,10 @@
 
 # 케이스 — 실시간 멀티플레이 게임
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > STREAM·SPOT·actor·session actor dispatch 가 한 도메인에 모두 맞는 사례. 등록
-> 정식은 [05-spot](../05-spot.ko.md)·[06-actor-session](../06-actor-session.ko.md)·
-> [07-stream](../07-stream.ko.md)이 다룬다. 실행 가능한 구현 학습은
+> 정식은 [05-spot](../05-spot.ko.md)·[06-actor-spot](../06-actor-spot.ko.md)·
+> [08-stream](../08-stream.ko.md)이 다룬다. 실행 가능한 구현 학습은
 > [TicTacToe 샘플](../samples/tictactoe-game-sample.ko.md)·
 > [Bingo 샘플](../samples/bingo-game-sample.ko.md)·GameQuest 세 샘플이 각기 다른
 > 각도로 맡고(§7), 이 문서는 게임 도메인에 ZLink 를 넣을지 판단하는 케이스 스터디다.
@@ -138,7 +138,7 @@ public sealed class PlaceMarkHandler
 }
 options.AddActorFactory<PlayerActorFactory>("player");
 {
-    var n = options.AddSpotMesh("play").AddNode("play-node");
+    var n = options.AddSpotMesh("play");
         n.EnableRouter("tcp://0.0.0.0:9200");
     n.AddEntrySpot<PlayerEntrySpot>();
     n.AddSpotFactory<MatchSpot>();
@@ -148,14 +148,14 @@ options.AddActorFactory<PlayerActorFactory>("player");
 
 > **재접속 이전성은 framework 기본기.** 다른 Session 서버로 다시 붙어도
 > `BindAsync(actor, ...)` 가 actor id 기준으로 멱등하게 이어지며,
-> actor 인스턴스와 spot membership 은 유지된다([6](../06-actor-session.ko.md) §4).
+> actor 인스턴스와 spot membership 은 유지된다([7](../07-actor-session.ko.md) §1).
 > 즉 **Redis 세션 라우팅 캐시가 응용에서 빠진다.**
 
 > **다국어 배치.** 위 코드는 `.NET` binding 예시지만, ZLink 은 언어 중립 wire
 > protocol 위 다국어 binding 이라 한 시스템을 여러 언어로 섞을 수 있다. 예컨대
 > **room/match 로직은 C++**(고성능 tick), **API·매치메이킹은 .NET 또는 Java** 로
 > 두고 **같은 channel/spot/packet 계약**으로 상호 호출한다. 계약은 packet 이름 +
-> codec DTO(교차 언어는 protobuf 권장)다([12 §2.1](../12-grpc-alternative.ko.md)).
+> codec DTO(교차 언어는 protobuf 권장)다([13 §2.1](../13-grpc-alternative.ko.md)).
 
 ## 4. 양쪽 코드 비교 — "한 수 두기" 경로
 
@@ -215,7 +215,6 @@ options.AddActorFactory<PlayerActorFactory>("player");
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as WS gateway
@@ -233,7 +232,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant S as Session 서버
@@ -256,7 +254,7 @@ binding 만 새 stream 으로 옮겨 붙는다.
   per-room lock 배선, 매칭 라우팅 mesh.
 - **그대로 남는 것:** 장기 progression **DB**, 매칭 알고리즘, 권위적 검증. SPOT/actor
   의 인메모리 상태는 그 lifetime 동안만 유지된다. 공통 경계는
-  [12-grpc-alternative](../12-grpc-alternative.ko.md)의 §4 경계 절 참고.
+  [13-grpc-alternative](../13-grpc-alternative.ko.md)의 §4 경계 절 참고.
 
 ## 7. 실행 가능한 샘플 — 게임 백엔드 3선
 
@@ -300,8 +298,8 @@ room 루프가 아니라, 여러 gameplay 영역(combat·inventory·mission·fea
 
 ## 8. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
-- 사용법: [05-spot](../05-spot.ko.md), [06-actor-session](../06-actor-session.ko.md), [07-stream](../07-stream.ko.md)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
+- 사용법: [05-spot](../05-spot.ko.md), [06-actor-spot](../06-actor-spot.ko.md), [08-stream](../08-stream.ko.md)
 - 실행 예제: [tictactoe 샘플](../samples/tictactoe-game-sample.ko.md), [bingo 샘플](../samples/bingo-game-sample.ko.md), [GameQuest 샘플](../../../../../languages/dotnet/samples/GameQuest)
 - 다음 케이스: [16-case-ride-hailing](16-case-ride-hailing.ko.md)
 

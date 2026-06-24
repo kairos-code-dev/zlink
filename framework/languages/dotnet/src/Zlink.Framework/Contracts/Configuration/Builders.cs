@@ -19,12 +19,6 @@ public interface IZLinkRouteMeshChannelOptions
     IZLinkSocketConfig ConfigureSocket();
 }
 
-public interface IZLinkDealerMeshChannelOptions
-{
-    // dealer mesh 는 server·client 가 같은 DEALER 소켓을 공유하므로 단일 ConfigureSocket 만 가진다.
-    IZLinkSocketConfig ConfigureSocket();
-}
-
 public interface IZLinkDiscoveryBuilder
 {
     IZLinkDiscoveryBuilder AddRegistryEndpoint(string endpoint);
@@ -59,8 +53,6 @@ public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteMeshChannelOptions
 
     IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
-
-    IZLinkRouteMeshChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkStreamNodeBuilder
@@ -99,8 +91,6 @@ public interface IZLinkClientServerChannelBuilder : IZLinkClientServerChannelOpt
 
     IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
-
-    IZLinkClientServerChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkFanoutChannelBuilder
@@ -117,35 +107,6 @@ public interface IZLinkFanoutChannelBuilder
         where THandler : class, IZLinkPublishHandler<TMessage>;
 
     IZLinkFanoutChannelBuilder AddPublishHandler<THandler>(string? packetName = null)
-        where THandler : class;
-}
-
-public interface IZLinkDealerMeshChannelBuilder : IZLinkDealerMeshChannelOptions
-{
-    // dealer mesh 는 DEALER ↔ DEALER 대칭이라 server·client 가 같은 DEALER 소켓을 공유한다.
-    // EnableServer 는 이 노드가 bind 해서 inbound 를 handler 로 받는(제공) 쪽을,
-    // EnableClient 는 다른 peer 에 connect 해 outbound 호출하는(소비) 쪽을 설정한다.
-    // 한 노드가 둘 다 켤 수 있다. ConfigureSocket() 은 IZLinkDealerMeshChannelOptions 상속.
-    IZLinkDealerMeshChannelBuilder EnableServer(string endpoint);
-
-    IZLinkDealerMeshChannelBuilder EnableClient();
-
-    IZLinkDealerMeshChannelBuilder EnableClient(string endpoint);
-
-    IZLinkDealerMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
-
-    IZLinkDealerMeshChannelBuilder AddHandlerGroup(string groupName);
-
-    IZLinkDealerMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
-        where THandler : class, IZLinkSendHandler<TMessage>;
-
-    IZLinkDealerMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
-        where THandler : class;
-
-    IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-        where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
-
-    IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 }
 
@@ -175,16 +136,6 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber();
 
-    IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName);
-
-    IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint);
-
-    IZLinkSocketConfig ConfigureSpotPublisherClientSocket(string channelName);
-
-    IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName);
-
-    IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName, string endpoint);
-
     IZLinkEntrySpotOptions ConfigureEntrySpot();
 
     IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
@@ -194,17 +145,11 @@ public interface IZLinkSpotNodeBuilder
         where TEntrySpot : IZLinkEntrySpot;
 }
 
-public interface IZLinkSpotMeshNodeBuilder : IZLinkSpotNodeBuilder
-{
-}
-
 public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
 {
     IZLinkDiscoveryBuilder UseDiscovery();
 
     IZLinkSpotMeshBuilder UseRegistrySpotResolver();
-
-    IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName);
 }
 
 public interface IZLinkRegistrySpotRemoteAddressesOptions
@@ -243,9 +188,7 @@ public interface IZLinkFrameworkOptions
 
     IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName);
 
-    IZLinkDealerMeshChannelBuilder AddDealerMeshChannel(string channelName);
-
-    IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName);
+    IZLinkRouteMeshChannelBuilder AddRouteMesh(string channelName);
 
     IZLinkDiscoveryBuilder UseDiscovery();
 

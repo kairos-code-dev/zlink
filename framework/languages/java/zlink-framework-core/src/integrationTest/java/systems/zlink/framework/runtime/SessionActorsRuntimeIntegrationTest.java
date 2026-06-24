@@ -246,7 +246,7 @@ final class SessionActorsRuntimeIntegrationTest {
     private static ZLinkFrameworkRuntime startGatewayRuntime() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class);
                 node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
@@ -261,7 +261,7 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SessionActorsRuntimeIntegrationTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class);
                 node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
@@ -275,7 +275,7 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         String suffix = Long.toString(System.nanoTime());
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router-" + suffix)
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router-" + suffix)
                     .setRouterRoutingId(RoutingId.from("play-node"));
                 node.enablePubSub("inproc://play-pub-" + suffix);
                 node.addSpotFactory(GameSpot.class);
@@ -293,7 +293,7 @@ final class SessionActorsRuntimeIntegrationTest {
         { var channel = options.addClientServerChannel("play").enableServer(endpoint);
             channel.enableClient(endpoint);
             channel.addHandlerGroup("play-channel"); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
 
@@ -332,7 +332,7 @@ final class SessionActorsRuntimeIntegrationTest {
             options.codecs().addJson();
         }
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter(playRouter)
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter(playRouter)
                     .setRouterRoutingId(playNodeRid);
                 node.enablePubSub(playPub);
                 node.addEntrySpot(GameEntrySpot.class); }; };
@@ -362,7 +362,7 @@ final class SessionActorsRuntimeIntegrationTest {
         RoutingId sessionNodeRid) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("session"); node.enableRouter(sessionRouter)
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter(sessionRouter)
                     .setRouterRoutingId(sessionNodeRid);
                 node.enablePubSub(sessionPub); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind(streamEndpoint);

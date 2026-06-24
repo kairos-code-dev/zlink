@@ -776,7 +776,7 @@ int main (int argc, char **argv)
         options.use_discovery ().add_registry_endpoint (registry_router);
 
         if (role == "session") {
-            auto route = options.add_route_mesh_channel (e2e::route_channel)
+            auto route = options.add_route_mesh (e2e::route_channel)
                            .enable_server (route_endpoint)
                            .set_routing_id (zlink::routing_id_t::from (node_rid))
                            .enable_client ();
@@ -788,7 +788,6 @@ int main (int argc, char **argv)
             }
             options.add_spot_mesh (e2e::spot_mesh)
               .use_registry_spot_resolver (e2e::route_channel)
-              .add_node (node_rid)
               .enable_router (spot_router_endpoint, zlink::routing_id_t::from (node_rid))
               .enable_actor_gateway ()
               .enable_pub_sub (pubsub_endpoint, zlink::routing_id_t::from (node_rid));
@@ -803,7 +802,7 @@ int main (int argc, char **argv)
             return;
         }
 
-        auto play_route = options.add_route_mesh_channel (e2e::route_channel)
+        auto play_route = options.add_route_mesh (e2e::route_channel)
                             .enable_server (route_endpoint)
                             .set_routing_id (zlink::routing_id_t::from (node_rid))
                             .enable_client ()
@@ -812,8 +811,7 @@ int main (int argc, char **argv)
                               "EnsureActor", &ensure_actor_handler_t::handle)
                             .add_request_handler<spot_lifecycle_handler_t, e2e::lifecycle_req_t,
                                                  e2e::lifecycle_res_t> (
-                              "LifecycleReq", &spot_lifecycle_handler_t::handle)
-                            .enable_spot_route_egress (e2e::route_channel);
+                              "LifecycleReq", &spot_lifecycle_handler_t::handle);
         if (!route_a_endpoint.empty ()) {
             play_route.enable_client (route_a_endpoint);
         }
@@ -826,11 +824,9 @@ int main (int argc, char **argv)
         }
         options.add_spot_mesh (e2e::spot_mesh)
           .use_registry_spot_resolver (e2e::route_channel)
-          .add_node (node_rid)
           .enable_router (spot_router_endpoint, zlink::routing_id_t::from (node_rid))
           .enable_actor_gateway ()
           .enable_pub_sub (pubsub_endpoint, zlink::routing_id_t::from (node_rid))
-          .accept_routes_from_channel (e2e::route_channel)
           .add_entry_spot<entry_spot_t> (
             [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
           .add_spot<user_spot_t> (

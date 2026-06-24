@@ -15,7 +15,9 @@
 - `RM-C3` 다중 provider 분산
 - `RM-C4` timeout과 late reply 비오염
 - `RM-C5` 미등록 packet 처리
-- `RM-C6` dealer mesh peer request
+- `RM-C7` weighted 분산
+- `RM-C8` payload 크기 변주
+- `RM-C9` backpressure 관측
 
 P1/P2 시나리오는 공통 문서의 지원 조건과 미배선 사유를 그대로 따른다.
 

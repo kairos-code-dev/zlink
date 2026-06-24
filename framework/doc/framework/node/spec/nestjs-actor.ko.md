@@ -640,7 +640,7 @@ handler 클래스는 NestJS provider 로 등록한다. framework 는 NestJS
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .addSpotNode('play')
+        .addSpotMesh('play')
           .addEntrySpot(PlayerEntrySpot)
           .addSpotFactory(BingoRoomSpot)
         .build()
@@ -1088,7 +1088,7 @@ ZLinkModule.forRoot(
   zlinkFramework()
     .useDiscovery()
       .addRegistryEndpoint('tcp://registry1:5551')
-    .addSpotNode('session-node')
+    .addSpotMesh('session-node')
       .enableRouter('tcp://0.0.0.0:7201')
     .addStreamNode('client-stream')
       .bind('tcp://0.0.0.0:7101')
@@ -1106,7 +1106,7 @@ ZLinkModule.forRoot(
     .actorFactory('player', PlayerActorFactory)
     .useDiscovery()
       .addRegistryEndpoint('tcp://registry1:5551')
-    .addSpotNode('play-node')
+    .addSpotMesh('play-node')
       .enableRouter('tcp://0.0.0.0:9000')
       .addEntrySpot(PlayerEntrySpot)
       .addSpotFactory(MatchSpot)
@@ -1186,8 +1186,8 @@ actor 관련 등록 표면은 `zlinkFramework()` builder 와 `.options(...)` 의
 | --- | --- | --- |
 | `.actorFactory(actorType, factoryType)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | factory 의 `actorType` 키로 factory를 매핑 |
 | `.options({ spotRemoteAddressResolver })` / `.options({ registrySpotRemoteAddresses })` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
-| `.addSpotNode(...).addEntrySpot(...)` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
-| `.addSpotNode(...).addSpotFactory(...)` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
+| `.addSpotMesh(...).addEntrySpot(...)` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
+| `.addSpotMesh(...).addSpotFactory(...)` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
 | `.addStreamNode(...).attachActorGateway(...)` | client stream을 받는 Session 서버 | STREAM node를 session owner gateway에 attach |
 | `.options({ metadata })` | metadata forward가 필요한 서버 | actor 경계 너머로 forward할 키 |
 
@@ -1296,7 +1296,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
     주고받는 방식이다. request / send는 요청-응답과 단방향 전달을, event
     messaging은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
 
-[^routed]: **routed channel**은 `.addRouteMeshChannel(name)` 으로 선언하는 양방향 채널이다. 일반 client-server
+[^routed]: **routed channel**은 `.addRouteMesh(name)` 으로 선언하는 양방향 채널이다. 일반 client-server
     채널과 달리 호출 시점에 목적지 노드의 routing id를 직접 지정한다. 자세한
     내용은
     [nestjs-channel-messaging.ko.md](nestjs-channel-messaging.ko.md)

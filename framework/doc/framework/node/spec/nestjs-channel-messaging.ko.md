@@ -79,8 +79,7 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | --- | --- |
 | `AddClientServerChannel(name)` | `zlinkFramework().addClientServerChannel(name)` |
 | `AddFanoutChannel(name)` | `zlinkFramework().addFanoutChannel(name)` |
-| `AddDealerMeshChannel(name)` | `zlinkFramework().addDealerMeshChannel(name)` |
-| `AddRouteMeshChannel(name)` | `zlinkFramework().addRouteMeshChannel(name)` |
+| `AddRouteMesh(name)` | `zlinkFramework().addRouteMesh(name)` |
 | `channel.EnableServer(...)` | `.enableServer('...')` |
 | `channel.ConfigureServerRouting().RoutingId = rid` | `.routingId(rid)` |
 | `channel.EnableClient()` | `.enableClient()` |
@@ -233,22 +232,14 @@ channel 별 연결 방식은, 해당 역할 builder 에 수동 endpoint 를 넘�
 
 #### SPOT route 수신과 router-capable channel
 
-SPOT으로 들어오는 routed 메시지는 `ROUTER` 역할이 필요하다. 따라서
-`SpotNode`가 특정 channel에서 오는 SPOT route를 받으려면 SPOT builder 에서
-`.acceptSpotRoutesFromChannel(channelName)` 을 사용한다(dotnet `AcceptSpotRoutesFromChannel`
-대응). egress(대상 SPOT node 로 보내는 쪽)는 node 에서 별도 `enableSpotRouteEgress` builder
-메서드로 노출하지 않는다(dotnet `EnableSpotRouteEgress(...)` 에 대응하는 node 메서드 없음).
-egress 쪽은 대상 SpotNode 의 ingress 로 향하는 outbound channel(client DEALER 또는
-`addRouteMeshChannel`)을 등록하고 `outbound.sendToSpot(spotRid, ...)` /
-`outbound.requestToSpot(spotRid, ...)` 으로 보낸다.
+SPOT으로 들어오는 routed 메시지는 RouteMesh `ROUTER` 역할이 필요하다. 같은 프로세스에
+`.addRouteMesh(name).enableServer(...)`와 `.addSpotMesh(name)`이 함께 있으면 framework가
+그 RouteMesh socket을 단일 SpotMesh 노드에 자동으로 연결한다. 별도 수락 메서드나 egress
+builder 메서드는 없다. 보내는 쪽은 RouteMesh를 등록하고 `outbound.sendToSpot(spotRid, ...)` /
+`outbound.requestToSpot(spotRid, ...)`으로 보낸다.
 
-대상 channel은 두 종류다.
-
-- `.addClientServerChannel(name).enableServer(...)` 의 client-server `ROUTER`
-- `.addRouteMeshChannel(name).enableServer(...)` 의 route mesh `ROUTER`
-
-`publisher`/`subscriber`(fanout)와 `dealerMesh` 는 router 역할이 없으므로
-SPOT route 수신 대상이 아니다. client-server channel 의 server `ROUTER`에서도
+`publisher`/`subscriber`(fanout)는 router 역할이 없으므로 SPOT route 수신 대상이
+아니다. client-server channel 의 server `ROUTER`도 SPOT route 수신 대상으로 쓰지 않는다.
 SPOT으로 보낼 수 있으므로, 이 기능은 route mesh 전용으로 제한하지 않는다.
 
 #### 수동 연결은 channel이 아니라 역할 단위다
@@ -355,7 +346,7 @@ handler 가 DI 대상이라는 사실과 zlink packet handler 라는 사실을 �
 있다.
 
 현재 handler 노출은 `.addClientServerChannel(name).addHandlerGroup(...)`,
-`.addFanoutChannel(name).addHandlerGroup(...)`, `.addRouteMeshChannel(name).addHandlerGroup(...)` 가 지정한
+`.addFanoutChannel(name).addHandlerGroup(...)`, `.addRouteMesh(name).addHandlerGroup(...)` 가 지정한
 group 을 기준으로 한다. client-server `server` channel 에서는 group 의 `request`
 handler 가 `requestHandlers` 로 등록된다. route mesh channel 에서는 group 의
 `request` handler 와 `send` handler 가 route handler 로 등록된다. fanout
@@ -409,7 +400,7 @@ ZLinkModule.forRoot(
     .addClientServerChannel('tictactoe.api')
       .enableServer('tcp://0.0.0.0:7101')
       .addHandlerGroup('api')
-    .addRouteMeshChannel('tictactoe.admin')
+    .addRouteMesh('tictactoe.admin')
       .enableRouter('tcp://0.0.0.0:7102')
       .addHandlerGroup('admin.route')
     .build()
@@ -737,7 +728,7 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 
 | 인터페이스 | 대응 channel 타입 | 호출 키 | 용도 |
 | --- | --- | --- | --- |
-| `ZLinkChannelClient` | `.addClientServerChannel(name)` / `.addDealerMeshChannel(name)` | `channelName` | 1:1 request / send (DEALER 측) |
+| `ZLinkChannelClient` | `.addClientServerChannel(name)` | `channelName` | 1:1 request / send (DEALER 측) |
 | `ZLinkFanoutClient` | `.addFanoutChannel(name)` | `channelName + topic` | event publish (PUB 측) |
 
 > **호출 표면(중요).** dotnet 의 fluent builder + terminator 흐름
@@ -762,10 +753,9 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 
 ### 5.2 ZLinkChannelClient
 
-client-server channel(`server`/`client`)에 1:1 호출을 보낼 때 쓴다. dealer mesh
-channel(`dealerMesh`) 도 같은 request/send 표면을 쓴다. 호출자는 **channel 이름** 만
-넘기고, runtime 은 그 이름에 해당하는 등록과 runtime bundle 을 찾아 client-server DEALER
-또는 dealer mesh DEALER 를 선택한다.
+client-server channel(`server`/`client`)에 1:1 호출을 보낼 때 쓴다. 호출자는
+**channel 이름** 만 넘기고, runtime 은 그 이름에 해당하는 등록과 runtime bundle 을
+찾아 client-server DEALER 를 선택한다.
 
 ```ts
 export interface ZLinkChannelClient {
@@ -834,7 +824,7 @@ export class ProfileRefreshController {
 
 ### 5.4 routed channel transport helper
 
-route mesh channel(`addRouteMeshChannel(name)`)의 위치는 actor, spot,
+route mesh channel(`addRouteMesh(name)`)의 위치는 actor, spot,
 session actor dispatch[^session-actor-dispatch] 같은 framework 기능이 transport 로
 쓴다(dotnet `IZLinkRouteClient` 대응). `ZLinkRouteClient` 는 provider token 으로
 항상 등록되며, 호출자는 `routerChannelId + targetNodeRid` 를 넘긴다. route channel 이
@@ -842,7 +832,7 @@ session actor dispatch[^session-actor-dispatch] 같은 framework 기능이 trans
 실패한다.
 
 현재 Node builder 표면에서는 host-owned route runtime 을 다음과 같이 선언한다.
-`addRouteMeshChannel(name)` 의 `name` 은 route channel 이름이고, `.enableServer(endpoint)` 는
+`addRouteMesh(name)` 의 `name` 은 route channel 이름이고, `.enableServer(endpoint)` 는
 local ROUTER endpoint 다.
 `.enableClient(endpoint)` 가 있으면 startup 시 같은 ROUTER socket 에 수동 peer 연결을 추가한다.
 framework public 표면은
@@ -852,7 +842,7 @@ framework public 표면은
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .addRouteMeshChannel('play.route')
+    .addRouteMesh('play.route')
       .enableServer('tcp://0.0.0.0:7105')
       .enableClient('tcp://127.0.0.1:7106')
       .addHandlerGroup('play.route')

@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Zlink.Framework.Runtime.Actors;
@@ -27,8 +26,6 @@ internal sealed class ZLinkChannelPacketDispatcher(
         registration.DispatchOptions,
         ResolveServices(runtime),
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
-    private readonly ILogger<ZLinkChannelPacketDispatcher> _logger =
-        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
     private readonly ZLinkChannelRequestDispatchPipeline _requestPipeline = new(
         handlerRegistry,
         dispatcher,
@@ -139,66 +136,6 @@ internal sealed class ZLinkChannelPacketDispatcher(
             .ConfigureAwait(false);
     }
 
-    public async Task DispatchDealerMeshMessageAsync(
-        string channelName,
-        IZLinkBackendDealerSocket dealer,
-        ZLinkDealerMeshPendingRequests pendingRequests,
-        Received received,
-        CancellationToken cancellationToken)
-    {
-        if (received.Parts.Count == 0)
-        {
-            return;
-        }
-
-        switch (received.MessageType)
-        {
-            case ReceivedMessageType.Reply:
-            case ReceivedMessageType.ErrorReply:
-                if (!received.RequestSeq.HasValue
-                    || !pendingRequests.TryComplete(
-                        received.RequestSeq.Value, received.Parts))
-                {
-                    ZLinkMessageFlowLogger.Dropped(
-                        _logger,
-                        LogLevel.Warning,
-                        "DealerMeshChannel",
-                        received.MessageType == ReceivedMessageType.Reply
-                            ? "Response"
-                            : "Error",
-                        "unknown",
-                        "unexpected-reply",
-                        channelName);
-                    _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
-                        ZLinkDispatchErrorSurface.DealerMeshChannel,
-                        received.MessageType == ReceivedMessageType.Reply
-                            ? ZLinkDispatchMessageKind.Response
-                            : ZLinkDispatchMessageKind.Error,
-                        ZLinkDispatchErrorReason.UnexpectedReply,
-                        ZLinkDispatchErrorAction.Drop,
-                        "unknown",
-                        ChannelName: channelName,
-                        CorrelationId: received.RequestSeq?.ToString(CultureInfo.InvariantCulture)));
-                }
-                return;
-            case ReceivedMessageType.Request:
-                await DispatchDealerMeshRequestAsync(
-                        channelName,
-                        dealer,
-                        received,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            case ReceivedMessageType.Raw:
-                await DispatchDealerMeshRawAsync(
-                        channelName,
-                        received,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-        }
-    }
-
     private async Task HandleRequestAsync(
         string channelName,
         IZLinkBackendRouterSocket router,
@@ -228,153 +165,6 @@ internal sealed class ZLinkChannelPacketDispatcher(
             .ConfigureAwait(false);
     }
 
-    private async Task DispatchDealerMeshRequestAsync(
-        string channelName,
-        IZLinkBackendDealerSocket dealer,
-        Received received,
-        CancellationToken cancellationToken)
-    {
-        ZLinkEnvelopeHeader header;
-        try
-        {
-            header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
-        }
-        catch (Exception ex)
-        {
-            ZLinkMessageFlowLogger.PayloadDecodeFailed(
-                _logger,
-                "DealerMeshChannel",
-                "Request",
-                "unknown",
-                "drop",
-                "header-decode-failed",
-                ex,
-                channelName);
-            _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
-                ZLinkDispatchErrorSurface.DealerMeshChannel,
-                ZLinkDispatchMessageKind.Request,
-                ZLinkDispatchErrorReason.InvalidFrame,
-                ZLinkDispatchErrorAction.Drop,
-                "unknown",
-                ChannelName: channelName,
-                Exception: ex));
-            return;
-        }
-
-        if (header.Kind != ZLinkMessageKind.Request)
-        {
-            ZLinkMessageFlowLogger.Dropped(
-                _logger,
-                LogLevel.Warning,
-                "DealerMeshChannel",
-                header.Kind.ToString(),
-                header.MessageName,
-                "invalid-request-kind",
-                channelName);
-            _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
-                ZLinkDispatchErrorSurface.DealerMeshChannel,
-                ZLinkDispatchMessageKind.Request,
-                ZLinkDispatchErrorReason.InvalidFrame,
-                ZLinkDispatchErrorAction.Drop,
-                header.MessageName,
-                ChannelName: channelName,
-                CorrelationId: header.CorrelationId));
-            return;
-        }
-
-        if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
-        {
-            _dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Received,
-                ZLinkDispatchErrorSurface.DealerMeshChannel,
-                ZLinkDispatchMessageKind.Request,
-                PacketName: header.MessageName,
-                ChannelName: channelName,
-                CorrelationId: header.CorrelationId));
-        }
-
-        await _requestPipeline.DispatchAsync(
-                channelName,
-                "DealerMeshChannel",
-                received,
-                header,
-                (replyHeader, reply, replyType) => ZLinkChannelReplyWriter.ReplyDealerRequest(
-                    received,
-                    replyHeader,
-                    reply,
-                    replyType,
-                    registration.Codecs),
-                errorHeader => ZLinkChannelReplyWriter.ReplyDealerRequest(
-                    received,
-                    errorHeader,
-                    null,
-                    null),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private async Task DispatchDealerMeshRawAsync(
-        string channelName,
-        Received received,
-        CancellationToken cancellationToken)
-    {
-        ZLinkEnvelopeHeader header;
-        try
-        {
-            header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
-        }
-        catch (Exception ex)
-        {
-            ZLinkMessageFlowLogger.PayloadDecodeFailed(
-                _logger,
-                "DealerMeshChannel",
-                "Send",
-                "unknown",
-                "drop",
-                "header-decode-failed",
-                ex,
-                channelName);
-            _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
-                ZLinkDispatchErrorSurface.DealerMeshChannel,
-                ZLinkDispatchMessageKind.Send,
-                ZLinkDispatchErrorReason.InvalidFrame,
-                ZLinkDispatchErrorAction.Drop,
-                "unknown",
-                ChannelName: channelName,
-                Exception: ex));
-            return;
-        }
-
-        if (header.Kind == ZLinkMessageKind.Command)
-        {
-            await _commandPipeline.DispatchAsync(
-                    channelName,
-                    "DealerMeshChannel",
-                    received.Parts,
-                    header,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
-
-        ZLinkMessageFlowLogger.Dropped(
-            _logger,
-            LogLevel.Warning,
-            "DealerMeshChannel",
-            header.Kind.ToString(),
-            header.MessageName,
-            "unsupported-dealer-raw-kind",
-            channelName);
-        _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
-            ZLinkDispatchErrorSurface.DealerMeshChannel,
-            ZLinkDispatchMessageKind.Send,
-            ZLinkDispatchErrorReason.InvalidFrame,
-            ZLinkDispatchErrorAction.Drop,
-            header.MessageName,
-            ChannelName: channelName,
-            CorrelationId: header.CorrelationId));
-    }
-
     private static IReadOnlySet<string> ResolveMappedGroups(
         ZLinkFrameworkRegistration registration,
         string channelName)
@@ -389,10 +179,4 @@ internal sealed class ZLinkChannelPacketDispatcher(
         return runtime?.Services ?? EmptyServiceProvider.Instance;
     }
 
-    private static ulong RequireRequestSeq(Received received)
-    {
-        return received.RequestSeq
-            ?? throw new InvalidOperationException(
-                "Dealer mesh request requires a request sequence.");
-    }
 }

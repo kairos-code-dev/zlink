@@ -22,7 +22,7 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
 
             }
             {
-                var routed = options.AddRouteMeshChannel("play");
+                var routed = options.AddRouteMesh("play");
                 routed.EnableServer("tcp://127.0.0.1:6202");
 
             }
@@ -44,13 +44,12 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
             options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             options.AddSpotMesh("rooms")
                 .UseRegistrySpotResolver()
-                .AddNode("room-node")
                 .EnableRouter("tcp://127.0.0.1:6201");
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
         Assert.Equal("rooms", registration.RegistrySpotRemoteAddresses?.Namespace);
-        Assert.Equal("room-node", registration.RegistrySpotRemoteAddresses?.RouterChannelId);
+        Assert.Equal("rooms", registration.RegistrySpotRemoteAddresses?.RouterChannelId);
     }
 
     [Fact]
@@ -62,7 +61,7 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 {
-                    var routed = options.AddRouteMeshChannel("play");
+                    var routed = options.AddRouteMesh("play");
                     routed.EnableServer("tcp://127.0.0.1:6202");
 
                 }
@@ -102,12 +101,12 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
 
                 }
                 {
-                    var routed = options.AddRouteMeshChannel("play-a");
+                    var routed = options.AddRouteMesh("play-a");
                     routed.EnableServer("tcp://127.0.0.1:6202");
 
                 }
                 {
-                    var routed = options.AddRouteMeshChannel("play-b");
+                    var routed = options.AddRouteMesh("play-b");
                     routed.EnableServer("tcp://127.0.0.1:6203");
 
                 }

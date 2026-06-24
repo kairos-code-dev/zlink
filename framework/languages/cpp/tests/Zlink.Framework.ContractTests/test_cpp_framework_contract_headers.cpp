@@ -510,48 +510,9 @@ static_assert (
                  zlink::framework::capability_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::client_server_channel_builder_t &> ()
-                             .enable_spot_route_egress ("play.route")),
-                 zlink::framework::client_server_channel_builder_t &>);
-
-static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
                              .add_fanout_channel ("events")),
                  zlink::framework::fanout_channel_builder_t>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
-                             .enable_server ("tcp://127.0.0.1:5200")),
-                 zlink::framework::dealer_mesh_channel_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
-                             .enable_client ()),
-                 zlink::framework::dealer_mesh_channel_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
-                             .enable_client ("tcp://127.0.0.1:5201")),
-                 zlink::framework::dealer_mesh_channel_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
-                             .use_handler_group ("mesh")),
-                 zlink::framework::dealer_mesh_channel_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
-                             .add_dealer_mesh_channel ("mesh")),
-                 zlink::framework::dealer_mesh_channel_builder_t>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_channel_builder_t &> ()
-                                          .enable_spot_route_egress ("play.route")),
-                              zlink::framework::route_channel_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
-                             .enable_spot_route_egress ("play.route")),
-                 zlink::framework::route_mesh_channel_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
@@ -581,11 +542,6 @@ static_assert (
                 .add_send_handler<named_route_handler_t, named_request_t> (
                   "send", &named_route_handler_t::handle_send)),
     zlink::framework::route_mesh_channel_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
-                             .attach_publisher ("events")),
-                 zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (std::has_virtual_destructor_v<zlink::framework::spot_t>);
 static_assert (std::has_virtual_destructor_v<zlink::framework::entry_spot_t>);
@@ -717,17 +673,6 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_mesh_builder_t &> ()
                              .use_registry_spot_resolver ("route")),
                  zlink::framework::spot_mesh_builder_t &>);
-
-static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().attach_publisher (
-      "events", "tcp://127.0.0.1:5506")),
-    zlink::framework::spot_node_options_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
-                             .accept_routes_from_channel ("api", "tcp://127.0.0.1:5507")),
-                 zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<const zlink::framework::zlink_framework_options_t &> ()

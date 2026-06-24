@@ -445,7 +445,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                     ZLinkJavaBackendAdapterFactory::new);
                 sourceContext.registerBean(
                     ZLinkFrameworkConfigurer.class,
-                    () -> options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+                    () -> options -> { var channel = options.addRouteMesh("route"); channel.enableServer(sourceEndpoint);
                         channel.setRoutingId(sourceRid);
                         channel.enableClient(targetEndpoint); });
                 sourceContext.register(
@@ -676,7 +676,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Bean
         ZLinkFrameworkConfigurer monitoredServerChannelConfigurer() {
-            return options -> { var channel = options.addRouteMeshChannel("profile"); channel.enableServer("inproc://profile-monitor");
+            return options -> { var channel = options.addRouteMesh("profile"); channel.enableServer("inproc://profile-monitor");
                 channel.enableClient("inproc://profile-monitor"); };
         }
 
@@ -742,7 +742,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class SpotNodeConfig {
         @Bean
         ZLinkFrameworkConfigurer spotNodeConfigurer() {
-            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                     node.addSpotFactory(GameSpot.class); }; };
         }
     }
@@ -753,7 +753,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer spotNodeWithActorConfigurer() {
             return options -> {
-                { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                         node.addSpotFactory(GameSpot.class); }; };
                 options.addActorFactory("player", PlayerActorFactory.class);
             };
@@ -765,7 +765,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class PrivateConstructorSpotConfig {
         @Bean
         ZLinkFrameworkConfigurer privateConstructorSpotConfigurer() {
-            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                     node.addSpotFactory(PrivateConstructorSpot.class); }; };
         }
     }
@@ -781,7 +781,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer injectedSpotAndActorConfigurer() {
             return options -> {
-                { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                         node.addSpotFactory(InjectedGameSpot.class); }; };
                 options.addActorFactory("player", InjectedPlayerActorFactory.class);
             };
@@ -793,8 +793,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class SpotPublisherConfig {
         @Bean
         ZLinkFrameworkConfigurer spotPublisherConfigurer() {
-            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("publisher"); node.enablePubSub("inproc://spot-pub");
-                    node.attachSpotPublisherClient("game.stage"); }; };
+            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enablePubSub("inproc://spot-pub");}; };
         }
     }
 
@@ -920,7 +919,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer routeMeshHandlerConfigurer(
             RouteMeshEndpoints endpoints) {
-            return options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(endpoints.targetEndpoint());
+            return options -> { var channel = options.addRouteMesh("route"); channel.enableServer(endpoints.targetEndpoint());
                 channel.setRoutingId(endpoints.targetRid());
                 channel.enableClient(endpoints.sourceEndpoint());
                 channel.addRequestHandler(

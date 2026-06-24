@@ -224,8 +224,7 @@ class spot_route_bridge_t
   public:
     enum class endpoint_capabilities_t : uint32_t
     {
-        route_only = 0x00000001u,
-        route_with_channel_inbound = 0x00000003u
+        route_only = 0x00000001u
     };
 
     spot_route_bridge_t (context_t &ctx_, spot_node_t &node_);
@@ -239,28 +238,26 @@ class spot_route_bridge_t
 
     bool valid () const noexcept;
 
-    void attach_dealer_channel (const std::string &channel_name_, zlink::dealer_socket_t &dealer_);
-    void attach_dealer_channel (const std::string &channel_name_,
-                                zlink::dealer_socket_t &dealer_,
-                                endpoint_capabilities_t capabilities_);
     void attach_router_channel (const std::string &channel_name_, zlink::router_socket_t &router_);
     void attach_router_channel (const std::string &channel_name_,
                                 zlink::router_socket_t &router_,
                                 endpoint_capabilities_t capabilities_);
-    void set_target_node (const std::string &channel_name_, const routing_id_t &target_node_rid_);
 
     bool send (const std::string &channel_name_,
+               const routing_id_t &target_node_rid_,
                const routing_id_t &target_spot_rid_,
                std::vector<message_t> &parts_,
                send_flags_t flags_ = send_flags_t::none);
 
     async_result_t<std::vector<message_t>>
     request (const std::string &channel_name_,
+             const routing_id_t &target_node_rid_,
              const routing_id_t &target_spot_rid_,
              std::vector<message_t> &parts_,
              std::chrono::milliseconds timeout_ = std::chrono::milliseconds (0));
 
     bool request (const std::string &channel_name_,
+                  const routing_id_t &target_node_rid_,
                   const routing_id_t &target_spot_rid_,
                   std::vector<message_t> &parts_,
                   request_callback_t callback_,

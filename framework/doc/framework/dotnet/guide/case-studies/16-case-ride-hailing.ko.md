@@ -4,7 +4,7 @@
 
 # 케이스 — 라이드헤일링 실시간 디스패치
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > 대량 위치 fan-out + 지역(zone) 단위 매칭을 다루며, **geo-index·영속 이력은
 > 그대로 남고** 라이브 전파·연결·매칭 직렬화가 ZLink 로 들어오는 사례다. 이 문서는
 > 도입 판단과 책임 경계 설명을 맡고, 같은 "요청→배정→실시간 상태 push" 구조를
@@ -134,7 +134,7 @@ options.AddFanoutChannel("loc.events")
 options.AddStreamNode("ingest").Bind("tcp://0.0.0.0:7700").RegisterSession<DriverSession>();
 options.AddFanoutChannel("loc.events").EnablePublisher("tcp://0.0.0.0:7600");
 {
-    var n = options.AddSpotMesh("zones").AddNode("zone-node");
+    var n = options.AddSpotMesh("zones");
         n.EnableRouter("tcp://0.0.0.0:7610");
     n.AddSpotFactory<ZoneSpot>();
 
@@ -198,7 +198,6 @@ options.AddFanoutChannel("loc.events").EnablePublisher("tcp://0.0.0.0:7600");
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant D as driver
   participant I as ingest gw
@@ -215,7 +214,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant D as driver
   participant I as ingest STREAM
@@ -238,7 +236,7 @@ sequenceDiagram
   discovery/mesh.
 - **그대로 남는 것:** **geo-index(Redis/H3)** 와 **위치 이력 영속/replay(Kafka)**.
   ZLink 는 geo 질의나 영속 큐를 대신하지 않는다. 공통 경계는
-  [12-grpc-alternative](../12-grpc-alternative.ko.md)의 §4 경계 절 참고.
+  [13-grpc-alternative](../13-grpc-alternative.ko.md)의 §4 경계 절 참고.
 
 ## 7. 실행 가능한 샘플 — DeliveryDispatch
 
@@ -283,8 +281,8 @@ evidence check 가 두 delivery 의 상태 순서를 누락 없이 기록한다.
 
 ## 8. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
-- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [05-spot](../05-spot.ko.md), [07-stream](../07-stream.ko.md)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
+- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [05-spot](../05-spot.ko.md), [08-stream](../08-stream.ko.md)
 - 다음 케이스: [17-case-chat-messaging](17-case-chat-messaging.ko.md)
 
 ---

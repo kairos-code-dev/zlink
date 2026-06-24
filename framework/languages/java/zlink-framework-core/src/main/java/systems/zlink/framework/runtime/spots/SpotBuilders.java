@@ -17,13 +17,15 @@ public final class SpotBuilders {
 
     public static ZLinkSpotMeshBuilder mesh(
         String meshName,
+        SpotNodeRegistration node,
         ZLinkFrameworkRegistration registration,
         Consumer<Class<?>> spotFactoryAdded) {
-        return new Mesh(meshName, registration, spotFactoryAdded);
+        return new Mesh(meshName, node, registration, spotFactoryAdded);
     }
 
     private record Mesh(
         String meshName,
+        SpotNodeRegistration node,
         ZLinkFrameworkRegistration registration,
         Consumer<Class<?>> spotFactoryAdded) implements ZLinkSpotMeshBuilder {
         @Override
@@ -43,100 +45,66 @@ public final class SpotBuilders {
             return this;
         }
 
-        public ZLinkSpotNodeBuilder addNode(String spotNodeName) {
-            SpotNodeRegistration node = new SpotNodeRegistration(meshName, spotNodeName);
-            registration.spotNodes().add(node);
-            return new Node(node, spotFactoryAdded);
-        }
-    }
-
-    private record Node(
-        SpotNodeRegistration registration,
-        Consumer<Class<?>> spotFactoryAdded) implements ZLinkSpotNodeBuilder {
         public ZLinkSpotNodeBuilder enableRouter(String endpoint) {
-            registration.enableRouter();
-            registration.setRouterBind(endpoint);
+            node.enableRouter();
+            node.setRouterBind(endpoint);
             return this;
         }
 
         @Override
         public ZLinkSpotNodeBuilder connectRouter(String endpoint) {
-            registration.addRouterManualConnection(endpoint);
+            node.addRouterManualConnection(endpoint);
             return this;
         }
 
         @Override
         public ZLinkSpotNodeBuilder connectRouter(RoutingId peerRoutingId, String endpoint) {
-            registration.addRouterManualConnection(peerRoutingId, endpoint);
+            node.addRouterManualConnection(peerRoutingId, endpoint);
             return this;
         }
 
         @Override
         public ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId) {
-            registration.enableRouter();
-            registration.setRouterRoutingId(routingId);
+            node.enableRouter();
+            node.setRouterRoutingId(routingId);
             return this;
         }
 
         @Override
         public ZLinkSpotNodeBuilder enablePubSub(String endpoint) {
-            registration.enablePubSub();
-            registration.setPubBind(endpoint);
+            node.enablePubSub();
+            node.setPubBind(endpoint);
             return this;
         }
 
         @Override
         public ZLinkSpotNodeBuilder connectPeerPub(String endpoint) {
-            registration.addPubSubManualConnection(endpoint);
+            node.addPubSubManualConnection(endpoint);
             return this;
         }
 
         @Override
         public ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId) {
-            registration.enablePubSub();
-            registration.setPubSubRoutingId(routingId);
-            return this;
-        }
-
-        @Override
-        public ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName) {
-            registration.attachSpotPublisherClient(channelName);
-            return this;
-        }
-
-        @Override
-        public ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName, String endpoint) {
-            registration.attachSpotPublisherClient(channelName).addManualConnection(endpoint);
-            return this;
-        }
-
-        @Override
-        public ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName) {
-            registration.acceptSpotRoutesFromChannel(channelName);
-            return this;
-        }
-
-        @Override
-        public ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName, String endpoint) {
-            registration.acceptSpotRoutesFromChannel(channelName).addManualConnection(endpoint);
+            node.enablePubSub();
+            node.setPubSubRoutingId(routingId);
             return this;
         }
 
         @Override
         public ZLinkEntrySpotOptions configureEntrySpot() {
-            return registration.entrySpotOptions();
+            return node.entrySpotOptions();
         }
 
         @Override
         public ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot<?>> spotType) {
-            registration.addSpotFactory(spotType);
+            node.addSpotFactory(spotType);
             spotFactoryAdded.accept(spotType);
             return this;
         }
 
         @Override
         public ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot<?>> entrySpotType) {
-            registration.addEntrySpot(entrySpotType);
+            node.addEntrySpot(entrySpotType);
             return this;
         }
     }

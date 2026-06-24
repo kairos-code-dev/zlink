@@ -25,20 +25,14 @@ async function resolveFrameworkRegistration(module) {
 
 function fakeSpotRouteBridge(calls, reply) {
   return {
-    attachDealerChannel(channelName) {
-      calls.push(`bridge:attachDealer:${channelName}`);
-    },
     attachRouterChannel(channelName) {
       calls.push(`bridge:attachRouter:${channelName}`);
-    },
-    setTargetNode(channelName, targetNodeRid) {
-      calls.push(`bridge:setTargetNode:${channelName}:${targetNodeRid}`);
     },
     send() {
       return { message() { return this; }, submit() { return true; } };
     },
-    request(channelName, spotRid) {
-      calls.push(`bridge:request:${channelName}:${spotRid}`);
+    request(channelName, targetNodeRid, spotRid) {
+      calls.push(`bridge:request:${channelName}:${targetNodeRid}:${spotRid}`);
       return {
         message(part) {
           if (part?.value !== undefined) {
@@ -94,7 +88,7 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .options({ spotPublisherClients: ['events'] })
     .actorFactory('player', ActorFactory)
-    .addSpotNode('game')
+    .addSpotMesh('game')
       .addSpotFactory(StageSpot)
     .build());
   const tokens = providerTokens(module);
@@ -139,7 +133,7 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
   builder.configureDispatch().setMessageDispatchErrorObserver(DispatchObserver);
   const module = nestjs.ZLinkModule.forRoot(builder
     .actorFactory('player', ActorFactory)
-    .addSpotNode('game')
+    .addSpotMesh('game')
       .addSpotFactory(StageSpot)
     .build());
   const container = await resolveModuleProviders(module, [
@@ -157,7 +151,7 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
 test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .options({ spotPublisherClients: ['spot-events'] })
-    .addRouteMeshChannel('mesh')
+    .addRouteMesh('mesh')
     .build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
@@ -213,10 +207,7 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
       .addHandlerGroup('api')
     .addClientServerChannel('play')
       .enableClient('tcp://127.0.0.1:7102')
-    .addDealerMeshChannel('mesh')
-      .bind('tcp://127.0.0.1:7151')
-      .enableClient(['tcp://127.0.0.1:7152'])
-    .addRouteMeshChannel('route')
+    .addRouteMesh('route')
       .enableRouter('tcp://127.0.0.1:7201')
       .routingId('node-a')
       .connect(['tcp://127.0.0.1:7202'])
@@ -229,10 +220,6 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
   });
   assert.deepEqual(options.clientServerChannels.play, {
     client: { manualConnections: ['tcp://127.0.0.1:7102'] }
-  });
-  assert.deepEqual(options.dealerMeshChannels.mesh, {
-    bind: 'tcp://127.0.0.1:7151',
-    client: { manualConnections: ['tcp://127.0.0.1:7152'] }
   });
   assert.deepEqual(options.routerMeshes.route, {
     bind: 'tcp://127.0.0.1:7201',
@@ -576,7 +563,7 @@ test('ZLinkModule.forRoot maps grouped routeMesh send handlers from NestJS DI', 
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMeshChannel('route')
+      .addRouteMesh('route')
         .enableRouter(routeEndpoint)
         .routingId('node-a')
         .addHandlerGroup('route-api')
@@ -733,7 +720,7 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .options({ spotPublisherClients: ['events'] })
       .actorFactory('player', ActorFactory)
-      .addSpotNode('game')
+      .addSpotMesh('game')
         .addSpotFactory(StageSpot)
       .addClientServerChannel('api')
         .enableServer(apiEndpoint)
@@ -796,7 +783,7 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
   }
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .options({ spotFactories: [StageSpot] })
-    .addSpotNode('game')
+    .addSpotMesh('game')
       .addSpotFactory(LocalStageSpot)
     .build());
   const container = await resolveModuleProviders(module, [nestjs.ZLINK_SPOT_MANAGER]);
@@ -825,7 +812,7 @@ test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () =>
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
+      .addSpotMesh('game')
         .addSpotFactory(StageSpot)
       .build())],
     providers: [SpotDependency, StageSpot]
@@ -861,7 +848,7 @@ test('ZLinkModule.forRoot creates Entry Spot through NestJS DI', async () => {
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
+      .addSpotMesh('game')
         .addEntrySpot(StageEntrySpot)
       .build())],
     providers: [EntryDependency, StageEntrySpot]
@@ -895,7 +882,7 @@ test('ZLinkModule.forRoot creates Actor factories through NestJS DI', async () =
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .actorFactory('player', PlayerActorFactory)
-      .addSpotNode('game')
+      .addSpotMesh('game')
       .build())],
     providers: [ActorDependency, PlayerActorFactory]
   })(HandlerModule);
@@ -949,7 +936,7 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
   class TestModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
+      .addSpotMesh('game')
         .addEntrySpot(EntrySpot)
         .addSpotFactory(RoomSpot)
       .build())],
@@ -1014,7 +1001,7 @@ test('ZLinkModule.forRoot rejects duplicate SPOT actor request handler decorator
   class TestModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
+      .addSpotMesh('game')
         .addSpotFactory(RoomSpot)
       .build())],
     providers: [FirstHandler, SecondHandler]
@@ -1090,31 +1077,18 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
     .build()));
 });
 
-test('ZLinkModule.forRoot maps dealer and route mesh channel options into runtime registration', async () => {
+test('ZLinkModule.forRoot maps route mesh channel options into runtime registration', async () => {
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addDealerMeshChannel('mesh')
-      .enableClient('tcp://127.0.0.1:7011')
-    .addRouteMeshChannel('route')
+    .addRouteMesh('route')
       .enableRouter('tcp://0.0.0.0:7012')
       .routingId('node-a')
       .connect('tcp://127.0.0.1:7013')
     .build());
   const registration = await resolveFrameworkRegistration(module);
 
-  assert.equal(registration.channelClients.has('mesh'), true);
   assert.equal(registration.routeChannels.has('route'), true);
   assert.equal(registration.routeChannelOptions.get('route').bind, 'tcp://0.0.0.0:7012');
   assert.deepEqual(registration.routeChannelOptions.get('route').manualConnections, ['tcp://127.0.0.1:7013']);
-
-  assert.throws(
-    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addClientServerChannel('mesh')
-        .enableClient('tcp://127.0.0.1:7011')
-      .addDealerMeshChannel('mesh')
-        .enableClient('tcp://127.0.0.1:7012')
-      .build()),
-    /already registered/
-  );
 });
 
 test('framework options builder maps dotnet-shaped registration flow into options', () => {
@@ -1133,25 +1107,23 @@ test('framework options builder maps dotnet-shaped registration flow into option
     builder.addClientServerChannel('api').enableClient('tcp://127.0.0.1:9401');
     builder.addFanoutChannel('events').enablePublisher('tcp://0.0.0.0:9402');
     builder.addFanoutChannel('events').enableSubscriber('tcp://127.0.0.1:9402');
-    builder.addRouteMeshChannel('route').enableServer('tcp://0.0.0.0:9403');
-    builder.addRouteMeshChannel('route').enableClient('tcp://127.0.0.1:9403');
+    builder.addRouteMesh('route').enableServer('tcp://0.0.0.0:9403');
+    builder.addRouteMesh('route').enableClient('tcp://127.0.0.1:9403');
     builder.addStreamNode('gateway')
       .bind('tcp://0.0.0.0:9404')
-      .attachActorGateway('stage-node')
+      .attachActorGateway('game.stage')
       .registerSession(GatewaySession);
-    const spot = builder.addSpotMesh('game.stage').addNode('stage-node');
+    const spot = builder.addSpotMesh('game.stage');
     spot.addSpotFactory(StageSpot)
       .addSpotFactory(LocalStageSpot)
       .addEntrySpot(StageEntrySpot)
       .configureEntrySpot({ routingId: 'entry-stage' });
     spot.enableRouter('tcp://0.0.0.0:9405', 'stage-node', 'tcp://127.0.0.1:9406');
     spot.enablePubSub('tcp://0.0.0.0:9407', 'stage-node', 'tcp://127.0.0.1:9408');
-    spot.attachSpotPublisherClient('game.stage', 'tcp://127.0.0.1:9407');
-    spot.acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9403');
   });
 
   const registration = framework.createFrameworkRegistration(options);
-  const spotNode = registration.spotNodes.get('stage-node');
+  const spotNode = registration.spotNodes.get('game.stage');
   const streamNode = registration.streamNodes.get('gateway');
   const route = registration.routeChannelOptions.get('route');
 
@@ -1163,7 +1135,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   assert.equal(route.bind, 'tcp://0.0.0.0:9403');
   assert.deepEqual(route.manualConnections, ['tcp://127.0.0.1:9403']);
   assert.equal(streamNode.bind, 'tcp://0.0.0.0:9404');
-  assert.equal(streamNode.attachActorGateway, 'stage-node');
+  assert.equal(streamNode.attachActorGateway, 'game.stage');
   assert.equal(streamNode.session, GatewaySession);
   assert.equal(registration.spotFactories.has(StageSpot), true);
   assert.equal(registration.spotFactories.has(LocalStageSpot), true);
@@ -1174,8 +1146,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9406']);
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9407');
   assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9408']);
-  assert.deepEqual(spotNode.attachedSpotPublisherClients['game.stage'].manualConnections, ['tcp://127.0.0.1:9407']);
-  assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9403']);
+  assert.equal(registration.spotPublisherClients.has('game.stage'), true);
 
   assert.throws(
     () => framework.createFrameworkOptions((builder) => builder.addSpotMesh('')),
@@ -1190,7 +1161,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   );
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {
-      const node = builder.addSpotMesh('game.stage').addNode('stage-node');
+      const node = builder.addSpotMesh('game.stage');
       node.addEntrySpot(StageEntrySpot);
       node.addEntrySpot(StageEntrySpot);
     }),
@@ -1198,7 +1169,7 @@ test('framework options builder maps dotnet-shaped registration flow into option
   );
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {
-      const node = builder.addSpotMesh('game.stage').addNode('stage-node');
+      const node = builder.addSpotMesh('game.stage');
       node.addSpotFactory(StageSpot);
       node.addSpotFactory(StageSpot);
     }),
@@ -1213,7 +1184,7 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
     }
   }
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addSpotNode('game.spot')
+    .addSpotMesh('game.spot')
       .enableRouter('tcp://0.0.0.0:9110')
     .addStreamNode('client.stream')
       .bind('tcp://0.0.0.0:9100')
@@ -1253,7 +1224,7 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
   );
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game.spot')
+      .addSpotMesh('game.spot')
       .addStreamNode('client.stream')
         .bind('tcp://0.0.0.0:9100')
         .attachActorGateway('game.spot')
@@ -1288,17 +1259,15 @@ test('zlinkFramework builder maps stream node registration without raw server co
         .enableServer('tcp://0.0.0.0:9113')
       .addFanoutChannel('game.events')
         .enablePublisher('tcp://0.0.0.0:9114')
-      .addRouteMeshChannel('route')
+      .addRouteMesh('route')
         .enableRouter('tcp://0.0.0.0:9115')
       .addStreamNode('client.stream')
         .bind('tcp://0.0.0.0:9100')
         .attachActorGateway('game.spot')
         .registerSession(ClientHeaderSession)
-      .addSpotNode('game.spot')
+      .addSpotMesh('game.spot')
         .enableRouter('tcp://0.0.0.0:9110', 'game-node')
         .enablePubSub('tcp://0.0.0.0:9111', 'game-node', ['tcp://127.0.0.1:9112'])
-        .attachSpotPublisherClient('game.events', 'tcp://127.0.0.1:9114')
-        .acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9115')
         .configureEntrySpot({ routingId: 'entry-node' })
         .addEntrySpot(StageEntrySpot)
       .build()
@@ -1315,22 +1284,19 @@ test('zlinkFramework builder maps stream node registration without raw server co
   assert.equal(spotNode.router.routingId, 'game-node');
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9111');
   assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9112']);
-  assert.deepEqual(spotNode.attachedSpotPublisherClients['game.events'].manualConnections, ['tcp://127.0.0.1:9114']);
-  assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9115']);
+  assert.equal(registration.spotPublisherClients.has('game.spot'), true);
   assert.deepEqual(spotNode.entrySpot, { routingId: 'entry-node' });
   assert.equal(spotNode.entrySpotType, StageEntrySpot);
 });
 
 test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capability options', async () => {
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addSpotNode('game')
+    .addSpotMesh('game')
       .enableRouter('tcp://0.0.0.0:9201', 'node-a', 'tcp://127.0.0.1:9202')
       .enablePubSub('tcp://0.0.0.0:9203', 'node-a', 'tcp://127.0.0.1:9204')
-      .attachSpotPublisherClient('game.events', 'tcp://127.0.0.1:9206')
-      .acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9207')
     .addClientServerChannel('api')
       .enableServer('tcp://0.0.0.0:9208')
-    .addRouteMeshChannel('route')
+    .addRouteMesh('route')
       .enableRouter('tcp://0.0.0.0:9209')
     .build());
   const registration = await resolveFrameworkRegistration(module);
@@ -1341,33 +1307,31 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
   assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9202']);
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9203');
   assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9204']);
-  assert.deepEqual(spotNode.attachedSpotPublisherClients['game.events'].manualConnections, ['tcp://127.0.0.1:9206']);
-  assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9207']);
-  assert.equal(registration.spotPublisherClients.has('game.events'), true);
+  assert.equal(registration.spotPublisherClients.has('game'), true);
 
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('')
+      .addSpotMesh('')
       .build())),
     /SpotNode name must not be empty/
   );
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
+      .addSpotMesh('game')
         .enableRouter('')
       .build())),
     /SpotNode 'game' router must define a bind endpoint/
   );
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
+      .addSpotMesh('game')
         .enablePubSub(undefined, undefined, '')
       .build())),
     /SpotNode 'game' pubSub manual connection endpoint must not be empty/
   );
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
+      .addSpotMesh('game')
         .enableRouter(undefined, 'node-a')
         .enablePubSub(undefined, 'node-b')
       .build())),
@@ -1375,34 +1339,20 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
   );
 });
 
-test('ZLinkModule.forRoot validates SpotNode attachment targets', async () => {
-  await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
-        .acceptSpotRoutesFromChannel('missing')
-      .build())),
-    /Accepted SPOT route channel 'missing' is not router-capable/
-  );
-  await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
-        .attachSpotPublisherClient('game.events', '')
-      .build())),
-    /attached SPOT publisher 'game.events' manual connection endpoint must not be empty/
-  );
-  await assert.doesNotReject(async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addSpotNode('game')
-      .acceptSpotRoutesFromChannel('api')
-    .addClientServerChannel('api')
-      .enableServer('tcp://0.0.0.0:9210')
-    .build())));
+test('ZLinkModule.forRoot derives Spot publisher clients from SpotMesh pubSub capability', async () => {
+  const registration = await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addSpotMesh('game')
+      .enablePubSub('tcp://0.0.0.0:9210')
+    .build()));
+
+  assert.equal(registration.spotPublisherClients.has('game'), true);
 });
 
 test('ZLinkModule.forRoot registers registry spot remote address resolver by default', async () => {
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .useDiscovery()
       .addRegistryEndpoint('tcp://127.0.0.1:5551')
-    .addRouteMeshChannel('play')
+    .addRouteMesh('play')
     .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
     .build());
   const resolverProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
@@ -1425,7 +1375,7 @@ test('ZLinkModule.forRoot validates registry spot remote address resolver requir
 
   assert.throws(
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMeshChannel('play')
+      .addRouteMesh('play')
       .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
       .build()),
     /requires discovery endpoints/
@@ -1434,8 +1384,8 @@ test('ZLinkModule.forRoot validates registry spot remote address resolver requir
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .useDiscovery()
         .addRegistryEndpoint('tcp://127.0.0.1:5551')
-      .addRouteMeshChannel('play-a')
-      .addRouteMeshChannel('play-b')
+      .addRouteMesh('play-a')
+      .addRouteMesh('play-b')
       .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
       .build()),
     /requires RouterChannelId/
@@ -1444,7 +1394,7 @@ test('ZLinkModule.forRoot validates registry spot remote address resolver requir
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .useDiscovery()
         .addRegistryEndpoint('tcp://127.0.0.1:5551')
-      .addRouteMeshChannel('play')
+      .addRouteMesh('play')
       .options({
         spotRemoteAddressResolver: CustomSpotRemoteAddressResolver,
         registrySpotRemoteAddresses: { namespace: 'bingo' }
@@ -1497,7 +1447,7 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
       return nestjs.zlinkFramework()
         .options({ spotPublisherClients: ['game-events'] })
         .actorFactory('player', ActorFactory)
-        .addSpotNode('game')
+        .addSpotMesh('game')
           .addSpotFactory(AsyncSpot)
         .build();
     }
@@ -1707,7 +1657,14 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    createSpot() {},
+    createSpot() {
+      return {
+        onSendReady() {},
+        async dispose() {
+          calls.push('publisher:dispose');
+        }
+      };
+    },
     getOrCreateSpot(spotRid) {
       calls.push(`spot:getOrCreateSpot:${spotRid}`);
       return { spot: routeSourceSpot, created: true };
@@ -1947,13 +1904,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
             routingId: 'node-a',
             manualConnections: ['tcp://127.0.0.1:9304']
           },
-          entrySpot: { routingId: 'entry-node-a' },
-          attachedSpotPublisherClients: {
-            'game.events': { manualConnections: ['tcp://127.0.0.1:9306'] }
-          },
-          acceptedSpotRouteChannels: {
-            api: { manualConnections: ['tcp://127.0.0.1:9307'] }
-          }
+          entrySpot: { routingId: 'entry-node-a' }
         }
       },
       channels: {
@@ -2007,7 +1958,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
   await runtime.start();
   await new Promise((resolve) => setImmediate(resolve));
   await runtime.spotPublisherTransport.publishSpot(
-    'game.events',
+    'game',
     'room.events',
     'GameEvent',
     { value: 'published' }
@@ -2023,7 +1974,6 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'spot:setPubBind:tcp://0.0.0.0:9303',
     'spot:connectPeer:tcp://127.0.0.1:9304',
     'spot:createPublisherSpot',
-    'spot:connectPeer:tcp://127.0.0.1:9306',
     'spot:connectPeerRid:node-b:tcp://127.0.0.1:9309',
     'publisherSpot:publish:room.events:GameEvent:published',
     'publisherSpot:dispose',
@@ -2043,7 +1993,14 @@ test('framework runtime host lets route router own accepted Spot route channel f
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    createSpot() {},
+    createSpot() {
+      return {
+        onSendReady() {},
+        async dispose() {
+          calls.push('publisher:dispose');
+        }
+      };
+    },
     getOrCreateSpot(spotRid) {
       calls.push(`spot:getOrCreateSpot:${spotRid}`);
       return { spot: routeSourceSpot, created: true };
@@ -2095,12 +2052,11 @@ test('framework runtime host lets route router own accepted Spot route channel f
   };
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMeshChannel('room.route')
+      .addRouteMesh('room.route')
         .enableRouter('tcp://0.0.0.0:9410')
         .routingId('room-node')
-      .addSpotNode('room')
+      .addSpotMesh('room')
         .enableRouter('tcp://0.0.0.0:9411', 'room-node')
-        .acceptSpotRoutesFromChannel('room.route')
       .build()))
   }, {
     backendAdapterFactory: {
@@ -2244,10 +2200,9 @@ test('framework runtime host drains accepted Spot route channel without route ro
   };
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMeshChannel('room.route')
-      .addSpotNode('session')
+      .addRouteMesh('room.route')
+      .addSpotMesh('session')
         .enableRouter('tcp://0.0.0.0:9412', 'session-node')
-        .acceptSpotRoutesFromChannel('room.route')
       .build()))
   }, {
     backendAdapterFactory: {
@@ -2404,10 +2359,9 @@ test('framework route transport sends Spot request through accepted Spot route c
   };
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMeshChannel('room.route')
-      .addSpotNode('session')
+      .addRouteMesh('room.route')
+      .addSpotMesh('session')
         .enableRouter('tcp://0.0.0.0:9413', 'session-node')
-        .acceptSpotRoutesFromChannel('room.route')
       .build()))
   }, {
     backendAdapterFactory: {
@@ -2481,8 +2435,7 @@ test('framework route transport sends Spot request through accepted Spot route c
     'route:setChannelName:room.route',
     'spot:createRouteBridge',
     'bridge:attachRouter:room.route',
-    'bridge:setTargetNode:room.route:play-node',
-    'bridge:request:room.route:play-node',
+    'bridge:request:room.route:play-node:play-node',
     'bridge:message:request',
     'bridge:timeout:123',
     'spot:dispose',
@@ -2567,12 +2520,11 @@ test('framework route transport sends Spot request through accepted Spot route c
   };
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMeshChannel('room.route')
+      .addRouteMesh('room.route')
         .enableRouter('tcp://0.0.0.0:9414')
         .routingId('session-node')
-      .addSpotNode('session')
+      .addSpotMesh('session')
         .enableRouter('tcp://0.0.0.0:9415', 'session-node')
-        .acceptSpotRoutesFromChannel('room.route')
       .build()))
   }, {
     backendAdapterFactory: {
@@ -2654,8 +2606,7 @@ test('framework route transport sends Spot request through accepted Spot route c
     'route:bind:tcp://0.0.0.0:9414',
     'spot:createRouteBridge',
     'bridge:attachRouter:room.route',
-    'bridge:setTargetNode:room.route:play-node',
-    'bridge:request:room.route:play-node',
+    'bridge:request:room.route:play-node:play-node',
     'bridge:message:request',
     'bridge:timeout:123',
     'spot:dispose',
@@ -2696,6 +2647,14 @@ test('framework runtime host attaches Discovery for router-only ActorGateway Spo
     actorLookup() {},
     joinActor() { return true; },
     joinActorEntrySpot() { return true; },
+    createSpot() {
+      return {
+        onSendReady() {},
+        async dispose() {
+          calls.push('publisher:dispose');
+        }
+      };
+    },
     async destroyActor() {},
     sendActorBoundSession() { return true; },
     async closeActorBoundSession() {},
@@ -2782,7 +2741,14 @@ test('framework runtime host attaches Discovery for router and pubSub SpotNode a
     attachDiscovery(discovery) { calls.push(`spot:attachDiscovery:${discovery.channelName}:${discovery.autoConnectType}`); },
     connectPeer() {},
     disconnectPeer() {},
-    createSpot() {},
+    createSpot() {
+      return {
+        onSendReady() {},
+        async dispose() {
+          calls.push('publisher:dispose');
+        }
+      };
+    },
     getOrCreateSpot() {},
     status() {},
     peers() { return []; },
@@ -2873,6 +2839,7 @@ test('framework runtime host attaches Discovery for router and pubSub SpotNode a
     'discovery:create:room:5',
     'discovery:connectRegistry:tcp://127.0.0.1:9395',
     'spot:attachDiscovery:room:5',
+    'publisher:dispose',
     'discovery:dispose:room',
     'spot:dispose',
     'context:dispose'

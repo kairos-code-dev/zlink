@@ -62,12 +62,11 @@ function createTicTacToePlayModule(config: {
               .bind(config.playStreamEndpoint)
               .attachActorGateway(SampleNames.playSpotNode)
             .registerSession(PlaySessionFactory)
-            .addSpotNode(SampleNames.playSpotNode)
+            .addSpotMesh(SampleNames.playSpotNode)
               .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)
               .connectRouter(config.peerPlaySpotNodeRid, config.peerPlaySpotEndpoint)
               .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid)
               .connectPeerPub(config.peerPlaySpotPubEndpoint)
-              .attachSpotPublisherClient(SampleNames.playerMilestoneChannel, config.playSpotPubSubEndpoint)
               .addEntrySpot(PlayEntrySpot)
             .addSpotFactory(TicTacToeGameSpot)
           .build();

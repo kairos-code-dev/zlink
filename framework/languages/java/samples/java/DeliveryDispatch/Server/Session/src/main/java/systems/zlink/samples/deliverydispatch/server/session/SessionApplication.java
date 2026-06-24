@@ -56,20 +56,18 @@ public final class SessionApplication {
                     DeliveryStatusFanoutHandler.class,
                     Messages.DeliveryStatusNotify.class,
                     "DeliveryStatusNotify");
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SpotRouteChannel);
+            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.SpotRouteChannel);
             route.enableServer(SampleTopology.SessionSpotRouteEndpoint);
             route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.DeliverySpotDiscovery)
                 .setRouterChannelId(SampleNames.SpotRouteChannel);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)
-                .addNode(SampleNames.SessionSpotNode);
+                ;
             node.enableRouter(SampleTopology.SessionSpotRouterEndpoint)
                 .setRouterRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid));
             node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionSpotPubRid));
-            node.acceptSpotRoutesFromChannel(SampleNames.SpotRouteChannel);
-            options.addStreamNode(SampleNames.CustomerStreamNode)
+                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionSpotPubRid));options.addStreamNode(SampleNames.CustomerStreamNode)
                 .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.SessionStreamEndpoint)
                 .registerSession(CustomerSession.class)

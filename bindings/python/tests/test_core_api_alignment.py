@@ -88,7 +88,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.Spot, "receive_subscription_event_into"))
         self.assertTrue(hasattr(zlink.SpotNode, "create_route_bridge"))
         self.assertTrue(hasattr(zlink.SpotNode, "create_publisher"))
-        self.assertTrue(hasattr(zlink.SpotRouteBridge, "attach_dealer_channel"))
         self.assertTrue(hasattr(zlink.SpotRouteBridge, "attach_router_channel"))
         self.assertTrue(hasattr(zlink.SpotRouteBridge, "send"))
         self.assertTrue(hasattr(zlink.SpotRouteBridge, "request"))
@@ -168,20 +167,22 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(remote.is_unchecked())
         self.assertEqual(remote.generation, 0)
 
-    def test_spot_route_bridge_dealer_send_emits_relay_packet(self):
+    def test_spot_route_bridge_router_send_emits_relay_packet(self):
         with zlink.create_context() as ctx, \
              zlink.create_spot_node(ctx) as node, \
-             zlink.create_dealer_socket(ctx) as dealer, \
+             zlink.create_router_socket(ctx) as bridge_router, \
              zlink.create_router_socket(ctx) as router:
             with node.create_route_bridge() as bridge:
                 endpoint = f"inproc://python-spot-route-bridge-{time.time_ns()}"
+                bridge_router.set_routing_id(b"python-bridge-client")
+                router.set_routing_id(b"python-bridge-server")
                 router.bind(endpoint)
-                dealer.connect(endpoint)
+                bridge_router.connect(endpoint)
                 time.sleep(0.05)
-                bridge.attach_dealer_channel("api", dealer)
+                bridge.attach_router_channel("api", bridge_router)
 
                 self.assertTrue(
-                    bridge.send("api", b"target-spot")
+                    bridge.send("api", b"python-bridge-server", b"target-spot")
                     .message(b"hello-bridge")
                     .submit()
                 )

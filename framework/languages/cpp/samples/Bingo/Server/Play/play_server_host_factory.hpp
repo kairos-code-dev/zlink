@@ -78,24 +78,21 @@ class play_server_host_factory_t
                                                 bingo_reward_announced_notify_t,
                                                 bingo_room_settings_payload_t> ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
-            options.add_route_mesh_channel (sample_names_t::play_channel)
+            options.add_route_mesh (sample_names_t::play_channel)
               .enable_server (topology.selected_play_channel_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_client ()
-              .use_handler_group ("play")
-              .enable_spot_route_egress (sample_names_t::play_channel);
+              .use_handler_group ("play");
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client ();
             options.add_spot_mesh (sample_names_t::room_spot_discovery)
-              .use_registry_spot_resolver (sample_names_t::play_channel)
-              .add_node (topology.selected_play_node_rid ())
+              .use_registry_spot_resolver (sample_names_t::play_channel))
               .enable_router (topology.selected_play_spot_router_endpoint (),
                               zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_actor_gateway ()
               .enable_pub_sub (topology.selected_play_spot_endpoint (),
                                zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-              .accept_routes_from_channel (sample_names_t::play_channel)
-              .add_entry_spot<bingo_entry_spot_t> ()
+.add_entry_spot<bingo_entry_spot_t> ()
               .add_spot<bingo_room_spot_t> (sample_names_t::room_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type);
         });

@@ -54,8 +54,8 @@ SpotNode builder만 사용한다.
 - `SM-E2`: spot timer 발화와 효과를 검증하는 scenario가 아직 없다.
 - `SM-E3`: idle timer 기반 명시 close를 검증하는 scenario가 아직 없다.
 - `SM-E4`: timer overrun policy별 tick 처리 evidence를 검증하는 scenario가 아직 없다.
-- `SM-F1`: `enableSpotRouteEgress`와 `acceptSpotRoutesFromChannel` wiring은 있지만, client/server
-  channel to target spot egress를 독립 marker로 단언하는 scenario가 아직 없다.
+- `SM-F1`: RouteMesh와 SpotMesh 자동 연결은 있지만, client/server channel to target spot egress를
+  독립 marker로 단언하는 scenario가 아직 없다.
 - `SM-F2`: route mesh channel to target spot egress를 독립 marker로 단언하는 scenario가 아직 없다.
 - `SM-F3`: 같은 channel에서 일반 packet과 spot route packet이 공존하는 분기 scenario가 아직 없다.
 - `SM-F4`: route 없음, ingress 거부, malformed spot route packet의 error 계약 scenario가 아직 없다.

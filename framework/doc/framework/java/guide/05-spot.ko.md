@@ -7,9 +7,9 @@
 ## 현재 구현 기준
 
 외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
-`SpotRouteBridge`를 내부에서 사용한다. 사용자는 `acceptSpotRoutesFromChannel(...)`과
-egress 설정 이름을 맞추면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에
-attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
+`SpotRouteBridge`를 내부에서 사용한다. 사용자는 SpotMesh와 RouteMesh channel만
+등록하면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에 직접 attach하지
+않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
 publisher client를 주입해서 사용한다.
 
 ## 1. 언제 쓰나
@@ -20,8 +20,7 @@ Spot은 room, stage, zone처럼 동적으로 생기고 사라지는 논리 단�
 ## 2. 등록
 
 ```java
-ZLinkSpotNodeBuilder node = options.addSpotMesh("game.stage")
-    .addNode("play");
+ZLinkSpotMeshBuilder node = options.addSpotMesh("game.stage");
 node.enableRouter("tcp://0.0.0.0:9001");
 node.enablePubSub("tcp://0.0.0.0:9002");
 node.addEntrySpot(GameEntrySpot.class);

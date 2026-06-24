@@ -42,7 +42,6 @@ from .spot import (
     SpotRouteBridgeEndpointCapabilities,
     SpotRouteBridgeEndpointOptions,
     SpotRouteBridgeOptions,
-    SpotRouteBridgeSummary,
     remote_actor_ref,
 )
 from .spot.spot_operations import ReplyOp, RequestCallbackOp, RequestOp, SendOp
@@ -85,7 +84,6 @@ __all__ = [
     "SpotRouteBridgeEndpointCapabilities",
     "SpotRouteBridgeEndpointOptions",
     "SpotRouteBridgeOptions",
-    "SpotRouteBridgeSummary",
     "remote_actor_ref",
     "SendOp",
     "RequestOp",

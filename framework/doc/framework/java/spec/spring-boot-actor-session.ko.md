@@ -34,17 +34,15 @@ public class ActorConfig implements ZLinkFrameworkConfigurer {
     public void configure(ZLinkFrameworkOptions framework) {
         framework.addActorFactory("player", PlayerActorFactory.class);
 
-        ZLinkSpotMeshBuilder mesh = framework.addSpotMesh("game.stage");
-        mesh.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
-
-        ZLinkSpotNodeBuilder node = mesh.addNode("play");
+        ZLinkSpotMeshBuilder node = framework.addSpotMesh("game.stage");
+        node.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
         node.enableRouter("tcp://0.0.0.0:9001");
         node.addEntrySpot(GameEntrySpot.class);
         node.addSpotFactory(GameRoomSpot.class);
 
         ZLinkStreamNodeBuilder stream = framework.addStreamNode("gateway");
         stream.bind("tcp://0.0.0.0:7201");
-        stream.attachActorGateway("play");
+        stream.attachActorGateway("game.stage");
         stream.registerSession(ClientSession.class);
     }
 }

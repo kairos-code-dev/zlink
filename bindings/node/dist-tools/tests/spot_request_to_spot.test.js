@@ -62,14 +62,18 @@ test('spot route bridge request resolves through channel router reply', async ()
     const ctx = zlink.createContext();
     const node = zlink.createSpotNode(ctx);
     const spot = node.createSpot();
-    const dealer = zlink.createDealerSocket(ctx);
+    const bridgeRouter = zlink.createRouterSocket(ctx);
     const router = zlink.createRouterSocket(ctx);
     const bridge = node.createRouteBridge();
     try {
+        const bridgeRid = textRoutingId('BRIDGE_API_CLIENT');
+        const routerRid = textRoutingId('BRIDGE_API_SERVER');
+        bridgeRouter.setRoutingId(bridgeRid);
+        router.setRoutingId(routerRid);
         router.bind(endpoint);
-        dealer.connect(endpoint);
-        bridge.attachDealerChannel('api', dealer);
-        const replyPromise = bridge.request('api', spot.routingId)
+        bridgeRouter.connect(endpoint);
+        bridge.attachRouterChannel('api', bridgeRouter);
+        const replyPromise = bridge.request('api', routerRid, spot.routingId)
             .message(Buffer.from('spot-ping'))
             .timeout(2000)
             .submit();
@@ -93,7 +97,7 @@ test('spot route bridge request resolves through channel router reply', async ()
     finally {
         bridge.close();
         router.close();
-        dealer.close();
+        bridgeRouter.close();
         spot.close();
         node.close();
         ctx.close();
@@ -117,10 +121,9 @@ test('spot route bridge router request handles metadata and resolves through tar
         targetRouter.setRoutingId(textRoutingId('BRIDGE_DST_NODE'));
         targetRouter.bind(endpoint);
         sourceRouter.connect(endpoint);
-        sourceBridge.attachRouterChannel('mesh', sourceRouter, { capabilities: 3 });
-        targetBridge.attachRouterChannel('mesh', targetRouter, { capabilities: 3 });
-        sourceBridge.setTargetNode('mesh', targetNode.routingId);
-        const replyPromise = sourceBridge.request('mesh', targetSpot.routingId)
+        sourceBridge.attachRouterChannel('mesh', sourceRouter);
+        targetBridge.attachRouterChannel('mesh', targetRouter);
+        const replyPromise = sourceBridge.request('mesh', targetNode.routingId, targetSpot.routingId)
             .message(Buffer.from('router-spot-ping'))
             .timeout(2000)
             .submit();
@@ -130,7 +133,7 @@ test('spot route bridge router request handles metadata and resolves through tar
         try {
             assert.ok(channelReceived.routingId);
             assert.notEqual(channelReceived.requestSeq, null);
-            assert.equal(targetBridge.handleRouterReceived('mesh', channelReceived.routingId, channelReceived.parts, channelReceived.requestSeq), true);
+            assert.equal(targetBridge.handleRouterReceived('mesh', channelReceived.routingId, channelReceived.requestSeq, channelReceived.parts), true);
             channelReceivedConsumed = true;
         }
         finally {

@@ -16,9 +16,7 @@ const { resolveModuleProviders } = require('./helpers/nestjs-test-utils');
 
 function fakeSpotRouteBridge() {
   return {
-    attachDealerChannel() {},
     attachRouterChannel() {},
-    setTargetNode() {},
     send() { return { message() { return this; }, submit() { return true; } }; },
     request() { return { message() { return this; }, timeout() { return this; }, submit() { return true; } }; },
     handleRouterReceived() { return false; },
@@ -348,10 +346,7 @@ test('route raw SPOT requests through SpotNode router are serialized per route c
     routeChannels: [{ routerChannelId: 'room.route' }],
     spotNodes: {
       play: {
-        router: { bind: 'inproc://play', routingId: 'play-node' },
-        acceptedSpotRouteChannels: {
-          'room.route': {}
-        }
+        router: { bind: 'inproc://play', routingId: 'play-node' }
       }
     }
   });
@@ -446,10 +441,7 @@ test('route raw SPOT request through SpotNode router retries until route is read
       routeChannels: [{ routerChannelId: 'room.route' }],
       spotNodes: {
         play: {
-          router: { bind: 'inproc://play', routingId: 'play-node' },
-          acceptedSpotRouteChannels: {
-            'room.route': {}
-          }
+          router: { bind: 'inproc://play', routingId: 'play-node' }
         }
       }
     }),
@@ -536,10 +528,7 @@ test('route channel with SPOT acceptance starts one route receive loop for share
       }],
       spotNodes: {
         play: {
-          router: { bind: 'inproc://play-spot', routingId: 'play-node' },
-          acceptedSpotRouteChannels: {
-            'room.route': {}
-          }
+          router: { bind: 'inproc://play-spot', routingId: 'play-node' }
         }
       }
     }),
@@ -576,7 +565,6 @@ test('route bridge raw request completes when shared route receive loop observes
   const router = fakeRouteRouter();
   const bridge = {
     attachRouterChannel() {},
-    setTargetNode() {},
     request() {
       return {
         message() {
@@ -604,10 +592,7 @@ test('route bridge raw request completes when shared route receive loop observes
       }],
       spotNodes: {
         play: {
-          router: { bind: 'inproc://play-spot', routingId: 'play-node' },
-          acceptedSpotRouteChannels: {
-            'room.route': {}
-          }
+          router: { bind: 'inproc://play-spot', routingId: 'play-node' }
         }
       }
     }),
@@ -664,17 +649,13 @@ test('route bridge raw request completes when shared route receive loop observes
   await manager.dispose();
 });
 
-test('route bridge queued sends set target when each queued submit drains', async () => {
+test('route bridge queued sends keep each target on its submitted operation', async () => {
   const router = fakeRouteRouter();
   let bridgeWritable = false;
-  let currentTarget;
   const submittedTargets = [];
   const bridge = {
     attachRouterChannel() {},
-    setTargetNode(_channelName, targetNodeRid) {
-      currentTarget = targetNodeRid;
-    },
-    send() {
+    send(_channelName, targetNodeRid) {
       return {
         message() {
           return this;
@@ -683,7 +664,7 @@ test('route bridge queued sends set target when each queued submit drains', asyn
           if (!bridgeWritable) {
             return false;
           }
-          submittedTargets.push(String(currentTarget));
+          submittedTargets.push(String(targetNodeRid));
           return true;
         }
       };
@@ -705,10 +686,7 @@ test('route bridge queued sends set target when each queued submit drains', asyn
       }],
       spotNodes: {
         play: {
-          router: { bind: 'inproc://play-spot', routingId: 'play-node' },
-          acceptedSpotRouteChannels: {
-            'room.route': {}
-          }
+          router: { bind: 'inproc://play-spot', routingId: 'play-node' }
         }
       }
     }),
@@ -763,11 +741,8 @@ test('route raw SPOT request uses route bridge before SpotNode router fallback',
     attachRouterChannel(channelName, socket, options) {
       bridgeCalls.push({ kind: 'attach', channelName, socket, options });
     },
-    setTargetNode(channelName, targetNodeRid) {
-      bridgeCalls.push({ kind: 'target', channelName, targetNodeRid });
-    },
-    request(channelName, spotRid) {
-      const call = { kind: 'request', channelName, spotRid };
+    request(channelName, targetNodeRid, spotRid) {
+      const call = { kind: 'request', channelName, targetNodeRid, spotRid };
       bridgeCalls.push(call);
       return {
         message(message) {
@@ -799,10 +774,7 @@ test('route raw SPOT request uses route bridge before SpotNode router fallback',
       }],
       spotNodes: {
         play: {
-          router: { bind: 'inproc://play-spot', routingId: 'play-node' },
-          acceptedSpotRouteChannels: {
-            'room.route': {}
-          }
+          router: { bind: 'inproc://play-spot', routingId: 'play-node' }
         }
       }
     }),
@@ -848,11 +820,10 @@ test('route raw SPOT request uses route bridge before SpotNode router fallback',
   reply[0].close();
   assert.equal(bridgeCalls[0].kind, 'attach');
   assert.equal(bridgeCalls[0].channelName, 'room.route');
-  assert.equal(bridgeCalls[1].kind, 'target');
-  assert.equal(bridgeCalls[1].targetNodeRid, 'session-node');
-  assert.deepEqual(bridgeCalls[2], {
+  assert.deepEqual(bridgeCalls[1], {
     kind: 'request',
     channelName: 'room.route',
+    targetNodeRid: 'session-node',
     spotRid: 'session-node',
     message: 'bridge-request',
     timeoutMs: 700,
@@ -1916,7 +1887,7 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
   const remoteRouter = zlink.createRouterSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addRouteMeshChannel('mesh')
+    .addRouteMesh('mesh')
       .enableRouter(endpoint)
       .routingId('node-a')
     .build());
@@ -2104,7 +2075,7 @@ test('ZLinkRoutePacketDispatcher lets route bridge handle SPOT-addressed bridge 
     dispatchErrors: noDispatchErrorReporter(),
     handlers: [],
     spotRouteBridge: {
-      handleRouterReceived(channelName, sourceNodeRid, parts, requestSeq) {
+      handleRouterReceived(channelName, sourceNodeRid, requestSeq, parts) {
         handled.push({
           channelName,
           sourceNodeRid,
@@ -2162,7 +2133,7 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMeshChannel('mesh')
+      .addRouteMesh('mesh')
         .enableRouter(endpoint)
         .routingId('node-a')
         .addSendHandler('RouteNotice', RouteNoticeHandler)
@@ -2259,7 +2230,7 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMeshChannel('mesh')
+      .addRouteMesh('mesh')
         .enableRouter(endpoint)
         .routingId('node-a')
         .addRequestHandler('RoutePing', RoutePingHandler)
@@ -2328,31 +2299,6 @@ test('channel runtime waits for send-ready instead of failing backpressured send
 
   assert.equal(socket.sendAttempts, 3);
   assert.equal(decodeDotnetEnvelope(socket.sentParts).header.messageName, 'Notice');
-  await manager.dispose();
-});
-
-test('channel runtime uses dealer mesh client capability for channel sends', async () => {
-  const socket = fakeBackpressuredDealer();
-  socket.writable = true;
-  const manager = new framework.ZLinkChannelRuntimeManager(
-    framework.createFrameworkRegistration({
-      channels: {
-        mesh: {
-          dealerMesh: {
-            client: { manualConnections: ['tcp://peer:7109'] }
-          }
-        }
-      }
-    }),
-    fakeChannelAdapter({ dealer: socket }),
-    fakeContext()
-  );
-
-  await manager.send('mesh', 'MeshNotice', { id: 'mesh-send' });
-
-  assert.equal(socket.endpoint, 'tcp://peer:7109');
-  assert.equal(decodeDotnetEnvelope(socket.sentParts).header.channelName, 'mesh');
-  assert.equal(decodeDotnetEnvelope(socket.sentParts).header.messageName, 'MeshNotice');
   await manager.dispose();
 });
 

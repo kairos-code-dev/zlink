@@ -77,7 +77,7 @@ class QuestMissionApplication {
 
             // per-player owner spot mesh
             val node = configurer.addSpotMesh(SampleNames.QuestSpotDiscovery)
-                .addNode(SampleNames.QuestSpotNode)
+
             node.enableRouter(instance.spotRouterEndpoint)
                 .setRouterRoutingId(instance.spotRid)
             node.enablePubSub(instance.spotEndpoint)

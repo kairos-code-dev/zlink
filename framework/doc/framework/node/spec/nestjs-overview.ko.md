@@ -54,7 +54,7 @@ NestJS 에서는 `ZLinkModule.forRoot(options)`(동기) / `ZLinkModule.forRootFa
 framework runtime 과 client 는 NestJS DI 컨테이너가 resolve 하며, runtime 시작과
 종료는 NestJS lifecycle hook 을 통해 처리한다.
 
-.NET 빌더 메서드(`AddClientServerChannel`, `AddSpotNode`, `UseDiscovery` …)
+.NET 빌더 메서드(`AddClientServerChannel`, `AddSpotMesh`, `UseDiscovery` …)
 **한 개** = NestJS options 객체의 **키 한 개**로 1:1 대응시키는 것을 기본으로
 한다(키 표는 [표면 매핑 정책 §5](../internals/dotnet-to-node-surface-mapping.ko.md)).
 
@@ -196,7 +196,7 @@ NestJS 통합에서 application 이 구현하는 다음 객체는 NestJS DI 컨�
 | 객체 종류 | 등록 위치 | framework 가 resolve 하는 시점 |
 |------|------|------|
 | channel / fanout / route handler | `providers` + `zlinkRequestHandler(...)` / `zlinkSendHandler(...)` / `zlinkPublishHandler(...)` | channel 이 해당 handler group 을 dispatch 할 때 |
-| Entry Spot, user Spot | `providers` + `.addSpotNode(...).addEntrySpot(...)` / `.addSpotFactory(...)` | SpotNode 또는 SpotManager 가 spot 을 활성화할 때 |
+| Entry Spot, user Spot | `providers` + `.addSpotMesh(...).addEntrySpot(...)` / `.addSpotFactory(...)` | SpotNode 또는 SpotManager 가 spot 을 활성화할 때 |
 | Spot packet / subscribe / actor / timer handler | handler decorator + `zlinkDiscoverProviders(...)` | 해당 Spot 실행 문맥에서 packet, actor event, timer 를 처리할 때 |
 | actor factory | `providers` + `actorFactories` 설정 | ActorManager 가 actor 를 생성할 때 |
 | stream session 또는 session factory | `providers` + `streams` 설정 | stream 연결을 session 으로 활성화할 때 |

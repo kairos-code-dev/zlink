@@ -36,7 +36,7 @@ builder.Services.AddZLinkFramework(options =>
         var mesh = options.AddSpotMesh(SampleNames.DeliverySpotDiscovery);
         mesh.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
         {
-            var spot = mesh.AddNode(SampleNames.SessionSpotNode);
+            var spot = mesh;
             {
                 var router = spot.EnableRouter(topology.SessionSpotRouterEndpoint);
                 router.SetRouterRoutingId(topology.SessionSpotNodeRid);
@@ -53,7 +53,7 @@ builder.Services.AddZLinkFramework(options =>
     }
     {
         var stream = options.AddStreamNode(SampleNames.CustomerStreamNode);
-        stream.AttachActorGateway(SampleNames.SessionSpotNode);
+        stream.AttachActorGateway(SampleNames.DeliverySpotDiscovery);
         stream.Bind(topology.SessionStreamEndpoint);
         stream.RegisterSession<CustomerSession>();
 

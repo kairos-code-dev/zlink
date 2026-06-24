@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlayActorJoinGameHandler } from './Handlers/play-actor-join-game-handler';
 import { PacketNames, observeMilestoneRes, winMilestoneNotify } from '../../../../../Shared/Contracts/messages';
 import { PlayerWinMilestoneEventHandler } from './Handlers/player-win-milestone-event-handler';

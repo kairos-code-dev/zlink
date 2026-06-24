@@ -783,8 +783,10 @@ export class ZLinkChannelRuntimeManager {
       try {
         await this.sockets.requireSubmitter(this.sockets.routeRouter(remoteAddress.routerChannelId)).submitCommand(
           () => {
-            bridge.setTargetNode(remoteAddress.routerChannelId, remoteAddress.targetNodeRid);
-            const submitted = appendParts(bridge.send(remoteAddress.routerChannelId, remoteAddress.spotRid), parts).submit();
+            const submitted = appendParts(
+              bridge.send(remoteAddress.routerChannelId, remoteAddress.targetNodeRid, remoteAddress.spotRid),
+              parts
+            ).submit();
             return submitted;
           },
           signal
@@ -835,8 +837,10 @@ export class ZLinkChannelRuntimeManager {
     if (bridge !== undefined) {
       return this.sockets.requireSubmitter(this.sockets.routeRouter(remoteAddress.routerChannelId)).submitRequest(
         (resolve, reject) => {
-          bridge.setTargetNode(remoteAddress.routerChannelId, remoteAddress.targetNodeRid);
-          const submitted = appendParts(bridge.request(remoteAddress.routerChannelId, remoteAddress.spotRid), parts)
+          const submitted = appendParts(
+            bridge.request(remoteAddress.routerChannelId, remoteAddress.targetNodeRid, remoteAddress.spotRid),
+            parts
+          )
             .timeout(timeoutMs ?? 0)
             .submit((result, replyParts) => {
               try {
@@ -1063,8 +1067,7 @@ export class ZLinkChannelRuntimeManager {
         );
         this.sockets.requireSubmitter(this.sockets.routeRouter(remoteAddress.routerChannelId)).submitCommand(
           () => {
-          bridge.setTargetNode(remoteAddress.routerChannelId, remoteAddress.targetNodeRid);
-          const submitted = bridge.request(remoteAddress.routerChannelId, remoteAddress.spotRid)
+          const submitted = bridge.request(remoteAddress.routerChannelId, remoteAddress.targetNodeRid, remoteAddress.spotRid)
             .message(request)
             .timeout(timeoutMs ?? 0)
             .submit((result, replyParts) => {
@@ -1149,19 +1152,17 @@ export class ZLinkChannelRuntimeManager {
   }
 
   canRoutePacketChannel(routerChannelId: string): boolean {
-    if ((this.spotNodes?.has(routerChannelId) ?? false) || this.spotRouteNode(routerChannelId) !== undefined) {
+    if (this.spotNodes?.has(routerChannelId) ?? false) {
       return false;
     }
     return this.registration.routeChannels.has(routerChannelId);
   }
 
   private spotRouteNode(routerChannelId: string): ZLinkBackendSpotNode | undefined {
-    for (const [spotNodeName, spotNode] of this.registration.spotNodes) {
-      if (spotNode.acceptedSpotRouteChannels?.[routerChannelId] !== undefined) {
-        return this.spotNodes?.get(spotNodeName);
-      }
+    if (!this.registration.routeChannels.has(routerChannelId)) {
+      return undefined;
     }
-    return undefined;
+    return this.spotNodes?.values().next().value;
   }
 
   private hasBoundRouteRouter(routerChannelId: string): boolean {
@@ -1287,7 +1288,7 @@ class ZLinkChannelSocketRegistry {
     }
 
     const channel = this.registration.channels.get(channelName);
-    const client = channel?.client ?? channel?.dealerMesh?.client;
+    const client = channel?.client;
     if (client === undefined) {
       throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
     }
@@ -1766,8 +1767,8 @@ export class ZLinkChannelReceiveLoop {
       if (this.spotRouteBridge?.handleRouterReceived(
         this.channelName,
         received.routingId as RoutingId,
-        received.parts,
-        received.requestSeq ?? undefined
+        received.requestSeq ?? 0n,
+        received.parts
       ) === true) {
         closeReceived = false;
         return;
@@ -2013,8 +2014,8 @@ export class ZLinkRoutePacketDispatcher {
       const processed = this.spotRouteBridge.handleRouterReceived(
         this.routerChannelId,
         received.routingId as RoutingId,
-        received.parts,
-        received.requestSeq ?? undefined
+        received.requestSeq ?? 0n,
+        received.parts
       );
       if (processed) {
         return true;

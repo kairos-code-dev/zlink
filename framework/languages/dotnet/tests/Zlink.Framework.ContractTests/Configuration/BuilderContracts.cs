@@ -48,7 +48,7 @@ public sealed class BuilderContracts
         clientServer.ConfigureClientSocket().SendTimeout = TimeSpan.FromSeconds(1);
         Assert.Equal(TimeSpan.FromSeconds(1), clientServer.ConfigureClientSocket().SendTimeout);
 
-        var routeMesh = options.AddRouteMeshChannel("play");
+        var routeMesh = options.AddRouteMesh("play");
         Assert.Same(
             routeMesh,
             routeMesh
@@ -65,8 +65,6 @@ public sealed class BuilderContracts
         typeof(IZLinkClientServerChannelBuilder),
         typeof(IZLinkClientServerChannelOptions),
         typeof(IZLinkFanoutChannelBuilder),
-        typeof(IZLinkDealerMeshChannelBuilder),
-        typeof(IZLinkDealerMeshChannelOptions),
         typeof(IZLinkChannelRuntimeOptions),
         typeof(IZLinkRouteMeshChannelOptions),
         typeof(IZLinkRouteMeshChannelBuilder))]
@@ -87,7 +85,6 @@ public sealed class BuilderContracts
             channel.AddSendHandler<AttributeApiSendHandler>("api.event");
             channel.AddRequestHandler<ApiRequestHandler, ApiRequest, ApiReply>();
             channel.AddRequestHandler<AttributeApiRequestHandler>("api.request");
-            channel.EnableSpotRouteEgress("play-spots");
 
         }
 
@@ -102,14 +99,7 @@ public sealed class BuilderContracts
         }
 
         {
-            options.AddDealerMeshChannel("mesh")
-                .EnableServer("tcp://127.0.0.1:5200")
-                .EnableClient("tcp://127.0.0.1:5201");
-
-        }
-
-        {
-            var channel = options.AddRouteMeshChannel("play-router")
+            var channel = options.AddRouteMesh("play-router")
                 .EnableServer("tcp://127.0.0.1:5300")
                 .EnableClient("tcp://127.0.0.1:5301");
             channel.AddHandlerGroup("play");
@@ -117,13 +107,11 @@ public sealed class BuilderContracts
             channel.AddSendHandler<AttributeRouteSendHandler>("route.event");
             channel.AddRequestHandler<RouteRequestHandler, ApiRequest, ApiReply>();
             channel.AddRequestHandler<AttributeRouteRequestHandler>("route.request");
-            channel.EnableSpotRouteEgress("play-spots");
 
         }
 
         Assert.Contains("api", options.Channels);
         Assert.Contains("events", options.Channels);
-        Assert.Contains("mesh", options.Channels);
         Assert.Contains("play-router", options.Channels);
     }
 
@@ -131,7 +119,6 @@ public sealed class BuilderContracts
     [ContractExample(
         typeof(IZLinkStreamNodeBuilder),
         typeof(IZLinkSpotNodeBuilder),
-        typeof(IZLinkSpotMeshNodeBuilder),
         typeof(IZLinkSpotMeshBuilder))]
     public void Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments()
     {
@@ -147,28 +134,13 @@ public sealed class BuilderContracts
         {
             var mesh = options.AddSpotMesh("play-spots");
             mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6001");
-            {
-                var spot = mesh.AddNode("play-spots");
-                ConfigureSpotNode(spot);
-
-            }
-
-        }
-
-        {
-            var mesh = options.AddSpotMesh("play-mesh");
-            mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6003");
-            {
-                var spot = mesh.AddNode("play-spots");
-                ConfigureSpotNode(spot);
-
-            }
+            ConfigureSpotNode(mesh);
 
         }
 
         Assert.Contains("gateway", options.StreamNodes);
         Assert.Contains("play-spots", options.SpotNodes);
-        Assert.Contains("play-mesh", options.SpotMeshes);
+        Assert.Contains("play-spots", options.SpotMeshes);
     }
 
     private static void ConfigureSpotNode(IZLinkSpotNodeBuilder spot)
@@ -183,9 +155,6 @@ public sealed class BuilderContracts
         spot.ConfigurePubSubPublisher().NoDrop = true;
         spot.ConfigurePubSubSubscriber().ReceiveHighWaterMark = 64;
 
-        spot.AttachSpotPublisherClient("events", "tcp://127.0.0.1:5100");
-        spot.AttachSpotPublisherClient("mesh-events");
-        spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5300");
         spot.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
         spot.AddSpotFactory<RoomSpot>();
         spot.AddEntrySpot<EntrySpot>();
@@ -257,13 +226,7 @@ public sealed class BuilderContracts
             return new FanoutChannelBuilder();
         }
 
-        public IZLinkDealerMeshChannelBuilder AddDealerMeshChannel(string channelName)
-        {
-            Channels.Add(channelName);
-            return new DealerMeshChannelBuilder();
-        }
-
-        public IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName)
+        public IZLinkRouteMeshChannelBuilder AddRouteMesh(string channelName)
         {
             Channels.Add(channelName);
             return new RouteMeshChannelBuilder();
@@ -291,7 +254,8 @@ public sealed class BuilderContracts
         public IZLinkSpotMeshBuilder AddSpotMesh(string channelName)
         {
             SpotMeshes.Add(channelName);
-            return new SpotMeshBuilder(SpotNodes);
+            SpotNodes.Add(channelName);
+            return new SpotMeshBuilder();
         }
     }
 
@@ -405,7 +369,6 @@ public sealed class BuilderContracts
         public IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
             where THandler : class => this;
 
-        public IZLinkClientServerChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName) => this;
     }
 
     private sealed class FanoutChannelBuilder : IZLinkFanoutChannelBuilder
@@ -431,44 +394,6 @@ public sealed class BuilderContracts
             where THandler : class, IZLinkPublishHandler<TMessage> => this;
 
         public IZLinkFanoutChannelBuilder AddPublishHandler<THandler>(string? packetName = null)
-            where THandler : class => this;
-    }
-
-    private sealed class DealerMeshChannelBuilder : IZLinkDealerMeshChannelBuilder
-    {
-        private readonly ConnectionAndConfigContracts.SocketConfig _socket = new();
-
-        public IZLinkDealerMeshChannelBuilder EnableServer(string endpoint)
-        {
-            return this;
-        }
-
-        public IZLinkDealerMeshChannelBuilder EnableClient()
-        {
-            return this;
-        }
-
-        public IZLinkDealerMeshChannelBuilder EnableClient(string endpoint)
-        {
-            return this;
-        }
-
-        public IZLinkDealerMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout) => this;
-
-        public IZLinkSocketConfig ConfigureSocket() => _socket;
-
-        public IZLinkDealerMeshChannelBuilder AddHandlerGroup(string groupName) => this;
-
-        public IZLinkDealerMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
-            where THandler : class, IZLinkSendHandler<TMessage> => this;
-
-        public IZLinkDealerMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
-            where THandler : class => this;
-
-        public IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-            where THandler : class, IZLinkRequestHandler<TRequest, TReply> => this;
-
-        public IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
             where THandler : class => this;
     }
 
@@ -517,12 +442,13 @@ public sealed class BuilderContracts
         public IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
             where THandler : class => this;
 
-        public IZLinkRouteMeshChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName) => this;
     }
 
     private sealed class StreamNodeBuilder : IZLinkStreamNodeBuilder
     {
         public IZLinkStreamNodeBuilder Bind(string endpoint) => this;
+
+        public IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false) => this;
 
         public IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName) => this;
 
@@ -530,7 +456,7 @@ public sealed class BuilderContracts
             where TSession : class, IZLinkSession => this;
     }
 
-    private class SpotNodeBuilder : IZLinkSpotMeshNodeBuilder
+    private class SpotNodeBuilder : IZLinkSpotNodeBuilder
     {
         public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
         {
@@ -592,19 +518,6 @@ public sealed class BuilderContracts
             return new ConnectionAndConfigContracts.SpotSubscriberConfig();
         }
 
-        public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName) => this;
-
-        public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint) => this;
-
-        public IZLinkSocketConfig ConfigureSpotPublisherClientSocket(string channelName)
-        {
-            return new ConnectionAndConfigContracts.SocketConfig();
-        }
-
-        public IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName) => this;
-
-        public IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName, string endpoint) => this;
-
         public IZLinkEntrySpotOptions ConfigureEntrySpot()
         {
             return new ConnectionAndConfigContracts.EntrySpotOptions();
@@ -617,7 +530,7 @@ public sealed class BuilderContracts
             where TEntrySpot : IZLinkEntrySpot => this;
     }
 
-    private sealed class SpotMeshBuilder(List<string> spotNodes) : SpotNodeBuilder, IZLinkSpotMeshBuilder
+    private sealed class SpotMeshBuilder : SpotNodeBuilder, IZLinkSpotMeshBuilder
     {
         public IZLinkDiscoveryBuilder UseDiscovery()
         {
@@ -629,11 +542,6 @@ public sealed class BuilderContracts
             return this;
         }
 
-        public IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName)
-        {
-            spotNodes.Add(spotNodeName);
-            return new SpotNodeBuilder();
-        }
     }
 
     private sealed class ActorFactory : IZLinkActorFactory

@@ -114,7 +114,6 @@ class dispatch_diagnostics_options_t
 enum class dispatch_error_surface_t
 {
     channel,
-    dealer_mesh_channel,
     route_mesh_channel,
     spot_route,
     spot_subscription,

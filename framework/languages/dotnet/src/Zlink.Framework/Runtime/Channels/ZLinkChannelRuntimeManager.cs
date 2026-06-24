@@ -132,29 +132,9 @@ internal sealed class ZLinkChannelRuntimeManager(
         {
             if (entry.Value.Client is not null)
             {
-                var bundle = GetOrCreateClientBundle(state, entry.Key);
-                if (ShouldStartDealerMeshReceiveLoop(entry.Value))
-                {
-                    var channelName = entry.Key;
-                    state.ListenerTasks.Add(state.TaskRunner.Run(
-                        $"channel-dealer-mesh:{channelName}",
-                        ct => new ValueTask(channelMessagePump.RunDealerMeshLoopAsync(
-                            channelName,
-                            (IZLinkBackendDealerSocket)bundle.Socket,
-                            bundle.DealerMeshPendingRequests,
-                            bundle.ReceiveGate,
-                            ct))));
-                }
+                GetOrCreateClientBundle(state, entry.Key);
             }
         }
-    }
-
-    internal static bool ShouldStartDealerMeshReceiveLoop(ZLinkChannelRegistration channel)
-    {
-        return channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
-            && (channel.SendHandlers.Count > 0
-                || channel.RequestHandlers.Count > 0
-                || channel.HandlerGroups.Count > 0);
     }
 
     public void InitializeRouteChannels(

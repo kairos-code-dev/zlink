@@ -146,10 +146,9 @@ framework의 `Contracts/*`와 `Runtime/*` 구조를 C++ framework에 옮길 때�
 둔다. public 타입이 내부 state를 가리켜야 하면 public header에는 전방 선언과
 `shared_ptr`/PIMPL만 두고 state 정의는 runtime owner 파일에 둔다.
 
-`src/runtime/channels/channel_pending_requests.*`는 `.NET`의
-`ZLinkDealerMeshPendingRequests`에 대응한다. request sequence 발급, pending 등록,
-reply completion, drain은 이 모듈이 맡고 `message_bus_t`나 public call object는 pending
-table을 직접 알지 않는다.
+`src/runtime/channels/channel_pending_requests.*`는 channel request의 pending table을
+담는다. request sequence 발급, pending 등록, reply completion, drain은 이 모듈이 맡고
+`message_bus_t`나 public call object는 pending table을 직접 알지 않는다.
 
 `src/runtime/channels/channel_reply_writer.*`는 `.NET`의 `ZLinkChannelReplyWriter`에
 대응한다. request envelope에서 correlation id와 message name을 보존한 response/error
@@ -170,7 +169,7 @@ publisher 초기화, route channel lookup, monitoring source parsing을 담당�
 
 `src/runtime/channels/channel_runtime_bundle.*`는 `.NET`의
 `ZLinkChannelRuntimeBundle`에 대응한다. manual connection set, receive gate,
-dealer-mesh pending request owner를 역할 내부 상태로 묶고 public contract에는
+channel pending request owner를 역할 내부 상태로 묶고 public contract에는
 노출하지 않는다.
 
 server ingress dispatch는 channel host service가 수신한 envelope parts를
@@ -1130,7 +1129,7 @@ framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성
 
 - `message_bus_t`
 - `publisher_t`
-- `spot_publisher_client_t` (SPOT node가 `attach_publisher(...)`를 설정한 경우)
+- `spot_publisher_client_t` (SpotMesh가 pub/sub 역할을 켠 경우)
 - `request_client_t`
 - `route_client_t`
 - `serializer_registry_t`
@@ -1229,7 +1228,6 @@ public:
     spot_node_builder_t &connect_pub_sub(std::string endpoint);
     spot_node_builder_t &use_discovery(std::string channel_name);
     spot_node_builder_t &enable_actor_gateway();
-    spot_node_builder_t &attach_publisher(std::string channel_name);
 
     template <typename TEntrySpot>
     spot_node_builder_t &add_entry_spot();
@@ -1390,8 +1388,8 @@ public:
 경로와 Entry Spot join 경로에 제한한다. 일반 application handler와 client는 channel
 name과 topic을 먼저 사용한다.
 
-SPOT node는 router 또는 pub/sub 역할 중 하나 이상을 켜야 한다. `add_spot_mesh(...).add_node(...)`는
-discovery view만 연결하므로 실행 역할이 아니다. `enable_router(...)`나
+SPOT node는 router 또는 pub/sub 역할 중 하나 이상을 켜야 한다. `add_spot_mesh(...)`는
+프로세스의 단일 Spot node와 discovery view를 함께 선언한다. `enable_router(...)`나
 `enable_pub_sub(...)` 없이 node를 선언하면 options 적용 시점에 설정 오류로 실패한다.
 
 `.NET`의 일반 packet handler registry와 같은 역할은 C++에서 `spot_context_t::handlers()`가
@@ -1560,7 +1558,7 @@ handler의 `request_type`, `reply_type`을 읽어 필요한 JSON serializer를 �
 send handler는 `message_type`, publish handler는 `event_type`을 읽어 같은 방식으로 serializer와
 handler registry 항목을 등록한다. 따라서 request/send/publish handler를 같은 group 이름으로
 묶고, channel builder의 `.use_handler_group(...)`에서 channel에 연결할 수 있다.
-handler group은 channel 종류와 맞아야 한다. client/server와 dealer mesh channel은 request/send
+handler group은 channel 종류와 맞아야 한다. client/server channel은 request/send
 handler group을 받을 수 있고, fanout channel은 publish handler group만 받을 수 있다. 맞지 않는
 group을 연결하면 options 작성 시점에 설정 오류로 실패한다.
 같은 channel에 같은 packet 이름의 handler가 두 번 노출되면 `request_protocol_error`로 실패한다.
@@ -1652,23 +1650,17 @@ options.add_fanout_channel(sample_names_t::notification_channel)
   .enable_subscriber(topology.notification_subscriber_endpoint)
   .use_handler_group("events");
 
-options.add_dealer_mesh_channel(sample_names_t::mesh_channel)
-  .enable_server(topology.mesh_bind_endpoint)
-  .enable_client(topology.mesh_peer_endpoint)
-  .use_handler_group("api");
-
 options.use_registry_spot_remote_addresses(sample_names_t::router_channel);
 
-options.add_route_mesh_channel(sample_names_t::router_channel)
+options.add_route_mesh(sample_names_t::router_channel)
   .enable_server(topology.session_spot_endpoint)
   .set_routing_id(topology.session_router_rid)
   .enable_client(topology.play_router_endpoint);
 
 options.add_spot_mesh(sample_names_t::game_spot_discovery)
-  .add_node(sample_names_t::session_spot_node)
   .enable_router(topology.session_router_endpoint, topology.session_router_rid)
   .enable_pub_sub(topology.session_spot_endpoint, topology.session_pub_rid)
-  .accept_routes_from_channel(sample_names_t::router_channel);
+  .add_entry_spot<session_entry_spot_t>();
 
 options.add_stream_node(sample_names_t::stream_name)
   .bind(topology.stream_endpoint)
@@ -1684,16 +1676,11 @@ native packet session 이름으로 사용하고, 없으면 타입 이름 기반 
 하나의 stream node에는 packet session을 하나만 선언한다. `register_session<T>()`과
 `register_session(...)`을 중복 호출하면 마지막 값으로 덮어쓰지 않고 설정 오류로 처리한다.
 
-dealer mesh channel은 최소 하나의 peer 획득 경로를 가져야 한다. `enable_server(...)` 또는
-`enable_client(...)` 없이 `add_dealer_mesh_channel(...)`만 선언하면 options 적용 시점에 설정 오류로
-실패한다. 이 규칙은 메시지를 보내는 시점까지 설정 실수를 숨기지 않기 위한 것이다.
-route mesh channel은 local route endpoint를 열어야 하므로 `enable_server(...)`가 필수다.
-`add_route_mesh_channel(...)`만 선언하거나 routing id/client endpoint만 설정하면 options 적용
+route mesh는 local route endpoint를 열어야 하므로 `enable_server(...)`가 필수다.
+`add_route_mesh(...)`만 선언하거나 routing id/client endpoint만 설정하면 options 적용
 시점에 설정 오류로 실패한다.
-`.NET`의 `EnableSpotRouteEgress(...)`에 해당하는 C++ fluent 표면은
-`enable_spot_route_egress(target_channel_name)`이다. client/server channel에서 이 설정을 쓰려면
-local client 역할이 필요하고, route mesh channel에서는 route channel registration에 target
-SPOT node channel 이름을 보존한다.
+RouteMesh와 SpotMesh가 같은 프로세스에 함께 등록되면 framework가 SPOT route packet을 자동으로
+local SpotNode로 분기한다.
 fluent options에서 channel 이름, handler group 이름, endpoint, SPOT node 이름, stream node
 이름처럼 식별자나 연결 주소로 쓰이는 값은 빈 문자열이나 공백 문자열을 허용하지 않는다.
 잘못된 값은 low-level socket/runtime까지 전달하지 않고 builder 호출 또는 options 적용 시점의
@@ -1705,20 +1692,11 @@ SPOT router와 pub/sub 역할도 registry discovery 없이 고정 peer를 붙일
 `enable_pub_sub(endpoint).connect_pub_sub(peer)`처럼 역할별 manual endpoint를 기록한다.
 routing id는 `enable_router(endpoint, routing_id)` 또는
 `enable_pub_sub(endpoint, routing_id)`로 지정할 수 있다.
-`attach_publisher(...)`는 등록된 fanout publisher channel을 SPOT node에 연결하며, 해당 node는
-`enable_pub_sub(...)` 역할을 가져야 한다. publisher attach도
-`attach_publisher(name, endpoint)`로 manual endpoint를
-기록할 수 있다. 같은 publisher channel을 여러 SPOT node에 중복 attach하면 options 적용 시점에
-실패한다.
-`accept_routes_from_channel(...)`은 SPOT route ingress를 여는 설정이다. 이 설정을 둔
-SPOT node는 `enable_router(...)`로 router 역할을 켜야 하며, 대상 channel은
-client/server channel 또는 route mesh channel이어야 한다. fanout channel, dealer mesh
-channel, 등록되지 않은 channel, client/server와 route mesh가 같은 이름을 쓰는 모호한
-channel은 options 적용 시점에 실패한다. route peer는 registry discovery 또는 accepted route
-별 manual endpoint로 얻는다. manual endpoint를 쓰려면
-`accept_routes_from_channel(name, endpoint)`처럼
-명시한다. routed SPOT egress는 이 ingress target channel 이름을 향해 설정하므로,
-egress 설정과 accepted route 설정은 같은 이름을 기준으로 맞춘다.
+SpotMesh가 pub/sub 역할을 켜면 외부 코드의 Spot publish client는 해당 SpotMesh의
+publisher handle을 사용할 수 있다. RouteMesh와 SpotMesh가 같은 프로세스에 있으면
+framework가 route bridge를 자동으로 붙인다. 외부에서 Spot으로 routed send/request를
+보내는 경로는 RouteMesh만 사용하며, client/server channel이나 fanout channel은 Spot
+route ingress로 쓰지 않는다.
 
 ### 12.1 HTTP Hosting
 
@@ -2095,7 +2073,6 @@ int main(int argc, char **argv)
           .enable_server("tcp://0.0.0.0:7001")
           .use_handler_group("orders-api");
         options.add_spot_mesh("orders")
-          .add_node("orders-spot")
           .enable_router("tcp://0.0.0.0:7101");
         options.handlers()
           .add<order_created_handler_t>("orders-api");

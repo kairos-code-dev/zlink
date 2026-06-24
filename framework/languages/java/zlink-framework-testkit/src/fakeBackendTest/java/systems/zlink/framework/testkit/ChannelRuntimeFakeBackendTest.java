@@ -57,7 +57,7 @@ final class ChannelRuntimeFakeBackendTest {
     void channelCallsUseMessageTypePacketNameByDefault() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
-        { var route = options.addRouteMeshChannel("route"); route.enableServer("inproc://route");
+        { var route = options.addRouteMesh("route"); route.enableServer("inproc://route");
             route.enableClient("inproc://route-peer"); };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 

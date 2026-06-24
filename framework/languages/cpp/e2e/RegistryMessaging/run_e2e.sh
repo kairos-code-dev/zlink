@@ -5,21 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B DEALER_A DEALER_B WORKFLOW_A HTTP_A HTTP_B CLIENT_ROUTE API_A2 ROUTE_A2 DEALER_A2 HTTP_A2 <<<"$(python3 - <<'PY'
+read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A HTTP_A HTTP_B CLIENT_ROUTE API_A2 ROUTE_A2 HTTP_A2 <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(16):
+for _ in range(13):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:9]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[9:11]), end=" ")
-print(f"tcp://127.0.0.1:{ports[11]}", end=" ")
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[12:15]), end=" ")
-print(f"http://127.0.0.1:{ports[15]}")
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:7]), end=" ")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[7:9]), end=" ")
+print(f"tcp://127.0.0.1:{ports[9]}", end=" ")
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[10:12]), end=" ")
+print(f"http://127.0.0.1:{ports[12]}")
 for s in sockets:
     s.close()
 PY
@@ -90,15 +90,13 @@ start_provider() {
   local rid="$1"
   local api="$2"
   local route="$3"
-  local dealer="$4"
-  local http="$5"
-  local instance="${6:-$rid}"
+  local http="$4"
+  local instance="${5:-$rid}"
   ZLINK_CPP_E2E_ROLE=provider \
   ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
   ZLINK_CPP_E2E_PROVIDER_INSTANCE="$instance" \
   ZLINK_CPP_E2E_API_ENDPOINT="$api" \
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-  ZLINK_CPP_E2E_DEALER_ENDPOINT="$dealer" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
@@ -155,8 +153,6 @@ run_client() {
   ZLINK_CPP_E2E_API_B_ENDPOINT="$API_B" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_DEALER_A_ENDPOINT="$DEALER_A" \
-  ZLINK_CPP_E2E_DEALER_B_ENDPOINT="$DEALER_B" \
   ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$@" \
@@ -165,9 +161,9 @@ run_client() {
 
 start_registry
 
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
 start_workflow_provider workflow-a "$WORKFLOW_A"
 WORKFLOW_A_PID="$LAST_PID"
@@ -178,7 +174,7 @@ stop_pid "$API_A_PID"
 stop_pid "$API_B_PID"
 stop_pid "$WORKFLOW_A_PID"
 
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
 READY="$LOG_DIR/rm-b1-ready"
 CONTINUE="$LOG_DIR/rm-b1-continue"
@@ -187,7 +183,7 @@ run_client scale-out rm-b1 env \
   ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
 B1_CLIENT_PID="$!"
 wait_marker "$READY"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
 sleep 5
 touch "$CONTINUE"
@@ -196,9 +192,9 @@ cat "$LOG_DIR/client-rm-b1.stdout.log"
 stop_pid "$API_A_PID"
 stop_pid "$API_B_PID"
 
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
 READY="$LOG_DIR/rm-b2-ready"
 CONTINUE="$LOG_DIR/rm-b2-continue"
@@ -214,7 +210,7 @@ wait "$B2_CLIENT_PID"
 cat "$LOG_DIR/client-rm-b2.stdout.log"
 stop_pid "$API_A_PID"
 
-start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A" api-a-v1
+start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a-v1
 API_A_PID="$LAST_PID"
 READY="$LOG_DIR/rm-a4-ready"
 CONTINUE="$LOG_DIR/rm-a4-continue"
@@ -224,7 +220,7 @@ run_client failover rm-a4 env \
 A4_CLIENT_PID="$!"
 wait_marker "$READY"
 stop_pid "$API_A_PID"
-start_provider api-a "$API_A2" "$ROUTE_A2" "$DEALER_A2" "$HTTP_A2" api-a-v2
+start_provider api-a "$API_A2" "$ROUTE_A2" "$HTTP_A2" api-a-v2
 API_A_PID="$LAST_PID"
 sleep 5
 touch "$CONTINUE"

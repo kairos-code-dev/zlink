@@ -230,9 +230,6 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "CreatePublisher") {
 		t.Fatalf("SpotNode should expose CreatePublisher")
 	}
-	if !hasMethod((*zlink.SpotRouteBridge)(nil), "AttachDealerChannel") {
-		t.Fatalf("SpotRouteBridge should expose AttachDealerChannel")
-	}
 	if !hasMethod((*zlink.SpotRouteBridge)(nil), "AttachRouterChannel") {
 		t.Fatalf("SpotRouteBridge should expose AttachRouterChannel")
 	}

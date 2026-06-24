@@ -1745,19 +1745,15 @@ static IHost CreateRouteEgressHost(
             .TraceLogFile(Path.Combine(options.LogDir, traceName))
             .TraceNodeId("client-framework");
         var spotMesh = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-            .UseRegistrySpotResolver();
-        spotMesh.AddNode(SpotServiceNames.EdgeSpotNode)
+            .UseRegistrySpotResolver()
             .EnableRouter(options.ClientSpotRouterEndpoint)
-            .SetRouterRoutingId(RoutingId.From("client-edge"));
-        spotMesh.AddNode(SpotServiceNames.EdgePublisherNode)
+            .SetRouterRoutingId(RoutingId.From("client-edge"))
             .EnablePubSub(options.ClientSpotPubEndpoint)
             .SetPubSubRoutingId(RoutingId.From("client-edge-publisher"))
-            .AttachSpotPublisherClient(
-                SpotServiceNames.SpotChannel,
-                options.PlayASpotPubEndpoint);
+            .ConnectPubSub(options.PlayASpotPubEndpoint);
         if (includeControlChannel)
         {
-            framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
+            framework.AddRouteMesh(SpotServiceNames.ControlChannel)
                 .EnableServer(options.ClientControlEndpoint)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From("client-control"));
@@ -1773,19 +1769,17 @@ static IHost CreateRouteEgressHost(
             var routingId = usePlayBRouteMeshEgress
                 ? "client-external-route-b"
                 : "client-external-route";
-            framework.AddRouteMeshChannel(channelName)
+            framework.AddRouteMesh(channelName)
                 .EnableServer(endpoint)
                 .EnableClient(usePlayBRouteMeshEgress
                     ? options.PlayBExternalSpotEndpoint
                     : options.PlayAExternalSpotEndpoint)
-                .SetRoutingId(RoutingId.From(routingId))
-                .EnableSpotRouteEgress(channelName);
+                .SetRoutingId(RoutingId.From(routingId));
         }
         if (includeClientServerEgress)
         {
             framework.AddClientServerChannel(SpotServiceNames.ExternalClientServerChannel)
-                .EnableClient(options.PlayAExternalSpotEndpoint)
-                .EnableSpotRouteEgress(SpotServiceNames.ExternalSpotChannel);
+                .EnableClient(options.PlayAExternalSpotEndpoint);
         }
         if (includeExternalChannelServer)
         {

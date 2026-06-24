@@ -247,17 +247,6 @@ class ZlinkSpotRouteBridgeEndpointOptions(ctypes.Structure):
     ]
 
 
-class ZlinkSpotRouteBridgeSummary(ctypes.Structure):
-    _fields_ = [
-        ("struct_size", ctypes.c_uint32),
-        ("attached_channel_count", ctypes.c_uint32),
-        ("pending_request_count", ctypes.c_uint64),
-        ("rejected_inbound_count", ctypes.c_uint64),
-        ("malformed_inbound_count", ctypes.c_uint64),
-        ("routed_send_failure_count", ctypes.c_uint64),
-    ]
-
-
 class ZlinkSpotNodeSocketFilter(ctypes.Structure):
     _fields_ = [
         ("owner", ctypes.c_uint32),
@@ -1270,16 +1259,6 @@ class _Lib:
             ctypes.c_void_p,
         )
         self._require(
-            "zlink_spot_route_bridge_attach_dealer_channel",
-            [
-                ctypes.c_void_p,
-                ctypes.c_char_p,
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkSpotRouteBridgeEndpointOptions),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_spot_route_bridge_attach_router_channel",
             [
                 ctypes.c_void_p,
@@ -1290,15 +1269,11 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_route_bridge_set_target_node",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ZlinkRoutingId)],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_spot_route_bridge_send",
             [
                 ctypes.c_void_p,
                 ctypes.c_char_p,
+                ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_size_t,
@@ -1312,6 +1287,7 @@ class _Lib:
                 ctypes.c_void_p,
                 ctypes.c_char_p,
                 ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_size_t,
                 ctypes.c_void_p,
@@ -1324,11 +1300,6 @@ class _Lib:
         self._require(
             "zlink_spot_route_bridge_drain",
             [ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_route_bridge_summary",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkSpotRouteBridgeSummary)],
             ctypes.c_int,
         )
         self._require(

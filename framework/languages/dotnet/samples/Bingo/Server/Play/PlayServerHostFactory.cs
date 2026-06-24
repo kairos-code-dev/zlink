@@ -38,19 +38,17 @@ public static class PlayServerHostFactory
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
-            options.AddRouteMeshChannel(SampleNames.PlayChannel)
+            options.AddRouteMesh(SampleNames.PlayChannel)
                 .EnableServer(node.PlayChannelEndpoint)
                 .EnableClient()
                 .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery).UseRegistrySpotResolver()
-                .AddNode(SampleNames.RoomSpotNode)
                 .EnableRouter(node.SpotRouterEndpoint)
                 .SetRouterRoutingId(node.NodeRid)
                 .EnablePubSub(node.SpotPubEndpoint)
                 .SetPubSubRoutingId(node.NodeRid)
-                .AcceptSpotRoutesFromChannel(SampleNames.PlayChannel)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddSpotFactory<BingoRoom>();
         });

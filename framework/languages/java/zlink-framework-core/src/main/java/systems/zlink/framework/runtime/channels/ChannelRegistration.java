@@ -30,7 +30,6 @@ public final class ChannelRegistration {
         new ArrayList<>();
     private final List<ChannelRouteRequestHandlerRegistration> routeRequestHandlers =
         new ArrayList<>();
-    private String spotRouteEgressTarget;
     private boolean clientEnabled;
     private boolean serverEnabled;
     private boolean publisherEnabled;
@@ -94,10 +93,6 @@ public final class ChannelRegistration {
 
     List<ChannelRouteSendHandlerRegistration> routeSendHandlers() {
         return routeSendHandlers;
-    }
-
-    public String spotRouteEgressTarget() {
-        return spotRouteEgressTarget;
     }
 
     public List<String> handlerGroups() {
@@ -250,14 +245,6 @@ public final class ChannelRegistration {
             resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
-    void enableSpotRouteEgress(String targetSpotNodeChannelName) {
-        if (targetSpotNodeChannelName == null || targetSpotNodeChannelName.isBlank()) {
-            throw new ZLinkConfigurationException(
-                "spot route egress target SpotNode channel name is required: " + name);
-        }
-        spotRouteEgressTarget = targetSpotNodeChannelName;
-    }
-
     public void validate(boolean discoveryEnabled) {
         validate(discoveryEnabled, new ZLinkScannedHandlerCatalog(List.of()));
     }
@@ -269,8 +256,6 @@ public final class ChannelRegistration {
             validateClientServer(discoveryEnabled, handlerCatalog);
         } else if (kind == ChannelKind.FANOUT) {
             validateFanout(discoveryEnabled, handlerCatalog);
-        } else if (kind == ChannelKind.DEALER_MESH) {
-            validateDealerMesh(discoveryEnabled, handlerCatalog);
         } else if (kind == ChannelKind.ROUTE_MESH) {
             validateRouteMesh(discoveryEnabled, handlerCatalog);
         }
@@ -286,10 +271,6 @@ public final class ChannelRegistration {
         if (serverEnabled && serverBinds.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "client/server channel server requires at least one bind endpoint: " + name);
-        }
-        if (spotRouteEgressTarget != null && !clientEnabled) {
-            throw new ZLinkConfigurationException(
-                "client/server channel routed Spot egress requires client capability: " + name);
         }
         validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL,
             Set.of(ZLinkScannedHandlerKind.SEND, ZLinkScannedHandlerKind.REQUEST));
@@ -397,21 +378,6 @@ public final class ChannelRegistration {
                         + name + "/" + handler.packetName());
             }
         }
-    }
-
-    private void validateDealerMesh(
-        boolean discoveryEnabled,
-        ZLinkScannedHandlerCatalog handlerCatalog) {
-        if (clientEnabled && !discoveryEnabled && clientManualEndpoints.isEmpty()) {
-            throw new ZLinkConfigurationException(
-                "dealer mesh channel client requires discovery or manual connections: " + name);
-        }
-        if (!clientEnabled && handlerGroups.isEmpty()) {
-            throw new ZLinkConfigurationException(
-                "dealer mesh channel requires client capability or handler groups: " + name);
-        }
-        validateMappedGroups(handlerCatalog, ZLinkScannedHandlerSurface.CHANNEL,
-            Set.of(ZLinkScannedHandlerKind.SEND, ZLinkScannedHandlerKind.REQUEST));
     }
 
     private static String requireEndpoint(String endpoint) {

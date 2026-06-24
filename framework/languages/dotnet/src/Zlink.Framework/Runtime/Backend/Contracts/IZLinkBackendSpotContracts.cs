@@ -90,26 +90,21 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
 internal interface IZLinkBackendSpotRouteBridge : IZLinkBackendObject, IAsyncDisposable
 {
-    void AttachDealerChannel(
-        string channelName,
-        IZLinkBackendDealerSocket dealer,
-        SpotRouteBridgeEndpointOptions? options = null);
-
     void AttachRouterChannel(
         string channelName,
         IZLinkBackendRouterSocket router,
         SpotRouteBridgeEndpointOptions? options = null);
 
-    void SetTargetNode(string channelName, RoutingId targetNodeRid);
-
     bool Send(
         string channelName,
+        RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         SendFlags flags);
 
     bool Request(
         string channelName,
+        RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
@@ -119,12 +114,6 @@ internal interface IZLinkBackendSpotRouteBridge : IZLinkBackendObject, IAsyncDis
     bool HandleRouterReceived(
         string channelName,
         RoutingId sourceNodeRid,
-        ulong requestSeq,
-        IReadOnlyList<Message> parts);
-
-    bool HandleDealerReceived(
-        string channelName,
-        ReceivedMessageType messageType,
         ulong requestSeq,
         IReadOnlyList<Message> parts);
 

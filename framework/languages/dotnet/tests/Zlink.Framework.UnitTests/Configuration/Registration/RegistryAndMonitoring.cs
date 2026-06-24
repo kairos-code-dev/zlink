@@ -28,31 +28,13 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
             Assert.DoesNotContain(typeof(IZLinkSpotOutbound).Assembly.GetTypes(), IsRemovedSpotEgressClient);
         }
 
-        var clientServerEgress = new ServiceCollection();
-        clientServerEgress.AddZLinkFramework(options =>
-        {
-            {
-                var channel = options.AddClientServerChannel("gateway.client");
-                                channel.EnableClient("tcp://127.0.0.1:7201");
-                channel.EnableSpotRouteEgress("play.route");
-
-            }
-        });
-
-        using (var provider = clientServerEgress.BuildServiceProvider())
-        {
-            _ = provider;
-            Assert.DoesNotContain(typeof(IZLinkSpotOutbound).Assembly.GetTypes(), IsRemovedSpotEgressClient);
-        }
-
         var routeMeshEgress = new ServiceCollection();
         routeMeshEgress.AddZLinkFramework(options =>
         {
             {
-                var channel = options.AddRouteMeshChannel("gateway.route");
+                var channel = options.AddRouteMesh("gateway.route");
                 channel.EnableServer("tcp://127.0.0.1:7301");
                 channel.EnableClient("tcp://127.0.0.1:7201");
-                channel.EnableSpotRouteEgress("play.route");
 
             }
         });
@@ -128,7 +110,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
             }
 
             {
-                var routed = options.AddRouteMeshChannel("gateway");
+                var routed = options.AddRouteMesh("gateway");
                 routed.EnableServer("tcp://127.0.0.1:7301");
 
             }
@@ -137,7 +119,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 var mesh = options.AddSpotMesh("game.stage");
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
-                    var spot = mesh.AddNode("stage-node");
+                    var spot = mesh;
                 {
                     var router = spot.EnableRouter("tcp://127.0.0.1:9000");
 
@@ -177,7 +159,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
             options.AddClientServerChannel("api")
                 .EnableClient("tcp://127.0.0.1:7101")
                 .SetDefaultRequestTimeout(TimeSpan.FromSeconds(2));
-            options.AddRouteMeshChannel("route")
+            options.AddRouteMesh("route")
                 .EnableServer("tcp://127.0.0.1:7201")
                 .EnableClient("tcp://127.0.0.1:7202")
                 .SetDefaultRequestTimeout(TimeSpan.FromSeconds(3));

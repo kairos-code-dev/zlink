@@ -54,8 +54,7 @@ channel 은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`ho
 |------|------|-----------|
 | client-server | `AddClientServerChannel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 붙는다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
 | fanout | `AddFanoutChannel` | publisher → 다수 subscriber, topic (PUB / SUB) |
-| dealer mesh | `AddDealerMeshChannel` | dealer ↔ dealer — round-robin·가중치 기반 분산 (외부 LB 없이 수평 확장) |
-| route mesh | `AddRouteMeshChannel` | router ↔ router — routing id 로 특정 주소에 라우팅 (SPOT node 가 이 route mesh 로 구성된다: [05-spot](05-spot.ko.md)) |
+| route mesh | `AddRouteMesh` | router ↔ router — routing id 로 특정 주소에 라우팅 (SPOT node 가 이 route mesh 로 구성된다: [05-spot](05-spot.ko.md)) |
 
 **소켓 구조 한눈에** — 어떤 소켓이 어떻게 붙는지가 네 종류의 차이다.
 
@@ -75,15 +74,6 @@ graph LR
     P["publisher<br/>PUB"] --> S1["subscriber A<br/>SUB"]
     P --> S2["subscriber B<br/>SUB"]
     P --> S3["subscriber C<br/>SUB"]
-```
-
-- **dealer mesh** — DEALER 끼리 붙어, 한 요청을 서버들에 **round-robin·가중치로 분산**(아무 서버나).
-
-```mermaid
-graph LR
-    C["client<br/>DEALER"] -->|"round-robin / 가중치"| A["server A<br/>DEALER"]
-    C --> B["server B<br/>DEALER"]
-    C --> D["server C<br/>DEALER"]
 ```
 
 - **route mesh** — ROUTER 끼리 붙어, **routing id 로 지정한 주소에만** 보낸다(분산 아님). SPOT node 가 이 구조로 구성된다.
@@ -152,7 +142,7 @@ graph LR
     RT -->|id=7| A7["actor 7"]
 ```
 
-상세는 [06-actor-session](06-actor-session.ko.md).
+상세는 [06-actor-spot](06-actor-spot.ko.md).
 
 ## 4. stream — 외부 client 연결
 
@@ -166,7 +156,7 @@ graph LR
     SV --- SE["session<br/>(연결 1개 = 객체 1개)"]
 ```
 
-상세는 [07-stream](07-stream.ko.md).
+상세는 [08-stream](08-stream.ko.md).
 
 ## 5. registry / discovery — 주소 자동 연결
 
@@ -188,7 +178,7 @@ graph LR
 ```
 
 주소 해결 → 자동 연결 sequence 는 [02-getting-started §7](02-getting-started.ko.md)이
-그림으로 보여 주고, 운영·배포 모델은 [08-registry](08-registry.ko.md)가 다룬다.
+그림으로 보여 주고, 운영·배포 모델은 [09-registry](09-registry.ko.md)가 다룬다.
 Registry 없이 endpoint 를 직접 지정하는 **수동 연결**도 가능하다(역할 단위,
 [04-channel-messaging §6](04-channel-messaging.ko.md)).
 
@@ -336,7 +326,6 @@ graph LR
 스레드가 즉시 B 를 처리하고, A 는 응답이 오면 resume 된다.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
 sequenceDiagram
     participant W as worker 스레드
     participant H1 as 핸들러 A (async)
@@ -403,15 +392,15 @@ stateDiagram-v2
   |------|------|-----------|
   | `builder.Services.AddZLinkFramework(...)` | channel/SPOT/STREAM/Discovery 선언 | 4~8장 |
   | `options.AddClientServerChannel(...)` / `AddFanoutChannel` | channel 종류·역할 선언 | [4장](04-channel-messaging.ko.md) |
-  | `options.UseDiscovery(...)` | Registry 기반 endpoint 발견 | [8장](08-registry.ko.md) |
-  | `builder.Services.AddZLinkRegistry(...)` | Registry 서버 실행 | [8장](08-registry.ko.md) |
-  | runtime event handler | monitoring event 관찰 | [9장](09-monitoring.ko.md) |
+  | `options.UseDiscovery(...)` | Registry 기반 endpoint 발견 | [8장](09-registry.ko.md) |
+  | `builder.Services.AddZLinkRegistry(...)` | Registry 서버 실행 | [8장](09-registry.ko.md) |
+  | runtime event handler | monitoring event 관찰 | [9장](10-monitoring.ko.md) |
 
 ## 7. 더 깊이
 
 - request/send/pub-sub 전체 사용법: [04-channel-messaging](04-channel-messaging.ko.md)
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
-- 기능 선택 기준: [10-feature-map](10-feature-map.ko.md)
+- 기능 선택 기준: [11-feature-map](11-feature-map.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

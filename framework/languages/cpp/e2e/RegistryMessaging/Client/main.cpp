@@ -87,7 +87,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 run_cross_channel_discovery (channels);
                 run_message_size_variation (channels);
                 run_route_mesh (routes);
-                run_dealer_mesh (channels);
             } else if (scenario == "scale-out") {
                 run_scale_out (channels);
             } else if (scenario == "scale-in") {
@@ -262,25 +261,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario RM-C2 passed\n";
     }
 
-    void run_dealer_mesh (zlink::framework::channel_client_t &channels)
-    {
-        std::map<std::string, int> counts;
-        for (int index = 0; index < 60; ++index) {
-            auto task =
-              channels
-                .request (e2e::dealer_channel,
-                          e2e::profile_request_t{.value = "dealer-" + std::to_string (index)})
-                .timeout (std::chrono::milliseconds (2000))
-                .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RM-C6 dealer request failed");
-            ++counts[task.result ().value ().provider_rid];
-        }
-        ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
-                "RM-C6 did not distribute to both dealer peers");
-        ensure (counts["api-a"] + counts["api-b"] == 60, "RM-C6 count mismatch");
-        std::cout << "scenario RM-C6 passed\n";
-    }
-
     void run_scale_out (zlink::framework::channel_client_t &channels)
     {
         for (int index = 0; index < 5; ++index) {
@@ -389,8 +369,6 @@ int main (int argc, char **argv)
     const auto api_b_endpoint = env_or ("ZLINK_CPP_E2E_API_B_ENDPOINT");
     const auto route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT");
     const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
-    const auto dealer_a_endpoint = env_or ("ZLINK_CPP_E2E_DEALER_A_ENDPOINT");
-    const auto dealer_b_endpoint = env_or ("ZLINK_CPP_E2E_DEALER_B_ENDPOINT");
 
     auto app = zlink::framework::app_t::create ();
     auto scenario = std::make_unique<scenario_service_t> (app);
@@ -412,14 +390,11 @@ int main (int argc, char **argv)
         options.add_client_server_channel ("registry.messaging.api.manual.multi")
           .enable_client (api_a_endpoint)
           .enable_client (api_b_endpoint);
-        options.add_route_mesh_channel (e2e::route_channel)
+        options.add_route_mesh (e2e::route_channel)
           .enable_server (env_or ("ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT"))
           .set_routing_id (zlink::routing_id_t::from (std::string ("client")))
           .enable_client (route_a_endpoint)
           .enable_client (route_b_endpoint);
-        options.add_dealer_mesh_channel (e2e::dealer_channel)
-          .enable_client (dealer_a_endpoint)
-          .enable_client (dealer_b_endpoint);
     });
     app.add_hosted_service (std::move (scenario));
     const auto exit_code = app.run (argc, argv);

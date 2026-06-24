@@ -357,7 +357,7 @@ builder 로 옮긴다. dotnet builder 메서드 한 개 = node builder 메서드
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .addSpotNode('game.spot')
+        .addSpotMesh('game.spot')
           .enableRouter('tcp://0.0.0.0:9110')
         .addStreamNode('client.stream')
           .bind('tcp://0.0.0.0:9100')
@@ -382,7 +382,7 @@ NestJS `providers` 에는 application 이 직접 소유하는 handler, domain se
 factory 만 둔다. framework runtime 이 소유하는 socket accept, frame decode,
 reply frame 작성, session token alias 는 application provider 목록에 넣지 않는다.
 actor 를 쓰는 stream server 는 fluent builder 의 `actorFactory(...)` 와
-`addSpotNode(...)` 로 actor factory 와 SpotNode 를 선언할 수 있다. 이 선언은
+`addSpotMesh(...)` 로 actor factory 와 SpotNode 를 선언할 수 있다. 이 선언은
 같은 공개 계약을 만들지만, server entrypoint 에서 raw options 객체를 직접 조립하지
 않아도 되게 한다.
 

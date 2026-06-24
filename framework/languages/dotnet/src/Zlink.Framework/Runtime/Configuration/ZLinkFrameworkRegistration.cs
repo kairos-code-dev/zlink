@@ -99,7 +99,6 @@ internal sealed class ZLinkChannelRegistration
 
     public List<ZLinkChannelHandlerRegistration> PublishHandlers { get; } = [];
 
-    public ZLinkSpotRouteEgressRegistration? SpotRouteEgress { get; set; }
 }
 
 internal sealed class ZLinkChannelServerCapabilityRegistration
@@ -174,8 +173,6 @@ internal sealed class ZLinkRouteChannelRegistration
 
     public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
 
-    public ZLinkSpotRouteEgressRegistration? SpotRouteEgress { get; set; }
-
 }
 
 internal sealed record ZLinkRouteHandlerRegistration(
@@ -190,9 +187,6 @@ internal sealed record ZLinkChannelHandlerRegistration(
     Type? ReplyType,
     string? PacketName);
 
-internal sealed record ZLinkSpotRouteEgressRegistration(
-    string TargetSpotNodeChannelName);
-
 internal sealed class ZLinkSpotNodeRegistration
 {
     public required string SpotNodeName { get; init; }
@@ -200,10 +194,6 @@ internal sealed class ZLinkSpotNodeRegistration
     public ZLinkSpotRouterCapabilityRegistration? Router { get; set; }
 
     public ZLinkSpotPubSubCapabilityRegistration? PubSub { get; set; }
-
-    public Dictionary<string, ZLinkSpotPublisherClientRegistration> AttachedSpotPublisherClients { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkSpotRouteChannelAcceptanceRegistration> AcceptedSpotRouteChannels { get; } = new(StringComparer.Ordinal);
 
     public HashSet<Type> SpotFactories { get; } = [];
 
@@ -215,13 +205,6 @@ internal sealed class ZLinkSpotNodeRegistration
 internal sealed class ZLinkEntrySpotOptions : IZLinkEntrySpotOptions
 {
     public RoutingId RoutingId { get; set; }
-}
-
-internal sealed class ZLinkSpotRouteChannelAcceptanceRegistration
-{
-    public required string ChannelName { get; init; }
-
-    public List<string> ManualConnections { get; } = [];
 }
 
 internal sealed class ZLinkSpotRouterCapabilityRegistration
@@ -248,15 +231,6 @@ internal sealed class ZLinkSpotPubSubCapabilityRegistration
     public ZLinkSpotPublisherConfig PublisherConfig { get; } = new();
 
     public ZLinkSpotSubscriberConfig SubscriberConfig { get; } = new();
-
-    public List<string> ManualConnections { get; } = [];
-}
-
-internal sealed class ZLinkSpotPublisherClientRegistration
-{
-    public required string ChannelName { get; init; }
-
-    public ZLinkSocketConfig SocketConfig { get; } = new();
 
     public List<string> ManualConnections { get; } = [];
 }

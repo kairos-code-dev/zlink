@@ -171,8 +171,9 @@ internal static class TestHostScenarioConfigurator
                             ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint."));
 
                     {
-                        var spot = spotMesh.AddNode(options.SpotNodeName
-                            ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name."));
+                        _ = options.SpotNodeName
+                            ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name.");
+                        var spot = spotMesh;
                             var spotBindEndpoint = options.SpotBindEndpoint
                                 ?? throw new InvalidOperationException("SPOT node mode requires --spot-bind-endpoint.");
 
@@ -189,11 +190,6 @@ internal static class TestHostScenarioConfigurator
                                     var router = spot.EnableRouter(spotBindEndpoint);
 
                                 }
-                            }
-
-                            if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel))
-                            {
-                                spot.AttachSpotPublisherClient(options.AttachSpotPublisherChannel);
                             }
 
                             if (options.EnableSpotFactory)

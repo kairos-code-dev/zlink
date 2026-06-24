@@ -509,11 +509,6 @@ public interface ZLinkSpotNodeBuilder {
     ZLinkSpotNodeBuilder connectPubSub(String endpoint); // compatibility alias
     ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
 
-    ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName);
-    ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName, String endpoint);
-    ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName);
-    ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName, String endpoint);
-
     ZLinkEntrySpotOptions configureEntrySpot();
     ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot> spotType);
     ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType);
@@ -549,7 +544,6 @@ public interface ClientServerChannelBuilder {
         Class<TRequest> requestType,
         Class<TReply> replyType,
         @Nullable String packetName);
-    ClientServerChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }
 
 public interface FanoutChannelBuilder {
@@ -581,7 +575,6 @@ public interface RouteMeshChannelBuilder {
         Class<TRequest> requestType,
         Class<TReply> replyType,
         @Nullable String packetName);
-    RouteMeshChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }
 
 public interface ZLinkFrameworkOptions {
@@ -593,7 +586,7 @@ public interface ZLinkFrameworkOptions {
     ZLinkDiscoveryBuilder useDiscovery();
     ClientServerChannelBuilder addClientServerChannel(String channelName);
     FanoutChannelBuilder addFanoutChannel(String channelName);
-    RouteMeshChannelBuilder addRouteMeshChannel(String channelName);
+    RouteMeshChannelBuilder addRouteMesh(String channelName);
     ZLinkSpotMeshBuilder addSpotMesh(String channelName);
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
     void addActorFactory(
@@ -609,7 +602,11 @@ public interface ZLinkFrameworkOptions {
 
 public interface ZLinkSpotMeshBuilder {
     ZLinkDiscoveryBuilder useDiscovery();
-    ZLinkSpotNodeBuilder addNode(String spotNodeName);
+    ZLinkSpotMeshBuilder enableRouter(String endpoint);
+    ZLinkSpotMeshBuilder enablePubSub(String endpoint);
+    ZLinkEntrySpotOptions configureEntrySpot();
+    ZLinkSpotMeshBuilder addSpotFactory(Class<? extends ZLinkSpot> spotType);
+    ZLinkSpotMeshBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType);
 }
 
 public interface ZLinkDiscoveryBuilder {

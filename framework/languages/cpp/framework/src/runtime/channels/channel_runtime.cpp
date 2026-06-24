@@ -637,13 +637,6 @@ route_channel_builder_t &route_channel_builder_t::add_handler_group (std::string
 }
 
 route_channel_builder_t &
-route_channel_builder_t::enable_spot_route_egress (std::string target_spot_node_channel_name)
-{
-    _state->registration.enable_spot_route_egress (std::move (target_spot_node_channel_name));
-    return *this;
-}
-
-route_channel_builder_t &
 route_channel_builder_t::add_handler (route_handler_registration_t registration)
 {
     _state->registration.add_handler (std::move (registration));

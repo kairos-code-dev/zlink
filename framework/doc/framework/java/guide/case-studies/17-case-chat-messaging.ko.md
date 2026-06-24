@@ -68,7 +68,7 @@ stream.registerSession(ChatSession.class);
 
 options.addActorFactory("user", UserActorFactory.class);
 
-ZLinkSpotNodeBuilder node = options.addSpotMesh("rooms").addNode("room-node");
+ZLinkSpotMeshBuilder node = options.addSpotMesh("rooms");
 node.enableRouter("tcp://0.0.0.0:7700");
 node.enablePubSub("tcp://0.0.0.0:7701");
 node.addSpotFactory(ChatRoomSpot.class);
@@ -187,7 +187,6 @@ room 에 한 마디 보내는 흐름이다.
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as WS gateway
@@ -204,7 +203,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant S as Session 서버

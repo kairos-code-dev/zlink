@@ -97,6 +97,7 @@ export interface PlayNodeInfo {
 
 export interface JoinGameReq {
   roomId: string;
+  player?: PlayerInfo;
 }
 
 export class JoinGameReq {

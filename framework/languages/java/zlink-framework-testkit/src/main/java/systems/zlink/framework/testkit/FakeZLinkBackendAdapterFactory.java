@@ -24,7 +24,6 @@ import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeState;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
@@ -945,32 +944,21 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static final class FakeSpotRouteBridge extends FakeBackendObject implements ZLinkBackendSpotRouteBridge {
-        private final java.util.Map<String, RoutingId> targetNodes = new java.util.HashMap<>();
-
         FakeSpotRouteBridge(List<String> calls) {
             super(calls, "spotRouteBridge");
         }
 
-        @Override public void attachDealerChannel(String channelName, ZLinkBackendDealerSocket dealer, SpotRouteBridgeEndpointOptions options) {
-            record("bridge.attachDealerChannel." + channelName);
-        }
-
-        @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router, SpotRouteBridgeEndpointOptions options) {
+        @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router) {
             record("bridge.attachRouterChannel." + channelName);
         }
 
-        @Override public void setTargetNode(String channelName, RoutingId targetNodeRid) {
-            targetNodes.put(channelName, targetNodeRid);
-            record("bridge.setTargetNode." + channelName + "." + targetNodeRid);
-        }
-
-        @Override public boolean send(String channelName, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
-            record("bridge.send." + channelName + "." + targetSpotRid + "." + firstPart(parts));
+        @Override public boolean send(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
+            record("bridge.send." + channelName + "." + targetNodeRid + "." + targetSpotRid + "." + firstPart(parts));
             return true;
         }
 
-        @Override public boolean request(String channelName, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            record("bridge.request." + channelName + "." + targetSpotRid + "." + firstPart(parts));
+        @Override public boolean request(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            record("bridge.request." + channelName + "." + targetNodeRid + "." + targetSpotRid + "." + firstPart(parts));
             if (isRoutedActorJoinRequest(parts)) {
                 ZLinkActorSpotRoutePackets.JoinRequest request =
                     ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(1));

@@ -15,17 +15,12 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"Route channel '{routed.RouterChannelId}' must define a bind endpoint.");
         }
 
-        var manualRouteEgressWithDiscoveryMetadata =
-            routed.SpotRouteEgress is not null
-            && routed.ManualConnections.Count > 0
-            && discoveryConfigured;
         var manualAcceptedSpotRouteWithDiscoveryMetadata =
             acceptedBySpotRouteChannel
             && routed.ManualConnections.Count > 0
             && discoveryConfigured;
 
-        if (!manualRouteEgressWithDiscoveryMetadata
-            && !manualAcceptedSpotRouteWithDiscoveryMetadata
+        if (!manualAcceptedSpotRouteWithDiscoveryMetadata
             && (!acceptedBySpotRouteChannel
                 || discoveryConfigured
                 || routed.ManualConnections.Count > 0))
@@ -34,13 +29,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"Route channel '{routed.RouterChannelId}'",
                 discoveryConfigured,
                 routed.ManualConnections);
-        }
-
-        if (routed.SpotRouteEgress is not null
-            && string.IsNullOrWhiteSpace(routed.SpotRouteEgress.TargetSpotNodeChannelName))
-        {
-            throw new ZLinkConfigurationException(
-                $"Route channel '{routed.RouterChannelId}' routed SPOT egress target channel must not be empty.");
         }
 
         ValidateRouteMappedGroups(routed, handlerGroups);

@@ -47,7 +47,7 @@ Session 서버는 STREAM endpoint와 relay 대상 SpotNode를 함께 구성한�
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
-    options.add_spot_node("session-actors")
+    options.add_spot_mesh("session-actors")
       .bind("tcp://0.0.0.0:7101")
       .enable_actor_gateway()
       .add_entry_spot<player_entry_spot_t>();

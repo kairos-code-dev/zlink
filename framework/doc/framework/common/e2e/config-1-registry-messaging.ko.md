@@ -29,12 +29,12 @@ weight를 다르게 준 provider를 따로 띄운다(공유 provider는 기본 w
 | 역할 | 수 | 구성 |
 |------|----|------|
 | registry | 1 | discovery server. pub endpoint + router endpoint. |
-| provider (api 노드) | 2 (`api-a`, `api-b`) | 세 channel 종류를 함께 노출한다: ① registry-discovered **client-server channel**(`AddClientServerChannel`) — request handler(`ProfileRequest`)·send handler(`ProfileCommand`); ② peer-wired **route mesh channel**(`AddRouteMeshChannel`) — route request handler(`ScenarioRoutePing`), routing id `api-a`/`api-b`; ③ peer-wired **dealer mesh channel**(`AddDealerMeshChannel`) — `ProfileRequest`. dispatch-error observer로 evidence 기록. 테스트용 `/evidence`·`/health` HTTP endpoint. |
-| consumer | 시나리오별 | client-server는 Discovery client(endpoint 모름, registry resolve). route mesh는 자신이 route node가 되어, `EnableServer(clientEndpoint)`로 자기 endpoint를 bind하고 `SetRoutingId(...)`로 자기 routing id를 설정하며 peer를 `EnableClient(peerEndpoint)`로 붙는다(세 호출 순서는 무관 — 최종 registration으로 적용. route channel은 bind endpoint 없으면 startup 거부). dealer mesh는 peer endpoint로 `EnableClient`만 한다. |
+| provider (api 노드) | 2 (`api-a`, `api-b`) | 두 channel 종류를 함께 노출한다: ① registry-discovered **client-server channel**(`AddClientServerChannel`) — request handler(`ProfileRequest`)·send handler(`ProfileCommand`); ② peer-wired **route mesh**(`AddRouteMesh`) — route request handler(`ScenarioRoutePing`), routing id `api-a`/`api-b`. dispatch-error observer로 evidence 기록. 테스트용 `/evidence`·`/health` HTTP endpoint. |
+| consumer | 시나리오별 | client-server는 Discovery client(endpoint 모름, registry resolve) 또는 명시 endpoint 여러 개로 붙는다. route mesh는 자신이 route node가 되어, `EnableServer(clientEndpoint)`로 자기 endpoint를 bind하고 `SetRoutingId(...)`로 자기 routing id를 설정하며 peer를 `EnableClient(peerEndpoint)`로 붙는다(세 호출 순서는 무관 — 최종 registration으로 적용. route channel은 bind endpoint 없으면 startup 거부). |
 
 client-server channel provider는 자기 logical routing id(`api-a`, `api-b`)와 channel endpoint를
 registry에 광고한다. 그래서 consumer는 channel 이름만 알면 되고, 실제 endpoint는 registry가
-알려준다. route/dealer mesh는 registry discovery를 쓰지 않고 peer endpoint로 직접 묶는다.
+알려준다. route mesh는 registry discovery를 쓰지 않고 peer endpoint로 직접 묶는다.
 
 handler 동작(공유):
 
@@ -180,16 +180,6 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 - 검증: request는 **error reply로 실패**하고(client는 예외로 받음), observer evidence의 reason/action은 `HandlerMissing`/`ReplyError`다. send는 reply 없이 drop되고 observer reason/action은 `HandlerMissing`/`Drop`이다. 다른 정상 request는 영향 없음.
 - 세부 동작: negative path(client-visible error + observer) 구분.
 
-#### RM-C6 dealer mesh peer request
-
-우선순위: `P0`
-
-**한마디로:** dealer mesh peer 둘을 등록해 두고 보내면, 특정 peer를 지정하지 않아도 mesh가 알아서 분배하는가.
-
-- 절차: client가 시작 전에 dealer mesh의 두 peer endpoint를 모두 `EnableClient(endpoint)`로 등록하고(런타임 연결 추가 handle은 없음 — startup 설정), 충분한 수의 request를 보낸다.
-- 검증: request가 등록된 dealer mesh peer들에 분산되어 처리된다(특정 peer 지정 없이 mesh가 분배). 각 peer evidence 합이 전체 request 수와 일치한다.
-- 세부 동작: dealer mesh 분산 messaging(정적 peer 등록).
-
 #### RM-C7 weighted 분산 (server쪽 weight 차등)
 
 우선순위: `P1`
@@ -200,7 +190,7 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 - 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 weight 비율을 따라 `api-a`가 `api-b`보다 **뚜렷이 많이** 처리한다(정확한 75/25는 보장값이 아니므로 "고weight가 저weight보다 분명히 많음 + 양쪽 모두 처리 + 합계 일치"로 검증한다).
 - 세부 동작: server쪽 advertised weight에 따른 client측 부하 분산.
 
-> 분산 주체 주의. client-server channel에서 server는 ROUTER, client는 DEALER다. server(ROUTER)는 자기 weight를 연결된 client(DEALER) peer에게 advertise만 하고, 비율 분산은 **client(DEALER)의 load balancer**가 수행한다. ROUTER 자신은 weight를 비율 분산이 아니라 `0`=drain / non-`0`=허용의 이진 게이트로만 쓴다. 따라서 weighted 비율(`1..99`)은 **이미 연결된 peer의 LB 분배**에만 작용하고, weight `0`(drain)은 RM-C3/RM-C6 분산에서 그 노드를 후보에서 빼는 별개 동작이다(drain·복귀 검증은 Config 5 RL-B에서 다룬다).
+> 분산 주체 주의. client-server channel에서 server는 ROUTER, client는 DEALER다. server(ROUTER)는 자기 weight를 연결된 client(DEALER) peer에게 advertise만 하고, 비율 분산은 **client(DEALER)의 load balancer**가 수행한다. ROUTER 자신은 weight를 비율 분산이 아니라 `0`=drain / non-`0`=허용의 이진 게이트로만 쓴다. 따라서 weighted 비율(`1..99`)은 **이미 연결된 peer의 LB 분배**에만 작용하고, weight `0`(drain)은 RM-C3 분산에서 그 노드를 후보에서 빼는 별개 동작이다(drain·복귀 검증은 Config 5 RL-B에서 다룬다).
 
 > payload decode 실패는 public typed client로 유도할 수 없다(typed client는 항상 정상 envelope로 직렬화). 실제 decode-failure는 raw frame 주입이 필요해 public-API-only인 이 config 범위 밖이며, raw-frame contract 테스트(E2ETests DispatchErrors)가 다룬다. decode 실패의 surface/reason 분류(channel=`PayloadDecodeFailed`, route mesh=`HandlerException`)도 거기서 검증한다.
 

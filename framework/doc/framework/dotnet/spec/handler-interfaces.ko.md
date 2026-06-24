@@ -93,7 +93,6 @@
 | builder | `IZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `IZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
 | builder | `IZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
-| builder | `IZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
 | management | `IZLinkSpotManager` | spot 인스턴스 생성/종료 | 6.3 |
 | timer | `IZLinkTimer` | timer handle | 7 |
 | filter | `IZLinkHandlerFilter` | handler 전후 공통 처리 | 8 |
@@ -208,7 +207,7 @@ interface 기반 등록을 모두 지원한다.
 
 ### 4.2.1 routed channel handler
 
-routed channel(`AddRouteMeshChannel`) 이 수신하는
+routed channel(`AddRouteMesh`) 이 수신하는
 메시지를 처리하는 handler 다.
 
 일반 channel handler 와 한 가지 차이가 있다. source `RoutingId` 를 포함한
@@ -2266,7 +2265,7 @@ remote actor handle 을 만들고, core ActorGateway 가 그 actor ref 를 기�
 route transport helper 는 application 의 public surface 가 아니다.
 internal transport helper 다.
 
-사용처는 다음과 같다. routed channel (`AddRouteMeshChannel`) 을 통해 특정 노드의 `RoutingId` 로 direct
+사용처는 다음과 같다. routed channel (`AddRouteMesh`) 을 통해 특정 노드의 `RoutingId` 로 direct
 send/request 를 보내야 하는 framework backend, 또는 별도의 adapter
 package 가 사용한다.
 
@@ -2410,9 +2409,8 @@ public readonly record struct ZLinkSpotRemoteAddress(
 ```
 
 `RouterChannelId`는 실제 router-capable channel 이름이다. 이 값이 가리키는 channel은
-`AddClientServerChannel`의 server `ROUTER`이거나 `AddRouteMeshChannel`의
+`AddClientServerChannel`의 server `ROUTER`이거나 `AddRouteMesh`의
 route mesh `ROUTER`여야 한다. target `SpotNode`는 같은 이름을
-`AcceptSpotRoutesFromChannel`로 수락해야 하며, resolver는 연결을 만들지 않는다.
 
 actor-session route 는 public contract 가 아니다. session bind 시 framework runtime 이
 현재 actor state 에 session rid 와 binding token 을 저장하고, `IZLinkBoundSession`
@@ -2544,7 +2542,6 @@ public interface IZLinkClientServerChannelBuilder
     IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    IZLinkClientServerChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkFanoutChannelBuilder
@@ -2592,7 +2589,6 @@ public interface IZLinkRouteMeshChannelBuilder
     IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    IZLinkRouteMeshChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName);
 
 }
 
@@ -2648,7 +2644,7 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
 - `AddFanoutChannel`
   - pub/sub fanout 채널을 등록한다. builder는 `EnablePublisher(...)`와
     `EnableSubscriber(...)`만 노출한다.
-- `AddRouteMeshChannel`
+- `AddRouteMesh`
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
     manual connection을 한 builder 안에서 함께 설정한다.
 - `UseDiscovery().AddRegistryEndpoint(...)`
@@ -2657,12 +2653,10 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
 - `UseFilter<TFilter>()`
   - handler filter 타입을 framework pipeline에 등록한다.
 - `AddSpotMesh`
-  - 여러 `SpotNode`가 같은 SPOT mesh discovery view를 공유하도록 묶어 등록한다.
-    mesh builder는 자체 `UseDiscovery().AddRegistryEndpoint(...)`와 `AddNode(spotNodeName)`를
-    노출한다.
-    mesh node builder는 `EnableRouter`, `EnablePubSub`,
-    `AttachSpotPublisherClient`,
-    `AddSpotFactory<TSpot>(...)`, `AddEntrySpot<TEntrySpot>()`를 노출한다.
+  - SPOT mesh discovery view와 이 프로세스의 단일 `SpotNode`를 함께 등록한다.
+    mesh builder는 자체 `UseDiscovery().AddRegistryEndpoint(...)`와
+    `EnableRouter`, `EnablePubSub`, `AddSpotFactory<TSpot>(...)`,
+    `AddEntrySpot<TEntrySpot>()`를 노출한다.
     ActorGateway 는 별도 node builder 를 갖지 않고, stream 이 router 역할
     를 켠 SpotNode 를 `AttachActorGateway(...)` 로 참조한다.
 - `EnableServer(...)`
@@ -2935,15 +2929,10 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber();
 
-    IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName);
 
-    IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint);
 
-    IZLinkSocketConfig ConfigureSpotPublisherClientSocket(string channelName);
 
-    IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName);
 
-    IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName, string endpoint);
 
     IZLinkEntrySpotOptions ConfigureEntrySpot();
 
@@ -2958,11 +2947,7 @@ public interface IZLinkSpotMeshBuilder
 {
     IZLinkDiscoveryBuilder UseDiscovery();
 
-    IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName);
-}
-
-public interface IZLinkSpotMeshNodeBuilder : IZLinkSpotNodeBuilder
-{
+    IZLinkSpotMeshBuilder UseRegistrySpotResolver();
 }
 
 public interface IZLinkEntrySpotOptions
@@ -2980,7 +2965,6 @@ public interface IZLinkEntrySpotOptions
 - 다른 channel로 send/request 하려면 해당 client/server channel에서
   `EnableClient(...)`를 설정한다. Spot node builder는 별도 channel client를
   부착하지 않는다.
-- `AttachSpotPublisherClient(...)`
   - local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel로 publish할
     outbound publisher client를 붙인다.
 - `AddSpotFactory<TSpot>()`
@@ -3029,12 +3013,11 @@ public interface IZLinkEntrySpotOptions
     `Spot.RequestToChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 인자로 받는다.
   - 위 등록 설정과 달리 역할 runtime 기본값을 바꾸지 않는다.
 
-`AddSpotMesh(channelName)` 는 SPOT channel 이름과 node 묶음을 함께
-소유한다. 그래서 `AddNode(...)` 안에서 같은 channel 이름을 다시 받는
-함수는 두지 않는다.
+`AddSpotMesh(channelName)` 는 SPOT channel 이름과 이 프로세스의 단일 node 를
+함께 소유한다. 그래서 같은 channel 안에 node 를 다시 추가하는 함수는 두지 않는다.
 
 ActorGateway 도 같은 원칙을 따른다. 별도 `AddActorGatewayNode(...)` 표면을 두지
-않고, `AddNode(...)` 로 등록한 SpotNode 에 `EnableRouter(...)` 와 router
+않고, `AddSpotMesh(...)` 가 만든 SpotNode 에 `EnableRouter(...)` 와 router
 `Bind(...)` 를 설정한 뒤 stream 이 `AttachActorGateway(spotNodeName)` 으로
 그 local ingress node 를 참조한다.
 

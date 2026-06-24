@@ -276,7 +276,7 @@ int main (int argc, char **argv)
             options.add_client_server_channel (e2e::api_channel)
               .enable_server (api_endpoint)
               .use_handler_group (e2e::handler_group);
-            options.add_route_mesh_channel (e2e::route_channel)
+            options.add_route_mesh (e2e::route_channel)
               .enable_server (route_endpoint)
               .set_routing_id (zlink::routing_id_t::from ("rc-server"))
               .add_request_handler<manual_route_handler_t, e2e::echo_manual_t,

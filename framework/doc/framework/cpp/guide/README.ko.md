@@ -98,7 +98,7 @@ class open_conversation_handler_t {
 };
 ```
 
-request-reply 외에 fanout(pub/sub)과 dealer mesh(부하 분산) 패턴도 제공한다.
+request-reply 외에 fanout(pub/sub)과 route mesh(주소 라우팅) 패턴도 제공한다.
 [7장 →](07-channel-messaging.ko.md)
 
 ---
@@ -227,7 +227,7 @@ options.add_spot_mesh ("bingo.room.discovery")
 | 4 | [DI 컨테이너](04-di-container.ko.md) | 수명 3종, 등록 방법, 핸들러 자동 주입, captive dependency |
 | 5 | [Configuration](05-configuration.ko.md) | 설정 소스(cli/env/json), 우선순위, section/bind |
 | 6 | [HTTP Hosting](06-http-hosting.ko.md) | embedded HTTP server, route handler |
-| 7 | [채널 메시징](07-channel-messaging.ko.md) | request-reply, fanout, dealer mesh, channel client |
+| 7 | [채널 메시징](07-channel-messaging.ko.md) | request-reply, fanout, route mesh, channel client |
 | 8 | [SPOT](08-spot.ko.md) | room/stage/zone, 직렬 실행, timer |
 | 9 | [Actor · Session](09-actor-session.ko.md) | actor manager, session actor, gateway relay |
 | 10 | [Stream](10-stream.ko.md) | stream session, stream connector |

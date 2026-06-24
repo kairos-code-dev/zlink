@@ -84,17 +84,6 @@ pub struct zlink_spot_route_bridge_endpoint_options_t {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct zlink_spot_route_bridge_summary_t {
-    pub struct_size: u32,
-    pub attached_channel_count: u32,
-    pub pending_request_count: u64,
-    pub rejected_inbound_count: u64,
-    pub malformed_inbound_count: u64,
-    pub routed_send_failure_count: u64,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct zlink_actor_join_info_t {
     pub source_actor: zlink_actor_ref_t,
     pub target_actor: zlink_actor_ref_t,
@@ -1545,26 +1534,16 @@ unsafe extern "C" {
         spot_node: *mut c_void,
         options: *const zlink_spot_route_bridge_options_t,
     ) -> *mut c_void;
-    pub fn zlink_spot_route_bridge_attach_dealer_channel(
-        bridge: *mut c_void,
-        channel_name: *const c_char,
-        dealer_socket: *mut c_void,
-        options: *const zlink_spot_route_bridge_endpoint_options_t,
-    ) -> c_int;
     pub fn zlink_spot_route_bridge_attach_router_channel(
         bridge: *mut c_void,
         channel_name: *const c_char,
         router_socket: *mut c_void,
         options: *const zlink_spot_route_bridge_endpoint_options_t,
     ) -> c_int;
-    pub fn zlink_spot_route_bridge_set_target_node(
-        bridge: *mut c_void,
-        channel_name: *const c_char,
-        target_node_rid: *const zlink_routing_id_t,
-    ) -> c_int;
     pub fn zlink_spot_route_bridge_send(
         bridge: *mut c_void,
         channel_name: *const c_char,
+        target_node_rid: *const zlink_routing_id_t,
         target_spot_rid: *const zlink_routing_id_t,
         parts: *mut zlink_msg_t,
         part_count: usize,
@@ -1573,6 +1552,7 @@ unsafe extern "C" {
     pub fn zlink_spot_route_bridge_request(
         bridge: *mut c_void,
         channel_name: *const c_char,
+        target_node_rid: *const zlink_routing_id_t,
         target_spot_rid: *const zlink_routing_id_t,
         parts: *mut zlink_msg_t,
         part_count: usize,
@@ -1582,10 +1562,6 @@ unsafe extern "C" {
         timeout_ms: u32,
     ) -> c_int;
     pub fn zlink_spot_route_bridge_drain(bridge: *mut c_void) -> c_int;
-    pub fn zlink_spot_route_bridge_summary(
-        bridge: *mut c_void,
-        out: *mut zlink_spot_route_bridge_summary_t,
-    ) -> c_int;
     pub fn zlink_spot_route_bridge_close(bridge: *mut c_void) -> c_int;
     pub fn zlink_spot_node_publisher_new(spot_node: *mut c_void) -> *mut c_void;
     pub fn zlink_spot_node_publisher_publish(

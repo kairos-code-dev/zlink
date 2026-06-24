@@ -1,4 +1,4 @@
-import type { ZLinkSpot, ZLinkSpotMeshBuilder, ZLinkSpotNodeBuilder } from '../Spots';
+import type { ZLinkSpot, ZLinkSpotMeshBuilder } from '../Spots';
 import type { ZLinkSession, ZLinkSessionFactory } from '../Streams';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
@@ -19,11 +19,9 @@ export interface ZLinkFrameworkOptions {
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
-  addDealerMeshChannel(name: string): ZLinkDealerMeshChannelBuilder;
   addRouteChannel(name: string): ZLinkRouteChannelBuilder;
-  addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
+  addRouteMesh(name: string): ZLinkRouteMeshChannelBuilder;
   addStreamNode(name: string): ZLinkStreamNodeBuilder;
-  addSpotNode(name: string): ZLinkSpotNodeBuilder;
 }
 
 export interface ZLinkDiscoveryBuilder {
@@ -46,12 +44,6 @@ export interface ZLinkFanoutChannelBuilder {
   enablePublisher(endpoint: string): this;
   enableSubscriber(): this;
   enableSubscriber(endpoint: string): this;
-}
-
-export interface ZLinkDealerMeshChannelBuilder {
-  enableClient(): this;
-  enableClient(endpoint: string): this;
-  setDefaultRequestTimeout(timeoutMs: number): this;
 }
 
 export interface ZLinkRouteChannelBuilder {

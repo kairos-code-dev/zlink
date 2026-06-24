@@ -41,18 +41,6 @@ std::chrono::milliseconds route_channel_runtime_t::default_request_timeout () co
     return _default_request_timeout;
 }
 
-void route_channel_runtime_t::spot_route_egress_target (std::string target_spot_node_channel_name)
-{
-    std::lock_guard lock (_mutex);
-    _spot_route_egress_target = std::move (target_spot_node_channel_name);
-}
-
-const std::optional<std::string> &
-route_channel_runtime_t::spot_route_egress_target () const noexcept
-{
-    return _spot_route_egress_target;
-}
-
 void route_channel_runtime_t::start () noexcept
 {
     std::lock_guard lock (_mutex);

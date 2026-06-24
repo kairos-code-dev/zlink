@@ -55,8 +55,6 @@ internal sealed class ZLinkSpotNodeInitializer(
 
             AttachDiscoveryIfConfigured(state, channelAdapter, spotNodeRegistration, node, nodeRuntime);
             ConnectManualPeers(spotNodeRegistration, nodeRuntime);
-            AttachAcceptedSpotRouteChannels(state, channelAdapter, spotNodeRegistration, node);
-            InitializePublisherBundles(spotNodeRegistration, nodeRuntime);
 
             await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
@@ -70,9 +68,8 @@ internal sealed class ZLinkSpotNodeInitializer(
             (true, true) => SpotNodeMode.All,
             (true, false) => SpotNodeMode.Routed,
             (false, true) => SpotNodeMode.PubSub,
-            (false, false) when registration.AttachedSpotPublisherClients.Count > 0 => SpotNodeMode.PubSub,
             _ => throw new ZLinkConfigurationException(
-                $"SPOT node '{registration.SpotNodeName}' must enable router, pub/sub, or publisher-client capability.")
+                $"SPOT node '{registration.SpotNodeName}' must enable router or pub/sub capability.")
         };
     }
 
@@ -127,84 +124,6 @@ internal sealed class ZLinkSpotNodeInitializer(
         }
     }
 
-    private void AttachAcceptedSpotRouteChannels(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkChannelBackendAdapter channelAdapter,
-        ZLinkSpotNodeRegistration spotNodeRegistration,
-        IZLinkBackendSpotNode node)
-    {
-        foreach (var acceptance in spotNodeRegistration.AcceptedSpotRouteChannels.Values)
-        {
-            if (registration.RouteChannels.ContainsKey(acceptance.ChannelName))
-            {
-                continue;
-            }
-
-            if (registration.Channels.ContainsKey(acceptance.ChannelName))
-            {
-                AttachAcceptedSpotRouteServerBundle(state, acceptance, node);
-                continue;
-            }
-
-            throw new ZLinkConfigurationException(
-                $"Accepted SPOT route channel '{acceptance.ChannelName}' is not registered.");
-        }
-    }
-
-    private static void AttachAcceptedSpotRouteServerBundle(
-        ZLinkFrameworkRuntimeState state,
-        ZLinkSpotRouteChannelAcceptanceRegistration acceptance,
-        IZLinkBackendSpotNode node)
-    {
-        if (!state.ServerBundles.TryGetValue(acceptance.ChannelName, out var bundle)
-            || bundle.Socket is not IZLinkBackendRouterSocket router)
-        {
-            throw new ZLinkConfigurationException(
-                $"Accepted SPOT route channel '{acceptance.ChannelName}' must have a server router socket in this process.");
-        }
-
-        if (bundle.SpotRouteBridge is not null)
-        {
-            throw new ZLinkConfigurationException(
-                $"Accepted SPOT route channel '{acceptance.ChannelName}' is already attached to a SPOT route bridge.");
-        }
-
-        var bridge = node.CreateRouteBridge();
-        try
-        {
-            bridge.AttachRouterChannel(
-                acceptance.ChannelName,
-                router,
-                new SpotRouteBridgeEndpointOptions
-                {
-                    Capabilities = SpotRouteBridgeEndpointCapabilities.RouteWithChannelInbound
-                });
-        }
-        catch
-        {
-            _ = bridge.DisposeAsync();
-            throw;
-        }
-
-        bundle.SpotRouteBridge = bridge;
-        state.SpotRouteBridges.Add(bridge);
-
-        foreach (var endpoint in acceptance.ManualConnections)
-        {
-            router.Connect(endpoint);
-        }
-    }
-
-    private static void InitializePublisherBundles(
-        ZLinkSpotNodeRegistration registration,
-        ZLinkSpotNodeRuntime nodeRuntime)
-    {
-        foreach (var channelName in registration.AttachedSpotPublisherClients.Keys)
-        {
-            nodeRuntime.GetOrCreatePublisherBundle(channelName);
-        }
-    }
-
     private static RoutingId CreateNodeRoutingId(ZLinkSpotNodeRegistration registration)
     {
         if (registration.Router?.RoutingConfig.RoutingId.Size > 0)
@@ -217,12 +136,7 @@ internal sealed class ZLinkSpotNodeInitializer(
         }
 
         var bytes = RandomNumberGenerator.GetBytes(16);
-        bytes[0] = registration.AttachedSpotPublisherClients.Count switch
-        {
-            > 0 when registration.SpotFactories.Count == 0 => 0xf0,
-            > 0 => 0x80,
-            _ => 0x10,
-        };
+        bytes[0] = 0x10;
         return RoutingId.From(bytes);
     }
 }

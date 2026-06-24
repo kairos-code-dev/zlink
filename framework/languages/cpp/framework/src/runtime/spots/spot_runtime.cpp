@@ -1165,15 +1165,7 @@ spot_node_builder_t::use_registry_spot_resolver (std::string route_channel_name)
 }
 
 spot_node_builder_t &
-spot_node_builder_t::accept_routes_from_channel (std::string route_channel_name,
-                                                 std::string endpoint)
-{
-    return accept_routes_from_channel (std::move (route_channel_name),
-                                       std::vector<std::string>{std::move (endpoint)});
-}
-
-spot_node_builder_t &
-spot_node_builder_t::accept_routes_from_channel (std::string route_channel_name,
+spot_node_builder_t::accept_implicit_route_mesh (std::string route_channel_name,
                                                  std::vector<std::string> manual_connections)
 {
     if (route_channel_name.empty () || is_blank (route_channel_name)) {
@@ -1197,26 +1189,6 @@ spot_node_builder_t::accept_routes_from_channel (std::string route_channel_name,
     }
     _state->snapshot.accepted_route_channels.push_back (accepted_spot_route_channel_t{
       std::move (route_channel_name), std::move (manual_connections)});
-    return *this;
-}
-
-spot_node_builder_t &
-spot_node_builder_t::attach_publisher (std::string channel_name,
-                                       std::vector<std::string> manual_connections)
-{
-    if (channel_name.empty () || is_blank (channel_name)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "attached SPOT publisher channel name is required");
-    }
-    for (const auto &endpoint : manual_connections) {
-        if (endpoint.empty () || is_blank (endpoint)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "attached SPOT publisher manual endpoint is required");
-        }
-    }
-    _state->snapshot.attached_publisher_details.push_back (
-      attached_publisher_t{channel_name, std::move (manual_connections)});
-    _state->snapshot.attached_publishers.push_back (std::move (channel_name));
     return *this;
 }
 
@@ -1546,7 +1518,7 @@ task_t<void> spot_publisher_client_t::publish_erased (std::string channel_name,
     if (channel_name.empty () || is_blank (channel_name)) {
         return task_t<void> (
           result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                   "attached SPOT publisher channel name is required"));
+                                   "SPOT publisher channel name is required"));
     }
     if (topic.empty ()) {
         return task_t<void> (result_t<void>::failure (
@@ -1556,12 +1528,6 @@ task_t<void> spot_publisher_client_t::publish_erased (std::string channel_name,
     std::shared_ptr<zlink::service::spot_node_t> native_node;
     {
         std::lock_guard<std::recursive_mutex> node_lock (_manager._state->mutex);
-        const auto &attached = _manager._state->snapshot.attached_publishers;
-        if (std::find (attached.begin (), attached.end (), channel_name) == attached.end ()) {
-            return task_t<void> (
-              result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                       "SPOT publisher client channel is not attached"));
-        }
         native_node = _manager._state->native_node.lock ();
     }
     if (!native_node) {

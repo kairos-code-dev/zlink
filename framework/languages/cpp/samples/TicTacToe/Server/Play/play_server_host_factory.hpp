@@ -75,24 +75,20 @@ class play_server_host_factory_t
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_endpoint ())
               .use_handler_group ("play");
-            options.add_route_mesh_channel (sample_names_t::play_route_channel)
+            options.add_route_mesh (sample_names_t::play_route_channel)
               .enable_server (topology.selected_play_route_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-              .enable_client (topology.peer_play_route_endpoint ())
-              .enable_spot_route_egress (sample_names_t::play_route_channel);
+              .enable_client (topology.peer_play_route_endpoint ());
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client (topology.api_endpoint);
             options.add_spot_mesh (sample_names_t::game_spot_discovery)
               .use_registry_spot_resolver (sample_names_t::play_route_channel)
-              .add_node (topology.selected_play_node_rid ())
               .enable_router (topology.selected_play_spot_router_endpoint (),
                               zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_actor_gateway ()
               .enable_pub_sub (topology.selected_play_spot_endpoint (),
                                zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .connect_peer_pub (topology.peer_play_spot_endpoint ())
-              .accept_routes_from_channel (sample_names_t::play_route_channel,
-                                           topology.peer_play_route_endpoint ())
               .add_entry_spot<entry_spot_t> ()
               .add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type);

@@ -4,7 +4,7 @@
 
 # 케이스 — 라이브 커머스·라이브스트림 채팅
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > 방송 하나에 붙는 실시간 채팅, reaction, moderation, slow mode, 구매 이벤트를
 > 다루는 독립 채팅 시스템 예다. 실행 가능한 샘플이 아니라, live chat 에서 ZLink 가
 > 줄이는 배선과 그대로 남는 영상·moderation·저장 책임을 구분하는 문서다.
@@ -279,7 +279,7 @@ public sealed class PinMessageHandler
 
 ## 7. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
 - 공통 채팅 개요: [17-case-chat-messaging](17-case-chat-messaging.ko.md)
 - 이전 케이스: [17-1-case-marketplace-chat](17-1-case-marketplace-chat.ko.md)
 - 다음 케이스: [17-3-case-game-chat](17-3-case-game-chat.ko.md)

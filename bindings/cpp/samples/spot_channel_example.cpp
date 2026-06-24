@@ -18,26 +18,31 @@ int main ()
     zlink::context_t ctx;
     zlink::service::spot_node_t room_node (ctx);
     zlink::service::spot_t room = room_node.create_spot ();
-    zlink::dealer_socket_t room_dealer (ctx);
+    zlink::router_socket_t room_router (ctx);
     zlink::router_socket_t api_router (ctx);
     zlink::service::spot_route_bridge_t bridge = room_node.create_route_bridge ();
 
     const std::string channel = "api";
     const std::string endpoint = detail::unique_tcp ("spot-channel");
-    room_dealer.set_routing_id (zlink::routing_id_t::from (
+    room_router.set_routing_id (zlink::routing_id_t::from (
       reinterpret_cast<const uint8_t *> ("room-channel-client"), 19));
+    api_router.set_routing_id (zlink::routing_id_t::from (
+      reinterpret_cast<const uint8_t *> ("room-channel-server"), 19));
     api_router.bind (endpoint);
-    room_dealer.connect (endpoint);
+    room_router.connect (endpoint);
     std::this_thread::sleep_for (std::chrono::milliseconds (50));
-    // "api" 채널 호출을 이 DEALER로 내보내도록 bridge에 등록한다.
-    bridge.attach_dealer_channel (channel, room_dealer);
+    // "api" 채널 호출을 이 ROUTER로 내보내도록 bridge에 등록한다.
+    bridge.attach_router_channel (channel, room_router);
 
     // 게임룸이 API 채널로 outgame 요청을 보낸다.
     zlink::message_t request = zlink::message_t::from ("get-profile");
     std::vector<zlink::message_t> parts;
     parts.push_back (std::move (request));
+    zlink::routing_id_t api_node_rid = zlink::routing_id_t::from (
+      reinterpret_cast<const uint8_t *> ("room-channel-server"), 19);
     zlink::async_result_t<std::vector<zlink::message_t>> pending =
-      bridge.request (channel, room.routing_id (), parts, std::chrono::seconds (5));
+      bridge.request (channel, api_node_rid, room.routing_id (), parts,
+                      std::chrono::seconds (5));
 
     // API 서버(ROUTER)는 요청을 받아 응답한다.
     zlink::received_t received;

@@ -83,17 +83,6 @@ route_channel_registration_t::add_handler_group (std::string group_name)
 }
 
 route_channel_registration_t &
-route_channel_registration_t::enable_spot_route_egress (std::string target_spot_node_channel_name)
-{
-    if (target_spot_node_channel_name.empty () || is_blank (target_spot_node_channel_name)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "routed SPOT egress target channel is required");
-    }
-    _spot_route_egress_target = std::move (target_spot_node_channel_name);
-    return *this;
-}
-
-route_channel_registration_t &
 route_channel_registration_t::add_handler (framework::route_handler_registration_t registration)
 {
     if (registration.packet_name.empty ()) {
@@ -128,12 +117,6 @@ const std::vector<std::string> &route_channel_registration_t::manual_connections
 const std::vector<std::string> &route_channel_registration_t::handler_groups () const noexcept
 {
     return _handler_groups;
-}
-
-const std::optional<std::string> &
-route_channel_registration_t::spot_route_egress_target () const noexcept
-{
-    return _spot_route_egress_target;
 }
 
 route_handler_registry_t route_channel_registration_t::create_handler_registry () const
@@ -171,9 +154,6 @@ route_channel_initializer_t::initialize (const route_channel_registration_t &reg
     }
     if (registration.default_request_timeout ()) {
         runtime->default_request_timeout (*registration.default_request_timeout ());
-    }
-    if (registration.spot_route_egress_target ()) {
-        runtime->spot_route_egress_target (*registration.spot_route_egress_target ());
     }
     for (const auto &endpoint : registration.manual_connections ()) {
         runtime->connect (endpoint);

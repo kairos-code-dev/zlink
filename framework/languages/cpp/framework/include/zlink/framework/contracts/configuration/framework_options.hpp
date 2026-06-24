@@ -403,16 +403,6 @@ class client_server_channel_builder_t
         return *this;
     }
 
-    client_server_channel_builder_t &
-    enable_spot_route_egress (std::string target_spot_node_channel_name)
-    {
-        detail::require_non_blank (target_spot_node_channel_name,
-                                   "routed SPOT egress target channel is required");
-        _options->client_server_spot_route_egress_targets[_channel_name] =
-          std::move (target_spot_node_channel_name);
-        return *this;
-    }
-
   private:
     void apply_channel ()
     {
@@ -582,117 +572,6 @@ class fanout_channel_builder_t
     bool _subscriber_uses_discovery = false;
 };
 
-class dealer_mesh_channel_builder_t
-{
-  public:
-    dealer_mesh_channel_builder_t (
-      std::string channel_name,
-      std::shared_ptr<detail::framework_options_state_t> options,
-      std::shared_ptr<detail::handler_group_options_state_t> handler_groups) :
-        _channel_name (std::move (channel_name)),
-        _options (std::move (options)),
-        _handler_groups (std::move (handler_groups))
-    {
-        detail::require_non_blank (_channel_name, "dealer mesh channel name is required");
-        _options->dealer_mesh_channels.insert (_channel_name);
-        apply ();
-    }
-
-    dealer_mesh_channel_builder_t &enable_server (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "dealer mesh server endpoint is required");
-        _bind_endpoint = std::move (endpoint);
-        _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
-        apply ();
-        return *this;
-    }
-
-    dealer_mesh_channel_builder_t &enable_client ()
-    {
-        _client_uses_discovery = true;
-        _manual_connections.clear ();
-        _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
-        apply ();
-        return *this;
-    }
-
-    dealer_mesh_channel_builder_t &enable_client (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "dealer mesh client endpoint is required");
-        _client_uses_discovery = false;
-        _manual_connections.push_back (std::move (endpoint));
-        _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
-        apply ();
-        return *this;
-    }
-
-    dealer_mesh_channel_builder_t &set_default_request_timeout (std::chrono::milliseconds timeout)
-    {
-        if (timeout <= std::chrono::milliseconds::zero ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "dealer mesh request timeout must be greater than zero");
-        }
-        _default_request_timeout = timeout;
-        apply ();
-        return *this;
-    }
-
-    dealer_mesh_channel_builder_t &use_handler_group (std::string group_name)
-    {
-        detail::require_non_blank (group_name, "handler group name is required");
-        _handler_groups->add_channel (
-          std::move (group_name), _channel_name,
-          {detail::handler_group_kind_t::request, detail::handler_group_kind_t::send},
-          "dealer mesh channel");
-        return *this;
-    }
-
-  private:
-    void apply ()
-    {
-        const auto channel_name = _channel_name;
-        const auto bind_endpoint = _bind_endpoint;
-        const auto manual_connections = _manual_connections;
-        const auto client_uses_discovery = _client_uses_discovery;
-        const auto default_request_timeout = _default_request_timeout;
-        const auto discovery_capability = "dealer_mesh_channel '" + channel_name + "' client";
-        if (client_uses_discovery) {
-            _options->discovery_backed_capabilities.insert (discovery_capability);
-        } else {
-            _options->discovery_backed_capabilities.erase (discovery_capability);
-        }
-        _options->set_zlink_action (
-          "dealer_mesh_channel:" + channel_name,
-          [channel_name, bind_endpoint, manual_connections, client_uses_discovery,
-           default_request_timeout] (zlink_builder_t &zlink) {
-              auto channel = zlink.channel (channel_name);
-              if (default_request_timeout) {
-                  channel.default_request_timeout (*default_request_timeout);
-              }
-              if (!bind_endpoint.empty ()) {
-                  channel.enable_server ().bind (bind_endpoint);
-              }
-              if (client_uses_discovery || !manual_connections.empty ()) {
-                  auto client = channel.enable_client ();
-                  if (client_uses_discovery) {
-                      client.use_discovery ();
-                  }
-                  for (const auto &endpoint : manual_connections) {
-                      client.connect (endpoint);
-                  }
-              }
-          });
-    }
-
-    std::string _channel_name;
-    std::shared_ptr<detail::framework_options_state_t> _options;
-    std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
-    std::string _bind_endpoint;
-    std::optional<std::chrono::milliseconds> _default_request_timeout;
-    std::vector<std::string> _manual_connections;
-    bool _client_uses_discovery = false;
-};
-
 class route_mesh_channel_builder_t
 {
   public:
@@ -788,17 +667,6 @@ class route_mesh_channel_builder_t
         return *this;
     }
 
-    route_mesh_channel_builder_t &
-    enable_spot_route_egress (std::string target_spot_node_channel_name)
-    {
-        detail::require_non_blank (target_spot_node_channel_name,
-                                   "routed SPOT egress target channel is required");
-        _spot_route_egress_target = std::move (target_spot_node_channel_name);
-        _options->route_mesh_spot_route_egress_targets[_channel_name] = _spot_route_egress_target;
-        apply ();
-        return *this;
-    }
-
   private:
     void apply ()
     {
@@ -809,12 +677,10 @@ class route_mesh_channel_builder_t
         const auto default_request_timeout = _default_request_timeout;
         const auto route_handler_groups = _route_handler_groups;
         const auto route_handlers = _route_handlers;
-        const auto spot_route_egress_target = _spot_route_egress_target;
         _options->set_zlink_action (
           "route_mesh_channel:" + channel_name,
           [channel_name, bind_endpoint, routing_id, manual_connections, default_request_timeout,
-           route_handler_groups, route_handlers,
-           spot_route_egress_target] (zlink_builder_t &zlink) {
+           route_handler_groups, route_handlers] (zlink_builder_t &zlink) {
               auto channel = zlink.route_channel (channel_name);
               if (!bind_endpoint.empty ()) {
                   channel.bind (bind_endpoint);
@@ -834,9 +700,6 @@ class route_mesh_channel_builder_t
               for (const auto &handler : route_handlers) {
                   handler (channel);
               }
-              if (!spot_route_egress_target.empty ()) {
-                  channel.enable_spot_route_egress (spot_route_egress_target);
-              }
           });
     }
 
@@ -849,45 +712,6 @@ class route_mesh_channel_builder_t
     std::vector<std::string> _manual_connections;
     std::vector<std::string> _route_handler_groups;
     std::vector<std::function<void (route_channel_builder_t &)>> _route_handlers;
-    std::string _spot_route_egress_target;
-};
-
-class accepted_spot_route_channel_builder_t
-{
-  public:
-    explicit accepted_spot_route_channel_builder_t (std::vector<std::string> &manual_connections) :
-        _manual_connections (&manual_connections)
-    {
-    }
-
-    accepted_spot_route_channel_builder_t &connect (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "accepted SPOT route manual endpoint is required");
-        _manual_connections->push_back (std::move (endpoint));
-        return *this;
-    }
-
-  private:
-    std::vector<std::string> *_manual_connections;
-};
-
-class attached_publisher_builder_t
-{
-  public:
-    explicit attached_publisher_builder_t (std::vector<std::string> &manual_connections) :
-        _manual_connections (&manual_connections)
-    {
-    }
-
-    attached_publisher_builder_t &connect (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "attached SPOT publisher manual endpoint is required");
-        _manual_connections->push_back (std::move (endpoint));
-        return *this;
-    }
-
-  private:
-    std::vector<std::string> *_manual_connections;
 };
 
 class spot_router_capability_builder_t
@@ -1065,68 +889,6 @@ class spot_node_options_builder_t
         return *this;
     }
 
-    spot_node_options_builder_t &accept_routes_from_channel (std::string route_channel_name)
-    {
-        detail::require_non_blank (route_channel_name,
-                                   "accepted SPOT route channel name is required");
-        auto &accepted = _options->accepted_spot_route_channels_by_node[_spot_node_name];
-        if (!accepted.insert (route_channel_name).second) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "duplicate accepted SPOT route channel '"
-                                           + route_channel_name + "' on node '" + _spot_node_name
-                                           + "'");
-        }
-        _options->accepted_spot_route_channels.insert (route_channel_name);
-        _accepted_route_channels.push_back (std::move (route_channel_name));
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &accept_routes_from_channel (std::string route_channel_name,
-                                                             std::string endpoint)
-    {
-        detail::require_non_blank (route_channel_name,
-                                   "accepted SPOT route channel name is required");
-        detail::require_non_blank (endpoint, "accepted SPOT route manual endpoint is required");
-        const auto channel_name = route_channel_name;
-        auto &accepted = _options->accepted_spot_route_channels_by_node[_spot_node_name];
-        if (!accepted.insert (channel_name).second) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "duplicate accepted SPOT route channel '" + channel_name
-                                           + "' on node '" + _spot_node_name + "'");
-        }
-        auto &manual_connections =
-          _options->accepted_spot_route_manual_connections_by_node[_spot_node_name][channel_name];
-        manual_connections.push_back (std::move (endpoint));
-        _options->accepted_spot_route_channels.insert (channel_name);
-        _accepted_route_channels.push_back (std::move (route_channel_name));
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &attach_publisher (std::string channel_name)
-    {
-        detail::require_non_blank (channel_name,
-                                   "attached SPOT publisher channel name is required");
-        _options->attached_publishers_by_node[_spot_node_name].insert (std::move (channel_name));
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &attach_publisher (std::string channel_name, std::string endpoint)
-    {
-        detail::require_non_blank (channel_name,
-                                   "attached SPOT publisher channel name is required");
-        detail::require_non_blank (endpoint, "attached SPOT publisher manual endpoint is required");
-        const auto channel_key = channel_name;
-        _options->attached_publishers_by_node[_spot_node_name].insert (channel_key);
-        auto &manual_connections =
-          _options->attached_publisher_manual_connections_by_node[_spot_node_name][channel_key];
-        manual_connections.push_back (std::move (endpoint));
-        apply ();
-        return *this;
-    }
-
     spot_node_options_builder_t &enable_actor_gateway ()
     {
         _actor_gateway = true;
@@ -1203,7 +965,6 @@ class spot_node_options_builder_t
         const auto pub_sub_manual_connections = _pub_sub_manual_connections;
         const auto discovery_channel = _discovery_channel;
         const auto actor_gateway = _actor_gateway;
-        const auto accepted_route_channels = _accepted_route_channels;
         const auto actions = _actions;
         const auto options = _options;
         auto configure = [=] (spot_node_builder_t &spot_node) {
@@ -1244,22 +1005,8 @@ class spot_node_options_builder_t
                     spot_node.use_registry_spot_remote_addresses ();
                 }
             }
-            for (const auto &accepted_route_channel : accepted_route_channels) {
-                auto manual_connections = detail::manual_connections_for (
-                  options->accepted_spot_route_manual_connections_by_node, spot_node_name,
-                  accepted_route_channel);
-                spot_node.accept_routes_from_channel (accepted_route_channel,
-                                                      std::move (manual_connections));
-            }
-            const auto attached_publishers =
-              options->attached_publishers_by_node.find (spot_node_name);
-            if (attached_publishers != options->attached_publishers_by_node.end ()) {
-                for (const auto &channel_name : attached_publishers->second) {
-                    auto manual_connections = detail::manual_connections_for (
-                      options->attached_publisher_manual_connections_by_node, spot_node_name,
-                      channel_name);
-                    spot_node.attach_publisher (channel_name, std::move (manual_connections));
-                }
+            for (const auto &route_channel_name : options->route_mesh_channels) {
+                spot_node.accept_implicit_route_mesh (route_channel_name);
             }
             for (const auto &action : actions) {
                 action (spot_node);
@@ -1285,19 +1032,21 @@ class spot_node_options_builder_t
     std::vector<std::string> _router_manual_connections;
     std::vector<std::string> _pub_sub_manual_connections;
     std::string _discovery_channel;
-    std::vector<std::string> _accepted_route_channels;
     bool _actor_gateway = false;
     std::vector<std::function<void (spot_node_builder_t &)>> _actions;
 };
 
-class spot_mesh_builder_t
+class spot_mesh_builder_t : public spot_node_options_builder_t
 {
   public:
     spot_mesh_builder_t (std::string channel_name,
                          std::shared_ptr<detail::framework_options_state_t> options) :
-        _channel_name (std::move (channel_name)), _options (std::move (options))
+        spot_node_options_builder_t (channel_name, options),
+        _channel_name (std::move (channel_name)),
+        _options (std::move (options))
     {
         detail::require_non_blank (_channel_name, "SPOT mesh channel name is required");
+        spot_node_options_builder_t::use_discovery (_channel_name);
     }
 
     discovery_options_builder_t use_discovery () { return discovery_options_builder_t (_options); }
@@ -1316,13 +1065,6 @@ class spot_mesh_builder_t
         _options->registry_spot_remote_addresses_enabled = true;
         _options->registry_spot_route_channel = std::move (route_channel_name);
         return *this;
-    }
-
-    spot_node_options_builder_t add_node (std::string spot_node_name)
-    {
-        auto node = spot_node_options_builder_t (std::move (spot_node_name), _options);
-        node.use_discovery (_channel_name);
-        return node;
     }
 
   private:
@@ -1512,12 +1254,7 @@ class zlink_framework_options_t
         return fanout_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
 
-    dealer_mesh_channel_builder_t add_dealer_mesh_channel (std::string channel_name)
-    {
-        return dealer_mesh_channel_builder_t (std::move (channel_name), _options, _handler_groups);
-    }
-
-    route_mesh_channel_builder_t add_route_mesh_channel (std::string channel_name)
+    route_mesh_channel_builder_t add_route_mesh (std::string channel_name)
     {
         return route_mesh_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
@@ -1551,11 +1288,6 @@ class zlink_framework_options_t
     spot_mesh_builder_t add_spot_mesh (std::string channel_name)
     {
         return spot_mesh_builder_t (std::move (channel_name), _options);
-    }
-
-    spot_node_options_builder_t add_spot_node (std::string spot_node_name)
-    {
-        return spot_node_options_builder_t (std::move (spot_node_name), _options);
     }
 
     stream_node_options_builder_t add_stream_node (std::string stream_name)

@@ -328,6 +328,7 @@ export interface SupportNotificationBatch {
 export interface UserIdentity {
   actorId: string;
   displayName: string;
+  role: string;
 }
 
 // --- factory helpers ---
@@ -439,11 +440,13 @@ function supportNotificationsReq(afterSeq: number): SupportNotificationsReq {
 function withUserIdentity<TRequest extends object>(
   request: TRequest,
   actorId: string,
-  displayName: string
+  displayName: string,
+  role: string
 ): TRequest & UserIdentity {
   const value = request as TRequest & Partial<UserIdentity>;
   value.actorId = actorId;
   value.displayName = displayName;
+  value.role = role;
   return value as TRequest & UserIdentity;
 }
 

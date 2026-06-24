@@ -9,7 +9,7 @@ import {
   type SendOperation,
   type SpotRouteBridgeEndpointOptions
 } from '../../../contracts';
-import type { DealerSocket, RouterSocket } from '../../../contracts/sockets';
+import type { RouterSocket } from '../../../contracts/sockets';
 import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
@@ -42,22 +42,6 @@ export class SpotRouteBridge extends NativeHandle {
     super(requireNative().spotRouteBridgeNew(getNativeHandle(ctx), getNativeHandle(node)));
   }
 
-  attachDealerChannel(
-    channelName: string,
-    dealer: DealerSocket,
-    options?: SpotRouteBridgeEndpointOptions
-  ): void {
-    const normalizedChannelName = validateBridgeChannelName(channelName);
-    const dealerHandle = getNativeHandle(dealer as unknown as NativeHandle);
-    requireNative().spotRouteBridgeAttachDealerChannel(
-      this._native,
-      normalizedChannelName,
-      dealerHandle,
-      normalizeEndpointCapabilities(options)
-    );
-    this._endpointHandles.set(normalizedChannelName, dealerHandle);
-  }
-
   attachRouterChannel(
     channelName: string,
     router: RouterSocket,
@@ -74,21 +58,15 @@ export class SpotRouteBridge extends NativeHandle {
     this._endpointHandles.set(normalizedChannelName, routerHandle);
   }
 
-  setTargetNode(channelName: string, targetNodeRid: RoutingId): void {
-    requireNative().spotRouteBridgeSetTargetNode(
-      this._native,
-      validateBridgeChannelName(channelName),
-      normalizeRoutingId(targetNodeRid)
-    );
-  }
-
-  send(channelName: string, targetSpotRid: RoutingId): SendOperation {
+  send(channelName: string, targetNodeRid: RoutingId, targetSpotRid: RoutingId): SendOperation {
     const normalizedChannelName = validateBridgeChannelName(channelName);
+    const normalizedTargetNodeRid = normalizeRoutingId(targetNodeRid, 'targetNodeRid');
     const normalizedTargetSpotRid = normalizeRoutingId(targetSpotRid);
     return new RuntimeSendOperation((parts, flags) =>
       requireNative().spotRouteBridgeSend(
         this._native,
         normalizedChannelName,
+        normalizedTargetNodeRid,
         normalizedTargetSpotRid,
         normalizeOperationPayload(parts as MessageLike | readonly MessageLike[]),
         flags
@@ -96,8 +74,9 @@ export class SpotRouteBridge extends NativeHandle {
     );
   }
 
-  request(channelName: string, targetSpotRid: RoutingId): RequestOperation {
+  request(channelName: string, targetNodeRid: RoutingId, targetSpotRid: RoutingId): RequestOperation {
     const normalizedChannelName = validateBridgeChannelName(channelName);
+    const normalizedTargetNodeRid = normalizeRoutingId(targetNodeRid, 'targetNodeRid');
     const normalizedTargetSpotRid = normalizeRoutingId(targetSpotRid);
     return new RuntimeRequestOperation((parts, callbackOrTimeout, flagsOrTimeout, maybeTimeout) => {
       const normalizedParts = normalizeOperationPayload(parts as MessageLike | readonly MessageLike[]);
@@ -111,6 +90,7 @@ export class SpotRouteBridge extends NativeHandle {
           requireNative().spotRouteBridgeRequest(
             this._native,
             normalizedChannelName,
+            normalizedTargetNodeRid,
             normalizedTargetSpotRid,
             normalizedParts,
             callback,
@@ -127,21 +107,13 @@ export class SpotRouteBridge extends NativeHandle {
   handleRouterReceived(
     channelName: string,
     sourceNodeRid: RoutingId,
-    parts: MessageLike | readonly MessageLike[],
-    requestSeq?: bigint | number
+    requestSeq: bigint | number,
+    parts: MessageLike | readonly MessageLike[]
   ): boolean {
     const normalizedChannelName = validateBridgeChannelName(channelName);
     const normalizedSourceNodeRid = normalizeRoutingId(sourceNodeRid, 'sourceNodeRid');
     const normalizedParts = normalizeOperationPayload(parts);
-    if (requestSeq === undefined) {
-      return requireNative().spotRouteBridgeHandleRouterReceived(
-        this._native,
-        normalizedChannelName,
-        normalizedSourceNodeRid,
-        normalizedParts
-      ) as boolean;
-    }
-    return requireNative().spotRouteBridgeHandleRouterReceivedWithMetadata(
+    return requireNative().spotRouteBridgeHandleRouterReceived(
       this._native,
       normalizedChannelName,
       normalizedSourceNodeRid,

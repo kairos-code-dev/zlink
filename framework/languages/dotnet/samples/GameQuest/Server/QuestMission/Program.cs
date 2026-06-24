@@ -49,7 +49,7 @@ internal static class Program
             {
                 var mesh = options.AddSpotMesh(SampleNames.QuestSpotDiscovery);
                 {
-                    var spot = mesh.AddNode(SampleNames.QuestSpotNode);
+                    var spot = mesh;
                     {
                         var router = spot.EnableRouter(instance.SpotRouterEndpoint);
                         router.SetRouterRoutingId(instance.SpotRid);

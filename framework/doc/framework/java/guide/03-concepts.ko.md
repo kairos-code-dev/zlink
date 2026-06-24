@@ -13,7 +13,6 @@ request, send, publish를 호출한다.
 |--------------|------|
 | client/server | 일반 request/send |
 | fanout | pub/sub event |
-| dealer mesh | dealer끼리 직접 연결되는 mesh client |
 | route mesh | target `RoutingId`를 지정하는 routed channel |
 
 ## 2. Capability

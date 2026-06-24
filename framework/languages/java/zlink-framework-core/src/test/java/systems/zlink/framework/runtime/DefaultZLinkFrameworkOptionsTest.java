@@ -272,18 +272,9 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshClientWithManualConnectionDoesNotRequireBindEndpoint() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMeshChannel("play"); channel.enableClient("inproc://play-a"); };
+        { var channel = options.addRouteMesh("play"); channel.enableClient("inproc://play-a"); };
 
         options.validate();
-    }
-
-    @Test
-    void clientServerSpotRouteEgressRequiresClientCapability() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var channel = options.addClientServerChannel("gateway"); channel.enableSpotRouteEgress("play.route"); };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
     }
 
     @Test
@@ -291,7 +282,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
-        { var channel = options.addRouteMeshChannel("play");  };
+        { var channel = options.addRouteMesh("play");  };
         options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
         options.useRegistrySpotRemoteAddresses("game");
 
@@ -304,7 +295,7 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         options.addSpotMesh("rooms")
             .useRegistrySpotResolver()
-            .addNode("play-a");
+            ;
 
         assertEquals("rooms", options.registration().registrySpotRemoteAddresses().namespaceName());
     }
@@ -313,7 +304,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void registrySpotRemoteAddressesRequiresDiscoveryEndpoint() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMeshChannel("play");  };
+        { var channel = options.addRouteMesh("play");  };
         options.useRegistrySpotRemoteAddresses("game");
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -334,50 +325,21 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
-        { var channel = options.addRouteMeshChannel("play-a");  };
-        { var channel = options.addRouteMeshChannel("play-b");  };
+        { var channel = options.addRouteMesh("play-a");  };
+        { var channel = options.addRouteMesh("play-b");  };
         options.useRegistrySpotRemoteAddresses("game");
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
 
     @Test
-    void spotPublisherClientRequiresPubSubCapability() {
+    void spotPublisherClientUsesSpotMeshPubSubNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("publisher"); node.attachSpotPublisherClient("game.stage"); }; };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void duplicateSpotPublisherChannelAcrossNodesIsRejected() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("publisher-a"); node.enablePubSub("inproc://publisher-a");
-                node.attachSpotPublisherClient("game.stage"); };
-            { var node = mesh.addNode("publisher-b"); node.enablePubSub("inproc://publisher-b");
-                node.attachSpotPublisherClient("game.stage"); }; };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void spotPublisherClientWithManualConnectionIsAccepted() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("publisher"); node.enablePubSub("inproc://publisher");
-                node.attachSpotPublisherClient("game.stage", "inproc://game-stage-pub"); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enablePubSub("inproc://publisher");}; };
 
         options.validate();
-        assertEquals(
-            List.of("inproc://game-stage-pub"),
-            options.registration()
-                .spotNodes()
-                .get(0)
-                .attachedSpotPublisherClients()
-                .get("game.stage")
-                .manualConnections());
+        assertEquals("game", options.registration().spotNodes().get(0).meshName());
     }
 
     @Test
@@ -388,7 +350,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         RoutingId pubSubRid =
             RoutingId.from("spot-pub-1");
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play");
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.setRouterRoutingId(nodeRid).connectRouter("inproc://spot-router-peer");
                 node.setPubSubRoutingId(pubSubRid).connectPeerPub("inproc://spot-pub-peer"); }; };
 
@@ -408,18 +370,18 @@ final class DefaultZLinkFrameworkOptionsTest {
     void spotRouterAndPubSubManualConnectionsRejectBlankEndpoint() {
         DefaultZLinkFrameworkOptions router = new DefaultZLinkFrameworkOptions();
         assertThrows(ZLinkConfigurationException.class, () ->
-            { var mesh = router.addSpotMesh("game"); { var node = mesh.addNode("play"); node.connectRouter(" "); }; });
+            { var mesh = router.addSpotMesh("game"); { var node = mesh; node.connectRouter(" "); }; });
 
         DefaultZLinkFrameworkOptions pubSub = new DefaultZLinkFrameworkOptions();
         assertThrows(ZLinkConfigurationException.class, () ->
-            { var mesh = pubSub.addSpotMesh("game"); { var node = mesh.addNode("play"); node.connectPeerPub(" "); }; });
+            { var mesh = pubSub.addSpotMesh("game"); { var node = mesh; node.connectPeerPub(" "); }; });
     }
 
     @Test
     void spotNodeRejectsConflictingRouterAndPubSubRoutingIds() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(
                         RoutingId.from("node-a"));
                 node.setPubSubRoutingId(
                         RoutingId.from("node-b")); }; };
@@ -433,73 +395,10 @@ final class DefaultZLinkFrameworkOptionsTest {
         RoutingId entryRid =
             RoutingId.from("entry-spot");
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); var entry = node.configureEntrySpot(); entry.setRoutingId(entryRid); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; var entry = node.configureEntrySpot(); entry.setRoutingId(entryRid); }; };
 
         options.validate();
         assertEquals(entryRid, options.registration().spotNodes().get(0).entrySpotRoutingId());
-    }
-
-    @Test
-    void acceptedSpotRouteChannelManualConnectionsMutateRegistrationModel() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var channel = options.addClientServerChannel("api"); channel.enableClient("inproc://api-server"); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
-                node.acceptSpotRoutesFromChannel("api", "inproc://api-router"); }; };
-
-        options.validate();
-        assertEquals(
-            List.of("inproc://api-router"),
-            options.registration()
-                .spotNodes()
-                .get(0)
-                .acceptedSpotRouteChannels()
-                .get("api")
-                .manualConnections());
-    }
-
-    @Test
-    void acceptedSpotRouteChannelRequiresRouterCapability() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var channel = options.addClientServerChannel("api"); channel.enableClient("inproc://api-server"); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.acceptSpotRoutesFromChannel("api", "inproc://api-router"); }; };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void acceptedSpotRouteChannelRejectsMissingOrWrongChannelKind() {
-        DefaultZLinkFrameworkOptions missing = new DefaultZLinkFrameworkOptions();
-        { var mesh = missing.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
-                node.acceptSpotRoutesFromChannel("missing", "inproc://api-router"); }; };
-        assertThrows(ZLinkConfigurationException.class, missing::validate);
-
-        DefaultZLinkFrameworkOptions fanout = new DefaultZLinkFrameworkOptions();
-        { var channel = fanout.addFanoutChannel("events").enablePublisher("inproc://events"); };
-        { var mesh = fanout.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
-                node.acceptSpotRoutesFromChannel("events", "inproc://events-router"); }; };
-        assertThrows(ZLinkConfigurationException.class, fanout::validate);
-    }
-
-    @Test
-    void acceptedSpotRouteChannelRequiresDiscoveryOrManualConnection() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var channel = options.addClientServerChannel("api");  };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
-                node.acceptSpotRoutesFromChannel("api"); }; };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void acceptedSpotRouteChannelRejectsDuplicateRegistration() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        assertThrows(ZLinkConfigurationException.class, () ->
-            { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.acceptSpotRoutesFromChannel("api");
-                    node.acceptSpotRoutesFromChannel("api"); }; });
     }
 
     @Test
@@ -507,7 +406,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         assertThrows(ZLinkConfigurationException.class, () ->
-            { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); var entry = node.configureEntrySpot(); entry.setRoutingId(null); }; });
+            { var mesh = options.addSpotMesh("game"); { var node = mesh; var entry = node.configureEntrySpot(); entry.setRoutingId(null); }; });
     }
 
     @Test
@@ -673,7 +572,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelWithoutBindIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMeshChannel("route"); };
+        { var channel = options.addRouteMesh("route"); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
@@ -682,7 +581,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelWithoutPeerAcquisitionPathIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMeshChannel("route"); channel.enableServer("inproc://route"); };
+        { var channel = options.addRouteMesh("route"); channel.enableServer("inproc://route"); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
@@ -692,7 +591,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        { var channel = options.addRouteMeshChannel("route"); channel.enableServer("inproc://route");
+        { var channel = options.addRouteMesh("route"); channel.enableServer("inproc://route");
             channel.enableClient("inproc://route-peer"); };
 
         assertDoesNotThrow(options::validate);
@@ -702,7 +601,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelRejectsDuplicateRequestHandlerPacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMeshChannel("route"); channel.enableServer("inproc://route");
+        { var channel = options.addRouteMesh("route"); channel.enableServer("inproc://route");
             channel.enableClient("inproc://route-peer");
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo");
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
@@ -715,7 +614,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addRouteMeshChannel("route"); channel.enableServer("inproc://route");
+        { var channel = options.addRouteMesh("route"); channel.enableServer("inproc://route");
             channel.enableClient("inproc://route");
             channel.addHandlerGroup("scanned-route");
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class); };
@@ -731,7 +630,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelRejectsDuplicateSendHandlerPacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMeshChannel("route"); channel.enableServer("inproc://route");
+        { var channel = options.addRouteMesh("route"); channel.enableServer("inproc://route");
             channel.enableClient("inproc://route-peer");
             channel.addSendHandler(RouteSendHandler.class, String.class);
             channel.addSendHandler(RouteSendHandler.class, String.class); };
@@ -743,7 +642,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelRejectsSendAndRequestWithSamePacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMeshChannel("route"); channel.enableServer("inproc://route");
+        { var channel = options.addRouteMesh("route"); channel.enableServer("inproc://route");
             channel.enableClient("inproc://route-peer");
             channel.addSendHandler(RouteSendHandler.class, String.class, "Notify");
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Notify"); };
@@ -811,24 +710,6 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void dealerMeshClientRequiresPeerAcquisitionPath() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var channel = options.addDealerMeshChannel("mesh"); channel.enableClient(); };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void dealerMeshClientWithManualConnectionIsAccepted() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var channel = options.addDealerMeshChannel("mesh"); channel.enableClient("inproc://mesh"); };
-
-        options.validate();
-    }
-
-    @Test
     void streamNodeRejectsMultipleSessionTypes() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -853,7 +734,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void streamNodeActorGatewayRequiresRouterSpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play");  }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;  }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.attachActorGateway("play");
             stream.registerSession(GameSession.class); };
@@ -865,7 +746,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void streamNodeWithActorGatewayAndRouterSpotNodeIsAccepted() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                 node.addSpotFactory(TestSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.attachActorGateway("play");

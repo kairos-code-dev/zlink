@@ -47,20 +47,18 @@ public final class SessionServerApplication {
                 .enableClient();
             options.addClientServerChannel(SampleNames.SupportChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SupportRouteChannel);
+            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.SupportRouteChannel);
             route.enableServer(SampleTopology.SessionRouteEndpoint);
             route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.SupportSpotDiscovery)
                 .setRouterChannelId(SampleNames.SupportRouteChannel);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
-                .addNode(SampleNames.SessionSpotNode);
+                ;
             node.enableRouter(SampleTopology.SessionRouterEndpoint)
                 .setRouterRoutingId(RoutingId.from(SampleTopology.SessionRouterRid));
             node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionPubRid));
-            node.acceptSpotRoutesFromChannel(SampleNames.SupportRouteChannel);
-            options.addStreamNode(SampleNames.StreamNode)
+                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionPubRid));options.addStreamNode(SampleNames.StreamNode)
                 .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.StreamEndpoint)
                 .registerSession(SupportChatSession.class)

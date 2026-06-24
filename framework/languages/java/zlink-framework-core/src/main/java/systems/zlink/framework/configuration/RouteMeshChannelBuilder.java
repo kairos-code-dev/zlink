@@ -34,6 +34,4 @@ public interface RouteMeshChannelBuilder {
         Class<?> requestType,
         Class<?> replyType,
         String packetName);
-
-    RouteMeshChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }

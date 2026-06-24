@@ -103,9 +103,8 @@ native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
     }
     try {
         if (target_spot_rid && _spot_route_bridge) {
-            _spot_route_bridge->set_target_node (_spot_route_channel_name, target_node_rid);
-            if (!_spot_route_bridge->send (_spot_route_channel_name, *target_spot_rid, copied,
-                                           zlink::send_flags_t::none)) {
+            if (!_spot_route_bridge->send (_spot_route_channel_name, target_node_rid,
+                                           *target_spot_rid, copied, zlink::send_flags_t::none)) {
                 return submit_failure ("native route bridge send was not accepted");
             }
             return result_t<void>::success ();
@@ -142,10 +141,9 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
     }
     try {
         if (target_spot_rid && _spot_route_bridge) {
-            _spot_route_bridge->set_target_node (_spot_route_channel_name, target_node_rid);
             auto reply =
-              _spot_route_bridge->request (_spot_route_channel_name, *target_spot_rid, copied,
-                                           timeout)
+              _spot_route_bridge->request (_spot_route_channel_name, target_node_rid,
+                                           *target_spot_rid, copied, timeout)
                 .get ();
             return result_t<runtime::messaging::message_parts_t>::success (
               runtime::messaging::message_parts_t (std::move (reply)));

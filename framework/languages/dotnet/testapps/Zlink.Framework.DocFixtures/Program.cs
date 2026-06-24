@@ -62,7 +62,7 @@ internal static class FixtureSamples
                 var spotMesh = options.AddSpotMesh("game.stage");
                 spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7300");
                 {
-                    var spot = spotMesh.AddNode("stage-node");
+                    var spot = spotMesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:7302");
 
@@ -73,7 +73,6 @@ internal static class FixtureSamples
                     }
                     {
                     }
-                    spot.AttachSpotPublisherClient("game.stage");
                     spot.AddSpotFactory<FixtureStageSpot>();
 
                 }
@@ -132,7 +131,7 @@ internal static class FixtureSamples
                 var spotMesh = options.AddSpotMesh("game.stage");
                 spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7602");
                 {
-                    var spot = spotMesh.AddNode("stage-node");
+                    var spot = spotMesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:7605");
 
@@ -175,7 +174,7 @@ internal static class FixtureSamples
                 var spotMesh = options.AddSpotMesh("game.stage");
                 spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7700");
                 {
-                    var spot = spotMesh.AddNode("actor-node");
+                    var spot = spotMesh;
                     {
                         var router = spot.EnableRouter("tcp://127.0.0.1:7702");
 

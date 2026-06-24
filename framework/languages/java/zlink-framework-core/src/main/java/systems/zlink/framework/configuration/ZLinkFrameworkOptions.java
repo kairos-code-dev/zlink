@@ -24,9 +24,7 @@ public interface ZLinkFrameworkOptions {
 
     FanoutChannelBuilder addFanoutChannel(String channelName);
 
-    DealerMeshChannelBuilder addDealerMeshChannel(String channelName);
-
-    RouteMeshChannelBuilder addRouteMeshChannel(String channelName);
+    RouteMeshChannelBuilder addRouteMesh(String channelName);
 
     ZLinkSpotMeshBuilder addSpotMesh(String channelName);
 

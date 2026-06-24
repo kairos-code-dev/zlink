@@ -1253,7 +1253,7 @@ session route resolver 나 저장소 계약은 두지 않는다.
 ```csharp
 options.UseDiscovery().AddRegistryEndpoint(registryEndpoint);
 
-options.AddRouteMeshChannel("backend")
+options.AddRouteMesh("backend")
     .EnableServer(playEndpoint);
 
 options.AddActorFactory<TicTacToeActorFactory>("player");
@@ -1275,7 +1275,7 @@ spot handler는 spot 객체 안에서 등록한다.
     var mesh = options.AddSpotMesh("game.rooms");
         mesh.UseDiscovery().AddRegistryEndpoint(registryEndpoint);
     {
-        var spot =     mesh.AddNode("play");
+        var spot = mesh;
         spot.EnableRouter(spotEndpoint);
         spot.AddEntrySpot<TicTacToeEntrySpot>();
         spot.AddSpotFactory<TicTacToeGame>();

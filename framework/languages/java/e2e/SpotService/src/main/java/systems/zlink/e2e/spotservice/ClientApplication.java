@@ -54,20 +54,16 @@ public final class ClientApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/client-flow.log")
                 .traceNodeId("java-sm-client");
-            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
+            options.addRouteMesh(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
                 .setRoutingId(RoutingId.from("client"));
             options.addClientServerChannel(Contracts.EGRESS_CHANNEL)
-                .enableClient(Env.get("ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT"))
-                .enableSpotRouteEgress(Contracts.INGRESS_CHANNEL);
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH)
-                .addNode("client");
+                .enableClient(Env.get("ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT"))ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH)
+                ;
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
-                .setRouterRoutingId(RoutingId.from("client"));
-            node.acceptSpotRoutesFromChannel(Contracts.ROUTE_CHANNEL);
-            node.addSpotFactory(ClientDriverSpot.class);
+                .setRouterRoutingId(RoutingId.from("client"));node.addSpotFactory(ClientDriverSpot.class);
         };
     }
 }

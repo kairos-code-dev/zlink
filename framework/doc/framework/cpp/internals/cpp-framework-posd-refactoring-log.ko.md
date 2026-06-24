@@ -2741,7 +2741,7 @@ git diff --check -- framework/languages/cpp
 
 ### 후속 보정
 
-이후 반복 리뷰에서 `options.add_route_mesh_channel(...)`,
+이후 반복 리뷰에서 `options.add_route_mesh(...)`,
 `options.use_registry_spot_remote_addresses(...)`, `options.add_spot_mesh(...)`를 추가해
 `.NET`의 route mesh, registry backed Spot remote address, Spot mesh 설정을 C++ framework
 options 표면에서도 표현하도록 보정했다. 그래서 이 단계의 남은 tradeoff였던 route mesh/
@@ -2760,8 +2760,8 @@ git diff --check -- framework/languages/cpp
 
 ### 발견한 위험 신호
 
-- `.NET` framework options에는 `UseRegistrySpotRemoteAddresses`,
-  `AddRouteMeshChannel`, `AddSpotMesh`가 있어 host factory가 route mesh와 Spot mesh를
+- `.NET` framework options에는 registry-backed Spot remote address 설정,
+  route mesh 등록, Spot mesh 등록이 있어 host factory가 route mesh와 Spot mesh를
   낮은 수준 socket 설정 없이 표현한다. C++는 같은 기능이 `zlink_builder_t`와
   `spot_node_builder_t` 쪽에 흩어져 있어 샘플 설정이 `.NET`보다 얕고 직접적이었다.
 - TicTacToe Session/Play sample은 registry 기반 Spot remote address와 route mesh channel을
@@ -2785,7 +2785,7 @@ git diff --check -- framework/languages/cpp
 
 ### 적용한 리팩토링
 
-- `zlink_framework_options_t::add_route_mesh_channel(name)`을 추가해 route channel bind와 manual
+- `zlink_framework_options_t::add_route_mesh(name)`을 추가해 route channel bind와 manual
   connection, routing id를 framework options 표면에서 설정하게 했다.
 - `zlink_framework_options_t::use_registry_spot_remote_addresses(...)`를 추가해 Spot remote
   address resolver 기본값을 framework options에서 켤 수 있게 했다.
@@ -2799,7 +2799,7 @@ git diff --check -- framework/languages/cpp
 - `enable_router(endpoint, routing_id)`와 `enable_pub_sub(endpoint, routing_id)` overload를
   추가해 `.NET` sample topology의 `PlayRid`, `SessionRouterRid`, `SessionPubRid` 역할을 C++
   sample에서도 보존하게 했다.
-- `add_route_mesh_channel(...).set_routing_id(...)`와 route channel runtime routing id snapshot을
+- `add_route_mesh(...).set_routing_id(...)`와 route channel runtime routing id snapshot을
   추가해 `.NET`의 `ConfigureRouting(routing => routing.RoutingId = ...)` 정보를 C++ route
   mesh registration에서도 잃지 않게 했다.
 - `zlink_builder_t::route_channel(...)` 재적용 시 registry route channel 이름이 중복되지 않게
@@ -3269,7 +3269,7 @@ ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(channel_m
 - C++ public `zlink_builder_t::route_channel(name)`은 route channel 이름만 registry runtime에
   저장했다. 사용자는 별도 `channel(name)` 호출로 endpoint를 설정해야 했고 route handler는
   public 표면에서 등록할 수 없었다.
-- `.NET`의 `AddRouteMeshChannel(..., builder)`는 bind, manual connection, handler group,
+- `.NET`의 route mesh builder는 bind, manual connection, handler group,
   typed route handler registration을 한 builder에서 처리한다. C++가 이름만 받으면 파일
   구조는 맞아도 사용성이 같은 기능 수준에 도달하지 못한다.
 - public template handler registration이 private state를 직접 만지면 public header가
@@ -4287,7 +4287,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 
 ### 발견한 위험 신호
 
-- `add_client_server_channel`, `add_route_mesh_channel`, `add_fanout_channel`, `add_stream_node` builder가
+- `add_client_server_channel`, `add_route_mesh`, `add_fanout_channel`, `add_stream_node` builder가
   체인 호출마다 runtime action을 vector에 추가하면 같은 channel 또는 stream 등록이 여러 번
   실행될 수 있다.
 - 테스트가 마지막 등록 결과만 보게 되면 중복 등록 비용과 호출 순서 의존성이 숨어 남는다.
@@ -4312,7 +4312,7 @@ stream node 설정은 같은 key의 applier를 덮어써서 최종 상태만 한
 ### 적용한 리팩토링
 
 - `framework_options_state_t`에 key 기반 runtime action map을 추가했다.
-- `add_client_server_channel`, `add_route_mesh_channel`, `add_fanout_channel`, `add_stream_node`는 mutation마다
+- `add_client_server_channel`, `add_route_mesh`, `add_fanout_channel`, `add_stream_node`는 mutation마다
   action을 추가하지 않고 같은 key의 applier를 갱신한다.
 - `apply()`는 일반 deferred action을 먼저 실행한 뒤 key 기반 applier를 한 번씩 실행한다.
 - `test_cpp_framework_module_hosted`에서 같은 `api-channel`에 server와 client를 함께 선언해도
@@ -8998,8 +8998,8 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 
 ### 발견한 위험 신호
 
-- `.NET`의 `AddDealerMeshChannel(...)`은 client bind, manual connection, handler group을
-  dealer mesh channel이라는 사용자 개념 안에서 표현한다.
+- 과거 `.NET` dealer-mesh builder는 client bind, manual connection, handler group을
+  dealer mesh channel이라는 사용자 개념 안에서 표현했다.
 - C++ runtime은 client 역할의 bind/connect endpoint와 dealer mesh pending owner를 이미
   가지고 있었지만, high-level `zlink_framework_options_t`에는 이 의도를 드러내는
   `add_dealer_mesh_channel(...)` 표면이 없었다.
@@ -9269,7 +9269,7 @@ handler kind 정보로 판단한다.
 
 - `.NET` registration validation은 route mesh channel이 bind endpoint 없이 등록되면 startup 단계에서
   실패시킨다.
-- C++ high-level `add_route_mesh_channel(...)`은 생성자에서 low-level route channel action을 등록하지만,
+- C++ high-level `add_route_mesh(...)`은 생성자에서 low-level route channel action을 등록하지만,
   `bind(...)` 없이 routing id나 manual connection만 설정해도 options 적용이 가능했다.
 - route mesh channel은 local route endpoint를 열어야 하는 surface인데, bind 누락을 runtime 초기화나
   send/request 시점으로 미루면 사용자가 설정 오류와 연결 오류를 구분해야 한다.
@@ -9279,7 +9279,7 @@ handler kind 정보로 판단한다.
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | runtime route channel 초기화에서 bind 누락을 실패시킨다 | low-level validation만 추가하면 된다 | high-level options 오류가 늦게 드러나고 `.NET` startup validation과 다르다 |
-| `add_route_mesh_channel(...)` 생성자에서 action을 등록하지 않고 `bind(...)`가 있을 때만 등록한다 | bind 없는 route channel은 만들어지지 않는다 | 사용자 선언이 조용히 무시될 수 있어 설정 실수를 숨긴다 |
+| `add_route_mesh(...)` 생성자에서 action을 등록하지 않고 `bind(...)`가 있을 때만 등록한다 | bind 없는 route channel은 만들어지지 않는다 | 사용자 선언이 조용히 무시될 수 있어 설정 실수를 숨긴다 |
 | 선언된 route mesh channel과 bind 보유 channel을 options state에서 추적하고 `apply()`에서 검증한다 | 사용자 의도를 보존하면서 startup validation으로 닫는다 | options state가 route mesh validation metadata를 가진다 |
 
 선택은 세 번째 방식이다. route mesh 선언은 그대로 유지하고, bind endpoint가 없는 선언은 framework
@@ -9287,7 +9287,7 @@ options 적용 시점에 명확히 실패시킨다.
 
 ### 적용한 리팩토링
 
-- `add_route_mesh_channel(...)` 호출은 route mesh 선언을 options state에 기록한다.
+- `add_route_mesh(...)` 호출은 route mesh 선언을 options state에 기록한다.
 - `bind(...)` 호출은 해당 route mesh channel이 bind endpoint를 가진 것으로 기록한다.
 - bind 없는 route mesh channel이 있으면 `zlink_framework_options_t::apply()`가
   `request_protocol_error`로 실패한다.
@@ -9344,8 +9344,8 @@ options 적용 시점에 명확히 실패시킨다.
 
 ### 발견한 위험 신호
 
-- `.NET` registration validation은 `AcceptSpotRoutesFromChannel(...)` 대상 channel이
-  router-capable ingress인지 startup 단계에서 검증한다.
+- 과거 `.NET` registration validation은 명시적으로 accepted SPOT route channel이
+  router-capable ingress인지 startup 단계에서 검증했다.
 - C++ high-level `accept_routes_from_channel(...)`은 channel 이름을 handler exposure 예외로만
   기록했다. 그래서 router 역할 누락, fanout/dealer mesh 오용, 미등록 channel, 모호한
   channel 이름, registry discovery 누락이 더 늦은 단계로 흘러갈 수 있었다.
@@ -9549,8 +9549,7 @@ state가 닫고, 서로 다른 group이 같은 channel에 같은 packet을 노�
 
 ### 발견한 위험 신호
 
-- `.NET`은 `AcceptSpotRoutesFromChannel(name, endpoint)`로 accepted SPOT route peer를
-  discovery 없이 직접 지정할 수 있다.
+- 과거 `.NET` 표면은 accepted SPOT route peer를 discovery 없이 직접 지정할 수 있었다.
 - C++ high-level `accept_routes_from_channel(name)`은 channel 이름만 받았고, validation도
   accepted route마다 registry discovery를 항상 요구했다.
 - accepted route ingress와 registry Spot remote address resolver가 같은 snapshot field를 공유하면
@@ -9831,8 +9830,8 @@ fluent 호출로 표현한다.
 
 ### 발견한 위험 신호
 
-- `.NET` framework는 client/server channel과 route mesh channel builder에
-  `EnableSpotRouteEgress(targetSpotNodeChannelName)`를 제공한다.
+- 과거 `.NET` framework는 client/server channel과 route mesh channel builder에서
+  routed SPOT egress 대상을 명시하게 했다.
 - C++ fluent options에는 같은 사용자 의도를 표현하는 public 메서드가 없어서, routed SPOT ingress
   설정인 `accept_routes_from_channel(...)`만으로는 outbound relay 의도를 문서와 코드에서 맞출 수
   없었다.

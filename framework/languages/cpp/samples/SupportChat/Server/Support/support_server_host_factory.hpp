@@ -65,26 +65,17 @@ class support_server_host_factory_t
               .use_handler_group ("support");
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client ();
-            options.add_route_mesh_channel (sample_names_t::actor_session_route_channel)
+            options.add_route_mesh (sample_names_t::actor_session_route_channel)
               .enable_server (topology.support_actor_route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (sample_names_t::support_spot_node))
-              .enable_client (topology.session_actor_route_endpoint)
-              .enable_spot_route_egress (sample_names_t::actor_session_route_channel);
-            auto mesh = options.add_spot_mesh (sample_names_t::support_spot_discovery);
-            mesh.use_registry_spot_resolver (sample_names_t::actor_session_route_channel);
-            mesh.add_node (sample_names_t::conversation_spot_node)
-              .enable_router (topology.conversation_spot_router_endpoint)
-              .enable_actor_gateway ()
-              .enable_pub_sub (topology.conversation_spot_endpoint)
-              .accept_routes_from_channel (sample_names_t::actor_session_route_channel)
-              .add_spot<conversation_spot_t> (sample_names_t::conversation_spot)
-              .add_actor_factory<support_user_actor_factory_t> (sample_names_t::support_actor_type);
-            mesh.add_node (sample_names_t::support_spot_node)
+              .enable_client (topology.session_actor_route_endpoint);
+            options.add_spot_mesh (sample_names_t::support_spot_discovery)
+              .use_registry_spot_resolver (sample_names_t::actor_session_route_channel)
               .enable_router (topology.support_router_endpoint,
                               zlink::routing_id_t::from (sample_names_t::support_spot_node))
               .enable_actor_gateway ()
               .enable_pub_sub (topology.support_spot_endpoint)
-              .accept_routes_from_channel (sample_names_t::actor_session_route_channel)
+              .add_spot<conversation_spot_t> (sample_names_t::conversation_spot)
               .add_entry_spot<support_entry_spot_t> ()
               .add_actor_factory<support_user_actor_factory_t> (sample_names_t::support_actor_type);
         });

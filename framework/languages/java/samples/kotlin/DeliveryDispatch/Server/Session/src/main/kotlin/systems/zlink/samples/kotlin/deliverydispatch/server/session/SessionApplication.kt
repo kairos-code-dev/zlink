@@ -46,19 +46,18 @@ class SessionApplication {
                     DeliveryStatusNotify::class.java,
                     "DeliveryStatusNotify",
                 )
-            val route = options.addRouteMeshChannel(SampleNames.SpotRouteChannel)
+            val route = options.addRouteMesh(SampleNames.SpotRouteChannel)
             route.enableServer(SampleTopology.SessionSpotRouteEndpoint)
             route.enableClient()
             route.setRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid))
             options.useRegistrySpotRemoteAddresses(SampleNames.DeliverySpotDiscovery)
                 .setRouterChannelId(SampleNames.SpotRouteChannel)
             val node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)
-                .addNode(SampleNames.SessionSpotNode)
+
             node.enableRouter(SampleTopology.SessionSpotRouterEndpoint)
                 .setRouterRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid))
             node.enablePubSub(SampleTopology.SessionSpotEndpoint)
                 .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionSpotPubRid))
-            node.acceptSpotRoutesFromChannel(SampleNames.SpotRouteChannel)
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.SessionStreamEndpoint)

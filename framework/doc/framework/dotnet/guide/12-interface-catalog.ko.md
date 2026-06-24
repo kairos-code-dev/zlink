@@ -243,7 +243,6 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         .EnableServer("tcp://127.0.0.1:5000")     // 같은 endpoint 라도 server/client 역할은 별개로 활성화한다
         .EnableClient("tcp://127.0.0.1:5000");
     channel.AddRequestHandler<ApiRequestHandler, ApiRequest, ApiReply>();
-    channel.EnableSpotRouteEgress("play-spots");  // client-server channel 에만 있는 capability(fanout/dealer 엔 없음)
 }
 
 {
@@ -252,7 +251,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         .EnableSubscriber("tcp://127.0.0.1:5100");
 }
 {
-    var channel = options.AddRouteMeshChannel("play-router")
+    var channel = options.AddRouteMesh("play-router")
         .EnableServer("tcp://127.0.0.1:5300")
         .EnableClient("tcp://127.0.0.1:5301");
 }
@@ -260,9 +259,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkClientServerChannelBuilder` | client-server channel(`EnableServer`/`EnableClient`, request/send handler, `EnableSpotRouteEgress`) |
 | `IZLinkFanoutChannelBuilder` | fanout channel(`EnablePublisher`/`EnableSubscriber`, publish handler) |
-| `IZLinkRouteMeshChannelBuilder` | route mesh channel(`EnableServer`/`EnableClient`, routing/socket, route send/request handler, `EnableSpotRouteEgress`) |
 
 검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`.
 
@@ -281,7 +278,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6003");
 
     {
-        var spot = mesh.AddNode("play-spots");
+        var spot = mesh;
 
         spot.EnableRouter("tcp://127.0.0.1:5501");                  // router 활성화 후
         spot.SetRouterRoutingId(RoutingId.From("spot-router"));     // 그 router 의 routing id 지정(순서 의존)
@@ -293,16 +290,13 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         var api = options.AddClientServerChannel("api");
         api.EnableClient("tcp://127.0.0.1:5300");
         api.ConfigureClientSocket().Immediate = true;
-        spot.AttachSpotPublisherClient("events");
-        spot.AttachSpotPublisherClient("mesh-events");
-        spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5300"); // 인자 = (수용할 channel, 그 endpoint)
         spot.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
         spot.AddSpotFactory<RoomSpot>();   // user Spot: 요청마다 동적 생성
         spot.AddEntrySpot<EntrySpot>();    // Entry Spot: 노드당 단일 진입점
     }
 
     {
-        var spot = mesh.AddNode("session-node");
+        var spot = mesh;
         spot.EnableRouter("tcp://127.0.0.1:5601");
         spot.ConfigureRouterRouting().RoutingId = RoutingId.From("session-gateway");
     }
@@ -312,9 +306,8 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkStreamNodeBuilder` | stream node(`Bind`, `AttachActorGateway`, `RegisterSession<TSession>`) |
-| `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, channel route bridge, route 수용, entry/spot factory) |
-| `IZLinkSpotMeshNodeBuilder` | spot mesh 안의 노드 빌더(`IZLinkSpotNodeBuilder` 와 같은 표면, mesh 컨텍스트) |
-| `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh(`UseDiscovery`, `AddNode`) |
+| `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, entry/spot factory) |
+| `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh와 단일 spot node(`UseDiscovery`, router/pub-sub/factory 설정) |
 
 검증: `BuilderContracts.Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments`.
 
@@ -329,8 +322,6 @@ channel.EnableClient("tcp://127.0.0.1:5001");
 subscriber.EnableSubscriber("tcp://127.0.0.1:5002");
 spot.ConnectRouter("tcp://127.0.0.1:5003");
 spot.ConnectPeerPub("tcp://127.0.0.1:5004");
-spot.AttachSpotPublisherClient("events", "tcp://127.0.0.1:5005");
-spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5006");
 ```
 
 검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`,

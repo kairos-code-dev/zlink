@@ -130,8 +130,6 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
 
     private static ZLinkDispatchErrorSurface ResolveSurface(string transportName)
     {
-        return string.Equals(transportName, "DealerMeshChannel", StringComparison.Ordinal)
-            ? ZLinkDispatchErrorSurface.DealerMeshChannel
-            : ZLinkDispatchErrorSurface.Channel;
+        return ZLinkDispatchErrorSurface.Channel;
     }
 }

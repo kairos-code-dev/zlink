@@ -167,8 +167,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final Duration defaultRequestTimeout;
     private final ZLinkChannelRuntime channels;
     private ZLinkActorRuntime actorRuntime;
-    private final Map<String, SpotNodeRegistration> acceptedRouteNodesByChannel = new HashMap<>();
-    private final List<String> egressChannels = new ArrayList<>();
     private final List<String> routeMeshChannels = new ArrayList<>();
     private final ThreadLocal<DefaultSpotOutbound> currentOutbound = new ThreadLocal<>();
     private final Map<RoutingId, CompletionStage<ZLinkSpotCreateResult>> pendingSpotCreates =
@@ -265,6 +263,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             backendFactory.createSpotAdapter(adapterOptions);
         this.context = channelAdapter.createContext();
         this.defaultRequestTimeout = registration.defaultRequestTimeout();
+        ZLinkBackendSpotNode routeBridgeNode = null;
         for (SpotNodeRegistration nodeRegistration : registration.spotNodes()) {
             ZLinkBackendSpotNode node =
                 spotAdapter.createSpotNode(context, resolveSpotNodeMode(nodeRegistration));
@@ -303,40 +302,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             for (String endpoint : nodeRegistration.pubSubManualConnections()) {
                 node.connectPeer(endpoint);
             }
-            for (SpotRouteChannelAcceptanceRegistration acceptance :
-                nodeRegistration.acceptedSpotRouteChannels().values()) {
-                if (acceptedRouteNodesByChannel.putIfAbsent(
-                    acceptance.channelName(),
-                    nodeRegistration) != null) {
-                    throw new ZLinkConfigurationException(
-                        "routed SPOT channel is accepted by multiple SPOT nodes: "
-                            + acceptance.channelName());
-                }
-                attachAcceptedSpotRouteChannel(
-                    channelAdapter,
-                    registration,
-                    node,
-                    acceptance);
-            }
             nodes.add(node);
             nodesByName.put(nodeRegistration.nodeName(), node);
             registeredSpotTypes.addAll(nodeRegistration.spotFactories());
-            for (SpotPublisherClientRegistration publisher :
-                nodeRegistration.attachedSpotPublisherClients().values()) {
-                publisherNodesByChannel.put(publisher.channelName(), node);
-                for (String endpoint : publisher.manualConnections()) {
-                    node.connectPeer(endpoint);
-                }
+            if (nodeRegistration.pubSubEnabled()) {
+                publisherNodesByChannel.put(nodeRegistration.meshName(), node);
+            }
+            if (routeBridgeNode == null && nodeRegistration.routerEnabled()) {
+                routeBridgeNode = node;
             }
         }
         for (var channel : registration.channels()) {
             if (channel.kind() == ChannelKind.ROUTE_MESH) {
                 routeMeshChannels.add(channel.name());
             }
-            if (channel.spotRouteEgressTarget() != null) {
-                egressChannels.add(channel.name());
-            }
         }
+        attachRouteMeshSpotBridges(routeBridgeNode);
         this.primaryNode = nodes.get(0);
         this.primaryNodeSourceName = registration.spotNodes().get(0).nodeName();
         spotDiscoveryReconciler.start(timerExecutor);
@@ -1305,18 +1286,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             nodeRegistration.pubBind());
     }
 
-    private void attachAcceptedSpotRouteChannel(
-        ZLinkChannelBackendAdapter channelAdapter,
-        ZLinkFrameworkRegistration frameworkRegistration,
-        ZLinkBackendSpotNode node,
-        SpotRouteChannelAcceptanceRegistration acceptance) {
-        if (channels.attachSpotRouteBridgeToServer(acceptance.channelName(), node)) {
+    private void attachRouteMeshSpotBridges(ZLinkBackendSpotNode routeBridgeNode) {
+        if (channels == null || routeMeshChannels.isEmpty() || routeBridgeNode == null) {
             return;
         }
-
-        throw new ZLinkConfigurationException(
-            "accepted SPOT route channel requires a configured channel server or route mesh socket: "
-                + acceptance.channelName());
+        for (String routeMeshChannel : routeMeshChannels) {
+            channels.attachSpotRouteBridgeToServer(routeMeshChannel, routeBridgeNode);
+        }
     }
 
     private ZLinkSpot<?> tryCreateSpot(
@@ -2799,14 +2775,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             requireRoutingId(spotRid);
             ZLinkPayloadEncoding.EncodedPayload encoded =
                 ZLinkPayloadEncoding.encode(serializer, message);
-            if (channels != null && !egressChannels.isEmpty()) {
-                if (egressChannels.size() > 1) {
-                    throw new ZLinkConfigurationException(
-                        "routed SPOT outbound requires a single egress channel until remote address resolution is implemented");
-                }
+            if (channels != null && !routeMeshChannels.isEmpty()) {
                 return new EgressSpotSendCall(
                     channels,
-                    egressChannels.get(0),
+                    resolveRouterChannelId(null),
                     spotRid,
                     encoded.payload(),
                     Optional.of(encoded.packetName()));
@@ -2824,14 +2796,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             requireRoutingId(spotRid);
             ZLinkPayloadEncoding.EncodedPayload encoded =
                 ZLinkPayloadEncoding.encode(serializer, request);
-            if (channels != null && !egressChannels.isEmpty()) {
-                if (egressChannels.size() > 1) {
-                    throw new ZLinkConfigurationException(
-                        "routed SPOT outbound requires a single egress channel until remote address resolution is implemented");
-                }
+            if (channels != null && !routeMeshChannels.isEmpty()) {
                 return new EgressSpotRequestCall(
                     channels,
-                    egressChannels.get(0),
+                    resolveRouterChannelId(null),
                     spotRid,
                     encoded.payload(),
                     Optional.of(encoded.packetName()),
@@ -2923,9 +2891,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             }
             List<Message> spotParts = parts(packetName, payload);
             try {
-                return channels.sendToSpotViaEgressChannel(
-                    egressChannelName,
-                    spotRid,
+                ZLinkSpotRemoteAddress address =
+                    resolveRegistrySpotRemoteAddress(null, egressChannelName, spotRid);
+                return channels.sendToSpotViaRouterChannel(
+                    address.routerChannelId(),
+                    address.targetNodeRid(),
+                    address.spotRid(),
                     spotParts);
             } finally {
                 spotParts.forEach(Message::close);
@@ -2995,9 +2966,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     spotRid.toString(), null, null));
             }
             try {
-                return channels.requestToSpotViaEgressChannel(
-                    egressChannelName,
-                    spotRid,
+                ZLinkSpotRemoteAddress address =
+                    resolveRegistrySpotRemoteAddress(null, egressChannelName, spotRid);
+                return channels.requestToSpotViaRouterChannel(
+                    address.routerChannelId(),
+                    address.targetNodeRid(),
+                    address.spotRid(),
                     spotParts,
                     timeout)
                     .thenApply(replyParts -> {

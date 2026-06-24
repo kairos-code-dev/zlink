@@ -40,7 +40,7 @@ builder.Services.AddZLinkFramework(options =>
         var mesh = options.AddSpotMesh(SampleNames.DeliverySpotDiscovery);
         mesh.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
         {
-            var spot = mesh.AddNode(SampleNames.TrackingSpotNode);
+            var spot = mesh;
             {
                 var router = spot.EnableRouter(topology.TrackingSpotRouterEndpoint);
                 router.SetRouterRoutingId(topology.TrackingSpotNodeRid);

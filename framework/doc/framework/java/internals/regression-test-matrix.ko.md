@@ -41,7 +41,7 @@ server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery().addReg
 | discovery client/server request | integration-single-process | `ChannelMessagingTest.discoveryClientServer_requestReplySucceeds` | registry discovery 기반 request/reply 성공 |
 | fanout publish/subscribe | integration-single-process | `ChannelMessagingTest.publisherAndSubscriber_workAcrossHosts` | publish 수신 |
 | route mesh request | integration-single-process | `ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds` | `configureRouting(...)`으로 지정한 target `RoutingId` request 성공 |
-| client/server Spot route egress without client | unit | `DefaultZLinkFrameworkOptionsTest.clientServerSpotRouteEgressRequiresClientCapability` | `enableSpotRouteEgress(...)`는 client 역할 없는 client/server channel에서 startup validation 오류 |
+| implicit Spot route without RouteMesh server | unit | `DefaultZLinkFrameworkOptionsTest.implicitSpotRouteRequiresRouteMeshServerCapability` | 같은 프로세스에 SpotNode와 RouteMesh server 역할이 있어야 자동 route bridge를 시작할 수 있음 |
 | route shared packet reply correlation | integration-single-process | `ChannelMessagingTest.routeMesh_matchesRepliesByRequestSequenceWhenPacketNameIsShared` | 같은 packet 이름의 동시 route request가 request sequence로 자기 reply를 받음 |
 | annotation handler dispatch | integration-single-process | `ChannelMessagingTest.scannedMethodHandlerGroup_requestAndSendDispatch` / `scannedMethodHandlerGroup_publishDispatches` | `@ZLinkRequest`, `@ZLinkSend`, `@ZLinkPublish` method handler가 scanner와 runtime dispatch에 연결됨 |
 | send/publish async submit | unit | `ZLinkAsyncSubmitterTest.submit_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |

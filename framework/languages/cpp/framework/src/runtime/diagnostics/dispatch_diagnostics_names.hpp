@@ -16,8 +16,6 @@ inline std::string_view enum_name (dispatch_error_surface_t value) noexcept
     switch (value) {
         case dispatch_error_surface_t::channel:
             return "channel";
-        case dispatch_error_surface_t::dealer_mesh_channel:
-            return "dealer_mesh_channel";
         case dispatch_error_surface_t::route_mesh_channel:
             return "route_mesh_channel";
         case dispatch_error_surface_t::spot_route:

@@ -168,7 +168,6 @@ class route_channel_builder_t
     route_channel_builder_t &connect (std::string endpoint);
     route_channel_builder_t &default_request_timeout (std::chrono::milliseconds timeout);
     route_channel_builder_t &add_handler_group (std::string group_name);
-    route_channel_builder_t &enable_spot_route_egress (std::string target_spot_node_channel_name);
 
     template <typename TOwner, typename TMessage>
     route_channel_builder_t &

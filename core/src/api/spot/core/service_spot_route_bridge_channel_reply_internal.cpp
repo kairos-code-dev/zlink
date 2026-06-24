@@ -70,19 +70,19 @@ namespace
 {
 struct pending_reply_t
 {
-    socket_base_t *socket;
-    int socket_type;
+    socket_base_t *router_socket;
     zlink_routing_id_t peer_rid;
     uint64_t request_seq;
+    const void *owner;
 };
 }
 
-void *new_pending_reply (socket_base_t *socket_,
-                         int socket_type_,
+void *new_pending_reply (socket_base_t *router_socket_,
                          const zlink_routing_id_t *peer_rid_,
-                         uint64_t request_seq_)
+                         uint64_t request_seq_,
+                         const void *owner_)
 {
-    if (!socket_ || !peer_rid_ || request_seq_ == 0) {
+    if (!router_socket_ || !peer_rid_ || request_seq_ == 0 || !owner_) {
         errno = EINVAL;
         return NULL;
     }
@@ -91,10 +91,10 @@ void *new_pending_reply (socket_base_t *socket_,
         errno = ENOMEM;
         return NULL;
     }
-    pending->socket = socket_;
-    pending->socket_type = socket_type_;
+    pending->router_socket = router_socket_;
     pending->peer_rid = *peer_rid_;
     pending->request_seq = request_seq_;
+    pending->owner = owner_;
     return pending;
 }
 
@@ -105,11 +105,11 @@ void delete_pending_reply (void *pending_)
 
 uint64_t register_pending_reply (
   const std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t> &state_,
-  socket_base_t *socket_,
-  int socket_type_,
+  socket_base_t *router_socket_,
   const zlink_routing_id_t *peer_rid_,
   uint64_t channel_request_seq_,
-  uint32_t timeout_ms_)
+  uint32_t timeout_ms_,
+  const void *owner_)
 {
     if (!state_) {
         errno = EFAULT;
@@ -125,7 +125,7 @@ uint64_t register_pending_reply (
     if (local_request_seq == 0)
         return 0;
 
-    void *pending = new_pending_reply (socket_, socket_type_, peer_rid_, channel_request_seq_);
+    void *pending = new_pending_reply (router_socket_, peer_rid_, channel_request_seq_, owner_);
     if (!pending)
         return 0;
 
@@ -168,6 +168,35 @@ size_t pending_reply_count (
     return state_->requests.pending_replies.size ();
 }
 
+void cancel_pending_replies (
+  const std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t> &state_,
+  const void *owner_)
+{
+    if (!state_ || !owner_)
+        return;
+
+    std::vector<pending_reply_t *> pending;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        for (std::unordered_map<uint64_t, zlink::spot_reqrep_internal::pending_reply_t>::iterator
+               it = state_->requests.pending_replies.begin ();
+             it != state_->requests.pending_replies.end ();) {
+            pending_reply_t *bridge_pending = static_cast<pending_reply_t *> (it->second.userdata);
+            if (!bridge_pending || bridge_pending->owner != owner_) {
+                ++it;
+                continue;
+            }
+            zlink::request_timeout::cancel (it->second.timeout_task);
+            pending.push_back (bridge_pending);
+            state_->requests.pending_sequences.erase (it->first);
+            it = state_->requests.pending_replies.erase (it);
+        }
+    }
+
+    for (size_t i = 0; i < pending.size (); ++i)
+        delete_pending_reply (pending[i]);
+}
+
 void reply_to_channel_request (zlink_request_result_t result_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
@@ -184,16 +213,9 @@ void reply_to_channel_request (zlink_request_result_t result_,
         zlink_msg_t errno_part;
         zlink_msg_init (&errno_part);
         if (init_errno_part (&errno_part, request_result_errno (result_)) == 0) {
-            if (pending->socket_type == ZLINK_CORE_SOCKET_ROUTER) {
-                (void) socket_reqrep_internal::send_request_reply_message (
-                  pending->socket, &pending->peer_rid, &errno_part, 1, ZLINK_DONTWAIT,
-                  request_reply::error_reply_type, pending->request_seq);
-            } else if (pending->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-                (void) zlink_dealer_reply_part (pending->socket, pending->request_seq, &errno_part,
-                                                ZLINK_PART_FINAL);
-            } else {
-                zlink_msg_close (&errno_part);
-            }
+            (void) socket_reqrep_internal::send_request_reply_message (
+              pending->router_socket, &pending->peer_rid, &errno_part, 1, ZLINK_DONTWAIT,
+              request_reply::error_reply_type, pending->request_seq);
         }
         delete_pending_reply (pending);
         return;
@@ -203,36 +225,17 @@ void reply_to_channel_request (zlink_request_result_t result_,
         zlink_msg_t empty;
         zlink_msg_init (&empty);
         (void) zlink_msg_init_size (&empty, 0);
-        if (pending->socket_type == ZLINK_CORE_SOCKET_ROUTER) {
-            (void) zlink_router_reply_part (pending->socket, &pending->peer_rid,
-                                            pending->request_seq, &empty, ZLINK_PART_FINAL);
-        } else if (pending->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-            (void) zlink_dealer_reply_part (pending->socket, pending->request_seq, &empty,
-                                            ZLINK_PART_FINAL);
-        } else {
-            zlink_msg_close (&empty);
-        }
+        (void) zlink_router_reply_part (pending->router_socket, &pending->peer_rid,
+                                        pending->request_seq, &empty, ZLINK_PART_FINAL);
         delete_pending_reply (pending);
         return;
     }
 
     for (size_t i = 0; i < part_count_; ++i) {
         const zlink_part_flag_t part_flag = i + 1 < part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        if (pending->socket_type == ZLINK_CORE_SOCKET_ROUTER) {
-            if (zlink_router_reply_part (pending->socket, &pending->peer_rid,
-                                         pending->request_seq, &parts_[i], part_flag)
-                != ZLINK_SUBMIT_OK) {
-                zlink_multipart_close (parts_ + i, part_count_ - i);
-                break;
-            }
-        } else if (pending->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-            if (zlink_dealer_reply_part (pending->socket, pending->request_seq, &parts_[i],
-                                         part_flag)
-                != ZLINK_SUBMIT_OK) {
-                zlink_multipart_close (parts_ + i, part_count_ - i);
-                break;
-            }
-        } else {
+        if (zlink_router_reply_part (pending->router_socket, &pending->peer_rid,
+                                     pending->request_seq, &parts_[i], part_flag)
+            != ZLINK_SUBMIT_OK) {
             zlink_multipart_close (parts_ + i, part_count_ - i);
             break;
         }

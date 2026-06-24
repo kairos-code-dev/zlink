@@ -3,7 +3,6 @@ package systems.zlink.framework.runtime.channels;
 import java.time.Duration;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
-import systems.zlink.framework.configuration.DealerMeshChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 
@@ -17,10 +16,6 @@ public final class ChannelBuilders {
 
     public static FanoutChannelBuilder fanout(ChannelRegistration registration) {
         return new Fanout(registration);
-    }
-
-    public static DealerMeshChannelBuilder dealerMesh(ChannelRegistration registration) {
-        return new DealerMesh(registration);
     }
 
     public static RouteMeshChannelBuilder routeMesh(ChannelRegistration registration) {
@@ -105,11 +100,6 @@ public final class ChannelBuilders {
                 packetName));
         }
 
-        @Override
-        public ClientServerChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName) {
-            registration.enableSpotRouteEgress(targetSpotNodeChannelName);
-            return this;
-        }
     }
 
     private record Fanout(ChannelRegistration registration) implements FanoutChannelBuilder {
@@ -171,33 +161,6 @@ public final class ChannelBuilders {
                 handlerType,
                 String.class,
                 packetName));
-            return this;
-        }
-    }
-
-    private record DealerMesh(ChannelRegistration registration) implements DealerMeshChannelBuilder {
-        @Override
-        public DealerMeshChannelBuilder enableClient() {
-            registration.enableClient();
-            return this;
-        }
-
-        @Override
-        public DealerMeshChannelBuilder enableClient(String endpoint) {
-            registration.enableClient();
-            registration.addClientManualEndpoint(endpoint);
-            return this;
-        }
-
-        @Override
-        public DealerMeshChannelBuilder setDefaultRequestTimeout(Duration timeout) {
-            registration.setDefaultRequestTimeout(timeout);
-            return this;
-        }
-
-        @Override
-        public DealerMeshChannelBuilder addHandlerGroup(String groupName) {
-            registration.addHandlerGroup(groupName);
             return this;
         }
     }
@@ -277,10 +240,5 @@ public final class ChannelBuilders {
                 packetName));
         }
 
-        @Override
-        public RouteMeshChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName) {
-            registration.enableSpotRouteEgress(targetSpotNodeChannelName);
-            return this;
-        }
     }
 }

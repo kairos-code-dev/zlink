@@ -41,7 +41,7 @@ final class StreamSessionTest {
     @Test
     void streamNodeBindsAndAttachesConfiguredActorGatewaySpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.attachActorGateway("play");
@@ -240,7 +240,7 @@ final class StreamSessionTest {
     void constructorSessionContextExposesClientAndActorsFromFrameworkRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActorFactory.class);
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
@@ -270,7 +270,7 @@ final class StreamSessionTest {
     void gatewayAttachedSessionContextExposesActorsWithoutLocalActorRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("session"); node.setRouterRoutingId(RoutingId.from("session-node")); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("session-node")); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.attachActorGateway("session");
             stream.registerSession(ContextSession.class); };

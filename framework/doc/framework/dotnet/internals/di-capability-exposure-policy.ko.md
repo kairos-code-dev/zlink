@@ -148,7 +148,7 @@ services.AddZLinkFramework(options =>
     {
         var mesh =     options.AddSpotMesh("game.rooms");
         {
-            var node =         mesh.AddNode("play-node");
+            var node = mesh;
             node.EnablePubSub("tcp://127.0.0.1:9000");
             node.AddEntrySpot<GameEntrySpot>();
 

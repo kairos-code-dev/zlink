@@ -26,17 +26,21 @@ async function main() {
   const ctx = zlink.createContext();
   const requesterNode = zlink.createSpotNode(ctx);
   const responderRouter = zlink.createRouterSocket(ctx);
-  const requesterDealer = zlink.createDealerSocket(ctx);
+  const requesterRouter = zlink.createRouterSocket(ctx);
   const bridge = requesterNode.createRouteBridge();
   let requester = null;
 
   try {
+    const requesterRid = zlink.RoutingId.from(Buffer.from('spot-request-client', 'ascii'));
+    const responderRid = zlink.RoutingId.from(Buffer.from('spot-request-server', 'ascii'));
+    requesterRouter.setRoutingId(requesterRid);
+    responderRouter.setRoutingId(responderRid);
     requester = requesterNode.createSpot();
     responderRouter.bind(endpoint);
-    requesterDealer.connect(endpoint);
-    bridge.attachDealerChannel(CHANNEL_NAME, requesterDealer);
+    requesterRouter.connect(endpoint);
+    bridge.attachRouterChannel(CHANNEL_NAME, requesterRouter);
 
-    const pendingReply = bridge.request(CHANNEL_NAME, requester.routingId)
+    const pendingReply = bridge.request(CHANNEL_NAME, responderRid, requester.routingId)
       .message(Buffer.from(REQUEST_PAYLOAD))
       .timeout(2000)
       .submit();
@@ -67,7 +71,7 @@ async function main() {
       requester.close();
     }
     bridge.close();
-    requesterDealer.close();
+    requesterRouter.close();
     responderRouter.close();
     requesterNode.close();
     ctx.close();

@@ -34,6 +34,4 @@ public interface ClientServerChannelBuilder {
         Class<?> requestType,
         Class<?> replyType,
         String packetName);
-
-    ClientServerChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }

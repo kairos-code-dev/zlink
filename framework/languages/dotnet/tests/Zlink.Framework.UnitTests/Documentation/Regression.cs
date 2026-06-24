@@ -166,11 +166,11 @@ public sealed class RegressionTests
             channelSpec,
             spotSamples);
 
-        Assert.Contains("AcceptSpotRoutesFromChannel", combined,
+        Assert.DoesNotContain("AcceptSpotRoutesFromChannel", combined,
             StringComparison.Ordinal);
         Assert.Contains("AddClientServerChannel", combined,
             StringComparison.Ordinal);
-        Assert.Contains("AddRouteMeshChannel", combined,
+        Assert.Contains("AddRouteMesh", combined,
             StringComparison.Ordinal);
         Assert.DoesNotContain("NonPublic", combined, StringComparison.Ordinal);
         Assert.DoesNotContain("internal/private", combined,
@@ -211,7 +211,6 @@ public sealed class RegressionTests
         {
             (new(@"\bEnable(?:Server|Client|Publisher|Subscriber)\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "nested capability callback"),
             (new(@"\bUseManualConnections\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "manual connection callback"),
-            (new(@"\bAcceptSpotRoutesFromChannel\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "spot route acceptance callback"),
             (new(@"\bAddNode\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "spot mesh node callback"),
             (new(@"\bConfigureEntrySpot\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "entry spot options callback"),
         };

@@ -23,7 +23,7 @@ class PlayActorJoinGameHandler
     request: JoinGameReq
   ): Promise<JoinGameRes> {
     void context;
-    return await entrySpot.join(actor, actor, request.roomId);
+    return await entrySpot.join(actor, request.player ?? actor, request.roomId);
   }
 }
 

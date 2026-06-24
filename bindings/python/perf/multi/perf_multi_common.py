@@ -499,10 +499,11 @@ def wait_for_command_line(stream, *, deadline):
 
 
 def attach_spot_service_pair(ctx, node, channel_name):
-    dealer = _require_zlink().create_dealer_socket(ctx)
+    router = _require_zlink().create_router_socket(ctx)
+    router.set_routing_id(f"{channel_name}-route-bridge".encode("ascii"))
     bridge = node.create_route_bridge()
-    bridge.attach_dealer_channel(channel_name, dealer)
-    return dealer, bridge
+    bridge.attach_router_channel(channel_name, router)
+    return router, bridge
 
 
 def benchmark_endpoint(transport, prefix):

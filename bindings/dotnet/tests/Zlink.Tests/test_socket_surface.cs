@@ -440,26 +440,18 @@ public sealed class test_socket_surface
             nameof(SpotDispatchInfo.DrainChannelReply)));
 
         Assert.True(HasPublicInstanceMethod(typeof(ISpotRouteBridge),
-            nameof(ISpotRouteBridge.AttachDealerChannel), typeof(string),
-            typeof(IDealerSocket), typeof(SpotRouteBridgeEndpointOptions)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotRouteBridge),
             nameof(ISpotRouteBridge.AttachRouterChannel), typeof(string),
             typeof(IRouterSocket), typeof(SpotRouteBridgeEndpointOptions)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotRouteBridge),
-            nameof(ISpotRouteBridge.SetTargetNode), typeof(string),
-            typeof(RoutingId)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotRouteBridge),
             nameof(ISpotRouteBridge.Send), typeof(string), typeof(RoutingId),
-            typeof(IReadOnlyList<Message>), typeof(SendFlags)));
+            typeof(RoutingId), typeof(IReadOnlyList<Message>), typeof(SendFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotRouteBridge),
             nameof(ISpotRouteBridge.Request), typeof(string), typeof(RoutingId),
-            typeof(IReadOnlyList<Message>),
+            typeof(RoutingId), typeof(IReadOnlyList<Message>),
             typeof(Action<RequestResult, IReadOnlyList<Message>>),
             typeof(SendFlags), typeof(TimeSpan)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotRouteBridge),
             nameof(ISpotRouteBridge.Drain)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotRouteBridge),
-            nameof(ISpotRouteBridge.Summary)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNodePublisher),
             nameof(ISpotNodePublisher.Publish), typeof(string),
             typeof(IReadOnlyList<Message>), typeof(SendFlags)));

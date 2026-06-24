@@ -2,6 +2,7 @@
 //   bindings/java/gradlew -p . :kotlin-samples:runSpotRequestAsyncSample --no-daemon
 package systems.zlink.samples
 
+import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.core.Zlink
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.messaging.Received
@@ -15,16 +16,20 @@ fun main() {
     SampleSupport.ensureNative()
     val endpoint = SampleSupport.tcpEndpoint()
     val channelName = "orders"
+    val clientRid = RoutingId.from("spot-async-client")
+    val serverRid = RoutingId.from("spot-async-server")
 
     Zlink.createContext().use { ctx ->
         ctx.createSpotNode().use { requesterNode ->
-            ctx.createDealerSocket().use { requesterDealer ->
+            ctx.createRouterSocket().use { requesterChannel ->
                 ctx.createRouterSocket().use { requesterRouter ->
                     requesterNode.createSpot().use { requester ->
                         requesterNode.createRouteBridge().use { bridge ->
+                            requesterChannel.setRoutingId(clientRid)
+                            requesterRouter.setRoutingId(serverRid)
                             requesterRouter.bind(endpoint)
-                            requesterDealer.connect(endpoint)
-                            bridge.attachDealerChannel(channelName, requesterDealer)
+                            requesterChannel.connect(endpoint)
+                            bridge.attachRouterChannel(channelName, requesterChannel)
 
                             val responder = Thread({
                                 Received().use { received ->
@@ -43,7 +48,7 @@ fun main() {
                             var replyHolder: List<Message> = emptyList()
                             var resultHolder = RequestResult.TIMED_OUT
                             Message.from("spot-ping").use { request ->
-                                bridge.request(channelName, requester.routingId)
+                                bridge.request(channelName, serverRid, requester.routingId)
                                     .message(request)
                                     .timeout(Duration.ofSeconds(5))
                                     .submit { requestResult, replyParts ->

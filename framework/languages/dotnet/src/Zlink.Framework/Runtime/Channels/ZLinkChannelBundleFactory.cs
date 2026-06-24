@@ -48,7 +48,7 @@ internal sealed class ZLinkChannelBundleFactory(
                     adapter,
                     state.Context,
                     channelName,
-                    ResolveClientAutoConnectType(channel),
+                    ZLinkAutoConnectType.ClientServer,
                     registration.Discovery?.Endpoints ?? [],
                     dealer.AttachDiscovery);
             }
@@ -157,13 +157,6 @@ internal sealed class ZLinkChannelBundleFactory(
         }
 
         return bundle;
-    }
-
-    private static ZLinkAutoConnectType ResolveClientAutoConnectType(ZLinkChannelRegistration channel)
-    {
-        return channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
-            ? ZLinkAutoConnectType.DealerMesh
-            : ZLinkAutoConnectType.ClientServer;
     }
 
     internal static void ApplySocketConfig(

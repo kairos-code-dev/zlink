@@ -33,22 +33,6 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
         Dispose(false);
     }
 
-    public void AttachDealerChannel(string channelName, IDealerSocket dealer,
-        SpotRouteBridgeEndpointOptions? options = null)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        EnsureNotDisposed();
-        DealerSocket concrete = SocketInterop.RequireDealerSocket(dealer,
-            nameof(dealer));
-        ZlinkSpotRouteBridgeEndpointOptions nativeOptions =
-            ToNativeEndpointOptions(options);
-        int rc = NativeMethods.zlink_spot_route_bridge_attach_dealer_channel(
-            _handle, channelName, concrete.Handle, ref nativeOptions);
-        ZlinkException.ThrowConfigIfError(rc);
-        lock (_gate)
-            _endpointHandles[channelName] = concrete.Handle;
-    }
-
     public void AttachRouterChannel(string channelName, IRouterSocket router,
         SpotRouteBridgeEndpointOptions? options = null)
     {
@@ -65,18 +49,9 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
             _endpointHandles[channelName] = concrete.Handle;
     }
 
-    public void SetTargetNode(string channelName, RoutingId targetNodeRid)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        EnsureNotDisposed();
-        ZlinkRoutingId nativeRid = targetNodeRid.ToNative();
-        int rc = NativeMethods.zlink_spot_route_bridge_set_target_node(
-            _handle, channelName, ref nativeRid);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    public bool Send(string channelName, RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    public bool Send(string channelName, RoutingId targetNodeRid,
+        RoutingId targetSpotRid, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
@@ -84,12 +59,13 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
         {
             SubmitParts(parts, (nativeParts, partCount) =>
             {
+                ZlinkRoutingId nativeNodeRid = targetNodeRid.ToNative();
                 ZlinkRoutingId nativeSpotRid = targetSpotRid.ToNative();
                 unsafe
                 {
                     return NativeMethods.zlink_spot_route_bridge_send(
-                        _handle, channelName, ref nativeSpotRid, nativeParts,
-                        partCount, (int)flags);
+                        _handle, channelName, ref nativeNodeRid,
+                        ref nativeSpotRid, nativeParts, partCount, (int)flags);
                 }
             });
             return true;
@@ -102,7 +78,8 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
         }
     }
 
-    public bool Request(string channelName, RoutingId targetSpotRid,
+    public bool Request(string channelName, RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags = SendFlags.None,
@@ -122,7 +99,7 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
                     try
                     {
                         return await RequestAsyncInternal(channelName,
-                            targetSpotRid, ownedParts, flags, timeout)
+                            targetNodeRid, targetSpotRid, ownedParts, flags, timeout)
                             .ConfigureAwait(false);
                     }
                     finally
@@ -157,29 +134,6 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
     }
 
     public bool HandleRouterReceived(string channelName, RoutingId sourceNodeRid,
-        IReadOnlyList<Message> parts)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        EnsureNotDisposed();
-        bool handled = false;
-        SubmitParts(parts, (nativeParts, partCount) =>
-        {
-            ZlinkRoutingId nativeSourceRid = sourceNodeRid.ToNative();
-            unsafe
-            {
-                int rc = NativeMethods.zlink_spot_route_bridge_handle_router_received(
-                    _handle, channelName, ref nativeSourceRid, nativeParts,
-                    partCount, out handled);
-                if (rc != 0)
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
-                return rc;
-            }
-        }, throwSubmit: false);
-        return handled;
-    }
-
-    public bool HandleRouterReceived(string channelName, RoutingId sourceNodeRid,
         ulong requestSeq, IReadOnlyList<Message> parts)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
@@ -191,53 +145,8 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
             unsafe
             {
                 int rc = NativeMethods
-                    .zlink_spot_route_bridge_handle_router_received_with_metadata(
+                    .zlink_spot_route_bridge_handle_router_received(
                         _handle, channelName, ref nativeSourceRid, requestSeq,
-                        nativeParts, partCount, out handled);
-                if (rc != 0)
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
-                return rc;
-            }
-        }, throwSubmit: false);
-        return handled;
-    }
-
-    public bool HandleDealerReceived(string channelName,
-        IReadOnlyList<Message> parts)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        EnsureNotDisposed();
-        bool handled = false;
-        SubmitParts(parts, (nativeParts, partCount) =>
-        {
-            unsafe
-            {
-                int rc = NativeMethods.zlink_spot_route_bridge_handle_dealer_received(
-                    _handle, channelName, nativeParts, partCount, out handled);
-                if (rc != 0)
-                    throw ZlinkException.CreateRecvException(
-                        NativeMethods.zlink_errno());
-                return rc;
-            }
-        }, throwSubmit: false);
-        return handled;
-    }
-
-    public bool HandleDealerReceived(string channelName,
-        ReceivedMessageType messageType, ulong requestSeq,
-        IReadOnlyList<Message> parts)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        EnsureNotDisposed();
-        bool handled = false;
-        SubmitParts(parts, (nativeParts, partCount) =>
-        {
-            unsafe
-            {
-                int rc = NativeMethods
-                    .zlink_spot_route_bridge_handle_dealer_received_with_metadata(
-                        _handle, channelName, (byte)messageType, requestSeq,
                         nativeParts, partCount, out handled);
                 if (rc != 0)
                     throw ZlinkException.CreateRecvException(
@@ -253,22 +162,6 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_route_bridge_drain(_handle);
         ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    public SpotRouteBridgeSummary Summary()
-    {
-        EnsureNotDisposed();
-        ZlinkSpotRouteBridgeSummary nativeSummary = new()
-        {
-            StructSize = (uint)Marshal.SizeOf<ZlinkSpotRouteBridgeSummary>()
-        };
-        int rc = NativeMethods.zlink_spot_route_bridge_summary(
-            _handle, ref nativeSummary);
-        ZlinkException.ThrowConfigIfError(rc);
-        return new SpotRouteBridgeSummary(nativeSummary.AttachedChannelCount,
-            nativeSummary.PendingRequestCount, nativeSummary.RejectedInboundCount,
-            nativeSummary.MalformedInboundCount,
-            nativeSummary.RoutedSendFailureCount);
     }
 
     public void Close()
@@ -289,8 +182,8 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
     }
 
     private async Task<Received> RequestAsyncInternal(string channelName,
-        RoutingId targetSpotRid, IReadOnlyList<Message> parts, SendFlags flags,
-        TimeSpan timeout)
+        RoutingId targetNodeRid, RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts, SendFlags flags, TimeSpan timeout)
     {
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -302,12 +195,13 @@ internal sealed class SpotRouteBridge : ISpotRouteBridge
             uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
             SubmitParts(parts, (nativeParts, partCount) =>
             {
+                ZlinkRoutingId nativeNodeRid = targetNodeRid.ToNative();
                 ZlinkRoutingId nativeSpotRid = targetSpotRid.ToNative();
                 unsafe
                 {
                     return NativeMethods.zlink_spot_route_bridge_request(
-                        _handle, channelName, ref nativeSpotRid, nativeParts,
-                        partCount, Spot.RoutedReplyHandlerPointer,
+                        _handle, channelName, ref nativeNodeRid,
+                        ref nativeSpotRid, nativeParts, partCount, Spot.RoutedReplyHandlerPointer,
                         GCHandle.ToIntPtr(handle), (int)flags, timeoutMs);
                 }
             });

@@ -130,8 +130,8 @@ flowchart LR
   L7 -->|"req"| D2["server C"]
 ```
 
-ZLink의 **dealer mesh**는 이 L7 분배를 별도 sidecar 없이 framework가 직접 한다
-([7장 §5](07-channel-messaging.ko.md#5-dealer-mesh-외부-로드밸런서-없이-수평-확장)).
+ZLink는 client/server channel에서 여러 server endpoint를 같은 channel 이름에 연결할 수 있다
+([7장 §5](07-channel-messaging.ko.md#5-clientserver-같은-서비스-여러-대에-연결)).
 
 ### 5.2 배치 구조 비교
 
@@ -181,7 +181,7 @@ fanout channel·STREAM으로 흡수할 수 있고, 영속 큐·replay나 HTTP ed
 |----------------------------------|------------|------|
 | "stub/channel을 재사용하라" | `channel_client_t`가 DI 주입, socket 수명은 framework | 호출마다 만들 일 없음 |
 | RPC deadline | `request(...).timeout(...).async<TReply>()` | reply 대기 시간 |
-| L7 로드밸런싱(Envoy/Istio) | dealer mesh + discovery 모드 `enable_client()`가 peer 분배 | sidecar 불필요([7 §5](07-channel-messaging.ko.md#5-dealer-mesh-외부-로드밸런서-없이-수평-확장)) |
+| L7 로드밸런싱(Envoy/Istio) | client/server channel + discovery 모드 `enable_client()`가 peer 연결 | sidecar 불필요([7 §5](07-channel-messaging.ko.md#5-clientserver-같은-서비스-여러-대에-연결)) |
 | service discovery(Consul/xDS) | `use_discovery().add_registry_endpoint(...)` + Registry | [11장](11-registry.ko.md) |
 | interceptor | handler filter(`invoke(...)`) | [7 §4](07-channel-messaging.ko.md#4-filter--공통-처리) |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay는 broker 유지 |

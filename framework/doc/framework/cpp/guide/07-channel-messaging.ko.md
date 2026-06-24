@@ -11,8 +11,7 @@
 |------|------|------|
 | client/server | `add_client_server_channel(name)` | request-reply, 단방향 send — ROUTER 서버에 DEALER 클라이언트 (DEALER=client, ROUTER=server) |
 | fanout | `add_fanout_channel(name)` | publisher → 다수 subscriber (topic) |
-| dealer mesh | `add_dealer_mesh_channel(name)` | dealer ↔ dealer — round-robin 분산 |
-| route mesh | `add_route_mesh_channel(name)` | router ↔ router — routing id 로 주소 라우팅 (SPOT node 구성: [8장](08-spot.ko.md)) |
+| route mesh | `add_route_mesh(name)` | router ↔ router — routing id 로 주소 라우팅 (SPOT node 구성: [8장](08-spot.ko.md)) |
 
 ## 2. 서버 쪽: 핸들러 그룹과 채널
 
@@ -155,7 +154,6 @@ request 한 번의 전체 흐름 — 디코딩/인코딩과 핸들러 호출은 
 양쪽 application 코드는 typed DTO만 본다.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
 sequenceDiagram
     participant App as Api: 핸들러 코드
     participant CC as channel client
@@ -224,43 +222,45 @@ context, 변경할 수 없는 raw message payload가 들어 있다. 처리를 �
 filter도 framework가 직접 `new`로 만들지 않는다. `options.use_filter<TFilter>()`로
 등록하면 같은 DI 컨테이너에서 resolve되며, 등록한 순서대로 handler 호출 앞단을 감싼다.
 
-## 5. dealer mesh: 외부 로드밸런서 없이 수평 확장
+## 5. client/server: 같은 서비스 여러 대에 연결
 
-처리량을 늘리고 싶을 때 같은 채널에 서버 인스턴스를 추가하면 된다. 별도 nginx·HAProxy 없이 클라이언트 요청이 자동으로 분산된다.
+처리량을 늘리고 싶을 때 같은 client/server channel 이름으로 서버 인스턴스를 여러 개
+띄운다. 클라이언트는 같은 channel에서 여러 server endpoint를 직접 지정하거나 discovery로
+찾는다. 호출 코드는 channel 이름만 쓰고, endpoint 목록은 framework 설정에 둔다.
 
 ```cpp
 // 이미지 처리 서버 A
-options.add_dealer_mesh_channel ("image.resize")
+options.add_client_server_channel ("image.resize")
     .enable_server ("tcp://0.0.0.0:5600")
     .use_handler_group ("resize");
 
 // 이미지 처리 서버 B — 동일 채널, 다른 프로세스
-options.add_dealer_mesh_channel ("image.resize")
+options.add_client_server_channel ("image.resize")
     .enable_server ("tcp://0.0.0.0:5601")
     .use_handler_group ("resize");
 ```
 
 ```cpp
-// 클라이언트: 두 서버에 연결. 요청은 라운드로빈으로 분산됨
-options.add_dealer_mesh_channel ("image.resize")
+// 클라이언트: 같은 채널에서 두 서버 endpoint를 모두 등록
+options.add_client_server_channel ("image.resize")
     .enable_client ("tcp://10.30.1.10:5600")
     .enable_client ("tcp://10.30.1.10:5601");
 
 // 또는 discovery로 자동 발견 — 서버가 추가될 때 클라이언트 재시작 불필요
-options.add_dealer_mesh_channel ("image.resize")
+options.add_client_server_channel ("image.resize")
     .enable_client ();   // 인자 없는 enable_client = registry discovery로 자동 연결
 ```
 
-dealer mesh는 DEALER ↔ DEALER 대칭이라 **한 노드가 server와 client를 둘 다** 할 수
-있다 — `enable_server(endpoint)`로 받으면서(제공) `enable_client(...)`로 다른 peer에
-보낸다(소비). 둘은 같은 DEALER socket을 공유한다.
+server role은 `enable_server(endpoint)`로 ROUTER endpoint를 열고 handler group을 실행한다.
+client role은 `enable_client(...)`로 DEALER 연결을 만든다. 같은 프로세스가 두 역할을 모두
+가질 수 있지만, 각 역할의 socket과 책임은 분리된다.
 
 ```mermaid
 flowchart LR
-    C["클라이언트<br/>dealer_mesh client"]:::channel
-    S1["이미지 서버 A<br/>bind 5600"]:::channel
-    S2["이미지 서버 B<br/>bind 5601"]:::channel
-    S3["이미지 서버 C<br/>bind 5602<br/>(동적 추가)"]:::channel
+    C["client<br/>DEALER"]:::channel
+    S1["image server A<br/>ROUTER 5600"]:::channel
+    S2["image server B<br/>ROUTER 5601"]:::channel
+    S3["image server C<br/>ROUTER 5602<br/>(discovered later)"]:::channel
 
     C == "요청 1" ==> S1
     C == "요청 2" ==> S2
@@ -270,12 +270,11 @@ flowchart LR
     classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
 ```
 
-핸들러는 client/server 채널과 동일한 구조다. request handler는
+request handler는
 `request_type`/`reply_type`/`topic_name` + `handle()`을 두고, send handler는
-`message_type` + `handle()`을 둔다. 채널 선언만 `add_dealer_mesh_channel`로
-바꾸면 된다.
+`message_type` + `handle()`을 둔다.
 
-> **route mesh와 차이**: dealer mesh는 어느 서버에나 요청을 보낼 수 있는 stateless 서비스에 적합하다. 특정 엔티티(주문 ID, 사용자 ID 등)가 항상 같은 서버로 가야 한다면 route mesh([§7](#7-route-mesh-고급))를 쓴다.
+> **route mesh와 차이**: client/server channel은 일반 service endpoint 호출에 적합하다. 특정 엔티티(주문 ID, 사용자 ID 등)가 항상 같은 서버로 가야 한다면 route mesh([§7](#7-route-mesh-고급))를 쓴다.
 
 ## 6. fanout: publish/subscribe
 
@@ -299,7 +298,7 @@ options.add_fanout_channel ("bingo.notifications")
 
 `publisher_t`는 `auto pub = app.advanced().zlink().publisher();`의
 `zlink_builder_t::publisher()`에서 얻는다. SPOT 코드에서 fanout으로 발행하려면
-노드에 `attach_publisher(channel)`를 걸고 `spot_context_t::publish(topic, event)`를
+SpotMesh의 pub/sub 역할을 켜고 `spot_context_t::publish(topic, event)`를
 사용한다([8장 §6](08-spot.ko.md)).
 
 ```mermaid
@@ -323,17 +322,16 @@ publish 한 message 는 **구독자 수와 무관하게 한 번만 인코딩**�
 ## 7. route mesh (고급)
 
 route mesh 는 **router ↔ router** 연결로, `routing_id` 를 지정해 **특정 주소로
-라우팅**한다(dealer 의 round-robin 분산과 대비). dealer mesh 와 똑같이 한 노드가
+라우팅**한다. 한 노드가
 **server 와 client 를 둘 다** 한다 — `enable_server(endpoint)` 로 bind 해서 받고(제공),
 `enable_client(endpoint)` 로 다른 router 에 연결한다(소비). 둘은 같은 ROUTER socket을
 공유한다. SPOT 노드가 이 route mesh 로 구성되므로, SPOT 라우팅 백본이 필요할 때 쓴다.
 TicTacToe Play 서버 선언:
 
 ```cpp
-options.add_route_mesh_channel ("tictactoe.router")
+options.add_route_mesh ("tictactoe.router")
   .enable_server (topology.play_router_endpoint)   // 이 ROUTER bind(제공)
-  .set_routing_id (topology.play_rid)              // 이 router 의 주소
-  .enable_spot_route_egress ("tictactoe.game.discovery");
+  .set_routing_id (topology.play_rid);             // 이 router 의 주소
 ```
 
 route mesh 로 직접 호출할 때는 `route_client_t`를 주입받고, 호출마다 route channel
@@ -395,7 +393,8 @@ options.services ()
   .add_singleton<play_routes_t, zlink::framework::route_client_t> ();
 ```
 
-SPOT과의 결합은 [8장](08-spot.ko.md)의 `accept_routes_from_channel`에서
-이어진다.
+같은 프로세스에 RouteMesh와 SpotMesh가 있으면 framework가 시작 시점에 두 runtime을
+자동으로 연결한다. 그래서 외부 코드가 route client로 Spot `routing_id_t`를 대상으로
+호출할 때 별도 egress/accept 설정을 맞출 필요가 없다.
 
 [다음: SPOT →](08-spot.ko.md)

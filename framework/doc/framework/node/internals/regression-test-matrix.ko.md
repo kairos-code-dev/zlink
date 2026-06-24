@@ -111,7 +111,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | subscriber discovery attach | `integration-multi-process` | 원격 publish 수신 |
 | handler group mapping | `unit` | handler decorator 등록만으로는 전역 dispatch 대상이 되지 않고, channel 의 `handlerGroups: ['...']`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
 | handler exposure 없는 server channel | `unit` | scan 된 handler 가 있어도 `addHandlerGroup(...)` 또는 `add*Handler(...)`가 없으면 application handler 가 자동 노출되지 않는다 |
-| handler exposure 없는 server channel validation | `unit` | handler exposure 없는 server channel 은 `acceptSpotRoutesFromChannel(...)` 명시 참조가 없으면 startup validation 오류다 |
+| handler exposure 없는 server channel validation | `unit` | handler exposure 없는 server channel 은 application handler를 열지 않는다 |
 | fanout subscriber handler exposure | `unit` | 현재 NestJS registration 에는 publish handler exposure 표면이 없으므로 정식 dispatch 대상으로 검증하지 않는다 |
 | typed handler registration | `unit` | channel 의 `add*Handler(...)`로 직접 등록한 handler 는 group mapping 없이도 해당 channel 에 노출된다 |
 | channel type handler compatibility | `unit` | client-server 는 request, route mesh 는 route send/request handler 만 허용하고 dealer mesh 와 fanout subscriber 는 handler registration 을 노출하지 않는다 |
@@ -120,7 +120,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | route mesh packet dispatcher | `integration-single-process` | route mesh `ROUTER` 로 들어온 routed send/request packet 을 handler 로 dispatch 하고 request reply/error 를 돌려주며 빈 probe frame 은 application handler 로 넘기지 않는다 |
 | DI route channel inbound handler dispatch | `integration-single-process` | `ZLinkModule.forRoot(...)` route channel 의 `sendHandlers`/`requestHandlers`가 runtime host 시작 후 host-owned `ROUTER` receive loop 에 연결되어 routed send/request 를 처리한다 |
 | DI route client host transport | `integration-single-process` | `ZLinkModule.forRoot(...)`가 노출한 `ZLinkRouteClient`가 framework runtime host 시작 이후 host-owned ROUTER transport로 target node RID에 routed send/request/reply를 수행한다 |
-| Spot route transport 전용 channel | `integration-single-process` | `acceptSpotRoutesFromChannel(...)`으로만 참조된 router-capable channel 은 handler group 없이도 Spot route transport 로 동작하지만 application handler 를 열지 않는다 |
+| Spot route transport 전용 channel | `integration-single-process` | RouteMesh와 local SpotMesh가 함께 있으면 handler group 없이도 Spot route transport 로 동작하지만 application handler 를 열지 않는다 |
 | 같은 channel server에 handler 중복 | `unit` | 같은 `kind + packetName` handler가 둘 이상이면 startup validation 예외 |
 | 다른 channel server에 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 channel에 매핑해도 각 채널이 독립적으로 dispatch된다 |
 | 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `zlinkRequestHandler('api', ...)` group 을 두 채널에 `handlerGroups`로 노출해도 채널마다 dispatch namespace가 독립이다 |
@@ -129,7 +129,6 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | HTTP(REST controller) handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | route handler와 동일한 NestJS DI[^di] 컨테이너에서 정상 동작 |
 | DI channel client host transport | `integration-single-process` | `ZLinkModule.forRoot(...)`가 노출한 `ZLinkChannelClient`가 framework runtime host 시작 이후 host-owned DEALER transport로 manual channel request/reply를 수행한다 |
 | channel handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkChannelClient`로 다른 channel 에 request 하고 reply 를 받는다 |
-| dealer mesh channel client | `integration-single-process` | `ZLinkChannelClient.sendToChannel(...)`와 `requestToChannel(...)`가 `registerDealerMeshChannel(...)` 등록의 DEALER socket 을 통해 동작한다 |
 | channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkFanoutClient`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |
 | send async submit backpressure[^backpressure] | `integration-single-process` | HWM[^hwm]에 도달해도 caller 실행 흐름을 block하지 않고(`Promise` 미해결 유지), ready 이후에 resolve된다 |
 | publish async submit backpressure | `integration-single-process` | HWM 조건에서 흐름을 block하지 않고 submitter timeout 정책에 따라 resolve 또는 reject |
@@ -183,7 +182,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | `addSpotMesh(...)`에 `useDiscovery().addRegistryEndpoint(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
 | `addSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
 | `addSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
-| `addSpotMesh(...)` + router-capable `addNode(...)` + `attachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
+| `addSpotMesh(...)` + `attachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
 | `create(spotType)` | `integration-single-process` | `spotId`, `Created` 상태가 일관되게 유지된다 |
 | `create(spotType)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
 | `create(spotType, request)` payload | `integration-single-process` | create request `ZLinkMessage`가 `ZLinkSpot.onCreate(...)`로 한 번 전달된다 |
@@ -206,7 +205,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | SPOT timer cancel | `integration-single-process` | `cancel()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
 | Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |
-| Spot route channel manual connect | `integration-single-process` | `acceptSpotRoutesFromChannel(...)` 수동 endpoint가 route bridge의 router channel endpoint로 적용된다 |
+| Spot route channel manual connect | `integration-single-process` | RouteMesh 수동 endpoint가 route bridge의 router channel endpoint로 적용된다 |
 | Spot route channel transport | `integration-single-process` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket으로 egress 설정의 target SpotNode ingress channel을 통해 target Spot으로 routed send/request를 보낸다 |
 | route mesh Spot egress target peer 선택 | `integration-single-process` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `routingId`로 route mesh egress target peer 를 선택한다 |
 | Spot route egress 역할 validation | `unit` | routed Spot egress 는 client-server client 역할 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |

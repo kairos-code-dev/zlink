@@ -41,7 +41,7 @@ internal static class Program
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
-                var route = options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel);
+                var route = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel);
                 route.EnableServer(instance.RouteEndpoint);
                 route.SetRoutingId(instance.RouteRid);
                 route.AddRequestHandler<StartOrderWorkflowRouteHandler, StartOrderWorkflowReq, StartOrderWorkflowRes>();
@@ -52,7 +52,7 @@ internal static class Program
             {
                 var mesh = options.AddSpotMesh(SampleNames.OrderSpotDiscovery);
                 {
-                    var spot = mesh.AddNode(SampleNames.OrderSpotNode);
+                    var spot = mesh;
                     {
                         var router = spot.EnableRouter(instance.SpotRouterEndpoint);
                         router.SetRouterRoutingId(instance.SpotRid);

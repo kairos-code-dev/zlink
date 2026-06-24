@@ -12,32 +12,90 @@
 >
 > 🔰 actor·session·binding·Entry Spot 용어가 낯설면 [03-concepts §0](03-concepts.ko.md) 한 줄 풀이를 먼저 본다.
 
-## 1. 연결 서버와 로직 서버 분리
+## 1. 배포 토폴로지 — Session·Play 분리 vs 통합
 
-큰 게임 서버는 보통 두 역할로 나눈다.
+actor 를 호스팅하는 **Play 역할**과 client STREAM 을 받는 **Session 역할**은 **한 프로세스에 같이
+둘 수도, 서로 다른 프로세스로 떼어 놓을 수도** 있다. 각 역할이 맡는 일은 이렇다.
 
-- **Session 서버** — client STREAM 연결만 받는다(인증, actor binding, client 요청 relay). 게임
-  로직은 돌리지 않는다.
-- **Play(Actor) 서버** — actor, Entry Spot, user Spot 을 호스팅하고 실제 로직을 돌린다.
+- **Session** — client STREAM 을 받아 인증하고, actor 에 binding 한 뒤, client 가 보낸 packet 을
+  그 actor 로 넘긴다. 게임 로직은 돌리지 않는다.
+- **Play(Actor)** — actor·Entry Spot·user Spot 을 띄우고 실제 게임 로직을 돌린다.
 
-client 는 STREAM 하나만 유지하고, Play 서버가 보내는 메시지도 그 STREAM 으로 되돌아간다.
-재접속(다른 Session 서버일 수도 있음) 시 binding 만 새 stream 으로 교체되고 actor 인스턴스와 spot
-membership 은 그대로 유지된다(actor id 기준 멱등).
+어느 쪽으로 배포하든 로직 코드(handler·actor·spot)는 똑같다. **달라지는 건 등록 코드(§6)와
+`AttachActorGateway` 가 어디를 가리키느냐뿐**이다. 두 방식 모두 client 는 STREAM 하나만 들고
+있으면 되고, Play 가 보내는 메시지도 그 STREAM 으로 돌아온다. 다시 접속할 때(분리 구성이면 다른
+Session 서버로 붙을 수도 있다)도 binding 만 새 stream 으로 바뀔 뿐, actor 인스턴스와 spot
+membership 은 그대로 남는다(actor id 만 같으면 되니 — 멱등).
+
+### (A) 분리 — Session 서버 ↔ Play 서버 (다른 프로세스)
+
+Session 서버의 `AttachActorGateway` 가 **다른 프로세스에 있는 Play 서버의 SpotNode** 를 가리킨다.
+그래서 relay 가 네트워크를 한 번 건너간다. (예: **Bingo** 샘플 — Session·Play·Api·Registry 를 각각
+별도 서버로 운영)
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   participant C as Client
   participant S as Session 서버
   participant P as Play 서버(actor)
-  C->>S: STREAM 연결 + auth
+  participant A as API 서버(인증)
+  C->>S: STREAM 연결 + 인증 요청
+  S->>A: 토큰 검증 (RequestToChannel)
+  A-->>S: 인증 결과 (actorId 등)
+  S->>P: actor 확보 (EnsurePlayerActor)
+  P-->>S: actor ref
   S->>S: BindAsync(actor)
+  S-->>C: 인증 응답
   C->>S: PlaceMarkReq
   S->>P: actor.RelayAsync(payload)
   P->>P: actor handler 실행 (room 상태 변경)
   P-->>S: BoundSession.Send(TurnChangedNotify)
   S-->>C: STREAM push
 ```
+
+### (B) 통합 — Session + Play (같은 프로세스)
+
+한 `AddZLinkFramework` 안에 StreamNode(session)와 SpotMesh/ActorFactory(play)를 함께 두고,
+`AttachActorGateway` 가 **같은 프로세스 안의 SpotNode** 를 가리킨다. relay 가 프로세스 안에서 끝나
+네트워크를 타지 않는다. (예: **TicTacToe** 샘플)
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.AddActorFactory<PlayerActorFactory>("player");      // play 역할
+
+    // session 역할 — gateway 가 "같은 프로세스의" spot 노드를 가리킨다(in-process relay)
+    options.AddStreamNode("client-stream")
+        .AttachActorGateway("play-spot")                        // ← 아래 SpotMesh 와 같은 이름(로컬)
+        .Bind("tcp://0.0.0.0:9000")
+        .RegisterSession<PlaySession>();
+
+    // play 역할 — 같은 프로세스가 spot 노드를 호스팅
+    options.AddSpotMesh("play-spot")
+        .EnableRouter("tcp://0.0.0.0:9201")
+        .AddEntrySpot<PlayerEntrySpot>()
+        .AddSpotFactory<MatchSpot>();
+});
+```
+
+> 결국 차이는 `AttachActorGateway` 가 **같은 프로세스 안의 노드**(통합)를 가리키느냐, **다른
+> 프로세스의 Play 노드**(분리)를 가리키느냐, 그 하나뿐이다. 통합으로 두더라도 Play 노드끼리는
+> `EnableRouter`+discovery 로 서로 mesh 를 이루므로 spot↔spot routing 은 어느 쪽이든 똑같이 돈다.
+
+### 장단점 — 언제 무엇을
+
+| 기준 | (A) 분리 | (B) 통합 |
+|------|----------|----------|
+| session→play relay | **네트워크 홉** | **in-process**(저지연) |
+| 스케일 | session·play **독립 증설**(연결 폭증 ↔ 로직 부하 각각) | **한 단위로 묶임**(따로 못 늘림) |
+| 장애 격리 | 강함(역할별 프로세스) | 약함(session·play 상호 영향) |
+| 운영·배포 | 프로세스·discovery·registry 배선 복잡 | **한 프로세스, 단순** |
+| 적합 | 대규모, 연결/로직 부하 특성이 다름, 무중단 스케일·배포 | 프로토타입·소규모·단순 게임·단일 리전 |
+| 샘플 | **Bingo** | **TicTacToe** |
+
+규모가 작거나 막 시작하는 단계면 통합(B)으로 간단하게 출발했다가, 연결 부하와 로직 부하가 서로
+다른 속도로 커지면 그때 분리(A)로 나누는 게 보통이다. 이때도 로직 코드는 그대로 두고 **등록
+코드만** 바꾸면 된다.
 
 ## 2. Session 서버: 인증과 relay
 
@@ -58,7 +116,7 @@ public sealed class TicTacToeSession(
     public async ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch, ZLinkMessage payload, CancellationToken ct)
     {
-        if (await handlers.TryHandleAsync(context, header, payload, ct))
+        if (await handlers.TryHandleAsync(context, dispatch, payload, ct))
         {
             return;
         }
@@ -98,7 +156,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
         ZLinkMessage payload,
         CancellationToken ct)
     {
-        _ = header;
+        _ = dispatch;
         var request = payload.Decode<AuthReq>();
         ActorRef actor = await actors.GetOrCreateAsync(
             request.ActorId,
@@ -204,12 +262,16 @@ framework 가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcep
 
 `IsRetriable` 는 분류 힌트일 뿐 framework 가 자동 retry 하지 않는다. retry 루프를 이 값으로 만들지 않는다.
 
-## 6. 등록 골격
+## 6. 등록 코드
 
 session relay 는 application route mesh channel 로 흐르지 않는다. STREAM session 이 쓸 local
 SpotNode 를 `AttachActorGateway(...)` 로 지정하면, `BindAsync(...)` 가 local actor ref 또는 Play
 서버가 발급한 remote actor locator 를 core ActorGateway 경로에 bind 한다. 그래서 session handler 는
 route mesh channel 이름이나 router socket 을 알 필요가 없다.
+
+> 아래는 **(A) 분리** 방식의 등록 코드(두 프로세스)다. **(B) 통합**은 이 둘을 한
+> `AddZLinkFramework` 로 합치고 `AttachActorGateway` 가 같은 프로세스의 SpotNode 를 가리킨다 —
+> 코드는 §1 (B) 스니펫을 참고한다.
 
 ### Session 서버
 
@@ -218,7 +280,6 @@ builder.Services.AddZLinkFramework(options =>
 {
     // STREAM session 이 사용할 local SpotNode (ActorGateway ingress)
     options.AddSpotMesh("game.session")
-        .AddNode("session-node")
         .EnableRouter("tcp://0.0.0.0:9101")
         .SetRouterRoutingId(sessionNodeRid);
 
@@ -244,7 +305,7 @@ builder.Services.AddZLinkFramework(options =>
         var mesh =     options.AddSpotMesh("game.match");
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
         {
-            var node =         mesh.AddNode("play-node");
+            var node = mesh;
             node.EnableRouter("tcp://0.0.0.0:9201");
             node.AddEntrySpot<PlayerEntrySpot>();  // Entry Spot 은 노드당 1개(actor 가 처음 머무는 곳)
             node.AddSpotFactory<MatchSpot>();      // user Spot 은 factory 로 요청마다 동적 생성

@@ -28,8 +28,6 @@ class route_channel_registration_t
     route_channel_registration_t &default_request_timeout (std::chrono::milliseconds timeout);
     route_channel_registration_t &add_handler_group (std::string group_name);
     route_channel_registration_t &
-    enable_spot_route_egress (std::string target_spot_node_channel_name);
-    route_channel_registration_t &
     add_handler (framework::route_handler_registration_t registration);
 
     template <typename TOwner, typename TMessage>
@@ -63,7 +61,6 @@ class route_channel_registration_t
     std::optional<std::chrono::milliseconds> default_request_timeout () const noexcept;
     const std::vector<std::string> &manual_connections () const noexcept;
     const std::vector<std::string> &handler_groups () const noexcept;
-    const std::optional<std::string> &spot_route_egress_target () const noexcept;
 
     route_handler_registry_t create_handler_registry () const;
 
@@ -77,7 +74,6 @@ class route_channel_registration_t
     std::optional<std::chrono::milliseconds> _default_request_timeout;
     std::vector<std::string> _manual_connections;
     std::vector<std::string> _handler_groups;
-    std::optional<std::string> _spot_route_egress_target;
     std::vector<framework::route_handler_registration_t> _handlers;
     std::vector<handler_installer_t> _send_handlers;
     std::vector<handler_installer_t> _request_handlers;

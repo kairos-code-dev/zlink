@@ -28,19 +28,18 @@ import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class NodesAndServicesTest {
     @Test
-    void addZLinkFramework_throws_whenSpotFactoryTypeIsDuplicatedAcrossNodes() {
+    void addZLinkFramework_throws_whenSpotFactoryTypeIsDuplicatedOnNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         assertThrows(ZLinkConfigurationException.class, () ->
-            { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("left"); node.addSpotFactory(GameSpot.class); };
-                { var node = mesh.addNode("right"); node.addSpotFactory(GameSpot.class); }; });
+            { var mesh = options.addSpotMesh("game"); mesh.addSpotFactory(GameSpot.class); mesh.addSpotFactory(GameSpot.class); });
     }
 
     @Test
     void addZLinkFramework_throws_whenSpotNodeRegistersMultipleEntrySpots() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addEntrySpot(EntrySpotA.class);
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addEntrySpot(EntrySpotA.class);
                 node.addEntrySpot(EntrySpotB.class); }; };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -74,7 +73,7 @@ final class NodesAndServicesTest {
     void addZLinkFramework_allowsStandaloneLocalSpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(GameSpot.class); }; };
+        { var mesh = options.addSpotMesh("game"); mesh.addSpotFactory(GameSpot.class); };
 
         assertDoesNotThrow(options::validate);
     }
@@ -91,7 +90,7 @@ final class NodesAndServicesTest {
 
     private static DefaultZLinkFrameworkOptions optionsWithSpotNodeAndActorFactory() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                 node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         return options;

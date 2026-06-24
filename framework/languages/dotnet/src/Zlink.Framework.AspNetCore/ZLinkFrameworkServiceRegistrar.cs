@@ -248,8 +248,7 @@ internal static class ZLinkFrameworkServiceRegistrar
 
     private static bool HasSpotPublisherClient(ZLinkFrameworkRegistration registration)
     {
-        return registration.SpotNodes.Values.Any(static spotNode =>
-            spotNode.AttachedSpotPublisherClients.Count > 0);
+        return registration.SpotNodes.Count > 0;
     }
 
 }

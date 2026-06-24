@@ -70,7 +70,7 @@ state에 손대지 않는다.
 
 | Config | 서버 구성 | 다루는 것 |
 |--------|-----------|-----------|
-| [Config 1 — Registry messaging](config-1-registry-messaging.ko.md) | registry + api 노드 2 + client-server/route channel | 자동/수동/custom resolve, connection control, scale-out/in, same-rid failover, dealer mesh·weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
+| [Config 1 — Registry messaging](config-1-registry-messaging.ko.md) | registry + api 노드 2 + client-server/route channel | 자동/수동/custom resolve, connection control, scale-out/in, same-rid failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
 | [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | registry + entry/user spot + actor + session | spot↔channel·spot↔spot messaging, actor join(local/remote)·lifecycle callback·실행순서, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), channel↔spot route bridge, stateful 장애·복구(노드 crash·owner 이동·경합) |
 | [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | registry + publisher + subscriber 3 | fanout, topic filter, late subscriber, subscriber 격리, publish negative, subscriber 재연결·publisher 재시작 |
 | [Config 4 — 등록·codec 변주](config-4-registration-codec.ko.md) | 단순 channel 구성 2 | 자동/선언/수동 등록, startup 검증, DI lifecycle, ordering, json/protobuf/msgpack codec, codec 격리, peer 간 codec 불일치 |

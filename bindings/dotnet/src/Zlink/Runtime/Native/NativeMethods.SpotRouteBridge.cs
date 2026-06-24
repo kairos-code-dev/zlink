@@ -8,10 +8,7 @@ namespace Systems.Zlink.Runtime.Native;
 internal static partial class NativeMethods
 {
     internal const uint SpotRouteBridgeCapSpotRoute = 0x00000001u;
-    internal const uint SpotRouteBridgeCapChannelInbound = 0x00000002u;
     internal const uint SpotRouteBridgeRouteOnly = SpotRouteBridgeCapSpotRoute;
-    internal const uint SpotRouteBridgeRouteWithChannelInbound =
-        SpotRouteBridgeCapSpotRoute | SpotRouteBridgeCapChannelInbound;
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_spot_route_bridge_new(
@@ -23,13 +20,6 @@ internal static partial class NativeMethods
         IntPtr ctx, IntPtr spotNode, ref ZlinkSpotRouteBridgeOptions options);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_route_bridge_attach_dealer_channel(
-        IntPtr bridge,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        IntPtr dealerSocket,
-        ref ZlinkSpotRouteBridgeEndpointOptions options);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_route_bridge_attach_router_channel(
         IntPtr bridge,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
@@ -37,15 +27,10 @@ internal static partial class NativeMethods
         ref ZlinkSpotRouteBridgeEndpointOptions options);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_route_bridge_set_target_node(
-        IntPtr bridge,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        ref ZlinkRoutingId targetNodeRid);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_route_bridge_send(
         IntPtr bridge,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
+        ref ZlinkRoutingId targetNodeRid,
         ref ZlinkRoutingId targetSpotRid,
         IntPtr parts,
         nuint partCount,
@@ -55,6 +40,7 @@ internal static partial class NativeMethods
     internal static extern int zlink_spot_route_bridge_request(
         IntPtr bridge,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
+        ref ZlinkRoutingId targetNodeRid,
         ref ZlinkRoutingId targetSpotRid,
         IntPtr parts,
         nuint partCount,
@@ -68,46 +54,13 @@ internal static partial class NativeMethods
         IntPtr bridge,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
         ref ZlinkRoutingId sourceNodeRid,
+        ulong requestSeq,
         IntPtr parts,
         nuint partCount,
         [MarshalAs(UnmanagedType.I1)] out bool handled);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int
-        zlink_spot_route_bridge_handle_router_received_with_metadata(
-            IntPtr bridge,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-            ref ZlinkRoutingId sourceNodeRid,
-            ulong requestSeq,
-            IntPtr parts,
-            nuint partCount,
-            [MarshalAs(UnmanagedType.I1)] out bool handled);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_route_bridge_handle_dealer_received(
-        IntPtr bridge,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        IntPtr parts,
-        nuint partCount,
-        [MarshalAs(UnmanagedType.I1)] out bool handled);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int
-        zlink_spot_route_bridge_handle_dealer_received_with_metadata(
-            IntPtr bridge,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-            byte messageType,
-            ulong requestSeq,
-            IntPtr parts,
-            nuint partCount,
-            [MarshalAs(UnmanagedType.I1)] out bool handled);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_route_bridge_drain(IntPtr bridge);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_route_bridge_summary(
-        IntPtr bridge, ref ZlinkSpotRouteBridgeSummary summary);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_route_bridge_close(IntPtr bridge);

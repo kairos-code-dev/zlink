@@ -2487,19 +2487,6 @@ public final class Native {
         }
     }
 
-    public static int spotRouteBridgeAttachDealerChannel(MemorySegment bridge,
-                                                         MemorySegment channelName,
-                                                         MemorySegment dealer,
-                                                         MemorySegment options) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_ATTACH_DEALER_CHANNEL.invokeExact(
-              bridge, channelName, dealer, options);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_route_bridge_attach_dealer_channel failed", t);
-        }
-    }
-
     public static int spotRouteBridgeAttachRouterChannel(MemorySegment bridge,
                                                          MemorySegment channelName,
                                                          MemorySegment router,
@@ -2513,27 +2500,16 @@ public final class Native {
         }
     }
 
-    public static int spotRouteBridgeSetTargetNode(MemorySegment bridge,
-                                                   MemorySegment channelName,
-                                                   MemorySegment targetNodeRid) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_SET_TARGET_NODE.invokeExact(
-              bridge, channelName, targetNodeRid);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_route_bridge_set_target_node failed", t);
-        }
-    }
-
     public static int spotRouteBridgeSend(MemorySegment bridge,
                                           MemorySegment channelName,
+                                          MemorySegment targetNodeRid,
                                           MemorySegment targetSpotRid,
                                           MemorySegment parts,
                                           long partCount,
                                           int flags) {
         try {
             return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_SEND.invokeExact(bridge,
-              channelName, targetSpotRid, parts, partCount, flags);
+              channelName, targetNodeRid, targetSpotRid, parts, partCount, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_route_bridge_send failed", t);
         }
@@ -2541,6 +2517,7 @@ public final class Native {
 
     public static int spotRouteBridgeRequest(MemorySegment bridge,
                                              MemorySegment channelName,
+                                             MemorySegment targetNodeRid,
                                              MemorySegment targetSpotRid,
                                              MemorySegment parts,
                                              long partCount,
@@ -2550,8 +2527,8 @@ public final class Native {
                                              int timeoutMs) {
         try {
             return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_REQUEST.invokeExact(bridge,
-              channelName, targetSpotRid, parts, partCount, callback, userData,
-              flags, timeoutMs);
+              channelName, targetNodeRid, targetSpotRid, parts, partCount, callback,
+              userData, flags, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_route_bridge_request failed",
               t);
@@ -2562,33 +2539,17 @@ public final class Native {
         MemorySegment bridge,
         MemorySegment channelName,
         MemorySegment sourceNodeRid,
-        MemorySegment parts,
-        long partCount,
-        MemorySegment handledOut) {
-        try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED.invokeExact(
-              bridge, channelName, sourceNodeRid, parts, partCount, handledOut);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_route_bridge_handle_router_received failed", t);
-        }
-    }
-
-    public static int spotRouteBridgeHandleRouterReceivedWithMetadata(
-        MemorySegment bridge,
-        MemorySegment channelName,
-        MemorySegment sourceNodeRid,
         long requestSeq,
         MemorySegment parts,
         long partCount,
         MemorySegment handledOut) {
         try {
-            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED_WITH_METADATA.invokeExact(
+            return (int) NativeSpotSymbols.MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED.invokeExact(
               bridge, channelName, sourceNodeRid, requestSeq, parts, partCount,
               handledOut);
         } catch (Throwable t) {
             throw new RuntimeException(
-              "zlink_spot_route_bridge_handle_router_received_with_metadata failed", t);
+              "zlink_spot_route_bridge_handle_router_received failed", t);
         }
     }
 

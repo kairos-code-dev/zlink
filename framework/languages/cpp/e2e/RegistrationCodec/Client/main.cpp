@@ -222,7 +222,7 @@ int main (int argc, char **argv)
         add_json_codecs (options.codecs ());
         add_custom_codecs (options.codecs ());
         options.add_client_server_channel (e2e::api_channel).enable_client (api_endpoint);
-        options.add_route_mesh_channel (e2e::route_channel)
+        options.add_route_mesh (e2e::route_channel)
           .enable_server (client_route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (std::string ("rc-client")))
           .enable_client (route_endpoint);

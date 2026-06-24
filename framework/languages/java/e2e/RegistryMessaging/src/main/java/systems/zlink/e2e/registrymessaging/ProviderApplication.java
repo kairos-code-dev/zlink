@@ -71,7 +71,7 @@ public final class ProviderApplication {
 
             String routeEndpoint = Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT");
             if (!routeEndpoint.isBlank()) {
-                options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
+                options.addRouteMesh(Contracts.ROUTE_CHANNEL)
                     .enableServer(routeEndpoint)
                     .setRoutingId(RoutingId.from(state.providerRid()))
                     .addRequestHandler(

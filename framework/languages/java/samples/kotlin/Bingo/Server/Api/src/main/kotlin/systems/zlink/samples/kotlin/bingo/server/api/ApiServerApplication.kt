@@ -36,7 +36,7 @@ class ApiServerApplication {
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableServer(SampleTopology.selectedApiChannelEndpoint())
                 .addHandlerGroup("api")
-            val route = options.addRouteMeshChannel(SampleNames.PlayChannel)
+            val route = options.addRouteMesh(SampleNames.PlayChannel)
             route.enableClient()
             route.enableClient()
             route.setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()))

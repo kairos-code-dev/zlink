@@ -207,41 +207,27 @@ final class NativeSpotSymbols {
             "zlink_spot_route_bridge_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    static final MethodHandle MH_SPOT_ROUTE_BRIDGE_ATTACH_DEALER_CHANNEL = downcall(
-            "zlink_spot_route_bridge_attach_dealer_channel",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
     static final MethodHandle MH_SPOT_ROUTE_BRIDGE_ATTACH_ROUTER_CHANNEL = downcall(
             "zlink_spot_route_bridge_attach_router_channel",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    static final MethodHandle MH_SPOT_ROUTE_BRIDGE_SET_TARGET_NODE = downcall(
-            "zlink_spot_route_bridge_set_target_node",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     static final MethodHandle MH_SPOT_ROUTE_BRIDGE_SEND = downcall(
             "zlink_spot_route_bridge_send",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-                    ValueLayout.JAVA_INT));
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     static final MethodHandle MH_SPOT_ROUTE_BRIDGE_REQUEST = downcall(
             "zlink_spot_route_bridge_request",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT));
     static final MethodHandle MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED = downcall(
             "zlink_spot_route_bridge_handle_router_received",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-                    ValueLayout.ADDRESS));
-    static final MethodHandle MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED_WITH_METADATA = downcall(
-            "zlink_spot_route_bridge_handle_router_received_with_metadata",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,

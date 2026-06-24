@@ -49,7 +49,7 @@ public static class SupportServerHostFactory
             {
                 var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
                 {
-                    var spot = mesh.AddNode(SampleNames.SupportSpotNode);
+                    var spot = mesh;
                     {
                         var router = spot.EnableRouter(topology.SupportEntrySpotRouterEndpoint);
                         router.SetRouterRoutingId(topology.SupportEntryRid);
@@ -60,18 +60,6 @@ public static class SupportServerHostFactory
 
                     }
                     spot.AddEntrySpot<SupportEntrySpot>();
-
-                }
-                {
-                    var spot = mesh.AddNode(SampleNames.SupportConversationSpotNode);
-                    {
-                        var router = spot.EnableRouter(topology.SupportConversationSpotRouterEndpoint);
-
-                    }
-                    {
-                        var pubsub = spot.EnablePubSub(topology.SupportConversationSpotEndpoint);
-
-                    }
                     spot.AddSpotFactory<ConversationSpot>();
 
                 }

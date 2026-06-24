@@ -414,8 +414,8 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
 보이는 표면이다. 공통 정책 차원에서는 아래 정도만 고정한다.
 
 - active SPOT channel view는 `AddSpotMesh(channelName).UseDiscovery()`가
-  정한다. `UseSpotDiscovery(...)`와 `AddSpotNode(...)`를 분리하는 방식은 호환 경로로만
-  남기고, 새 샘플은 mesh 등록을 기준으로 작성한다.
+  정한다. SpotMesh 등록 하나가 같은 프로세스의 단일 SpotNode를 나타내며, 새 샘플은
+  mesh 등록을 기준으로 작성한다.
 - `SpotNode`는 router, pub/sub, route bridge 기반 외부 호출 역할을 가진다.
 - local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
   timer를 등록한다.

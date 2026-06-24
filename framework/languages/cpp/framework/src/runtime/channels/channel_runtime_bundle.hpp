@@ -1,8 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "runtime/channels/channel_pending_requests.hpp"
-
 #include <atomic>
 #include <mutex>
 #include <optional>
@@ -27,15 +25,11 @@ class channel_runtime_bundle_t
     void leave_receive () noexcept;
     bool receive_active () const noexcept;
 
-    channel_pending_requests_t &dealer_mesh_pending_requests () noexcept;
-    const channel_pending_requests_t &dealer_mesh_pending_requests () const noexcept;
-
   private:
     mutable std::mutex _mutex;
     std::set<std::string> _manual_connections;
     std::size_t _next_manual_connection = 0;
     std::atomic_bool _receive_active = false;
-    channel_pending_requests_t _dealer_mesh_pending_requests;
 };
 
 } // namespace zlink::framework::detail

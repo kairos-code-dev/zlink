@@ -8,22 +8,22 @@ import type {
   ZLinkSession,
   ZLinkSessionActor,
   ZLinkSessionContext,
-  ZLinkSessionDispatchContext,
-  ZLinkSpotActorRequestContext
+  ZLinkSessionDispatchContext
 } from '@zlink-systems/framework';
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq,
-  JoinGameReq,
-  PlayerInfo,
-  TicTacToeActor
+  PlayerInfo
 } from '../../../../../Shared/Contracts/messages';
 
-type AuthenticatedPlayer = PlayerInfo & { readonly ref: ActorRef; roomId?: string };
+type AuthenticatedPlayer = PlayerInfo & {
+  readonly ref: ActorRef;
+  roomId?: string;
+  push(packetName: string, payload: unknown): Promise<void>;
+};
 
 type PlayEntrySpotLike = {
-  join(actorRef: ActorRef, player: PlayerInfo, roomId: string): Promise<unknown>;
-  observeMilestone(actor: PlayerInfo): Promise<unknown>;
+  observeMilestone(actor: unknown): Promise<unknown>;
 };
 
 type PlaySessionDependencies = {
@@ -32,14 +32,6 @@ type PlaySessionDependencies = {
     getOrCreate(actorId: string, actorType: string, createRequest: unknown, signal?: AbortSignal): Promise<ActorRef>;
   };
   entrySpot: PlayEntrySpotLike;
-  joinGameHandler: {
-    handle(
-      entrySpot: PlayEntrySpotLike,
-      actor: TicTacToeActor,
-      context: ZLinkSpotActorRequestContext,
-      request: JoinGameReq
-    ): Promise<unknown>;
-  };
 };
 
 type PlaySessionHeader = {
@@ -62,6 +54,13 @@ class PlaySession implements ZLinkSession {
 
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     const playHeader = { name: dispatch.packetName };
+    if (playHeader.name === PacketNames.joinGameReq) {
+      await this.relayToActor(playHeader, payload, signal);
+      if (this.actor !== null) {
+        this.actor.roomId = 'joined';
+      }
+      return;
+    }
     if (shouldRelayToActor(playHeader.name)) {
       await this.relayToActor(playHeader, payload, signal);
       return;
@@ -82,10 +81,6 @@ class PlaySession implements ZLinkSession {
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before play packets.');
     }
-    if (header.name === PacketNames.joinGameReq) {
-      await this.joinGame(header, payload as JoinGameReq);
-      return;
-    }
     if (header.name === PacketNames.observeMilestoneReq) {
       await this.observeMilestone(header);
       return;
@@ -103,21 +98,22 @@ class PlaySession implements ZLinkSession {
       SampleNames.playerActorType,
       authenticated.player
     );
-    this.actor = { ...authenticated.player, ref: actorRef };
+    let pushSeq = 0;
+    const sessionClient = this.context.client;
+    this.actor = {
+      ...authenticated.player,
+      ref: actorRef,
+      async push(packetName: string, payload: unknown): Promise<void> {
+        pushSeq += 1;
+        await sessionClient
+          .send(payload)
+          .packetName(packetName)
+          .metadata('seq', String(pushSeq))
+          .submit();
+      }
+    };
     this.sessionActor = await this.context.actors.bind(actorRef);
     await this.context.client.reply(authenticateRes(authenticated.player)).submit();
-  }
-
-  async joinGame(header: PlaySessionHeader, request: JoinGameReq): Promise<void> {
-    void header;
-    if (this.actor === null) {
-      throw new Error('AuthenticateReq is required before JoinGameReq.');
-    }
-    console.log(`actor: JoinGameReq received. actor=${this.actor.actorId} roomId=${request.roomId}`);
-    const result = await this.dependencies.entrySpot.join(this.actor.ref, this.actor, request.roomId);
-    this.actor.roomId = request.roomId;
-    await this.context.client.reply(result).submit();
-    console.log(`actor: JoinGameReq completed. actor=${this.actor.actorId} roomId=${request.roomId}`);
   }
 
   async observeMilestone(header: PlaySessionHeader): Promise<void> {
@@ -135,7 +131,7 @@ class PlaySession implements ZLinkSession {
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before actor packets.');
     }
-    if (this.actor.roomId === undefined) {
+    if (this.actor.roomId === undefined && playHeader.name !== PacketNames.joinGameReq) {
       throw new Error('JoinGameReq is required before actor packets.');
     }
     const sessionActor = this.sessionActor ?? this.context.actors.find(this.actor.actorId);
@@ -144,25 +140,6 @@ class PlaySession implements ZLinkSession {
     }
     await sessionActor.relay(payload, signal);
   }
-}
-
-function createActorRequestContext(packetName: string): ZLinkSpotActorRequestContext {
-  return {
-    packetName,
-    metadata: { packetName },
-    reply: createNoopReplyOptions()
-  };
-}
-
-function createNoopReplyOptions(): ZLinkSpotActorRequestContext['reply'] {
-  return {
-    metadata(_key: string, _value: string) {
-      return this;
-    },
-    compress(_enabled?: boolean) {
-      return this;
-    }
-  };
 }
 
 function shouldRelayToActor(packetName: string): boolean {

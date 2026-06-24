@@ -13,8 +13,8 @@ use crate::native_errors::{
 };
 use crate::request_progress::RequestProgressGuard;
 use crate::socket::take_parts;
-use crate::socket::{dealer_inner, prepare_send_parts, router_inner};
-use crate::{DealerSocket, RequestResult, RouterSocket, SendFlags, SpotNode};
+use crate::socket::{prepare_send_parts, router_inner};
+use crate::{RequestResult, RouterSocket, SendFlags, SpotNode};
 
 /// Bridges caller-owned channel sockets to the SPOT routed plane.
 pub struct SpotRouteBridge {
@@ -51,27 +51,6 @@ impl SpotRouteBridge {
         })
     }
 
-    pub fn attach_dealer_channel(
-        &mut self,
-        channel_name: &str,
-        dealer: &DealerSocket,
-    ) -> Result<(), ConfigError> {
-        let channel = fixed_channel_name(channel_name)?;
-        let endpoint = dealer_inner(dealer).handle;
-        let options = route_only_endpoint_options();
-        check_config_rc(unsafe {
-            ffi::zlink_spot_route_bridge_attach_dealer_channel(
-                self.handle,
-                channel.as_ptr(),
-                endpoint,
-                &options,
-            )
-        })?;
-        self.endpoint_handles
-            .insert(channel_name.to_owned(), endpoint);
-        Ok(())
-    }
-
     pub fn attach_router_channel(
         &mut self,
         channel_name: &str,
@@ -93,24 +72,10 @@ impl SpotRouteBridge {
         Ok(())
     }
 
-    pub fn set_target_node(
-        &self,
-        channel_name: &str,
-        target_node_rid: &RoutingId,
-    ) -> Result<(), ConfigError> {
-        let channel = fixed_channel_name(channel_name)?;
-        check_config_rc(unsafe {
-            ffi::zlink_spot_route_bridge_set_target_node(
-                self.handle,
-                channel.as_ptr(),
-                target_node_rid.as_raw(),
-            )
-        })
-    }
-
     pub fn send(
         &self,
         channel_name: &str,
+        target_node_rid: &RoutingId,
         target_spot_rid: &RoutingId,
         parts: &mut [Message],
         flags: SendFlags,
@@ -121,6 +86,7 @@ impl SpotRouteBridge {
             ffi::zlink_spot_route_bridge_send(
                 self.handle,
                 channel.as_ptr(),
+                target_node_rid.as_raw(),
                 target_spot_rid.as_raw(),
                 native.as_mut_ptr(),
                 native.len(),
@@ -136,6 +102,7 @@ impl SpotRouteBridge {
     pub fn request<F>(
         &self,
         channel_name: &str,
+        target_node_rid: &RoutingId,
         target_spot_rid: &RoutingId,
         parts: &mut [Message],
         flags: SendFlags,
@@ -160,6 +127,7 @@ impl SpotRouteBridge {
             ffi::zlink_spot_route_bridge_request(
                 self.handle,
                 channel.as_ptr(),
+                target_node_rid.as_raw(),
                 target_spot_rid.as_raw(),
                 native.as_mut_ptr(),
                 native.len(),

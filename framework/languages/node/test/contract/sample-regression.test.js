@@ -222,8 +222,8 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['TicTacToe game', files.ticTacToeGame, 'onActorJoin'],
     ['TicTacToe game', files.ticTacToeGame, 'onLeaveActor'],
     ['TicTacToe game', files.ticTacToeGame, 'this.context.leaveActor(actor)'],
-    ['TicTacToe session', files.ticTacToeSession, 'this.context.actors.bind(this.actor)'],
-    ['TicTacToe session', files.ticTacToeSession, 'this.dependencies.joinGameHandler.handle']
+    ['TicTacToe session', files.ticTacToeSession, 'this.context.actors.bind(actorRef)'],
+    ['TicTacToe session', files.ticTacToeSession, 'await this.relayToActor(playHeader, payload, signal)']
   ]) {
     if (!content.includes(text)) {
       missing.push(`${name}:${text}`);
@@ -607,11 +607,11 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
     [match, 'this.status = GameStatus.InProgress'],
     [match, 'this.status = GameStatus.Won'],
     [match, 'this.status = GameStatus.TurnTimedOut'],
-    [joinHandler, 'entrySpot.join(actor, request.roomId)'],
+    [joinHandler, 'entrySpot.join(actor, request.player ?? actor, request.roomId)'],
     [moveHandler, 'spot.placeMark(actor, request.cell)'],
     [gameSpot, 'gameStateNotify(state)'],
     [playActor, 'this.context.boundSession'],
-    [playSession, 'this.dependencies.joinGameHandler.handle'],
+    [playSession, 'this.context.actors.bind(actorRef)'],
     [client, 'payload.state.status === GameStatus.InProgress'],
     [client, 'stateOf(client1FinalMove).status === GameStatus.Won'],
     [readme, '`Won`']
@@ -1365,7 +1365,7 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [frameworkSpotContract, 'interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>'],
     [frameworkSpotContract, 'interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>'],
     [playModule, '.actorFactory(SampleNames.playerActorType, PlayerActorFactory)'],
-    [playModule, '.addSpotNode(SampleNames.roomSpotNode'],
+    [playModule, '.addSpotMesh(SampleNames.roomSpotNode'],
     [playModule, '.addEntrySpot(BingoEntrySpot)'],
     [playModule, '.addSpotFactory(BingoRoomSpot)'],
     [roomSpot, 'implements ZLinkSpot<PlayerActorType>'],

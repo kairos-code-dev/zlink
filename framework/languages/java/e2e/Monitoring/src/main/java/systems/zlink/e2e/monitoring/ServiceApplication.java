@@ -65,7 +65,7 @@ public final class ServiceApplication {
                     Contracts.WorkReply.class,
                     "WorkRequest");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH)
-                .addNode(Contracts.SPOT_NODE);
+                ;
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
                 .setRouterRoutingId(RoutingId.from("svc-a-spot"));
             node.enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT"))

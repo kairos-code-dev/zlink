@@ -46,12 +46,12 @@ public final class SessionServerApplication {
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
+            RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.PlayChannel);
             route.enableServer(SampleTopology.selectedSessionRouteEndpoint());
             route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
-                .addNode(SampleNames.SessionSpotNode);
+                ;
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
                 .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
             options.addStreamNode(SampleNames.StreamNode)

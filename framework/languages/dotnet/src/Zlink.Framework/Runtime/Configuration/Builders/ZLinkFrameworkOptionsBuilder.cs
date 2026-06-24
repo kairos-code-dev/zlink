@@ -102,13 +102,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkFanoutChannelBuilder(channel);
     }
 
-    public IZLinkDealerMeshChannelBuilder AddDealerMeshChannel(string channelName)
-    {
-        var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.DealerMesh);
-        return new ZLinkDealerMeshChannelBuilder(channel);
-    }
-
-    public IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName)
+    public IZLinkRouteMeshChannelBuilder AddRouteMesh(string channelName)
     {
         var routeChannel = ZLinkRegistrationBuilderGuard.AddUnique(
             _registration.RouteChannels,
@@ -165,9 +159,12 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         {
             ChannelName = channelName,
         };
+        var spotNode = ZLinkRegistrationBuilderGuard.RegisterSpotNode(
+            _registration.SpotNodes,
+            channelName);
 
         _registration.SpotDiscovery = discovery;
-        return new ZLinkSpotMeshBuilder(_registration, discovery);
+        return new ZLinkSpotMeshBuilder(_registration, discovery, spotNode);
     }
 
     private ZLinkChannelRegistration AddChannelRegistration(
@@ -210,10 +207,11 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
 internal sealed class ZLinkSpotMeshBuilder(
     ZLinkFrameworkRegistration registration,
-    ZLinkSpotDiscoveryRegistration discovery)
+    ZLinkSpotDiscoveryRegistration discovery,
+    ZLinkSpotNodeRegistration spotNode)
     : IZLinkSpotMeshBuilder
 {
-    private ZLinkSpotNodeBuilder? _defaultNode;
+    private ZLinkSpotNodeBuilder? _nodeBuilder;
 
     public IZLinkDiscoveryBuilder UseDiscovery()
     {
@@ -231,23 +229,9 @@ internal sealed class ZLinkSpotMeshBuilder(
         registration.RegistrySpotRemoteAddresses = new ZLinkRegistrySpotRemoteAddressesRegistration
         {
             Namespace = discovery.ChannelName,
+            RouterChannelId = discovery.ChannelName,
         };
         return this;
-    }
-
-    public IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName)
-    {
-        var spotNode = ZLinkRegistrationBuilderGuard.AddSpotNode(
-            registration.SpotNodes,
-            spotNodeName);
-        if (registration.RegistrySpotRemoteAddresses is not null
-            && string.Equals(registration.RegistrySpotRemoteAddresses.Namespace, discovery.ChannelName, StringComparison.Ordinal)
-            && string.IsNullOrWhiteSpace(registration.RegistrySpotRemoteAddresses.RouterChannelId))
-        {
-            registration.RegistrySpotRemoteAddresses.RouterChannelId = spotNodeName;
-        }
-
-        return new ZLinkSpotNodeBuilder(spotNode);
     }
 
     public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
@@ -286,21 +270,6 @@ internal sealed class ZLinkSpotMeshBuilder(
     public IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber()
         => DefaultNode().ConfigurePubSubSubscriber();
 
-    public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName)
-        => DefaultNode().AttachSpotPublisherClient(channelName);
-
-    public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint)
-        => DefaultNode().AttachSpotPublisherClient(channelName, endpoint);
-
-    public IZLinkSocketConfig ConfigureSpotPublisherClientSocket(string channelName)
-        => DefaultNode().ConfigureSpotPublisherClientSocket(channelName);
-
-    public IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName)
-        => DefaultNode().AcceptSpotRoutesFromChannel(channelName);
-
-    public IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName, string endpoint)
-        => DefaultNode().AcceptSpotRoutesFromChannel(channelName, endpoint);
-
     public IZLinkEntrySpotOptions ConfigureEntrySpot()
         => DefaultNode().ConfigureEntrySpot();
 
@@ -314,17 +283,14 @@ internal sealed class ZLinkSpotMeshBuilder(
 
     private ZLinkSpotNodeBuilder DefaultNode()
     {
-        return _defaultNode ??= new ZLinkSpotNodeBuilder(
-            ZLinkRegistrationBuilderGuard.AddSpotNode(
-                registration.SpotNodes,
-                discovery.ChannelName));
+        return _nodeBuilder ??= new ZLinkSpotNodeBuilder(spotNode);
     }
 
 }
 
 internal static class ZLinkRegistrationBuilderGuard
 {
-    public static ZLinkSpotNodeRegistration AddSpotNode(
+    public static ZLinkSpotNodeRegistration RegisterSpotNode(
         Dictionary<string, ZLinkSpotNodeRegistration> registrations,
         string spotNodeName)
     {

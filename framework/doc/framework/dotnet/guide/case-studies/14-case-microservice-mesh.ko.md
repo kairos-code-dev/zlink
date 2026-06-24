@@ -4,7 +4,7 @@
 
 # 케이스 — 내부 마이크로서비스 mesh + 운영
 
-> [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
+> [13-grpc-alternative](../13-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > 다수 내부 서비스의 호출(BFF aggregation 포함)과 운영(topology·관측)을 다룬다.
 > 실행 가능한 샘플이 아니라, ZLink 를 service mesh 대체/보완 위치에 둘지 판단하는
 > 아키텍처 매핑 문서다.
@@ -242,7 +242,6 @@ BFF fan-out 한 번의 흐름이다.
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant BFF as bff
   participant M as Envoy mesh
@@ -259,7 +258,6 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant BFF as bff
   participant P as profile-svc
@@ -281,12 +279,12 @@ sidecar hop 이 빠질 뿐, fan-out 의 부분 실패·retry 정책은 양쪽 �
 - **줄어드는 것:** Envoy sidecar·mesh control plane·별도 discovery·proto/stub 관리.
 - **그대로 남는 것:** retry·circuit-breaking·degrade 정책, correlation/tracing
   전파(filter 로), 외부 공개 API(REST/gRPC), 영속 DB. 공통 경계는
-  [12-grpc-alternative](../12-grpc-alternative.ko.md)의 §4 경계 절 참고.
+  [13-grpc-alternative](../13-grpc-alternative.ko.md)의 §4 경계 절 참고.
 
 ## 7. 더 보기
 
-- 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
-- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [08-registry](../08-registry.ko.md), [09-monitoring](../09-monitoring.ko.md)
+- 케이스 허브: [13-grpc-alternative](../13-grpc-alternative.ko.md)
+- 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [09-registry](../09-registry.ko.md), [10-monitoring](../10-monitoring.ko.md)
 - 다음 케이스: [15-case-realtime-game](15-case-realtime-game.ko.md)
 
 ---

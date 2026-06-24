@@ -2,9 +2,7 @@ package systems.zlink.framework.runtime.spots;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
@@ -17,10 +15,6 @@ public final class SpotNodeRegistration {
     private final String nodeName;
     private final List<Class<? extends ZLinkSpot<?>>> spotFactories = new ArrayList<>();
     private final List<Class<? extends ZLinkEntrySpot<?>>> entrySpots = new ArrayList<>();
-    private final Map<String, SpotPublisherClientRegistration> attachedSpotPublisherClients =
-        new LinkedHashMap<>();
-    private final Map<String, SpotRouteChannelAcceptanceRegistration> acceptedSpotRouteChannels =
-        new LinkedHashMap<>();
     private final List<RouterManualConnection> routerManualConnections = new ArrayList<>();
     private final List<String> pubSubManualConnections = new ArrayList<>();
     private boolean routerEnabled;
@@ -87,14 +81,6 @@ public final class SpotNodeRegistration {
         return pubSubEnabled;
     }
 
-    public Map<String, SpotPublisherClientRegistration> attachedSpotPublisherClients() {
-        return Map.copyOf(attachedSpotPublisherClients);
-    }
-
-    public Map<String, SpotRouteChannelAcceptanceRegistration> acceptedSpotRouteChannels() {
-        return Map.copyOf(acceptedSpotRouteChannels);
-    }
-
     public List<RouterManualConnection> routerManualConnections() {
         return List.copyOf(routerManualConnections);
     }
@@ -145,32 +131,6 @@ public final class SpotNodeRegistration {
 
     ZLinkEntrySpotOptions entrySpotOptions() {
         return new EntrySpotOptions();
-    }
-
-    SpotPublisherClientRegistration attachSpotPublisherClient(String channelName) {
-        if (channelName == null || channelName.isBlank()) {
-            throw new ZLinkConfigurationException(
-                "attached SPOT publisher channel name is required");
-        }
-        enableRouter();
-        return attachedSpotPublisherClients.computeIfAbsent(
-            channelName,
-            SpotPublisherClientRegistration::new);
-    }
-
-    SpotRouteChannelAcceptanceRegistration acceptSpotRoutesFromChannel(String channelName) {
-        if (channelName == null || channelName.isBlank()) {
-            throw new ZLinkConfigurationException(
-                "accepted SPOT route channel name is required");
-        }
-        SpotRouteChannelAcceptanceRegistration acceptance =
-            new SpotRouteChannelAcceptanceRegistration(channelName);
-        if (acceptedSpotRouteChannels.putIfAbsent(channelName, acceptance) != null) {
-            throw new ZLinkConfigurationException(
-                "duplicate accepted SPOT route channel on node: "
-                    + nodeName + "/" + channelName);
-        }
-        return acceptance;
     }
 
     void addRouterManualConnection(String endpoint) {
@@ -248,10 +208,6 @@ public final class SpotNodeRegistration {
             && pubSubManualConnections.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "spot router and pub/sub routing ids must match on node: " + nodeName);
-        }
-        if (!attachedSpotPublisherClients.isEmpty() && !pubSubEnabled) {
-            throw new ZLinkConfigurationException(
-                "spot publisher client requires pub/sub on node: " + nodeName);
         }
     }
 

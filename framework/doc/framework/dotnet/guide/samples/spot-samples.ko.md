@@ -9,7 +9,7 @@
 # ZLink Framework .NET SPOT Samples
 
 > 이 문서는 실행 가능한 sample 중심 문서다. room, stage, zone 같은 도메인에 ZLink 를
-> 넣을지 판단하는 설명은 [12-grpc-alternative](../12-grpc-alternative.ko.md)와 각
+> 넣을지 판단하는 설명은 [13-grpc-alternative](../13-grpc-alternative.ko.md)와 각
 > 케이스 스터디가 맡고, 이 문서는 SPOT 등록과 호출 코드를 따라 하는 데 집중한다.
 
 ## 1. 이 문서의 목적
@@ -312,7 +312,7 @@ builder.Services.AddZLinkFramework(options =>
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
-            var node = mesh.AddNode("stage-node");
+            var node = mesh;
 
             {
                 node.EnableRouter("tcp://0.0.0.0:9001");
@@ -335,7 +335,6 @@ builder.Services.AddZLinkFramework(options =>
 
             }
 
-            node.AcceptSpotRoutesFromChannel("play");
 
             {
                 node.EnablePubSub("tcp://0.0.0.0:9000");
@@ -374,9 +373,7 @@ builder.Services.AddZLinkFramework(options =>
 
             }
 
-            node.AttachSpotPublisherClient("game.stage");
             {
-                var socket = node.ConfigureSpotPublisherClientSocket("game.stage");
                 socket.SendHighWaterMark = 20_000;
                 socket.Immediate = true;
 
@@ -402,15 +399,13 @@ app.Run();
 - `EnableRouter(endpoint)`
   - 같은 SPOT channel에 속한 다른 `SpotNode`와 routed packet을 주고받기 위한
     local router를 켜고 routed ingress endpoint를 명시한다.
-- `AcceptSpotRoutesFromChannel("play")`
   - `play` client/server channel의 server `ROUTER`에서 이 node의 user Spot으로
     routed send/request를 보낼 수 있게 한다.
-  - 같은 표면은 `AddRouteMeshChannel`의 route mesh `ROUTER`에도 사용할 수 있다.
+  - 같은 표면은 `AddRouteMesh`의 route mesh `ROUTER`에도 사용할 수 있다.
   - 이 설정은 target SpotNode 쪽 ingress 연결이다. application public surface 에
     별도 routed Spot egress client 를 노출하지 않는다.
 - `EnablePubSub(endpoint)`
   - local spot 문맥에서 `spot.Context.Outbound.Publish(...)`를 호출할 수 있게 한다.
-- `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     수 있도록 별도의 publisher client를 붙인다.
 - `ConfigureSocket(...)`, `ConfigureRouting(...)`,
@@ -443,7 +438,7 @@ builder.Services.AddZLinkFramework(options =>
     var mesh = options.AddSpotMesh("game.stage");
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-    var node = mesh.AddNode("stage-node");
+    var node = mesh;
     node.EnableRouter("tcp://0.0.0.0:9001");
     node.ConnectRouter("tcp://10.0.0.10:9000");
 
@@ -451,7 +446,6 @@ builder.Services.AddZLinkFramework(options =>
     node.ConnectPeerPub("tcp://10.0.0.20:9100");
 
     options.AddClientServerChannel("orders").EnableClient("tcp://10.0.0.30:9200");
-    node.AttachSpotPublisherClient("game.stage", "tcp://10.0.0.40:9300");
 
     node.AddSpotFactory<SampleSpot>();
 });
@@ -507,7 +501,7 @@ builder.Services.AddZLinkFramework(options =>
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
-            var node = mesh.AddNode("stage-node");
+            var node = mesh;
 
             {
                 node.EnableRouter("tcp://0.0.0.0:9001");
@@ -567,9 +561,7 @@ builder.Services.AddZLinkFramework(options =>
 
             }
 
-            node.AttachSpotPublisherClient("game.stage");
             {
-                var socket = node.ConfigureSpotPublisherClientSocket("game.stage");
                 socket.SendHighWaterMark = 20_000;
                 socket.Immediate = true;
 
@@ -664,7 +656,6 @@ builder.Services.AddZLinkFramework(options =>
     {
         var channel = options.AddClientServerChannel("gateway.client");
         channel.EnableClient("tcp://play-node-1:7201");
-        channel.EnableSpotRouteEgress("play");
 
     }
 });
@@ -709,7 +700,6 @@ local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel 로 publi
 
 이 샘플에서 publisher 노드는 spot mesh 등록에 attach 만 걸어 두면 충분하다.
 실제로 어느 SPOT channel 에 publish 할지는, mesh discovery scope 와
-`AttachSpotPublisherClient("game.stage")` 가 함께 결정한다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -727,8 +717,7 @@ builder.Services.AddZLinkFramework(options =>
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
-            var node = mesh.AddNode("publisher-node");
-            node.AttachSpotPublisherClient("game.stage");
+            var node = mesh;
 
         }
 
@@ -962,7 +951,7 @@ builder.Services.AddZLinkFramework(options =>
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
         {
-            var node = mesh.AddNode("room.node");
+            var node = mesh;
             node.AddSpotFactory<SampleSpot>();
 
         }

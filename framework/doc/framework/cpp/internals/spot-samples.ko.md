@@ -23,10 +23,8 @@ app.add_zlink_framework([](auto &options) {
     options.add_client_server_channel("profile")
       .enable_client();
     options.add_spot_mesh("game.stage")
-      .add_node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()
-      .attach_publisher("game.stage")
       .add_entry_spot<player_entry_spot_t>()
       .add_actor_factory<player_actor_factory_t>("player")
       .add_spot<stage_spot_t>("stage")

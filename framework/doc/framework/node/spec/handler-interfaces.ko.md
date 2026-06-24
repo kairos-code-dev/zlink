@@ -650,7 +650,7 @@ user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(act
 맡는다. Entry Spot 도 명시적 `joinEntrySpot(nodeRid, request)` 재진입에 대해 같은
 `onActorJoin(actor, request)` admission 을 선택적으로 선언할 수 있다. Entry Spot 이
 `onActorJoin` 을 선언하지 않으면 재진입은 그대로 accept 된다. actor 최초 생성 직후 첫 Entry
-Spot 배치는 admission 이 아니라 `onCreateActor(actor)` 로만 처리한다.
+Spot 배치는 admission 이 아니라 `onCreateActor(actor, createRequest)` 로만 처리한다.
 
 ```ts
 export class MatchSpot implements ZLinkSpot {
@@ -929,9 +929,23 @@ export interface ZLinkActorFactory {
 }
 
 export interface ZLinkActorManager {
-  create(actorId: string, actorType: string): Promise<ZLinkActor>;
-  find(actorId: string): Promise<ZLinkActor | undefined>;
-  getOrCreate(actorId: string, actorType: string): Promise<ZLinkActor>;
+  create(actorId: string, actorType: string, request?: ZLinkMessage): Promise<ActorRef>;
+  find(actorId: string): Promise<ActorRef | undefined>;
+  getOrCreate(actorId: string, actorType: string, request?: ZLinkMessage): Promise<ActorRef>;
+}
+
+export interface ZLinkActorGateway {
+  joinSpot(
+    actor: ActorRef,
+    spotRid: RoutingId,
+    request?: ZLinkMessage,
+  ): ZLinkActorJoinSpotCall;
+
+  joinEntrySpot(
+    actor: ActorRef,
+    spotNodeRid: RoutingId,
+    request?: ZLinkMessage,
+  ): ZLinkActorJoinEntrySpotCall;
 }
 ```
 

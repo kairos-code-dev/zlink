@@ -183,7 +183,7 @@ public sealed class GameChatSession(IZLinkSessionContext context, IZLinkActorMan
         if (dispatch.PacketName == "auth")
         {
             var req = payload.Decode<AuthPlayerReq>();
-            IZLinkActor actor = await actors.GetOrCreateAsync(req.PlayerId, "player", ct);
+            ActorRef actor = await actors.GetOrCreateAsync(req.PlayerId, "player", ct);
             _player = await context.Actors.BindAsync(actor, ct);
             await context.Client.Reply(new AuthPlayerOk()).Async();
             return;

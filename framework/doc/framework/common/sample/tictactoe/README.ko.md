@@ -904,7 +904,7 @@ room Spot이 승리 또는 draw를 감지해 최종 `GameStateNotify`를 전송�
 돌려보내고, Entry Spot은 actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같아야
 한다.
 
-1. actor 객체 생성이 끝나면 framework는 `onCreateActor`를 한 번 호출한다.
+1. actor 객체 생성이 끝나면 framework는 create payload와 함께 `onCreateActor`를 한 번 호출한다.
 2. client는 최종 `GameState`를 확인한 뒤 `LeaveGameReq`를 보낸다.
 3. room Spot은 요청한 actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
 4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.

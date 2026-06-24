@@ -227,7 +227,7 @@ room spot(`spot_t`)과의 차이:
 | 역할 | 배정·매칭 (라우팅 전) | 도메인 상태 소유·처리 |
 | 직렬화 범위 | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) |
 | 공유 상태 접근 | Entry Spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 |
-| actor lifecycle | Entry Spot은 기본 accept. 훅 `onCreateActor`/`on_actor_joined`/`onLeaveActor`/`onDisconnectActor` | `on_actor_join`으로 수락/거부 + lifecycle 훅 |
+| actor lifecycle | Entry Spot은 기본 accept. 훅 `onCreateActor(actor[, request])`/`on_actor_joined`/`onLeaveActor`/`onDisconnectActor` | `on_actor_join`으로 수락/거부 + lifecycle 훅 |
 
 ## 5. Timer
 

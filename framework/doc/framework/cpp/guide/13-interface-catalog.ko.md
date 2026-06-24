@@ -132,7 +132,7 @@ spot_context_t}`; `spot_create_state_t{existing, created, rejected}`.
 | `actor_context_t` | `actor_ref()`, `is_joined()`, `bound_session()`, `join_spot(spot_rid, DTO/message)`, `join_entry_spot(node_rid, DTO/message)`, `join_spot_raw(...)`, `join_entry_spot_raw(...)` |
 | `bound_session_t` | `send(zlink::message_t)` · `send<TMsg>(msg)` · `disconnect()` — actor 가 자기 client 로 push |
 | `session_actor_t` | `ref()`/`actor_id()`/`context()`/`bound_session()`, `relay(zlink::message_t)`/`relay_request(zlink::message_t)`, `notify_disconnected()` |
-| `session_actor_manager_t` | `create(type,id)` · `find(id)` · `get_or_create(type,id)` · `bind(actor_ref)` · `unbind_session(id)` (DI 주입) |
+| `session_actor_manager_t` | `create(type,id[, create_request])` · `find(id)` · `get_or_create(type,id[, create_request])` · `bind(actor_ref)` · `unbind_session(id)` (DI 주입). 반환값은 application actor 객체가 아니라 `session_actor_t` handle |
 
 - **factory**: `spot_node_builder_t::add_actor_factory<TFactory>(actor_type)`로 등록(duck-typed: `create(actor_id)`).
 - **gateway**: 공개 `actor_gateway_t` 클래스는 없다. `spot_node` 쪽 `enable_actor_gateway()` +

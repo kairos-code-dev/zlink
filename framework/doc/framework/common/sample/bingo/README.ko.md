@@ -948,7 +948,7 @@ disconnect callback은 logging, bound session cleanup, 재접속 가능 상태 �
 room Spot이 `BingoGameEndedNotify`를 양쪽 client에 전송한 뒤에는 room에 남아 있는 player
 actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같아야 한다.
 
-1. actor 객체 생성이 끝나면 framework는 `onCreateActor`를 한 번 호출한다.
+1. actor 객체 생성이 끝나면 framework는 create payload와 함께 `onCreateActor`를 한 번 호출한다.
 2. room Spot은 종료 cleanup이 한 번만 시작되도록 guard를 둔다.
 3. room Spot은 각 player actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
 4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.

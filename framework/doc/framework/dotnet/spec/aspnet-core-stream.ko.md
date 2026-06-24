@@ -145,18 +145,42 @@ public interface IZLinkSessionActors
 
 public interface IZLinkActorManager
 {
-    ValueTask<IZLinkActor> CreateAsync(
+    ValueTask<ActorRef> CreateAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActor?> FindAsync(
+    ValueTask<ActorRef> CreateAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ActorRef> CreateAsync<TRequest>(
+        string actorId,
+        string actorType,
+        TRequest createRequest,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ActorRef?> FindAsync(
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActor> GetOrCreateAsync(
+    ValueTask<ActorRef> GetOrCreateAsync(
         string actorId,
         string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ActorRef> GetOrCreateAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ActorRef> GetOrCreateAsync<TRequest>(
+        string actorId,
+        string actorType,
+        TRequest createRequest,
         CancellationToken cancellationToken = default);
 }
 

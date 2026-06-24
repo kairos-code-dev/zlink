@@ -1348,7 +1348,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context, IZLinkActorMa
         {
             AuthReq request = payload.Decode<AuthReq>();
 
-            IZLinkActor authActor = await actors.GetOrCreateAsync(
+            ActorRef authActor = await actors.GetOrCreateAsync(
                 request.ActorId, "player", cancellationToken);
             IZLinkSessionActor actor = await context.Actors.BindAsync(
                 authActor,

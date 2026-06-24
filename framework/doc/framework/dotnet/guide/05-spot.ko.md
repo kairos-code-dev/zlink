@@ -14,8 +14,8 @@
 ## 현재 구현 기준
 
 외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
-`ISpotRouteBridge`를 내부에서 사용한다. 사용자는 `AcceptSpotRoutesFromChannel(...)`과
-egress 설정 이름을 맞추면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에
+`ISpotRouteBridge`를 내부에서 사용한다. 사용자는 받는 쪽 `AcceptSpotRoutesFromChannel(...)`과
+보내는 쪽 `EnableSpotRouteEgress(...)`의 이름만 맞추면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에
 attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
 publisher client를 주입해서 사용한다.
 
@@ -627,7 +627,7 @@ flowchart LR
 | 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 배선 (양쪽 짝) |
 |------|---------------------------|----------------------------|------------------------|---------------------|
 | topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(ch, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | `AttachSpotPublisherClient(ch)` ↔ `EnablePubSub` |
-| spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(ch, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: `EnableSpotRouteEgress(ingress)` ↔ `AcceptSpotRoutesFromChannel(ingress)` |
+| spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(ch, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: 보내는 쪽 `EnableSpotRouteEgress(name)` ↔ 받는 쪽 `AcceptSpotRoutesFromChannel(name)`(같은 `name`) |
 | actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM `AttachActorGateway(node)` ↔ `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
 | 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel 의 handler, [04](04-channel-messaging.ko.md)) | 그 channel 의 handler | `AddClientServerChannel(name).EnableClient()` ↔ 그 channel server |
 
@@ -742,19 +742,27 @@ public sealed class StageQueryAdapter(IZLinkRouteClient routes)
 }
 ```
 
-외부→spot 은 mesh 밖이라 **egress 와 ingress 를 같은 이름으로 짝지어** 연결을 직접
-만들어야 한다. 보내는 노드 `EnableSpotRouteEgress("api")` 와 받는 노드
-`AcceptSpotRoutesFromChannel("api")` 의 `"api"` 가 일치해야 request 가 도달한다.
+외부→spot 은 mesh 밖이라 **양쪽 노드를 같은 이름으로 짝지어** 연결을 직접 만들어야 한다.
+방향을 나눠 보면 이렇다.
+
+- **보내는 쪽**(외부 channel 의 client)은 `EnableSpotRouteEgress("api")` 를 켠다 — "이 channel
+  의 client 가 spot 으로도 보낼 수 있게 한다"는 뜻이다.
+- **받는 쪽**(SpotNode)은 `AcceptSpotRoutesFromChannel("api")` 를 켠다 — "그 channel 에서 오는
+  요청을 내 router 로 받아 spot 에 넘긴다"는 뜻이다.
+
+두 곳의 `"api"` 라는 이름이 같아야 서로를 찾아 이어지고, 그제서야 request 가 spot 까지
+도달한다. `"api"` 는 이 연결 한 쌍을 가리키는 라벨일 뿐이라 양쪽만 똑같으면 아무 이름이나
+된다. request 면 spot 의 reply 도 같은 길로 client 까지 되돌아온다.
 
 ```mermaid
 flowchart LR
   subgraph ext["외부 노드 (local spot 없음)"]
     h["route/HTTP handler<br/>routes.Request(ch, spotRid, req)"]
-    eg["channel<br/>EnableSpotRouteEgress('api')"]
+    eg["channel client<br/>EnableSpotRouteEgress('api')<br/>= spot 으로 보내기 허용"]
     h --> eg
   end
   subgraph sn["SpotNode · game.stage"]
-    rt["router<br/>EnableRouter +<br/>AcceptSpotRoutesFromChannel('api')"]
+    rt["router<br/>EnableRouter +<br/>AcceptSpotRoutesFromChannel('api')<br/>= 이 channel 요청 받기"]
     sp["Spot<br/>AddPacket&lt;GetStageStateHandler&gt;"]
     rt --> sp
   end
@@ -766,12 +774,12 @@ flowchart LR
 // ── 보내는 노드 (API 서버) ──
 var gateway = options.AddClientServerChannel("gateway.client");
 gateway.EnableClient("tcp://play-node-1:9001");
-gateway.EnableSpotRouteEgress("api");        // ← 받는 노드의 ingress 이름과 일치해야
+gateway.EnableSpotRouteEgress("api");        // ← spot 으로 보내기 허용. 받는 노드와 같은 이름
 
 // ── 받는 노드 (SpotNode) ──
 var node = mesh.AddNode("play-node");
 node.EnableRouter("tcp://0.0.0.0:9001");
-node.AcceptSpotRoutesFromChannel("api");     // ← 위 egress 의 "api" 와 같은 이름
+node.AcceptSpotRoutesFromChannel("api");     // ← 그 channel 요청 받기. 위와 같은 "api" 이름
 ```
 
 ### actor packet
@@ -835,13 +843,13 @@ builder.Services.AddZLinkFramework(options =>
     var node = mesh.AddNode("play-node");
     node.EnableRouter("tcp://0.0.0.0:9001");                // spot packet · actor packet 수신
     node.EnablePubSub("tcp://0.0.0.0:9000");                // topic publish/subscribe
-    node.AcceptSpotRoutesFromChannel("api");                // 외부 channel egress 수락 (spot packet)
+    node.AcceptSpotRoutesFromChannel("api");                // 외부 channel 에서 오는 spot 요청 받기 (spot packet)
     node.AddEntrySpot<StageEntrySpot>();                    // actor packet — entry spot
     node.AddSpotFactory<StageSpot>();
 });
 ```
 
-#### 보내는 노드 (외부 publish · session · 다른 channel egress)
+#### 보내는 노드 (외부 publish · session · spot 으로 보내기)
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -852,7 +860,7 @@ builder.Services.AddZLinkFramework(options =>
     var edge = mesh.AddNode("edge-node");
     edge.AttachSpotPublisherClient("game.stage");          // ▶ 받는 노드 EnablePubSub 와 짝
 
-    // spot packet — play-node 의 "api" ingress 로 egress
+    // spot packet — play-node 가 "api" 로 연 입구로 보낸다
     var gateway = options.AddClientServerChannel("gateway.client");
     gateway.EnableClient("tcp://play-node-1:9001");
     gateway.EnableSpotRouteEgress("api");                  // ▶ 받는 노드 AcceptSpotRoutesFromChannel("api") 와 짝
@@ -865,7 +873,7 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 핵심은 **짝**이다. `EnableSpotRouteEgress("api")` 의 인자는 local 이름이 아니라
-target 노드가 `AcceptSpotRoutesFromChannel("api")` 로 연 ingress 이름이고,
+받는 노드가 `AcceptSpotRoutesFromChannel("api")` 로 연 입구 이름과 같아야 하고,
 `AttachSpotPublisherClient("game.stage")` 는 받는 노드의 `EnablePubSub` 와,
 `AttachActorGateway("play-node")` 는 그 SpotNode 의 `EnableRouter`/`AddEntrySpot` 와
 짝을 이뤄야 한다. 한쪽만 켜면 호출은 컴파일은 되지만 런타임에 도달하지 못한다
@@ -884,7 +892,7 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 ## 7. 자주 막히는 곳
 
 - **`Publish` 가 안 된다** → 노드에 `EnablePubSub(endpoint)` 가 없다.
-- **routed 호출이 안 나간다** → egress(`EnableSpotRouteEgress`)와 ingress
+- **routed 호출이 안 나간다** → 보내는 쪽(`EnableSpotRouteEgress`)과 받는 쪽
   (`AcceptSpotRoutesFromChannel`) 이름이 짝이 맞는지, target ROUTER 에 실제로
   연결돼 있는지 확인한다.
 - **Spot factory 타입 중복** → 같은 `SpotNode` 안에서 같은 타입을 두 번 등록하면 시작 예외.

@@ -510,9 +510,9 @@ public sealed class RoomRequestHandler
 ### 4.1 actor 와 lifecycle
 
 ```csharp
-var actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActorManager
-var joinReply = await actor.Context
-    .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1")) // IZLinkActorContext
+ActorRef actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActorManager
+var joinReply = await gateway
+    .JoinSpot(actor, RoutingId.From("room-1"), new JoinRoom("room-1")) // IZLinkActorGateway
     .Async();
 if (!joinReply.Accepted)   // join 은 거절될 수 있다 — Reply 를 읽기 전에 Accepted 를 먼저 확인한다
 {
@@ -529,7 +529,8 @@ actor.Configure();   // join 성공 뒤에 호출(호출 순서 제약)
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` |
 | `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
-| `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
+| `IZLinkActorManager` | actor ref 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
+| `IZLinkActorGateway` | current Spot 밖에서 `ActorRef` 로 Entry Spot 또는 user Spot join 수행 |
 
 검증: `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`.
 
@@ -579,7 +580,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
     // payload 는 framework ZLinkMessage 다. decode 하거나 framework API 에 그대로 넘긴다.
     public async ValueTask OnDispatchAsync(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload, CancellationToken ct)
     {
-        IZLinkActor actor = await actors.GetOrCreateAsync("player-1", "player", ct);
+        ActorRef actor = await actors.GetOrCreateAsync("player-1", "player", ct);
         var actorRef = await context.Actors.BindAsync(actor, ct); // session↔actor binding 성립(재접속 이전성의 근거)
         if (context.Actors.Find(actorRef.ActorId) is { } boundActor)
         {

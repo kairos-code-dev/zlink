@@ -297,7 +297,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
     {
         _ = header;
         var request = payload.Decode<AuthReq>();
-        IZLinkActor actor = await actors.GetOrCreateAsync(
+        ActorRef actor = await actors.GetOrCreateAsync(
             request.ActorId,
             "player",
             ct);

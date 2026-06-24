@@ -171,24 +171,63 @@ application 은 `IZLinkActorManager` 로 actor 생성을 명시한다. `CreateAs
 는 이미 같은 actor id가 있으면 `ActorAlreadyExists` 를 던진다. 같은 actor id를
 다른 actor type으로 다시 사용하면 `ActorTypeMismatch` 를 던진다.
 `GetOrCreateAsync(...)` 는 같은 actor type의 기존 actor 를 재사용하고, 없으면
-factory 로 새 actor 를 만든다.
+factory 로 새 actor 를 만든다. public manager 는 application actor 객체를 직접
+돌려주지 않고 `ActorRef` 를 반환한다. current Spot 밖의 handler 는 이 ref를
+`IZLinkActorGateway`에 넘겨 Entry Spot 또는 user Spot join을 수행한다.
 
 ```csharp
 public interface IZLinkActorManager
 {
-    ValueTask<IZLinkActor> CreateAsync(
+    ValueTask<ActorRef> CreateAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActor?> FindAsync(
+    ValueTask<ActorRef> CreateAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ActorRef> CreateAsync<TRequest>(
+        string actorId,
+        string actorType,
+        TRequest createRequest,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ActorRef?> FindAsync(
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActor> GetOrCreateAsync(
+    ValueTask<ActorRef> GetOrCreateAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
+
+    ValueTask<ActorRef> GetOrCreateAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ActorRef> GetOrCreateAsync<TRequest>(
+        string actorId,
+        string actorType,
+        TRequest createRequest,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorGateway
+{
+    IZLinkActorJoinSpotCall JoinSpot(
+        ActorRef actor,
+        RoutingId spotRid,
+        object request);
+
+    IZLinkActorJoinEntrySpotCall JoinEntrySpot(
+        ActorRef actor,
+        RoutingId spotNodeRid,
+        object request);
 }
 ```
 

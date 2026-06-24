@@ -20,21 +20,11 @@ Spot 밖 호출자가 actor 객체를 직접 만지지 않아도, Spot-owned cre
 actor 생성 요청은 actor id와 optional multipart message payload를 함께 받을 수 있어야 한다. core C API는
 계속 actor 객체를 노출하지 않고 actor ref만 반환한다.
 
-호환성을 제거할 수 있는 릴리스라면 기존 actor 생성 함수가 payload parts를 함께 받도록 시그니처를 바꾼다.
-기존 ABI를 유지해야 한다면 payload를 받는 새 함수를 추가하고, 기존 함수는 empty payload wrapper로 둔다.
+이번 구현에서는 기존 ABI를 유지한다. 기존 actor 생성 함수는 empty payload 요청으로 남기고, payload를
+받는 새 함수를 추가한다. 이렇게 하면 기존 C 호출자는 actor id만 넘기는 계약을 그대로 쓰고, bindings와
+framework는 payload가 필요한 경로에서 새 함수를 명시적으로 호출할 수 있다.
 
-예상 C API 형태:
-
-```c
-zlink_config_result_t zlink_spot_node_actor_new(
-    void *node,
-    const char *actor_id,
-    zlink_msg_t *parts,
-    size_t part_count,
-    zlink_actor_ref_t *actor_out);
-```
-
-ABI 유지가 필요한 경우의 대안:
+확정 C API 형태:
 
 ```c
 zlink_config_result_t zlink_spot_node_actor_new_with_request(
@@ -45,7 +35,34 @@ zlink_config_result_t zlink_spot_node_actor_new_with_request(
     zlink_actor_ref_t *actor_out);
 ```
 
-최종 함수 이름과 ABI 정책은 구현 직전에 확정한다.
+기존 함수는 다음 의미를 유지한다.
+
+```c
+zlink_config_result_t zlink_spot_node_actor_new(
+    void *node,
+    const char *actor_id,
+    zlink_actor_ref_t *actor_out);
+```
+
+`zlink_spot_node_actor_new()`는 payload가 없는 actor 생성 요청이다. `parts == NULL`이고
+`part_count == 0`인 `zlink_spot_node_actor_new_with_request()` 호출과 같은 뜻이다.
+
+Spot-owned create callback이 생성 payload를 받을 수 있도록 actor lifecycle receive API도 payload를
+함께 꺼낼 수 있어야 한다. 기존 lifecycle receive API는 event만 꺼내는 계약으로 유지하고, payload가
+필요한 runtime과 binding은 새 receive API를 사용한다.
+
+```c
+zlink_recv_result_t zlink_spot_recv_actor_lifecycle_with_request(
+    void *spot,
+    zlink_spot_actor_lifecycle_event_t *event_out,
+    zlink_msg_t **parts_out,
+    size_t *part_count_out,
+    zlink_recv_flags_t flags);
+```
+
+기존 `zlink_spot_recv_actor_lifecycle()`로 actor-created lifecycle event를 받으면 payload는 core가 닫고
+반환하지 않는다. payload를 읽어야 하는 runtime은 반드시
+`zlink_spot_recv_actor_lifecycle_with_request()`를 호출한다.
 
 ## Payload 처리 규칙
 

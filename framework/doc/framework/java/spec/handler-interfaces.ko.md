@@ -430,9 +430,28 @@ public interface ZLinkActorFactory {
 }
 
 public interface ZLinkActorManager {
-    CompletionStage<ZLinkActor> create(String actorId, String actorType);
-    CompletionStage<Optional<ZLinkActor>> find(String actorId);
-    CompletionStage<ZLinkActor> getOrCreate(String actorId, String actorType);
+    CompletionStage<ZLinkActorRef> create(String actorId, String actorType);
+    CompletionStage<ZLinkActorRef> create(
+        String actorId,
+        String actorType,
+        ZLinkMessage createRequest);
+    CompletionStage<Optional<ZLinkActorRef>> find(String actorId);
+    CompletionStage<ZLinkActorRef> getOrCreate(String actorId, String actorType);
+    CompletionStage<ZLinkActorRef> getOrCreate(
+        String actorId,
+        String actorType,
+        ZLinkMessage createRequest);
+}
+
+public interface ZLinkActorGateway {
+    ZLinkActorJoinSpotCall joinSpot(
+        ZLinkActorRef actor,
+        RoutingId spotRid,
+        Object request);
+    ZLinkActorJoinEntrySpotCall joinEntrySpot(
+        ZLinkActorRef actor,
+        RoutingId spotNodeRid,
+        Object request);
 }
 
 public interface ZLinkActorContext {

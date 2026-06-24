@@ -864,7 +864,22 @@ public:
 
 class session_actor_manager_t {
 public:
-    bind_actor_call_t<session_actor_t> bind(actor_ref_t actor);
+    result_t<session_actor_t> create(
+        std::string actor_type,
+        std::string actor_id);
+    result_t<session_actor_t> create(
+        std::string actor_type,
+        std::string actor_id,
+        message_t create_request);
+    std::optional<session_actor_t> find(std::string actor_id) const;
+    result_t<session_actor_t> get_or_create(
+        std::string actor_type,
+        std::string actor_id);
+    result_t<session_actor_t> get_or_create(
+        std::string actor_type,
+        std::string actor_id,
+        message_t create_request);
+    request_call_t<session_actor_t> bind(actor_ref_t actor);
 };
 
 class packet_stream_session_t {

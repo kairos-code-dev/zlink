@@ -74,14 +74,35 @@ public interface ZLinkActorFactory {
 }
 
 public interface ZLinkActorManager {
-    CompletionStage<ZLinkActor> create(String actorId, String actorType);
-    CompletionStage<Optional<ZLinkActor>> find(String actorId);
-    CompletionStage<ZLinkActor> getOrCreate(String actorId, String actorType);
+    CompletionStage<ZLinkActorRef> create(String actorId, String actorType);
+    CompletionStage<ZLinkActorRef> create(
+        String actorId,
+        String actorType,
+        ZLinkMessage createRequest);
+    CompletionStage<Optional<ZLinkActorRef>> find(String actorId);
+    CompletionStage<ZLinkActorRef> getOrCreate(String actorId, String actorType);
+    CompletionStage<ZLinkActorRef> getOrCreate(
+        String actorId,
+        String actorType,
+        ZLinkMessage createRequest);
+}
+
+public interface ZLinkActorGateway {
+    ZLinkActorJoinSpotCall joinSpot(
+        ZLinkActorRef actor,
+        RoutingId spotRid,
+        Object request);
+    ZLinkActorJoinEntrySpotCall joinEntrySpot(
+        ZLinkActorRef actor,
+        RoutingId spotNodeRid,
+        Object request);
 }
 ```
 
 `actorType`은 application이 정하는 짧은 문자열 키다. 같은 actor id를 다른
 actorType으로 다시 쓰면 설정 또는 런타임 오류로 실패해야 한다.
+manager 는 actor 객체를 직접 반환하지 않고 `ZLinkActorRef`를 반환한다. current
+Spot 밖에서 join을 수행해야 하는 handler는 이 ref를 `ZLinkActorGateway`에 넘긴다.
 
 ## 4. Session Binding
 

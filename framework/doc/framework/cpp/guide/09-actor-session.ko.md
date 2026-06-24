@@ -151,7 +151,8 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 
 | API | 의미 |
 |-----|------|
-| `session_actor_manager_t::get_or_create(actor_type, actor_id)` | 같은 stream node에서 actor 생성 또는 조회 (`result_t<session_actor_t>`) |
+| `session_actor_manager_t::create(actor_type, actor_id[, create_request])` | 같은 stream node에서 actor handle 생성. `create_request`는 Entry Spot의 `onCreateActor(actor, createRequest)`로 전달된다 |
+| `session_actor_manager_t::get_or_create(actor_type, actor_id[, create_request])` | 같은 stream node에서 actor 생성 또는 조회. 이미 있으면 새 `create_request`는 사용하지 않는다 |
 | `session_actor_manager_t::bind(actor_ref)` | 이미 만들어진 actor 참조를 session actor로 바인딩 (`request_call_t<session_actor_t>`) |
 | `session_actor_manager_t::find(actor_id)` | 바인딩된 actor 핸들 조회 (`std::optional<session_actor_t>`) |
 | `session_actor_manager_t::unbind_session(actor_id)` | session-액터 바인딩 해제 |

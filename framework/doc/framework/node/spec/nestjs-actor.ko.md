@@ -172,23 +172,44 @@ application 은 `ZLinkActorManager` 로 actor 생성을 명시한다. `create(..
 는 이미 같은 actor id가 있으면 `ActorAlreadyExists` 를 던진다. 같은 actor id를
 다른 actor type으로 다시 사용하면 `ActorTypeMismatch` 를 던진다.
 `getOrCreate(...)` 는 같은 actor type의 기존 actor 를 재사용하고, 없으면
-factory 로 새 actor 를 만든다.
+factory 로 새 actor 를 만든다. manager 는 application actor 객체를 반환하지 않고
+`ActorRef` 를 반환한다. actor 생성 payload 를 넘기면 Entry Spot 의
+`onCreateActor(actor, createRequest)` 에서만 actor 초기화에 사용한다.
 
 ```ts
 export interface ZLinkActorManager {
   create(
     actorId: string,
     actorType: string,
-  ): Promise<ZLinkActor>;
+    request?: ZLinkMessage,
+    signal?: AbortSignal,
+  ): Promise<ActorRef>;
 
   find(
     actorId: string,
-  ): Promise<ZLinkActor | undefined>;
+    signal?: AbortSignal,
+  ): Promise<ActorRef | undefined>;
 
   getOrCreate(
     actorId: string,
     actorType: string,
-  ): Promise<ZLinkActor>;
+    request?: ZLinkMessage,
+    signal?: AbortSignal,
+  ): Promise<ActorRef>;
+}
+
+export interface ZLinkActorGateway {
+  joinSpot(
+    actor: ActorRef,
+    spotRid: RoutingId,
+    request?: ZLinkMessage,
+  ): ZLinkActorJoinSpotCall;
+
+  joinEntrySpot(
+    actor: ActorRef,
+    spotNodeRid: RoutingId,
+    request?: ZLinkMessage,
+  ): ZLinkActorJoinEntrySpotCall;
 }
 ```
 

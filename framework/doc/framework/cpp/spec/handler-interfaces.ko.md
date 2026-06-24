@@ -62,8 +62,10 @@ commit하고 `on_actor_joined(actor)`를 호출한다. accepted가 `false`이면
 않고 post-joined callback도 호출하지 않는다. Entry Spot도 명시적 재진입
 (`join_entry_spot(node_rid, request)`)에 대해 같은 `on_actor_join(actor, zlink::framework::message_t)`
 admission을 선택적으로 둘 수 있고, 선언하지 않으면 재진입은 그대로 accept된다. actor
-최초 생성 직후 첫 Entry Spot 배치는 admission이 아니라 `onCreateActor(actor)`로만 처리하며,
+최초 생성 직후 첫 Entry Spot 배치는 admission이 아니라
+`onCreateActor(actor, createRequest)`로 처리하며,
 commit 이후 `on_actor_joined(actor)`와 `onLeaveActor(actor)`를 둔다.
+payload가 필요 없는 Entry Spot은 기존처럼 `onCreateActor(actor)`만 선언할 수 있다.
 
 create callback도 request를 단일 `zlink::framework::message_t`로 받는다. create result는 `existing`,
 `created`, `rejected` state와 optional reply `zlink::framework::message_t`를 담는다. `spot_context_t::close()`는

@@ -174,16 +174,18 @@ export interface ZLinkActorManager {
   create(
     actorId: string,
     actorType: string,
+    request?: ZLinkMessage,
     signal?: AbortSignal,
-  ): Promise<ZLinkActor>;
+  ): Promise<ActorRef>;
 
-  find(actorId: string, signal?: AbortSignal): Promise<ZLinkActor | undefined>;
+  find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
 
   getOrCreate(
     actorId: string,
     actorType: string,
+    request?: ZLinkMessage,
     signal?: AbortSignal,
-  ): Promise<ZLinkActor>;
+  ): Promise<ActorRef>;
 }
 
 export interface ZLinkSessionActor {

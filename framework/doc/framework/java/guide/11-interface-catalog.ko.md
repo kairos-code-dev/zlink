@@ -16,6 +16,7 @@
 | publish handler | `ZLinkPublishHandler<TEvent>` |
 | Spot 관리 | `ZLinkSpotManager` |
 | actor 관리 | `ZLinkActorManager` |
+| actor ref join | `ZLinkActorGateway` |
 | session | `ZLinkSession` |
 | actor push | `ZLinkBoundSession` |
 | connector | `ZLinkStreamConnector` |

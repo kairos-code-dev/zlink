@@ -9,13 +9,17 @@ SpotNode builder만 사용한다.
 
 - `SM-A1`: public `ZLinkSpotManager.getOrCreate`로 user spot을 생성하고 evidence로 확인한다.
 - `SM-A2`: public `ZLinkSpotOutbound.requestToSpot`으로 user spot state mutation을 검증한다.
+- `SM-A3`: `room-a`와 `room-b`가 각각 `play-a`와 `play-b`에서만 처리되는지 확인한다.
+- `SM-A4`: 같은 key가 같은 `RoutingId`와 같은 owner 노드로 반복 라우팅되는지 확인한다.
 - `SM-C1`: 외부 consumer의 public `ZLinkSpotOutbound`로 request, send, timeout, 미등록 packet
   negative path를 검증한다.
+- `SM-F1`: 외부 consumer가 RouteMesh 경로로 target spot에 도달하는지 확인한다.
+- `SM-F2`: RouteMesh 채널명이 target spot egress의 실제 channel 기준으로 동작하는지 확인한다.
+- `SM-F3`: 같은 RouteMesh에서 일반 spot route request와 one-way send가 함께 동작하는지 확인한다.
+- `SM-F4`: 존재하지 않는 route target이 timeout이 아닌 framework error로 실패하는지 확인한다.
 
 ## public API/harness 대기
 
-- `SM-A3`: 특정 spot id가 해당 owner 노드에서만 처리되는지 확인하는 독립 marker가 아직 없다.
-- `SM-A4`: key-to-routing-id owner mapping을 여러 key와 owner로 고정하는 scenario가 아직 없다.
 - `SM-A5`: Java E2E에는 Stage wrapper 계층이 아직 없다.
 - `SM-A6`: spot initialize/close lifecycle callback을 evidence로 고정하는 scenario가 아직 없다.
 - `SM-A7`: 같은 spot rid를 다른 spot type으로 다시 생성할 때의 public error를 단언하는 scenario가
@@ -54,11 +58,6 @@ SpotNode builder만 사용한다.
 - `SM-E2`: spot timer 발화와 효과를 검증하는 scenario가 아직 없다.
 - `SM-E3`: idle timer 기반 명시 close를 검증하는 scenario가 아직 없다.
 - `SM-E4`: timer overrun policy별 tick 처리 evidence를 검증하는 scenario가 아직 없다.
-- `SM-F1`: RouteMesh와 SpotMesh 자동 연결은 있지만, client/server channel to target spot egress를
-  독립 marker로 단언하는 scenario가 아직 없다.
-- `SM-F2`: route mesh channel to target spot egress를 독립 marker로 단언하는 scenario가 아직 없다.
-- `SM-F3`: 같은 channel에서 일반 packet과 spot route packet이 공존하는 분기 scenario가 아직 없다.
-- `SM-F4`: route 없음, ingress 거부, malformed spot route packet의 error 계약 scenario가 아직 없다.
 - `SM-F5`: spot routing 사용/중단과 channel socket lifecycle 독립성을 검증하는 scenario가 아직 없다.
 - `SM-G1`: play node crash와 재join/rebind 복구를 검증하는 kill/restart harness가 아직 없다.
 - `SM-G2`: scale-out 중 앱 주도 owner remap을 검증하는 harness가 아직 없다.

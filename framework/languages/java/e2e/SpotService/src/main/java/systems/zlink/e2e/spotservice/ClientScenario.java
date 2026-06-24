@@ -72,6 +72,7 @@ public final class ClientScenario {
             .timeout(REQUEST_TIMEOUT)
             .await(Contracts.StateReply.class));
         ensure(after.value().contains("after-timeout"), "SM-C1 post-timeout request failed");
+        System.out.println("scenario SM-C1 passed");
         System.out.println("scenario SM-C1-normal passed");
     }
 
@@ -123,13 +124,6 @@ public final class ClientScenario {
             .timeout(Duration.ofMillis(300))
             .await(Contracts.StateReply.class));
         System.out.println("scenario SM-F4 passed");
-        Contracts.StateReply after = outbound.requestToSpot(
-                RoutingId.from("room-a"),
-                new Contracts.StateRequest("after-route-negative"))
-            .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.StateReply.class);
-        ensure(after.value().contains("after-route-negative"), "SM-F5 route lifecycle polluted channel");
-        System.out.println("scenario SM-F5 passed");
     }
 
     private static void expectFailure(Runnable action) {

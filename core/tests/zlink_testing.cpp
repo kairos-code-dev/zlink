@@ -3,7 +3,6 @@
 #include "utils/precompiled.hpp"
 
 #include "api/service/service_api_internal.hpp"
-#include "services/actor/service_spot_actor_internal.hpp"
 #include "zlink_testing.hpp"
 #include "services/spot/runtime/spot_handle.hpp"
 #include "services/spot/node/spot_node.hpp"
@@ -40,8 +39,4 @@ void destroy_registered_spot_handle_for_testing (void *spot_)
     destroy_spot_handle_internal (spot);
 }
 
-int actor_stream_owner_set_for_testing (void *stream_, void *node_)
-{
-    return spot_actor_internal::set_stream_owner (stream_, node_);
-}
 }

@@ -98,6 +98,9 @@ struct actor_session_state_t
     bool has_binding_for_stream (void *stream_) const;
     void erase_bindings_for_stream (void *stream_);
     zlink::spot_node_t *stream_owner (void *stream_, const actor_node_registry_t &nodes_);
+    zlink::spot_node_t *stream_owner_for_actor_ref (void *stream_,
+                                                    const zlink_actor_ref_t &actor_ref_,
+                                                    const actor_node_registry_t &nodes_);
     void erase_stream_owner_if_unused (void *stream_);
     void clear_stream (void *stream_);
     void erase_stream_owners_for_node (zlink::spot_node_t *node_);

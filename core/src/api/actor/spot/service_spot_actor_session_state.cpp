@@ -267,6 +267,22 @@ zlink::spot_node_t *actor_session_state_t::stream_owner (void *stream_,
     return NULL;
 }
 
+zlink::spot_node_t *
+actor_session_state_t::stream_owner_for_actor_ref (void *stream_,
+                                                   const zlink_actor_ref_t &actor_ref_,
+                                                   const actor_node_registry_t &nodes_)
+{
+    zlink::spot_node_t *owner = stream_owner (stream_, nodes_);
+    if (owner || !valid_routing_id (&actor_ref_.node_rid))
+        return owner;
+    owner = nodes_.resolve_node_by_rid (actor_ref_.node_rid);
+    if (!owner)
+        owner = nodes_.find_unique_routed_node ();
+    if (owner)
+        stream_owners[stream_] = owner;
+    return owner;
+}
+
 void actor_session_state_t::erase_stream_owner_if_unused (void *stream_)
 {
     if (!stream_)

@@ -35,6 +35,7 @@ struct actor_node_registry_t
     zlink::spot_node_t *resolve_node_by_rid (const zlink_routing_id_t &rid_) const;
     bool known_node (zlink::spot_node_t *node_) const;
     zlink::spot_node_t *find_socket_owner (zlink::socket_base_t *socket_) const;
+    zlink::spot_node_t *find_unique_routed_node () const;
     void collect_actor_handles (std::vector<actor_handle_t *> *out_) const;
     actor_handle_t *find_unique_actor_by_id (const char *actor_id_, bool include_pending_) const;
 

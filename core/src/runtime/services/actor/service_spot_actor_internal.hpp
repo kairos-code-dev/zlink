@@ -11,7 +11,6 @@ namespace zlink
 namespace spot_actor_internal
 {
 int node_has_any_actor (void *node_);
-int set_stream_owner (void *stream_, void *node_);
 int process_gateway_delivery (void *node_,
                               const zlink_routing_id_t *source_node_rid_,
                               zlink_msg_t *parts_,

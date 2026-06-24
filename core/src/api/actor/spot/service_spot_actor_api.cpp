@@ -688,28 +688,10 @@ zlink::spot_node_t *stream_owner_locked (void *stream_)
 zlink::spot_node_t *stream_owner_for_actor_ref_locked (void *stream_,
                                                        const zlink_actor_ref_t *actor_ref_)
 {
-    zlink::spot_node_t *stream_owner = stream_owner_locked (stream_);
-    if (stream_owner || !actor_ref_ || !valid_routing_id (&actor_ref_->node_rid))
-        return stream_owner;
-    zlink::spot_node_t *actor_node = resolve_node_by_rid_locked (actor_ref_->node_rid);
-    stream_owner = actor_node;
-    if (!stream_owner) {
-        zlink::spot_node_t *only_routed_node = NULL;
-        for (std::set<zlink::spot_node_t *>::const_iterator it =
-               actor_runtime ().nodes.known_nodes.begin ();
-             it != actor_runtime ().nodes.known_nodes.end (); ++it) {
-            zlink::spot_node_t *candidate = *it;
-            if (!candidate || !candidate->routed_enabled ())
-                continue;
-            if (only_routed_node)
-                return NULL;
-            only_routed_node = candidate;
-        }
-        stream_owner = only_routed_node;
-    }
-    if (stream_owner)
-        actor_runtime ().sessions.stream_owners[stream_] = stream_owner;
-    return stream_owner;
+    if (!actor_ref_)
+        return stream_owner_locked (stream_);
+    return actor_runtime ().sessions.stream_owner_for_actor_ref (stream_, *actor_ref_,
+                                                                 actor_runtime ().nodes);
 }
 
 void erase_stream_owner_if_unused_locked (void *stream_)
@@ -1315,8 +1297,8 @@ zlink_request_result_t run_bind_operation_locked (actor_reply_operation_arg_t *a
         return ZLINK_REQUEST_INVALID_STATE;
     zlink::spot_node_t *stream_owner = stream_owner_for_actor_ref_locked (arg_->stream, &arg_->actor);
     if (!stream_owner) {
-        actor_runtime ().sessions.bind_actor_ref (arg_->stream, arg_->rid, arg_->actor);
-        return ZLINK_REQUEST_OK;
+        errno = ENOTCONN;
+        return ZLINK_REQUEST_INVALID_STATE;
     }
     if (is_remote_actor_ref_for_node (stream_owner, &arg_->actor)) {
         actor_runtime ().sessions.bind_actor_ref (arg_->stream, arg_->rid, arg_->actor);

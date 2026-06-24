@@ -162,6 +162,21 @@ zlink::spot_node_t *actor_node_registry_t::find_socket_owner (zlink::socket_base
     return NULL;
 }
 
+zlink::spot_node_t *actor_node_registry_t::find_unique_routed_node () const
+{
+    zlink::spot_node_t *only_routed_node = NULL;
+    for (std::set<zlink::spot_node_t *>::const_iterator node_it = known_nodes.begin ();
+         node_it != known_nodes.end (); ++node_it) {
+        zlink::spot_node_t *candidate = *node_it;
+        if (!candidate || !candidate->routed_enabled ())
+            continue;
+        if (only_routed_node)
+            return NULL;
+        only_routed_node = candidate;
+    }
+    return only_routed_node;
+}
+
 void actor_node_registry_t::collect_actor_handles (std::vector<actor_handle_t *> *out_) const
 {
     if (!out_)

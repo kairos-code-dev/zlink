@@ -199,6 +199,7 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --reg-1-router-endpoint "$REG1_ROUTER" \
   --reg-2-router-endpoint "$REG2_ROUTER" \
   --reg-3-router-endpoint "$REG3_ROUTER" \
+  --reg-1-pub-endpoint "$REG1_PUB" \
   --reg-2-pub-endpoint "$REG2_PUB" \
   --reg-2-peer-pub-endpoint "$REG1_PUB" \
   --reg-2-peer-pub-endpoint "$REG3_PUB" \

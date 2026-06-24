@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using DiscoveryRegistryHa.Shared;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -41,10 +42,32 @@ if (options.Role == "registry")
         }
     });
 }
-else if (options.Role == "provider")
+else if (options.Role == "provider" || options.Role == "embedded")
 {
+    if (options.Role == "embedded")
+    {
+        builder.Services.AddZLinkRegistry(registry =>
+        {
+            registry.RegistryId = options.RegistryId;
+            registry.PubEndpoint = Require(options.RegistryPubEndpoint, "--registry-pub-endpoint");
+            registry.RouterEndpoint = Require(options.RegistryRouterEndpoint, "--registry-router-endpoint");
+            registry.HeartbeatInterval = TimeSpan.FromMilliseconds(250);
+            registry.HeartbeatTimeout = TimeSpan.FromSeconds(2);
+            registry.BroadcastInterval = TimeSpan.FromMilliseconds(250);
+            foreach (var peer in options.PeerPubEndpoints)
+            {
+                registry.AddPeer(peer);
+            }
+        });
+    }
+
     builder.Services.AddZLinkFramework(framework =>
     {
+        if (options.Role == "embedded" && options.DiscoveryEndpoints.Count == 0)
+        {
+            framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
+        }
+
         foreach (var endpoint in options.DiscoveryEndpoints)
         {
             framework.UseDiscovery().AddRegistryEndpoint(endpoint);
@@ -69,13 +92,13 @@ else
 var app = builder.Build();
 app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
 app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
-app.MapGet("/registry/status", async (IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+app.MapGet("/registry/status", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
     Results.Ok(await query.StatusAsync(cancellationToken)));
-app.MapGet("/registry/topology", async (IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+app.MapGet("/registry/topology", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
     Results.Ok(await query.TopologyAsync(
         new ZLinkRegistryTopologyFilter(ChannelName: DiscoveryRegistryHaNames.Channel),
         cancellationToken)));
-app.MapGet("/registry/members", async (IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
+app.MapGet("/registry/members", async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
     Results.Ok(await query.MemberPeersAsync(DiscoveryRegistryHaNames.Channel, cancellationToken)));
 app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
 {

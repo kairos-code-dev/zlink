@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using DiscoveryRegistryHa.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -21,12 +23,17 @@ else if (options.Scenario == "cluster")
 {
     await RunDrA2Async(http, options);
     await RunDrA3Async(http, options);
+    await RunDrA4Async(http, options);
     await RunDrB1Async(http, options);
     await RunDrB2Async(http, options);
+    await RunDrB3Async(http, options);
     await RunDrD2Async(http, options);
     await RunDrD4Async(http, options);
+    await RunDrD1Async(options);
+    await RunDrD3Async(http, options);
     await RunDrC1Async(http, options);
     await RunDrC2Async(http, options);
+    await RunDrC3Async(http, options);
 }
 else
 {
@@ -134,6 +141,28 @@ static async Task RunDrB1Async(HttpClient http, ClientOptions options)
     Console.WriteLine("scenario DR-B1 passed");
 }
 
+static async Task RunDrA4Async(HttpClient http, ClientOptions options)
+{
+    var duplicateEndpoint = PickEndpoint();
+    var duplicateUrl = PickHttpUrl();
+    await using var duplicate = StartProvider(
+        options,
+        "api-a-duplicate",
+        "api-a",
+        duplicateUrl,
+        duplicateEndpoint,
+        options.Reg2RouterEndpoint);
+    await duplicate.WaitReadyAsync();
+    await Task.Delay(TimeSpan.FromSeconds(1));
+    using var host = CreateClientHost("client-dr-a4", options.LogDir, [options.Reg2RouterEndpoint]);
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    var reply = await RequestWithRetryAsync(client, "dr-a4", "dr-a4-rid-conflict", TimeSpan.FromSeconds(5));
+    Ensure(reply.ProviderRid == "api-a", "DR-A4 same-rid providers did not route as api-a.");
+    await host.StopAsync();
+    Console.WriteLine("scenario DR-A4 passed");
+}
+
 static async Task RunDrB2Async(HttpClient http, ClientOptions options)
 {
     using var host = CreateClientHost("client-dr-b2", options.LogDir, [options.Reg1RouterEndpoint, options.Reg2RouterEndpoint]);
@@ -143,6 +172,30 @@ static async Task RunDrB2Async(HttpClient http, ClientOptions options)
     Ensure(reply.ProviderRid is "api-a" or "api-b", "DR-B2 live registry endpoint did not keep messaging available.");
     await host.StopAsync();
     Console.WriteLine("scenario DR-B2 passed");
+}
+
+static async Task RunDrB3Async(HttpClient http, ClientOptions options)
+{
+    for (var i = 0; i < 2; i++)
+    {
+        await using var reg2 = StartRegistry(options, $"reg-2-flap-{i}");
+        await reg2.WaitReadyAsync();
+        await WaitForMembersAsync(http, options.Reg2Url, [options.ApiAEndpoint, options.ApiBEndpoint], expectedConnectedPeers: 2);
+        using var host = CreateClientHost($"client-dr-b3-{i}", options.LogDir, [options.Reg2RouterEndpoint]);
+        await host.StartAsync();
+        var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+        var reply = await RequestWithRetryAsync(client, "dr-b3", $"dr-b3-up-{i}", TimeSpan.FromSeconds(5));
+        Ensure(reply.ProviderRid is "api-a" or "api-b", "DR-B3 flapped registry did not route.");
+        await host.StopAsync();
+    }
+
+    using var survivorHost = CreateClientHost("client-dr-b3-survivor", options.LogDir, [options.Reg1RouterEndpoint]);
+    await survivorHost.StartAsync();
+    var survivor = survivorHost.Services.GetRequiredService<IZLinkChannelClient>();
+    var survivorReply = await RequestWithRetryAsync(survivor, "dr-b3", "dr-b3-survivor", TimeSpan.FromSeconds(5));
+    Ensure(survivorReply.ProviderRid is "api-a" or "api-b", "DR-B3 survivor registry did not route after flapping.");
+    await survivorHost.StopAsync();
+    Console.WriteLine("scenario DR-B3 passed");
 }
 
 static async Task RunDrC2Async(HttpClient http, ClientOptions options)
@@ -159,6 +212,43 @@ static async Task RunDrC2Async(HttpClient http, ClientOptions options)
     Console.WriteLine("scenario DR-C2 passed");
 }
 
+static async Task RunDrC3Async(HttpClient http, ClientOptions options)
+{
+    using var directHost = CreateClientHost("client-dr-c3-direct", options.LogDir, [options.Reg1RouterEndpoint]);
+    await directHost.StartAsync();
+    var direct = directHost.Services.GetRequiredService<IZLinkChannelClient>();
+    var before = await RequestWithRetryAsync(direct, "dr-c3", "dr-c3-before", TimeSpan.FromSeconds(5));
+    Ensure(before.ProviderRid is "api-a" or "api-b", "DR-C3 pre-outage request failed.");
+
+    await PostAsync(http, $"{options.Reg1Url}/shutdown");
+    await PostAsync(http, $"{options.Reg2Url}/shutdown");
+    await PostAsync(http, $"{options.Reg3Url}/shutdown");
+    var during = await RequestWithRetryAsync(direct, "dr-c3", "dr-c3-during", TimeSpan.FromSeconds(5));
+    Ensure(during.ProviderRid is "api-a" or "api-b", "DR-C3 established channel failed during registry outage.");
+    await directHost.StopAsync();
+
+    await using var reg2 = StartRegistry(options, "reg-2-after-all-outage");
+    await reg2.WaitReadyAsync();
+    var providerEndpoint = PickEndpoint();
+    var providerUrl = PickHttpUrl();
+    await using var provider = StartProvider(
+        options,
+        "api-c-after-all-outage",
+        "api-c",
+        providerUrl,
+        providerEndpoint,
+        options.Reg2RouterEndpoint);
+    await provider.WaitReadyAsync();
+    await WaitForMembersAsync(http, options.Reg2Url, [providerEndpoint], expectedConnectedPeers: 0);
+    using var recoveredHost = CreateClientHost("client-dr-c3-recovered", options.LogDir, [options.Reg2RouterEndpoint]);
+    await recoveredHost.StartAsync();
+    var recovered = recoveredHost.Services.GetRequiredService<IZLinkChannelClient>();
+    var after = await RequestWithRetryAsync(recovered, "dr-c3", "dr-c3-after", TimeSpan.FromSeconds(5));
+    Ensure(after.ProviderRid == "api-c", "DR-C3 recovered registry did not route to re-advertised provider.");
+    await recoveredHost.StopAsync();
+    Console.WriteLine("scenario DR-C3 passed");
+}
+
 static async Task RunDrD2Async(HttpClient http, ClientOptions options)
 {
     await WaitForMembersAsync(http, options.Reg1Url, [options.ApiAEndpoint, options.ApiBEndpoint], expectedConnectedPeers: 2);
@@ -169,6 +259,57 @@ static async Task RunDrD2Async(HttpClient http, ClientOptions options)
     Ensure(reply.ProviderRid is "api-a" or "api-b", "DR-D2 standalone registry deployment did not route.");
     await host.StopAsync();
     Console.WriteLine("scenario DR-D2 passed");
+}
+
+static async Task RunDrD1Async(ClientOptions options)
+{
+    var pubEndpoint = PickEndpoint();
+    var routerEndpoint = PickEndpoint();
+    var channelEndpoint = PickEndpoint();
+    var httpUrl = PickHttpUrl();
+    await using var embedded = StartEmbedded(
+        options,
+        "embedded-dr-d1",
+        "embedded-api",
+        httpUrl,
+        pubEndpoint,
+        routerEndpoint,
+        channelEndpoint,
+        []);
+    await embedded.WaitReadyAsync();
+    using var host = CreateClientHost("client-dr-d1", options.LogDir, [routerEndpoint]);
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    var reply = await RequestWithRetryAsync(client, "dr-d1", "dr-d1-embedded", TimeSpan.FromSeconds(5));
+    Ensure(reply.ProviderRid == "embedded-api", "DR-D1 embedded registry/provider did not route.");
+    await host.StopAsync();
+    Console.WriteLine("scenario DR-D1 passed");
+}
+
+static async Task RunDrD3Async(HttpClient http, ClientOptions options)
+{
+    var pubEndpoint = PickEndpoint();
+    var routerEndpoint = PickEndpoint();
+    var channelEndpoint = PickEndpoint();
+    var httpUrl = PickHttpUrl();
+    await using var embedded = StartEmbedded(
+        options,
+        "embedded-dr-d3",
+        "embedded-api-mixed",
+        httpUrl,
+        pubEndpoint,
+        routerEndpoint,
+        channelEndpoint,
+        [options.Reg1PubEndpoint]);
+    await embedded.WaitReadyAsync();
+    await WaitForMembersAsync(http, httpUrl, [options.ApiAEndpoint, options.ApiBEndpoint, channelEndpoint], expectedConnectedPeers: 1);
+    using var host = CreateClientHost("client-dr-d3", options.LogDir, [routerEndpoint]);
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    var reply = await RequestWithRetryAsync(client, "dr-d3", "dr-d3-mixed", TimeSpan.FromSeconds(5));
+    Ensure(reply.ProviderRid is "api-a" or "api-b" or "embedded-api-mixed", "DR-D3 mixed cluster did not route.");
+    await host.StopAsync();
+    Console.WriteLine("scenario DR-D3 passed");
 }
 
 static async Task RunDrD4Async(HttpClient http, ClientOptions options)
@@ -303,42 +444,108 @@ static async Task PostAsync(HttpClient http, string url)
 
 static DynamicProcess StartRegistry(ClientOptions options, string name)
 {
+    var arguments = new List<string>
+    {
+        "--role", "registry",
+        "--rid", "reg-2",
+        "--registry-id", "2",
+        "--http-url", options.Reg2Url,
+        "--registry-pub-endpoint", options.Reg2PubEndpoint,
+        "--registry-router-endpoint", options.Reg2RouterEndpoint,
+    };
+    foreach (var peer in options.Reg2PeerPubEndpoints)
+    {
+        arguments.Add("--peer-pub-endpoint");
+        arguments.Add(peer);
+    }
+    arguments.Add("--log-dir");
+    arguments.Add(options.LogDir);
+    return StartProcess(options, name, "reg-2", options.Reg2Url, arguments);
+}
+
+static DynamicProcess StartProvider(
+    ClientOptions options,
+    string name,
+    string rid,
+    string httpUrl,
+    string channelEndpoint,
+    string discoveryEndpoint)
+{
+    return StartProcess(
+        options,
+        name,
+        rid,
+        httpUrl,
+        [
+            "--role", "provider",
+            "--rid", rid,
+            "--http-url", httpUrl,
+            "--channel-endpoint", channelEndpoint,
+            "--discovery-endpoint", discoveryEndpoint,
+            "--evidence-file", Path.Combine(options.LogDir, $"{name}.evidence.log"),
+            "--log-dir", options.LogDir,
+        ]);
+}
+
+static DynamicProcess StartEmbedded(
+    ClientOptions options,
+    string name,
+    string rid,
+    string httpUrl,
+    string registryPubEndpoint,
+    string registryRouterEndpoint,
+    string channelEndpoint,
+    IReadOnlyList<string> peerPubEndpoints)
+{
+    var arguments = new List<string>
+    {
+        "--role", "embedded",
+        "--rid", rid,
+        "--registry-id", "10",
+        "--http-url", httpUrl,
+        "--registry-pub-endpoint", registryPubEndpoint,
+        "--registry-router-endpoint", registryRouterEndpoint,
+        "--channel-endpoint", channelEndpoint,
+        "--evidence-file", Path.Combine(options.LogDir, $"{name}.evidence.log"),
+        "--log-dir", options.LogDir,
+    };
+    foreach (var peer in peerPubEndpoints)
+    {
+        arguments.Add("--peer-pub-endpoint");
+        arguments.Add(peer);
+    }
+
+    return StartProcess(options, name, rid, httpUrl, arguments);
+}
+
+static DynamicProcess StartProcess(
+    ClientOptions options,
+    string name,
+    string environmentRid,
+    string healthUrl,
+    IReadOnlyList<string> arguments)
+{
     var startInfo = new ProcessStartInfo("dotnet")
     {
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false,
     };
-    startInfo.Environment["ZLINK_E2E_RID"] = "reg-2";
+    startInfo.Environment["ZLINK_E2E_RID"] = environmentRid;
     startInfo.ArgumentList.Add("run");
     startInfo.ArgumentList.Add("--project");
     startInfo.ArgumentList.Add(options.ServerProject);
     startInfo.ArgumentList.Add("--");
-    startInfo.ArgumentList.Add("--role");
-    startInfo.ArgumentList.Add("registry");
-    startInfo.ArgumentList.Add("--rid");
-    startInfo.ArgumentList.Add("reg-2");
-    startInfo.ArgumentList.Add("--registry-id");
-    startInfo.ArgumentList.Add("2");
-    startInfo.ArgumentList.Add("--http-url");
-    startInfo.ArgumentList.Add(options.Reg2Url);
-    startInfo.ArgumentList.Add("--registry-pub-endpoint");
-    startInfo.ArgumentList.Add(options.Reg2PubEndpoint);
-    startInfo.ArgumentList.Add("--registry-router-endpoint");
-    startInfo.ArgumentList.Add(options.Reg2RouterEndpoint);
-    foreach (var peer in options.Reg2PeerPubEndpoints)
+    foreach (var argument in arguments)
     {
-        startInfo.ArgumentList.Add("--peer-pub-endpoint");
-        startInfo.ArgumentList.Add(peer);
+        startInfo.ArgumentList.Add(argument);
     }
-    startInfo.ArgumentList.Add("--log-dir");
-    startInfo.ArgumentList.Add(options.LogDir);
 
     var process = Process.Start(startInfo)
-        ?? throw new InvalidOperationException("Failed to start recovered reg-2.");
+        ?? throw new InvalidOperationException($"Failed to start {name}.");
     _ = CopyToFileAsync(process.StandardOutput, Path.Combine(options.LogDir, $"{name}.stdout.log"));
     _ = CopyToFileAsync(process.StandardError, Path.Combine(options.LogDir, $"{name}.stderr.log"));
-    return new DynamicProcess(process, options.Reg2Url);
+    return new DynamicProcess(process, healthUrl);
 }
 
 static async Task CopyToFileAsync(StreamReader reader, string path)
@@ -397,6 +604,19 @@ static void Ensure(bool condition, string message)
     }
 }
 
+static string PickEndpoint() => $"tcp://127.0.0.1:{PickPort()}";
+
+static string PickHttpUrl() => $"http://127.0.0.1:{PickPort()}";
+
+static int PickPort()
+{
+    var listener = new TcpListener(IPAddress.Loopback, 0);
+    listener.Start();
+    var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+    listener.Stop();
+    return port;
+}
+
 internal sealed record ClientOptions(
     string Scenario,
     string LogDir,
@@ -406,6 +626,7 @@ internal sealed record ClientOptions(
     string Reg1RouterEndpoint,
     string Reg2RouterEndpoint,
     string Reg3RouterEndpoint,
+    string Reg1PubEndpoint,
     string Reg2PubEndpoint,
     string[] Reg2PeerPubEndpoints,
     string ApiAEndpoint,
@@ -452,6 +673,7 @@ internal sealed record ClientOptions(
             Reg1RouterEndpoint: Get("--reg-1-router-endpoint"),
             Reg2RouterEndpoint: Get("--reg-2-router-endpoint"),
             Reg3RouterEndpoint: Get("--reg-3-router-endpoint"),
+            Reg1PubEndpoint: Get("--reg-1-pub-endpoint"),
             Reg2PubEndpoint: Get("--reg-2-pub-endpoint"),
             Reg2PeerPubEndpoints: GetMany("--reg-2-peer-pub-endpoint"),
             ApiAEndpoint: Get("--api-a-endpoint"),

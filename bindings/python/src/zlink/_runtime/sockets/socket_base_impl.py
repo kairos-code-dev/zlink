@@ -58,14 +58,7 @@ from ..messaging.request_reply import (
     _prepare_native_parts,
     _timeout_to_ms,
 )
-from ..service.spot import (
-    _actor_id_bytes,
-    _actor_ref_to_native,
-    _close_native_parts_array as _spot_close_native_parts_array,
-    _clone_payload as _spot_clone_payload,
-    _prepare_native_parts as _spot_prepare_native_parts,
-    _timeout_to_ms as _spot_timeout_to_ms,
-)
+from .router_spot_support import RouterSpotSupport
 from .socket_base import (
     _BindSocket,
     _DealerOptionSocket,
@@ -89,6 +82,7 @@ from .socket_base import (
     _part_flag,
     _submit_parts,
 )
+from .stream_actor_support import StreamActorSupport
 
 
 _NO_PAYLOAD = object()
@@ -402,11 +396,10 @@ class RouterSocket(
         super().__init__(context)
         self._request_reply_handler = _REPLY_HANDLER(self._on_request_reply)
         self._pending_requests = {}
-        self._spot_request_pending = {}
-        self._spot_request_reply_handler = None
+        self._spot_support = RouterSpotSupport(self)
         self._request_progress = _RequestProgressPump(
             lambda: self._handle,
-            lambda: bool(self._pending_requests) or bool(self._spot_request_pending),
+            lambda: bool(self._pending_requests) or self._spot_support.has_pending(),
         )
 
     @property
@@ -633,44 +626,9 @@ class RouterSocket(
         )
 
     def _send_to_spot_payload(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
-        try:
-            native_parts = _spot_clone_payload(payload)
-            native_node = _copy_routing_id(dest_node_rid)
-            native_spot = _copy_routing_id(dest_spot_rid)
-            rc, err = _submit_parts(
-                native_parts,
-                lambda part_ptr, part_flag: lib().zlink_router_send_spot_part(
-                    self._handle,
-                    ctypes.byref(native_node),
-                    ctypes.byref(native_spot),
-                    part_ptr,
-                    int(flags),
-                    part_flag,
-                ),
-            )
-            if rc != 0:
-                _raise_result_error(SubmitError, SubmitResult, rc, err)
-            return True
-        except SubmitError as ex:
-            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
-
-    def _ensure_spot_reply_handler(self):
-        if self._spot_request_reply_handler is None:
-            self._spot_request_reply_handler = _REPLY_HANDLER(self._on_spot_reply)
-        return self._spot_request_reply_handler
-
-    def _on_spot_reply(self, result_code, parts, part_count, userdata):
-        handle = ctypes.cast(userdata, ctypes.c_void_p).value
-        pending = self._spot_request_pending.pop(handle, None)
-        if pending is None:
-            return
-        result = _request_result_from_code(int(result_code))
-        reply = []
-        if result == RequestResult.OK:
-            reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_native_errno(result))
+        return self._spot_support.send_to_spot(
+            dest_node_rid, dest_spot_rid, payload, flags=flags
+        )
 
     def _on_request_reply(self, result_code, parts, part_count, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
@@ -751,39 +709,14 @@ class RouterSocket(
         )
 
     def _request_to_spot_callback_payload(self, dest_node_rid, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
-        native_parts = _spot_clone_payload(payload)
-        native_node = _copy_routing_id(dest_node_rid)
-        native_spot = _copy_routing_id(dest_spot_rid)
-        reply_handler = self._ensure_spot_reply_handler()
-
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        self._spot_request_pending[handle] = pending
-        try:
-            rc, err = _submit_parts(
-                native_parts,
-                lambda part_ptr, part_flag: lib().zlink_router_request_spot_part(
-                    self._handle,
-                    ctypes.byref(native_node),
-                    ctypes.byref(native_spot),
-                    part_ptr,
-                    reply_handler,
-                    ctypes.c_void_p(handle),
-                    int(flags),
-                    part_flag,
-                    _spot_timeout_to_ms(timeout),
-                ),
-            )
-            if rc != 0:
-                self._spot_request_pending.pop(handle, None)
-                _raise_result_error(SubmitError, SubmitResult, rc, err)
-            self._request_progress.ensure_running()
-            return True
-        except SubmitError as ex:
-            self._spot_request_pending.pop(handle, None)
-            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
+        return self._spot_support.request_to_spot(
+            dest_node_rid,
+            dest_spot_rid,
+            payload,
+            callback,
+            flags=flags,
+            timeout=timeout,
+        )
 
     def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq):
         from ..service.spot import ReplyOp
@@ -795,27 +728,17 @@ class RouterSocket(
         )
 
     def _reply_to_spot_payload(self, dest_node_rid, dest_spot_rid, request_seq, payload, *, flags=0):
-        _ensure_reply_flags_supported(flags)
-        native_parts = _spot_clone_payload(payload)
-        native_node = _copy_routing_id(dest_node_rid)
-        native_spot = _copy_routing_id(dest_spot_rid)
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_router_reply_spot_part(
-                self._handle,
-                ctypes.byref(native_node),
-                ctypes.byref(native_spot),
-                ctypes.c_uint64(request_seq),
-                part_ptr,
-                part_flag,
-            ),
+        return self._spot_support.reply_to_spot(
+            dest_node_rid,
+            dest_spot_rid,
+            request_seq,
+            payload,
+            flags=flags,
         )
-        if rc != 0:
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
 
     def close(self):
         self._cancel_pending_requests(RequestResult.TERMINATED)
-        self._cancel_spot_pending_requests(RequestResult.TERMINATED)
+        self._spot_support.cancel(RequestResult.TERMINATED)
         super().close()
 
     def _cancel_pending_requests(self, result):
@@ -827,16 +750,6 @@ class RouterSocket(
                 except Exception:
                     _report_unhandled_callback_exception(pending.callback)
 
-    def _cancel_spot_pending_requests(self, result):
-        for handle, pending in list(self._spot_request_pending.items()):
-            self._spot_request_pending.pop(handle, None)
-            if pending.callback is not None:
-                try:
-                    pending.callback(result, [])
-                except Exception:
-                    _report_unhandled_callback_exception(pending.callback)
-
-
 class StreamSocket(
     _SendReadySocket,
     _BindSocket,
@@ -845,6 +758,10 @@ class StreamSocket(
     _RoutedMessageSocket,
 ):
     _socket_type_value = SocketType.STREAM
+
+    def __init__(self, context):
+        super().__init__(context)
+        self._actor_support = StreamActorSupport(self)
 
     def send(self, routing_id):
         from ..service.spot import SendOp
@@ -863,9 +780,7 @@ class StreamSocket(
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
     def attach_actor_gateway(self, node):
-        rc = lib().zlink_stream_attach_actor_gateway(self._handle, node._handle)
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        self._actor_support.attach_gateway(node)
 
     def bind_actor(self, session_rid, actor):
         """Async Actor bind. The stream is bound to its session/actor mapping
@@ -892,104 +807,23 @@ class StreamSocket(
         )
 
     def _send_bound_actor_submit(self, session_rid, actor_id, parts, flags):
-        native_session = _copy_routing_id(session_rid)
-        native_parts = _spot_clone_payload(parts)
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_stream_send_bound_actor_part(
-                self._handle,
-                ctypes.byref(native_session),
-                _actor_id_bytes(actor_id),
-                part_ptr,
-                int(flags),
-                part_flag,
-            ),
+        return self._actor_support.send_bound_actor(
+            session_rid, actor_id, parts, flags
         )
-        if rc != 0:
-            if int(flags) & 1 and rc == int(SubmitResult.BACKPRESSURED):
-                return False
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
-        return True
 
     def _submit_bind_actor(self, session_rid, actor_ref, pending, timeout):
-        from ..service.spot import _PendingRequest  # local import to avoid cycle
-
-        native_session = _copy_routing_id(session_rid)
-        native_actor = _actor_ref_to_native(actor_ref)
-        handle = id(pending)
-        if not hasattr(self, "_actor_request_pending"):
-            self._actor_request_pending = {}
-        if not hasattr(self, "_actor_reply_handler"):
-            self._actor_reply_handler = None
-        self._actor_request_pending[handle] = pending
-        if self._actor_reply_handler is None:
-            self._actor_reply_handler = _REPLY_HANDLER(self._on_actor_reply)
-        rc = lib().zlink_stream_bind_actor(
-            self._handle,
-            ctypes.byref(native_session),
-            ctypes.byref(native_actor),
-            self._actor_reply_handler,
-            ctypes.c_void_p(handle),
-            _spot_timeout_to_ms(timeout),
+        self._actor_support.submit_bind_actor(
+            session_rid, actor_ref, pending, timeout
         )
-        if rc != 0:
-            self._actor_request_pending.pop(handle, None)
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
 
     def _submit_unbind_actor(self, session_rid, actor_id, pending, timeout):
-        native_session = _copy_routing_id(session_rid)
-        handle = id(pending)
-        if not hasattr(self, "_actor_request_pending"):
-            self._actor_request_pending = {}
-        if not hasattr(self, "_actor_reply_handler"):
-            self._actor_reply_handler = None
-        self._actor_request_pending[handle] = pending
-        if self._actor_reply_handler is None:
-            self._actor_reply_handler = _REPLY_HANDLER(self._on_actor_reply)
-        rc = lib().zlink_stream_unbind_actor(
-            self._handle,
-            ctypes.byref(native_session),
-            _actor_id_bytes(actor_id),
-            self._actor_reply_handler,
-            ctypes.c_void_p(handle),
-            _spot_timeout_to_ms(timeout),
+        self._actor_support.submit_unbind_actor(
+            session_rid, actor_id, pending, timeout
         )
-        if rc != 0:
-            self._actor_request_pending.pop(handle, None)
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-
-    def _on_actor_reply(self, result_code, parts, part_count, userdata):
-        handle = ctypes.cast(userdata, ctypes.c_void_p).value
-        pending = self._actor_request_pending.pop(handle, None)
-        if pending is None:
-            return
-        result = _request_result_from_code(int(result_code))
-        reply = []
-        if result == RequestResult.OK:
-            reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_native_errno(result))
 
     def bound_actors(self, session_rid):
         """Snapshot of Actor refs attached to the given session."""
-        from ..._native.ffi import ZlinkActorRef as _Ref
-        from ..service.spot import _actor_ref_from_native
-
-        native_session = _copy_routing_id(session_rid)
-        count = ctypes.c_size_t()
-        rc = lib().zlink_stream_bound_actors(
-            self._handle, ctypes.byref(native_session), None, ctypes.byref(count)
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        if count.value == 0:
-            return []
-        entries = (_Ref * int(count.value))()
-        rc = lib().zlink_stream_bound_actors(
-            self._handle, ctypes.byref(native_session), entries, ctypes.byref(count)
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return [_actor_ref_from_native(entry) for entry in entries[: int(count.value)]]
+        return self._actor_support.bound_actors(session_rid)
 
     def on_packet(self, handler):
         if handler is None:

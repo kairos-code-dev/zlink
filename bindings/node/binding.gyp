@@ -9,6 +9,8 @@
         "native/src/addon_core_perf.cc",
         "native/src/addon_discovery.cc",
         "native/src/addon_exports.cc",
+        "native/src/addon_spot_actors.cc",
+        "native/src/addon_spot_actor_values.cc",
         "native/src/addon_spot.cc",
         "native/src/addon_spot_request_callbacks.cc"
       ],

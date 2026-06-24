@@ -24,6 +24,7 @@ public final class ClientScenario {
             case "normal" -> runNormal();
             case "owner" -> runOwnerRouting();
             case "route-mesh" -> runRouteMesh();
+            case "worker" -> runWorkerOffload();
             default -> throw new IllegalArgumentException("unknown client mode " + mode);
         }
     }
@@ -125,6 +126,22 @@ public final class ClientScenario {
             .timeout(Duration.ofMillis(300))
             .await(Contracts.StateReply.class));
         System.out.println("scenario SM-F4 passed");
+    }
+
+    private void runWorkerOffload() {
+        eventually(() -> outbound.requestToSpot(
+                RoutingId.from("room-a"),
+                new Contracts.StateRequest("worker-start"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.StateReply.class));
+        Contracts.StateReply followUp = eventually(() -> outbound.requestToSpot(
+                RoutingId.from("room-a"),
+                new Contracts.StateRequest("worker-follow-up"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.StateReply.class));
+        ensure(followUp.value().contains("worker-follow-up"),
+            "SM-A8 follow-up state was not applied");
+        System.out.println("scenario SM-A8 passed");
     }
 
     private static void expectFailure(Runnable action) {

@@ -11,8 +11,7 @@ using Zlink.Framework.Contracts.Spots;
 namespace DeliveryDispatch.Server.Tracking;
 
 internal sealed class EnsureCustomerActorHandler(
-    IZLinkActorManager actors,
-    SampleTopology topology)
+    IZLinkActorManager actors)
     : IZLinkRequestHandler<EnsureCustomerActor, CustomerActorEnsured>
 {
     public async ValueTask<CustomerActorEnsured> HandleAsync(
@@ -21,23 +20,18 @@ internal sealed class EnsureCustomerActorHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var joined = await actors.JoinEntrySpotAsync(
+        var actor = await actors.GetOrCreateAsync(
             request.CustomerId,
             SampleNames.CustomerActorType,
-            topology.TrackingSpotNodeRid,
             request,
             cancellationToken);
-        if (!joined.Accepted)
-        {
-            throw new InvalidOperationException($"Entry spot actor join was rejected: {request.CustomerId}");
-        }
 
         return new CustomerActorEnsured(
             request.CustomerId,
             new ActorRefSnapshot(
-                joined.Actor.NodeRid.ToString(),
-                joined.Actor.ActorId,
-                joined.Actor.Generation));
+                actor.NodeRid.ToString(),
+                actor.ActorId,
+                actor.Generation));
     }
 }
 

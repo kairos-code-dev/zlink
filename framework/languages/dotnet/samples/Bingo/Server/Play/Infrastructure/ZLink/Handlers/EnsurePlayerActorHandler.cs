@@ -24,17 +24,11 @@ internal sealed class EnsurePlayerActorHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var joined = await actors.JoinEntrySpotAsync(
+        var actor = await actors.GetOrCreateAsync(
                 request.ActorId,
                 SampleNames.PlayerActorType,
-                RoutingId.From(request.PreferredActorNodeRid),
                 request,
-                cancellationToken)
-            ;
-        if (!joined.Accepted)
-        {
-            throw new InvalidOperationException($"Entry spot actor join was rejected: {request.ActorId}");
-        }
+                cancellationToken);
 
         return new EnsurePlayerActorRes
         {
@@ -42,9 +36,9 @@ internal sealed class EnsurePlayerActorHandler(
             ActorType = SampleNames.PlayerActorType,
             Actor = new ActorRefSnapshot
             {
-                NodeRid = joined.Actor.NodeRid.ToString(),
-                ActorId = joined.Actor.ActorId,
-                Generation = joined.Actor.Generation,
+                NodeRid = actor.NodeRid.ToString(),
+                ActorId = actor.ActorId,
+                Generation = actor.Generation,
             },
         };
     }

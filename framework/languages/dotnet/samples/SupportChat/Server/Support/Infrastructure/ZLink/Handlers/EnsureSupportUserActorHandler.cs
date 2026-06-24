@@ -11,8 +11,7 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 
 [ZLinkHandlerGroup("support")]
 internal sealed class EnsureSupportUserActorHandler(
-    IZLinkActorManager actors,
-    SampleTopology topology)
+    IZLinkActorManager actors)
     : IZLinkRequestHandler<EnsureSupportUserActorReq, EnsureSupportUserActorRes>
 {
     public async ValueTask<EnsureSupportUserActorRes> HandleAsync(
@@ -26,18 +25,13 @@ internal sealed class EnsureSupportUserActorHandler(
             return ToResponse(existing);
         }
 
-        var joined = await actors.JoinEntrySpotAsync(
+        var actor = await actors.GetOrCreateAsync(
                 request.ActorId,
                 SampleNames.SupportActorType,
-                topology.SupportEntryRid,
                 request,
             cancellationToken);
-        if (!joined.Accepted)
-        {
-            throw new InvalidOperationException($"Entry spot actor join was rejected: {request.ActorId}");
-        }
 
-        return ToResponse(joined.Actor);
+        return ToResponse(actor);
     }
 
     private static EnsureSupportUserActorRes ToResponse(ActorRef actor)

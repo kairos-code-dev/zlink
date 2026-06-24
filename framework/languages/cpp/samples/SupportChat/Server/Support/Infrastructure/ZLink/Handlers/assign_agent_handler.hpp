@@ -36,7 +36,7 @@ class assign_agent_handler_t
         }
         auto &actor = support_actor_directory_t::shared ().get (candidate->actor_id);
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (
-          std::string (sample_names_t::conversation_spot_node) + ":"
+          std::string (sample_names_t::support_spot_node) + ":"
           + request.conversation_id);
         auto joined = co_await actor.context
                         .join_spot (spot_rid,

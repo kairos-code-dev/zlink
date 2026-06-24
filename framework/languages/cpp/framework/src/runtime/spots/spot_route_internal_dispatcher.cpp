@@ -86,13 +86,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                   relayed.error_kind (),
                   relayed.error () ? relayed.error ()->what () : "remote actor packet failed");
             }
-            auto current_actor_ref = actor_ref;
-            if (auto current_actor =
-                  actor_gateway.manager ().find (std::string (actor_ref.actor_id ()))) {
-                current_actor_ref = current_actor->ref ();
-            } else {
-                current_actor_ref = runtime.current_actor_ref (actor_ref).value_or (actor_ref);
-            }
+            auto current_actor_ref = runtime.current_actor_ref (actor_ref).value_or (actor_ref);
+            (void) actor_gateway.update_actor_ref (current_actor_ref);
             auto reply = spot_actor_packet_route_reply_t{
               .actor_ref_present = true,
               .actor_node_rid = std::string (current_actor_ref.node_rid ().value ()),
@@ -128,9 +123,14 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
         auto runtime = _runtime;
         auto actor_ref = actor_ref_from_spot_route (request);
         bind_actor_route (actor_ref, header, received);
-        auto joined = runtime.join_remote_actor_to_spot_erased (
-          actor_ref, spot_rid_t::from_string (request.spot_rid),
-          zlink::message_t::from (request.payload), _actor_gateway.actor_context (actor_ref));
+        auto joined = request.spot_rid.empty ()
+                        ? runtime.join_actor_to_entry_spot_erased (
+                            actor_ref, actor_ref.node_rid (),
+                            zlink::message_t::from (request.payload))
+                        : runtime.join_remote_actor_to_spot_erased (
+                            actor_ref, spot_rid_t::from_string (request.spot_rid),
+                            zlink::message_t::from (request.payload),
+                            _actor_gateway.actor_context (actor_ref));
         if (!joined) {
             return result_t<zlink::message_t>::failure (
               joined.error_kind (),

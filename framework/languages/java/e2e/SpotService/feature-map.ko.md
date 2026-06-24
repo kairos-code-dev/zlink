@@ -15,6 +15,8 @@ SpotNode builder만 사용한다.
   close했을 때 closing evidence가 남는지 확인한다.
 - `SM-A7`: 이미 만든 spot rid를 다른 spot 타입으로 `getOrCreate`할 때 public configuration error로
   거부되고, 기존 spot이 같은 타입으로 계속 조회되는지 확인한다.
+- `SM-A8`: public `context.runWorker`로 긴 작업을 spot 직렬 루프 밖에서 실행하는 동안 같은 spot의
+  후속 request가 막히지 않고, 완료 callback이 spot state/evidence를 안전하게 갱신하는지 확인한다.
 - `SM-C1`: 외부 consumer의 public `ZLinkSpotOutbound`로 request, send, timeout, 미등록 packet
   negative path를 검증한다.
 - `SM-E1`: handler 없는 spot route request/send가 error/drop 경로를 타고 dispatch observer evidence를
@@ -29,7 +31,6 @@ SpotNode builder만 사용한다.
 ## public API/harness 대기
 
 - `SM-A5`: Java E2E에는 Stage wrapper 계층이 아직 없다.
-- `SM-A8`: worker offload와 spot 직렬성 유지를 함께 단언하는 scenario가 아직 없다.
 - `SM-B1`: local actor join과 lifecycle callback을 검증하는 scenario가 아직 없다.
 - `SM-B2`: remote actor join과 cross-node mailbox 실행을 검증하는 scenario가 아직 없다.
 - `SM-B3`: actor join/request payload fidelity를 검증하는 scenario가 아직 없다.

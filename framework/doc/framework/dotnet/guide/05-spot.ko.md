@@ -56,6 +56,9 @@ flowchart LR
     end
     nA <==>|"같은 channel → 자동 연결<br/>(router · pub/sub mesh)"| nB
   end
+  style ch1 stroke:#546e7a,stroke-width:2px
+  style nA stroke:#1565c0,stroke-width:3px
+  style nB stroke:#1565c0,stroke-width:3px
 ```
 
 - **Spot 은 `SpotNode` 안에 산다.** 특정 service 에 매달리는 게 아니라, 자신을
@@ -149,6 +152,7 @@ flowchart LR
   classDef bridge fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
   class fRouter,fPubSub,rsock,psock ownMesh;
   class fClient,csock bridge;
+  style node stroke:#1565c0,stroke-width:3px
 ```
 
 > 🟦 **파란(사각)** = 이 노드가 **자기 SPOT channel mesh** 에 참여하는 소켓 —
@@ -617,6 +621,8 @@ flowchart LR
   rA <==>|"이미 연결됨: 양쪽 EnableRouter + discovery<br/>spot packet: SendToSpot / RequestToSpot"| rB
   api["외부 코드<br/>(routeClient / publisherClient)"] -->|"자동(RouteMesh · SpotMesh pub colocation)<br/>spot packet · topic"| rA
   strm["STREAM 노드<br/>(client session)"] -->|"gateway 자동 연결(같은 프로세스 SpotNode)<br/>actor packet: actorRef.RelayAsync"| rA
+  style nodeA stroke:#1565c0,stroke-width:3px
+  style nodeB stroke:#1565c0,stroke-width:3px
 ```
 
 종류별 함수·handler·배선을 한 표로 모으면 다음과 같다.
@@ -757,6 +763,8 @@ flowchart LR
   end
   c ==>|"① request (target=spotRid → 소유 노드로 resolve)"| sp
   sp -.->|"② reply"| h
+  style sn stroke:#1565c0,stroke-width:3px
+  style ext stroke:#e65100,stroke-width:3px
 ```
 
 ```csharp

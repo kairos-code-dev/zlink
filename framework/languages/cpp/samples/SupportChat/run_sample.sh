@@ -177,8 +177,6 @@ wait_port support-channel "$SUPPORT_CHANNEL_ENDPOINT"
 wait_port support-router "$SUPPORT_ROUTER_ENDPOINT"
 wait_port support-actor-route "$SUPPORT_ACTOR_ROUTE_ENDPOINT"
 wait_port support-spot "$SUPPORT_SPOT_ENDPOINT"
-wait_port conversation-router "$CONVERSATION_SPOT_ROUTER_ENDPOINT"
-wait_port conversation-spot "$CONVERSATION_SPOT_ENDPOINT"
 
 start_server api "$API_BIN"
 wait_port api-channel "$API_CHANNEL_ENDPOINT"

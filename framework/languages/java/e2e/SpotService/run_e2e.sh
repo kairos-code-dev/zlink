@@ -76,6 +76,24 @@ finally:
 PY
 }
 
+reserve_client_endpoints() {
+  python3 - <<'PY'
+import socket
+sockets = []
+endpoints = []
+try:
+    for _ in range(2):
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sockets.append(sock)
+        endpoints.append(f"tcp://127.0.0.1:{sock.getsockname()[1]}")
+    print(" ".join(endpoints))
+finally:
+    for sock in sockets:
+        sock.close()
+PY
+}
+
 port_of() {
   echo "${1##*:}"
 }
@@ -188,28 +206,46 @@ sleep 2
 
 run_client_mode() {
   local mode="$1"
-  ZLINK_JAVA_E2E_ROLE=client \
-  ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
-  ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_CLIENT}" \
-  ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
-  ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
-  ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_CLIENT}" \
-  ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
-  ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
-  ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
-  cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
-  cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
+  local route_client
+  local spot_client
+  local attempt
+  for attempt in $(seq 1 5); do
+    read -r route_client spot_client <<<"$(reserve_client_endpoints)"
+    if ZLINK_JAVA_E2E_ROLE=client \
+      ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
+      ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route_client}" \
+      ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
+      ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
+      ZLINK_JAVA_E2E_SPOT_ENDPOINT="${spot_client}" \
+      ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
+      ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
+      ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
+      ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"; then
+      cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
+      cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
+      return 0
+    fi
+    if ! grep -q "ZlinkBindException" "${log_dir}/client-${mode}.stdout.log" "${log_dir}/client-${mode}.stderr.log"; then
+      cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
+      cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
+      return 1
+    fi
+    cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
+    cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
+    sleep 1
+  done
+  return 1
 }
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal missing timeout owner route-mesh; do
+for mode in state1 state2 send normal worker missing timeout owner route-mesh; do
   run_client_mode "${mode}"
   sleep 2
 done
+sleep 2
 assert_type_mismatch "${HTTP_A}" room-a
 echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
 echo "scenario SM-E2 passed" >>"${log_dir}/client.stdout.log"
@@ -226,3 +262,6 @@ grep -q "SpotClosing" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTypeMismatch" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTypeMismatchStateOk" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTimer" "${log_dir}/play-a-evidence.json"
+grep -q "WorkerStarted" "${log_dir}/play-a-evidence.json"
+grep -q "WorkerFollowUpBeforeComplete" "${log_dir}/play-a-evidence.json"
+grep -q "WorkerCompleted" "${log_dir}/play-a-evidence.json"

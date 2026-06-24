@@ -54,7 +54,7 @@ class support_entry_spot_t : public zlink::framework::entry_spot_t
               open_conversation_api_req_t{actor.actor_id (), actor.display_name, request.subject})
             .async<open_conversation_api_res_t> ();
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (
-          std::string (sample_names_t::conversation_spot_node) + ":"
+          std::string (sample_names_t::support_spot_node) + ":"
           + opened.conversation_id);
         auto joined = co_await actor.context
                         .join_spot (spot_rid,

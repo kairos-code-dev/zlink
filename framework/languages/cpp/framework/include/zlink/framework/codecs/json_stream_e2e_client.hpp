@@ -13,6 +13,7 @@ namespace zlink::stream_e2e_client::codecs
 {
 
 using zlink::stream_connector::metadata_t;
+using zlink::stream_connector::packet_t;
 using zlink::stream_connector::result_t;
 using zlink::stream_connector::codecs::codec_traits;
 using zlink::stream_connector::codecs::encode_packet;
@@ -127,6 +128,75 @@ class coroutine_auto_request_call_t
     coroutine_request_call_t _inner;
 };
 
+template <typename TMessage> class coroutine_auto_wait_call_t
+{
+  public:
+    explicit coroutine_auto_wait_call_t (coroutine_wait_call_t<packet_t> inner) :
+        _inner (std::move (inner))
+    {
+    }
+
+    coroutine_auto_wait_call_t &packet_name (std::string name)
+    {
+        _inner.packet_name (std::move (name));
+        return *this;
+    }
+
+    coroutine_auto_wait_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        _inner.timeout (timeout);
+        return *this;
+    }
+
+    coroutine_auto_wait_call_t &where (std::function<bool (const TMessage &)> predicate)
+    {
+        _inner.where ([predicate = std::move (predicate)] (const packet_t &packet) {
+            return predicate (codec_traits<TMessage>::decode (packet.payload));
+        });
+        return *this;
+    }
+
+    template <typename TValue, typename TExpected>
+    coroutine_auto_wait_call_t &where (TValue TMessage::*member, TExpected &&expected)
+    {
+        return where ([member, expected = std::forward<TExpected> (expected)] (
+                        const TMessage &message) { return message.*member == expected; });
+    }
+
+    result_t<TMessage> submit ()
+    {
+        auto result = _inner.submit ();
+        if (!result) {
+            return result_t<TMessage>::failure (
+              result.error_code (),
+              result.error () ? result.error ()->message : "stream wait failed");
+        }
+        return result_t<TMessage>::success (codec_traits<TMessage>::decode (result.value ().payload));
+    }
+
+    task_t<TMessage> async ()
+    {
+        auto task = task_t<TMessage> (
+          [inner = std::move (_inner)] (std::function<void (result_t<TMessage>)> callback) mutable {
+              inner.submit ([callback = std::move (callback)] (result_t<packet_t> result) mutable {
+                  if (!result) {
+                      callback (result_t<TMessage>::failure (
+                        result.error_code (),
+                        result.error () ? result.error ()->message : "stream wait failed"));
+                      return;
+                  }
+                  callback (result_t<TMessage>::success (
+                    codec_traits<TMessage>::decode (result.value ().payload)));
+              });
+          });
+        task.start ();
+        return task;
+    }
+
+  private:
+    coroutine_wait_call_t<packet_t> _inner;
+};
+
 template <typename T>
 coroutine_auto_send_call_t send (coroutine_connector_t &connector, const T &payload)
 {
@@ -137,6 +207,21 @@ template <typename TRequest>
 coroutine_auto_request_call_t request (coroutine_connector_t &connector, const TRequest &payload)
 {
     return coroutine_auto_request_call_t (connector.request (encode_packet (payload)));
+}
+
+template <typename TMessage>
+coroutine_auto_wait_call_t<TMessage> wait_for (coroutine_connector_t &connector)
+{
+    return coroutine_auto_wait_call_t<TMessage> (
+      connector.template wait_for<packet_t> (
+        zlink::stream_connector::detail::message_packet_name<TMessage> ()));
+}
+
+template <typename TMessage>
+coroutine_auto_wait_call_t<TMessage> wait_for (coroutine_connector_t &connector,
+                                              std::chrono::milliseconds timeout)
+{
+    return wait_for<TMessage> (connector).timeout (timeout);
 }
 
 } // namespace zlink::stream_e2e_client::codecs

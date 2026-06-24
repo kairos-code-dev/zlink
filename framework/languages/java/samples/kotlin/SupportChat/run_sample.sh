@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.samples\.kotlin\.supportchat\.(server\.(registry|api|support|session)\.Program|client\.Program|probe\.Program)'
+role_pattern='systems\.zlink\.samples\.kotlin\.supportchat\.(server\.(registry|api|support|session)\.ProgramKt|client\.ProgramKt|probe\.ProgramKt)'
 log_dir="build/sample-logs"
 export SUPPORTCHAT_LOG_DIR="${SUPPORTCHAT_LOG_DIR:-$(pwd)/logs}"
 mkdir -p "${log_dir}" "${SUPPORTCHAT_LOG_DIR}"

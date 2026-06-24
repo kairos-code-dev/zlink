@@ -38,7 +38,7 @@ class allocate_conversation_handler_t
         const auto conversation_id =
           _allocator.allocate (request.customer_actor_id, request.subject);
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (
-          std::string (sample_names_t::conversation_spot_node) + ":"
+          std::string (sample_names_t::support_spot_node) + ":"
           + conversation_id);
         if (_spots != nullptr) {
             (void) _spots->get_or_create_spot (

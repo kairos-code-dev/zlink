@@ -54,9 +54,16 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
         auto request =
           _serializers->get<actor_bound_session_route_request_t> ().deserialize (
             detail::encoded_payload_from_raw (body.value ()));
-        auto dispatched = _runtime.dispatch_bound_session_send (
-          actor_ref_from_bound_session_route (request), request.packet_name_value,
-          zlink::message_t::from (request.payload));
+        auto actor_ref = actor_ref_from_bound_session_route (request);
+        auto runtime = _runtime;
+        auto updated = runtime.update_actor_ref (actor_ref);
+        if (!updated) {
+            return result_t<zlink::message_t>::failure (
+              updated.error_kind (),
+              updated.error () ? updated.error ()->what () : "actor ref update failed");
+        }
+        auto dispatched = runtime.dispatch_bound_session_send (
+          actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
         if (!dispatched) {
             return result_t<zlink::message_t>::failure (
               dispatched.error_kind (),

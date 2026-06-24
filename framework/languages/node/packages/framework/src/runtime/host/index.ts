@@ -1139,7 +1139,31 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         boundPacketName: this.selectedPacketName,
         metadata: Object.fromEntries(this.selectedMetadata)
       };
-      await this.routedTransport.requestToSpot(
+      if (this.routedTransport.requestRawToSpot !== undefined) {
+        const rawPayload = BindingMessage.from(Buffer.from(JSON.stringify(payload)));
+        try {
+          const replyParts = await this.routedTransport.requestRawToSpot(
+            {
+              routerChannelId: remoteTarget.routerChannelId,
+              targetNodeRid: remoteTarget.targetNodeRid,
+              spotRid: remoteTarget.spotRid,
+              spotKind: ZLinkSpotKind.Entry
+            },
+            rawPayload,
+            {
+              timeoutMs: this.requestTimeoutMs,
+              signal
+            }
+          );
+          for (const part of replyParts) {
+            part.close();
+          }
+        } finally {
+          rawPayload.close();
+        }
+        return;
+      }
+      await this.routedTransport.sendToSpot(
         {
           routerChannelId: remoteTarget.routerChannelId,
           targetNodeRid: remoteTarget.targetNodeRid,
@@ -1147,11 +1171,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
           spotKind: ZLinkSpotKind.Entry
         },
         payload,
-        {
-          packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
-          timeoutMs: this.requestTimeoutMs,
-          signal
-        }
+        { packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, signal }
       );
       return;
     }

@@ -177,6 +177,17 @@ inline void record_actor_context_route_unlocked (spot_node_builder_state_t &stat
     context_state.actor_count++;
 }
 
+inline std::string effective_spot_node_rid (const spot_node_snapshot_t &snapshot)
+{
+    if (snapshot.router_routing_id) {
+        return snapshot.router_routing_id->to_string ();
+    }
+    if (snapshot.pub_routing_id) {
+        return snapshot.pub_routing_id->to_string ();
+    }
+    return snapshot.name;
+}
+
 class spot_node_runtime_t
 {
   public:
@@ -304,7 +315,8 @@ class spot_node_runtime_t
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::actor_route_not_found, "actor ref is empty");
         }
-        if (spot_node_rid.empty () || spot_node_rid.value () != _state->snapshot.name) {
+        if (spot_node_rid.empty ()
+            || spot_node_rid.value () != detail::effective_spot_node_rid (_state->snapshot)) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::spot_route_not_found,
               "spot node rid does not match this node");
@@ -494,8 +506,9 @@ class spot_node_runtime_t
         commit_actor_left<TActor> (actor_ref, actor);
         auto &context_state = *context._state;
         const auto key = actor_key (actor_ref);
-        record_actor_context_route_unlocked (*_state, key, _state->snapshot.name, context_state,
-                                             actor_ref.generation () + 1);
+        record_actor_context_route_unlocked (
+          *_state, key, effective_spot_node_rid (_state->snapshot), context_state,
+          actor_ref.generation () + 1);
         context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor) {
               if constexpr (has_on_actor_joined_callback<TSpot, TActor>) {
@@ -531,8 +544,9 @@ class spot_node_runtime_t
               }
           };
         auto committed = actor_ref_t (
-          node_rid_t::from_string (_state->snapshot.name), std::string (actor_ref.actor_type ()),
-          std::string (actor_ref.actor_id ()), actor_ref.generation () + 1);
+          node_rid_t::from_string (effective_spot_node_rid (_state->snapshot)),
+          std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
+          actor_ref.generation () + 1);
         if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
             if (_state->actor_created_keys.insert (key).second) {
                 notify_onCreateActor<TActor> (context_state, actor, create_request);

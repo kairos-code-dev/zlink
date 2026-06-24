@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.samples\.kotlin\.deliverydispatch\.(server\.(registry|dispatchapi|dispatchcenter|courier|tracking|session)\.Program|client\.Program|probe\.Program)'
+role_pattern='systems\.zlink\.samples\.kotlin\.deliverydispatch\.(server\.(registry|dispatchapi|dispatchcenter|courier|tracking|session)\.ProgramKt|client\.ProgramKt|probe\.ProgramKt)'
 log_dir="build/sample-logs"
 work_dir="build/sample-state"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-$(pwd)/logs}"

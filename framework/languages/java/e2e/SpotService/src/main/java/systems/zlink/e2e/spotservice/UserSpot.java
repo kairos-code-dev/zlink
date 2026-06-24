@@ -12,6 +12,7 @@ public final class UserSpot implements ZLinkSpot<ZLinkActor> {
     private final ZLinkSpotContext context;
     private final ScenarioState evidence;
     private String state = "";
+    private boolean workerDone = true;
 
     public UserSpot(
         ZLinkSpotContext context,
@@ -35,7 +36,7 @@ public final class UserSpot implements ZLinkSpot<ZLinkActor> {
     @Override
     public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
         evidence.record("SpotCreated", context.spotRid().toString(), request.isEmpty() ? "" : "request");
-        context.addTimer("state-timer", Duration.ofMillis(100),
+        context.addTimer("state-timer", Duration.ofSeconds(2),
             StateTimerHandler.class, new ZLinkTimerOptions());
         return ZLinkSpotCreateResponse.accept();
     }
@@ -53,6 +54,28 @@ public final class UserSpot implements ZLinkSpot<ZLinkActor> {
     public String apply(String op) {
         state = state.isBlank() ? op : state + "," + op;
         evidence.record("StateRequest", context.spotRid().toString(), state);
+        if (op.equals("worker-follow-up") && !workerDone) {
+            evidence.record("WorkerFollowUpBeforeComplete", context.spotRid().toString(), state);
+        }
+        return state;
+    }
+
+    public String startWorker(String op) {
+        workerDone = false;
+        evidence.record("WorkerStarted", context.spotRid().toString(), op);
+        context.runWorker(token -> {
+            Thread.sleep(1500);
+            return op + "-done";
+        }).submit(
+            (value, token) -> {
+                workerDone = true;
+                state = state.isBlank() ? value : state + "," + value;
+                evidence.record("WorkerCompleted", context.spotRid().toString(), value);
+            },
+            (error, token) -> evidence.record(
+                "WorkerFailed",
+                context.spotRid().toString(),
+                error.getClass().getSimpleName()));
         return state;
     }
 

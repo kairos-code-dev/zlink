@@ -395,22 +395,11 @@ int router_recv_parts (void *router,
 
 int send_parts (void *sock, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags)
 {
-    if (!parts || part_count == 0) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
-    for (size_t i = 0; i < part_count; ++i) {
-        zlink_part_flag_t part_flag = (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        int rc = zlink_send_part (sock, &parts[i], flags, part_flag);
-        if (rc != ZLINK_SUBMIT_OK) {
-            for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close (&parts[j]);
-            return rc;
-        }
-    }
-
-    return ZLINK_SUBMIT_OK;
+    return submit_msg_parts (parts, part_count, [sock, flags] (zlink_msg_t *part,
+                                                               zlink_part_flag_t part_flag,
+                                                               bool) {
+        return zlink_send_part (sock, part, flags, part_flag);
+    });
 }
 
 int send_parts_rid (void *sock,
@@ -419,43 +408,21 @@ int send_parts_rid (void *sock,
                     size_t part_count,
                     zlink_send_flags_t flags)
 {
-    if (!parts || part_count == 0) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
-    for (size_t i = 0; i < part_count; ++i) {
-        zlink_part_flag_t part_flag = (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        int rc = zlink_send_part_rid (sock, routing_id, &parts[i], flags, part_flag);
-        if (rc != ZLINK_SUBMIT_OK) {
-            for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close (&parts[j]);
-            return rc;
-        }
-    }
-
-    return ZLINK_SUBMIT_OK;
+    return submit_msg_parts (parts, part_count, [sock, routing_id, flags] (
+                                                  zlink_msg_t *part,
+                                                  zlink_part_flag_t part_flag, bool) {
+        return zlink_send_part_rid (sock, routing_id, part, flags, part_flag);
+    });
 }
 
 int publish_parts (
   void *sock, const char *topic, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags)
 {
-    if (!parts || part_count == 0) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
-    for (size_t i = 0; i < part_count; ++i) {
-        zlink_part_flag_t part_flag = (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        int rc = zlink_publish_part (sock, topic, &parts[i], flags, part_flag);
-        if (rc != ZLINK_SUBMIT_OK) {
-            for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close (&parts[j]);
-            return rc;
-        }
-    }
-
-    return ZLINK_SUBMIT_OK;
+    return submit_msg_parts (parts, part_count, [sock, topic, flags] (zlink_msg_t *part,
+                                                                      zlink_part_flag_t part_flag,
+                                                                      bool) {
+        return zlink_publish_part (sock, topic, part, flags, part_flag);
+    });
 }
 
 int dealer_request_parts (void *dealer,
@@ -466,25 +433,14 @@ int dealer_request_parts (void *dealer,
                           zlink_send_flags_t flags,
                           uint32_t timeout_ms)
 {
-    if (!parts || part_count == 0) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
-    for (size_t i = 0; i < part_count; ++i) {
-        const bool is_final = (i + 1u == part_count);
-        const zlink_part_flag_t part_flag = is_final ? ZLINK_PART_FINAL : ZLINK_PART_MORE;
-        int rc = zlink_dealer_request_part (dealer, &parts[i], flags, part_flag,
-                                            is_final ? timeout_ms : 0u, is_final ? handler : NULL,
-                                            is_final ? userdata : NULL);
-        if (rc != ZLINK_SUBMIT_OK) {
-            for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close (&parts[j]);
-            return rc;
-        }
-    }
-
-    return ZLINK_SUBMIT_OK;
+    return submit_msg_parts (parts, part_count, [dealer, handler, userdata, flags, timeout_ms] (
+                                                  zlink_msg_t *part,
+                                                  zlink_part_flag_t part_flag, bool is_final) {
+        return zlink_dealer_request_part (dealer, part, flags, part_flag,
+                                          is_final ? timeout_ms : 0u,
+                                          is_final ? handler : NULL,
+                                          is_final ? userdata : NULL);
+    });
 }
 
 int router_request_parts (void *router,
@@ -496,25 +452,15 @@ int router_request_parts (void *router,
                           zlink_send_flags_t flags,
                           uint32_t timeout_ms)
 {
-    if (!parts || part_count == 0) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
-    for (size_t i = 0; i < part_count; ++i) {
-        const bool is_final = (i + 1u == part_count);
-        const zlink_part_flag_t part_flag = is_final ? ZLINK_PART_FINAL : ZLINK_PART_MORE;
-        int rc = zlink_router_request_part (router, peer_rid, &parts[i], flags, part_flag,
-                                            is_final ? timeout_ms : 0u, is_final ? handler : NULL,
-                                            is_final ? userdata : NULL);
-        if (rc != ZLINK_SUBMIT_OK) {
-            for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close (&parts[j]);
-            return rc;
-        }
-    }
-
-    return ZLINK_SUBMIT_OK;
+    return submit_msg_parts (parts, part_count, [router, peer_rid, handler, userdata, flags,
+                                                 timeout_ms] (zlink_msg_t *part,
+                                                              zlink_part_flag_t part_flag,
+                                                              bool is_final) {
+        return zlink_router_request_part (router, peer_rid, part, flags, part_flag,
+                                          is_final ? timeout_ms : 0u,
+                                          is_final ? handler : NULL,
+                                          is_final ? userdata : NULL);
+    });
 }
 
 int router_reply_parts (void *router,
@@ -523,22 +469,11 @@ int router_reply_parts (void *router,
                         zlink_msg_t *parts,
                         size_t part_count)
 {
-    if (!parts || part_count == 0) {
-        errno = EFAULT;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
-    for (size_t i = 0; i < part_count; ++i) {
-        zlink_part_flag_t part_flag = (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        int rc = zlink_router_reply_part (router, peer_rid, request_seq, &parts[i], part_flag);
-        if (rc != ZLINK_SUBMIT_OK) {
-            for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close (&parts[j]);
-            return rc;
-        }
-    }
-
-    return ZLINK_SUBMIT_OK;
+    return submit_msg_parts (parts, part_count, [router, peer_rid, request_seq] (
+                                                  zlink_msg_t *part,
+                                                  zlink_part_flag_t part_flag, bool) {
+        return zlink_router_reply_part (router, peer_rid, request_seq, part, part_flag);
+    });
 }
 
 napi_value create_recv_message_value (napi_env env,

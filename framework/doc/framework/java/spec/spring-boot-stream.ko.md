@@ -98,7 +98,8 @@ context.client()
 local managed actor instance를 bind해서 같은 runtime 안에서 actor로 relay하는 경우
 stream node는 session relay 없이 동작한다. session gateway처럼 remote
 `ZLinkActorRef`를 bind하거나 actor 위치를 core SessionRelay가 해석해야 하는 경우에는
-stream node가 SpotNode의 SessionRelay에 attach되어 있어야 한다.
+같은 프로세스의 router-capable SpotNode가 session relay 입구가 되며, 별도 attach 없이
+framework가 자동으로 연결한다.
 
 ```java
 ZLinkStreamNodeBuilder stream = options.addStreamNode("gateway");

@@ -83,7 +83,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 |------|------|-----------|
 | binding public API gap list | `unit` | P2~P8 에 필요한 channel/spot/stream/registry/monitoring/SessionRelay/bound session API가 목록화되고 gap이 0이다 |
 | framework public-api-only import guard | `unit` | framework runtime/adapter package가 binding internal path, native addon symbol, generated private helper를 import하지 않는다 |
-| session relay public API smoke | `integration-single-process` | stream session relay가 binding public API만으로 SessionRelay에 attach된다 |
+| session relay public API smoke | `integration-single-process` | stream session relay가 binding public API만으로 동작한다(별도 attach 없음) |
 | bound session public API smoke | `integration-single-process` | bound session send/disconnect가 binding public API만으로 동작한다 |
 | registry query public API smoke | `integration-single-process` | registry query client wrapper가 binding public API만 호출한다 |
 | socket monitor public API smoke | `integration-single-process` | socket monitoring source가 binding public API만 호출한다 |

@@ -187,7 +187,7 @@ session 이름으로 사용하고, 없으면 타입 이름 기반 message name�
   한다. 이미 닫힌 stream을 다시 닫는 것은 성공으로 처리해 cleanup 호출자가 중복 close를
   특별히 구분하지 않아도 되게 한다.
 - session actor dispatch는 STREAM session에서 route mesh channel로 직접 packet을 만들지
-  않고, attach된 ActorGateway와 `session_actor_t::relay(...)`를 사용한다.
+  않고, ActorGateway와 `session_actor_t::relay(...)`를 사용한다.
 - session callback 동안 받은 `payload`는 framework가 빌려준 값이므로 relay 호출자가
   해제하거나 move로 소비하지 않는다.
 

@@ -99,7 +99,7 @@ private:
 ```
 
 session actor relay는 route mesh packet을 application 코드에서 만들지 않는다. STREAM
-session은 attach된 ActorGateway를 통해 actor로 packet을 넘긴다.
+session은 ActorGateway를 통해 actor로 packet을 넘긴다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -176,7 +176,7 @@ host/runtime 표면으로만 구체화한다.
   공통 정책과 맞춰 설명해야 한다.
 - actor/session relay는 application route mesh channel로 우회하지 않고, stream이
   붙은 local SpotNode의 ActorGateway 경로로 보낸다. `C++` framework에는 기존 host가
-  없으므로 ActorGateway attach, actor factory, bound session 표면을 자체 runtime
+  없으므로 ActorGateway 경로, actor factory, bound session 표면을 자체 runtime
   기능으로 만든다.
 - Registry는 Spot remote address 조회 기본값으로 사용하고, session actor relay hot
   path의 actor route store로 쓰지 않는다.
@@ -249,7 +249,7 @@ connector가 붙는 흐름을 포함한다. STREAM과 ActorGateway 기반 actor/
 - `rid` 직접 지정은 `SPOT` spot-to-spot 경로와 Entry Spot join 같은 actor lifecycle
   경로에만 남긴다.
 - STREAM session에서 actor로 넘기는 요청은 route mesh channel이 아니라
-  ActorGateway attach + logical actor handle을 사용한다.
+  ActorGateway 경로 + logical actor handle을 사용한다.
 - user Spot timer는 같은 core SPOT dispatch boundary에서 순서 정책을 따르고, Entry
   Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
   같은 Entry Spot 실행 줄에서 처리한다.

@@ -149,7 +149,7 @@ actor가 client 연결을 끊어야 할 때는 `bound_session_t::disconnect().as
 
 | 영역 | C++ framework 책임 |
 |------|--------------------|
-| stream initialization | STREAM bind 전에 configured SpotNode에 ActorGateway를 attach한다 |
+| stream initialization | STREAM은 별도 attach 호출 없이 bind한다. `enable_actor_gateway()`로 표시한 SpotNode와의 relay bridge는 host build 시 framework가 자동 구성한다 |
 | session bind | local actor handle 또는 remote actor ref를 backend stream binding으로 넘긴다 |
 | session relay | route mesh packet을 만들지 않고 ActorGateway bound actor send 경로를 사용한다 |
 | actor push | `bound_session_t`가 ActorGateway bound session send wrapper로 내려간다 |

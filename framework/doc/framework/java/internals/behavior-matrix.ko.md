@@ -75,7 +75,6 @@ Behavior Matrix의 판정은 Java framework의 JUnit 테스트로 고정한다. 
 | duplicate Entry Spot registration | `NodesAndServicesTest.addZLinkFramework_throws_whenSpotNodeRegistersMultipleEntrySpots` |
 | duplicate actor type factory | `NodesAndServicesTest.addZLinkFramework_throws_whenActorFactoryNameIsDuplicated` |
 | actor factory without SpotNode | `NodesAndServicesTest.addZLinkFramework_throws_whenActorFactoryWithoutSpotNode` |
-| stream SessionRelay node without router | `NodesAndServicesTest.addZLinkFramework_throws_whenStreamAttachesSessionRelayNodeWithoutRouter` |
 | local-only SpotNode 허용 | `NodesAndServicesTest.addZLinkFramework_allowsStandaloneLocalSpotNode` |
 | spot mesh가 전역 discovery 상속 허용 | `NodesAndServicesTest.addZLinkFramework_allowsSpotMeshToInheritGlobalDiscovery` |
 | monitoring source 이름 불일치 | `RegistryAndMonitoringTest.addZLinkMonitoring_throws_whenSocketSourceIsUnknownOnStartup` |

@@ -26,7 +26,7 @@
 | SM-C4 | 구현 | spot publisher client marker가 있다. |
 | SM-D1 | 구현 | local actor session bind/relay marker가 있다. |
 | SM-D2 | 구현 | remote actor session bind/relay marker가 있다. |
-| SM-D3 | public API/harness 대기 | stream session bind API는 ActorRef 기준이고, entry/user spot 종류를 외부에서 선택해 bind하는 public session API가 없다. |
+| SM-D3 | 구현 | entry spot bind와 user spot bind를 각각 stream session에 연결하고 relay/push marker를 확인한다. |
 | SM-D4 | 구현 | multiple actor bind marker가 있다. |
 | SM-D5 | 구현 | explicit disconnect notification marker가 있다. |
 | SM-D6 | 구현 | bound session push targeting marker가 있다. |

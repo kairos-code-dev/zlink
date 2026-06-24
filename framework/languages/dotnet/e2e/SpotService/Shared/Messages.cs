@@ -59,7 +59,7 @@ public sealed record CloseSpotReply(string SpotRid, bool Closed);
 
 public sealed record JoinUserSpotActorReq(string SpotRid, string ActorId);
 
-public sealed record JoinUserSpotActorReply(string SpotRid, string ActorId, bool Accepted);
+public sealed record JoinUserSpotActorReply(string SpotRid, string ActorId, bool Accepted, ulong Generation);
 
 public sealed record ActorPingReq(string Value);
 
@@ -83,6 +83,8 @@ public sealed record ComplexActorReply(
     Dictionary<string, string> Attributes);
 
 public sealed record AuthReq(string ActorId, string DisplayName, string NodeRid);
+
+public sealed record UserSpotAuthReq(string SpotRid, string ActorId, string DisplayName, string NodeRid);
 
 public sealed record AuthReply(string ActorId, string NodeRid);
 

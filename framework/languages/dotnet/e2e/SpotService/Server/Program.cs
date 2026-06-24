@@ -282,7 +282,8 @@ internal sealed class JoinUserSpotActorHandler(
         return new JoinUserSpotActorReply(
             request.SpotRid,
             joined.Actor.ActorId,
-            joined.Accepted);
+            joined.Accepted,
+            joined.Actor.Generation);
     }
 }
 
@@ -951,6 +952,31 @@ internal sealed class ActorPushHandler
     }
 }
 
+[ZLinkSpotActorRequestHandler("UserActorPushReq")]
+internal sealed class UserActorPushHandler
+    : IZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPushReq, ActorPingReply>
+{
+    public async ValueTask<ActorPingReply> HandleAsync(
+        ScenarioUserSpot spot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        ActorPushReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        actor.Seen++;
+        await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
+            .PacketName("ActorPushNotify")
+            .Async();
+        return new ActorPingReply(
+            actor.ActorId,
+            spot.Context.NodeRid.ToString(),
+            spot.Context.SpotRid.ToString(),
+            request.Value,
+            actor.Seen);
+    }
+}
+
 [ZLinkSpotActorRequestHandler("ComplexActorReq")]
 internal sealed class ComplexActorHandler(EvidenceStore evidence)
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ComplexActorReq, ComplexActorReply>
@@ -1124,6 +1150,89 @@ internal sealed class MultiBindSessionHandler(
         }
 
         await context.Client.Reply(new MultiBindReply(context.Actors.Bound.Count)).Async();
+    }
+}
+
+internal sealed class UserSpotAuthSessionHandler(
+    IZLinkActorManager actors,
+    IZLinkRouteClient routes,
+    NodeOptions node,
+    EvidenceStore evidence)
+    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+{
+    public string PacketName => "UserSpotAuthReq";
+
+    public async ValueTask HandleAsync(
+        IZLinkSessionContext context,
+        ZLinkSessionDispatchContext dispatch,
+        Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
+        CancellationToken cancellationToken)
+    {
+        _ = dispatch;
+        var request = payload.Decode<UserSpotAuthReq>();
+        var joined = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
+            ? await JoinLocalUserSpotAsync(actors, evidence, request, cancellationToken)
+            : await JoinRemoteUserSpotAsync(routes, request, cancellationToken);
+
+        EnsureAccepted(joined);
+        await context.Actors.BindAsync(
+            new ActorRef(RoutingId.From(request.NodeRid), joined.ActorId, joined.Generation),
+            cancellationToken);
+        await context.Client.Reply(new AuthReply(joined.ActorId, request.NodeRid)).Async();
+    }
+
+    private static async ValueTask<JoinUserSpotActorReply> JoinLocalUserSpotAsync(
+        IZLinkActorManager actors,
+        EvidenceStore evidence,
+        UserSpotAuthReq request,
+        CancellationToken cancellationToken)
+    {
+        var actor = await actors.GetOrCreateAsync(
+            request.ActorId,
+            SpotServiceNames.ActorType,
+            cancellationToken);
+        if (actor is ScenarioActor scenarioActor)
+        {
+            scenarioActor.DisplayName = request.DisplayName;
+        }
+
+        var joined = await actor.Context.JoinSpot(RoutingId.From(request.SpotRid), ZLinkMessage.Empty)
+            .Async(cancellationToken);
+        evidence.Add(
+            $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
+            + $"|actor={request.ActorId}|accepted={joined.Accepted}");
+        return new JoinUserSpotActorReply(
+            request.SpotRid,
+            joined.Actor.ActorId,
+            joined.Accepted,
+            joined.Actor.Generation);
+    }
+
+    private static async ValueTask<JoinUserSpotActorReply> JoinRemoteUserSpotAsync(
+        IZLinkRouteClient routes,
+        UserSpotAuthReq request,
+        CancellationToken cancellationToken)
+    {
+        await routes.Request(
+                SpotServiceNames.ControlChannel,
+                RoutingId.From(request.NodeRid),
+                new CreateSpotReq(request.SpotRid))
+            .PacketName("CreateSpotReq")
+            .Async<CreateSpotReply>(cancellationToken);
+        return await routes.Request(
+                SpotServiceNames.ControlChannel,
+                RoutingId.From(request.NodeRid),
+                new JoinUserSpotActorReq(request.SpotRid, request.ActorId))
+            .PacketName("JoinUserSpotActorReq")
+            .Async<JoinUserSpotActorReply>(cancellationToken);
+    }
+
+    private static void EnsureAccepted(JoinUserSpotActorReply joined)
+    {
+        if (!joined.Accepted)
+        {
+            throw new InvalidOperationException($"User spot actor join was rejected: {joined.ActorId}");
+        }
     }
 }
 

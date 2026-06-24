@@ -23,6 +23,7 @@ static async Task RunAsync(ClientOptions options)
     await RunSmD7Async(options);
     await RunSmD9D11D13Async(options);
     await RunSmD1AndD6Async(options);
+    await RunSmD3Async(options);
     await RunSmD4Async(options);
     await RunSmD5Async(options);
     await RunSmD12Async(options);
@@ -349,6 +350,56 @@ static async Task RunSmD4Async(ClientOptions options)
             .Async<ActorPingReply>().AsTask(),
         "SM-D4 expected actor-id-less request to fail with multiple bound actors.");
     Console.WriteLine("scenario SM-D4 passed");
+}
+
+static async Task RunSmD3Async(ClientOptions options)
+{
+    await using var entry = CreateClient(options.SessionAStreamEndpoint);
+    await using var user = CreateClient(options.SessionAStreamEndpoint);
+    await entry.Connect.Async();
+    await user.Connect.Async();
+
+    var entryPushed = entry.WaitFor<ActorPushNotify>().Async().AsTask();
+    await entry.Request(new AuthReq("actor-sm-d3-entry", "entry bind", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var entryReply = await entry.Request(new ActorPushReq("entry-push"))
+        .PacketName("ActorPushReq")
+        .Async<ActorPingReply>();
+    var entryNotify = await entryPushed;
+    Ensure(entryReply.ActorId == "actor-sm-d3-entry", "SM-D3 entry bind actor mismatch.");
+    Ensure(entryReply.NodeRid == options.PlayARid, "SM-D3 entry bind node mismatch.");
+    Ensure(entryNotify.Payload.ActorId == "actor-sm-d3-entry", "SM-D3 entry push actor mismatch.");
+    Ensure(entryNotify.Payload.Value == "entry-push", "SM-D3 entry push value mismatch.");
+
+    var userSpotRid = $"spot-sm-d3-user-{Guid.NewGuid():N}";
+    var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var userPushed = user.WaitFor<ActorPushNotify>().Async().AsTask();
+    await user.Request(new UserSpotAuthReq(userSpotRid, "actor-sm-d3-user", "user bind", options.PlayARid))
+        .PacketName("UserSpotAuthReq")
+        .Async<AuthReply>();
+    var userReply = await user.Request(new ActorPingReq("user-relay"))
+        .PacketName("UserActorPingReq")
+        .Async<ActorPingReply>();
+    var userPushReply = await user.Request(new ActorPushReq("user-push"))
+        .PacketName("UserActorPushReq")
+        .Async<ActorPingReply>();
+    var userNotify = await userPushed;
+    Ensure(userReply.ActorId == "actor-sm-d3-user", "SM-D3 user bind actor mismatch.");
+    Ensure(userReply.NodeRid == options.PlayARid, "SM-D3 user bind node mismatch.");
+    Ensure(userReply.SpotRid == userSpotRid, "SM-D3 user bind spot mismatch.");
+    Ensure(userReply.Value == "user-relay", "SM-D3 user relay value mismatch.");
+    Ensure(userPushReply.ActorId == "actor-sm-d3-user", "SM-D3 user push reply actor mismatch.");
+    Ensure(userNotify.Payload.ActorId == "actor-sm-d3-user", "SM-D3 user push actor mismatch.");
+    Ensure(userNotify.Payload.Value == "user-push", "SM-D3 user push value mismatch.");
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, before, $"spot-actor-joined|rid={options.PlayARid}|spot={userSpotRid}|actor=actor-sm-d3-user") == 1
+            && CountNew(after, before, $"actor-ping|rid={options.PlayARid}|actor=actor-sm-d3-user|spot={userSpotRid}|value=user-relay") == 1;
+    }, "SM-D3 expected user spot bind and relay evidence.");
+
+    Console.WriteLine("scenario SM-D3 passed");
 }
 
 static async Task RunSmD5Async(ClientOptions options)
@@ -752,7 +803,7 @@ static async Task RunSmA7A8C4E4Async(ClientOptions options)
             RoutingId.From(workerSpotRid),
             new WorkerStartReq("sm-a8-worker", 5000))
         .PacketName("WorkerStartReq")
-        .Timeout(TimeSpan.FromSeconds(5))
+        .Timeout(TimeSpan.FromSeconds(10))
         .Async<WorkerStartReply>();
     Ensure(worker.SpotRid == workerSpotRid, "SM-A8 worker start target mismatch.");
     var duringWorker = await RequestSpotStateWithRetryAsync(

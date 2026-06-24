@@ -12,6 +12,9 @@ public final class Contracts {
     public record WorkRequest(String value) {
     }
 
+    public record UnhandledRequest(String value) {
+    }
+
     public record WorkReply(
         String value,
         String providerRid) {

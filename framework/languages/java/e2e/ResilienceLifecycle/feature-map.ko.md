@@ -15,6 +15,8 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
   호출해 runtime drain/restore를 검증한다.
 - `RL-B5`: 느린 handler가 이미 받은 request는 drain 뒤에도 정상 reply하고, drain 이후 새 request는
   다른 provider로 가는지 검증한다.
+- `RL-D3`: 명시 `ZLinkMessageDispatchErrorObserver`가 미등록 request의
+  reason/action/packetName marker를 evidence에 남기고, 이후 request가 정상 동작하는지 확인한다.
 
 ## public API/harness 대기
 
@@ -33,7 +35,6 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
 - `RL-C4`: registry TTL 단축과 stale entry 제거를 검증하는 registry control이 아직 없다.
 - `RL-D1`: 고fanout 부하를 장시간 주입하는 harness가 아직 없다.
 - `RL-D2`: observer 실패 격리를 runtime error sink와 함께 단언하는 scenario가 아직 없다.
-- `RL-D3`: 명시 logging sink에서 dispatch 오류 marker를 고정하는 scenario가 아직 없다.
 - `RL-D4`: error reply wire header의 code/message roundtrip을 raw envelope로 확인하는 harness가
   아직 없다.
 - `RL-D5`: 지속 혼합 workload soak runner가 아직 없다.

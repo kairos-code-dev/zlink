@@ -1,6 +1,7 @@
 package systems.zlink.e2e.resiliencelifecycle;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.concurrent.CompletableFuture;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -60,7 +61,13 @@ public final class ProviderApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + state.providerRid() + "-flow.log")
-                .traceNodeId("java-rl-" + state.providerRid());
+                .traceNodeId("java-rl-" + state.providerRid())
+                .setMessageDispatchErrorObserver(error -> {
+                    state.record(
+                        "DispatchError",
+                        error.reason() + "/" + error.action() + "/" + error.packetName());
+                    return CompletableFuture.completedFuture(null);
+                });
             options.addHandlersFromPackageOf(WorkRequestHandler.class);
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.addClientServerChannel(Contracts.CHANNEL)

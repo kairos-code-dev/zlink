@@ -35,6 +35,7 @@ public final class ClientScenario {
         runClientTimeoutCleanup();
         runDrainRestore();
         runDrainInFlight();
+        runDispatchErrorMarker();
         runGracefulShutdown();
     }
 
@@ -110,6 +111,53 @@ public final class ClientScenario {
         post(adminA() + "/admin/restore");
         waitForWeight(adminA(), 100);
         System.out.println("scenario RL-B5 passed");
+    }
+
+    private void runDispatchErrorMarker() {
+        try {
+            client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.UnhandledRequest("d3-missing-handler"))
+                .timeout(Duration.ofSeconds(3))
+                .await(Contracts.WorkReply.class);
+            throw new IllegalStateException("RL-D3 missing handler request unexpectedly completed");
+        } catch (RuntimeException expected) {
+            waitForDispatchErrorAny("UnhandledRequest", adminA(), adminB());
+        }
+        Contracts.WorkReply followUp = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.WorkRequest("d3-follow-up"))
+            .timeout(Duration.ofSeconds(3))
+            .await(Contracts.WorkReply.class);
+        ensure("work:d3-follow-up".equals(followUp.value()), "RL-D3 follow-up payload mismatch");
+        System.out.println("scenario RL-D3 passed");
+    }
+
+    private void waitForDispatchErrorAny(String packetName, String... baseUrls) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            for (String baseUrl : baseUrls) {
+                try {
+                    JsonNode entries = json.readTree(get(baseUrl + "/evidence")).path("entries");
+                    if (entries.isArray()) {
+                        for (JsonNode entry : entries) {
+                            String marker = entry.path("marker").asText();
+                            String value = entry.path("value").asText();
+                            if ("DispatchError".equals(marker)
+                                && value.contains("HANDLER_MISSING")
+                                && value.contains("REPLY_ERROR")
+                                && value.contains(packetName)) {
+                                return;
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException(
+            "dispatch error marker for " + packetName + " was not observed");
     }
 
     private void runGracefulShutdown() {

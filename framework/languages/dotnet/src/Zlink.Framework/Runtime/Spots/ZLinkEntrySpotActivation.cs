@@ -302,14 +302,16 @@ internal sealed partial class ZLinkEntrySpotActivation :
     public async ValueTask InvokeActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
+        ZLinkMessage? request,
         CancellationToken cancellationToken)
     {
         await ExecuteAsync(
             static (activation, state, ct) => activation._invoker.InvokeActorLifecycleAsync(
                 state.Descriptor,
                 state.Actor,
+                state.Request,
                 ct),
-            (Descriptor: descriptor, Actor: actor),
+            (Descriptor: descriptor, Actor: actor, Request: request),
             cancellationToken).ConfigureAwait(false);
     }
 

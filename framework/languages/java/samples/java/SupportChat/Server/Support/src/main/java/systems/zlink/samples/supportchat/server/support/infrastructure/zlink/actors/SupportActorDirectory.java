@@ -2,24 +2,28 @@ package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.ac
 
 import java.util.HashMap;
 import java.util.Map;
+import systems.zlink.framework.actors.ZLinkActorRef;
 
 public final class SupportActorDirectory {
-    private final Object gate = new Object();
-    private final Map<String, SupportUserActor> actors = new HashMap<>();
+    public record Entry(ZLinkActorRef ref, String displayName, String role) {
+    }
 
-    public void addOrUpdate(SupportUserActor actor) {
+    private final Object gate = new Object();
+    private final Map<String, Entry> actors = new HashMap<>();
+
+    public void addOrUpdate(ZLinkActorRef ref, String displayName, String role) {
         synchronized (gate) {
-            actors.put(actor.actorId(), actor);
+            actors.put(ref.actorId(), new Entry(ref, displayName, role));
         }
     }
 
-    public SupportUserActor get(String actorId) {
+    public Entry get(String actorId) {
         synchronized (gate) {
-            SupportUserActor actor = actors.get(actorId);
-            if (actor == null) {
+            Entry entry = actors.get(actorId);
+            if (entry == null) {
                 throw new IllegalStateException("Support actor is not available. actor=" + actorId);
             }
-            return actor;
+            return entry;
         }
     }
 }

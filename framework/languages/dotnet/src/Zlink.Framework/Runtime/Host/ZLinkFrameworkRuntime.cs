@@ -7,7 +7,8 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal readonly record struct CreateActorResult(
     IZLinkActor Actor,
-    bool Created);
+    bool Created,
+    ZLinkMessage CreateRequest);
 
 internal sealed partial class ZLinkFrameworkRuntime
 {

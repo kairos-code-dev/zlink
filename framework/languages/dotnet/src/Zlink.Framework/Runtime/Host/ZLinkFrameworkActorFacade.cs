@@ -131,7 +131,26 @@ internal sealed class ZLinkFrameworkActorFacade(
         string actorType,
         CancellationToken cancellationToken = default)
     {
-        return await actorSessionManager.CreateAndBindActorAsync(actorId, actorType, cancellationToken);
+        return await CreateLocalActorAsync(
+                actorId,
+                actorType,
+                ZLinkMessage.Empty,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<CreateActorResult> CreateLocalActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default)
+    {
+        return await actorSessionManager.CreateAndBindActorAsync(
+                actorId,
+                actorType,
+                createRequest,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<CreateActorResult> CreateActorAsync(
@@ -139,7 +158,26 @@ internal sealed class ZLinkFrameworkActorFacade(
         string actorType,
         CancellationToken cancellationToken = default)
     {
-        return await actorSessionManager.CreateActorAsync(actorId, actorType, cancellationToken);
+        return await CreateActorAsync(
+                actorId,
+                actorType,
+                ZLinkMessage.Empty,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<CreateActorResult> CreateActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default)
+    {
+        return await actorSessionManager.CreateActorAsync(
+                actorId,
+                actorType,
+                createRequest,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal bool TryGetCreatedActorState(

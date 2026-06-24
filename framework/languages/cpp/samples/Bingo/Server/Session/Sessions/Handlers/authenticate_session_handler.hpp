@@ -49,15 +49,27 @@ class authenticate_session_handler_t
                                             : authenticated.reason);
         }
 
+        auto create_request = ensure_player_actor_req_t{authenticated.actor_id,
+                                                        authenticated.display_name,
+                                                        _topology.preferred_play_node_rid ()};
         auto ensured = co_await _routes
-                         .request (
-                           sample_names_t::play_channel,
-                           zlink::routing_id_t::from (_topology.preferred_play_node_rid ()),
-                           ensure_player_actor_req_t{authenticated.actor_id,
-                                                     authenticated.display_name,
-                                                     _topology.preferred_play_node_rid ()})
+                         .request (sample_names_t::play_channel,
+                                   zlink::routing_id_t::from (
+                                     _topology.preferred_play_node_rid ()),
+                                   create_request)
                          .async<ensure_player_actor_res_t> ();
         auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
+        auto joined = co_await bound.context ()
+                        .join_entry_spot (
+                          zlink::framework::node_rid_t::from_string (ensured.actor.node_rid),
+                          create_request)
+                        .async ();
+        if (joined.result_code != 0) {
+            co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "Player entry spot join was rejected.");
+        }
+        auto actor = actors.find (ensured.actor.actor_id).value_or (bound);
 
         co_await stream
           .reply_packet (zlink::message_t::from_json (
@@ -65,7 +77,7 @@ class authenticate_session_handler_t
                                ensured.actor.node_rid}))
           .async ();
 
-        co_return bound;
+        co_return actor;
     }
 
   private:

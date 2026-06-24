@@ -87,8 +87,11 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
                                     matched.room_owner_node_rid};
     }
 
-    void onCreateActor (const player_actor_t &actor)
+    void onCreateActor (player_actor_t &actor,
+                        const zlink::framework::message_t &create_request)
     {
+        const auto request = create_request.decode<ensure_player_actor_req_t> ();
+        actor.display_name = request.display_name.empty () ? request.actor_id : request.display_name;
         created_actor_ids.push_back (actor.actor.actor_id);
     }
 

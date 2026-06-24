@@ -29,7 +29,7 @@ export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> {
   configure?(): void | Promise<void>;
   onInitialize?(signal?: AbortSignal): Promise<void>;
   onClosing?(signal?: AbortSignal): Promise<void>;
-  onCreateActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
+  onCreateActor?(actor: TActor, createRequest: ZLinkMessage, signal?: AbortSignal): Promise<void>;
   onActorJoin?(actor: TActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: TActor, signal?: AbortSignal): Promise<void>;

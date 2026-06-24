@@ -232,8 +232,8 @@ test('Entry Spot routed bound session command decodes registered channel seriali
   let received;
   const contentType = 'application/x-bound-session-test';
   const serializer = {
-    deserialize(message) {
-      assert.equal(message.getString('utf8'), 'encoded-bound-session');
+    deserialize(payload) {
+      assert.equal(Buffer.from(payload.data()).toString('utf8'), 'encoded-bound-session');
       return {
         actorId: 'player-1',
         message: { hello: 'world' },
@@ -353,7 +353,7 @@ test('runtime host normalizes remote actor join bound-session route ids', async 
     registration: framework.createFrameworkRegistration({})
   });
   runtime.actorManager = {
-    async getOrCreate(actorId) {
+    async getOrCreateActor(actorId) {
       assert.equal(actorId, 'player-1');
       return actor;
     },

@@ -5,7 +5,6 @@ import { SampleNames } from '../../../../Configuration/sample-names';
 import { PacketNames, joinConversationRes } from '../../../../../Shared/Contracts/messages';
 import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { SupportConversationAllocator as SupportConversationAllocatorType } from '../../../Application/ConversationAssignment/support-conversation-allocator';
-import type { SupportUserActor } from '../Actors/support-user-actor';
 import type {
   JoinConversationReq,
   JoinConversationRes,
@@ -22,7 +21,7 @@ class JoinConversationChannelHandler implements ZLinkRequestHandler<JoinConversa
   ) {}
 
   async handle(request: JoinConversationReq & UserIdentity): Promise<JoinConversationRes> {
-    await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
+    await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType, request);
     const state = await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.snapshot());
     return joinConversationRes(state);
   }

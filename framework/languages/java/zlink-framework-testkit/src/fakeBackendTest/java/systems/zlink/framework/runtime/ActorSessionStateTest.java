@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
@@ -29,10 +30,7 @@ final class ActorSessionStateTest {
                 .create(RemoteActorGatewayTest.GameSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-1", "player");
             actor.context()
                 .joinSpot(spotRid, "join")
                 .submit(String.class)
@@ -75,4 +73,13 @@ final class ActorSessionStateTest {
                 && call.endsWith(".push")));
     }
 
+    private static ZLinkActor managedActor(
+        ZLinkFrameworkRuntime runtime,
+        String actorId,
+        String actorType) {
+        return ((ZLinkActorRuntime) runtime.actorManager())
+            .getOrCreateManagedActor(actorId, actorType)
+            .toCompletableFuture()
+            .join();
+    }
 }

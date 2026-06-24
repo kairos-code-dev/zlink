@@ -286,12 +286,13 @@ export class ZLinkSpotNodeRuntimeManager {
   notifyEntrySpotActorCreated(
     nodeRid: RoutingId,
     actor: ZLinkActor,
+    createRequest: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<void> {
     const activation = [...this.entryActivations.values()].find(
       (entryActivation) => entryActivation.nodeRid === nodeRid
     );
-    return activation?.notifyCreateActor(actor, signal) ?? Promise.resolve();
+    return activation?.notifyCreateActor(actor, createRequest, signal) ?? Promise.resolve();
   }
 
   notifyPrimaryEntrySpotActorJoined(
@@ -1889,9 +1890,9 @@ export class ZLinkEntrySpotActivation {
     }
   }
 
-  notifyCreateActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+  notifyCreateActor(actor: ZLinkActor, createRequest: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onCreateActor?.(actor, signal));
+    return this.serial.execute(() => this.entrySpot.onCreateActor?.(actor, createRequest, signal));
   }
 
   notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {

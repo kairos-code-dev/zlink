@@ -23,7 +23,11 @@ class PlayActorJoinGameHandler
     request: JoinGameReq
   ): Promise<JoinGameRes> {
     void context;
-    return await entrySpot.join(actor, request.roomId);
+    const actorRef = actor.context.actorRef;
+    if (actorRef === undefined) {
+      throw new Error(`Actor '${actor.actorId}' has no ActorRef.`);
+    }
+    return await entrySpot.join(actorRef, actor, request.roomId);
   }
 }
 

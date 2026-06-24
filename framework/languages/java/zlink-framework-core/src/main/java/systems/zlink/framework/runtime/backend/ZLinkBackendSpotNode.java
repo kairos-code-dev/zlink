@@ -31,7 +31,7 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
 
     ZLinkBackendSpot entrySpot();
 
-    ZLinkBackendActorRef createActor(String actorId);
+    ZLinkBackendActorRef createActor(String actorId, Message createRequest);
 
     ZLinkBackendActorRef actorLookup(String actorId);
 

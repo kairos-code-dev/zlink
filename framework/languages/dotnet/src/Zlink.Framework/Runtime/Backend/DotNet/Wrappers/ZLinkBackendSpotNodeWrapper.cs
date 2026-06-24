@@ -82,9 +82,9 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         return new ZLinkBackendSpotWrapper(nativeSpotNode.EntrySpot());
     }
 
-    public ZLinkBackendActorRef CreateActor(string actorId)
+    public ZLinkBackendActorRef CreateActor(string actorId, Message createRequest)
     {
-        var actor = nativeSpotNode.CreateActor(actorId);
+        var actor = nativeSpotNode.CreateActor(actorId, createRequest);
         return actor.Ref.ToBackend();
     }
 

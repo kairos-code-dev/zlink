@@ -11,6 +11,7 @@ import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSetting
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.handlers.PlayerWinMilestoneEventHandler
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.ObserveMilestoneRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerWinMilestoneEvent
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.WinMilestoneNotify
 
@@ -31,8 +32,11 @@ class PlayEntrySpot(
 
     override fun onCreateActor(
         actor: PlayActor,
+        createRequest: ZLinkMessage,
         cancellationToken: CancellationToken,
-    ) = Unit
+    ) {
+        actor.applyPlayer(createRequest.decode(PlayerInfo::class.java))
+    }
 
     override fun onActorJoin(
         actor: PlayActor,

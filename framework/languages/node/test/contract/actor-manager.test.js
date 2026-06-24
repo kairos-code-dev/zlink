@@ -9,10 +9,10 @@ const protobuf = require('../../packages/framework-codec-protobuf/dist');
 function customTextSerializer(prefix = 'custom:') {
   return {
     serialize(value) {
-      return zlink.Message.from(`${prefix}${value}`);
+      return framework.ZLinkEncodedPayload.from(Buffer.from(`${prefix}${value}`));
     },
-    deserialize(message) {
-      const text = message.getString('utf8');
+    deserialize(payload) {
+      const text = Buffer.from(payload.data()).toString('utf8');
       return text.startsWith(prefix) ? text.slice(prefix.length) : text;
     }
   };
@@ -44,11 +44,11 @@ test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantic
     actorFactories: new Map([['player', PlayerFactory]])
   });
 
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
   assert.equal(actor.actorId, 'alice');
   assert.equal(actor.context.isJoined, false);
-  assert.equal(await manager.find('alice'), actor);
-  assert.equal(await manager.getOrCreate('alice', 'player'), actor);
+  assert.equal(await manager.findActor('alice'), actor);
+  assert.equal(await manager.getOrCreateActor('alice', 'player'), actor);
   assert.deepEqual(events, ['create:alice', 'configure:alice']);
 });
 
@@ -83,8 +83,8 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
     }
   });
 
-  const actor = await manager.create('alice', 'player');
-  assert.equal(await manager.getOrCreate('alice', 'player'), actor);
+  const actor = await manager.getOrCreateActor('alice', 'player');
+  assert.equal(await manager.getOrCreateActor('alice', 'player'), actor);
   assert.deepEqual(actor.context.actorRef, { nodeRid: zlink.RoutingId.from('node-a'), actorId: 'alice', generation: 1n });
 
   assert.deepEqual(events, [
@@ -118,7 +118,7 @@ test('ZLinkActorManager resolves native actor node lazily at actor creation', as
     }
   });
 
-  const actor = await manager.create('lazy', 'player');
+  const actor = await manager.getOrCreateActor('lazy', 'player');
 
   assert.deepEqual(actor.context.actorRef, { nodeRid: zlink.RoutingId.from('node-lazy'), actorId: 'lazy', generation: 3n });
 });
@@ -156,7 +156,7 @@ test('ZLinkActorManager clears failed create state when Entry Spot create callba
   assert.equal(await manager.find('alice'), undefined);
 
   failCreateCallback = false;
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
 
   assert.equal(actor.actorId, 'alice');
   assert.deepEqual(events, [
@@ -205,7 +205,7 @@ test('ZLinkActorManager wires actor context boundSession through runtime factory
     }
   });
 
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
   assert.equal(actor.context.boundSession, boundSession);
 
   await actor.context.boundSession.send({ ready: true }).submit();
@@ -253,11 +253,11 @@ test('bound session disconnect does not destroy actor manager state or native ac
     }
   });
 
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
 
   await actor.context.boundSession.disconnect();
 
-  assert.equal(await manager.find('alice'), actor);
+  assert.equal(await manager.findActor('alice'), actor);
   assert.equal(manager.getState('alice').nativeActorRef.actorId, 'alice');
   assert.deepEqual(events, ['createNative:alice', 'disconnectSession']);
 });
@@ -271,7 +271,7 @@ test('unbound actor context boundSession fails retriably until a session is boun
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', PlayerFactory]])
   });
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
 
   assert.throws(
     () => actor.context.boundSession.send({ ready: true }),
@@ -341,8 +341,8 @@ test('ZLinkActorManager shares concurrent getOrCreate actor creation', async () 
     actorFactories: new Map([['player', PlayerFactory]])
   });
 
-  const first = manager.getOrCreate('alice', 'player');
-  const second = manager.getOrCreate('alice', 'player');
+  const first = manager.getOrCreateActor('alice', 'player');
+  const second = manager.getOrCreateActor('alice', 'player');
   releaseCreate();
   const [firstActor, secondActor] = await Promise.all([first, second]);
 
@@ -485,7 +485,7 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator
   });
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
 
   const request = encodedMessage('hello');
   const joinResult = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
@@ -500,8 +500,6 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
     'joinSpot:alice:alice:stage-1:hello:25',
     'joinEntry:alice:alice:node-a:entry:10'
   ]);
-  request.toMessage().close();
-  entryRequest.toMessage().close();
   replyMessage.close();
 });
 
@@ -534,7 +532,7 @@ test('ZLinkActorContext joinSpot uses configured custom serializer without raw r
     joinCoordinator,
     messageSerializers: new Map([['application/x-custom-text', customTextSerializer()]])
   });
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
 
   const joinResult = await actor.context.joinSpot('stage-1', 'hello').submit();
 
@@ -580,14 +578,13 @@ test('ZLinkActorContext joinSpot uses binary codec extensions without raw reques
       joinCoordinator,
       messageSerializers: new Map([[`application/x-test-${name}`, serializer]])
     });
-    const actor = await manager.create('alice', 'player');
+    const actor = await manager.getOrCreateActor('alice', 'player');
 
     const joinResult = await actor.context.joinSpot('stage-1', { text: `${name}:hello` }).submit();
 
     assert.equal(joinResult.resultCode, 0);
     assert.deepEqual(joinResult.reply, { text: `${name}:joined` });
     assert.deepEqual(calls, [`joinSpot:alice:alice:stage-1:${name}:hello`]);
-    replyMessage.close();
   }
 });
 
@@ -634,7 +631,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
       node
     })
   });
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
   const request = encodedMessage('payload:hello');
   const result = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
 
@@ -649,7 +646,6 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
     'createNative:alice',
     'join:1:node-a:stage-1:payload:hello:25'
   ]);
-  request.toMessage().close();
 });
 
 test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote address is not a route channel', async () => {
@@ -723,7 +719,7 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
       }
     })
   });
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
   const request = encodedMessage('payload');
   const result = await actor.context.joinSpot('room-1', request).submit();
 
@@ -735,7 +731,6 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
     'joinActor:1:node-a:room-1:player:payload:undefined',
     'bind:node-a:alice:2'
   ]);
-  request.toMessage().close();
 });
 
 test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transport owns the router channel', async () => {
@@ -807,7 +802,7 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
       }
     })
   });
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
   const request = encodedMessage('payload');
   const result = await actor.context.joinSpot('room-1', request).submit();
 
@@ -820,7 +815,6 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
     'routeRequest:play-node:node-a:room-1:__zlink.actor.join_spot.request:alice:player:payload',
     'bind:node-a:alice:2'
   ]);
-  request.toMessage().close();
 });
 
 test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot state', async () => {
@@ -863,12 +857,11 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({ node })
   });
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
   manager.getState('alice').setJoinedSpot('stage-1');
 
   const entryRequest = encodedMessage('entry');
   const result = await actor.context.joinEntrySpot('node-b', entryRequest).timeout(50).submit();
-  entryRequest.toMessage().close();
 
   assert.deepEqual(result.actor, { ...entryRef, nodeRid: zlink.RoutingId.from('node-b') });
   assert.equal(actor.context.isJoined, false);
@@ -907,7 +900,7 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
     }
   });
 
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
   manager.getState('alice').ensureNativeActorRef(node);
   manager.getState('alice').setJoinedSpot('stage-1');
 
@@ -915,7 +908,7 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
     () => manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor),
     { kind: framework.ZLinkFrameworkErrorKind.ActorRouteNotFound }
   );
-  assert.equal(await manager.find('alice'), actor);
+  assert.equal(await manager.findActor('alice'), actor);
 
   manager.getState('alice').clearJoinedSpot();
   await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
@@ -927,10 +920,10 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
     { kind: framework.ZLinkFrameworkErrorKind.ActorRouteNotFound }
   );
 
-  const recreated = await manager.create('alice', 'player');
+  const recreated = await manager.getOrCreateActor('alice', 'player');
   manager.getState('alice').ensureNativeActorRef(node);
   await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
-  assert.equal(await manager.find('alice'), recreated);
+  assert.equal(await manager.findActor('alice'), recreated);
 
   assert.deepEqual(events, [
     'createNative:alice',
@@ -971,7 +964,7 @@ test('DefaultZLinkActorManager adopts native actor ref before creating routed ac
   });
 
   const actor = await manager.getOrCreateWithNativeRef('alice', 'player', targetRef);
-  const again = await manager.getOrCreate('alice', 'player');
+  const again = await manager.getOrCreateActor('alice', 'player');
 
   assert.equal(again, actor);
   assert.deepEqual(manager.getState('alice').nativeActorRef, targetRef);
@@ -1003,7 +996,7 @@ test('DefaultZLinkActorManager runs destroy cleanup for local actors without nat
     }
   });
 
-  const actor = await manager.create('local-alice', 'player');
+  const actor = await manager.getOrCreateActor('local-alice', 'player');
   await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
 
   assert.equal(await manager.find('local-alice'), undefined);
@@ -1035,7 +1028,7 @@ test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle
   });
 
   await activation.create();
-  await activation.notifyCreateActor({ actorId: 'alice' });
+  await activation.notifyCreateActor({ actorId: 'alice' }, framework.ZLinkMessage.from({}));
   await activation.context.destroyActor({ actorId: 'alice' });
 
   assert.deepEqual(events, [
@@ -1236,7 +1229,7 @@ test('ZLinkActorNativeJoinCoordinator maps native join failures to framework err
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({ node })
   });
-  const actor = await manager.create('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player');
 
   await assert.rejects(
     () => actor.context.joinSpot('stage-1', 'hello').submit(),

@@ -12,6 +12,7 @@ import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.handlers.PlayerWinMilestoneEventHandler;
 import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneRes;
+import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerWinMilestoneEvent;
 import systems.zlink.samples.tictactoe.shared.contracts.WinMilestoneNotify;
 
@@ -42,7 +43,9 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     @Override
     public void onCreateActor(
         PlayActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken) {
+        actor.applyPlayer(createRequest.decode(PlayerInfo.class));
     }
 
     @Override

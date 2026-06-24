@@ -256,9 +256,9 @@ function resolveBackendSpotNodeProperty(target: unknown, property: string | symb
     };
   }
   if (property === 'createActor') {
-    return (actorId: string) =>
-      (target as unknown as { createActor(actorId: string): { actorRef: unknown } })
-        .createActor(actorId)
+    return (actorId: string, request?: unknown) =>
+      (target as unknown as { createActor(actorId: string, request?: unknown): { actorRef: unknown } })
+        .createActor(actorId, request)
         .actorRef;
   }
   if (property === 'actorLookup') {

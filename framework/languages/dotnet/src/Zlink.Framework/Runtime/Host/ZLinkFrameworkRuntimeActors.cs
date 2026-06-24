@@ -21,6 +21,21 @@ internal sealed partial class ZLinkFrameworkRuntime
             cancellationToken);
     }
 
+    internal async ValueTask<ZLinkActorJoinResult> JoinActorAsync(
+        RoutingId spotRid,
+        ActorRef actor,
+        ZLinkMessage request,
+        CancellationToken cancellationToken = default)
+    {
+        var managedActor = ResolveOwnedActorRef(actor);
+        return await JoinActorAsync(
+                spotRid,
+                managedActor,
+                request,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
         RoutingId spotNodeRid,
         IZLinkActor actor,
@@ -33,6 +48,38 @@ internal sealed partial class ZLinkFrameworkRuntime
             request,
             cancellationToken);
     }
+
+    internal async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
+        RoutingId spotNodeRid,
+        ActorRef actor,
+        ZLinkMessage request,
+        CancellationToken cancellationToken = default)
+    {
+        var managedActor = ResolveOwnedActorRef(actor);
+        return await JoinActorEntrySpotAsync(
+                spotNodeRid,
+                managedActor,
+                request,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private IZLinkActor ResolveOwnedActorRef(ActorRef actor)
+    {
+        if (!TryGetCreatedActorState(actor.ActorId, out var state)
+            || state.Actor is not { } managedActor
+            || state.NativeActorRef is not { } nativeRef
+            || nativeRef.NodeRid != actor.NodeRid
+            || nativeRef.Generation != actor.Generation)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor ref '{actor.ActorId}' is not owned by this runtime.");
+        }
+
+        return managedActor;
+    }
+
 
     internal async ValueTask DestroyActorAsync(
         RoutingId entrySpotNodeRid,
@@ -154,7 +201,25 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorType,
         CancellationToken cancellationToken = default)
     {
-        var result = await _actors.CreateLocalActorAsync(actorId, actorType, cancellationToken)
+        return await CreateLocalActorAsync(
+                actorId,
+                actorType,
+                ZLinkMessage.Empty,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<CreateActorResult> CreateLocalActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _actors.CreateLocalActorAsync(
+                actorId,
+                actorType,
+                createRequest,
+                cancellationToken)
             .ConfigureAwait(false);
         if (result.Created)
         {
@@ -165,6 +230,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     $"Actor '{result.Actor.ActorId}' does not have a native Actor ref after creation.");
             await NotifyEntrySpotActorCreatedAsync(
                     result.Actor,
+                    result.CreateRequest,
                     nativeRef.NodeRid,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -177,7 +243,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
-        => await _actors.CreateActorAsync(actorId, actorType, cancellationToken);
+        => await CreateActorAsync(actorId, actorType, ZLinkMessage.Empty, cancellationToken);
+
+    internal async ValueTask<CreateActorResult> CreateActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default)
+        => await _actors.CreateActorAsync(actorId, actorType, createRequest, cancellationToken);
 
     internal async ValueTask<IZLinkActor?> FindActorAsync(
         string actorId,

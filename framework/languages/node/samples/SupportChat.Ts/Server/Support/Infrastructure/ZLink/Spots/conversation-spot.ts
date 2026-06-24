@@ -104,7 +104,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
     return change.state;
   }
 
-  async sendMessage(actor: SupportUserActorType, request: SendChatMessageReq): Promise<SendChatMessageRes> {
+  async sendMessage(actor: Pick<SupportUserActorType, 'actorId'>, request: SendChatMessageReq): Promise<SendChatMessageRes> {
     this.ensureConversationId(request.conversationId);
     const change = this.requireConversation().sendMessage(actor.actorId, request.text, Date.now());
     await this.requireNotifications().publish(change.events, this.participantActorIds());
@@ -115,14 +115,14 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
     return { message: appended.message, state: change.state };
   }
 
-  async setTyping(actor: SupportUserActorType, request: SetTypingReq): Promise<SetTypingRes> {
+  async setTyping(actor: Pick<SupportUserActorType, 'actorId'>, request: SetTypingReq): Promise<SetTypingRes> {
     this.ensureConversationId(request.conversationId);
     const change = this.requireConversation().setTyping(actor.actorId, request.isTyping);
     await this.requireNotifications().publish(change.events, this.participantActorIds());
     return { state: change.state };
   }
 
-  async close(actor: SupportUserActorType, request: CloseConversationReq): Promise<CloseConversationRes> {
+  async close(actor: Pick<SupportUserActorType, 'actorId'>, request: CloseConversationReq): Promise<CloseConversationRes> {
     this.ensureConversationId(request.conversationId);
     const change = this.requireConversation().close(actor.actorId, request.reason);
     await this.requireNotifications().publish(change.events, this.participantActorIds());

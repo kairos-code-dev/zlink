@@ -49,9 +49,10 @@ public final class AuthenticatePlaySessionHandler
                 new AuthenticatePlayerReq(request.accessToken()))
             .timeout(SampleNames.RequestTimeout)
             .await(AuthenticatePlayerRes.class);
-        var playActor = await(actors.getOrCreate(authenticated.player().actorId(), SampleNames.PlayActor));
-        ((systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor) playActor)
-            .applyPlayer(authenticated.player());
+        var playActor = await(actors.getOrCreate(
+            authenticated.player().actorId(),
+            SampleNames.PlayActor,
+            authenticated.player()));
         var bound = await(context.actors().bind(playActor));
         context.client()
             .reply(new AuthenticateRes(authenticated.player()))

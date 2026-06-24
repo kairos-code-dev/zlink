@@ -3,7 +3,7 @@ package systems.zlink.samples.deliverydispatch.server.tracking.handlers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.ZLinkAwait;
-import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
@@ -20,14 +20,17 @@ public final class SubscribeCustomerToDeliveryHandler
         Messages.SubscribeCustomerToDelivery,
         Messages.CustomerDeliverySubscribed> {
     private final ZLinkActorManager actors;
+    private final ZLinkActorGateway actorGateway;
     private final ZLinkSpotManager spots;
     private final ObjectMapper json;
 
     public SubscribeCustomerToDeliveryHandler(
         ZLinkActorManager actors,
+        ZLinkActorGateway actorGateway,
         ZLinkSpotManager spots,
         ObjectMapper json) {
         this.actors = actors;
+        this.actorGateway = actorGateway;
         this.spots = spots;
         this.json = json;
     }
@@ -40,10 +43,11 @@ public final class SubscribeCustomerToDeliveryHandler
             DeliveryTrackingSpot.class,
             RoutingId.from(request.deliveryId()),
             new Messages.DeliverySpotCreate(request.deliveryId())));
-        ZLinkActor actor = ZLinkAwait.await(
+        var actor = ZLinkAwait.await(
             actors.getOrCreate(request.customerId(), SampleNames.CustomerActorType));
-        actor.context()
+        actorGateway
             .joinSpot(
+                actor,
                 RoutingId.from(request.deliveryId()),
                 new Messages.DeliverySpotJoin(request.deliveryId(), request.customerId()))
             .timeout(SampleTimings.RequestTimeout)

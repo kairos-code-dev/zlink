@@ -229,6 +229,16 @@ serializer_registry_t *actor_context_t::serializer_registry () const noexcept
     return _state->serializers;
 }
 
+std::optional<zlink::message_t> actor_context_t::create_payload () const
+{
+    const std::lock_guard lock (_state->mutex);
+    const auto found = _state->actors_by_id.find (std::string (_actor_ref.actor_id ()));
+    if (found == _state->actors_by_id.end ()) {
+        return std::nullopt;
+    }
+    return found->second.create_payload;
+}
+
 bound_session_t actor_context_t::bound_session () const
 {
     return bound_session_t (_state, _actor_ref);
@@ -304,6 +314,7 @@ actor_join_entry_spot_call_t actor_context_t::join_entry_spot_raw (node_rid_t sp
                                                                    const zlink::message_t &request)
 {
     detail::actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher;
+    zlink::message_t effective_request = request;
     {
         const std::lock_guard lock (_state->mutex);
         if (_actor_ref.empty ()) {
@@ -326,9 +337,15 @@ actor_join_entry_spot_call_t actor_context_t::join_entry_spot_raw (node_rid_t sp
               serializer_registry ());
         }
         dispatcher = _state->join_entry_spot_dispatcher;
+        if (effective_request.to_string ().empty ()) {
+            const auto found = _state->actors_by_id.find (std::string (_actor_ref.actor_id ()));
+            if (found != _state->actors_by_id.end () && found->second.create_payload) {
+                effective_request = *found->second.create_payload;
+            }
+        }
     }
 
-    auto joined = dispatcher (_actor_ref, spot_node_rid, request);
+    auto joined = dispatcher (_actor_ref, spot_node_rid, effective_request);
     if (!joined) {
         const auto *error = joined.error ();
         return actor_join_entry_spot_call_t (
@@ -533,6 +550,41 @@ session_actor_manager_t::operator= (session_actor_manager_t &&) noexcept = defau
 result_t<session_actor_t> session_actor_manager_t::create (std::string actor_type,
                                                            std::string actor_id)
 {
+    return create_erased (std::move (actor_type), std::move (actor_id), std::nullopt);
+}
+
+result_t<session_actor_t>
+session_actor_manager_t::create (std::string actor_type,
+                                 std::string actor_id,
+                                 const zlink::message_t &request)
+{
+    return create_erased (std::move (actor_type), std::move (actor_id), request);
+}
+
+result_t<session_actor_t>
+session_actor_manager_t::create (std::string actor_type,
+                                 std::string actor_id,
+                                 const message_t &request)
+{
+    if (!_state || !_state->serializers) {
+        return result_t<session_actor_t>::failure (framework_error_kind_t::request_protocol_error,
+                                                   "actor create requires a serializer registry");
+    }
+    try {
+        return create_erased (std::move (actor_type), std::move (actor_id),
+                              detail::message_to_raw (request, *_state->serializers));
+    }
+    catch (const framework_exception_t &error) {
+        return result_t<session_actor_t>::failure (error.kind (), error.what (),
+                                                   error.is_retriable ());
+    }
+}
+
+result_t<session_actor_t>
+session_actor_manager_t::create_erased (std::string actor_type,
+                                        std::string actor_id,
+                                        std::optional<zlink::message_t> request)
+{
     const std::lock_guard lock (_state->mutex);
     if (actor_type.empty () || actor_id.empty ()) {
         return result_t<session_actor_t>::failure (framework_error_kind_t::request_protocol_error,
@@ -543,7 +595,9 @@ result_t<session_actor_t> session_actor_manager_t::create (std::string actor_typ
                                                    "actor already exists");
     }
     actor_ref_t ref (node_rid_t::from_string ("local"), std::move (actor_type), actor_id, 1);
-    _state->actors_by_id.emplace (actor_id, detail::actor_record_t{ref, false, false});
+    detail::actor_record_t record{ref, false, false};
+    record.create_payload = std::move (request);
+    _state->actors_by_id.emplace (actor_id, std::move (record));
     return result_t<session_actor_t>::success (session_actor_t (_state, ref));
 }
 
@@ -560,6 +614,41 @@ std::optional<session_actor_t> session_actor_manager_t::find (std::string actor_
 result_t<session_actor_t> session_actor_manager_t::get_or_create (std::string actor_type,
                                                                   std::string actor_id)
 {
+    return get_or_create_erased (std::move (actor_type), std::move (actor_id), std::nullopt);
+}
+
+result_t<session_actor_t>
+session_actor_manager_t::get_or_create (std::string actor_type,
+                                        std::string actor_id,
+                                        const zlink::message_t &request)
+{
+    return get_or_create_erased (std::move (actor_type), std::move (actor_id), request);
+}
+
+result_t<session_actor_t>
+session_actor_manager_t::get_or_create (std::string actor_type,
+                                        std::string actor_id,
+                                        const message_t &request)
+{
+    if (!_state || !_state->serializers) {
+        return result_t<session_actor_t>::failure (framework_error_kind_t::request_protocol_error,
+                                                   "actor get or create requires a serializer registry");
+    }
+    try {
+        return get_or_create_erased (std::move (actor_type), std::move (actor_id),
+                                     detail::message_to_raw (request, *_state->serializers));
+    }
+    catch (const framework_exception_t &error) {
+        return result_t<session_actor_t>::failure (error.kind (), error.what (),
+                                                   error.is_retriable ());
+    }
+}
+
+result_t<session_actor_t>
+session_actor_manager_t::get_or_create_erased (std::string actor_type,
+                                               std::string actor_id,
+                                               std::optional<zlink::message_t> request)
+{
     if (auto actor = find (actor_id)) {
         if (actor->ref ().actor_type () != actor_type) {
             return result_t<session_actor_t>::failure (framework_error_kind_t::actor_type_mismatch,
@@ -567,7 +656,17 @@ result_t<session_actor_t> session_actor_manager_t::get_or_create (std::string ac
         }
         return result_t<session_actor_t>::success (*actor);
     }
-    return create (std::move (actor_type), std::move (actor_id));
+    return create_erased (std::move (actor_type), std::move (actor_id), std::move (request));
+}
+
+zlink::message_t session_actor_manager_t::serialize_request (std::type_index request_type,
+                                                             const void *request) const
+{
+    if (!_state || !_state->serializers) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "actor create requires a serializer registry");
+    }
+    return detail::encoded_payload_to_raw (_state->serializers->serialize (request_type, request));
 }
 
 request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor_ref)

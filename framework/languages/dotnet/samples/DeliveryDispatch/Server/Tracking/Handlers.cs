@@ -12,6 +12,7 @@ namespace DeliveryDispatch.Server.Tracking;
 
 internal sealed class EnsureCustomerActorHandler(
     IZLinkActorManager actors,
+    IZLinkActorGateway actorGateway,
     SampleTopology topology)
     : IZLinkRequestHandler<EnsureCustomerActor, CustomerActorEnsured>
 {
@@ -25,7 +26,8 @@ internal sealed class EnsureCustomerActorHandler(
             request.CustomerId,
             SampleNames.CustomerActorType,
             cancellationToken);
-        var joined = await actor.Context.JoinEntrySpot(
+        var joined = await actorGateway.JoinEntrySpot(
+                actor,
                 topology.TrackingSpotNodeRid,
                 ZLinkMessage.Empty)
             .Async(cancellationToken);
@@ -40,6 +42,7 @@ internal sealed class EnsureCustomerActorHandler(
 
 internal sealed class SubscribeCustomerToDeliveryHandler(
     IZLinkActorManager actors,
+    IZLinkActorGateway actorGateway,
     IZLinkSpotManager spots)
     : IZLinkRequestHandler<SubscribeCustomerToDelivery, CustomerDeliverySubscribed>
 {
@@ -57,7 +60,8 @@ internal sealed class SubscribeCustomerToDeliveryHandler(
             request.CustomerId,
             SampleNames.CustomerActorType,
             cancellationToken);
-        await actor.Context.JoinSpot(
+        await actorGateway.JoinSpot(
+                actor,
                 RoutingId.From(request.DeliveryId),
                 new DeliverySpotJoin(request.DeliveryId, request.CustomerId))
             .Async(cancellationToken);

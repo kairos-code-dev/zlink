@@ -42,7 +42,11 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     @Override
     public void onCreateActor(
         PlayerActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken) {
+        Messages.EnsurePlayerActorReq request =
+            createRequest.decode(Messages.EnsurePlayerActorReq.class);
+        actor.setDisplayName(request.displayName());
     }
 
     @Override

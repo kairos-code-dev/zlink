@@ -24,7 +24,10 @@ public final class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
     }
 
     @Override
-    public void onCreateActor(CustomerActor actor, CancellationToken cancellationToken) {
+    public void onCreateActor(
+        CustomerActor actor,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken) {
     }
 
     @Override

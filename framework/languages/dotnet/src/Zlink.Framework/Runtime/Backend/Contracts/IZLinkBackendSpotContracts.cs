@@ -32,7 +32,7 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     IZLinkBackendSpot EntrySpot();
 
-    ZLinkBackendActorRef CreateActor(string actorId);
+    ZLinkBackendActorRef CreateActor(string actorId, Message createRequest);
 
     ZLinkBackendActorRef? ActorLookup(string actorId);
 

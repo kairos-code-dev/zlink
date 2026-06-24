@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.z
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.actors.ZLinkActorGateway
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
@@ -18,6 +19,7 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.JoinConversatio
 class AssignAgentHandler(
     private val assignment: AgentAssignmentService,
     private val actors: SupportActorDirectory,
+    private val actorGateway: ZLinkActorGateway,
 ) : ZLinkSuspendingRequestHandler<AssignAgentReq, AssignAgentRes> {
     override suspend fun handle(
         request: AssignAgentReq,
@@ -30,14 +32,15 @@ class AssignAgentHandler(
                 null,
             )
         val actor = actors.get(assigned.actorId)
-        val joined = actor.context()
+        val joined = actorGateway
             .joinSpot(
+                actor.ref,
                 RoutingId.from(request.conversationId),
                 JoinConversationReq(request.conversationId),
             )
             .timeout(SampleTimings.RequestTimeout)
             .submit(JoinConversationRes::class.java)
             .await()
-        AssignAgentRes(request.conversationId, joined.reply().state.status, actor.actorId())
+        AssignAgentRes(request.conversationId, joined.reply().state.status, actor.ref.actorId())
     }
 }

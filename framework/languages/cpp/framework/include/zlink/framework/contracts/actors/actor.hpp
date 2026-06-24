@@ -374,6 +374,7 @@ class actor_context_t
     result_t<detail::actor_join_reply_t> join_spot_erased (spot_rid_t spot_rid,
                                                            const zlink::message_t &request);
     serializer_registry_t *serializer_registry () const noexcept;
+    std::optional<zlink::message_t> create_payload () const;
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     actor_ref_t _actor_ref;
@@ -422,8 +423,48 @@ class session_actor_manager_t
     session_actor_manager_t &operator= (const session_actor_manager_t &) = default;
 
     result_t<session_actor_t> create (std::string actor_type, std::string actor_id);
+    result_t<session_actor_t>
+    create (std::string actor_type, std::string actor_id, const zlink::message_t &request);
+    result_t<session_actor_t>
+    create (std::string actor_type, std::string actor_id, const message_t &request);
+    template <typename TRequest>
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
+                && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
+    result_t<session_actor_t>
+    create (std::string actor_type, std::string actor_id, const TRequest &request)
+    {
+        try {
+            return create_erased (std::move (actor_type), std::move (actor_id),
+                                  serialize_request (std::type_index (typeid (TRequest)),
+                                                     &request));
+        }
+        catch (const framework_exception_t &error) {
+            return result_t<session_actor_t>::failure (error.kind (), error.what (),
+                                                       error.is_retriable ());
+        }
+    }
     std::optional<session_actor_t> find (std::string actor_id) const;
     result_t<session_actor_t> get_or_create (std::string actor_type, std::string actor_id);
+    result_t<session_actor_t>
+    get_or_create (std::string actor_type, std::string actor_id, const zlink::message_t &request);
+    result_t<session_actor_t>
+    get_or_create (std::string actor_type, std::string actor_id, const message_t &request);
+    template <typename TRequest>
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
+                && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
+    result_t<session_actor_t>
+    get_or_create (std::string actor_type, std::string actor_id, const TRequest &request)
+    {
+        try {
+            return get_or_create_erased (
+              std::move (actor_type), std::move (actor_id),
+              serialize_request (std::type_index (typeid (TRequest)), &request));
+        }
+        catch (const framework_exception_t &error) {
+            return result_t<session_actor_t>::failure (error.kind (), error.what (),
+                                                       error.is_retriable ());
+        }
+    }
     request_call_t<session_actor_t> bind (actor_ref_t actor_ref);
     void unbind_session (std::string actor_id) noexcept;
 
@@ -431,6 +472,13 @@ class session_actor_manager_t
     friend class actor_gateway_t;
     friend class detail::actor_gateway_runtime_t;
     explicit session_actor_manager_t (std::shared_ptr<detail::actor_gateway_state_t> state);
+    result_t<session_actor_t>
+    create_erased (std::string actor_type, std::string actor_id, std::optional<zlink::message_t> request);
+    result_t<session_actor_t>
+    get_or_create_erased (std::string actor_type,
+                          std::string actor_id,
+                          std::optional<zlink::message_t> request);
+    zlink::message_t serialize_request (std::type_index request_type, const void *request) const;
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
 };

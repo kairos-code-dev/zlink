@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { PacketNames, authenticatePlayerReq, authenticateRes } from '../../../../../Shared/Contracts/messages';
 import { SampleNames } from '../../../../Configuration/sample-settings';
 import type {
-  ZLinkActor,
+  ActorRef,
   ZLinkChannelClient,
   ZLinkMessage,
   ZLinkSession,
@@ -15,27 +15,27 @@ import type {
   AuthenticatePlayerRes,
   AuthenticateReq,
   JoinGameReq,
-  TicTacToeActor,
-  TicTacToeActorClient
+  PlayerInfo,
+  TicTacToeActor
 } from '../../../../../Shared/Contracts/messages';
 
-type PlaySessionActor = TicTacToeActor & ZLinkActor;
+type AuthenticatedPlayer = PlayerInfo & { readonly ref: ActorRef; roomId?: string };
 
 type PlayEntrySpotLike = {
-  join(actor: PlaySessionActor, roomId: string): Promise<unknown>;
-  observeMilestone(actor: PlaySessionActor): Promise<unknown>;
+  join(actorRef: ActorRef, player: PlayerInfo, roomId: string): Promise<unknown>;
+  observeMilestone(actor: PlayerInfo): Promise<unknown>;
 };
 
 type PlaySessionDependencies = {
   apiClient: ZLinkChannelClient;
   actorManager: {
-    getOrCreate(actorId: string, actorType: string, signal?: AbortSignal): Promise<PlaySessionActor>;
+    getOrCreate(actorId: string, actorType: string, createRequest: unknown, signal?: AbortSignal): Promise<ActorRef>;
   };
   entrySpot: PlayEntrySpotLike;
   joinGameHandler: {
     handle(
       entrySpot: PlayEntrySpotLike,
-      actor: PlaySessionActor,
+      actor: TicTacToeActor,
       context: ZLinkSpotActorRequestContext,
       request: JoinGameReq
     ): Promise<unknown>;
@@ -47,7 +47,7 @@ type PlaySessionHeader = {
 };
 
 class PlaySession implements ZLinkSession {
-  private actor: PlaySessionActor | null;
+  private actor: AuthenticatedPlayer | null;
   private sessionActor: ZLinkSessionActor | null;
 
   constructor(
@@ -70,7 +70,8 @@ class PlaySession implements ZLinkSession {
   }
 
   async onDisconnected(context: ZLinkSessionContext): Promise<void> {
-    this.actor?.detachClient(context.client as TicTacToeActorClient);
+    void context;
+    await this.sessionActor?.notifyDisconnected();
   }
 
   async dispatch(header: PlaySessionHeader, payload: unknown): Promise<void> {
@@ -97,15 +98,13 @@ class PlaySession implements ZLinkSession {
     const authenticated = await this.dependencies.apiClient
       .requestToChannel(SampleNames.apiChannel, authenticatePlayerReq(request.accessToken))
       .submit<AuthenticatePlayerRes>();
-    this.actor = await this.dependencies.actorManager.getOrCreate(
+    const actorRef = await this.dependencies.actorManager.getOrCreate(
       authenticated.player.actorId,
-      SampleNames.playerActorType
+      SampleNames.playerActorType,
+      authenticated.player
     );
-    this.actor.displayName = authenticated.player.displayName;
-    this.actor.level = authenticated.player.level;
-    this.actor.wins = authenticated.player.wins;
-    this.sessionActor = await this.context.actors.bind(this.actor);
-    this.actor.attachClient(this.context.client as TicTacToeActorClient);
+    this.actor = { ...authenticated.player, ref: actorRef };
+    this.sessionActor = await this.context.actors.bind(actorRef);
     await this.context.client.reply(authenticateRes(authenticated.player)).submit();
   }
 
@@ -115,12 +114,7 @@ class PlaySession implements ZLinkSession {
       throw new Error('AuthenticateReq is required before JoinGameReq.');
     }
     console.log(`actor: JoinGameReq received. actor=${this.actor.actorId} roomId=${request.roomId}`);
-    const result = await this.dependencies.joinGameHandler.handle(
-      this.dependencies.entrySpot,
-      this.actor,
-      createActorRequestContext(PacketNames.joinGameReq),
-      request
-    );
+    const result = await this.dependencies.entrySpot.join(this.actor.ref, this.actor, request.roomId);
     this.actor.roomId = request.roomId;
     await this.context.client.reply(result).submit();
     console.log(`actor: JoinGameReq completed. actor=${this.actor.actorId} roomId=${request.roomId}`);

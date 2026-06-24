@@ -20,7 +20,8 @@ public sealed class ActorContracts
         var factory = new ActorFactory();
         var manager = new ActorManager(factory, context);
 
-        var actor = await manager.GetOrCreateAsync("player-1", "player");
+        var actor = new PlayerActor("player-1", context);
+        var actorRef = await manager.GetOrCreateAsync("player-1", "player");
         var joinReply = await actor.Context
             .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
             .Async();
@@ -31,6 +32,7 @@ public sealed class ActorContracts
 
         actor.Configure();
 
+        Assert.Equal("player-1", actorRef.ActorId);
         Assert.Equal("player-1", actor.ActorId);
         Assert.True(joinReply.Accepted);
         Assert.Equal("room-1", joinReply.Reply.Decode<JoinedRoom>().RoomId);
@@ -54,29 +56,58 @@ public sealed class ActorContracts
 
     private sealed class ActorManager(IZLinkActorFactory factory, IZLinkActorContext context) : IZLinkActorManager
     {
-        private readonly Dictionary<string, IZLinkActor> _actors = [];
+        private readonly Dictionary<string, ActorRef> _actors = [];
 
-        public async ValueTask<IZLinkActor> CreateAsync(
+        public async ValueTask<ActorRef> CreateAsync(
             string actorId,
             string actorType,
             CancellationToken cancellationToken = default)
         {
-            var actor = await factory.CreateAsync(actorId, context, cancellationToken);
-            _actors[actorId] = actor;
-            return actor;
+            return await CreateAsync(
+                actorId,
+                actorType,
+                ZLinkMessage.Empty,
+                cancellationToken);
         }
 
-        public ValueTask<IZLinkActor?> FindAsync(
+        public async ValueTask<ActorRef> CreateAsync(
+            string actorId,
+            string actorType,
+            ZLinkMessage createRequest,
+            CancellationToken cancellationToken = default)
+        {
+            _ = createRequest;
+            var actor = await factory.CreateAsync(actorId, context, cancellationToken);
+            var actorRef = new ActorRef(RoutingId.From("actor-node"), actor.ActorId, 1);
+            _actors[actorId] = actorRef;
+            return actorRef;
+        }
+
+        public ValueTask<ActorRef?> FindAsync(
             string actorId,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(_actors.GetValueOrDefault(actorId));
+            ValueTask.FromResult<ActorRef?>(
+                _actors.TryGetValue(actorId, out var actorRef)
+                    ? actorRef
+                    : null);
 
-        public async ValueTask<IZLinkActor> GetOrCreateAsync(
+        public async ValueTask<ActorRef> GetOrCreateAsync(
             string actorId,
             string actorType,
             CancellationToken cancellationToken = default) =>
+            await GetOrCreateAsync(
+                actorId,
+                actorType,
+                ZLinkMessage.Empty,
+                cancellationToken);
+
+        public async ValueTask<ActorRef> GetOrCreateAsync(
+            string actorId,
+            string actorType,
+            ZLinkMessage createRequest,
+            CancellationToken cancellationToken = default) =>
             await FindAsync(actorId, cancellationToken)
-                ?? await CreateAsync(actorId, actorType, cancellationToken);
+                ?? await CreateAsync(actorId, actorType, createRequest, cancellationToken);
     }
 
     private sealed class ActorContext(string actorId, IZLinkSpot spot) : IZLinkActorContext

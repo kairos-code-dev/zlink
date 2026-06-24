@@ -1,11 +1,10 @@
 import { Inject } from '@nestjs/common';
-import { zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_GATEWAY, ZLINK_ACTOR_MANAGER, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import { AgentAssignmentService } from '../../../Application/ConversationAssignment/agent-assignment-service';
-import { SupportUserActorFactory } from '../Actors/support-user-actor-factory';
-import { ConversationStatuses, PacketNames, assignAgentRes } from '../../../../../Shared/Contracts/messages';
-import type { ZLinkRequestHandler } from '@zlink-systems/framework';
+import { SampleNames } from '../../../../Configuration/sample-names';
+import { ConversationStatuses, PacketNames, SupportChatRoles, assignAgentRes } from '../../../../../Shared/Contracts/messages';
+import type { ZLinkActorGateway, ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { AgentAssignmentService as AgentAssignmentServiceType } from '../../../Application/ConversationAssignment/agent-assignment-service';
-import type { SupportUserActorFactory as SupportUserActorFactoryType } from '../Actors/support-user-actor-factory';
 import type {
   AssignAgentReq,
   AssignAgentRes,
@@ -16,7 +15,8 @@ import type {
 class AssignAgentHandler implements ZLinkRequestHandler<AssignAgentReq, AssignAgentRes> {
   constructor(
     @Inject(AgentAssignmentService) private readonly assignment: AgentAssignmentServiceType,
-    @Inject(SupportUserActorFactory) private readonly actors: SupportUserActorFactoryType
+    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager,
+    @Inject(ZLINK_ACTOR_GATEWAY) private readonly actorGateway: ZLinkActorGateway
   ) {}
 
   async handle(request: AssignAgentReq): Promise<AssignAgentRes> {
@@ -25,13 +25,19 @@ class AssignAgentHandler implements ZLinkRequestHandler<AssignAgentReq, AssignAg
       return assignAgentRes(request.conversationId, ConversationStatuses.WaitingForAgent, null);
     }
 
-    const actor = this.actors.get(assigned.actorId);
-    const joined = await actor.context.joinSpot(request.conversationId).submit<Partial<JoinConversationRes & { error: string }>>();
+    const actorRef = await this.actorManager.getOrCreate(
+      assigned.actorId,
+      SampleNames.supportActorType,
+      { actorId: assigned.actorId, displayName: assigned.displayName, role: SupportChatRoles.agent }
+    );
+    const joined = await this.actorGateway
+      .joinSpot(actorRef, request.conversationId)
+      .submit<Partial<JoinConversationRes & { error: string }>>();
     if (joined.resultCode !== 0) {
-      throw new Error(joined.reply?.error ?? `Conversation '${request.conversationId}' rejected agent '${actor.actorId}'.`);
+      throw new Error(joined.reply?.error ?? `Conversation '${request.conversationId}' rejected agent '${assigned.actorId}'.`);
     }
     const state = (joined.reply as JoinConversationRes).state;
-    return assignAgentRes(request.conversationId, state.status, actor.actorId);
+    return assignAgentRes(request.conversationId, state.status, assigned.actorId);
   }
 }
 

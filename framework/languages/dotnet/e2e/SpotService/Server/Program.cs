@@ -169,6 +169,7 @@ static string Require(string? value, string optionName)
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsureActorHandler(
     IZLinkActorManager actors,
+    IZLinkActorGateway actorGateway,
     NodeOptions node,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<EnsureActorReq, EnsureActorReply>
@@ -182,13 +183,10 @@ internal sealed class EnsureActorHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
+            new ScenarioActorCreateRequest(request.DisplayName),
             cancellationToken);
-        if (actor is ScenarioActor scenarioActor)
-        {
-            scenarioActor.DisplayName = request.DisplayName;
-        }
 
-        var joined = await actor.Context.JoinEntrySpot(RoutingId.From(node.Rid), ZLinkMessage.Empty)
+        var joined = await actorGateway.JoinEntrySpot(actor, RoutingId.From(node.Rid), ZLinkMessage.Empty)
             .Async(cancellationToken);
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         return new EnsureActorReply(
@@ -283,6 +281,7 @@ internal sealed class SpotTypeMismatchHandler(
 [ZLinkHandlerGroup("play")]
 internal sealed class JoinUserSpotActorHandler(
     IZLinkActorManager actors,
+    IZLinkActorGateway actorGateway,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorReply>
 {
@@ -296,7 +295,7 @@ internal sealed class JoinUserSpotActorHandler(
             request.ActorId,
             SpotServiceNames.ActorType,
             cancellationToken);
-        var joined = await actor.Context.JoinSpot(RoutingId.From(request.SpotRid), ZLinkMessage.Empty)
+        var joined = await actorGateway.JoinSpot(actor, RoutingId.From(request.SpotRid), ZLinkMessage.Empty)
             .Async(cancellationToken);
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
@@ -332,6 +331,8 @@ internal sealed class ScenarioActor(string actorId, IZLinkActorContext context) 
     public IZLinkActorContext Context { get; } = context;
 }
 
+internal sealed record ScenarioActorCreateRequest(string DisplayName);
+
 internal sealed class ScenarioEntrySpot(
     IZLinkEntrySpotContext context,
     EvidenceStore evidence) : IZLinkEntrySpot<ScenarioActor>
@@ -340,9 +341,15 @@ internal sealed class ScenarioEntrySpot(
 
     public ValueTask OnCreateActorAsync(
         ScenarioActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (!createRequest.IsEmpty)
+        {
+            actor.DisplayName = createRequest.Decode<ScenarioActorCreateRequest>().DisplayName;
+        }
+
         evidence.Add($"entry-created|rid={evidence.Rid}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
     }
@@ -1116,6 +1123,7 @@ internal sealed class ScenarioSession(
 internal sealed class AuthSessionHandler(
     IZLinkRouteClient routes,
     IZLinkActorManager actors,
+    IZLinkActorGateway actorGateway,
     NodeOptions node,
     EvidenceStore evidence)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
@@ -1131,7 +1139,7 @@ internal sealed class AuthSessionHandler(
         _ = dispatch;
         var request = payload.Decode<AuthReq>();
         var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
-            ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
+            ? await EnsureLocalActorAsync(actors, actorGateway, node, evidence, request, cancellationToken)
             : await routes.Request(
                     SpotServiceNames.ControlChannel,
                     RoutingId.From(request.NodeRid),
@@ -1146,6 +1154,7 @@ internal sealed class AuthSessionHandler(
 
     private static async ValueTask<EnsureActorReply> EnsureLocalActorAsync(
         IZLinkActorManager actors,
+        IZLinkActorGateway actorGateway,
         NodeOptions node,
         EvidenceStore evidence,
         AuthReq request,
@@ -1154,13 +1163,10 @@ internal sealed class AuthSessionHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
+            new ScenarioActorCreateRequest(request.DisplayName),
             cancellationToken);
-        if (actor is ScenarioActor scenarioActor)
-        {
-            scenarioActor.DisplayName = request.DisplayName;
-        }
 
-        var joined = await actor.Context.JoinEntrySpot(RoutingId.From(node.Rid), ZLinkMessage.Empty)
+        var joined = await actorGateway.JoinEntrySpot(actor, RoutingId.From(node.Rid), ZLinkMessage.Empty)
             .Async(cancellationToken);
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         return new EnsureActorReply(
@@ -1203,6 +1209,7 @@ internal sealed class MultiBindSessionHandler(
 
 internal sealed class UserSpotAuthSessionHandler(
     IZLinkActorManager actors,
+    IZLinkActorGateway actorGateway,
     IZLinkRouteClient routes,
     NodeOptions node,
     EvidenceStore evidence)
@@ -1219,7 +1226,7 @@ internal sealed class UserSpotAuthSessionHandler(
         _ = dispatch;
         var request = payload.Decode<UserSpotAuthReq>();
         var joined = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
-            ? await JoinLocalUserSpotAsync(actors, evidence, request, cancellationToken)
+            ? await JoinLocalUserSpotAsync(actors, actorGateway, evidence, request, cancellationToken)
             : await JoinRemoteUserSpotAsync(routes, request, cancellationToken);
 
         EnsureAccepted(joined);
@@ -1231,6 +1238,7 @@ internal sealed class UserSpotAuthSessionHandler(
 
     private static async ValueTask<JoinUserSpotActorReply> JoinLocalUserSpotAsync(
         IZLinkActorManager actors,
+        IZLinkActorGateway actorGateway,
         EvidenceStore evidence,
         UserSpotAuthReq request,
         CancellationToken cancellationToken)
@@ -1238,13 +1246,10 @@ internal sealed class UserSpotAuthSessionHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
+            new ScenarioActorCreateRequest(request.DisplayName),
             cancellationToken);
-        if (actor is ScenarioActor scenarioActor)
-        {
-            scenarioActor.DisplayName = request.DisplayName;
-        }
 
-        var joined = await actor.Context.JoinSpot(RoutingId.From(request.SpotRid), ZLinkMessage.Empty)
+        var joined = await actorGateway.JoinSpot(actor, RoutingId.From(request.SpotRid), ZLinkMessage.Empty)
             .Async(cancellationToken);
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"

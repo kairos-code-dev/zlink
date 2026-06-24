@@ -365,7 +365,10 @@ final class MonitoringEventsTest {
         }
 
         @Override
-        public ZLinkBackendActorRef createActor(String actorId) {
+        public ZLinkBackendActorRef createActor(String actorId, Message createRequest) {
+            if (createRequest != null) {
+                createRequest.close();
+            }
             return null;
         }
 

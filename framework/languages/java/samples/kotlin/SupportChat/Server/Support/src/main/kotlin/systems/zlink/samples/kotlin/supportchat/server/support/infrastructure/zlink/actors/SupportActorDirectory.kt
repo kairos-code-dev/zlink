@@ -1,16 +1,20 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors
 
-class SupportActorDirectory {
-    private val gate = Any()
-    private val actors = mutableMapOf<String, SupportUserActor>()
+import systems.zlink.framework.actors.ZLinkActorRef
 
-    fun addOrUpdate(actor: SupportUserActor) {
+class SupportActorDirectory {
+    data class Entry(val ref: ZLinkActorRef, val displayName: String, val role: String)
+
+    private val gate = Any()
+    private val actors = mutableMapOf<String, Entry>()
+
+    fun addOrUpdate(ref: ZLinkActorRef, displayName: String, role: String) {
         synchronized(gate) {
-            actors[actor.actorId()] = actor
+            actors[ref.actorId()] = Entry(ref, displayName, role)
         }
     }
 
-    fun get(actorId: String): SupportUserActor =
+    fun get(actorId: String): Entry =
         synchronized(gate) {
             actors[actorId]
                 ?: throw IllegalStateException("Support actor is not available. actor=$actorId")

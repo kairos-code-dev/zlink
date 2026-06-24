@@ -8,8 +8,10 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
+import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
+import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
@@ -23,8 +25,8 @@ final class JsonSessionActorsRuntimeIntegrationTest {
         String actorId =
             SessionActorsRuntimeIntegrationTest.uniqueActorId("json-player");
         try (ZLinkFrameworkRuntime runtime = startLocalJsonRuntime()) {
-            var actor = runtime.actorManager()
-                .create(actorId, "player")
+            ZLinkActor actor = ((ZLinkActorRuntime) runtime.actorManager())
+                .getOrCreateManagedActor(actorId, "player")
                 .toCompletableFuture()
                 .join();
             ZLinkSessionActor bound = runtime.sessionActors(
@@ -34,11 +36,10 @@ final class JsonSessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            bound.relay(
-                    ZLinkMessage.of(
-                        new SessionActorsRuntimeIntegrationTest.JsonRelayReq("json-hello")))
-                .toCompletableFuture()
-                .join();
+            SessionActorsRuntimeIntegrationTest.relayWithHeader(
+                bound,
+                "JsonRelaySend",
+                ZLinkMessage.of(new JsonRelaySend("json-hello")));
 
             assertEquals(
                 actorId + ":json-hello",

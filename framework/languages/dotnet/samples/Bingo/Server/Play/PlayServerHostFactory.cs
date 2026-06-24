@@ -44,8 +44,7 @@ public static class PlayServerHostFactory
                 .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
-                .UseRegistrySpotResolver()
+            options.AddSpotMesh(SampleNames.RoomSpotDiscovery).UseRegistrySpotResolver()
                 .AddNode(SampleNames.RoomSpotNode)
                 .EnableRouter(node.SpotRouterEndpoint)
                 .SetRouterRoutingId(node.NodeRid)

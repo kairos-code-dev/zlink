@@ -3,6 +3,7 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.handlers
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.actors.ZLinkActorGateway
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
@@ -20,6 +21,7 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeC
 @ZLinkHandlerGroup("tracking")
 class SubscribeCustomerToDeliveryHandler(
     private val actors: ZLinkActorManager,
+    private val actorGateway: ZLinkActorGateway,
     private val spots: ZLinkSpotManager,
     private val json: ObjectMapper,
 ) : ZLinkSuspendingRequestHandler<SubscribeCustomerToDelivery, CustomerDeliverySubscribed> {
@@ -33,8 +35,9 @@ class SubscribeCustomerToDeliveryHandler(
             DeliverySpotCreate(request.deliveryId),
         ).await()
         val actor = actors.getOrCreate(request.customerId, SampleNames.CustomerActorType).await()
-        actor.context()
+        actorGateway
             .joinSpot(
+                actor,
                 RoutingId.from(request.deliveryId),
                 DeliverySpotJoin(request.deliveryId, request.customerId),
             )

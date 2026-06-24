@@ -5,7 +5,6 @@ import { SampleNames } from '../../../../Configuration/sample-names';
 import { PacketNames } from '../../../../../Shared/Contracts/messages';
 import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { SupportConversationAllocator as SupportConversationAllocatorType } from '../../../Application/ConversationAssignment/support-conversation-allocator';
-import type { SupportUserActor } from '../Actors/support-user-actor';
 import type {
   SetTypingReq,
   SetTypingRes,
@@ -20,8 +19,8 @@ class SetTypingChannelHandler implements ZLinkRequestHandler<SetTypingReq & User
   ) {}
 
   async handle(request: SetTypingReq & UserIdentity): Promise<SetTypingRes> {
-    const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
-    return await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.setTyping(actor, request));
+    await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType, request);
+    return await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.setTyping(request, request));
   }
 }
 

@@ -254,6 +254,7 @@ public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
 {
     ValueTask OnCreateActorAsync(
         TActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;

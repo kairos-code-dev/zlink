@@ -29,6 +29,21 @@ internal sealed partial class ZLinkActorSessionManager(
         return await CreateAndBindActorAsync(
                 actorId,
                 actorType,
+                ZLinkMessage.Empty,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<CreateActorResult> CreateAndBindActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default)
+    {
+        return await CreateAndBindActorAsync(
+                actorId,
+                actorType,
+                createRequest,
                 failIfExists: false,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -39,9 +54,24 @@ internal sealed partial class ZLinkActorSessionManager(
         string actorType,
         CancellationToken cancellationToken = default)
     {
+        return await CreateActorAsync(
+                actorId,
+                actorType,
+                ZLinkMessage.Empty,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<CreateActorResult> CreateActorAsync(
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken = default)
+    {
         return await CreateAndBindActorAsync(
                 actorId,
                 actorType,
+                createRequest,
                 failIfExists: true,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -115,6 +145,7 @@ internal sealed partial class ZLinkActorSessionManager(
     private async ValueTask<CreateActorResult> CreateAndBindActorAsync(
         string actorId,
         string actorType,
+        ZLinkMessage createRequest,
         bool failIfExists,
         CancellationToken cancellationToken)
     {
@@ -123,6 +154,7 @@ internal sealed partial class ZLinkActorSessionManager(
                 state,
                 actorId,
                 actorType,
+                createRequest,
                 failIfExists,
                 cancellationToken)
             .ConfigureAwait(false);

@@ -57,8 +57,12 @@ class entry_spot_t : public zlink::framework::entry_spot_t
         return {true};
     }
 
-    void onCreateActor (const player_actor_t &actor)
+    void onCreateActor (const player_actor_t &actor,
+                        const zlink::framework::message_t &create_request)
     {
+        const auto request = create_request.decode<ensure_player_actor_req_t> ();
+        actor.apply_player (
+          player_info_t{request.actor_id, request.actor_id, sample_names_t::required_level, 0});
         created_actor_ids.push_back (actor.actor_id);
     }
 

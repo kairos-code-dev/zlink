@@ -15,6 +15,9 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
+import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
@@ -25,10 +28,7 @@ final class BoundSessionTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(RemoteActorGatewayTest.options(), backend)) {
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-1", "player");
             runtime.sessionActors("gateway", RoutingId.from("session-1"))
                 .bind(actor)
                 .toCompletableFuture()
@@ -54,10 +54,7 @@ final class BoundSessionTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(RemoteActorGatewayTest.options(), backend)) {
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-1", "player");
             runtime.sessionActors("gateway", RoutingId.from("session-1"))
                 .bind(actor)
                 .toCompletableFuture()
@@ -93,11 +90,32 @@ final class BoundSessionTest {
                 .toCompletableFuture()
                 .join();
 
-            actor.relay(ZLinkMessage.of("place"))
-                .toCompletableFuture()
-                .join();
+            relayWithHeader(actor, "PlaceMark", ZLinkMessage.of("place"));
         }
 
         assertTrue(backend.calls().contains("stream.relayBoundActor.player-1.RAW.PlaceMark"));
+    }
+
+    private static ZLinkActor managedActor(
+        ZLinkFrameworkRuntime runtime,
+        String actorId,
+        String actorType) {
+        return ((ZLinkActorRuntime) runtime.actorManager())
+            .getOrCreateManagedActor(actorId, actorType)
+            .toCompletableFuture()
+            .join();
+    }
+
+    private static void relayWithHeader(
+        ZLinkSessionActor actor,
+        String packetName,
+        ZLinkMessage payload) {
+        ZLinkSessionActorsRuntime.enterRelayDispatch(
+            new ZLinkStreamHeader(packetName, Map.of(), Optional.empty()));
+        try {
+            actor.relay(payload).toCompletableFuture().join();
+        } finally {
+            ZLinkSessionActorsRuntime.exitRelayDispatch();
+        }
     }
 }

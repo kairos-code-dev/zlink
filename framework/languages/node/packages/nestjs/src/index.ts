@@ -362,6 +362,7 @@ export const ZLINK_SPOT_MANAGER = Symbol.for('@zlink-systems/framework:spot-mana
 export const ZLINK_SPOT_OUTBOUND = Symbol.for('@zlink-systems/framework:spot-outbound');
 export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:spot-publisher-client');
 export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
+export const ZLINK_ACTOR_GATEWAY = Symbol.for('@zlink-systems/framework:actor-gateway');
 export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
 export const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:registry-runtime');
 export const ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-query');
@@ -2320,6 +2321,9 @@ function conditionalClientProviders(registration: ZLinkFrameworkRegistration): P
   const providers = CONDITIONAL_CLIENT_PROVIDER_SPECS
     .filter((spec) => spec.isEnabled(registration))
     .map((spec) => createConditionalClientProvider(spec, registration));
+  if (framework.hasActorManager(registration)) {
+    providers.push({ provide: ZLINK_ACTOR_GATEWAY, useExisting: ZLINK_ACTOR_MANAGER });
+  }
   if (framework.hasSpotRemoteAddressResolver(registration)) {
     providers.push(...spotRemoteAddressResolverProviders(registration));
   }
@@ -2386,6 +2390,11 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
 function conditionalClientProvidersForFactory(): Provider[] {
   return [
     ...CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForFactory),
+    {
+      provide: ZLINK_ACTOR_GATEWAY,
+      inject: [ZLINK_ACTOR_MANAGER],
+      useFactory: (actorManager: unknown) => actorManager
+    },
     {
       provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
       inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService, ZLINK_FRAMEWORK_RUNTIME],
@@ -2460,6 +2469,7 @@ function conditionalClientTokens(): InjectionToken[] {
     ZLINK_SPOT_OUTBOUND,
     ZLINK_SPOT_PUBLISHER_CLIENT,
     ZLINK_ACTOR_MANAGER,
+    ZLINK_ACTOR_GATEWAY,
     ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER
   ];
 }

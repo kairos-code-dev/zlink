@@ -9,6 +9,7 @@ import type {
   ZLinkActorJoinEntrySpotCall,
   ZLinkActorJoinResult,
   ZLinkActorJoinSpotCall,
+  ZLinkActorGateway,
   ZLinkActorManager,
   ZLinkBoundSession,
   ZLinkSpot,
@@ -23,6 +24,7 @@ import type {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
+  ZLinkEncodedPayload,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkSpotKind
@@ -53,6 +55,7 @@ export interface ZLinkActorManagerOptions {
   readonly actorCreatedNotifier?: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
+    createRequest: ZLinkMessage,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly actorDestroyedCleanup?: (actorId: string) => void;
@@ -195,6 +198,11 @@ interface ZLinkActorCreationOperation {
   readonly created: boolean;
 }
 
+interface ZLinkActorCreateRequest {
+  readonly nativeRequest: Message | undefined;
+  readonly callbackRequest: ZLinkMessage;
+}
+
 /**
  * Owns actor construction: factory resolution (registered instance or
  * provider-constructed type), context creation, instance creation, actor
@@ -209,6 +217,7 @@ class ZLinkActorCreationCoordinator {
     actorId: string,
     actorType: string,
     state: ZLinkActorRuntimeState,
+    createRequest: ZLinkActorCreateRequest,
     signal?: AbortSignal
   ): Promise<ZLinkActor> {
     const factory = await this.createFactory(actorType);
@@ -222,16 +231,17 @@ class ZLinkActorCreationCoordinator {
       state.bindActor(actor, context);
       const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
       if (nativeActorNode !== undefined) {
-        const actorRef = state.ensureNativeActorRef(nativeActorNode);
+        const actorRef = state.ensureNativeActorRef(nativeActorNode, createRequest.nativeRequest);
         await this.options.actorCreatedNotifier?.(
           toFrameworkRoutingId(actorRef.nodeRid),
           actor,
+          createRequest.callbackRequest,
           signal
         );
       } else {
         const nodeRid = this.options.actorCreatedNodeRidProvider?.();
         if (nodeRid !== undefined) {
-          await this.options.actorCreatedNotifier?.(nodeRid, actor, signal);
+          await this.options.actorCreatedNotifier?.(nodeRid, actor, createRequest.callbackRequest, signal);
         }
       }
     } catch (error) {
@@ -254,7 +264,7 @@ class ZLinkActorCreationCoordinator {
   }
 }
 
-export class DefaultZLinkActorManager implements ZLinkActorManager {
+export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorGateway {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
   private readonly creation: ZLinkActorCreationCoordinator;
 
@@ -262,18 +272,34 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     this.creation = new ZLinkActorCreationCoordinator(options);
   }
 
-  async create(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor> {
-    const result = await this.createOrGet(actorId, actorType, true, signal);
-    return result.actor;
+  async create(actorId: string, actorType: string, signalOrRequest?: AbortSignal | unknown, signal?: AbortSignal): Promise<ActorRef> {
+    const args = normalizeCreateRequestArgs(signalOrRequest, signal);
+    const result = await this.createOrGet(actorId, actorType, true, args.request, args.signal);
+    return result.actorRef;
   }
 
-  async find(actorId: string, signal?: AbortSignal): Promise<ZLinkActor | undefined> {
+  async find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined> {
+    throwIfAborted(signal);
+    const state = this.states.get(actorId);
+    if (state?.actor === undefined) {
+      return undefined;
+    }
+    return this.actorRefForState(state);
+  }
+
+  async getOrCreate(actorId: string, actorType: string, signalOrRequest?: AbortSignal | unknown, signal?: AbortSignal): Promise<ActorRef> {
+    const args = normalizeCreateRequestArgs(signalOrRequest, signal);
+    const result = await this.createOrGet(actorId, actorType, false, args.request, args.signal);
+    return result.actorRef;
+  }
+
+  async findActor(actorId: string, signal?: AbortSignal): Promise<ZLinkActor | undefined> {
     throwIfAborted(signal);
     return this.states.get(actorId)?.actor;
   }
 
-  async getOrCreate(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor> {
-    const result = await this.createOrGet(actorId, actorType, false, signal);
+  async getOrCreateActor(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor> {
+    const result = await this.createOrGet(actorId, actorType, false, undefined, signal);
     return result.actor;
   }
 
@@ -285,8 +311,32 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
   ): Promise<ZLinkActor> {
     const state = this.getOrCreateState(actorId);
     state.setNativeActorRef(actorRef);
-    const result = await this.createOrGet(actorId, actorType, false, signal);
+    const result = await this.createOrGet(actorId, actorType, false, undefined, signal);
     return result.actor;
+  }
+
+  joinSpot(actorRef: ActorRef, spotRid: RoutingId, request?: unknown): ZLinkActorJoinSpotCall {
+    const resolved = this.requireGatewayActor(actorRef);
+    return new DefaultZLinkActorJoinSpotCall(
+      resolved.state,
+      resolved.actor,
+      this.requireJoinCoordinator(),
+      spotRid,
+      request,
+      this.options.messageSerializers
+    );
+  }
+
+  joinEntrySpot(actorRef: ActorRef, nodeRid: RoutingId, request: unknown): ZLinkActorJoinEntrySpotCall {
+    const resolved = this.requireGatewayActor(actorRef);
+    return new DefaultZLinkActorJoinEntrySpotCall(
+      resolved.state,
+      resolved.actor,
+      this.requireJoinCoordinator(),
+      nodeRid,
+      request,
+      this.options.messageSerializers
+    );
   }
 
   getState(actorId: string): ZLinkActorRuntimeState | undefined {
@@ -337,19 +387,21 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     actorId: string,
     actorType: string,
     failIfExists: boolean,
+    request: unknown,
     signal?: AbortSignal
-  ): Promise<{ actor: ZLinkActor; created: boolean }> {
+  ): Promise<{ actor: ZLinkActor; actorRef: ActorRef; created: boolean }> {
     throwIfAborted(signal);
     const state = this.getOrCreateState(actorId);
+    const createRequest = this.createRequestMessage(request);
     const operation = state.getOrStartCreation(
       actorType,
       failIfExists,
-      () => this.creation.createActor(actorId, actorType, state, signal)
+      () => this.creation.createActor(actorId, actorType, state, createRequest, signal)
     );
 
     try {
       const actor = await operation.task;
-      return { actor, created: operation.created };
+      return { actor, actorRef: this.actorRefForState(state), created: operation.created };
     } catch (error) {
       state.clearFailedCreation(operation.task);
       if (error instanceof ZLinkFrameworkException) {
@@ -361,7 +413,24 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         false,
         error
       );
+    } finally {
+      createRequest.nativeRequest?.close();
     }
+  }
+
+  private createRequestMessage(request: unknown): ZLinkActorCreateRequest {
+    if (request === undefined) {
+      const empty = BindingMessage.from(Buffer.alloc(0));
+      return {
+        nativeRequest: empty,
+        callbackRequest: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(empty.data()), this.options.messageSerializers)
+      };
+    }
+    const nativeRequest = encodeFrameworkPayloadMessage(request, this.options.messageSerializers);
+    return {
+      nativeRequest,
+      callbackRequest: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(nativeRequest.data()), this.options.messageSerializers)
+    };
   }
 
   private getOrCreateState(actorId: string): ZLinkActorRuntimeState {
@@ -373,6 +442,48 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     const state = new ZLinkActorRuntimeState(actorId);
     this.states.set(actorId, state);
     return state;
+  }
+
+  private requireGatewayActor(actorRef: ActorRef): { readonly actor: ZLinkActor; readonly state: ZLinkActorRuntimeState } {
+    const state = this.states.get(actorRef.actorId);
+    const actor = state?.actor;
+    const nativeRef = state?.nativeActorRef;
+    if (state === undefined || actor === undefined || nativeRef === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${actorRef.actorId}' is not created locally.`
+      );
+    }
+    if (
+      !routingIdsEqual(toFrameworkRoutingId(nativeRef.nodeRid), actorRef.nodeRid) ||
+      nativeRef.generation !== actorRef.generation
+    ) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `ActorRef for '${actorRef.actorId}' does not match the local actor generation.`
+      );
+    }
+    return { actor, state };
+  }
+
+  private actorRefForState(state: ZLinkActorRuntimeState): ActorRef {
+    const nativeActorRef = state.nativeActorRef;
+    if (nativeActorRef !== undefined) {
+      return toFrameworkActorRef(nativeActorRef);
+    }
+    return {
+      nodeRid: this.options.actorCreatedNodeRidProvider?.() ?? BindingRoutingId.from('local') as unknown as RoutingId,
+      actorId: state.actorId,
+      generation: 0n
+    };
+  }
+
+  private requireJoinCoordinator(): ZLinkActorJoinCoordinator {
+    const coordinator = this.options.joinCoordinator;
+    if (coordinator === undefined) {
+      throw new ZLinkConfigurationException('Actor join runtime is not started.');
+    }
+    return coordinator;
   }
 }
 
@@ -530,8 +641,8 @@ export class ZLinkActorRuntimeState {
     }
   }
 
-  ensureNativeActorRef(node: ZLinkBackendSpotNode): ZLinkBackendActorRef {
-    this.nativeActorRefValue ??= node.actorLookup(this.actorId) ?? node.createActor(this.actorId);
+  ensureNativeActorRef(node: ZLinkBackendSpotNode, request?: Message): ZLinkBackendActorRef {
+    this.nativeActorRefValue ??= node.actorLookup(this.actorId) ?? node.createActor(this.actorId, request);
     return this.nativeActorRefValue;
   }
 
@@ -1442,6 +1553,23 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted === true) {
     throw new Error('The operation was aborted.');
   }
+}
+
+function normalizeCreateRequestArgs(
+  signalOrRequest: AbortSignal | unknown,
+  signal: AbortSignal | undefined
+): { readonly request: unknown; readonly signal: AbortSignal | undefined } {
+  if (isAbortSignal(signalOrRequest)) {
+    return { request: undefined, signal: signalOrRequest };
+  }
+  return { request: signalOrRequest, signal };
+}
+
+function isAbortSignal(value: unknown): value is AbortSignal {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { aborted?: unknown }).aborted === 'boolean'
+    && typeof (value as { addEventListener?: unknown }).addEventListener === 'function';
 }
 
 function toBackendRoutingId(routingId: RoutingId): ZLinkBackendActorRef['nodeRid'] {

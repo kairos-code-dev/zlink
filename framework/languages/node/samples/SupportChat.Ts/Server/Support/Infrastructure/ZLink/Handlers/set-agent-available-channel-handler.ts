@@ -5,7 +5,6 @@ import { SampleNames } from '../../../../Configuration/sample-names';
 import { PacketNames } from '../../../../../Shared/Contracts/messages';
 import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { SupportEntrySpot as SupportEntrySpotType } from '../Spots/support-entry-spot';
-import type { SupportUserActor } from '../Actors/support-user-actor';
 import type {
   SetAgentAvailableReq,
   SetAgentAvailableRes,
@@ -20,8 +19,8 @@ class SetAgentAvailableChannelHandler implements ZLinkRequestHandler<SetAgentAva
   ) {}
 
   async handle(request: SetAgentAvailableReq & UserIdentity): Promise<SetAgentAvailableRes> {
-    const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
-    return this.entrySpot.setAgentAvailable(actor, request);
+    await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType, request);
+    return this.entrySpot.setAgentAvailable(request);
   }
 }
 

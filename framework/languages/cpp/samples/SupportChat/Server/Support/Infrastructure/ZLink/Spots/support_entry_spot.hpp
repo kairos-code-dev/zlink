@@ -86,8 +86,12 @@ class support_entry_spot_t : public zlink::framework::entry_spot_t
         return set_agent_available_res_t{request.is_available};
     }
 
-    void onCreateActor (const support_user_actor_t &actor)
+    void onCreateActor (support_user_actor_t &actor,
+                        const zlink::framework::message_t &create_request)
     {
+        const auto request = create_request.decode<ensure_support_user_actor_req_t> ();
+        actor.set_identity (request.display_name, request.role);
+        support_actor_directory_t::shared ().add_or_update (actor);
         created_actor_ids.push_back (actor.actor_id ());
     }
 

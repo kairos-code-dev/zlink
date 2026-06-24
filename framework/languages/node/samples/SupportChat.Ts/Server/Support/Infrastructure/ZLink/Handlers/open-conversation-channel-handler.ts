@@ -5,7 +5,6 @@ import { SampleNames } from '../../../../Configuration/sample-names';
 import { PacketNames } from '../../../../../Shared/Contracts/messages';
 import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { SupportEntrySpot as SupportEntrySpotType } from '../Spots/support-entry-spot';
-import type { SupportUserActor } from '../Actors/support-user-actor';
 import type {
   OpenConversationReq,
   OpenConversationRes,
@@ -21,8 +20,8 @@ class OpenConversationChannelHandler implements ZLinkRequestHandler<OpenConversa
   ) {}
 
   async handle(request: OpenConversationReq & UserIdentity): Promise<OpenConversationRes> {
-    const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
-    return await this.entrySpot.openConversation(actor, request);
+    const actorRef = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType, request);
+    return await this.entrySpot.openConversation(actorRef, request);
   }
 }
 

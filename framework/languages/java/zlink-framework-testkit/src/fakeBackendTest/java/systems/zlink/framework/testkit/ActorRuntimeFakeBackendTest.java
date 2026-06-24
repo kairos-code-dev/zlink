@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -29,13 +30,15 @@ import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
-import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
+import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
+import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -45,6 +48,7 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
@@ -59,20 +63,20 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkActor created = runtime.actorManager()
+            var created = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
-            ZLinkActor reused = runtime.actorManager()
+            var reused = runtime.actorManager()
                 .getOrCreate("player-1", "player")
                 .toCompletableFuture()
                 .join();
-            Optional<ZLinkActor> found = runtime.actorManager()
+            var found = runtime.actorManager()
                 .find("player-1")
                 .toCompletableFuture()
                 .join();
 
-            assertSame(created, reused);
+            assertEquals(created, reused);
             assertEquals(Optional.of(created), found);
             assertEquals("player-1", created.actorId());
         }
@@ -104,10 +108,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-1", "player");
 
             var joined = actor.context()
                 .joinEntrySpot(RoutingId.from("entry-node"), ZLinkMessage.empty())
@@ -139,10 +140,7 @@ final class ActorRuntimeFakeBackendTest {
                 .create(GameSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-1", "player");
 
             var joined = actor.context()
                 .joinSpot(spotRid, "join-request")
@@ -195,10 +193,7 @@ final class ActorRuntimeFakeBackendTest {
                 .create(CustomCodecJoinSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-custom", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-custom", "player");
 
             ZLinkActorJoinResult<CustomJoinReply> joined = actor.context()
                 .joinSpot(spotRid, new CustomJoinRequest("custom"))
@@ -235,10 +230,7 @@ final class ActorRuntimeFakeBackendTest {
                 .create(ProtobufJoinSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-protobuf", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-protobuf", "player");
 
             ZLinkActorJoinResult<StringValue> joined = actor.context()
                 .joinSpot(spotRid, StringValue.of("proto"))
@@ -274,10 +266,7 @@ final class ActorRuntimeFakeBackendTest {
                 .create(MessagePackJoinSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-messagepack", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-messagepack", "player");
 
             ZLinkActorJoinResult<PackedJoinReply> joined = actor.context()
                 .joinSpot(spotRid, new PackedJoinRequest("msgpack"))
@@ -309,19 +298,21 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkActor entryOwned = runtime.actorManager()
-                .create("player-destroy", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor entryOwned = managedActor(runtime, "player-destroy", "player");
             assertEquals(1, EntrySpot.createCount);
             ((ZLinkActorRuntime) runtime.actorManager())
                 .notifyDisconnected(entryOwned)
                 .toCompletableFuture()
                 .join();
             assertEquals(1, EntrySpot.disconnectCount);
-            assertSame(
-                entryOwned,
-                runtime.actorManager().find("player-destroy").toCompletableFuture().join().orElseThrow());
+            assertEquals(
+                entryOwned.actorId(),
+                runtime.actorManager()
+                    .find("player-destroy")
+                    .toCompletableFuture()
+                    .join()
+                    .orElseThrow()
+                    .actorId());
             var entrySessionActors = runtime.sessionActors(
                 "gateway",
                 RoutingId.from("session-destroy"));
@@ -358,24 +349,23 @@ final class ActorRuntimeFakeBackendTest {
             assertEquals(false, staleDispatchRan[0]);
             assertEquals(0, EntrySpot.leftCount);
 
-            ZLinkActor recreated = runtime.actorManager()
-                .create("player-destroy", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor recreated = managedActor(runtime, "player-destroy", "player");
             assertEquals(2, EntrySpot.createCount);
             EntrySpot.instance.context()
                 .destroyActor(entryOwned)
                 .toCompletableFuture()
                 .join();
-            assertSame(
-                recreated,
-                runtime.actorManager().find("player-destroy").toCompletableFuture().join().orElseThrow());
+            assertEquals(
+                recreated.actorId(),
+                runtime.actorManager()
+                    .find("player-destroy")
+                    .toCompletableFuture()
+                    .join()
+                    .orElseThrow()
+                    .actorId());
             assertEquals(0, EntrySpot.leftCount);
 
-            PlayerActor reentrant = (PlayerActor) runtime.actorManager()
-                .create("player-destroy-reentrant", "player")
-                .toCompletableFuture()
-                .join();
+            PlayerActor reentrant = (PlayerActor) managedActor(runtime, "player-destroy-reentrant", "player");
             EntrySpot.instance.context()
                 .destroyActor(reentrant)
                 .toCompletableFuture()
@@ -389,10 +379,7 @@ final class ActorRuntimeFakeBackendTest {
                 .create(GameSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
-            ZLinkActor roomActor = runtime.actorManager()
-                .create("player-room-destroy", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor roomActor = managedActor(runtime, "player-room-destroy", "player");
             roomActor.context()
                 .joinSpot(spotRid, "join-request")
                 .submit(String.class)
@@ -447,10 +434,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-remote-join", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-remote-join", "player");
 
             ZLinkActorJoinResult<String> joined = actor.context()
                 .joinSpot(RoutingId.from("remote-room"), "join-request")
@@ -488,10 +472,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-reject-join", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-reject-join", "player");
 
             CompletionException error = assertThrows(
                 CompletionException.class,
@@ -519,10 +500,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-registry-remote-join", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-registry-remote-join", "player");
 
             ZLinkActorJoinResult<String> joined = actor.context()
                 .joinSpot(RoutingId.from("remote-room"), "join-request")
@@ -566,10 +544,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-remote-relay", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-remote-relay", "player");
             var sessionActor = runtime.sessionActors("gateway", RoutingId.from("session-1"))
                 .bind(actor)
                 .toCompletableFuture()
@@ -580,9 +555,7 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            sessionActor.relay(ZLinkMessage.of("move"))
-                .toCompletableFuture()
-                .join();
+            relayWithHeader(sessionActor, "ActorNotify", ZLinkMessage.of("move"));
         }
 
         assertTrue(backendFactory.calls().contains(
@@ -611,10 +584,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-native-remote", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-native-remote", "player");
             runtime.sessionActors("gateway", RoutingId.from("session-native"))
                 .bind(actor)
                 .toCompletableFuture()
@@ -707,10 +677,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            runtime.actorManager()
-                .create("player-owned-by-second", "player")
-                .toCompletableFuture()
-                .join();
+            managedActor(runtime, "player-owned-by-second", "player");
 
             assertEquals(0, SecondEntrySpot.createCount);
         }
@@ -978,6 +945,7 @@ final class ActorRuntimeFakeBackendTest {
         @Override
         public void onCreateActor(
             ZLinkActor actor,
+            systems.zlink.framework.messaging.ZLinkMessage createRequest,
             systems.zlink.framework.CancellationToken cancellationToken) {
             createCount++;
         }
@@ -1013,6 +981,7 @@ final class ActorRuntimeFakeBackendTest {
         @Override
         public void onCreateActor(
             ZLinkActor actor,
+            systems.zlink.framework.messaging.ZLinkMessage createRequest,
             systems.zlink.framework.CancellationToken cancellationToken) {
             createCount++;
         }
@@ -1034,6 +1003,29 @@ final class ActorRuntimeFakeBackendTest {
 
         @Override
         public void onError(ZLinkStreamError error) {
+        }
+    }
+
+    private static ZLinkActor managedActor(
+        ZLinkFrameworkRuntime runtime,
+        String actorId,
+        String actorType) {
+        return ((ZLinkActorRuntime) runtime.actorManager())
+            .getOrCreateManagedActor(actorId, actorType)
+            .toCompletableFuture()
+            .join();
+    }
+
+    private static void relayWithHeader(
+        ZLinkSessionActor actor,
+        String packetName,
+        ZLinkMessage payload) {
+        ZLinkSessionActorsRuntime.enterRelayDispatch(
+            new ZLinkStreamHeader(packetName, Map.of(), Optional.empty()));
+        try {
+            actor.relay(payload).toCompletableFuture().join();
+        } finally {
+            ZLinkSessionActorsRuntime.exitRelayDispatch();
         }
     }
 }

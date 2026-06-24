@@ -3,12 +3,12 @@ package systems.zlink.samples.bingo.server.play.infrastructure.zlink.handlers;
 import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
@@ -20,9 +20,13 @@ public final class EnsurePlayerActorHandler
         Messages.EnsurePlayerActorReq,
         Messages.EnsurePlayerActorRes> {
     private final ZLinkActorManager actors;
+    private final ZLinkActorGateway actorGateway;
 
-    public EnsurePlayerActorHandler(ZLinkActorManager actors) {
+    public EnsurePlayerActorHandler(
+        ZLinkActorManager actors,
+        ZLinkActorGateway actorGateway) {
         this.actors = actors;
+        this.actorGateway = actorGateway;
     }
 
     @Override
@@ -34,12 +38,12 @@ public final class EnsurePlayerActorHandler
             && !request.preferredActorNodeRid().equals(SampleTopology.selectedPlayNodeRid())) {
             throw new IllegalStateException("EnsurePlayerActor reached the wrong Play node.");
         }
-        var actor = await(actors.getOrCreate(request.actorId(), SampleNames.PlayerActorType));
-        if (actor instanceof PlayerActor player) {
-            player.setDisplayName(request.displayName());
-        }
-        var joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+        var actor = await(actors.getOrCreate(
+            request.actorId(),
+            SampleNames.PlayerActorType,
+            request));
+        var joined = actorGateway
+            .joinEntrySpot(actor, RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
             .await();
         return new Messages.EnsurePlayerActorRes(

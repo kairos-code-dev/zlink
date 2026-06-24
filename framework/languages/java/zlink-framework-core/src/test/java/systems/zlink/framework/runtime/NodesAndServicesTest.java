@@ -5,6 +5,7 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,6 +13,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -59,12 +61,12 @@ final class NodesAndServicesTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
-            ZLinkActor actor = runtime.actorManager()
+            ZLinkActorRef actor = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
-            assertTrue(actor instanceof PlayerActor);
+            assertEquals("player-1", actor.actorId());
         }
     }
 

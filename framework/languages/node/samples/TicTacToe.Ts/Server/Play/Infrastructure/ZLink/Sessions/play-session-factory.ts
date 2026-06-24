@@ -1,23 +1,20 @@
 import { Inject } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { ZLINK_ACTOR_MANAGER, ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_GATEWAY, ZLINK_ACTOR_MANAGER, ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { MilestoneObserverRegistry, PlayEntrySpot } from '../Spots/play-entry-spot';
 import { PlayActorJoinGameHandler } from '../Spots/Handlers/play-actor-join-game-handler';
 import { PlaySession } from './play-session';
 import type {
-  ZLinkActor,
+  ActorRef,
+  ZLinkActorGateway,
   ZLinkChannelClient,
   ZLinkSessionContext,
   ZLinkSessionFactory
 } from '@zlink-systems/framework';
 import type { PlayActorJoinGameHandler as PlayActorJoinGameHandlerType } from '../Spots/Handlers/play-actor-join-game-handler';
 import type { PlaySession as PlaySessionType } from './play-session';
-import type { TicTacToeActor } from '../../../../../Shared/Contracts/messages';
-
-type PlaySessionActor = TicTacToeActor & ZLinkActor;
-
 type PlayActorManager = {
-  getOrCreate(actorId: string, actorType: string, signal?: AbortSignal): Promise<PlaySessionActor>;
+  getOrCreate(actorId: string, actorType: string, createRequest: unknown, signal?: AbortSignal): Promise<ActorRef>;
 };
 
 class PlaySessionFactory implements ZLinkSessionFactory<PlaySessionType> {
@@ -27,7 +24,8 @@ class PlaySessionFactory implements ZLinkSessionFactory<PlaySessionType> {
     private readonly actorManager: PlayActorManager,
     private readonly moduleRef: InstanceType<typeof ModuleRef>,
     private readonly apiClient: ZLinkChannelClient,
-    private readonly milestoneObservers: MilestoneObserverRegistry
+    private readonly milestoneObservers: MilestoneObserverRegistry,
+    private readonly actorGateway: ZLinkActorGateway
   ) {
     this.actorManager = actorManager;
     this.moduleRef = moduleRef;
@@ -40,7 +38,7 @@ class PlaySessionFactory implements ZLinkSessionFactory<PlaySessionType> {
     return new PlaySession({
       apiClient: this.apiClient,
       actorManager: this.actorManager,
-      entrySpot: new PlayEntrySpot(this.milestoneObservers),
+      entrySpot: new PlayEntrySpot(this.milestoneObservers, this.actorGateway),
       joinGameHandler: this.joinGameHandler
     }, context);
   }
@@ -50,5 +48,6 @@ Inject(ZLINK_ACTOR_MANAGER)(PlaySessionFactory, undefined, 0);
 Inject(ModuleRef)(PlaySessionFactory, undefined, 1);
 Inject(ZLINK_CHANNEL_CLIENT)(PlaySessionFactory, undefined, 2);
 Inject(MilestoneObserverRegistry)(PlaySessionFactory, undefined, 3);
+Inject(ZLINK_ACTOR_GATEWAY)(PlaySessionFactory, undefined, 4);
 
 export { PlaySessionFactory };

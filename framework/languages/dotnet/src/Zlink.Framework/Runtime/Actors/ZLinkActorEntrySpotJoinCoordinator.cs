@@ -208,12 +208,21 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         ZLinkMessage joinRequest,
         CancellationToken cancellationToken)
     {
-        var localTargetRef = targetNode.Node.ActorLookup(actor.ActorId)
-            ?? targetNode.Node.CreateActor(actor.ActorId);
+        var localTargetRef = targetNode.Node.ActorLookup(actor.ActorId);
+        ZLinkBackendActorRef targetRef;
+        if (localTargetRef is { } existing)
+        {
+            targetRef = existing;
+        }
+        else
+        {
+            using var emptyCreateRequest = Message.From(ReadOnlySpan<byte>.Empty);
+            targetRef = targetNode.Node.CreateActor(actor.ActorId, emptyCreateRequest);
+        }
         var activation = targetNode.EntrySpotActivation
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor entry SPOT join target node '{localTargetRef.NodeRid}' does not have an Entry Spot activation.");
+                $"Actor entry SPOT join target node '{targetRef.NodeRid}' does not have an Entry Spot activation.");
         var admission = activation.TryResolveActorJoin(out var descriptor) && descriptor is not null
             ? await activation.InvokeActorJoinAsync(descriptor, actor, joinRequest, cancellationToken)
                 .ConfigureAwait(false)
@@ -227,21 +236,21 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 reply);
         }
 
-        actorState.NativeActorRef = localTargetRef;
+        actorState.NativeActorRef = targetRef;
         await NotifyManagedEntrySpotJoinLifecycleAsync(
                 actor,
                 previousActivation,
-                localTargetRef.NodeRid,
+                targetRef.NodeRid,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (localTargetRef.NodeRid != sourceActorRef.NodeRid)
+        if (targetRef.NodeRid != sourceActorRef.NodeRid)
         {
             actorState.InvalidateContext();
         }
 
         return new ZLinkActorJoinResult(
             Accepted: true,
-            ToActorRef(localTargetRef),
+            ToActorRef(targetRef),
             reply);
     }
 

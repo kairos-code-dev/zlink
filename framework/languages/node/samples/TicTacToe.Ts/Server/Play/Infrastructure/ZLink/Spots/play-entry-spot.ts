@@ -1,15 +1,21 @@
 import { Injectable } from '@nestjs/common';
+import { Inject } from '@nestjs/common';
+import { ZLINK_ACTOR_GATEWAY } from '@zlink-systems/nestjs';
 import { PlayActorJoinGameHandler } from './Handlers/play-actor-join-game-handler';
 import { PacketNames, observeMilestoneRes, winMilestoneNotify } from '../../../../../Shared/Contracts/messages';
 import { PlayerWinMilestoneEventHandler } from './Handlers/player-win-milestone-event-handler';
 import { SampleNames } from '../../../../Configuration/sample-settings';
 import type {
+  ActorRef,
+  ZLinkActorGateway,
   ZLinkActor,
   ZLinkEntrySpot,
-  ZLinkEntrySpotContext
+  ZLinkEntrySpotContext,
+  ZLinkMessage
 } from '@zlink-systems/framework';
 import type {
   JoinGameRes,
+  PlayerInfo,
   PlayerWinMilestoneEvent,
   TicTacToeGameJoinReq,
   TicTacToeActor
@@ -41,27 +47,30 @@ class MilestoneObserverRegistry {
 class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
   readonly context!: ZLinkEntrySpotContext<PlayEntrySpotActor>;
 
-  constructor(private readonly milestoneObservers: MilestoneObserverRegistry) {}
+  constructor(
+    private readonly milestoneObservers: MilestoneObserverRegistry,
+    @Inject(ZLINK_ACTOR_GATEWAY) private readonly actorGateway: ZLinkActorGateway
+  ) {}
 
   configure(): void {
     this.context.handlers.actorRequest(PacketNames.joinGameReq, PlayActorJoinGameHandler);
     this.context.handlers.addSubscribe(PlayerWinMilestoneEventHandler, SampleNames.playerMilestoneTopic);
   }
 
-  async join(actor: PlayEntrySpotActor, roomId: string): Promise<JoinGameRes> {
+  async join(actorRef: ActorRef, player: PlayerInfo, roomId: string): Promise<JoinGameRes> {
     const request: TicTacToeGameJoinReq = {
       roomId,
       player: {
-        actorId: actor.actorId,
-        displayName: actor.displayName,
-        level: actor.level,
-        wins: actor.wins
+        actorId: player.actorId,
+        displayName: player.displayName,
+        level: player.level,
+        wins: player.wins
       }
     };
-    const joined = await actor.context.joinSpot(roomId, request).submit<Partial<JoinGameRes & { error: string }>>();
+    const joined = await this.actorGateway.joinSpot(actorRef, roomId, request).submit<Partial<JoinGameRes & { error: string }>>();
     const reply = joined.reply ?? {};
     if (joined.resultCode !== 0) {
-      throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actor.actorId}'.`);
+      throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actorRef.actorId}'.`);
     }
     return reply as JoinGameRes;
   }
@@ -81,9 +90,18 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
     this.milestoneObservers.remove(actor);
   }
 
-  async onCreateActor(actor: PlayEntrySpotActor, signal?: AbortSignal): Promise<void> {
-    void actor;
+  async onCreateActor(actor: PlayEntrySpotActor, createRequest: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     void signal;
+    const player = createRequest.decode<Partial<TicTacToeActor>>(Object as never);
+    if (typeof player.displayName === 'string') {
+      actor.displayName = player.displayName;
+    }
+    if (typeof player.level === 'number') {
+      actor.level = player.level;
+    }
+    if (typeof player.wins === 'number') {
+      actor.wins = player.wins;
+    }
   }
 
   async onJoinedActor(actor: PlayEntrySpotActor, signal?: AbortSignal): Promise<void> {
@@ -99,5 +117,8 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
   }
 
 }
+
+Inject(MilestoneObserverRegistry)(PlayEntrySpot, undefined, 0);
+Inject(ZLINK_ACTOR_GATEWAY)(PlayEntrySpot, undefined, 1);
 
 export { MilestoneObserverRegistry, PlayEntrySpot };

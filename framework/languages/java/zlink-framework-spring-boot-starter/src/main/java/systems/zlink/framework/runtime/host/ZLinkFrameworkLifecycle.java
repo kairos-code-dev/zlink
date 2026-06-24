@@ -179,6 +179,10 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().actorManager();
     }
 
+    public systems.zlink.framework.actors.ZLinkActorGateway actorGateway() {
+        return requireRuntime().actorGateway();
+    }
+
     @Override
     public systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions clientServerChannel(
         String channelName) {

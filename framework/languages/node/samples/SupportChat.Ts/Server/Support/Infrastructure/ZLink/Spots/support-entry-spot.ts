@@ -1,4 +1,5 @@
 import { Inject } from '@nestjs/common';
+import { ZLINK_ACTOR_GATEWAY } from '@zlink-systems/nestjs';
 import { AgentAvailabilityDirectory } from '../../../Application/ConversationAssignment/agent-availability-directory';
 import { SampleNames } from '../../../../Configuration/sample-names';
 import {
@@ -8,12 +9,16 @@ import {
   openConversationRes
 } from '../../../../../Shared/Contracts/messages';
 import type {
+  ActorRef,
+  ZLinkActorGateway,
   ZLinkEntrySpot,
-  ZLinkEntrySpotContext
+  ZLinkEntrySpotContext,
+  ZLinkMessage
 } from '@zlink-systems/framework';
 import type { AgentAvailabilityDirectory as AgentAvailabilityDirectoryType } from '../../../Application/ConversationAssignment/agent-availability-directory';
 import type { SupportUserActor as SupportUserActorType } from '../Actors/support-user-actor';
 import type {
+  EnsureSupportUserActorReq,
   JoinConversationRes,
   OpenConversationApiRes,
   OpenConversationReq,
@@ -29,42 +34,46 @@ class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActorType> {
   readonly context!: ZLinkEntrySpotContext<SupportUserActorType>;
 
   constructor(
-    private readonly availability: AgentAvailabilityDirectoryType
+    private readonly availability: AgentAvailabilityDirectoryType,
+    @Inject(ZLINK_ACTOR_GATEWAY) private readonly actorGateway: ZLinkActorGateway
   ) {}
 
-  async openConversation(actor: SupportUserActorType, request: OpenConversationReq): Promise<OpenConversationRes> {
-    if (actor.role !== SupportChatRoles.customer) {
+  async openConversation(actorRef: ActorRef, request: OpenConversationReq & { actorId: string; displayName: string; role?: string }): Promise<OpenConversationRes> {
+    if ((request.role ?? SupportChatRoles.customer) !== SupportChatRoles.customer) {
       throw new Error('Only customer actors can open a conversation.');
     }
 
     const opened = await this.context.outbound
       .requestToChannel(
         SampleNames.apiChannel,
-        openConversationApiReq(actor.actorId, actor.displayName, request.subject)
+        openConversationApiReq(request.actorId, request.displayName, request.subject)
       )
       .packetName(PacketNames.openConversationApiReq)
       .submit<OpenConversationApiRes>();
 
-    const joined = await actor.context
-      .joinSpot(opened.conversationId)
+    const joined = await this.actorGateway
+      .joinSpot(actorRef, opened.conversationId)
       .submit<Partial<JoinConversationRes & { error: string }>>();
     if (joined.resultCode !== 0) {
-      throw new Error(joined.reply?.error ?? `Conversation '${opened.conversationId}' rejected actor '${actor.actorId}'.`);
+      throw new Error(joined.reply?.error ?? `Conversation '${opened.conversationId}' rejected actor '${actorRef.actorId}'.`);
     }
     const state = (joined.reply as JoinConversationRes).state;
     return openConversationRes(opened.conversationId, state);
   }
 
-  setAgentAvailable(actor: SupportUserActorType, request: SetAgentAvailableReq): SetAgentAvailableRes {
-    if (actor.role !== SupportChatRoles.agent) {
+  setAgentAvailable(request: SetAgentAvailableReq & { actorId: string; displayName: string; role?: string }): SetAgentAvailableRes {
+    if ((request.role ?? SupportChatRoles.agent) !== SupportChatRoles.agent) {
       throw new Error('Only agent actors can set availability.');
     }
-    this.availability.setAvailable(actor.actorId, actor.displayName, request.isAvailable);
+    this.availability.setAvailable(request.actorId, request.displayName, request.isAvailable);
     return { isAvailable: request.isAvailable };
   }
 
-  async onCreateActor(actor: SupportUserActorType): Promise<void> {
-    void actor;
+  async onCreateActor(actor: SupportUserActorType, createRequest: ZLinkMessage): Promise<void> {
+    const request = createRequest.decode<Partial<EnsureSupportUserActorReq>>(Object as never);
+    if (typeof request.displayName === 'string' && typeof request.role === 'string') {
+      actor.setIdentity(request.displayName, request.role);
+    }
   }
 
   async onJoinedActor(actor: SupportUserActorType): Promise<void> {
@@ -84,5 +93,6 @@ class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActorType> {
 }
 
 Inject(AgentAvailabilityDirectory)(SupportEntrySpot, undefined, 0);
+Inject(ZLINK_ACTOR_GATEWAY)(SupportEntrySpot, undefined, 1);
 
 export { SupportEntrySpot };

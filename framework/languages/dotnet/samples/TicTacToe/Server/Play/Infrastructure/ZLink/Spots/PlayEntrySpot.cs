@@ -47,9 +47,11 @@ internal sealed class PlayEntrySpot(
 
     public ValueTask OnCreateActorAsync(
         PlayActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        actor.ApplyPlayer(createRequest.Decode<PlayerInfo>());
         logger.LogInformation(
             "entry spot: actor created. actor={ActorId}",
             actor.ActorId);

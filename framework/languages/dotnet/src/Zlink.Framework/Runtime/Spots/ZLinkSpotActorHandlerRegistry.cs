@@ -42,6 +42,7 @@ internal sealed class ZLinkSpotActorLifecycleDescriptor
 
     public bool PassSpotArgument { get; init; } = true;
 
+    public bool PassRequestArgument { get; init; }
 }
 
 internal sealed class ZLinkSpotActorInferredHandlerDescriptor

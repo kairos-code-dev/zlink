@@ -136,6 +136,20 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {
+        await NotifyEntrySpotActorCreatedAsync(
+                actor,
+                ZLinkMessage.Empty,
+                targetNodeRid,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask NotifyEntrySpotActorCreatedAsync(
+        IZLinkActor actor,
+        ZLinkMessage createRequest,
+        RoutingId? targetNodeRid = null,
+        CancellationToken cancellationToken = default)
+    {
         if (_state is null)
         {
             return;
@@ -144,6 +158,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         await _spots.NotifyEntrySpotActorCreatedAsync(
                 _state,
                 actor,
+                createRequest,
                 targetNodeRid,
                 cancellationToken)
             .ConfigureAwait(false);

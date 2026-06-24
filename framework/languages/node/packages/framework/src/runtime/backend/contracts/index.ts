@@ -316,7 +316,7 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   subjects(): readonly SpotNodeSubjectEntry[];
   createRouteBridge(): ZLinkBackendSpotRouteBridge;
   entrySpot(): ZLinkBackendSpot;
-  createActor(actorId: string): ZLinkBackendActorRef;
+  createActor(actorId: string, request?: Message | readonly Message[]): ZLinkBackendActorRef;
   actorLookup(actorId: string): ZLinkBackendActorRef | undefined;
   joinActor(
     actor: ZLinkBackendActorRef,

@@ -848,7 +848,10 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             spots.add(spot);
             return spot;
         }
-        @Override public ZLinkBackendActorRef createActor(String actorId) {
+        @Override public ZLinkBackendActorRef createActor(String actorId, Message createRequest) {
+            if (createRequest != null) {
+                createRequest.close();
+            }
             record("createActor." + actorId);
             return new ZLinkBackendActorRef(routingId(), actorId, 0);
         }

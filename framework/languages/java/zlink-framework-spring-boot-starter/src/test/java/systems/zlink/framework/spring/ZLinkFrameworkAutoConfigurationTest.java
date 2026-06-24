@@ -34,6 +34,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
@@ -230,14 +231,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 .create(InjectedGameSpot.class)
                 .toCompletableFuture()
                 .join();
-            ZLinkActor actor = context.getBean(ZLinkActorManager.class)
+            ZLinkActorRef actor = context.getBean(ZLinkActorManager.class)
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
             assertEquals("spring:spot", InjectedGameSpot.dependencyValue());
-            assertInstanceOf(InjectedPlayerActor.class, actor);
-            assertEquals("spring:player-1", ((InjectedPlayerActor) actor).dependencyValue());
+            assertEquals("player-1", actor.actorId());
         }
     }
 

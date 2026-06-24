@@ -68,7 +68,12 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
 
                 yield return new ZLinkSpotActorInferredHandlerDescriptor
                 {
-                    Created = CreateSpotLifecycle(surface, spotType, method, contract.ActorType)
+                    Created = CreateSpotLifecycle(
+                        surface,
+                        spotType,
+                        method,
+                        contract.ActorType,
+                        passRequestArgument: true)
                 };
             }
             else if (method.Name == PostActorJoinedMethodName)
@@ -174,20 +179,27 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
         ZLinkSpotActorHandlerSurface surface,
         Type spotType,
         MethodInfo method,
-        Type expectedActorType)
+        Type expectedActorType,
+        bool passRequestArgument = false)
     {
         var parameters = ZLinkHandlerMethodShape.RequireParameterCount(
             spotType,
             method,
-            2,
+            passRequestArgument ? 3 : 2,
             "SPOT actor lifecycle hook");
         var actorType = parameters[0].ParameterType;
+        if (passRequestArgument && parameters[1].ParameterType != typeof(ZLinkMessage))
+        {
+            throw new InvalidOperationException(
+                $"SPOT actor lifecycle hook '{spotType}' method '{method.Name}' must use {nameof(ZLinkMessage)} as the second parameter.");
+        }
+
         ZLinkHandlerMethodShape.RequireCancellationToken(
             spotType,
             method,
-            parameters[1],
+            parameters[passRequestArgument ? 2 : 1],
             "SPOT actor lifecycle hook",
-            "second");
+            passRequestArgument ? "third" : "second");
         ZLinkHandlerMethodShape.RequireNoReply(spotType, method, "SPOT actor lifecycle hook");
         ZLinkSpotActorDescriptorBuilder.ValidateActorType(spotType, expectedActorType, actorType);
         return ZLinkSpotActorDescriptorBuilder.CreateLifecycle(
@@ -196,7 +208,8 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
             spotType,
             actorType,
             ZLinkHandlerMethodInvokerFactory.Create(method),
-            passSpotArgument: false);
+            passSpotArgument: false,
+            passRequestArgument: passRequestArgument);
     }
 
     private static IEnumerable<MethodInfo> EnumerateSpotLifecycleMethods(Type spotType, Type? contractType)

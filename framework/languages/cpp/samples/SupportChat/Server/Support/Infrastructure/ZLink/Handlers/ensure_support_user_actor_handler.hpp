@@ -21,11 +21,8 @@ class ensure_support_user_actor_handler_t
 
     ensure_support_user_actor_res_t handle (const ensure_support_user_actor_req_t &request)
     {
-        support_user_actor_factory_t::remember_identity (
-          request.actor_id, request.display_name, request.role);
         if (support_actor_directory_t::shared ().contains (request.actor_id)) {
             auto &actor = support_actor_directory_t::shared ().get (request.actor_id);
-            actor.set_identity (request.display_name, request.role);
             return ensure_support_user_actor_res_t{
               actor_ref_snapshot_t{actor.actor.node_rid, actor.actor.actor_id, actor.actor.generation},
               sample_names_t::support_actor_type};

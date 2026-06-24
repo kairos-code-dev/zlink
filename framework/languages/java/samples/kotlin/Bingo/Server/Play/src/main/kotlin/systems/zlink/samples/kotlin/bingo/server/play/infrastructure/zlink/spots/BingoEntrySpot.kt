@@ -14,6 +14,7 @@ import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSett
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
+import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.ObserveBingoEventsReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.ObserveBingoEventsRes
 
@@ -28,8 +29,12 @@ class BingoEntrySpot(
 
     override fun onCreateActor(
         actor: PlayerActor,
+        createRequest: ZLinkMessage,
         cancellationToken: CancellationToken,
-    ) = Unit
+    ) {
+        val request = createRequest.decode(EnsurePlayerActorReq::class.java)
+        actor.setDisplayName(request.displayName)
+    }
 
     override fun onActorJoin(
         actor: PlayerActor,

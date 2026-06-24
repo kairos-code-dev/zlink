@@ -1,12 +1,12 @@
 package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.handlers;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
 import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory;
-import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.actors.SupportUserActor;
 import systems.zlink.samples.supportchat.server.support.application.assignment.AgentAssignmentService;
 import systems.zlink.samples.supportchat.server.support.application.assignment.AvailableAgent;
 import systems.zlink.samples.supportchat.server.support.domain.conversation.ConversationModels.Statuses;
@@ -19,12 +19,15 @@ public final class AssignAgentHandler
         Messages.AssignAgentRes> {
     private final AgentAssignmentService assignment;
     private final SupportActorDirectory actors;
+    private final ZLinkActorGateway actorGateway;
 
     public AssignAgentHandler(
         AgentAssignmentService assignment,
-        SupportActorDirectory actors) {
+        SupportActorDirectory actors,
+        ZLinkActorGateway actorGateway) {
         this.assignment = assignment;
         this.actors = actors;
+        this.actorGateway = actorGateway;
     }
 
     @Override
@@ -38,9 +41,10 @@ public final class AssignAgentHandler
                 Statuses.WaitingForAgent,
                 null);
         }
-        SupportUserActor actor = actors.get(assigned.actorId());
-        var joined = actor.context()
+        SupportActorDirectory.Entry actor = actors.get(assigned.actorId());
+        var joined = actorGateway
             .joinSpot(
+                actor.ref(),
                 RoutingId.from(request.conversationId()),
                 new Messages.JoinConversationReq(request.conversationId()))
             .timeout(SampleTimings.RequestTimeout)
@@ -49,6 +53,6 @@ public final class AssignAgentHandler
         return new Messages.AssignAgentRes(
             request.conversationId(),
             state.status(),
-            actor.actorId());
+            actor.ref().actorId());
     }
 }

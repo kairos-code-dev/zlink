@@ -3,6 +3,7 @@ using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.Handlers;
 using Microsoft.Extensions.Logging;
+using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots;
 
@@ -18,12 +19,16 @@ internal sealed class BingoEntrySpot(
 
     public ValueTask OnCreateActorAsync(
         PlayerActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
+        var request = createRequest.Decode<EnsurePlayerActorReq>();
+        actor.SetDisplayName(request.DisplayName);
         logger.LogInformation(
-            "entry spot: actor created. actor={ActorId}",
-            actor.ActorId);
+            "entry spot: actor created. actor={ActorId}, displayName={DisplayName}",
+            actor.ActorId,
+            actor.DisplayName);
         return ValueTask.CompletedTask;
     }
 

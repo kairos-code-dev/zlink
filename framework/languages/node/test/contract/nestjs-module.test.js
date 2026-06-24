@@ -901,8 +901,11 @@ test('ZLinkModule.forRoot creates Actor factories through NestJS DI', async () =
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
-  const actor = await app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false }).getOrCreate('p1', 'player');
+  const actorManager = app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false });
+  const actorRef = await actorManager.getOrCreate('p1', 'player');
+  const actor = await actorManager.getOrCreateActor('p1', 'player');
 
+  assert.equal(actorRef.actorId, 'p1');
   assert.equal(actor.marker, 'actor-di');
 
   await app.close();

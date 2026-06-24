@@ -97,12 +97,14 @@ internal sealed class ZLinkEntrySpotActorRouter
     public async ValueTask NotifyCreatedAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
+        ZLinkMessage createRequest,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
             state,
             actor,
+            createRequest,
             targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.EntrySpotActorDispatch.TryResolveCreated(actorType, out descriptor),
@@ -164,6 +166,24 @@ internal sealed class ZLinkEntrySpotActorRouter
         TryResolveLifecycle resolve,
         CancellationToken cancellationToken)
     {
+        await NotifyLifecycleAsync(
+                state,
+                actor,
+                request: null,
+                targetNodeRid,
+                resolve,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async ValueTask NotifyLifecycleAsync(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkActor actor,
+        ZLinkMessage? request,
+        RoutingId? targetNodeRid,
+        TryResolveLifecycle resolve,
+        CancellationToken cancellationToken)
+    {
         foreach (var node in state.SpotNodes.Values)
         {
             if (targetNodeRid is not null && node.Node.RoutingId != targetNodeRid)
@@ -179,6 +199,7 @@ internal sealed class ZLinkEntrySpotActorRouter
                         await node.EntrySpotActorDispatch.InvokeLifecycleAsync(
                                 descriptor,
                                 actor,
+                                request,
                                 cancellationToken)
                         .ConfigureAwait(false);
                 }

@@ -1,13 +1,17 @@
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.Handlers;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
+using SupportChat.Shared.Contracts;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots;
 
 internal sealed class SupportEntrySpot(
     IZLinkEntrySpotContext context,
+    SupportActorDirectory directory,
+    IZLinkActorManager actorManager,
     ILogger<SupportEntrySpot> logger) : IZLinkEntrySpot<SupportUserActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
@@ -18,16 +22,21 @@ internal sealed class SupportEntrySpot(
         Context.Handlers.AddHandler<SetAgentAvailableHandler>();
     }
 
-    public ValueTask OnCreateActorAsync(
+    public async ValueTask OnCreateActorAsync(
         SupportUserActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
+        var request = createRequest.Decode<EnsureSupportUserActorReq>();
+        actor.SetIdentity(request.DisplayName, request.Role);
+        var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
+            ?? throw new InvalidOperationException($"Support actor ref is not available. actor={actor.ActorId}");
+        directory.AddOrUpdate(actorRef, actor.DisplayName, actor.Role);
         logger.LogInformation(
             "support entry: actor created. actor={ActorId}, role={Role}",
             actor.ActorId,
             actor.Role);
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

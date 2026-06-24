@@ -13,6 +13,7 @@ namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions.Handlers;
 
 internal sealed class AuthenticatePlaySessionHandler(
     IZLinkActorManager actors,
+    IZLinkActorGateway actorGateway,
     IZLinkChannelClient channels,
     SampleSettings settings,
     ILogger<AuthenticatePlaySessionHandler> logger)
@@ -68,17 +69,18 @@ internal sealed class AuthenticatePlaySessionHandler(
             "play stream: creating actor before dispatch. sessionId={SessionId}, actor={ActorId}",
             context.SessionId,
             player.ActorId);
-        var playerActor = (PlayActor)await actors.GetOrCreateAsync(
+        var playerActor = await actors.GetOrCreateAsync(
                 player.ActorId,
                 SampleTypes.PlayerActor,
+                player,
                 cancellationToken);
-        playerActor.ApplyPlayer(player);
 
         logger.LogInformation(
             "play stream: joining actor to entry spot. sessionId={SessionId}, actor={ActorId}",
             context.SessionId,
             player.ActorId);
-        await playerActor.Context.JoinEntrySpot(
+        await actorGateway.JoinEntrySpot(
+                playerActor,
                 RoutingId.From(settings.PlaySpotNodeRid),
                 ZLinkMessage.Empty)
             .Async(cancellationToken);

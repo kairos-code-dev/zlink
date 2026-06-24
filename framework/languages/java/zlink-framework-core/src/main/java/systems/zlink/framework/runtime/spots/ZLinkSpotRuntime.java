@@ -1106,13 +1106,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     @SuppressWarnings({"rawtypes", "unchecked"})
     private CompletionStage<Void> notifyEntrySpotActorCreated(
         RoutingId nodeRid,
-        ZLinkActor actor) {
+        ZLinkActor actor,
+        ZLinkMessage createRequest) {
         for (EntrySpotActivation activation : entrySpots) {
             if (activation.context.nodeRid().equals(nodeRid)) {
                 ZLinkEntrySpot rawEntrySpot = activation.entrySpot;
                 return activation.context.enqueueDispatch(() ->
                     ZLinkHandlerStages.fromRunnable(() ->
-                        rawEntrySpot.onCreateActor(actor, NONE_CANCELLATION)));
+                        rawEntrySpot.onCreateActor(actor, createRequest, NONE_CANCELLATION)));
             }
         }
         return CompletableFuture.completedFuture(null);
@@ -4652,7 +4653,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             Message joinPayload = parts.size() > 2
                 ? Message.from(parts.get(2).toByteArray())
                 : Message.from(new byte[0]);
-            return actorRuntime.getOrCreate(joinRequest.actorId(), joinRequest.actorType())
+            return actorRuntime.getOrCreateManagedActor(joinRequest.actorId(), joinRequest.actorType())
                 .thenCompose(actor -> {
                     final long[] routedBindingToken = {-1};
                     ZLinkBackendActorRef localActorRef = actorRuntime.actorRef(actor);

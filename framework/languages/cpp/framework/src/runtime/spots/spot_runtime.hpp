@@ -131,7 +131,9 @@ class spot_context_state_t
     std::shared_ptr<worker_scheduler_t> worker_scheduler;
     spot_lifecycle_callbacks_t lifecycle;
     std::map<std::type_index, std::function<void (void *, void *)>> on_actor_joined_callbacks;
-    std::map<std::type_index, std::function<void (void *, void *)>> onCreateActor_callbacks;
+    std::map<std::type_index,
+             std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)>>
+      onCreateActor_callbacks;
     std::map<std::type_index, std::function<void (void *, void *)>> onLeaveActor_callbacks;
     std::map<std::type_index, std::function<void (void *, void *)>> onDisconnectActor_callbacks;
     bool close_requested = false;
@@ -286,7 +288,7 @@ class spot_node_runtime_t
             }
 
             const auto committed =
-              commit_actor_to_context<TSpot, TActor> (actor_ref, actor, *context);
+              commit_actor_to_context<TSpot, TActor> (actor_ref, actor, *context, request);
             return result_t<actor_join_reply_t>::success (
               actor_join_reply_t{0, committed, actor_join_reply (response, serializers)});
         }
@@ -332,13 +334,13 @@ class spot_node_runtime_t
             }
 
             const auto committed =
-              commit_actor_to_context<TEntrySpot, TActor> (actor_ref, actor, *context);
+              commit_actor_to_context<TEntrySpot, TActor> (actor_ref, actor, *context, request);
             return result_t<actor_join_reply_t>::success (
               actor_join_reply_t{0, committed, actor_join_reply (response, serializers)});
         }
 
         const auto committed =
-          commit_actor_to_context<TEntrySpot, TActor> (actor_ref, actor, *context);
+          commit_actor_to_context<TEntrySpot, TActor> (actor_ref, actor, *context, request);
         return result_t<actor_join_reply_t>::success (actor_join_reply_t{0, committed, {}});
     }
 
@@ -444,6 +446,20 @@ class spot_node_runtime_t
     };
 
     template <typename TSpot, typename TActor>
+    static constexpr bool has_framework_payload_onCreateActor_callback =
+      requires (TSpot & spot, TActor &actor, const message_t &request)
+    {
+        spot.onCreateActor (actor, request);
+    };
+
+    template <typename TSpot, typename TActor>
+    static constexpr bool has_raw_payload_onCreateActor_callback =
+      requires (TSpot & spot, TActor &actor, const zlink::message_t &request)
+    {
+        spot.onCreateActor (actor, request);
+    };
+
+    template <typename TSpot, typename TActor>
     static constexpr bool has_onLeaveActor_callback = requires (TSpot & spot, TActor &actor)
     {
         spot.onLeaveActor (actor);
@@ -470,8 +486,10 @@ class spot_node_runtime_t
     }
 
     template <typename TSpot, typename TActor>
-    actor_ref_t
-    commit_actor_to_context (const actor_ref_t &actor_ref, TActor &actor, spot_context_t &context)
+    actor_ref_t commit_actor_to_context (const actor_ref_t &actor_ref,
+                                         TActor &actor,
+                                         spot_context_t &context,
+                                         const zlink::message_t &create_request)
     {
         commit_actor_left<TActor> (actor_ref, actor);
         auto &context_state = *context._state;
@@ -485,8 +503,17 @@ class spot_node_runtime_t
               }
           };
         context_state.onCreateActor_callbacks[std::type_index (typeid (TActor))] =
-          [] (void *spot, void *actor) {
+          [] (void *spot, void *actor, const zlink::message_t &request,
+              serializer_registry_t &serializers) {
               if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
+                            && has_framework_payload_onCreateActor_callback<TSpot, TActor>) {
+                  static_cast<TSpot *> (spot)->onCreateActor (
+                    *static_cast<TActor *> (actor), message_t::from_raw (request, &serializers));
+              } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
+                                   && has_raw_payload_onCreateActor_callback<TSpot, TActor>) {
+                  static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor),
+                                                              request);
+              } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
                             && has_onCreateActor_callback<TSpot, TActor>) {
                   static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor));
               }
@@ -508,7 +535,7 @@ class spot_node_runtime_t
           std::string (actor_ref.actor_id ()), actor_ref.generation () + 1);
         if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
             if (_state->actor_created_keys.insert (key).second) {
-                notify_onCreateActor<TActor> (context_state, actor);
+                notify_onCreateActor<TActor> (context_state, actor, create_request);
             }
         }
         notify_on_actor_joined<TActor> (context_state, actor);
@@ -537,12 +564,19 @@ class spot_node_runtime_t
     }
 
     template <typename TActor>
-    void notify_onCreateActor (spot_context_state_t &state, TActor &actor)
+    void notify_onCreateActor (spot_context_state_t &state,
+                               TActor &actor,
+                               const zlink::message_t &request)
     {
         const auto found = state.onCreateActor_callbacks.find (std::type_index (typeid (TActor)));
         if (found != state.onCreateActor_callbacks.end () && state.spot_instance) {
+            if (!state.channel_runtime || !state.channel_runtime->serializers) {
+                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                             "spot create actor requires a serializer registry");
+            }
             if (!state.run_serial_sync ("spot-lifecycle-create", [&] {
-                    found->second (state.spot_instance.get (), &actor);
+                    found->second (state.spot_instance.get (), &actor, request,
+                                   *state.channel_runtime->serializers);
                 })) {
                 throw framework_exception_t (framework_error_kind_t::request_rejected,
                                              "spot serial queue is full");
@@ -613,7 +647,8 @@ class spot_node_runtime_t
                                               std::type_index actor_type,
                                               void *actor,
                                               const spot_actor_admission_callbacks_t &admission,
-                                              bool create_entry_actor);
+                                              bool create_entry_actor,
+                                              const zlink::message_t &create_request);
 
     std::shared_ptr<spot_node_builder_state_t> _state;
 };

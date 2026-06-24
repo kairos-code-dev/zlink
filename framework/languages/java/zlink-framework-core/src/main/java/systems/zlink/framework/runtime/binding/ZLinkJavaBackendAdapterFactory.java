@@ -494,7 +494,9 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendSpotRouteBridge createRouteBridge() { return new JavaSpotRouteBridge(spotNode.createRouteBridge()); }
         @Override public ZLinkBackendSpot createSpot() { return new JavaSpot(spotNode.createSpot()); }
         @Override public ZLinkBackendSpot entrySpot() { return new JavaSpot(spotNode.entrySpot()); }
-        @Override public ZLinkBackendActorRef createActor(String actorId) { return fromActorRef(spotNode.createActor(actorId).ref()); }
+        @Override public ZLinkBackendActorRef createActor(String actorId, Message createRequest) {
+            return fromActorRef(spotNode.createActor(actorId, createRequest).ref());
+        }
         @Override public ZLinkBackendActorRef actorLookup(String actorId) { return fromActorRef(spotNode.actorLookup(actorId)); }
         @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, Duration timeout) {
             if (parts.isEmpty()) {

@@ -3,7 +3,6 @@ import { ZLINK_ACTOR_MANAGER, zlinkRequestHandler } from '@zlink-systems/nestjs'
 import { SampleNames } from '../../../../Configuration/sample-names';
 import { PacketNames, ensureSupportUserActorRes } from '../../../../../Shared/Contracts/messages';
 import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
-import type { SupportUserActor } from '../Actors/support-user-actor';
 import type {
   EnsureSupportUserActorReq,
   EnsureSupportUserActorRes
@@ -17,9 +16,12 @@ class EnsureSupportUserActorHandler implements ZLinkRequestHandler<EnsureSupport
   constructor(@Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager) {}
 
   async handle(request: EnsureSupportUserActorReq): Promise<EnsureSupportUserActorRes> {
-    const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
-    actor.setIdentity(request.displayName, request.role);
-    return ensureSupportUserActorRes(actor.actorRef);
+    const actorRef = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType, request);
+    return ensureSupportUserActorRes({
+      nodeRid: String(actorRef.nodeRid),
+      actorId: actorRef.actorId,
+      generation: Number(actorRef.generation)
+    });
   }
 }
 

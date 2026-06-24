@@ -30,7 +30,15 @@ class MatchBingoActorHandler
     if (process.env.BINGO_DEBUG_FLOW === '1') {
       console.log(`play-match-handler start actor=${actor.actorId}`);
     }
-    return await entrySpot.matchActor(actor, request);
+    const actorRef = actor.context.actorRef;
+    if (actorRef === undefined) {
+      throw new Error(`Actor '${actor.actorId}' has no ActorRef.`);
+    }
+    return await entrySpot.matchActor(actorRef, {
+      ...request,
+      actorId: actor.actorId,
+      displayName: actor.displayName
+    });
   }
 }
 

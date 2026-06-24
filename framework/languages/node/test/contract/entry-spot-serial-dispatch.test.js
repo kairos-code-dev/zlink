@@ -88,8 +88,8 @@ test('entry spot callbacks from mixed setImmediate/queueMicrotask backend callba
     actorType: PlayerActor,
     handlerType: MovePacketHandler
   }]);
-  const alice = await fixture.manager.create('alice', 'player');
-  const bob = await fixture.manager.create('bob', 'player');
+  const alice = await fixture.manager.getOrCreateActor('alice', 'player');
+  const bob = await fixture.manager.getOrCreateActor('bob', 'player');
 
   // Native/binding callbacks arrive from mixed macrotask/microtask contexts;
   // each enqueues into the Entry Spot serial executor instead of invoking
@@ -107,7 +107,7 @@ test('entry spot callbacks from mixed setImmediate/queueMicrotask backend callba
     fixture.router.submit('alice', (snapshot) =>
       fixture.dispatcher.dispatchSend(snapshot.actor, 'move', 'm1')));
   await fromBackend(setImmediate, 'create:bob', () =>
-    fixture.activation.notifyCreateActor(bob));
+    fixture.activation.notifyCreateActor(bob, framework.ZLinkMessage.from({})));
   await fromBackend(queueMicrotask, 'packet:bob:m2', () =>
     fixture.router.submit('bob', (snapshot) =>
       fixture.dispatcher.dispatchSend(snapshot.actor, 'move', 'm2')));
@@ -152,9 +152,9 @@ test('entry spot does not start the next callback before the previous handler pr
     actorType: PlayerActor,
     handlerType: PingHandler
   }]);
-  const alice = await fixture.manager.create('alice', 'player');
+  const alice = await fixture.manager.getOrCreateActor('alice', 'player');
 
-  const first = fixture.activation.notifyCreateActor(alice);
+  const first = fixture.activation.notifyCreateActor(alice, framework.ZLinkMessage.from({}));
   const second = fixture.router.submit('alice', (snapshot) =>
     fixture.dispatcher.dispatchSend(snapshot.actor, 'ping', 'p'));
   await delay(10);

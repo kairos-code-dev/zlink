@@ -18,6 +18,7 @@ public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
 
     default void onCreateActor(
         TActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken) {
     }
 

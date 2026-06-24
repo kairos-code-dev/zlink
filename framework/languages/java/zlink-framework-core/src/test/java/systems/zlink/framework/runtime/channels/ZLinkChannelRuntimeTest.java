@@ -352,7 +352,7 @@ final class ZLinkChannelRuntimeTest {
         @Override public ZLinkBackendSpotRouteBridge createRouteBridge() { return bridge; }
         @Override public ZLinkBackendSpot createSpot() { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendSpot entrySpot() { throw new UnsupportedOperationException(); }
-        @Override public ZLinkBackendActorRef createActor(String actorId) { throw new UnsupportedOperationException(); }
+        @Override public ZLinkBackendActorRef createActor(String actorId, Message createRequest) { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendActorRef actorLookup(String actorId) { throw new UnsupportedOperationException(); }
         @Override public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Message request, Duration timeout) { throw new UnsupportedOperationException(); }

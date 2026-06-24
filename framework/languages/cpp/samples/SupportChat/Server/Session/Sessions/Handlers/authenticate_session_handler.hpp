@@ -45,14 +45,25 @@ class authenticate_session_handler_t
                                             : authenticated.reason);
         }
 
+        auto create_request = ensure_support_user_actor_req_t{authenticated.actor_id,
+                                                              authenticated.display_name,
+                                                              authenticated.role};
         auto ensured =
           co_await _client
-            .request (sample_names_t::support_channel,
-                      ensure_support_user_actor_req_t{authenticated.actor_id,
-                                                      authenticated.display_name,
-                                                      authenticated.role})
+            .request (sample_names_t::support_channel, create_request)
             .async<ensure_support_user_actor_res_t> ();
         auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
+        auto joined = co_await bound.context ()
+                        .join_entry_spot (
+                          zlink::framework::node_rid_t::from_string (ensured.actor.node_rid),
+                          create_request)
+                        .async ();
+        if (joined.result_code != 0) {
+            co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "Support user entry spot join was rejected.");
+        }
+        auto actor = actors.find (ensured.actor.actor_id).value_or (bound);
 
         co_await stream
           .reply_packet (zlink::message_t::from_json (
@@ -60,7 +71,7 @@ class authenticate_session_handler_t
                                authenticated.role}))
           .async ();
 
-        co_return bound;
+        co_return actor;
     }
 
   private:

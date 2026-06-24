@@ -12,7 +12,7 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 [ZLinkHandlerGroup("support")]
 internal sealed class EnsureSupportUserActorHandler(
     IZLinkActorManager actors,
-    SupportActorDirectory directory,
+    IZLinkActorGateway actorGateway,
     SampleTopology topology)
     : IZLinkRequestHandler<EnsureSupportUserActorReq, EnsureSupportUserActorRes>
 {
@@ -25,27 +25,14 @@ internal sealed class EnsureSupportUserActorHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SampleNames.SupportActorType,
+            request,
             cancellationToken);
-        if (actor is not SupportUserActor supportActor)
-        {
-            throw new InvalidOperationException("Support actor factory returned an unexpected actor type.");
-        }
 
-        supportActor.SetIdentity(request.DisplayName, request.Role);
-        directory.AddOrUpdate(supportActor);
-
-        var joined = await actor.Context.JoinEntrySpot(
+        var joined = await actorGateway.JoinEntrySpot(
+                actor,
                 topology.SupportEntryRid,
                 ZLinkMessage.Empty)
             .Async(cancellationToken);
-        if (!string.IsNullOrWhiteSpace(supportActor.ConversationId))
-        {
-            var conversationRid = RoutingId.From(supportActor.ConversationId);
-            await actor.Context.JoinSpot(
-                    conversationRid,
-                    new JoinConversationReq(supportActor.ConversationId))
-                .Async(cancellationToken);
-        }
 
         return new EnsureSupportUserActorRes(
             new ActorRefSnapshot(

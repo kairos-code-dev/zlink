@@ -213,6 +213,11 @@ struct contract_actor_t
 {
 };
 
+struct contract_create_request_t
+{
+    int value{};
+};
+
 struct contract_spot_t : public zlink::framework::spot_t
 {
     zlink::framework::spot_actor_join_response_t on_actor_join (contract_actor_t &,
@@ -221,7 +226,7 @@ struct contract_spot_t : public zlink::framework::spot_t
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
-    void onCreateActor (contract_actor_t &) {}
+    void onCreateActor (contract_actor_t &, const zlink::framework::message_t &) {}
     void on_actor_joined (contract_actor_t &) {}
     void onLeaveActor (contract_actor_t &) {}
 };

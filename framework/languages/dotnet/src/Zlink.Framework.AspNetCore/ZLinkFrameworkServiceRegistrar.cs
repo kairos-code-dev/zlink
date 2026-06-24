@@ -167,7 +167,11 @@ internal static class ZLinkFrameworkServiceRegistrar
 
         if (HasSpotNode(registration) && registration.ActorFactories.Count > 0)
         {
-            services.AddSingleton<IZLinkActorManager, ZLinkActorManagerService>();
+            services.AddSingleton<ZLinkActorManagerService>();
+            services.AddSingleton<IZLinkActorManager>(
+                static provider => provider.GetRequiredService<ZLinkActorManagerService>());
+            services.AddSingleton<IZLinkActorGateway>(
+                static provider => provider.GetRequiredService<ZLinkActorManagerService>());
         }
 
         if (registration.SpotRemoteAddressResolverType is not null)

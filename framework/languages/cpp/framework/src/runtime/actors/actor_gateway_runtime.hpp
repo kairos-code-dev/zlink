@@ -26,6 +26,7 @@ struct actor_record_t
     bool bound = false;
     bool disconnected = false;
     stream_codec_t bound_session_codec = stream_codec_t::message_pack;
+    std::optional<zlink::message_t> create_payload;
 };
 
 struct relayed_frame_t

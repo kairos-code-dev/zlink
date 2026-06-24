@@ -1692,7 +1692,8 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
   std::type_index actor_type,
   void *actor,
   const spot_actor_admission_callbacks_t &admission,
-  bool create_entry_actor)
+  bool create_entry_actor,
+  const zlink::message_t &create_request)
 {
     leave_previous_actor_route_unlocked (key, actor_type, actor);
     auto &target_state = *context._state;
@@ -1700,7 +1701,9 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
                                                  committed.generation ());
     if (create_entry_actor && admission.entry_spot && _state->actor_created_keys.insert (key).second
         && admission.onCreateActor) {
-        admission.onCreateActor (target_state.spot_instance.get (), actor);
+        auto &serializers = *target_state.channel_runtime->serializers;
+        admission.onCreateActor (target_state.spot_instance.get (), actor, create_request,
+                                 serializers);
     }
     if (admission.on_actor_joined) {
         admission.on_actor_joined (target_state.spot_instance.get (), actor);
@@ -1754,7 +1757,8 @@ result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
     actor_factory.value ().get ().configure_instance (actor->second.get (), committed, nullptr);
     commit_accepted_actor_join_unlocked (key, context.value (), committed,
                                          actor_factory.value ().get ().actor_type,
-                                         actor->second.get (), admission.value ().get (), true);
+                                         actor->second.get (), admission.value ().get (), true,
+                                         request);
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_t{0, committed, framework_reply_or_empty (response.reply, serializers)});
 }
@@ -1820,7 +1824,8 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
 
     commit_accepted_actor_join_unlocked (key, context.value (), committed,
                                          actor_factory.value ().get ().actor_type,
-                                         actor_instance.get (), admission.value ().get (), false);
+                                         actor_instance.get (), admission.value ().get (), false,
+                                         request);
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_t{0, actor_ref, framework_reply_or_empty (response.reply, serializers)});
 }
@@ -1913,8 +1918,29 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
             return result_t<std::optional<zlink::message_t>>::failure (
               framework_error_kind_t::spot_route_not_found, "entry spot is not created");
         }
-        detail::record_actor_spot_location_unlocked (*_state, key, entry_rid->second,
-                                                     actor_ref.generation ());
+        auto entry_context = find_context (entry_rid->second);
+        if (!entry_context || !entry_context->_state->spot_instance) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              framework_error_kind_t::spot_route_not_found, "entry spot context is not registered");
+        }
+        auto &entry_state = *entry_context->_state;
+        detail::record_actor_context_route_unlocked (*_state, key, _state->snapshot.name,
+                                                     entry_state, actor_ref.generation ());
+        if (const auto admission = entry_state.actor_admissions.find (found_factory->second.actor_type);
+            admission != entry_state.actor_admissions.end ()) {
+            if (admission->second.onCreateActor
+                && _state->actor_created_keys.insert (key).second) {
+                const auto create_request =
+                  actor_context.create_payload ().value_or (zlink::message_t{});
+                admission->second.onCreateActor (
+                  entry_state.spot_instance.get (), actor_instance.get (), create_request,
+                  serializers);
+            }
+            if (admission->second.on_actor_joined) {
+                admission->second.on_actor_joined (entry_state.spot_instance.get (),
+                                                   actor_instance.get ());
+            }
+        }
         found_location = _state->actor_spot_rids.find (key);
     }
 

@@ -3,7 +3,6 @@ import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER, zlinkRequestHandler } from '@z
 import type { ZLinkActorManager, ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
 import { SampleNames } from '../../../../Configuration/sample-names';
 import { BingoRoomSpot } from '../Spots/bingo-room-spot';
-import type { PlayerActor } from '../Actors/player-actor';
 import {
   PacketNames,
   PlayerIdentity,
@@ -19,13 +18,13 @@ class SubmitBingoCardChannelHandler implements ZLinkRequestHandler<SubmitBingoCa
   ) {}
 
   async handle(request: SubmitBingoCardReq & PlayerIdentity): Promise<SubmitBingoCardRes> {
-    const actor = await this.actorManager.getOrCreate(
+    await this.actorManager.getOrCreate(
       request.actorId,
-      SampleNames.playerActorType
-    ) as PlayerActor;
-    actor.displayName = request.displayName;
+      SampleNames.playerActorType,
+      request
+    );
     return await this.spots.executeOnSpot<BingoRoomSpot, SubmitBingoCardRes>(BingoRoomSpot, request.roomId, async (room) => {
-      return await room.submitCard(actor, request);
+      return await room.submitCard(request, request);
     });
   }
 }

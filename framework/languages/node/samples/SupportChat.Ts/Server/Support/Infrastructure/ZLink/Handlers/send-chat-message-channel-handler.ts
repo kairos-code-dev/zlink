@@ -5,7 +5,6 @@ import { SampleNames } from '../../../../Configuration/sample-names';
 import { PacketNames } from '../../../../../Shared/Contracts/messages';
 import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { SupportConversationAllocator as SupportConversationAllocatorType } from '../../../Application/ConversationAssignment/support-conversation-allocator';
-import type { SupportUserActor } from '../Actors/support-user-actor';
 import type {
   SendChatMessageReq,
   SendChatMessageRes,
@@ -20,8 +19,8 @@ class SendChatMessageChannelHandler implements ZLinkRequestHandler<SendChatMessa
   ) {}
 
   async handle(request: SendChatMessageReq & UserIdentity): Promise<SendChatMessageRes> {
-    const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
-    return await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.sendMessage(actor, request));
+    await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType, request);
+    return await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.sendMessage(request, request));
   }
 }
 

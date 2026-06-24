@@ -42,6 +42,7 @@ import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
@@ -902,6 +903,7 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.createRouteBridge",
                 "create.spotRouteBridge",
                 "spotRouteBridge.bridge.attachRouterChannel.api",
+                "spotRouteBridge.bridge.drain",
                 "close.discovery.api",
                 "spotRouteBridge.bridge.close",
                 "close.context",
@@ -1115,10 +1117,7 @@ final class SpotRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            managedActor(runtime, "player-1", "player");
 
             backendFactory.dispatchEntrySpotActorMessage(
                 "player-1",
@@ -1142,10 +1141,7 @@ final class SpotRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            managedActor(runtime, "player-1", "player");
 
             backendFactory.dispatchEntrySpotActorStreamRequest(
                 "player-1",
@@ -1176,10 +1172,7 @@ final class SpotRuntimeFakeBackendTest {
                  backendFactory,
                  new InterfaceActorSerializer(),
                  ZLinkHandlerFactory.reflection())) {
-            runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            managedActor(runtime, "player-1", "player");
 
             backendFactory.dispatchEntrySpotActorStreamRequest(
                 "player-1",
@@ -1248,11 +1241,7 @@ final class SpotRuntimeFakeBackendTest {
                 "player-1",
                 "String",
                 "join-request");
-            ZLinkActor actor = runtime.actorManager()
-                .find("player-1")
-                .toCompletableFuture()
-                .join()
-                .orElseThrow();
+            ZLinkActor actor = managedActor(runtime, "player-1", "player");
 
             OutboundSpot.context.leaveActor(actor).toCompletableFuture().join();
         }
@@ -1302,10 +1291,7 @@ final class SpotRuntimeFakeBackendTest {
                 .create(OutboundSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
-            ZLinkActor actor = runtime.actorManager()
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
+            ZLinkActor actor = managedActor(runtime, "player-1", "player");
 
             backendFactory.dispatchEntrySpotActorLifecycleJoined("player-1", spotRid);
 
@@ -1906,5 +1892,15 @@ final class SpotRuntimeFakeBackendTest {
 
     private static String message(String value, String packetName) {
         return value;
+    }
+
+    private static ZLinkActor managedActor(
+        ZLinkFrameworkRuntime runtime,
+        String actorId,
+        String actorType) {
+        return ((ZLinkActorRuntime) runtime.actorManager())
+            .getOrCreateManagedActor(actorId, actorType)
+            .toCompletableFuture()
+            .join();
     }
 }

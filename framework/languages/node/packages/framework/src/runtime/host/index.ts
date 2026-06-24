@@ -368,8 +368,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         actorId
       ),
       actorCreatedNodeRidProvider: () => this.spotNodeRuntime?.primaryNode?.routingId,
-      actorCreatedNotifier: (nodeRid, actor, signal) =>
-        this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, signal) ?? Promise.resolve(),
+      actorCreatedNotifier: (nodeRid, actor, createRequest, signal) =>
+        this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal) ?? Promise.resolve(),
       actorDestroyedCleanup: (actorId) => this.streamBindingRuntime.unbindActor(actorId)
     };
   }
@@ -406,7 +406,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
           throw new Error('Routed actor join requires ZLINK_ACTOR_MANAGER.');
         }
         const actor = actorRef === undefined
-          ? await this.actorManager.getOrCreate(actorId, actorType, signal)
+          ? await this.actorManager.getOrCreateActor(actorId, actorType, signal)
           : await this.actorManager.getOrCreateWithNativeRef(
               actorId,
               actorType,
@@ -572,7 +572,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   }> {
     const join = decodeRemoteActorJoinPayload(payload);
     const actorManager = this.requireActorManager();
-    const actor = await actorManager.getOrCreate(join.actorId, join.actorType);
+    const actor = await actorManager.getOrCreateActor(join.actorId, join.actorType);
     const state = actorManager.getState(join.actorId);
     if (state === undefined) {
       throw new Error(`Actor '${join.actorId}' state was not created.`);

@@ -31,9 +31,11 @@ class AuthenticatePlaySessionHandler(
             .timeout(SampleNames.RequestTimeout)
             .submit(AuthenticatePlayerRes::class.java)
             .await()
-        val playActor = actors.getOrCreate(authenticated.player.actorId, SampleNames.PlayActor).await()
-        (playActor as systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor)
-            .applyPlayer(authenticated.player)
+        val playActor = actors.getOrCreate(
+            authenticated.player.actorId,
+            SampleNames.PlayActor,
+            authenticated.player,
+        ).await()
         val bound = context.actors().bind(playActor).await()
         context.client()
             .reply(AuthenticateRes(authenticated.player))

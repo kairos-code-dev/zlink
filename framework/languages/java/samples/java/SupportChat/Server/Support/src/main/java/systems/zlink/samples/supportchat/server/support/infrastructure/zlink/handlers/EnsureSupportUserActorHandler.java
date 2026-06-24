@@ -3,6 +3,7 @@ package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.ha
 import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorGateway;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -11,8 +12,6 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
 import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
-import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory;
-import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.actors.SupportUserActor;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("support")
@@ -21,37 +20,27 @@ public final class EnsureSupportUserActorHandler
         Messages.EnsureSupportUserActorReq,
         Messages.EnsureSupportUserActorRes> {
     private final ZLinkActorManager actors;
-    private final SupportActorDirectory directory;
+    private final ZLinkActorGateway actorGateway;
 
     public EnsureSupportUserActorHandler(
         ZLinkActorManager actors,
-        SupportActorDirectory directory) {
+        ZLinkActorGateway actorGateway) {
         this.actors = actors;
-        this.directory = directory;
+        this.actorGateway = actorGateway;
     }
 
     @Override
     public Messages.EnsureSupportUserActorRes handle(
         Messages.EnsureSupportUserActorReq request,
         ZLinkRequestContext context) {
-        var actor = await(actors.getOrCreate(request.actorId(), SampleNames.SupportActorType));
-        if (!(actor instanceof SupportUserActor supportActor)) {
-            throw new IllegalStateException("Support actor factory returned an unexpected actor type.");
-        }
-        supportActor.setIdentity(request.displayName(), request.role());
-        directory.addOrUpdate(supportActor);
-        var joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.SupportRid))
+        var actor = await(actors.getOrCreate(
+            request.actorId(),
+            SampleNames.SupportActorType,
+            request));
+        var joined = actorGateway
+            .joinEntrySpot(actor, RoutingId.from(SampleTopology.SupportRid))
             .timeout(SampleTimings.RequestTimeout)
             .await();
-        if (!supportActor.conversationId().isBlank()) {
-            actor.context()
-                .joinSpot(
-                    RoutingId.from(supportActor.conversationId()),
-                    new Messages.JoinConversationReq(supportActor.conversationId()))
-                .timeout(SampleTimings.RequestTimeout)
-                .await(Messages.JoinConversationRes.class);
-        }
         return new Messages.EnsureSupportUserActorRes(toSnapshot(joined.actor()));
     }
 

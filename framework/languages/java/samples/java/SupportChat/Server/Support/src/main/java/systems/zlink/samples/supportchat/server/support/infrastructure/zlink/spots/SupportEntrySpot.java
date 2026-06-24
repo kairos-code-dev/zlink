@@ -1,17 +1,29 @@
 package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots;
 
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory;
 import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.actors.SupportUserActor;
+import systems.zlink.samples.supportchat.shared.contracts.Messages;
 
 public final class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> {
     private final ZLinkEntrySpotContext context;
+    private final ZLinkActorManager actors;
+    private final SupportActorDirectory directory;
 
-    public SupportEntrySpot(ZLinkEntrySpotContext context) {
+    public SupportEntrySpot(
+        ZLinkEntrySpotContext context,
+        ZLinkActorManager actors,
+        SupportActorDirectory directory) {
         this.context = context;
+        this.actors = actors;
+        this.directory = directory;
     }
 
     @Override
@@ -24,7 +36,16 @@ public final class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> 
     }
 
     @Override
-    public void onCreateActor(SupportUserActor actor, CancellationToken cancellationToken) {
+    public void onCreateActor(
+        SupportUserActor actor,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken) {
+        Messages.EnsureSupportUserActorReq request =
+            createRequest.decode(Messages.EnsureSupportUserActorReq.class);
+        actor.setIdentity(request.displayName(), request.role());
+        var ref = await(actors.find(actor.actorId()))
+            .orElseThrow(() -> new IllegalStateException("Support actor ref is not available."));
+        directory.addOrUpdate(ref, actor.displayName(), actor.role());
     }
 
     @Override

@@ -152,7 +152,7 @@ public sealed class SpotContracts
         await room.OnDisconnectActorAsync(actor, CancellationToken.None);
         await new EntryActorSendHandler().HandleAsync(entry, actor, null!, new RoomEvent("opened"), CancellationToken.None);
         var entryReply = await new EntryActorRequestHandler().HandleAsync(entry, actor, null!, new JoinRoom("room-1"), CancellationToken.None);
-        await ((IZLinkEntrySpot<PlayerActor>)entry).OnCreateActorAsync(actor, CancellationToken.None);
+        await ((IZLinkEntrySpot<PlayerActor>)entry).OnCreateActorAsync(actor, ZLinkMessage.Empty, CancellationToken.None);
         await entry.OnJoinedActorAsync(actor, CancellationToken.None);
         await entry.OnLeaveActorAsync(actor, CancellationToken.None);
         await entry.OnDisconnectActorAsync(actor, CancellationToken.None);

@@ -1,15 +1,22 @@
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 
+using Systems.Zlink;
+
+internal sealed record SupportActorDirectoryEntry(
+    ActorRef Ref,
+    string DisplayName,
+    string Role);
+
 internal sealed class SupportActorDirectory
 {
-    private readonly Dictionary<string, SupportUserActor> _actors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SupportActorDirectoryEntry> _actors = new(StringComparer.Ordinal);
 
-    public void AddOrUpdate(SupportUserActor actor)
+    public void AddOrUpdate(ActorRef actor, string displayName, string role)
     {
-        _actors[actor.ActorId] = actor;
+        _actors[actor.ActorId] = new SupportActorDirectoryEntry(actor, displayName, role);
     }
 
-    public SupportUserActor Get(string actorId)
+    public SupportActorDirectoryEntry Get(string actorId)
     {
         return _actors.TryGetValue(actorId, out var actor)
             ? actor

@@ -6,7 +6,6 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -16,6 +15,7 @@ import systems.zlink.contracts.core.Zlink;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -31,20 +31,20 @@ final class ActorManagerTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
-            ZLinkActor created = runtime.actorManager()
+            ZLinkActorRef created = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
-            ZLinkActor reused = runtime.actorManager()
+            ZLinkActorRef reused = runtime.actorManager()
                 .getOrCreate("player-1", "player")
                 .toCompletableFuture()
                 .join();
-            Optional<ZLinkActor> found = runtime.actorManager()
+            Optional<ZLinkActorRef> found = runtime.actorManager()
                 .find("player-1")
                 .toCompletableFuture()
                 .join();
 
-            assertSame(created, reused);
+            assertEquals(created, reused);
             assertEquals(Optional.of(created), found);
             assertEquals("player-1", created.actorId());
         }

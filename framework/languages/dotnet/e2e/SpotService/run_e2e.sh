@@ -11,6 +11,27 @@ LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 SCENARIO_SET="${SCENARIO_SET:-all}"
 mkdir -p "$LOG_DIR"
 
+if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
+  echo "log_dir=$LOG_DIR"
+  for child_set in baseline-1 track-c sm-e1-f4 sm-e2-e3 sm-a7-a8-c4 sm-e4 baseline-2b sm-g2 sm-g3 sm-g4 sm-g1; do
+    child_ok=0
+    for attempt in 1 2; do
+      echo "child scenario_set=${child_set} attempt=${attempt}"
+      if SCENARIO_SET="$child_set" ZLINK_SPOT_SERVICE_ALL_CHILD=1 "$0"; then
+        child_ok=1
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$child_ok" != "1" ]]; then
+      echo "child scenario_set=${child_set} failed after retries" >&2
+      exit 1
+    fi
+  done
+  echo "spot-service e2e result=passed"
+  exit 0
+fi
+
 PIDS=()
 
 cleanup() {
@@ -227,29 +248,52 @@ wait_port session-b-stream "$SESSION_B_STREAM"
 
 sleep 2
 
-dotnet "$CLIENT_DLL" \
-  --session-a-stream-endpoint "$SESSION_A_STREAM" \
-  --session-b-stream-endpoint "$SESSION_B_STREAM" \
-  --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
-  --registry-router-endpoint "$REGISTRY_ROUTER" \
-  --play-a-evidence-url "$PLAY_A_HTTP/evidence" \
-  --play-b-evidence-url "$PLAY_B_HTTP/evidence" \
-  --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
-  --play-a-crash-url "$PLAY_A_HTTP/crash" \
-  --scenario-set "$SCENARIO_SET" \
-  --play-a-rid play-a \
-  --play-b-rid play-b \
-  --session-a-rid session-a \
-  --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
-  --play-b-external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
-  --play-a-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
-  --client-control-endpoint "$CLIENT_CONTROL" \
-  --client-external-route-endpoint "$CLIENT_EXTERNAL_ROUTE" \
-  --client-external-route-b-endpoint "$CLIENT_EXTERNAL_ROUTE_B" \
-  --client-external-channel-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
-  --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
-  --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+run_client() {
+  local scenario_set="$1"
+  echo "client scenario_set=${scenario_set}" >>"$LOG_DIR/client.stdout.log"
+  dotnet "$CLIENT_DLL" \
+    --session-a-stream-endpoint "$SESSION_A_STREAM" \
+    --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
+    --registry-router-endpoint "$REGISTRY_ROUTER" \
+    --play-a-evidence-url "$PLAY_A_HTTP/evidence" \
+    --play-b-evidence-url "$PLAY_B_HTTP/evidence" \
+    --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
+    --play-a-crash-url "$PLAY_A_HTTP/crash" \
+    --scenario-set "$scenario_set" \
+    --play-a-rid play-a \
+    --play-b-rid play-b \
+    --session-a-rid session-a \
+    --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+    --play-b-external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
+    --play-a-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
+    --client-control-endpoint "$CLIENT_CONTROL" \
+    --client-external-route-endpoint "$CLIENT_EXTERNAL_ROUTE" \
+    --client-external-route-b-endpoint "$CLIENT_EXTERNAL_ROUTE_B" \
+    --client-external-channel-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
+    --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
+    --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
+    --log-dir "$LOG_DIR" \
+    >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
+}
+
+if [[ "$SCENARIO_SET" == "track-g" ]]; then
+  run_client sm-g2
+  run_client sm-g3
+  run_client sm-g4
+  run_client sm-g1
+elif [[ "$SCENARIO_SET" == "all" ]]; then
+  run_client baseline-1
+  run_client track-c
+  run_client baseline-2a
+  run_client sm-e4
+  run_client baseline-2b
+  run_client sm-g2
+  run_client sm-g3
+  run_client sm-g4
+  run_client sm-g1
+else
+  run_client "$SCENARIO_SET"
+fi
 
 cat "$LOG_DIR/client.stdout.log"

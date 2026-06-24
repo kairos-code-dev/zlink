@@ -47,15 +47,28 @@ class authenticate_play_session_handler_t
                                             : authenticated.reason);
         }
 
-        const auto ensured = _ensure_actor.handle ({authenticated.player.actor_id});
+        const auto create_request = ensure_player_actor_req_t{authenticated.player.actor_id};
+        const auto ensured = _ensure_actor.handle (create_request);
         auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
+        auto joined = co_await bound.context ()
+                        .join_entry_spot (
+                          zlink::framework::node_rid_t::from_string (
+                            _topology.selected_play_node_rid ()),
+                          create_request)
+                        .async ();
+        if (joined.result_code != 0) {
+            co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "Player entry spot join was rejected.");
+        }
+        auto actor = actors.find (ensured.actor.actor_id).value_or (bound);
 
         co_await stream
           .reply_packet (zlink::message_t::from_json (
             authenticate_res_t{authenticated.player}))
           .async ();
 
-        co_return bound;
+        co_return actor;
     }
 
   private:

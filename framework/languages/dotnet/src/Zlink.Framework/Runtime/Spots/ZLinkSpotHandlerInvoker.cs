@@ -185,11 +185,37 @@ internal sealed class ZLinkSpotHandlerInvoker(
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
+        await InvokeActorLifecycleAsync(
+                descriptor,
+                actor,
+                request: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask InvokeActorLifecycleAsync(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        ZLinkMessage? request,
+        CancellationToken cancellationToken)
+    {
         EnsureActorType(
             descriptor.HandlerType,
             descriptor.ActorType,
             actor,
             "SPOT actor lifecycle handler");
+
+        if (descriptor.PassRequestArgument)
+        {
+            await InvokeAsync(
+                    descriptor.HandlerType,
+                    descriptor.Invoker,
+                    actor,
+                    request ?? ZLinkMessage.Empty,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
 
         if (descriptor.PassSpotArgument)
         {

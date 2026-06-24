@@ -27,7 +27,12 @@ class SetAgentAvailableHandler
     request: SetAgentAvailableReq
   ): Promise<SetAgentAvailableRes> {
     void context;
-    return entrySpot.setAgentAvailable(actor, request);
+    return entrySpot.setAgentAvailable({
+      ...request,
+      actorId: actor.actorId,
+      displayName: actor.displayName,
+      role: actor.role
+    });
   }
 }
 

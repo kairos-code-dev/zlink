@@ -13,6 +13,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkActorRuntimeState state,
         string actorId,
         string actorType,
+        ZLinkMessage createRequest,
         bool failIfExists,
         CancellationToken cancellationToken)
     {
@@ -30,6 +31,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                     state,
                     actorId,
                     factoryType,
+                    createRequest,
                     CancellationToken.None).AsTask(),
                 cancellationToken)
             .ConfigureAwait(false);
@@ -37,7 +39,10 @@ internal sealed class ZLinkActorCreationCoordinator(
         try
         {
             var actor = await creation.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            return new CreateActorResult(actor, creation.Created);
+            return new CreateActorResult(
+                actor,
+                creation.Created,
+                creation.Created ? createRequest : ZLinkMessage.Empty);
         }
         catch
         {
@@ -51,6 +56,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         ZLinkActorRuntimeState state,
         string actorId,
         Type factoryType,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
         await using var scope = services.CreateAsyncScope();
@@ -75,7 +81,15 @@ internal sealed class ZLinkActorCreationCoordinator(
         if (node is not null && state.NativeActorRef is null)
         {
             var existingRef = node.ActorLookup(actor.ActorId);
-            state.NativeActorRef = existingRef ?? node.CreateActor(actor.ActorId);
+            if (existingRef is not null)
+            {
+                state.NativeActorRef = existingRef;
+            }
+            else
+            {
+                using var nativeCreateRequest = createRequest.ToRawMessage(runtime.Registration.Codecs);
+                state.NativeActorRef = node.CreateActor(actor.ActorId, nativeCreateRequest);
+            }
         }
 
         state.EnsureActorGeneration(state.NativeActorRef?.Generation ?? 0);

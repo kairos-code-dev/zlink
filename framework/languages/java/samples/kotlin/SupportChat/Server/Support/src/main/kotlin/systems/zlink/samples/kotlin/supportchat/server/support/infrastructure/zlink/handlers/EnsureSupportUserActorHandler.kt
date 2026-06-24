@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.z
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.actors.ZLinkActorGateway
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkRequestContext
@@ -10,43 +11,25 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTopology
-import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory
-import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportUserActor
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.ActorRefSnapshot
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.EnsureSupportUserActorReq
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.EnsureSupportUserActorRes
-import systems.zlink.samples.kotlin.supportchat.shared.contracts.JoinConversationReq
-import systems.zlink.samples.kotlin.supportchat.shared.contracts.JoinConversationRes
 
 @ZLinkHandlerGroup("support")
 class EnsureSupportUserActorHandler(
     private val actors: ZLinkActorManager,
-    private val directory: SupportActorDirectory,
+    private val actorGateway: ZLinkActorGateway,
 ) : ZLinkSuspendingRequestHandler<EnsureSupportUserActorReq, EnsureSupportUserActorRes> {
     override suspend fun handle(
         request: EnsureSupportUserActorReq,
         context: ZLinkRequestContext,
     ) = run {
-        val actor = actors.getOrCreate(request.actorId, SampleNames.SupportActorType).await()
-        val supportActor = actor as? SupportUserActor
-            ?: throw IllegalStateException("Support actor factory returned an unexpected actor type.")
-        supportActor.setIdentity(request.displayName, request.role)
-        directory.addOrUpdate(supportActor)
-        val joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.SupportRid))
+        val actor = actors.getOrCreate(request.actorId, SampleNames.SupportActorType, request).await()
+        val joined = actorGateway
+            .joinEntrySpot(actor, RoutingId.from(SampleTopology.SupportRid))
             .timeout(SampleTimings.RequestTimeout)
             .submit()
             .await()
-        if (supportActor.conversationId.isNotBlank()) {
-            actor.context()
-                .joinSpot(
-                    RoutingId.from(supportActor.conversationId),
-                    JoinConversationReq(supportActor.conversationId),
-                )
-                .timeout(SampleTimings.RequestTimeout)
-                .submit(JoinConversationRes::class.java)
-                .await()
-        }
         EnsureSupportUserActorRes(toSnapshot(joined.actor()))
     }
 

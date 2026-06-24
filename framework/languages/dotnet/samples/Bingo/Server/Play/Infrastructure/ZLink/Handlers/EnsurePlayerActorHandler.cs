@@ -15,7 +15,8 @@ namespace Bingo.Server.Play.Infrastructure.ZLink.Handlers;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsurePlayerActorHandler(
-    IZLinkActorManager actors)
+    IZLinkActorManager actors,
+    IZLinkActorGateway actorGateway)
     : IZLinkRouteRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>
 {
     public async ValueTask<EnsurePlayerActorRes> HandleAsync(
@@ -27,14 +28,12 @@ internal sealed class EnsurePlayerActorHandler(
         var actor = await actors.GetOrCreateAsync(
                 request.ActorId,
                 SampleNames.PlayerActorType,
+                request,
                 cancellationToken)
             ;
-        if (actor is PlayerActor player)
-        {
-            player.SetDisplayName(request.DisplayName);
-        }
 
-        var joined = await actor.Context.JoinEntrySpot(
+        var joined = await actorGateway.JoinEntrySpot(
+                actor,
                 RoutingId.From(request.PreferredActorNodeRid),
                 ZLinkMessage.Empty)
             .Async(cancellationToken)

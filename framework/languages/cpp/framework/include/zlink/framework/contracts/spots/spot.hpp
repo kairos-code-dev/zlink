@@ -234,7 +234,7 @@ struct spot_actor_admission_callbacks_t
       void *, void *, const zlink::message_t &, serializer_registry_t &)>
       join;
     std::function<void (void *, void *)> on_actor_joined;
-    std::function<void (void *, void *)> onCreateActor;
+    std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)> onCreateActor;
     std::function<void (void *, void *)> onLeaveActor;
     std::function<void (void *, void *)> onDisconnectActor;
     bool entry_spot = false;
@@ -909,11 +909,24 @@ class spot_handler_registry_t
                 static_cast<TSpot *> (spot)->on_actor_joined (*static_cast<TActor *> (actor));
             }
         };
-        callbacks.onCreateActor = [] (void *spot, void *actor) {
+        callbacks.onCreateActor = [] (void *spot, void *actor, const zlink::message_t &request,
+                                      serializer_registry_t &serializers) {
             if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
                               static_cast<TSpot *> (spot)->onCreateActor (
-                                *static_cast<TActor *> (actor));
+                                *static_cast<TActor *> (actor), message_t{});
                           }) {
+                static_cast<TSpot *> (spot)->onCreateActor (
+                  *static_cast<TActor *> (actor), message_t::from_raw (request, &serializers));
+            } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
+                                     static_cast<TSpot *> (spot)->onCreateActor (
+                                       *static_cast<TActor *> (actor), request);
+                                 }) {
+                static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor),
+                                                            request);
+            } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
+                                     static_cast<TSpot *> (spot)->onCreateActor (
+                                       *static_cast<TActor *> (actor));
+                                 }) {
                 static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor));
             }
         };

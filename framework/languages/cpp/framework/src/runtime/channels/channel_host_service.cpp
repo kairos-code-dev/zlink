@@ -13,6 +13,7 @@
 #include <deque>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <utility>
 
 namespace zlink::framework::runtime
@@ -73,6 +74,7 @@ class channel_host_service_t::server_loop_t
     void run ()
     {
         while (!_stop->load (std::memory_order_acquire)) {
+            apply_runtime_options ();
             flush_replies ();
             zlink::received_t received;
             const int rc = _router->recv (received, zlink::recv_flags_t::dontwait);
@@ -82,6 +84,9 @@ class channel_host_service_t::server_loop_t
             }
             if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
                 std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
+            if (is_drained ()) {
                 continue;
             }
             dispatch_async (std::move (received));
@@ -211,6 +216,22 @@ class channel_host_service_t::server_loop_t
         _workers.clear ();
     }
 
+    void apply_runtime_options ()
+    {
+        const auto peer_weight = _runtime.server_peer_weight_override (_channel_name);
+        if (!peer_weight || (_applied_peer_weight && _applied_peer_weight->value ()
+                                                     == peer_weight->value ())) {
+            return;
+        }
+        _router->options ().peer_weight (*peer_weight);
+        _applied_peer_weight = *peer_weight;
+    }
+
+    bool is_drained () const noexcept
+    {
+        return _applied_peer_weight && _applied_peer_weight->value () == 0;
+    }
+
     detail::channel_runtime_t _runtime;
     std::string _channel_name;
     std::vector<std::string> _endpoints;
@@ -223,6 +244,7 @@ class channel_host_service_t::server_loop_t
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
     std::unique_ptr<zlink::service::discovery_t> _discovery;
+    std::optional<zlink::peer_weight_t> _applied_peer_weight;
     std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
     std::mutex _replies_mutex;

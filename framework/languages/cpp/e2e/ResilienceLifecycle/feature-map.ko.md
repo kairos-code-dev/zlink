@@ -11,12 +11,15 @@
   reply에 오염되지 않고 정상 동작하는지 검증한다.
 - `RL-B3`: provider 하나를 정상 종료하고, 실행 중인 consumer가 남은 provider로 request를
   계속 성공시키는지 검증한다.
+- `RL-B4`: provider 두 대로 분산 중 runtime admin HTTP handler가 public
+  `channel_runtime_options_t`로 한 provider의 server peer weight를 `0`으로 drain하고, 신규
+  request가 다른 provider로만 간 뒤 `100` restore 후 다시 해당 provider가 트래픽을 받는지
+  검증한다.
+- `RL-B5`: `api-b`의 느린 request가 처리 중일 때 같은 provider를 drain하고, 이미 in-flight였던
+  request reply는 정상 수신되며 drain 이후 신규 request만 다른 provider로 가는지 검증한다.
 
 ## C++에서 제외한 시나리오
 
-- `RL-B4`, `RL-B5`: C++ framework public API에는 실행 중 channel server socket weight를
-  바꾸는 runtime accessor가 없다. bindings socket option을 직접 만지는 우회는 framework public
-  surface 검증이 아니므로 사용하지 않는다.
 - `RL-A3`, `RL-B2`, `RL-B6`, `RL-C1`, `RL-C2`, `RL-C3`, `RL-C4`, `RL-D1`, `RL-D2`,
   `RL-D3`, `RL-D4`, `RL-D5`: 현재 C++ E2E harness에 지속 부하, SIGKILL 중 in-flight 관측,
   registry TTL 단축, network partition, runtime error sink 관측을 안정적으로 고정하는 전용

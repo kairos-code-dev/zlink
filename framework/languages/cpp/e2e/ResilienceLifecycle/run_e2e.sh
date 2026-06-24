@@ -75,7 +75,7 @@ wait_port() {
 
 wait_marker() {
   local file="$1"
-  for _ in $(seq 1 200); do
+  for _ in $(seq 1 600); do
     if [[ -f "$file" ]]; then
       return 0
     fi
@@ -91,6 +91,26 @@ stop_pid() {
     kill "$pid" >/dev/null 2>&1 || true
     wait "$pid" >/dev/null 2>&1 || true
   fi
+}
+
+set_server_weight() {
+  local http="$1"
+  local weight="$2"
+  python3 - "$http" "$weight" <<'PY'
+import sys
+import urllib.request
+
+base = sys.argv[1]
+weight = sys.argv[2]
+request = urllib.request.Request(
+    f"{base}/admin/server-weight?weight={weight}",
+    data=b"",
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    if response.status != 200:
+        raise SystemExit(f"unexpected status {response.status}")
+PY
 }
 
 start_registry() {
@@ -212,4 +232,34 @@ touch "$CONTINUE"
 wait "$B3_CLIENT_PID"
 grep -q "scenario RM-B2 passed" "$LOG_DIR/client-rl-b3.stdout.log"
 echo "scenario RL-B3 passed"
+stop_pid "$API_A_PID"
+
+start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+API_A_PID="$LAST_PID"
+start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+API_B_PID="$LAST_PID"
+READY="$LOG_DIR/rl-b4-ready"
+CONTINUE="$LOG_DIR/rl-b4-continue"
+DRAINED="$LOG_DIR/rl-b4-drained"
+RESTORE="$LOG_DIR/rl-b4-restore"
+run_client drain-restore rl-b4 env \
+  ZLINK_CPP_E2E_READY_FILE="$READY" \
+  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
+  ZLINK_CPP_E2E_DRAINED_FILE="$DRAINED" \
+  ZLINK_CPP_E2E_RESTORE_FILE="$RESTORE" &
+B4_CLIENT_PID="$!"
+wait_marker "$READY"
+set_server_weight "$HTTP_B" 0
+sleep 1
+touch "$CONTINUE"
+wait_marker "$DRAINED"
+set_server_weight "$HTTP_B" 100
+sleep 1
+touch "$RESTORE"
+wait "$B4_CLIENT_PID"
+grep -q "scenario RL-B5 passed" "$LOG_DIR/client-rl-b4.stdout.log"
+grep -q "scenario RL-B4 passed" "$LOG_DIR/client-rl-b4.stdout.log"
+echo "scenario RL-B5 passed"
+echo "scenario RL-B4 passed"
+stop_pid "$API_B_PID"
 stop_pid "$API_A_PID"

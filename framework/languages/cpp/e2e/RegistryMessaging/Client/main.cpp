@@ -97,6 +97,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 run_weighted_distribution (channels);
             } else if (scenario == "max-size") {
                 run_max_message_size_limit (channels);
+            } else if (scenario == "drain-restore") {
+                run_drain_restore (channels);
             } else {
                 throw std::runtime_error ("unknown scenario " + scenario);
             }
@@ -287,6 +289,70 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario RM-C8-max passed\n";
     }
 
+    void run_drain_restore (zlink::framework::channel_client_t &channels)
+    {
+        std::set<std::string> before;
+        for (int index = 0; index < 80 && before.size () < 2; ++index) {
+            auto task = channels
+                          .request (e2e::api_channel,
+                                    e2e::profile_request_t{.value = "drain-before-"
+                                                                    + std::to_string (index)})
+                          .timeout (std::chrono::milliseconds (2000))
+                          .async<e2e::profile_reply_t> ();
+            ensure (task.result ().has_value (), "RL-B4 initial request failed");
+            before.insert (task.result ().value ().provider_rid);
+        }
+        ensure (before.contains ("api-a") && before.contains ("api-b"),
+                "RL-B4 did not start with both providers");
+
+        auto slow =
+          channels
+            .request ("registry.messaging.api.manual.b", e2e::profile_request_t{.value = "slow"})
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::profile_reply_t> ();
+        touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
+        wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+
+        ensure (slow.result ().has_value (), "RL-B5 in-flight request failed during drain");
+        ensure (slow.result ().value ().provider_rid == "api-b",
+                "RL-B5 in-flight request did not run on drained provider");
+
+        int successful_drain_requests = 0;
+        for (int index = 0; index < 40 && successful_drain_requests < 10; ++index) {
+            auto task = channels
+                          .request (e2e::api_channel,
+                                    e2e::profile_request_t{.value = "drain-after-"
+                                                                    + std::to_string (index)})
+                          .timeout (std::chrono::milliseconds (500))
+                          .async<e2e::profile_reply_t> ();
+            if (!task.result ().has_value ()) {
+                continue;
+            }
+            ensure (task.result ().value ().provider_rid == "api-a",
+                    "RL-B4 drained provider received a new request");
+            ++successful_drain_requests;
+        }
+        ensure (successful_drain_requests == 10, "RL-B4 did not keep healthy provider available");
+        std::cout << "scenario RL-B5 passed\n";
+
+        touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
+        wait_for_file (env_or ("ZLINK_CPP_E2E_RESTORE_FILE"));
+
+        std::set<std::string> restored;
+        for (int index = 0; index < 80 && !restored.contains ("api-b"); ++index) {
+            auto task = channels
+                          .request (e2e::api_channel,
+                                    e2e::profile_request_t{.value = "restore-"
+                                                                    + std::to_string (index)})
+                          .timeout (std::chrono::milliseconds (2000))
+                          .async<e2e::profile_reply_t> ();
+            ensure (task.result ().has_value (), "RL-B4 request after restore failed");
+            restored.insert (task.result ().value ().provider_rid);
+        }
+        ensure (restored.contains ("api-b"), "RL-B4 restored provider did not receive traffic");
+        std::cout << "scenario RL-B4 passed\n";
+    }
+
     void run_route_mesh (zlink::framework::route_client_t &routes)
     {
         auto to_b =
@@ -444,6 +510,8 @@ int main (int argc, char **argv)
           .enable_client (api_b_endpoint);
         options.add_client_server_channel ("registry.messaging.api.manual.max")
           .enable_client (api_a_endpoint);
+        options.add_client_server_channel ("registry.messaging.api.manual.b")
+          .enable_client (api_b_endpoint);
         options.add_route_mesh (e2e::route_channel)
           .enable_server (env_or ("ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT"))
           .set_routing_id (zlink::routing_id_t::from (std::string ("client")))

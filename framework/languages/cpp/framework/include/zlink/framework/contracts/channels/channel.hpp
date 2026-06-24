@@ -37,6 +37,9 @@ class route_channel_builder_state_t;
 } // namespace detail
 
 class spot_context_t;
+class channel_runtime_options_t;
+class client_server_channel_runtime_options_t;
+class channel_server_socket_runtime_options_t;
 enum class channel_capability_t
 {
     server,
@@ -444,6 +447,7 @@ class message_bus_t
     friend class request_client_t;
     friend class publisher_t;
     friend class spot_context_t;
+    friend class channel_runtime_options_t;
     friend class detail::channel_outbound_exchange_t;
     friend class detail::channel_runtime_t;
     friend class detail::channel_runtime_manager_t;
@@ -515,6 +519,77 @@ class message_bus_t
                                    std::chrono::milliseconds timeout,
                                    const send_call_t::metadata_map_t &metadata);
 
+    std::shared_ptr<detail::channel_runtime_state_t> _state;
+};
+
+class channel_server_socket_runtime_options_t
+{
+  public:
+    channel_server_socket_runtime_options_t ();
+    ~channel_server_socket_runtime_options_t ();
+
+    channel_server_socket_runtime_options_t (channel_server_socket_runtime_options_t &&) noexcept;
+    channel_server_socket_runtime_options_t &
+    operator= (channel_server_socket_runtime_options_t &&) noexcept;
+    channel_server_socket_runtime_options_t (const channel_server_socket_runtime_options_t &) =
+      default;
+    channel_server_socket_runtime_options_t &
+    operator= (const channel_server_socket_runtime_options_t &) = default;
+
+    channel_server_socket_runtime_options_t &peer_weight (zlink::peer_weight_t value);
+
+  private:
+    friend class client_server_channel_runtime_options_t;
+    channel_server_socket_runtime_options_t (
+      std::shared_ptr<detail::channel_runtime_state_t> state,
+      std::string channel_name);
+
+    std::shared_ptr<detail::channel_runtime_state_t> _state;
+    std::string _channel_name;
+};
+
+class client_server_channel_runtime_options_t
+{
+  public:
+    client_server_channel_runtime_options_t ();
+    ~client_server_channel_runtime_options_t ();
+
+    client_server_channel_runtime_options_t (
+      client_server_channel_runtime_options_t &&) noexcept;
+    client_server_channel_runtime_options_t &
+    operator= (client_server_channel_runtime_options_t &&) noexcept;
+    client_server_channel_runtime_options_t (
+      const client_server_channel_runtime_options_t &) = default;
+    client_server_channel_runtime_options_t &
+    operator= (const client_server_channel_runtime_options_t &) = default;
+
+    channel_server_socket_runtime_options_t configure_server_socket () const;
+
+  private:
+    friend class channel_runtime_options_t;
+    client_server_channel_runtime_options_t (
+      std::shared_ptr<detail::channel_runtime_state_t> state,
+      std::string channel_name);
+
+    std::shared_ptr<detail::channel_runtime_state_t> _state;
+    std::string _channel_name;
+};
+
+class channel_runtime_options_t
+{
+  public:
+    channel_runtime_options_t ();
+    explicit channel_runtime_options_t (message_bus_t bus);
+    ~channel_runtime_options_t ();
+
+    channel_runtime_options_t (channel_runtime_options_t &&) noexcept;
+    channel_runtime_options_t &operator= (channel_runtime_options_t &&) noexcept;
+    channel_runtime_options_t (const channel_runtime_options_t &) = default;
+    channel_runtime_options_t &operator= (const channel_runtime_options_t &) = default;
+
+    client_server_channel_runtime_options_t client_server_channel (std::string channel_name) const;
+
+  private:
     std::shared_ptr<detail::channel_runtime_state_t> _state;
 };
 

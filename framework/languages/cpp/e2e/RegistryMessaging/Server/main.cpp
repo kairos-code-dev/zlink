@@ -161,6 +161,39 @@ class evidence_handler_t
     scenario_state_t &_state;
 };
 
+class server_weight_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<
+      zlink::framework::channel_runtime_options_t>;
+
+    explicit server_weight_handler_t (zlink::framework::channel_runtime_options_t &options) :
+        _options (options)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &request)
+    {
+        const auto found = request.query_values.find ("weight");
+        if (found == request.query_values.end ()) {
+            zlink::framework::http_response_t response;
+            response.status = 400;
+            response.body = R"({"error":"weight is required"})";
+            return response;
+        }
+        const auto weight = static_cast<std::uint32_t> (std::stoul (found->second));
+        _options.client_server_channel (e2e::api_channel)
+          .configure_server_socket ()
+          .peer_weight (zlink::peer_weight_t::value (weight));
+        zlink::framework::http_response_t response;
+        response.body = nlohmann::json{{"weight", weight}}.dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::channel_runtime_options_t &_options;
+};
+
 void configure_common_codecs (zlink::framework::codec_options_builder_t codecs)
 {
     codecs.add_json ()
@@ -218,6 +251,8 @@ int main (int argc, char **argv)
         options.services ().add_singleton<scenario_state_t> (
           std::make_unique<scenario_state_t> (provider_rid, instance_id));
         options.services ().add_transient<route_ping_handler_t, scenario_state_t> ();
+        options.services ().add_transient<server_weight_handler_t,
+                                          zlink::framework::channel_runtime_options_t> ();
         configure_common_codecs (options.codecs ());
         options.handlers ()
           .add<profile_request_handler_t> (e2e::handler_group)
@@ -256,7 +291,8 @@ int main (int argc, char **argv)
             options.http ()
               .listen (http_endpoint)
               .map_health ("/health")
-              .map_get<evidence_handler_t> ("/evidence");
+              .map_get<evidence_handler_t> ("/evidence")
+              .map_post<server_weight_handler_t> ("/admin/server-weight");
         }
     });
     return app.run (argc, argv);

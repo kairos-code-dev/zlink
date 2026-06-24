@@ -100,6 +100,7 @@ class channel_runtime_state_t
     std::map<std::string, std::shared_ptr<channel_native_publisher_t>> native_publishers;
     std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
     std::map<std::string, route_handler_registry_t> route_handlers;
+    std::map<std::string, zlink::peer_weight_t> server_peer_weight_overrides;
     std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
     std::vector<outbound_call_record_t> outbound_calls;
     dispatch_options_t dispatch;
@@ -163,6 +164,9 @@ class channel_runtime_t
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
     void drain () noexcept;
+    void set_server_peer_weight (const std::string &channel_name, zlink::peer_weight_t value);
+    std::optional<zlink::peer_weight_t>
+    server_peer_weight_override (const std::string &channel_name) const;
 
     static channel_runtime_t from (const message_bus_t &bus);
 

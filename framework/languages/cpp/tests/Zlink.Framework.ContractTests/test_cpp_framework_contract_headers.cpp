@@ -214,6 +214,12 @@ concept has_client_server_socket_options = requires (T value)
 static_assert (has_channel_capability_socket_options<zlink::framework::capability_builder_t>);
 static_assert (
   has_client_server_socket_options<zlink::framework::client_server_channel_builder_t>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::framework::channel_runtime_options_t &> ()
+                           .client_server_channel ("api")
+                           .configure_server_socket ()
+                           .peer_weight (zlink::peer_weight_t::value (0))),
+               zlink::framework::channel_server_socket_runtime_options_t &>);
 
 namespace
 {

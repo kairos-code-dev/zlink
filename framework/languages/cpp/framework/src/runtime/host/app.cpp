@@ -254,6 +254,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     _state->services.add_singleton<channel_client_t> (
       std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
+    _state->services.add_singleton<channel_runtime_options_t> (
+      std::make_unique<channel_runtime_options_t> (_state->zlink.message_bus ()));
     _state->services.add_singleton<publisher_t> (
       std::make_unique<publisher_t> (_state->zlink.publisher ()));
     _state->services.add_factory<route_client_t> (

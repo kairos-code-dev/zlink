@@ -443,6 +443,24 @@ void channel_runtime_t::drain () noexcept
     pending_operation_controller_t (*_state).drain ();
 }
 
+void channel_runtime_t::set_server_peer_weight (const std::string &channel_name,
+                                                zlink::peer_weight_t value)
+{
+    std::lock_guard lock (_state->mutex);
+    _state->server_peer_weight_overrides.insert_or_assign (channel_name, value);
+}
+
+std::optional<zlink::peer_weight_t>
+channel_runtime_t::server_peer_weight_override (const std::string &channel_name) const
+{
+    std::lock_guard lock (_state->mutex);
+    const auto found = _state->server_peer_weight_overrides.find (channel_name);
+    if (found == _state->server_peer_weight_overrides.end ()) {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
 channel_runtime_t channel_runtime_t::from (const message_bus_t &bus)
 {
     return channel_runtime_t (bus._state);
@@ -767,6 +785,73 @@ result_t<void> message_bus_t::submit_publish (std::string channel_name,
     return detail::channel_outbound_exchange_t (_state).submit_publish (
       std::move (channel_name), std::move (topic), std::move (packet_name), event_type, event,
       timeout, metadata);
+}
+
+channel_server_socket_runtime_options_t::channel_server_socket_runtime_options_t () = default;
+
+channel_server_socket_runtime_options_t::channel_server_socket_runtime_options_t (
+  std::shared_ptr<detail::channel_runtime_state_t> state,
+  std::string channel_name) :
+    _state (std::move (state)), _channel_name (std::move (channel_name))
+{
+}
+
+channel_server_socket_runtime_options_t::~channel_server_socket_runtime_options_t () = default;
+
+channel_server_socket_runtime_options_t::channel_server_socket_runtime_options_t (
+  channel_server_socket_runtime_options_t &&) noexcept = default;
+
+channel_server_socket_runtime_options_t &
+channel_server_socket_runtime_options_t::operator= (
+  channel_server_socket_runtime_options_t &&) noexcept = default;
+
+channel_server_socket_runtime_options_t &
+channel_server_socket_runtime_options_t::peer_weight (zlink::peer_weight_t value)
+{
+    detail::channel_runtime_t (_state).set_server_peer_weight (_channel_name, value);
+    return *this;
+}
+
+client_server_channel_runtime_options_t::client_server_channel_runtime_options_t () = default;
+
+client_server_channel_runtime_options_t::client_server_channel_runtime_options_t (
+  std::shared_ptr<detail::channel_runtime_state_t> state,
+  std::string channel_name) :
+    _state (std::move (state)), _channel_name (std::move (channel_name))
+{
+}
+
+client_server_channel_runtime_options_t::~client_server_channel_runtime_options_t () = default;
+
+client_server_channel_runtime_options_t::client_server_channel_runtime_options_t (
+  client_server_channel_runtime_options_t &&) noexcept = default;
+
+client_server_channel_runtime_options_t &
+client_server_channel_runtime_options_t::operator= (
+  client_server_channel_runtime_options_t &&) noexcept = default;
+
+channel_server_socket_runtime_options_t
+client_server_channel_runtime_options_t::configure_server_socket () const
+{
+    return channel_server_socket_runtime_options_t (_state, _channel_name);
+}
+
+channel_runtime_options_t::channel_runtime_options_t () = default;
+
+channel_runtime_options_t::channel_runtime_options_t (message_bus_t bus) : _state (bus._state) {}
+
+channel_runtime_options_t::~channel_runtime_options_t () = default;
+
+channel_runtime_options_t::channel_runtime_options_t (channel_runtime_options_t &&) noexcept =
+  default;
+
+channel_runtime_options_t &
+channel_runtime_options_t::operator= (channel_runtime_options_t &&) noexcept = default;
+
+client_server_channel_runtime_options_t
+channel_runtime_options_t::client_server_channel (std::string channel_name) const
+{
+    return client_server_channel_runtime_options_t (_state, std::move (channel_name));
 }
 
 request_client_t::request_client_t (message_bus_t bus, std::string channel_name) :

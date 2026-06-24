@@ -1,10 +1,12 @@
 package systems.zlink.e2e.spotservice;
 
+import java.time.Duration;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.spots.ZLinkTimerOptions;
 
 public final class UserSpot implements ZLinkSpot<ZLinkActor> {
     private final ZLinkSpotContext context;
@@ -33,6 +35,8 @@ public final class UserSpot implements ZLinkSpot<ZLinkActor> {
     @Override
     public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
         evidence.record("SpotCreated", context.spotRid().toString(), request.isEmpty() ? "" : "request");
+        context.addTimer("state-timer", Duration.ofMillis(100),
+            StateTimerHandler.class, new ZLinkTimerOptions());
         return ZLinkSpotCreateResponse.accept();
     }
 
@@ -56,4 +60,7 @@ public final class UserSpot implements ZLinkSpot<ZLinkActor> {
         evidence.record("StateCommand", context.spotRid().toString(), value);
     }
 
+    public void timerTick(long deliveryIndex) {
+        evidence.record("SpotTimer", context.spotRid().toString(), Long.toString(deliveryIndex));
+    }
 }

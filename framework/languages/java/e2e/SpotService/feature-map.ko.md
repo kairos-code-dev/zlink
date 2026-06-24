@@ -19,6 +19,8 @@ SpotNode builder만 사용한다.
   negative path를 검증한다.
 - `SM-E1`: handler 없는 spot route request/send가 error/drop 경로를 타고 dispatch observer evidence를
   남기는지 확인한다.
+- `SM-E2`: user spot이 public `context.addTimer`로 등록한 timer를 주기적으로 실행하고 tick evidence를
+  남기는지 확인한다.
 - `SM-F1`: 외부 consumer가 RouteMesh 경로로 target spot에 도달하는지 확인한다.
 - `SM-F2`: RouteMesh 채널명이 target spot egress의 실제 channel 기준으로 동작하는지 확인한다.
 - `SM-F3`: 같은 RouteMesh에서 일반 spot route request와 one-way send가 함께 동작하는지 확인한다.
@@ -56,7 +58,6 @@ SpotNode builder만 사용한다.
 - `SM-D12`: 다른 gateway로 재접속해 actor 상태를 이어받는 scenario가 아직 없다.
 - `SM-D13`: stream heartbeat 중단과 disconnect 감지를 검증하는 scenario가 아직 없다.
 - `SM-D14`: TLS stream endpoint와 certificate 구성이 아직 없다.
-- `SM-E2`: spot timer 발화와 효과를 검증하는 scenario가 아직 없다.
 - `SM-E3`: idle timer 기반 명시 close를 검증하는 scenario가 아직 없다.
 - `SM-E4`: timer overrun policy별 tick 처리 evidence를 검증하는 scenario가 아직 없다.
 - `SM-F5`: spot routing 사용/중단과 channel socket lifecycle 독립성을 검증하는 scenario가 아직 없다.

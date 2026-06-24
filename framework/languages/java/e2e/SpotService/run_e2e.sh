@@ -212,6 +212,7 @@ for mode in state1 state2 send normal missing timeout owner route-mesh; do
 done
 assert_type_mismatch "${HTTP_A}" room-a
 echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
+echo "scenario SM-E2 passed" >>"${log_dir}/client.stdout.log"
 close_spot "${HTTP_A}" room-a
 echo "scenario SM-A6 passed" >>"${log_dir}/client.stdout.log"
 
@@ -224,3 +225,4 @@ grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"
 grep -q "SpotClosing" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTypeMismatch" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTypeMismatchStateOk" "${log_dir}/play-a-evidence.json"
+grep -q "SpotTimer" "${log_dir}/play-a-evidence.json"

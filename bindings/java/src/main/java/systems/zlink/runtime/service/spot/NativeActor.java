@@ -383,23 +383,24 @@ final class NativeActor implements Actor {
             ensureNotSubmitted();
             if (parts.isEmpty())
                 throw new IllegalArgumentException("at least one message required");
+            if (parts.size() != 1)
+                throw new IllegalArgumentException(
+                    "actor bound-session send requires exactly one message");
             submitted = true;
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment refSegment = ActorInterop.actorRefToNative(arena, ref);
-                for (int i = 0; i < parts.size(); i++) {
-                    Message part = parts.get(i);
-                    MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
-                    InternalAccess.messageCopyTo(part, nativeMsg);
-                    int rc = Native.spotNodeActorSendBoundSessionMessage(nodeHandle(),
-                      refSegment, nativeMsg, flags.value());
-                    if (rc != 0) {
-                        NativeMessage.messageClose(nativeMsg);
-                        if (flags == SendFlags.DONT_WAIT
-                            && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
-                            return false;
-                        }
-                        throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
+                Message part = parts.get(0);
+                MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
+                InternalAccess.messageCopyTo(part, nativeMsg);
+                int rc = Native.spotNodeActorSendBoundSessionMessage(nodeHandle(),
+                  refSegment, nativeMsg, flags.value());
+                if (rc != 0) {
+                    NativeMessage.messageClose(nativeMsg);
+                    if (flags == SendFlags.DONT_WAIT
+                        && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
+                        return false;
                     }
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
             return true;

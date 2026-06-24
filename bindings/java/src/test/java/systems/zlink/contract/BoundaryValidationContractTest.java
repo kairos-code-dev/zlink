@@ -1,8 +1,6 @@
 package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
-import systems.zlink.contracts.errors.ZlinkConfigException;
-import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
@@ -25,14 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class BoundaryValidationContractTest {
     @Test
-        TestSupport.assumeNative();
-
-        try (Context ctx = Zlink.createContext();
-             StreamSocket stream = ctx.createStreamSocket();
-             SpotNode node = ctx.createSpotNode(SpotNodeMode.PUBSUB)) {
-            ZlinkConfigException error = assertThrows(ZlinkConfigException.class,
-            assertEquals(ConfigResult.NOT_SUPPORTED, error.getResult());
-        }
+    public void streamSocketDoesNotExposeActorGatewayAttach() {
+        assertFalse(hasPublicMethod(StreamSocket.class, "attachActorGateway", SpotNode.class));
     }
 
     @Test

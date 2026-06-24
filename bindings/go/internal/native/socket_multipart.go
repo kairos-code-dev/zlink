@@ -328,3 +328,16 @@ func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSu
 	}
 	return err
 }
+
+func submitSingleFromBuilderParts(parts []sendBuilderPart, submit multipartSubmitFunc) error {
+	if len(parts) != 1 {
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
+	}
+	if parts[0].bytes {
+		return submitSinglePartFromBytes(parts[0].data, submit)
+	}
+	if parts[0].move {
+		return submitSinglePartMoved(parts[0].message, submit)
+	}
+	return submitSinglePartFromCopy(parts[0].message, submit)
+}

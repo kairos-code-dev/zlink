@@ -71,31 +71,34 @@ internal sealed class Actor : IActor
     internal static bool SendBoundSessionCore(SpotNode node, ActorRef actorRef,
         IReadOnlyList<Message> parts, SendFlags flags)
     {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        if (parts.Count != 1)
+            throw new ArgumentException(
+                "Actor bound-session send requires exactly one message.",
+                nameof(parts));
+
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            for (int i = 0; i < cloned.Length; i++)
+            ZlinkMsg nativePart = default;
+            cloned[0].MoveTo(ref nativePart);
+            bool submitted = false;
+            try
             {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
-                {
-                    ZlinkActorRef nativeActor = ActorInterop.ToNative(actorRef);
-                    int rc =
-                        NativeMethods.zlink_spot_node_actor_send_bound_session_msg(
-                            node.Handle, ref nativeActor, ref nativePart,
-                            (int)flags);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
-                }
+                ZlinkActorRef nativeActor = ActorInterop.ToNative(actorRef);
+                int rc =
+                    NativeMethods.zlink_spot_node_actor_send_bound_session_msg(
+                        node.Handle, ref nativeActor, ref nativePart, (int)flags);
+                submitted = true;
+                if (rc != 0)
+                    throw ZlinkException.CreateSubmitException(
+                        NativeMethods.zlink_errno());
+            }
+            finally
+            {
+                if (!submitted)
+                    NativeMethods.zlink_msg_close(ref nativePart);
             }
             return true;
         }

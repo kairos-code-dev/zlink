@@ -160,24 +160,25 @@ inline bool submit_bound_session_send_state (spot_operation_state_t &state_)
     }
 
     std::vector<message_t> parts = take_send_parts (state_);
-    for (size_t i = 0; i < parts.size (); ++i) {
-        zlink_msg_t native;
-        zlink::detail::move_to_native (parts[i], &native);
-        const submit_result_t rc =
-          static_cast<submit_result_t> (zlink_spot_node_actor_send_bound_session_msg (
-            zlink::detail::native_handle (*state_.node),
-            zlink::detail::actor_ref_native (*state_.actor), &native,
-            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags))));
-        if (rc != submit_result_t::ok) {
-            parts[i].init ();
-            (void) zlink_msg_move (zlink::detail::native_handle (parts[i]), &native);
-            if (state_.flags == send_flags_t::dontwait && rc == submit_result_t::backpressured) {
-                restore_send_parts_to_state (state_, parts);
-                return false;
-            }
-            restore_send_parts_to_state (state_, parts);
-            throw submit_error_t (rc, zlink_errno ());
-        }
+    if (parts.size () != 1 || !parts[0].valid ()) {
+        restore_send_parts_to_state (state_, parts);
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+    }
+
+    zlink_msg_t native;
+    zlink::detail::move_to_native (parts[0], &native);
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_send_bound_session_msg (
+        zlink::detail::native_handle (*state_.node),
+        zlink::detail::actor_ref_native (*state_.actor), &native,
+        static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags))));
+    if (rc != submit_result_t::ok) {
+        parts[0].init ();
+        (void) zlink_msg_move (zlink::detail::native_handle (parts[0]), &native);
+        restore_send_parts_to_state (state_, parts);
+        if (state_.flags == send_flags_t::dontwait && rc == submit_result_t::backpressured)
+            return false;
+        throw submit_error_t (rc, zlink_errno ());
     }
     return true;
 }

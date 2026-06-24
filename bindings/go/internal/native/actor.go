@@ -197,7 +197,7 @@ func (n *SpotNode) SendBoundSessionMsg(actor ActorRef) SendOp {
 		if err != nil {
 			return err
 		}
-		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitSingleFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			_ = partFlag
 			return submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(handle, &rawActor, part, C.zlink_send_flags_t(flags)))
 		})
@@ -296,7 +296,7 @@ func (a *Actor) SendBoundSession() SendOp {
 		if err != nil {
 			return err
 		}
-		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitSingleFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			_ = partFlag
 			return submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(nodeHandle, &rawActor, part, C.zlink_send_flags_t(flags)))
 		})

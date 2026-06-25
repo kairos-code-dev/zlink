@@ -26,8 +26,17 @@
 - `RM-C2`: route mesh public client가 target rid `api-b`로 보낸 request는 `api-b`에만 도달하고,
   없는 rid request는 public error로 실패하는지 확인한다.
 
-## public API/harness 대기
+## public contract gap
 
-- `RM-C7`: weighted 분산 Node runner와 marker가 아직 없다.
-- `RM-C8`: payload size policy Node runner와 marker가 아직 없다.
-- `RM-C9`: HWM/backpressure Node harness가 아직 없다.
+- `RM-C7`: 공통 시나리오는 server 쪽 weight를 build-time public config로 다르게 주는 것을 요구한다.
+  Node framework public channel builder와 NestJS config에는 server socket peer weight를 설정하는 계약이
+  없다. 다른 언어에 대응 기능이 있더라도 Node public API로 추가하지 않고, spec/guide 계약이 확정될
+  때까지 gap으로 둔다.
+- `RM-C8`: 작은 payload와 큰 payload 왕복은 public typed client로 유도할 수 있다. 그러나 공통
+  시나리오의 완료 조건에는 `MaxMessageSize` 초과 payload가 public error로 거부되는 검증도 포함된다.
+  Node framework public channel builder에는 server socket max message size를 live socket에 적용하는
+  계약이 없으므로, 전체 `RM-C8`은 gap으로 둔다.
+- `RM-C9`: 공통 시나리오는 `SendHighWaterMark`/`ReceiveHighWaterMark` 같은 HWM 설정이 framework
+  channel runtime의 live socket에 적용되는 것을 전제로 한다. Node framework public config에는 HWM
+  socket option 계약이 없고, deterministic backpressure harness도 아직 없다. 계약과 harness가 준비될
+  때까지 gap으로 둔다.

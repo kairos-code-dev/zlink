@@ -40,9 +40,10 @@
 
 framework의 public contract는 언어별로 임의로 달라지면 안 된다. 하지만 다른 언어에 기능이 있다는
 이유만으로 새 public contract를 추가해서도 안 된다. public contract의 기준은 spec, 공통 framework
-spec/guide처럼 저장소가 명시한 계약 문서다. 공통 E2E 문서는 구현 검증 기준이며, 누락을 찾는
-입력으로 사용한다. 하지만 공통 E2E 문서나 다른 언어 구현만으로 새 public API를 추가하지 않는다.
-다른 언어의 구현은 계약 여부를 확인할 때 참고하는 증거일 뿐, 그 자체가 계약의 출처가 아니다.
+spec/guide처럼 저장소가 명시한 계약 문서다. spec 또는 공통 framework spec/guide에 없는 기능은,
+다른 언어가 이미 제공하더라도 새 public API로 추가하지 않는다. 공통 E2E 문서는 구현 검증 기준이며,
+누락을 찾는 입력으로 사용한다. 하지만 공통 E2E 문서나 다른 언어 구현만으로 새 public API를 추가하지
+않는다. 다른 언어의 구현은 계약 여부를 확인할 때 참고하는 증거일 뿐, 그 자체가 계약의 출처가 아니다.
 
 한 언어의 framework에 존재하는 public API, 동작, E2E scenario가 다른 언어에 없으면 먼저 공통 E2E
 문서, 해당 언어의 spec/guide 문서, 이미 구현된 다른 언어의 public surface를 비교한다. 비교 결과
@@ -52,8 +53,9 @@ spec 또는 공통 framework spec/guide에 근거가 있는 framework 공통 기
 표기는 완료 판정이 아니라 후속 public contract parity 작업의 입력이다.
 
 다른 언어에는 있지만 spec 또는 공통 framework spec/guide에 없는 기능은 바로 public API로 추가하지
-않는다. 공통 E2E scenario가 그 기능을 요구하더라도, 새 public API가 필요하다면 먼저
-draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로 받아들일지 리뷰를 받는다.
+않는다. 공통 E2E scenario가 그 기능을 요구하더라도, 새 public API가 필요하다면 구현하지 말고 먼저
+draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로 받아들일지 리뷰를 받는다. 해당 기능은
+계약이 확정되기 전까지 feature-map에 public contract gap으로 남긴다.
 
 금지 사항:
 

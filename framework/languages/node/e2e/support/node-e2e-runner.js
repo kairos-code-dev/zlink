@@ -3685,6 +3685,7 @@ async function spotService() {
             .addSpotFactory(UserSpot)
             .addSpotFactory(OtherUserSpot)
             .addSpotFactory(LifecycleSpot)
+            .addSpotFactory(PayloadFidelitySpot)
             .addSpotFactory(StageWrapperSpot)
             .addSpotFactory(TimerSpot)
             .addSpotFactory(IdleCloseSpot)
@@ -3781,6 +3782,45 @@ async function spotService() {
     await smB1Actor.context.getSpot(LifecycleSpot).leave(smB1Actor);
     assert.equal(await spotManager.close('sm-b1-spot'), true);
     selfCheck('SM-B1-LOCAL-JOIN-CALLBACK');
+
+    payloadFidelityEvents.length = 0;
+    smB3Actor = undefined;
+    await spotManager.getOrCreate(PayloadFidelitySpot, 'sm-b3-spot', { owner: 'play-a' });
+    const smB3ActorRef = await actorManager.getOrCreate('sm-b3-actor', 'sm-a6-player');
+    assert.equal(smB3ActorRef.actorId, 'sm-b3-actor');
+    assert.ok(smB3Actor);
+    const smB3JoinPayload = {
+      actorId: 'sm-b3-actor',
+      displayName: 'payload-user',
+      level: 17,
+      attributes: {
+        rank: 'gold',
+        region: 'kr',
+        flags: { tutorialComplete: true, muted: false }
+      },
+      tags: ['duo', 'ranked', 'night'],
+      loadout: [
+        { slot: 'primary', itemId: 'bow-7', power: 91 },
+        { slot: 'support', itemId: 'ward-2', power: 12 }
+      ]
+    };
+    const smB3Join = await smB3Actor.context
+      .joinSpot('sm-b3-spot', smB3JoinPayload)
+      .submit();
+    assert.equal(smB3Join.resultCode, 0);
+    assert.equal(smB3Join.actor.actorId, 'sm-b3-actor');
+    assert.deepEqual(smB3Join.reply, {
+      actorId: 'sm-b3-actor',
+      received: smB3JoinPayload
+    });
+    assert.deepEqual(payloadFidelityEvents, [
+      { event: 'create', payload: { owner: 'play-a' } },
+      { event: 'join', actorId: 'sm-b3-actor', payload: smB3JoinPayload },
+      { event: 'joined', actorId: 'sm-b3-actor' }
+    ]);
+    await smB3Actor.context.getSpot(PayloadFidelitySpot).leave(smB3Actor);
+    assert.equal(await spotManager.close('sm-b3-spot'), true);
+    selfCheck('SM-B3-JOIN-PAYLOAD-FIDELITY');
 
     smB8Actor = undefined;
     lifecycleEvents.length = 0;
@@ -4595,6 +4635,7 @@ const lifecycleEvents = [];
 let smA1Actor;
 let smA6Actor;
 let smB1Actor;
+let smB3Actor;
 let smB8Actor;
 let smE3Actor;
 
@@ -4653,6 +4694,9 @@ class LifecycleActorFactory {
     if (actorId === 'sm-b1-actor') {
       smB1Actor = actor;
     }
+    if (actorId === 'sm-b3-actor') {
+      smB3Actor = actor;
+    }
     if (actorId === 'sm-b8-actor') {
       smB8Actor = actor;
     }
@@ -4660,6 +4704,40 @@ class LifecycleActorFactory {
       smE3Actor = actor;
     }
     return actor;
+  }
+}
+
+const payloadFidelityEvents = [];
+
+class PayloadFidelitySpot {
+  constructor(context) {
+    this.context = context;
+  }
+
+  async onCreate(request) {
+    const payload = request.decode();
+    payloadFidelityEvents.push({ event: 'create', payload });
+    return { accepted: true };
+  }
+
+  async onActorJoin(actor, request) {
+    const payload = request.decode();
+    payloadFidelityEvents.push({ event: 'join', actorId: actor.actorId, payload });
+    return {
+      accepted: true,
+      reply: {
+        actorId: actor.actorId,
+        received: payload
+      }
+    };
+  }
+
+  async onJoinedActor(actor) {
+    payloadFidelityEvents.push({ event: 'joined', actorId: actor.actorId });
+  }
+
+  leave(actor) {
+    return this.context.leaveActor(actor);
   }
 }
 

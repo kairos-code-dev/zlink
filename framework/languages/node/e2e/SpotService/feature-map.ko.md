@@ -42,7 +42,10 @@
   self-check는 있으나, 공통 시나리오가 요구하는 두 play 노드 배포, `play-a` local mailbox
   dispatch, 후속 actor request, `play-b` callback 없음 evidence가 아직 없다.
 - `SM-B2`: remote actor join Node runner와 marker가 아직 없다.
-- `SM-B3`: actor payload fidelity Node runner와 marker가 아직 없다.
+- `SM-B3`: public `actorManager.getOrCreate(...)`와 actor `context.joinSpot(...)` 경로로
+  복합 객체 join payload가 `onActorJoin(...)`과 join reply까지 그대로 왕복하는 self-check
+  `SM-B3-JOIN-PAYLOAD-FIDELITY`는 runner에 있다. 다만 공통 시나리오가 요구하는 후속 actor
+  request payload fidelity marker는 아직 없어 완료 marker로 올리지 않는다.
 - `SM-B4`: remote actor request Node runner와 marker가 아직 없다.
 - `SM-B5`: actor 미등록 request negative path Node runner와 marker가 아직 없다.
 - `SM-B6`: leave와 disconnect callback 차이 Node runner와 marker가 아직 없다.

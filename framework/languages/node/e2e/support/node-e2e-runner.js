@@ -2243,6 +2243,7 @@ async function resilienceLifecycle() {
   await runScenario('RL-A3', runResilienceLifecycleClientReconnectStorm);
   await runScenario('RL-A5', runResilienceLifecycleProviderFlapping);
   await runScenario('RL-B3', runResilienceLifecycleGracefulShutdown);
+  await runScenario('RL-B6', runResilienceLifecycleGrayFailure);
   await runScenario('RL-C2', runResilienceLifecycleRegistryStaleCleanup);
   await runScenario('RL-C3', runResilienceLifecycleNodeDisconnectRecovery);
   await runScenario('RL-C1', runResilienceLifecycleResourceCleanup);
@@ -2995,6 +2996,104 @@ async function waitForResilienceGracefulProviderRemoved(query, providerAEndpoint
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`RL-B3 provider-b remained in topology: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function runResilienceLifecycleGrayFailure() {
+  RLGrayFailureHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const healthyEndpoint = await reserveTcpEndpoint();
+  const grayEndpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const apps = [];
+
+  try {
+    const registry = await startApp(
+      nestModule('ResilienceGrayFailureRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 99
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    await startResilienceGrayFailureProvider(nestjs, registryRouterEndpoint, healthyEndpoint, 'provider-a', false, apps);
+    await startResilienceGrayFailureProvider(nestjs, registryRouterEndpoint, grayEndpoint, 'provider-b', true, apps);
+    const consumer = await startApp(
+      nestModule('ResilienceGrayFailureConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rl.gray')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.gray', [healthyEndpoint, grayEndpoint]);
+
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const healthyReplies = [];
+    const publicFailures = [];
+    for (let index = 0; index < 60; index += 1) {
+      const requestId = `rl-b6-discovery-${index}`;
+      try {
+        const reply = await client
+          .requestToChannel('rl.gray', { requestId, delayOnGray: true })
+          .packetName('rl.gray.probe')
+          .timeout(80)
+          .submit();
+        assert.equal(reply.requestId, requestId);
+        assert.equal(reply.handledBy, 'provider-a');
+        assert.equal(reply.delayOnGray, true);
+        healthyReplies.push(reply);
+      } catch (error) {
+        assert.ok(isPublicGrayFailureError(error), `unexpected RL-B6 error: ${error?.stack ?? error}`);
+        publicFailures.push(error);
+      }
+    }
+    assert.ok(healthyReplies.length >= 20, `RL-B6 healthy provider success count too low: ${healthyReplies.length}`);
+    assert.ok(publicFailures.length >= 1, 'RL-B6 did not observe any public gray-provider failure.');
+    assert.equal(
+      RLGrayFailureHandler.requests.filter((request) => request.handledBy === 'provider-a').length,
+      healthyReplies.length
+    );
+    assert.ok(RLGrayFailureHandler.requests.some((request) =>
+      request.handledBy === 'provider-b' && request.delayed === true));
+    marker('RL-B6');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startResilienceGrayFailureProvider(nestjs, registryRouterEndpoint, endpoint, providerId, gray, apps) {
+  const handler = createRLGrayFailureHandler(providerId, gray);
+  const started = await startApp(
+    nestModule(`ResilienceGrayFailure${providerId}ProviderModule`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rl.gray')
+            .enableServer(endpoint)
+            .routingId(providerId)
+            .addRequestHandler('rl.gray.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+  return started;
 }
 
 async function runResilienceLifecycleRegistryStaleCleanup() {
@@ -3909,6 +4008,25 @@ function createRLFlapHandler(providerId) {
   return class {
     handle(payload) {
       return RLFlapHandler.record(payload, providerId);
+    }
+  };
+}
+
+class RLGrayFailureHandler {
+  static requests = [];
+}
+
+function createRLGrayFailureHandler(providerId, gray) {
+  return class {
+    async handle(payload) {
+      if (gray && payload.delayOnGray === true) {
+        RLGrayFailureHandler.requests.push({ ...payload, handledBy: providerId, delayed: true });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return { ...payload, handledBy: providerId, delayed: true };
+      }
+      const observed = { ...payload, handledBy: providerId };
+      RLGrayFailureHandler.requests.push(observed);
+      return observed;
     }
   };
 }
@@ -4967,6 +5085,15 @@ function isPublicInFlightCrashError(error) {
     ].includes(error.kind);
   }
   return error instanceof Error && /ZLink async submit timed out/i.test(error.message);
+}
+
+function isPublicGrayFailureError(error) {
+  const framework = loadFramework();
+  if (error instanceof framework.ZLinkFrameworkException) {
+    return error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected &&
+      /timed out|timeout|result 101|request failed/i.test(error.message);
+  }
+  return error instanceof Error && /timed out|timeout|result 101|async submit timed out/i.test(error.message);
 }
 
 function assertSoakLatencyStable(latencies) {

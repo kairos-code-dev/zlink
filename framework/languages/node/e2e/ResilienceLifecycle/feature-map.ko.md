@@ -23,6 +23,10 @@
 - `RL-B3`: provider 두 대를 registry discovery로 붙인 뒤 provider 하나를 public `app.close()` 정상
   종료 경로로 내리고, topology에서 빠진 뒤 consumer 재시작 없이 후속 request가 남은 provider로만
   가는지 확인한다.
+- `RL-B6`: provider 두 대 중 하나가 handler 지연으로 짧은 public timeout을 내도록 fault를 주입한다.
+  discovery consumer가 같은 channel에 지속 request를 보낼 때 gray provider failure가 정해진 public
+  timeout으로 끝나고, healthy provider reply가 충분히 유지되며 정상 reply가 fault provider 결과로
+  오염되지 않는지 확인한다.
 - `RL-D1`: 여러 subscriber application이 같은 public fanout channel에 붙어 연속 publish를 받아도
   모든 subscriber evidence가 누락 없이 수집되는지 확인한다.
 - `RL-D2`: public message-flow observer가 dispatch error event에서 예외를 던져도 request 실패는
@@ -51,7 +55,6 @@
   신규 request 대상에서 빼는 drain/weight runtime 계약이 아직 없어 완료 처리하지 않는다.
 - `RL-B4`: runtime drain/restore Node marker가 아직 없다.
 - `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.
-- `RL-B6`: gray failure Node harness가 아직 없다.
 - `RL-C4`: registry restart/outage recovery Node marker가 아직 없다. 현재 public same-process
   restart 시도는 provider 재광고와 restarted registry topology `Ready` evidence를 안정적으로 만들지
   못했으므로 완료 처리하지 않는다. process-isolated registry restart harness로 기존 channel socket

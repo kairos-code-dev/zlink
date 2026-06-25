@@ -93,6 +93,14 @@ stop_pid() {
   fi
 }
 
+kill_pid() {
+  local pid="$1"
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    kill -9 "$pid" >/dev/null 2>&1 || true
+    wait "$pid" >/dev/null 2>&1 || true
+  fi
+}
+
 set_server_weight() {
   local http="$1"
   local weight="$2"
@@ -189,7 +197,7 @@ API_B_PID="$LAST_PID"
 start_workflow_provider workflow-a "$WORKFLOW_A"
 WORKFLOW_A_PID="$LAST_PID"
 sleep 1
-run_client common rl-b1 env
+run_client timeout-cleanup rl-b1 env
 grep -q "scenario RM-C4 passed" "$LOG_DIR/client-rl-b1.stdout.log"
 grep -Eq "reason=handler_missing.*action=drop.*packet=MissingProfileCommand" \
   "$LOG_DIR/api-a-flow.log" "$LOG_DIR/api-b-flow.log"
@@ -218,6 +226,25 @@ grep -q "scenario RM-A4 passed" "$LOG_DIR/client-rl-a1.stdout.log"
 echo "scenario RL-A1 passed"
 stop_pid "$API_A_PID"
 
+start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A" api-a-v1
+API_A_PID="$LAST_PID"
+READY="$LOG_DIR/rl-a2-ready"
+CONTINUE="$LOG_DIR/rl-a2-continue"
+run_client failover rl-a2 env \
+  ZLINK_CPP_E2E_READY_FILE="$READY" \
+  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+A2_CLIENT_PID="$!"
+wait_marker "$READY"
+stop_pid "$API_A_PID"
+start_provider api-a "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B" api-a-v2
+API_A_PID="$LAST_PID"
+sleep 5
+touch "$CONTINUE"
+wait "$A2_CLIENT_PID"
+grep -q "scenario RM-A4 passed" "$LOG_DIR/client-rl-a2.stdout.log"
+echo "scenario RL-A2 passed"
+stop_pid "$API_A_PID"
+
 start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
 start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
@@ -235,6 +262,27 @@ touch "$CONTINUE"
 wait "$B3_CLIENT_PID"
 grep -q "scenario RM-B2 passed" "$LOG_DIR/client-rl-b3.stdout.log"
 echo "scenario RL-B3 passed"
+stop_pid "$API_A_PID"
+
+start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+API_A_PID="$LAST_PID"
+start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+API_B_PID="$LAST_PID"
+READY="$LOG_DIR/rl-b2-ready"
+CONTINUE="$LOG_DIR/rl-b2-continue"
+run_client inflight-crash rl-b2 env \
+  ZLINK_CPP_E2E_READY_FILE="$READY" \
+  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+B2_CLIENT_PID="$!"
+wait_marker "$READY"
+kill_pid "$API_B_PID"
+touch "$CONTINUE"
+wait "$B2_CLIENT_PID"
+grep -q "scenario RL-B2 passed" "$LOG_DIR/client-rl-b2.stdout.log"
+echo "scenario RL-B2 passed"
+run_client quick rl-c2-follow-up env
+grep -q "scenario quick passed" "$LOG_DIR/client-rl-c2-follow-up.stdout.log"
+echo "scenario RL-C2 passed"
 stop_pid "$API_A_PID"
 
 start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
@@ -284,6 +332,26 @@ echo "scenario RL-A3 passed"
 run_client quick rl-c1-follow-up env
 grep -q "scenario quick passed" "$LOG_DIR/client-rl-c1-follow-up.stdout.log"
 echo "scenario RL-C1 passed"
+for index in 1 2 3; do
+  stop_pid "$API_B_PID"
+  run_client quick "rl-a5-down-$index" env
+  grep -q "scenario quick passed" "$LOG_DIR/client-rl-a5-down-$index.stdout.log"
+  start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  sleep 1
+  run_client quick "rl-a5-up-$index" env
+  grep -q "scenario quick passed" "$LOG_DIR/client-rl-a5-up-$index.stdout.log"
+done
+echo "scenario RL-A5 passed"
+stop_pid "$API_B_PID"
+run_client quick rl-c3-down env
+grep -q "scenario quick passed" "$LOG_DIR/client-rl-c3-down.stdout.log"
+start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+API_B_PID="$LAST_PID"
+sleep 1
+run_client quick rl-c3-up env
+grep -q "scenario quick passed" "$LOG_DIR/client-rl-c3-up.stdout.log"
+echo "scenario RL-C3 passed"
 stop_pid "$API_B_PID"
 stop_pid "$API_A_PID"
 

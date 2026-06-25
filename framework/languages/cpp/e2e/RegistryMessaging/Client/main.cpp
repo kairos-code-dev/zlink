@@ -88,6 +88,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 run_cross_channel_discovery (channels);
                 run_message_size_variation (channels);
                 run_route_mesh (routes);
+            } else if (scenario == "timeout-cleanup") {
+                run_timeout_cleanup_and_dispatch_marker (channels);
             } else if (scenario == "scale-out") {
                 run_scale_out (channels);
             } else if (scenario == "scale-in") {
@@ -106,6 +108,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 run_resilience_stress (channels);
             } else if (scenario == "quick") {
                 run_quick_request (channels);
+            } else if (scenario == "inflight-crash") {
+                run_inflight_crash (channels);
             } else {
                 throw std::runtime_error ("unknown scenario " + scenario);
             }
@@ -213,6 +217,30 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "RM-C3 did not distribute to both providers");
         ensure (counts["api-a"] + counts["api-b"] == 60, "RM-C3 count mismatch");
         std::cout << "scenario RM-C3 passed\n";
+    }
+
+    void run_timeout_cleanup_and_dispatch_marker (zlink::framework::channel_client_t &channels)
+    {
+        auto slow = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "slow"})
+                      .timeout (std::chrono::milliseconds (100))
+                      .async<e2e::profile_reply_t> ();
+        ensure (!slow.result ().has_value (), "RM-C4 slow request unexpectedly succeeded");
+        auto after = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "after"})
+                       .timeout (std::chrono::milliseconds (2000))
+                       .async<e2e::profile_reply_t> ();
+        ensure (after.result ().has_value (), "RM-C4 post-timeout request failed");
+        std::this_thread::sleep_for (std::chrono::milliseconds (1100));
+        auto later = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "later"})
+                       .timeout (std::chrono::milliseconds (2000))
+                       .async<e2e::profile_reply_t> ();
+        ensure (later.result ().has_value (), "RM-C4 later request failed");
+        std::cout << "scenario RM-C4 passed\n";
+
+        auto dropped =
+          channels.send (e2e::api_channel, e2e::profile_command_t{.command_id = "missing-send"})
+            .packet_name ("MissingProfileCommand")
+            .async ();
+        ensure (dropped.result ().has_value (), "missing send should complete as drop");
     }
 
     void run_weighted_distribution (zlink::framework::channel_client_t &channels)
@@ -414,6 +442,28 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (request.result ().has_value (), "quick request failed");
         ensure (request.result ().value ().value == "profile:quick", "quick reply mismatch");
         std::cout << "scenario quick passed\n";
+    }
+
+    void run_inflight_crash (zlink::framework::channel_client_t &channels)
+    {
+        auto slow =
+          channels
+            .request ("registry.messaging.api.manual.b",
+                      e2e::profile_request_t{.value = "very-slow"})
+            .timeout (std::chrono::milliseconds (8000))
+            .async<e2e::profile_reply_t> ();
+        touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
+        wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+        ensure (!slow.result ().has_value (), "RL-B2 in-flight request unexpectedly succeeded");
+
+        auto healthy =
+          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "rl-b2-after"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
+        ensure (healthy.result ().has_value (), "RL-B2 healthy provider follow-up failed");
+        ensure (healthy.result ().value ().provider_rid == "api-a",
+                "RL-B2 follow-up did not use the surviving provider");
+        std::cout << "scenario RL-B2 passed\n";
     }
 
     void run_drain_restore (zlink::framework::channel_client_t &channels)

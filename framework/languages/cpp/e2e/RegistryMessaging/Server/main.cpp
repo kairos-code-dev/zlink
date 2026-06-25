@@ -93,6 +93,8 @@ class profile_request_handler_t
     {
         if (request.value == "slow") {
             std::this_thread::sleep_for (std::chrono::seconds (1));
+        } else if (request.value == "very-slow") {
+            std::this_thread::sleep_for (std::chrono::seconds (10));
         }
         _state.record ("ProfileRequest", request.value);
         return {.value = "profile:" + request.value,

@@ -4,12 +4,11 @@
 
 ## 구현됨
 
-- 없음.
+- `PS-A1`: TCP fanout publisher와 subscriber 3개가 warm-up 뒤 같은 연속 sequence를 같은 순서로 받는다.
+- `PS-A2`: subscriber handler가 public publish context topic을 보고 관심 topic만 evidence에 기록한다.
 
 ## public API/harness 대기
 
-- `PS-A1`: multi-subscriber 연속 sequence 검증 Node runner와 marker가 아직 없다.
-- `PS-A2`: multiple topic과 interest-topic filtering Node runner와 marker가 아직 없다.
 - `PS-A3`: late subscriber Node runner와 marker가 아직 없다.
 - `PS-A4`: subscriber 재연결/재구독 Node harness가 아직 없다.
 - `PS-B1`: 느린 subscriber handler Node harness가 아직 없다.

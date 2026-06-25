@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -67,32 +68,64 @@ async function registryMessaging() {
 }
 
 async function pubSub() {
-  const eventsEndpoint = uniqueEndpoint('ps-events');
+  PubSubAlphaHandler.events = [];
+  PubSubBetaHandler.events = [];
+  PubSubGammaHandler.events = [];
+  const eventsEndpoint = await reserveTcpEndpoint();
   const nestjs = loadNest();
-  const { app } = await startApp(
-    nestModule('PubSubModule', {
+  const publisher = await startApp(
+    nestModule('PubSubPublisherModule', {
       imports: [
         nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
           .addFanoutChannel('ps.events')
             .enablePublisher(eventsEndpoint)
-            .enableSubscriber(eventsEndpoint)
-            .addPublishHandler('ps.event', EventHandler)
           .build())
-      ],
-      providers: [EventHandler]
+      ]
     })
   );
+  const subscribers = [];
 
   try {
-    const fanout = app.get(nestjs.ZLINK_FANOUT_CLIENT, { strict: false });
-    await fanout
-      .publishToChannel('ps.events', 'room-a', { room: 'room-a', seq: 1 })
-      .packetName('ps.event')
-      .submit();
-    await waitFor(() => EventHandler.events.some((event) => event.seq === 1));
-    selfCheck('PS-SINGLE-TOPIC-PUBLISH');
+    subscribers.push(
+      await startPubSubSubscriber('PubSubAlphaModule', PubSubAlphaHandler, eventsEndpoint),
+      await startPubSubSubscriber('PubSubBetaModule', PubSubBetaHandler, eventsEndpoint),
+      await startPubSubSubscriber('PubSubGammaModule', PubSubGammaHandler, eventsEndpoint)
+    );
+
+    const fanout = publisher.app.get(nestjs.ZLINK_FANOUT_CLIENT, { strict: false });
+    await publishUntil(fanout, 'all', -1, () =>
+      PubSubAlphaHandler.events.some((event) => event.topic === 'all')
+      && PubSubBetaHandler.events.some((event) => event.topic === 'all')
+      && PubSubGammaHandler.events.some((event) => event.topic === 'all'));
+    PubSubAlphaHandler.events = [];
+    PubSubBetaHandler.events = [];
+    PubSubGammaHandler.events = [];
+
+    for (let seq = 1; seq <= 5; seq += 1) {
+      await publishEvent(fanout, 'all', seq);
+    }
+    await waitFor(() => commonSequence([PubSubAlphaHandler.events, PubSubBetaHandler.events, PubSubGammaHandler.events], 'all', [1, 2, 3, 4, 5]));
+    marker('PS-A1');
+
+    PubSubAlphaHandler.events = [];
+    PubSubBetaHandler.events = [];
+    PubSubGammaHandler.events = [];
+    await publishEvent(fanout, 'alpha', 10);
+    await publishEvent(fanout, 'beta', 11);
+    await publishEvent(fanout, 'gamma', 12);
+    await waitFor(() =>
+      hasOnlyTopics(PubSubAlphaHandler.events, ['alpha'])
+      && hasOnlyTopics(PubSubBetaHandler.events, ['beta'])
+      && hasOnlyTopics(PubSubGammaHandler.events, ['alpha', 'gamma'])
+      && PubSubAlphaHandler.events.length === 1
+      && PubSubBetaHandler.events.length === 1
+      && PubSubGammaHandler.events.length === 2);
+    marker('PS-A2');
   } finally {
-    await app.close();
+    for (const subscriber of subscribers.reverse()) {
+      await subscriber.app.close();
+    }
+    await publisher.app.close();
   }
 }
 
@@ -268,10 +301,30 @@ class AuditHandler {
   }
 }
 
-class EventHandler {
+class PubSubAlphaHandler {
   static events = [];
-  handle(payload) {
-    EventHandler.events.push(payload);
+  handle(payload, context) {
+    if (context.topic === 'all' || context.topic === 'alpha') {
+      PubSubAlphaHandler.events.push({ topic: context.topic, seq: payload.seq });
+    }
+  }
+}
+
+class PubSubBetaHandler {
+  static events = [];
+  handle(payload, context) {
+    if (context.topic === 'all' || context.topic === 'beta') {
+      PubSubBetaHandler.events.push({ topic: context.topic, seq: payload.seq });
+    }
+  }
+}
+
+class PubSubGammaHandler {
+  static events = [];
+  handle(payload, context) {
+    if (context.topic === 'all' || context.topic === 'alpha' || context.topic === 'gamma') {
+      PubSubGammaHandler.events.push({ topic: context.topic, seq: payload.seq });
+    }
   }
 }
 
@@ -317,8 +370,70 @@ function selfCheck(id) {
   console.log(`self-check ${id} passed`);
 }
 
+async function startPubSubSubscriber(moduleName, handlerType, endpoint) {
+  const nestjs = loadNest();
+  return await startApp(
+    nestModule(moduleName, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .addFanoutChannel('ps.events')
+            .enableSubscriber(endpoint)
+            .addPublishHandler('ps.event', handlerType)
+          .build())
+      ],
+      providers: [handlerType]
+    })
+  );
+}
+
+async function publishUntil(fanout, topic, seq, predicate) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    await publishEvent(fanout, topic, seq);
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  throw new Error(`Timed out waiting for fanout subscribers on topic ${topic}.`);
+}
+
+async function publishEvent(fanout, topic, seq) {
+  await fanout
+    .publishToChannel('ps.events', topic, { seq })
+    .packetName('ps.event')
+    .submit();
+}
+
+function commonSequence(eventGroups, topic, sequence) {
+  return eventGroups.every((events) => {
+    const actual = events
+      .filter((event) => event.topic === topic && event.seq > 0)
+      .map((event) => event.seq);
+    return sequence.every((seq, index) => actual[index] === seq);
+  });
+}
+
+function hasOnlyTopics(events, topics) {
+  const allowed = new Set(topics);
+  return events.every((event) => allowed.has(event.topic));
+}
+
 function uniqueEndpoint(label) {
   return `inproc://node-e2e-${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function reserveTcpEndpoint() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.close(resolve);
+  });
+  return `tcp://127.0.0.1:${address.port}`;
 }
 
 async function waitFor(predicate, timeoutMs = 3000) {

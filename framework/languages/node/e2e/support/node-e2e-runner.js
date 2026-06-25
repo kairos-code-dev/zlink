@@ -1214,6 +1214,7 @@ async function discoveryRegistryHa() {
   await runDiscoveryRegistryHaLateStart(nestjs, framework);
   await runDiscoveryRegistryHaRegistryStop(nestjs, framework);
   await runDiscoveryRegistryHaPeerFlapping(nestjs, framework);
+  await runDiscoveryRegistryHaRegistryRecovery(nestjs, framework);
 }
 
 async function runDiscoveryRegistryHaSingle(nestjs, framework) {
@@ -1559,6 +1560,74 @@ async function runDiscoveryRegistryHaPeerFlapping(nestjs, framework) {
     }
 
     marker('DR-B3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function runDiscoveryRegistryHaRegistryRecovery(nestjs, framework) {
+  DRHandler.requests = [];
+  const reg1Pub = await reserveTcpEndpoint();
+  const reg1Router = await reserveTcpEndpoint();
+  const reg2Pub = await reserveTcpEndpoint();
+  const reg2Router = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+  let reg2;
+
+  try {
+    const reg1 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaRecoveryReg1Module', {
+      pubEndpoint: reg1Pub,
+      routerEndpoint: reg1Router,
+      registryId: 74,
+      broadcastIntervalMs: 100,
+      peers: [reg2Pub]
+    });
+    apps.push(reg1.app);
+    reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaRecoveryReg2Module', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 75,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    apps.push(reg2.app);
+    await startDiscoveryProvider(nestjs, reg1Router, 'dr.recovery', providerEndpoint, 'dr-recovery-provider', apps);
+
+    const reg1Query = reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    let reg2Query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryPeerConnectionExact(reg1Query, 1);
+    await waitForRegistryPeerConnectionExact(reg2Query, 1);
+    await waitForDiscoveryMemberPeers(reg2Query, framework, 'dr.recovery', [providerEndpoint]);
+    const beforeConsumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaRecoveryBeforeConsumerModule', reg2Router, 'dr.recovery');
+    apps.push(beforeConsumer.app);
+    await assertDiscoveryMessaging(beforeConsumer.app, nestjs, 'dr.recovery', 'dr-c2-before-restart', ['dr-recovery-provider']);
+    await beforeConsumer.app.close();
+    apps.splice(apps.indexOf(beforeConsumer.app), 1);
+
+    await reg2.app.close();
+    apps.splice(apps.indexOf(reg2.app), 1);
+    await waitForRegistryPeerConnectionExact(reg1Query, 0);
+    await waitForDiscoveryTopologySnapshot(reg1Query, framework, 'dr.recovery', [providerEndpoint]);
+
+    reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaRecoveryReg2RestartedModule', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 75,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    apps.push(reg2.app);
+    reg2Query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryPeerConnectionExact(reg1Query, 1);
+    await waitForRegistryPeerConnectionExact(reg2Query, 1);
+    await waitForDiscoveryMemberPeers(reg2Query, framework, 'dr.recovery', [providerEndpoint]);
+    const recoveredConsumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaRecoveryConsumerModule', reg2Router, 'dr.recovery');
+    apps.push(recoveredConsumer.app);
+    await assertDiscoveryMessaging(recoveredConsumer.app, nestjs, 'dr.recovery', 'dr-c2-after-restart', ['dr-recovery-provider']);
+    marker('DR-C2');
   } finally {
     for (const app of apps.reverse()) {
       await app.close();

@@ -21,6 +21,9 @@
 - `DR-B3`: provider를 살아 있는 `reg-1`에 직접 광고한 상태에서 peer registry `reg-2`를 세 번 정상
   종료/재기동한다. flapping 중 `reg-1` 경로 messaging이 계속 성공하고, 각 재기동 뒤 `reg-2`의
   `memberPeers(...)`와 `reg-2`만 보는 consumer messaging이 다시 수렴하는지 확인한다.
+- `DR-C2`: provider를 `reg-1`에만 광고한 상태에서 `reg-2`를 정상 종료 후 같은 peer 설정으로 다시
+  띄운다. 복구된 `reg-2`의 peer 연결 수, `memberPeers(...)`, `reg-2`만 보는 consumer messaging이
+  다시 수렴하는지 확인한다.
 - `DR-D2`: registry만 별도 context로 띄운 standalone 배포에서 discovery와 messaging이 동작하는지
   확인한다.
 - `DR-D4`: 같은 registry router endpoint를 in-process `ZLinkRegistryQuery`와 remote
@@ -32,7 +35,6 @@
   시도에서는 같은 rid를 서로 다른 registry에 광고했을 때 peer 쪽 `memberPeers(...)`가 안정적인
   두-endpoint view를 제공하지 않아 완료 marker로 올리지 않는다.
 - `DR-C1`: registry 1대 다운 중 지속 Node runner와 marker가 아직 없다.
-- `DR-C2`: registry 장애 중 fallback Node harness가 아직 없다.
 - `DR-C3`: 전체 registry 장애와 복구 Node harness가 아직 없다.
 - `DR-D1`: registry와 service를 한 embedded application으로 띄우는 Node marker가 아직 없다. 같은
   Nest application에 `ZLinkRegistryModule`과 `ZLinkModule`을 함께 import하는 public 구성은 현재

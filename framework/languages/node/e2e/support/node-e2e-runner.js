@@ -190,6 +190,8 @@ async function registrationCodec() {
       .submit();
     await waitFor(() => RcDecoratedSendHandler.messages.some((message) => message.id === 24));
     marker('RC-A2');
+    await assertInvalidRegistration(nestjs);
+    marker('RC-A6');
     selfCheck('RC-JSON-REQUEST');
   } finally {
     await app.close();
@@ -402,6 +404,32 @@ function applyRcDecorators() {
   nestjs.zlinkRequestHandler('rc-decorated', 'rc.echo.decorated')(RcDecoratedRequestHandler);
   nestjs.zlinkSendHandler('rc-decorated', 'rc.audit.decorated')(RcDecoratedSendHandler);
   applyRcDecorators.applied = true;
+}
+
+async function assertInvalidRegistration(nestjs) {
+  await assert.rejects(
+    async () => {
+      const { app } = await startApp(
+        nestModule('RegistrationCodecInvalidDuplicateModule', {
+          imports: [
+            nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+              .addClientServerChannel('rc.invalid.duplicate')
+                .enableServer(uniqueEndpoint('rc-invalid-duplicate'))
+                .addRequestHandler('rc.duplicate', RcManualRequestHandler)
+                .addRequestHandler('rc.duplicate', RcDecoratedRequestHandler)
+              .build())
+          ],
+          providers: [RcManualRequestHandler, RcDecoratedRequestHandler]
+        })
+      );
+      await app.close();
+    },
+    /duplicate|same|rc\.duplicate/i
+  );
+  assert.throws(
+    () => nestjs.zlinkRequestHandler('', 'rc.invalid.group')(class InvalidGroupHandler {}),
+    /handler group|empty/i
+  );
 }
 
 class EntrySpot {}

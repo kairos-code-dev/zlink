@@ -221,6 +221,7 @@ async function registrationCodec() {
   RcDecoratedSendHandler.messages = [];
   RcManualRequestHandler.requests = [];
   RcManualSendHandler.messages = [];
+  RcFilterOrder.events = [];
   const apiEndpoint = uniqueEndpoint('rc-api');
   const nestjs = loadNest();
   await runRegistrationCodecAutoDiscovery(nestjs);
@@ -229,6 +230,7 @@ async function registrationCodec() {
       imports: [
         nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
           .codecs().addJson()
+          .options({ filters: [RcFirstFilter, RcSecondFilter] })
           .addClientServerChannel('rc.api')
             .enableServer(apiEndpoint)
             .enableClient(apiEndpoint)
@@ -241,7 +243,9 @@ async function registrationCodec() {
         RcDecoratedRequestHandler,
         RcDecoratedSendHandler,
         RcManualRequestHandler,
-        RcManualSendHandler
+        RcManualSendHandler,
+        RcFirstFilter,
+        RcSecondFilter
       ]
     })
   );
@@ -277,6 +281,16 @@ async function registrationCodec() {
       .submit();
     await waitFor(() => RcDecoratedSendHandler.messages.some((message) => message.id === 24));
     marker('RC-A2');
+
+    RcFilterOrder.events = [];
+    const filteredReply = await client
+      .requestToChannel('rc.api', { id: 25, codec: 'json', ok: true })
+      .packetName('rc.echo.manual')
+      .submit();
+    assert.equal(filteredReply.id, 25);
+    assert.deepEqual(RcFilterOrder.events, ['first:before', 'second:before', 'handler', 'second:after', 'first:after']);
+    marker('RC-A5');
+
     await assertInvalidRegistration(nestjs);
     marker('RC-A6');
     selfCheck('RC-JSON-REQUEST');
@@ -501,6 +515,9 @@ class RcManualRequestHandler {
   static requests = [];
   handle(payload, context) {
     RcManualRequestHandler.requests.push({ ...payload, contentType: context.contentType });
+    if (payload.id === 25) {
+      RcFilterOrder.events.push('handler');
+    }
     return { ...payload, contentType: context.contentType };
   }
 }
@@ -509,6 +526,42 @@ class RcManualSendHandler {
   static messages = [];
   handle(payload, context) {
     RcManualSendHandler.messages.push({ ...payload, contentType: context.contentType });
+  }
+}
+
+class RcFilterOrder {
+  static events = [];
+}
+
+class RcFirstFilter {
+  async invoke(invocation, next) {
+    if (invocation.context.packetName === 'rc.echo.manual' && invocation.message.id === 25) {
+      assert.equal(invocation.channelName, 'rc.api');
+      assert.equal(invocation.packetName, 'rc.echo.manual');
+      assert.equal(invocation.message.id, 25);
+      RcFilterOrder.events.push('first:before');
+    }
+    const reply = await next();
+    if (invocation.context.packetName === 'rc.echo.manual' && invocation.message.id === 25) {
+      RcFilterOrder.events.push('first:after');
+    }
+    return reply;
+  }
+}
+
+class RcSecondFilter {
+  async invoke(invocation, next) {
+    if (invocation.context.packetName === 'rc.echo.manual' && invocation.message.id === 25) {
+      assert.equal(invocation.channelName, 'rc.api');
+      assert.equal(invocation.packetName, 'rc.echo.manual');
+      assert.equal(invocation.message.codec, 'json');
+      RcFilterOrder.events.push('second:before');
+    }
+    const reply = await next();
+    if (invocation.context.packetName === 'rc.echo.manual' && invocation.message.id === 25) {
+      RcFilterOrder.events.push('second:after');
+    }
+    return reply;
   }
 }
 

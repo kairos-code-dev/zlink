@@ -1,6 +1,8 @@
 import type { ZLinkHandlerContext } from './Contexts';
 
 export interface ZLinkHandlerInvocation {
+  readonly message: unknown;
   readonly context: ZLinkHandlerContext;
-  readonly handler: unknown;
+  readonly channelName?: string;
+  readonly packetName?: string;
 }

@@ -502,7 +502,8 @@ export class ZLinkChannelRuntimeManager {
         codecs: this.codecs,
         dispatchErrors: this.createDispatchErrorReporter(taskRunner.errorSink),
         handlers: new Map(channel.requestHandlers?.map((handler) => [handler.packetName, handler.handler])),
-        sendHandlers: new Map(channel.sendHandlers?.map((handler) => [handler.packetName, handler.handler]))
+        sendHandlers: new Map(channel.sendHandlers?.map((handler) => [handler.packetName, handler.handler])),
+        filters: this.resolveHandlerFilters()
       });
       const spotRouteBridge = this.createSpotRouteBridgeForRouter(channelName, router);
       const loop = new ZLinkChannelReceiveLoop(channelName, router, dispatcher, spotRouteBridge);
@@ -521,7 +522,8 @@ export class ZLinkChannelRuntimeManager {
         channelName,
         codecs: this.codecs,
         dispatchErrors: this.createDispatchErrorReporter(taskRunner.errorSink),
-        handlers: new Map(channel.publishHandlers?.map((handler) => [handler.packetName, handler.handler]))
+        handlers: new Map(channel.publishHandlers?.map((handler) => [handler.packetName, handler.handler])),
+        filters: this.resolveHandlerFilters()
       });
       const loop = new ZLinkSubscriberReceiveLoop(this.adapter, subscriber, dispatcher);
       this.subscriberReceiveLoops.push(loop);
@@ -553,6 +555,7 @@ export class ZLinkChannelRuntimeManager {
           codecs: this.codecs,
           dispatchErrors: this.createDispatchErrorReporter(taskRunner.errorSink),
           handlers,
+          filters: this.resolveHandlerFilters(),
           spotRouteBridge,
           rawBridgeReplyHandler: (received) =>
             this.spotRouteBridgeRawReplies.tryComplete(routeChannel.routerChannelId, received)
@@ -589,6 +592,22 @@ export class ZLinkChannelRuntimeManager {
       errorSink,
       createDiagnosticsContext(this.registration.dispatch, this.providerResolver, cell)
     );
+  }
+
+  private resolvedHandlerFilters?: readonly ZLinkHandlerFilter[];
+
+  private resolveHandlerFilters(): readonly ZLinkHandlerFilter[] {
+    if (this.resolvedHandlerFilters !== undefined) {
+      return this.resolvedHandlerFilters;
+    }
+    this.resolvedHandlerFilters = this.registration.filterTypes.map((filterType) => {
+      const filter = this.providerResolver?.get?.(filterType);
+      if (filter === undefined) {
+        throw new ZLinkConfigurationException(`Handler filter '${filterType.name}' is not registered in the provider resolver.`);
+      }
+      return filter;
+    });
+    return this.resolvedHandlerFilters;
   }
 
   // Outbound (client-side) flow tracer. Built lazily and shared across all client sends —
@@ -1657,10 +1676,11 @@ export class ZLinkChannelRequestDispatcher {
         packetName
       };
       try {
+        const payload = decodeChannelPayload(envelope, this.options.codecs);
         await invokeZLinkHandlerFilters(
           this.filters,
-          { context, handler },
-          () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
+          { message: payload, context, channelName: this.options.channelName, packetName },
+          () => Promise.resolve(handler.handle(payload, context))
         );
         this.traceChannelFlow(ZLinkMessageFlowOutcome.Dispatched, ZLinkDispatchMessageKind.Send, packetName, correlationId);
       } catch (error) {
@@ -1720,10 +1740,11 @@ export class ZLinkChannelRequestDispatcher {
       packetName
     };
     try {
+      const payload = decodeChannelPayload(envelope, this.options.codecs);
       const reply = await invokeZLinkHandlerFilters(
         this.filters,
-        { context, handler },
-        () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
+        { message: payload, context, channelName: this.options.channelName, packetName },
+        () => Promise.resolve(handler.handle(payload, context))
       );
       try {
         appendParts(
@@ -1907,10 +1928,11 @@ export class ZLinkChannelPublishDispatcher {
       source: publishSource
     };
     try {
+      const payload = decodeChannelPayload(envelope, this.options.codecs);
       await invokeZLinkHandlerFilters(
         this.filters,
-        { context, handler },
-        () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
+        { message: payload, context, channelName: this.options.channelName, packetName },
+        () => Promise.resolve(handler.handle(payload, context))
       );
       if (flow.enabled(ZLinkMessageFlowOutcome.Dispatched)) {
         flow.trace({
@@ -1981,6 +2003,7 @@ export interface ZLinkRoutePacketDispatcherOptions {
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
   readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly handlers: readonly ZLinkRouteHandlerRegistration[];
+  readonly filters?: readonly ZLinkHandlerFilter[];
   readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge;
   readonly rawBridgeReplyHandler?: (received: {
     readonly parts: readonly Message[];
@@ -2011,11 +2034,13 @@ export class ZLinkRoutePacketDispatcher {
   private readonly requestHandlers = new Map<string, ZLinkRouteRuntimeRequestHandler>();
   private readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
   private readonly dispatchErrors: ZLinkDispatchErrorReporter;
+  private readonly filters: readonly ZLinkHandlerFilter[];
 
   constructor(options: ZLinkRoutePacketDispatcherOptions) {
     this.routerChannelId = options.routerChannelId;
     this.codecs = options.codecs;
     this.dispatchErrors = options.dispatchErrors;
+    this.filters = options.filters ?? [];
     this.spotRouteBridge = options.spotRouteBridge;
     this.rawBridgeReplyHandler = options.rawBridgeReplyHandler;
     for (const handler of options.handlers) {
@@ -2110,9 +2135,13 @@ export class ZLinkRoutePacketDispatcher {
         return;
       }
       try {
-        await handler.handle(
-          decodeChannelPayload(envelope, codecsForFrameworkPacket(packetName, this.codecs)),
-          this.createRouteContext(packetName, received.routingId)
+        const codecs = codecsForFrameworkPacket(packetName, this.codecs);
+        const payload = decodeChannelPayload(envelope, codecs);
+        const context = this.createRouteContext(packetName, received.routingId);
+        await invokeZLinkHandlerFilters(
+          this.filters,
+          { message: payload, context, channelName: this.routerChannelId, packetName },
+          () => Promise.resolve(handler.handle(payload, context))
         );
         this.traceRouteFlow(ZLinkMessageFlowOutcome.Dispatched, ZLinkDispatchMessageKind.Send, packetName, routeCorr, routeSource);
       } catch (error) {
@@ -2171,9 +2200,12 @@ export class ZLinkRoutePacketDispatcher {
 
     try {
       const codecs = codecsForFrameworkPacket(packetName, this.codecs);
-      const reply = await handler.handle(
-        decodeChannelPayload(envelope, codecs),
-        this.createRouteContext(packetName, received.routingId, received.requestSeq)
+      const payload = decodeChannelPayload(envelope, codecs);
+      const context = this.createRouteContext(packetName, received.routingId, received.requestSeq);
+      const reply = await invokeZLinkHandlerFilters(
+        this.filters,
+        { message: payload, context, channelName: this.routerChannelId, packetName },
+        () => Promise.resolve(handler.handle(payload, context))
       );
       appendParts(
         router.reply(received.routingId, received.requestSeq),

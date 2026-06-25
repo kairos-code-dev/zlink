@@ -15,6 +15,7 @@ import type {
   ZLinkRouteMeshChannelBuilder,
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
+  ZLinkHandlerFilter,
   ZLinkSpot,
   ZLinkSpotMeshBuilder,
   ZLinkSpotNodeBuilder,
@@ -56,6 +57,7 @@ export interface ZLinkFrameworkRegistration {
   readonly hasRegistrySpotRemoteAddresses: boolean;
   readonly spotRemoteAddressResolverType?: Type;
   readonly registrySpotRemoteAddresses?: ZLinkRegistrySpotRemoteAddressesRegistration;
+  readonly filterTypes: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
 }
@@ -122,6 +124,7 @@ export interface ZLinkFrameworkRegistrationOptions {
     readonly namespace: string;
     readonly routerChannelId?: string;
   };
+  readonly filters?: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
 }
@@ -341,6 +344,7 @@ export function createFrameworkRegistration(
     hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined,
     spotRemoteAddressResolverType: options.spotRemoteAddressResolver,
     registrySpotRemoteAddresses: normalizeRegistrySpotRemoteAddresses(options.registrySpotRemoteAddresses, options.discovery),
+    filterTypes: [...(options.filters ?? [])],
     worker: options.worker === undefined ? undefined : { ...options.worker },
     dispatch: options.dispatch === undefined ? undefined : { ...options.dispatch }
   };
@@ -834,6 +838,7 @@ interface MutableFrameworkRegistrationOptions {
   streamCompression?: MutableStreamCompressionOptions;
   spotNodes: Record<string, MutableSpotNodeOptions>;
   spotFactories: Type<ZLinkSpot>[];
+  filters?: Type<ZLinkHandlerFilter>[];
   worker?: ZLinkWorkerOptions;
   dispatch?: ZLinkDispatchOptions;
   requestTimeoutMs?: number;

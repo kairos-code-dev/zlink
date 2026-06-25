@@ -12,7 +12,7 @@ SCENARIO_SET="${SCENARIO_SET:-all}"
 NEED_SESSION_NODES=1
 NEED_PLAY_B=1
 case "$SCENARIO_SET" in
-  track-c|sm-e1-f4|sm-e2-e3|sm-a7-a8-c4|sm-e4)
+  track-c|sm-e1-f4|sm-e2-e3|sm-a7-a8-c4|sm-e4|sm-a5)
     NEED_SESSION_NODES=0
     NEED_PLAY_B=0
     ;;

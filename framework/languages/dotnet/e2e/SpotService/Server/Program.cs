@@ -1381,7 +1381,17 @@ internal sealed class ScenarioSession(
     {
         foreach (var actor in Context.Actors.Bound.Take(1))
         {
-            await actor.NotifyDisconnectedAsync(cancellationToken);
+            try
+            {
+                await actor.NotifyDisconnectedAsync(cancellationToken);
+            }
+            catch (ZLinkFrameworkException error)
+                when (error.Kind == ZLinkFrameworkErrorKind.ActorRouteNotFound)
+            {
+                evidence.Add(
+                    $"session-disconnect-skip|rid={evidence.Rid}|session={Context.SessionId}"
+                    + $"|actor={actor.ActorId}|reason=actor-route-not-found");
+            }
         }
 
         evidence.Add($"session-disconnected|rid={evidence.Rid}|session={Context.SessionId}");

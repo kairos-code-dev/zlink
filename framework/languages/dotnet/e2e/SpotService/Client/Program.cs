@@ -1559,11 +1559,19 @@ static async Task RunSmA5Async(ClientOptions options)
         .PacketName("CreateSpotReq")
         .Async<CreateSpotReply>();
 
+    await RequestSpotStateWithRetryAsync(
+        routes,
+        SpotServiceNames.ExternalSpotChannel,
+        spotRid,
+        new StateReq("noop", 0),
+        "SM-A5 stage wrapper spot route did not become ready.");
+
     var reply = await routes.Request(
             SpotServiceNames.ExternalSpotChannel,
             RoutingId.From(spotRid),
             new StageProbeReq("sm-a5-stage", 9))
         .PacketName("StageProbeReq")
+        .Timeout(TimeSpan.FromSeconds(5))
         .Async<StateReply>();
     Ensure(reply.SpotRid == spotRid, "SM-A5 stage wrapper returned the wrong spot.");
     Ensure(reply.NodeRid == options.PlayARid, "SM-A5 stage wrapper returned the wrong node.");

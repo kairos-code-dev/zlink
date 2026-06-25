@@ -51,8 +51,16 @@
   request payload fidelity marker는 아직 없어 완료 marker로 올리지 않는다.
 - `SM-B4`: remote actor request Node runner와 marker가 아직 없다.
 - `SM-B5`: actor 미등록 request negative path Node runner와 marker가 아직 없다.
-- `SM-B6`: leave와 disconnect callback 차이 Node runner와 marker가 아직 없다.
-- `SM-B7`: actor handler 실행 순서 Node runner와 marker가 아직 없다.
+- `SM-B6`: 명시적 leave callback은 `SM-A6`/`SM-E3` self-check에서 public `leaveActor(...)`와
+  `onLeaveActor(...)`로 관측된다. 하지만 공통 시나리오의 disconnect 절반은 stream session handler가
+  bind 결과인 `ZLinkSessionActor.notifyDisconnected(...)`를 호출해 `onDisconnectActor(...)`가
+  1회만 발화하는지 봐야 한다. 현재 SpotService runner에는 public stream session bind/relay harness가
+  없어 leave와 disconnect를 같은 E2E marker로 비교하지 못하므로 완료 marker로 올리지 않는다.
+- `SM-B7`: Node spec은 user Spot 안 actor packet과 lifecycle callback이 같은 Spot 실행 queue에서
+  순서대로 처리된다고 설명한다. 하지만 공통 시나리오는 join 직후 여러 actor packet을 실제 public
+  ingress로 보내 lifecycle 뒤 packet dispatch 순서를 확인해야 한다. 현재 SpotService runner에는
+  stream session bind 뒤 `ZLinkSessionActor.relay(...)`로 actor packet을 넣는 public harness가 없어,
+  내부 dispatcher 직접 호출이나 private relay packet 조립으로 완료 처리하지 않는다.
 - `SM-B8`: public Entry Spot `context.destroyActor(...)` self-check는 runner에 있다. Entry Spot에
   있는 actor destroy가 actor manager에서 정리되고 두 번째 destroy가 idempotent하게 끝나는지 확인한다.
   다만 공통 시나리오가 요구하는 user Spot join 뒤 Entry Spot 복귀, 파괴 후 actor request의 정해진

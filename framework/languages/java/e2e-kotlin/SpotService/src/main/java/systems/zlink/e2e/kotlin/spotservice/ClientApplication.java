@@ -35,6 +35,8 @@ public final class ClientApplication {
                 .join();
             ClientDriverSpot.awaitResult();
             System.out.println("spot-service kotlin e2e mode=" + mode + " result=passed");
+            // The client is a one-shot E2E process; stop it after the success marker is flushed.
+            System.exit(0);
         } finally {
             context.close();
         }

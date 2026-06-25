@@ -141,7 +141,7 @@ class ClientScenario(
             val reply = request(Contracts.API_CHANNEL, ProfileRequest(payload), Duration.ofSeconds(5))
             ensure(reply.value == "profile:$payload", "RM-C8 payload mismatch for $size")
         }
-        println("scenario RM-C8 roundtrip passed")
+        println("scenario RM-C8 passed")
     }
 
     private fun runBackpressureObservation() {

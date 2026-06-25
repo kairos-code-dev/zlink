@@ -62,13 +62,10 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 
 - `SM-A5`: .NET에는 app-level Stage wrapper 경로가 있지만 Java에는 대응 public wrapper 계층이
   아직 없다.
-- `SM-B2`: remote actor join과 cross-node mailbox 실행을 검증하는 scenario가 아직 없다.
-- `SM-B4`: remote actor request와 reply를 검증하는 scenario가 아직 없다.
 - `SM-B5`: handler 없는 actor packet negative path를 검증하는 scenario가 아직 없다.
 - `SM-B6`: explicit leave와 disconnect callback 차이를 검증하는 scenario가 아직 없다.
 - `SM-B8`: Java public API는 `ZLinkEntrySpotContext.destroyActor(ZLinkActor)` 형태다. 공통 문서의
   id 기반 절차와 같은 의미를 고정하는 Java scenario가 아직 없다.
-- `SM-D2`: remote stream session bind와 cross-node actor relay/push scenario가 아직 없다.
 - `SM-D3`: entry spot actor bind와 user spot actor bind를 비교하는 scenario가 아직 없다.
 - `SM-D4`: 한 stream session에 여러 actor를 bind하고 `actor-id` metadata로 분기하는 scenario가
   아직 없다.
@@ -82,6 +79,18 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 - `SM-D12`: 다른 gateway로 재접속해 actor 상태를 이어받는 scenario가 아직 없다.
 - `SM-D13`: stream heartbeat 중단과 disconnect 감지를 검증하는 scenario가 아직 없다.
 - `SM-D14`: TLS stream endpoint와 certificate 구성이 아직 없다.
+
+## Java public contract 기반 E2E 미구현
+
+아래 항목은 Java spec에 이미 remote actor/session relay 표면이 있다. 따라서 새 public API 후보로
+분류하지 않고, 현재 Java E2E가 아직 검증하지 못한 구현 gap으로 관리한다.
+
+- `SM-B2`: Java spec은 remote `ZLinkActorRef` binding과 SessionRelay 기반 logical actor handle을
+  설명하지만, E2E에는 remote actor join과 cross-node mailbox 실행 scenario가 아직 없다.
+- `SM-B4`: 같은 public actor/session relay 표면을 사용해 remote actor request와 reply를 검증하는
+  scenario가 아직 없다.
+- `SM-D2`: `ZLinkSessionActors.bind(ZLinkActorRef)`와 `ZLinkSessionActor.relay(...)`를 사용한
+  remote stream session bind, cross-node actor relay, bound session push scenario가 아직 없다.
 
 ## E2E/harness 대기
 

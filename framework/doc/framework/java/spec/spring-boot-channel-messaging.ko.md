@@ -116,12 +116,12 @@ public final class UserHandlers {
 - 따라서 `ROUTER -> DEALER` 임의 push는 현재 channel messaging 공용 계약에 넣지 않는다.
 
 등록된 request handler 가 없거나 request payload decode, handler 실행 중 예외, invalid request frame 이
-발생하면 server runtime 은 error reply 를 반환한다. 같은 사건은 Error 로그, counter, 전역
-`ZLinkMessageDispatchErrorObserver` event 로도 남긴다.
+발생하면 server runtime 은 error reply 를 반환한다. 같은 사건은 Error 로그, counter,
+`outcome=ERROR` 메시지 흐름 이벤트로도 남긴다.
 
 send 또는 publish 에서 handler 를 찾지 못하면 reply 를 만들지 않고 drop 한다. send 는 Warning 로그와
-counter, publish 는 Debug 로그 또는 counter 와 observer event 를 남긴다. observer 가 없더라도 기본
-로그와 counter 는 생략하지 않는다. observer callback 실패는 dispatch 결과를 바꾸지 않는다.
+counter, publish 는 Debug 로그 또는 counter 와 message-flow event 를 남긴다. observer 가 없더라도
+기본 로그와 counter 는 생략하지 않는다. observer callback 실패는 dispatch 결과를 바꾸지 않는다.
 
 ## 5. Outbound-only 앱
 

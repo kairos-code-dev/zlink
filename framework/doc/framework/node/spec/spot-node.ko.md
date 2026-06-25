@@ -50,7 +50,7 @@ dotnet builder 메서드와 node builder 메서드의 대응은 다음과 같다
 | dotnet builder | node builder 메서드 | 비고 |
 |------|------|------|
 | `EnableRouter(endpoint)` / `EnablePubSub(endpoint)` | `enableRouter(endpoint)` / `enablePubSub(endpoint)` | bind endpoint |
-| `SetRouterRoutingId(rid)` / `SetPubSubRoutingId(rid)` | `routerRoutingId(rid)` / `pubSubRoutingId(rid)` 또는 `enable*(endpoint, rid)` | `RoutingId` → 문자열 |
+| `SetRoutingId(rid)` | `routingId(rid)` 또는 `enable*(endpoint, rid)` | `RoutingId` → 문자열 |
 | `ConfigureSocket(s => ...)` | `socket: {...}` | socket 옵션 |
 | `ConfigureRouting(r => ...)` | `routing: {...}` | router routing 옵션 |
 | `ConfigurePublisher(p => ...)` | `publisher: {...}` | pub/sub 전용 |

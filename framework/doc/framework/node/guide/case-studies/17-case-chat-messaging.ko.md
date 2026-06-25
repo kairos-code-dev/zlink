@@ -61,11 +61,11 @@ group/fan-out service, 메시지 DB.
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .actorFactory('user', UserActorFactory)
     .addSpotMesh('rooms')
       .enableRouter('tcp://0.0.0.0:7700')
       .enablePubSub('tcp://0.0.0.0:7701')
       .addSpotFactory(ChatRoomSpot)
+      .actorFactory('user', UserActorFactory)
     .addStreamNode('chat')
       .bind('tcp://0.0.0.0:7710')
       .registerSession(ChatSession)

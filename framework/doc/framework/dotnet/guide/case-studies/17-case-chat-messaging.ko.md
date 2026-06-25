@@ -132,7 +132,7 @@ public sealed class UserActor(string actorId, IZLinkActorContext context) : IZLi
     s.RegisterSession<ChatSession>();
 
 }
-options.AddActorFactory<UserActorFactory>("user");
+spot.AddActorFactory<UserActorFactory>("user");
 {
     var n = options.AddSpotMesh("rooms");
         n.EnableRouter("tcp://0.0.0.0:7700");

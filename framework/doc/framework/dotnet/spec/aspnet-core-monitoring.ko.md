@@ -412,10 +412,10 @@ observer 실패가 메시지 처리나 응답 전송을 깨지 않는다.
 | 공통 개념 | `.NET` 타입 / 멤버 |
 |-----------|---------------------|
 | 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
-| phase | `ZLinkMessageFlowPhase` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived` } |
-| event | `ZLinkMessageFlowEvent`(record): `Phase`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `SpotRid`, `ActorId`, `MessageSize` |
+| outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived`, `Error` } |
+| event | `ZLinkMessageFlowEvent`(record): `Outcome`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `LocalRid`, `PeerRid`, `SocketRole`, `SpotRid`, `ActorId`, `MessageSize`, 오류 필드 |
 | observer | `IZLinkMessageFlowObserver.OnMessageFlowAsync(ZLinkMessageFlowEvent, CancellationToken)` |
-| 진단 옵션(read-only) | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions` { `MessageFlow`, `EffectiveMessageFlow`, `SampleRate`, `IncludeMessageSizes`, `LogFile`, `NodeId` } |
+| 진단 옵션(read-only) | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions` { `MessageFlow`, `EffectiveMessageFlow`, `SampleRate`, `IncludeMessageSizes`, `LogFile`, `Label` } |
 | 런타임 토글 | `IZLinkMessageFlowControl.SetMessageFlowMode(...)` / `MessageFlowMode` (DI singleton) |
 
 게이팅(공통 규칙): `Dropped`·에러는 `ErrorsOnly` 이상, 성공 전이(`Received`/`Dispatched`/
@@ -432,7 +432,7 @@ builder.Services.AddZLinkFramework(options =>
     options.ConfigureDispatch()
         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
         .TraceLogFile("logs/flow-api.log")   // 지정=전용 파일(앱 로그와 분리)
-        .TraceNodeId("api")                  // 구조화 필드 node= 식별자
+        .TraceLabel("api")                  // 구조화 필드 label= 식별자
         .IncludeMessageSizes(true)           // Verbose에서 size= 출력
         .SetMessageFlowObserver<ApiFlowObserver>();   // 선택: 콜렉터/OTel 어댑터(앱 레이어)
 });
@@ -463,9 +463,9 @@ framework 는 OTel에 의존하지 않는다(공통 스펙 §6 경계 원칙).
 ### 9.5 샘플
 
 Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
-`TraceLogFile(SampleFlowLog.Path(role))` + `TraceNodeId(role)`로 분리 파일 로깅을 시연한다
+`TraceLogFile(SampleFlowLog.Path(role))` + `TraceLabel(role)`로 분리 파일 로깅을 시연한다
 (`BINGO_LOG_DIR`로 로그 디렉토리 override). 한 요청을 `corr=`로 grep하면 노드 간
-`Sent`→`Received`→`Replied`→`ReplyReceived`가 시간순으로 이어진다.
+`outcome=sent`→`outcome=received`→`outcome=replied`→`outcome=reply-received`가 시간순으로 이어진다.
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^handshake]: handshake는 연결 초기에 양쪽이 프로토콜 버전이나 인증 정보를 주고받아 통신 조건을 맞추는 절차다.

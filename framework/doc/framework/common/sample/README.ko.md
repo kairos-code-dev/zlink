@@ -69,11 +69,10 @@ stdout/stderr를 `logs/*.log`로 저장하는 샘플은 기존 console logger에
 메시지 등록 누락인지, payload decode 실패인지, handler 예외인지 빠르게 구분할 수 있어야
 하기 때문이다.
 
-.NET 샘플은 각 샘플의 `Server/Configuration` 아래에 샘플별
-`*DispatchErrorObserver`를 두고, 각 서버 프로세스의 `AddZLinkFramework(...)` 설정에서
-`ConfigureDispatch().SetMessageDispatchErrorObserver<...>()`로 등록한다. `run_sample.sh`
-와 `run_sample.ps1`은 프로세스 출력을 `logs/*.log`에 저장하므로, observer가 `ILogger`로
-남긴 `dispatch-error` 줄도 같은 샘플 로그 파일에서 확인한다.
+샘플은 각 서버 프로세스의 `AddZLinkFramework(...)` 설정에서
+`ConfigureDispatch().SetMessageFlowObserver<...>()`를 등록하거나 message-flow 로그 파일을
+지정한다. `run_sample.sh`와 `run_sample.ps1`은 프로세스 출력을 `logs/*.log`에 저장하므로,
+message-flow error 줄도 같은 샘플 로그 파일에서 확인한다.
 
 샘플 handler는 framework가 처리하는 dispatch 오류를 handler 안에서 다시 잘게
 처리하지 않는다. request, actor request, session packet handler 안에서 예외를 잡아

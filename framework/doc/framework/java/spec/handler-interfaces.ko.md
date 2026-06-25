@@ -500,14 +500,12 @@ request/reply correlation이 packet 이름만으로 섞이지 않는다.
 
 ```java
 public interface ZLinkSpotNodeBuilder {
+    ZLinkSpotNodeBuilder setRoutingId(RoutingId routingId);
     ZLinkSpotNodeBuilder enableRouter(String endpoint);
     ZLinkSpotNodeBuilder connectRouter(String endpoint);
-    ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId);
 
     ZLinkSpotNodeBuilder enablePubSub(String endpoint);
     ZLinkSpotNodeBuilder connectPeerPub(String endpoint);
-    ZLinkSpotNodeBuilder connectPubSub(String endpoint); // compatibility alias
-    ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
 
     ZLinkEntrySpotOptions configureEntrySpot();
     ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot> spotType);
@@ -528,7 +526,7 @@ public interface ZLinkStreamNodeBuilder {
 
 public interface ClientServerChannelBuilder {
     ClientServerChannelBuilder enableServer(String endpoint);
-    ClientServerChannelBuilder serverRoutingId(RoutingId routingId);
+    ClientServerChannelBuilder setRoutingId(RoutingId routingId);
     ClientServerChannelBuilder enableClient();
     ClientServerChannelBuilder enableClient(String endpoint);
     ClientServerChannelBuilder setDefaultRequestTimeout(Duration timeout);
@@ -1227,29 +1225,24 @@ public interface ZLinkHandlerFilter {
 - stream session은 header 기반 `ZLinkSession` 하나로 둔다.
 - actor/session relay는 SessionRelay와 `ZLinkBoundSession`을 기준으로 구현한다.
 
-### 7.1 message dispatch error observer
+### 7.1 message-flow dispatch error event
 
-미등록 메시지와 dispatch 실패 관측은 전역 `ZLinkMessageDispatchErrorObserver` 로 처리한다.
+미등록 메시지와 dispatch 실패 관측은 메시지 흐름 observer의 `outcome=ERROR` event 로 처리한다.
 channel 별, spot 별 observer 등록은 이 버전의 공개 계약이 아니다. request 실패는 reply path 가 있으면
 error reply 로 끝나고, local actor call 처럼 reply frame 이 없는 경로는 `CompletionStage` 를 framework
-error 로 완료한다. one-way 실패는 drop 되지만 기본 로그, counter, observer event 를 남긴다.
+error 로 완료한다. one-way 실패는 drop 되지만 기본 로그, counter, message-flow event 를 남긴다.
 
 ```java
 public interface ZLinkDispatchOptions {
-    ZLinkDispatchOptions setMessageDispatchErrorObserver(
-        Class<? extends ZLinkMessageDispatchErrorObserver> observerType);
+    ZLinkDispatchOptions setMessageFlowObserver(
+        Class<? extends ZLinkMessageFlowObserver> observerType);
 
-    ZLinkDispatchOptions setMessageDispatchErrorObserver(
-        ZLinkMessageDispatchErrorObserver observer);
-}
-
-public interface ZLinkMessageDispatchErrorObserver {
-    CompletionStage<Void> onDispatchError(
-        ZLinkMessageDispatchErrorEvent error);
+    ZLinkDispatchOptions setMessageFlowObserver(
+        ZLinkMessageFlowObserver observer);
 }
 ```
 
-`ZLinkMessageDispatchErrorEvent` 는 `surface`, `messageKind`, `reason`, `action`,
+`ZLinkMessageFlowEvent` 의 error event 는 `surface`, `messageKind`, `errorReason`, `errorAction`,
 `packetName`, `channelName`, `topic`, `spotRid`, `actorId`, `sourceRid`, `correlationId`,
 `exception` 을 담는 record 다. native message 소유권이나 frame 참조는 포함하지 않는다.
 
@@ -1257,7 +1250,7 @@ public interface ZLinkMessageDispatchErrorObserver {
 @Override
 public void configure(ZLinkFrameworkOptions options) {
     options.configureDispatch()
-        .setMessageDispatchErrorObserver(MyDispatchErrorObserver.class);
+        .setMessageFlowObserver(MyMessageFlowObserver.class);
 }
 ```
 

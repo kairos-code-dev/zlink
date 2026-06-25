@@ -208,8 +208,8 @@ create request와 Entry Spot의 `onCreateActor` callback에서 설정한다.
 런타임 예외로 보고하며 결과 코드로 내려가지 않는다.
 
 actor 인스턴스를 만들어 내는 application 객체다. 사용 흐름은 두 단계다. 먼저
-NestJS provider 로 등록한다. 그 다음 module options 의 `actorFactories: [...]`
-로 framework 에 매핑한다.
+NestJS provider 로 등록한다. 그 다음 actor 를 소유할 SpotNode builder 아래의
+`.actorFactory(actorType, factoryType)` 로 framework 에 매핑한다.
 
 ```ts
 export interface ZLinkActorFactory {
@@ -233,10 +233,10 @@ actor factory 는 NestJS provider 이므로 다른 service, repository, manager 
 provider 로 등록하지 않는다. actor 객체 생성은 DI 로 관리되는 factory 의
 `create(...)` 안에 머문다.
 
-> 매핑 규칙: dotnet 은 `AddActorFactory<TFactory>(actorType)` 처럼 등록 시점에
-> 키를 넘긴다. node 는 module options 의 `actorFactories: [...]` 에 factory
-> provider 클래스만 나열하고, actorType 키는 factory 클래스 자신이 `actorType`
-> property 로 노출한다. 둘 다 "factory 1개 = actorType 1개" 매핑은 동일하다.
+> 매핑 규칙: dotnet 은 `spot.AddActorFactory<TFactory>(actorType)` 처럼
+> SpotNode builder 아래에서 등록 시점에 키를 넘긴다. Node 도
+> `addSpotMesh(...).actorFactory(actorType, factoryType)` 로 같은 SpotNode 에
+> factory provider 클래스를 매핑한다.
 
 ```ts
 @Injectable()
@@ -259,7 +259,8 @@ export class PlayerActorFactory implements ZLinkActorFactory {
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .actorFactory('player', PlayerActorFactory)
+        .addSpotMesh('play-node')
+          .actorFactory('player', PlayerActorFactory)
         .build()
     ),
   ],
@@ -1102,13 +1103,13 @@ Play 서버는 다음과 같이 등록한다.
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .actorFactory('player', PlayerActorFactory)
     .useDiscovery()
       .addRegistryEndpoint('tcp://registry1:5551')
     .addSpotMesh('play-node')
       .enableRouter('tcp://0.0.0.0:9000')
       .addEntrySpot(PlayerEntrySpot)
       .addSpotFactory(MatchSpot)
+      .actorFactory('player', PlayerActorFactory)
     .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
     .build()
 );
@@ -1183,7 +1184,7 @@ actor 관련 등록 표면은 `zlinkFramework()` builder 와 `.options(...)` 의
 
 | 키 / 표면 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
-| `.actorFactory(actorType, factoryType)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | factory 의 `actorType` 키로 factory를 매핑 |
+| `.addSpotMesh(...).actorFactory(actorType, factoryType)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | 해당 SpotNode 가 소유할 factory 의 `actorType` 키를 매핑 |
 | `.options({ spotRemoteAddressResolver })` / `.options({ registrySpotRemoteAddresses })` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
 | `.addSpotMesh(...).addEntrySpot(...)` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `.addSpotMesh(...).addSpotFactory(...)` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |

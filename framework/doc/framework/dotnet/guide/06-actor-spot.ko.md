@@ -57,7 +57,7 @@ actor 는 factory 로 만든다. factory 는 `actorType` 짧은 문자열로 등
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate 가 이 키로 factory 를 고른다.
+    spot.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate 가 이 키로 factory 를 고른다.
     // Entry Spot / user Spot 등록(AddEntrySpot / AddSpotFactory)은 SpotNode 쪽에서
     // ([07-actor-session](07-actor-session.ko.md) §6 등록 코드)
 });

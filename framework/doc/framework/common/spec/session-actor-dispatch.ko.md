@@ -353,7 +353,7 @@ resolver는 transport builder가 아니라 framework service 설정에 등록한
 mesh를 고르는 일과 application 위치 정책을 등록하는 일을 같은 builder에 넣지 않기
 위해서다. 공개 resolver 축은 actor와 spot 두 개로 제한한다.
 
-구체 .NET 시그니처 (`options.AddActorFactory<...>(...)`,
+구체 .NET 시그니처 (`spot.AddActorFactory<...>(...)`,
 `options.AddRouteMesh(...)`, `options.AddSpotMesh(...)`, resolver 등록 코드,
 actor / spot 객체 등록 sample)는
 [bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
@@ -912,7 +912,7 @@ metadata 갱신을 한 흐름으로 묶고, dispatch helper가 원본 request se
 보존한다는 점이다.
 
 구체 .NET 코드 (`JoinMatchHandler`, `PlaceMarkHandler`, `TicTacToeActor`,
-`TicTacToeSession`, `options.AddRouteMesh(...)`, `options.AddActorFactory(...)`,
+`TicTacToeSession`, `options.AddRouteMesh(...)`, `spot.AddActorFactory(...)`,
 `options.AddStreamNode(...)`)는
 [bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §7-8에 옮겼다.

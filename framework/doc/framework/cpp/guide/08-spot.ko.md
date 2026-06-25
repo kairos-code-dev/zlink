@@ -109,7 +109,7 @@ spot은 spot mesh(디스커버리 채널) 아래 노드로 선언한다. Bingo P
 
 ```cpp
 options.add_spot_mesh ("bingo.room.discovery")
-  .enable_router (topology.play_spot_router_endpoint, topology.play_rid)
+  .set_routing_id (topology.play_rid).enable_router (topology.play_spot_router_endpoint)
   .enable_pub_sub (topology.play_spot_endpoint)
   .add_entry_spot<bingo_entry_spot_t> ()
   .add_spot<bingo_room_spot_t> ("bingo.room");
@@ -118,8 +118,9 @@ options.add_spot_mesh ("bingo.room.discovery")
 | 빌더 | 의미 |
 |------|------|
 | `add_spot_mesh(name)` | 프로세스의 단일 spot 노드와 discovery view 선언 |
-| `enable_router(endpoint, rid)` | 노드 간 라우팅 수신 |
-| `enable_pub_sub(endpoint)` | spot 토픽 pub/sub endpoint |
+| `set_routing_id (rid)` | Spot node의 대표 routing id 지정 |
+| `enable_router(endpoint)` | 노드 간 라우팅 수신 |
+| `enable_pub_sub(endpoint)` | spot 토픽 pub/sub endpoint. framework가 대표 id에서 pub/sub 내부 id를 파생해 설정함 |
 | `use_discovery(channel)` | registry 기반 노드 발견 ([11장](11-registry.ko.md)) — `add_spot_mesh()`에서는 기본으로 mesh 이름을 사용함 |
 | `add_route_mesh(name)` | 같은 프로세스의 SpotMesh로 들어오는 외부 routed 호출 수신 ([7장 §7](07-channel-messaging.ko.md)) |
 | channel `enable_client(...)` | spot 코드에서 쓸 외부 channel client 연결 |

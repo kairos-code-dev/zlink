@@ -178,10 +178,10 @@ monitoring 이 socket/registry/spot **runtime 변화**를 다룬다면, 메시�
 | 공통 개념 | C++ 타입 / 멤버 |
 |-----------|-----------------|
 | 로그 모드 | `message_flow_log_mode_t` { `off`, `errors_only`(기본), `key_transitions`, `verbose`, `diagnostic` } |
-| phase | `message_flow_phase_t` { `received`, `dispatched`, `replied`, `dropped`, `sent`, `reply_received` } |
-| event | `message_flow_event_t`: `phase`, `surface`, `message_kind`, `packet_name`, `channel_name`, `topic`, `correlation_id`, `source_rid`, `spot_rid`, `actor_id`, `message_size` |
+| outcome | `message_flow_outcome_t` { `received`, `dispatched`, `replied`, `dropped`, `sent`, `reply_received`, `error` } |
+| event | `message_flow_event_t`: `outcome`, `surface`, `message_kind`, `packet_name`, `channel_name`, `topic`, `correlation_id`, `source_rid`, `spot_rid`, `actor_id`, `message_size`, `error_reason`, `error_action`, `exception` |
 | observer | `message_flow_observer_t::on_message_flow(...)` / `dispatch_options_t::set_message_flow_observer(shared_ptr \| std::function)` |
-| 진단 옵션(read-only) | `dispatch_options().diagnostics.message_flow()` / `effective_message_flow()` / `sample_rate()` / `include_message_sizes()` / `log_file()` / `node_id()` |
+| 진단 옵션(read-only) | `dispatch_options().diagnostics.message_flow()` / `effective_message_flow()` / `sample_rate()` / `include_message_sizes()` / `log_file()` / `label()` |
 | 런타임 토글 | `app_t::set_message_flow_mode(mode)` / `message_flow_mode()` |
 
 게이팅(공통 규칙): `dropped`·에러는 `errors_only` 이상, 성공 전이는 `key_transitions` 이상에서
@@ -196,18 +196,19 @@ app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &option
     options.configure_dispatch ()
       .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
       .trace_log_file ("logs/flow-api.log")   // 지정=전용 파일, 미지정=app.logging() 통합
-      .trace_node_id ("api")                  // 구조화 필드 node=
+      .trace_label ("api")                    // 구조화 필드 label=
       .include_message_sizes (true);          // verbose에서 size=
 });
 ```
 
 - `trace_log_file` 지정 시 트레이싱/에러는 전용 파일로만, 미지정 + `app.logging()` sink 있으면
   통합, 둘 다 없으면 `std::clog` 폴백. `use_file`/`use_rotating_file`은 부모 디렉토리를 자동
-  생성한다. 출력은 `logger_t::log_with_fields`로 구조화 필드 + `node=`를 함께 낸다.
+  생성한다. 출력은 `logger_t::log_with_fields`로 구조화 필드 + `label=`를 함께 낸다.
 - observer setter는 `shared_ptr<message_flow_observer_t>`와 `std::function` 두 변형을 받는다(한쪽
   설정 시 다른 쪽은 비워진다). OTel/콜렉터 어댑터는 앱 레이어 책임이다(공통 스펙 §6).
 - 트레이서는 dispatch 옵션을 복사하지 않는 참조 기반이고 호출부가 lazy(게이트 통과 후 이벤트
   생성)라, `off`일 때 옵션 복사·문자열 할당이 0이다. 게이트는 공유 atomic load 1회다.
+  dispatch 실패는 별도 observer 표면을 두지 않고 `outcome=error` 메시지 흐름 이벤트로 남긴다.
 
 ### 7.3 런타임 토글
 
@@ -228,7 +229,7 @@ framework `stream_runtime`이 바이트 동일하게 인코딩하며(`has_correl
 ### 7.5 샘플
 
 Bingo 3노드(Api/Play/Session)는 각자 `configure_dispatch().message_flow(key_transitions)
-.trace_log_file(flow_log_path(role)).trace_node_id(role)`로 분리 파일 로깅을 시연한다
+.trace_log_file(flow_log_path(role)).trace_label(role)`로 분리 파일 로깅을 시연한다
 (`BINGO_LOG_DIR`로 디렉토리 override, `run_sample.sh`가 export). 한 요청을 `corr=`로 grep하면
 노드 간 `sent`→`received`→`replied`→`reply_received`가 이어진다.
 

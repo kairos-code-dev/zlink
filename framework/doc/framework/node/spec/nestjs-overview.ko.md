@@ -198,7 +198,7 @@ NestJS 통합에서 application 이 구현하는 다음 객체는 NestJS DI 컨�
 | channel / fanout / route handler | `providers` + `zlinkRequestHandler(...)` / `zlinkSendHandler(...)` / `zlinkPublishHandler(...)` | channel 이 해당 handler group 을 dispatch 할 때 |
 | Entry Spot, user Spot | `providers` + `.addSpotMesh(...).addEntrySpot(...)` / `.addSpotFactory(...)` | SpotNode 또는 SpotManager 가 spot 을 활성화할 때 |
 | Spot packet / subscribe / actor / timer handler | handler decorator + `zlinkDiscoverProviders(...)` | 해당 Spot 실행 문맥에서 packet, actor event, timer 를 처리할 때 |
-| actor factory | `providers` + `actorFactories` 설정 | ActorManager 가 actor 를 생성할 때 |
+| actor factory | `providers` + SpotNode `.actorFactory(...)` 설정 | ActorManager 가 actor 를 생성할 때 |
 | stream session 또는 session factory | `providers` + `streams` 설정 | stream 연결을 session 으로 활성화할 때 |
 | custom Spot remote address resolver | `providers` + resolver type 설정 | Spot outbound 가 remote address 를 해석할 때 |
 

@@ -217,7 +217,7 @@ await events
 options.Codecs.AddJson();
 options.AddHandlersFromAssemblyOf<Program>();
 options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");  // 이 key 만 다운스트림으로 전달 허용(허용 목록)
-options.AddActorFactory<PlayerActorFactory>("player");
+spot.AddActorFactory<PlayerActorFactory>("player");
 options.AddSpotRemoteAddressResolver<MySpotResolver>();
 options.UseRegistrySpotRemoteAddresses("game").RouterChannelId = "play-router"; // 반환 옵션에 후속 설정 — spot 주소 해석 시 경유할 router channel
 options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6000");
@@ -281,7 +281,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         var spot = mesh;
 
         spot.EnableRouter("tcp://127.0.0.1:5501");                  // router 활성화 후
-        spot.SetRouterRoutingId(RoutingId.From("spot-router"));     // 그 router 의 routing id 지정(순서 의존)
+        spot.SetRoutingId(RoutingId.From("spot-router"));     // 그 router 의 routing id 지정(순서 의존)
 
         spot.EnablePubSub("tcp://0.0.0.0:9000");
         spot.ConnectPeerPub("tcp://127.0.0.1:5500");

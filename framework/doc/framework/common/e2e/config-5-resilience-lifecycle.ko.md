@@ -64,7 +64,7 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 **한마디로:** provider가 다른 endpoint·같은 rid로 새로 떠도, registry가 주소를 갱신하고 consumer가 죽은 주소로 가지 않는가(in-flight·반복 복구 관점).
 
-- 절차: provider를 죽이고 다른 endpoint·같은 rid로 새로 띄운다. (e2e server는 `ConfigureServerRouting().RoutingId`를 노출하는 routing-id 구성 옵션이 있어야 대체 provider가 같은 rid로 광고할 수 있다.)
+- 절차: provider를 죽이고 다른 endpoint·같은 rid로 새로 띄운다. (e2e server는 channel `SetRoutingId(...)`/`routingId(...)` 구성 옵션이 있어야 대체 provider가 같은 rid로 광고할 수 있다.)
 - 검증: registry가 rid를 새 endpoint로 갱신하고, consumer가 stale로 가지 않는다. (정상 경로는 Config 1 RM-A4, 여기선 in-flight·반복 복구 관점)
 - 세부 동작: 재스케줄 복구.
 

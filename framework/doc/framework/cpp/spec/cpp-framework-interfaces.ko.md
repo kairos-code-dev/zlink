@@ -1214,15 +1214,10 @@ public:
 class spot_node_builder_t {
 public:
     spot_node_builder_t &bind(std::string endpoint);
+    spot_node_builder_t &set_routing_id(zlink::routing_id_t routing_id);
     spot_node_builder_t &enable_router(std::string endpoint);
-    spot_node_builder_t &enable_router(
-      std::string endpoint,
-      zlink::routing_id_t routing_id);
     spot_node_builder_t &connect_router(std::string endpoint);
     spot_node_builder_t &enable_pub_sub(std::string endpoint);
-    spot_node_builder_t &enable_pub_sub(
-      std::string endpoint,
-      zlink::routing_id_t routing_id);
     spot_node_builder_t &connect_pub_sub(std::string endpoint);
     spot_node_builder_t &use_discovery(std::string channel_name);
     spot_node_builder_t &enable_actor_gateway();
@@ -1656,8 +1651,9 @@ options.add_route_mesh(sample_names_t::router_channel)
   .enable_client(topology.play_router_endpoint);
 
 options.add_spot_mesh(sample_names_t::game_spot_discovery)
-  .enable_router(topology.session_router_endpoint, topology.session_router_rid)
-  .enable_pub_sub(topology.session_spot_endpoint, topology.session_pub_rid)
+  .set_routing_id (topology.session_router_rid)
+  .enable_router (topology.session_router_endpoint)
+  .enable_pub_sub (topology.session_spot_endpoint)
   .add_entry_spot<session_entry_spot_t>();
 
 options.add_stream_node(sample_names_t::stream_name)
@@ -1690,8 +1686,8 @@ SPOT code가 client/server channel로 send/request 하려면 해당 channel에�
 SPOT router와 pub/sub 역할도 registry discovery 없이 고정 peer를 붙일 수 있다. 이때는
 `enable_router(endpoint).connect_router(peer)` 또는
 `enable_pub_sub(endpoint).connect_pub_sub(peer)`처럼 역할별 manual endpoint를 기록한다.
-routing id는 `enable_router(endpoint, routing_id)` 또는
-`enable_pub_sub(endpoint, routing_id)`로 지정할 수 있다.
+routing id는 `set_routing_id (routing_id)`로 Spot node에 한 번 지정한다. router와 pub/sub 역할을
+같이 켜면 framework가 같은 node id에서 역할별 내부 id를 파생해 설정한다.
 SpotMesh가 pub/sub 역할을 켜면 외부 코드의 Spot publish client는 해당 SpotMesh의
 publisher handle을 사용할 수 있다. RouteMesh와 SpotMesh가 같은 프로세스에 있으면
 framework가 route bridge를 자동으로 붙인다. 외부에서 Spot으로 routed send/request를
@@ -1982,34 +1978,26 @@ JSON loader는 `nlohmann/json`을 사용한다. YAML은 필요하면 configurati
 둔다. metrics와 health 표면은 core 관찰 기능으로 둔다. exporter, label schema,
 tracing hook은 별도 observability 초안에서 확정한다.
 
-### 13.1 message dispatch error observer
+### 13.1 message-flow dispatch error event
 
-미등록 메시지와 dispatch 실패 관측은 전역 `message_dispatch_error_observer_t` 로 처리한다.
+미등록 메시지와 dispatch 실패 관측은 메시지 흐름 observer의 `outcome=error` event 로 처리한다.
 channel 별, spot 별 observer 등록은 이 버전의 공개 계약이 아니다. request 실패는 reply path 가 있으면
 error reply 로 끝나고, local actor call 처럼 reply frame 이 없는 경로는 `task_t` 또는 pending operation
-을 framework error 로 완료한다. one-way 실패는 drop 되지만 기본 로그, counter, observer event 를 남긴다.
+을 framework error 로 완료한다. one-way 실패는 drop 되지만 기본 로그, counter, message-flow event 를 남긴다.
 
 ```cpp
 class dispatch_options_t
 {
   public:
-    dispatch_options_t &set_message_dispatch_error_observer(
-      std::shared_ptr<message_dispatch_error_observer_t> observer);
+    dispatch_options_t &set_message_flow_observer(
+      std::shared_ptr<message_flow_observer_t> observer);
 
-    dispatch_options_t &set_message_dispatch_error_observer(
-      std::function<void (const message_dispatch_error_event_t &)> observer);
-};
-
-class message_dispatch_error_observer_t
-{
-  public:
-    virtual ~message_dispatch_error_observer_t () = default;
-    virtual void on_dispatch_error (
-      const message_dispatch_error_event_t &error) = 0;
+    dispatch_options_t &set_message_flow_observer(
+      std::function<void (const message_flow_event_t &)> observer);
 };
 ```
 
-`message_dispatch_error_event_t` 는 `surface`, `message_kind`, `reason`, `action`,
+`message_flow_event_t` 의 error event 는 `surface`, `message_kind`, `error_reason`, `error_action`,
 `packet_name`, `channel_name`, `topic`, `spot_rid`, `actor_id`, `source_rid`,
 `correlation_id`, `exception` 을 담는 snapshot 이다. native message 소유권이나 frame 참조는
 포함하지 않는다.
@@ -2017,8 +2005,8 @@ class message_dispatch_error_observer_t
 ```cpp
 app.add_zlink_framework([](auto &options) {
   options.configure_dispatch()
-    .set_message_dispatch_error_observer(
-      std::make_shared<my_dispatch_error_observer>());
+    .set_message_flow_observer(
+      std::make_shared<my_message_flow_observer>());
 });
 ```
 

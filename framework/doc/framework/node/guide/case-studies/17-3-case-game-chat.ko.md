@@ -97,7 +97,7 @@ const message = await chatHistory.appendGuild(guildId, playerId, text);
 for (const member of guild.members()) {
   const session = connectionRegistry.find(member);
   if (session) {
-    await gatewayDeliver.send(session.nodeId, session.sessionId, message);
+    await gatewayDeliver.send(session.label, session.sessionId, message);
   }
 }
 ```

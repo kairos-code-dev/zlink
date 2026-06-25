@@ -194,7 +194,7 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
   endpoint 를 자동으로 만들지 않는다. health 는 필요하면 `IZLinkRegistryQuery` 같은
   조회 표면으로 직접 노출한다([09-registry](09-registry.ko.md) §5).
 - **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch()` 에
-  `IZLinkMessageDispatchErrorObserver` 를 등록한다. request 실패는 error reply 로 돌아가고,
+  `IZLinkMessageFlowObserver` 를 등록한다. request 실패는 error reply 로 돌아가고,
   send/publish/subscription/actor send 실패는 drop 되지만 로그, metric, observer event 로 남는다.
   observer 는 관측용이므로 callback 이 실패해도 원래 dispatch 결과를 바꾸지 않는다.
 - **handler payload 의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
@@ -215,7 +215,7 @@ builder.Services.AddZLinkFramework(options =>
         // off → ErrorsOnly(기본) → KeyTransitions → Verbose → Diagnostic
         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
         .TraceLogFile("logs/flow-api.log")   // 지정=전용 파일, 미지정=앱 ILogger 통합, 둘 다 없으면 stderr
-        .TraceNodeId("api");                 // 구조화 필드 node=
+        .TraceLabel("api");                 // 구조화 필드 label=
 });
 ```
 

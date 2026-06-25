@@ -93,7 +93,7 @@ await moderation.enqueue(message);
 for (const userId of conversation.participants()) {
   const session = connectionRegistry.find(userId);
   if (session) {
-    await gatewayDeliver.send(session.nodeId, session.sessionId, message);
+    await gatewayDeliver.send(session.label, session.sessionId, message);
   } else {
     await notifications.enqueue(userId, message);
   }

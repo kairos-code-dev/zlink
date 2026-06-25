@@ -125,9 +125,8 @@ path 가 있는 경우 error reply 를 반환한다. actor request 도 같은 �
 local actor call 처럼 reply frame 이 없는 경로는 `CompletionStage` 를 framework error 로 완료한다.
 
 SPOT route send, subscription, actor send 는 reply 를 만들 수 없으므로 실패한 메시지를 drop 한다.
-route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 로그 또는 counter 와 전역
-`ZLinkMessageDispatchErrorObserver` event 를 남긴다. observer 실패는 dispatch loop 나 shutdown 을
-깨지 않는다.
+route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 로그 또는 counter 와
+`outcome=ERROR` 메시지 흐름 이벤트를 남긴다. observer 실패는 dispatch loop 나 shutdown 을 깨지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -81,7 +81,7 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `AddFanoutChannel(name)` | `zlinkFramework().addFanoutChannel(name)` |
 | `AddRouteMesh(name)` | `zlinkFramework().addRouteMesh(name)` |
 | `channel.EnableServer(...)` | `.enableServer('...')` |
-| `channel.ConfigureServerRouting().RoutingId = rid` | `.routingId(rid)` |
+| `channel.SetRoutingId(rid)` | `.routingId(rid)` |
 | `channel.EnableClient()` | `.enableClient()` |
 | `channel.EnableClient(...)` | `.enableClient('...')` 또는 `.enableClient([...])` |
 | `channel.EnablePublisher(...)` | `.enablePublisher('...')` |
@@ -1109,7 +1109,7 @@ lifecycle 의 정식 의미(시동 순서, 실패 처리, 종료 보장)는
 
 등록된 request handler 가 없거나 request payload decode, handler 실행 중 예외, invalid request frame 이
 발생하면 server runtime 은 error reply 를 반환한다. 같은 사건은 Error 로그, counter, 전역
-`ZLinkMessageDispatchErrorObserver` event 로도 남긴다.
+`ZLinkMessageFlowObserver` 의 Error outcome 으로도 남긴다.
 
 send 또는 publish 에서 handler 를 찾지 못하면 reply 를 만들지 않고 drop 한다. send 는 Warning 로그와
 counter, publish 는 Debug 로그 또는 counter 와 observer event 를 남긴다. observer 가 없더라도 기본

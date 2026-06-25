@@ -80,7 +80,8 @@ endpoint를 명시한다.
 
 ```cpp
 options.add_spot_mesh("game.stage")
-  .enable_router("tcp://0.0.0.0:9000", zlink::routing_id_t::from("stage-router"))
+  .set_routing_id (zlink::routing_id_t::from("stage-router"))
+  .enable_router ("tcp://0.0.0.0:9000")
   .connect_router("tcp://127.0.0.1:9001")
   .enable_pub_sub("tcp://0.0.0.0:9002")
   .connect_pub_sub("tcp://127.0.0.1:9003");
@@ -274,9 +275,9 @@ local actor call 처럼 reply frame 이 없는 경로는 `task_t` 또는 pending
 완료한다.
 
 SPOT route send, subscription, actor send 는 reply 를 만들 수 없으므로 실패한 메시지를 drop 한다.
-route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 로그 또는 counter 와 전역
-`message_dispatch_error_observer_t` event 를 남긴다. observer 예외는 dispatch loop 나 shutdown 을
-깨지 않는다.
+route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 로그 또는 counter 와
+`outcome=error` 메시지 흐름 이벤트를 남긴다. message-flow observer 예외는 dispatch loop 나
+shutdown 을 깨지 않는다.
 
 ## 8. 회귀 테스트
 

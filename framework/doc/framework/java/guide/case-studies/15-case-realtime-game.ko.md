@@ -83,12 +83,11 @@ ZLinkStreamNodeBuilder stream = options.addStreamNode("session");
 stream.bind("tcp://0.0.0.0:9100");
 stream.registerSession(GameSession.class);
 
-options.addActorFactory("player", PlayerActorFactory.class);
-
 ZLinkSpotMeshBuilder node = options.addSpotMesh("play");
 node.enableRouter("tcp://0.0.0.0:9200");
 node.addEntrySpot(PlayerEntrySpot.class);
 node.addSpotFactory(MatchSpot.class);
+node.addActorFactory("player", PlayerActorFactory.class);
 ```
 
 ```java

@@ -2795,7 +2795,7 @@ git diff --check -- framework/languages/cpp
 - `spot_node_options_builder_t::enable_router(...)`와 `enable_pub_sub(...)`를 추가해
   `.NET` sample의 `EnableRouter(...)`, `EnablePubSub(...)` 역할 구분을 C++ host factory에도
   드러나게 했다.
-- `enable_router(endpoint, routing_id)`와 `enable_pub_sub(endpoint, routing_id)` overload를
+- `set_routing_id (routing_id).enable_router (endpoint)`와 `set_routing_id (routing_id).enable_pub_sub (endpoint)` overload를
   추가해 `.NET` sample topology의 `PlayRid`, `SessionRouterRid`, `SessionPubRid` 역할을 C++
   sample에서도 보존하게 했다.
 - `add_route_mesh(...).set_routing_id(...)`와 route channel runtime routing id snapshot을
@@ -9775,11 +9775,9 @@ fluent 호출로 표현한다.
 - `spot_node_snapshot_t`에 router/pub-sub manual connection 목록을 추가했다.
 - low-level `spot_node_builder_t::connect_router(...)`,
   `spot_node_builder_t::connect_pub_sub(...)`를 추가하고 빈 endpoint를 거부하게 했다.
-- high-level `spot_router_capability_builder_t`,
-  `spot_pub_sub_capability_builder_t`를 추가했다.
-- `spot_node_options_builder_t::enable_router(endpoint, configure)`와
-  `enable_pub_sub(endpoint, configure)` overload를 추가해 routing id와 manual peer를 같은
-  역할 configure 안에서 설정하게 했다.
+- high-level Spot node builder에 역할별 manual peer를 표현하는 fluent 호출을 추가했다.
+- `spot_node_options_builder_t::set_routing_id (routing_id)`를 추가해 routing id는 node에 한 번만
+  지정하고, 역할별 endpoint는 `enable_router(endpoint)`와 `enable_pub_sub(endpoint)`에서 설정하게 했다.
 - contract header, SPOT runtime, registry topology regression과 draft 문서를 갱신했다.
 
 ### 수정 후 점검

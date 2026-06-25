@@ -161,7 +161,7 @@ app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &option
       // off → errors_only(기본) → key_transitions → verbose → diagnostic
       .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
       .trace_log_file ("logs/flow-api.log")   // 지정=전용 파일, 미지정=app.logging() 통합, 둘 다 없으면 std::clog
-      .trace_node_id ("api");                 // 구조화 필드 node=
+      .trace_label ("api");                   // 구조화 필드 label=
 });
 
 // 운영 중 켜고 끄기 (재시작 없이, 모든 surface 즉시 반영)

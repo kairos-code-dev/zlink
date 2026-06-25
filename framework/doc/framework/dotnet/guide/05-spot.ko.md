@@ -22,21 +22,20 @@ channel 과 `SpotNode` 를 같은 프로세스에 두기만 하면 되고, raw `
 ## 1. SPOT 이란
 
 `SPOT` 은 동적으로 생성·소멸되는 **주소 가능한 논리 인스턴스**다. 게임 room,
-playhouse stage, 채팅 room, MMORPG zone 처럼 "있다가 없어지는 단위"를 메시지
-라우팅 대상으로 삼는다.
+채팅 room, MMORPG zone 처럼 "있다가 없어지는 단위"를 메시지 라우팅 대상으로 삼는다.
 
 | 개념 | 뜻 |
 |------|------|
 | `Spot` | room/stage/zone 같은 논리 인스턴스 하나 |
 | `SpotNode` | 여러 spot 인스턴스를 호스팅하는 컨테이너 노드 |
 | `TSpot` | 생성할 user Spot 타입. framework 안에서 factory 선택에만 쓰며 public 식별자로 들고 다니지 않는다 |
-| `spotRid` (`RoutingId`) | `SpotNode` 가 인스턴스 생성 시 발급하는 **논리 주소**. 특정 room/stage 한 개를 가리킨다 |
+| `spotRid` (`RoutingId`) | `SpotNode` 가 인스턴스 생성 시 발급하는 **논리 주소**. 특정 room 한 개를 가리킨다 |
 | Entry Spot | 노드의 기본 실행 컨텍스트(actor 가 생성 직후 머무는 곳) |
 
 SPOT 은 pub/sub helper 가 아니다. publish/subscribe 는 spot **안에서** 쓰는 한
 기능일 뿐이다.
 
-규칙 세 가지를 그림으로 먼저 보자. 여기서는 **Spot ↔ SpotNode ↔ 같은 channel mesh**
+규칙 세 가지를 그림으로 먼저 보자. 여기서는 **Spot ↔ SpotNode ↔ 같은 channel **
 까지, 즉 channel **안쪽** 관계만 본다. 다른 channel·외부와의 연결은 아래 §2 그림에서
 함수별로 다룬다.
 
@@ -80,14 +79,14 @@ builder.Services.AddZLinkFramework(options =>
 {
     var mesh = options.AddSpotMesh("game.stage");
     // 같은 channel("game.stage") 노드끼리 자동 연결되는 핵심: 모든 노드가 같은
-    // registry 에 자기 router/pub-sub endpoint 를 등록(advertise)하고, registry 가
+    // registry 에 자기 router/pub-sub bind endpoint 를 등록하고, registry 가
     // 알려준 peer 들과 router↔router·pub/sub mesh 를 알아서 배선한다. 그래서 별도
     // "connect" 코드 없이 §1 그림의 굵은 화살표(SpotNode A <==> B)가 생긴다.
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     var node = mesh;
-    node.EnableRouter("tcp://0.0.0.0:9001");   // 이 endpoint 가 registry 에 광고됨 → peer 들이 여기로 연결
-    node.EnablePubSub("tcp://0.0.0.0:9000");   // 이 endpoint 도 광고됨 → 같은 channel pub/sub mesh 자동 구성
+    node.EnableRouter("tcp://0.0.0.0:9001");   // 이 노드의 router 소켓을 이 endpoint 에 bind (discovery 가 이 주소로 peer 를 잇는다)
+    node.EnablePubSub("tcp://0.0.0.0:9000");   // 이 노드의 pub/sub 소켓을 이 endpoint 에 bind (같은 channel 의 sub 가 여기로 붙는다)
     node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
 
     options.AddClientServerChannel("orders").EnableClient();
@@ -96,9 +95,7 @@ builder.Services.AddZLinkFramework(options =>
 
 > **여러 SpotNode 를 한 프로세스에.** `AddSpotMesh(...)` 는 호출마다 그 channel 의 노드 하나를
 > 만든다. 서로 다른 channel 이름으로 여러 번 부르면 한 프로세스가 **여러 SpotNode** 를 호스팅한다
-> (예: room 노드 + session gateway 노드 동거). 외부에서 spot 으로 보내는 route 도 다중 노드를
-> 지원한다. 보내는 쪽이 `spotRid` 의 소유 노드를 찾아 그 노드로 보내므로, 각 노드는 자기 spot 만 받는다.
-> 같은 channel 이름을 두 번 등록하면 시작 예외다.
+> (예: room 노드 + session gateway 노드 동거). 같은 channel 이름을 두 번 등록하면 시작 예외다.
 >
 > ```csharp
 > options.AddSpotMesh("game.room") // room spot 을 맡는 노드를 별도 channel 로 등록한다.
@@ -167,8 +164,9 @@ flowchart LR
 한 줄 설명 다음에 그 함수만의 작은 그림을 둔다.
 
 **🟦 `EnableRouter(ep)`** — 이 노드의 **router 소켓**을 켠다. 같은 channel 의 다른 SpotNode 와
-spot↔spot 으로 send/request 를 주고받는 축이다. 같은 channel 노드끼리는 §1 처럼 자동
-연결되므로, 이 소켓만 켜면 추가 배선이 없다.
+spot↔spot 으로 send/request 를 주고받는 축이다. 같은 channel 노드끼리는 §1 처럼 **discovery 기준**
+으로 자동 연결되므로 이 소켓만 켜면 추가 배선이 없다. discovery 없이 peer 를 직접 잇는 수동 연결도
+있다(바로 아래 "자동 연결 vs 수동 연결").
 
 ```mermaid
 flowchart LR
@@ -188,6 +186,33 @@ flowchart LR
   p <==>|"mesh"| peer["같은 channel 의 spot 들"]
   classDef m fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
   class f,p m;
+```
+
+**자동 연결 vs 수동 연결.** `EnableRouter`/`EnablePubSub` 는 *이 노드의 소켓을 여는 것*까지다. 그
+소켓이 **같은 channel 의 다른 노드와 어떻게 이어지는지**는 두 방식이 있다.
+
+- **자동(discovery — 표준).** `UseDiscovery().AddRegistryEndpoint(...)` 가 있으면 각 노드가 자기
+  router/pub bind endpoint 를 registry 에 등록하고, registry 가 알려준 같은 channel peer 들과
+  router↔router·sub↔pub 를 **런타임이 알아서 잇는다.** connect 코드가 없다.
+- **수동(discovery 없이 직접 지정).** peer 주소를 코드로 박는다. 내 router 가 어느 peer router 로
+  연결될지는 `ConnectRouter(endpoint)`(peer 를 콕 집으려면 `ConnectRouter(peerRid, endpoint)`),
+  내 sub 가 어느 peer 의 pub 을 구독할지는 `ConnectPeerPub(peerPubEndpoint)` 로 지정한다. peer 가
+  늘면 그만큼 호출을 반복한다(노드 수가 고정된 토폴로지에 적합).
+
+```csharp
+// (A) 자동 — discovery 가 peer 를 찾아 mesh 를 잇는다 (connect 코드 없음)
+var node = options.AddSpotMesh("game.stage");
+node.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+node.EnableRouter("tcp://0.0.0.0:9001");   // 내 router 소켓을 이 endpoint 에 bind
+node.EnablePubSub("tcp://0.0.0.0:9000");   // 내 pub/sub 소켓을 이 endpoint 에 bind
+
+// (B) 수동 — discovery 없이 peer 를 직접 지정 (TicTacToe Play 노드 방식, 2-노드 고정)
+var node = options.AddSpotMesh("game.stage");
+node.EnableRouter("tcp://0.0.0.0:9001")                            // 내 router 소켓을 연다
+    .SetRoutingId(RoutingId.From("play-a"))                       // 내 노드 rid
+    .ConnectRouter(RoutingId.From("play-b"), "tcp://node-b:9001") // 상대 router 로 직접 연결
+    .EnablePubSub("tcp://0.0.0.0:9000")                           // 내 pub/sub 소켓을 연다
+    .ConnectPeerPub("tcp://node-b:9000");                         // 상대 pub 을 직접 구독
 ```
 
 **🟧 외부→spot route·publish 는 자동(명시 함수 없음).** 외부 코드가 `IZLinkRouteClient` 로 spotRid 에
@@ -831,7 +856,7 @@ client/server channel에 `EnableClient()`가 있어야 한다. 받는 쪽은 그
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<StageActorFactory>("player");   // actor packet — actor 생성 매핑
+    spot.AddActorFactory<StageActorFactory>("player");   // actor packet — actor 생성 매핑
 
     options.AddRouteMesh("api").EnableServer("tcp://0.0.0.0:9201");  // spot packet — 외부→spot 자동 bridge
 

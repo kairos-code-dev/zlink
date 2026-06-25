@@ -60,7 +60,7 @@ val channel = options.addClientServerChannel(SampleNames.ApiChannel)
 channel.enableServer(topology.apiChannelEndpoint())
 channel.addHandlerGroup(SampleNames.ApiChannel)
 val node = options.addSpotMesh(SampleNames.SpotMesh)
-node.enableRouter(topology.spotEndpoint()).setRouterRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId))
+node.enableRouter(topology.spotEndpoint()).setRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId))
 node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId))
 node.addEntrySpot(BingoEntrySpot::class.java)
 ```

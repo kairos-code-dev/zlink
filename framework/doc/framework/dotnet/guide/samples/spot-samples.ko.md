@@ -927,8 +927,8 @@ builder.Services.AddScoped<ISampleActorFactoryRegistry, SampleActorFactoryRegist
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<SampleWarriorActorFactory>("warrior");
-    options.AddActorFactory<SampleTraderActorFactory>("trader");
+    spot.AddActorFactory<SampleWarriorActorFactory>("warrior");
+    spot.AddActorFactory<SampleTraderActorFactory>("trader");
 
     {
         var dispatch = options.ConfigureDispatch();

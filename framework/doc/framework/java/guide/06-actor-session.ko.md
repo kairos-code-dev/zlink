@@ -30,8 +30,9 @@ actor는 factory로 만든다. factory는 `actorType` 짧은 문자열로 등록
 ```java
 @Override
 public void configure(ZLinkFrameworkOptions framework) {
-    framework.addActorFactory("player", PlayerActorFactory.class);
-    // Entry Spot / user Spot 등록은 SpotNode 쪽에서 (§3)
+    ZLinkSpotMeshBuilder node = framework.addSpotMesh("play");
+    node.addActorFactory("player", PlayerActorFactory.class);
+    // Entry Spot / user Spot 등록도 같은 SpotNode 쪽에서 (§3)
 }
 
 @Component

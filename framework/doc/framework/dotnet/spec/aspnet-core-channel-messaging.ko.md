@@ -176,7 +176,7 @@ builder.Services.AddZLinkFramework(options =>
 {
     var channel = options.AddClientServerChannel("api");
     channel.EnableServer("tcp://0.0.0.0:7101");
-    channel.ConfigureServerRouting().RoutingId = RoutingId.From("api-a");
+    channel.SetRoutingId(RoutingId.From("api-a"));
 });
 ```
 
@@ -1003,7 +1003,7 @@ builder.Services.AddZLinkFramework(options =>
 
 등록된 request handler 가 없거나 request payload decode, handler 실행 중 예외, invalid request frame 이
 발생하면 server runtime 은 error reply 를 반환한다. 같은 사건은 Error 로그, metric, 전역
-`IZLinkMessageDispatchErrorObserver` event 로도 남긴다.
+`IZLinkMessageFlowObserver` event 로도 남긴다.
 
 send 또는 publish 에서 handler 를 찾지 못하면 reply 를 만들지 않고 drop 한다. send 는 Warning 로그와
 metric, publish 는 Debug 로그 또는 metric 과 observer event 를 남긴다. observer 가 없더라도 기본

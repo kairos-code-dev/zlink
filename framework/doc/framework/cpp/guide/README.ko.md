@@ -208,7 +208,7 @@ options.use_discovery ()    // registry에서 노드 주소를 자동으로 받�
 
 options.add_spot_mesh ("bingo.room.discovery")
   .add_node ("bingo.room.node")
-  .enable_router (topology.router_endpoint, topology.rid)
+  .set_routing_id (topology.rid).enable_router (topology.router_endpoint)
   .add_entry_spot<bingo_entry_spot_t> ()
   .add_spot<bingo_room_spot_t> ("bingo.room");
 ```

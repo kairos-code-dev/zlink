@@ -1466,7 +1466,7 @@ export class AppModule {}
 | `useFilter(...)` | `filters: [FilterClass]` | handler-interfaces §8 |
 | `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
-| `addActorFactory(...)` | `actorFactories: [{ actorType, factory }]` | nestjs-actor |
+| `addSpotMesh(...).actorFactory(...)` | SpotNode `actorFactories` | nestjs-actor |
 | `codecs` | `codecs().use(zlinkProtobufCodec())` / `addJson()` / `addSerializer(...)` | §4.5 |
 | `configureMetadata(...)` | `metadata: { forward: [...] }` | nestjs-actor |
 | `useRegistrySpotRemoteAddresses(...)` | `spotRemoteAddresses: { namespace, routerChannelId? }` | nestjs-spot |
@@ -1598,11 +1598,9 @@ codec helper 를 직접 다루지 않는다. 같은 spotRid 에 대해 다른 `T
 export interface ZLinkSpotNodeBuilder {
   enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
   connectRouter(endpoint: string): this;
-  routerRoutingId(routingId: RoutingId): this;
+  routingId(routingId: RoutingId): this;
   enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
   connectPeerPub(endpoint: string): this;
-  connectPubSub(endpoint: string): this;
-  pubSubRoutingId(routingId: RoutingId): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
@@ -1624,11 +1622,9 @@ builder 함수 의미:
 
 - `enableRouter(endpoint, routingId?, connect?)`: spot-to-spot routed packet 을 처리할 local router 역할 활성화.
 - `connectRouter(endpoint)`: remote router endpoint 를 수동 연결 목록에 추가.
-- `routerRoutingId(routingId)`: local router routing id 지정.
+- `routingId(routingId)`: SPOT node 대표 routing id 지정.
 - `enablePubSub(endpoint, routingId?, connect?)`: 현재 SPOT channel 의 publish/subscribe 역할 활성화.
 - `connectPeerPub(endpoint)`: peer SpotNode의 PUB endpoint를 수동 연결 목록에 추가한다.
-- `connectPubSub(endpoint)`: `connectPeerPub(endpoint)`와 같은 동작을 하는 호환 alias다.
-- `pubSubRoutingId(routingId)`: local pub/sub routing id 지정.
 - `configureEntrySpot(...)`: native Entry Spot facade 의 routing id 같은 Entry Spot
   옵션을 지정한다.
 - `addEntrySpot(...)`: 이 SpotNode 의 Entry Spot 타입을 등록한다. 같은 node 에 두 번
@@ -2261,26 +2257,27 @@ outbound-only 앱이라면 server 역할을 가진 channel 이 아예 없을 수
 - `ZLinkRegistryQuery` 와 `ZLinkRegistryQueryClient` 는 묶지 않는다. in-process 조회와 원격 조회는
   lifecycle/실패 모델/제공 범위가 다르다.
 
-### 14.1 message dispatch error observer
+### 14.1 message flow observer
 
-미등록 메시지와 dispatch 실패 관측은 전역 `ZLinkMessageDispatchErrorObserver` 로 처리한다.
+미등록 메시지와 dispatch 실패 관측은 전역 `ZLinkMessageFlowObserver` 의 Error outcome 으로 처리한다.
 channel 별, spot 별 observer 등록은 이 버전의 공개 계약이 아니다. request 실패는 reply path 가 있으면
 error reply 로 끝나고, local actor call 처럼 reply frame 이 없는 경로는 `Promise` 를 framework error 로
 reject 한다. one-way 실패는 drop 되지만 기본 로그, counter, observer event 를 남긴다.
 
 ```ts
 export interface ZLinkDispatchOptionsBuilder {
-  setMessageDispatchErrorObserver(
-    observerType: Type<ZLinkMessageDispatchErrorObserver>
+  setMessageFlowObserver(
+    observerType: Type<ZLinkMessageFlowObserver>
   ): this;
 }
 
-export interface ZLinkMessageDispatchErrorObserver {
-  onDispatchError(error: ZLinkMessageDispatchErrorEvent): Promise<void> | void;
+export interface ZLinkMessageFlowObserver {
+  onMessageFlow(event: ZLinkMessageFlowEvent): Promise<void> | void;
 }
 ```
 
-`ZLinkMessageDispatchErrorEvent` 는 `surface`, `messageKind`, `reason`, `action`,
+dispatch 실패는 `ZLinkMessageFlowEvent` 에서 `outcome` 이 `Error` 이고, `errorReason` 과
+`errorAction` 에 실패 이유와 처리 결과가 들어간다. event 는 `surface`, `messageKind`,
 `packetName`, `channelName`, `topic`, `spotRid`, `actorId`, `sourceRid`, `correlationId`,
 `error` 를 담는 readonly snapshot 이다. native frame 이나 buffer ownership 은 포함하지 않는다.
 
@@ -2288,7 +2285,7 @@ export interface ZLinkMessageDispatchErrorObserver {
 const framework = zlinkFramework();
 
 framework.configureDispatch()
-  .setMessageDispatchErrorObserver(MyDispatchErrorObserver);
+  .setMessageFlowObserver(MyMessageFlowObserver);
 ```
 
 ## 15. 회귀 테스트

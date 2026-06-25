@@ -221,7 +221,7 @@ public interface IZLinkActorManager
 
 actor 인스턴스를 만들어 내는 application 객체다. 사용 흐름은 두 단계다. 먼저
 DI 에 등록한다. 그 다음
-`options.AddActorFactory<...>(actorType)` 로 framework 에 매핑한다.
+`spot.AddActorFactory<...>(actorType)` 로 SpotNode builder 에 매핑한다.
 
 ```csharp
 public interface IZLinkActorFactory
@@ -258,7 +258,7 @@ public sealed class PlayerActorFactory : IZLinkActorFactory
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<PlayerActorFactory>("player");
+    spot.AddActorFactory<PlayerActorFactory>("player");
 });
 ```
 
@@ -1022,7 +1022,7 @@ Play 서버는 다음과 같이 등록한다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<PlayerActorFactory>("player");
+    spot.AddActorFactory<PlayerActorFactory>("player");
     options.UseRegistrySpotRemoteAddresses("game");
 
     {

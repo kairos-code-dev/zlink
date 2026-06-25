@@ -143,7 +143,7 @@ proxy 를 등록하는 방식은 줄인다.
 ```csharp
 services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<PlayerActorFactory>("player");
+    spot.AddActorFactory<PlayerActorFactory>("player");
 
     {
         var mesh =     options.AddSpotMesh("game.rooms");
@@ -238,7 +238,7 @@ configuration error 로 표현한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `NodesAndServicesTests.AddZLinkFramework_Throws_When_ActorFactory_Without_SpotNode` | actor factory 만 등록하면 startup validation 이 실패한다 |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_When_Multiple_SpotNodes_Own_ActorFactories` | actor factory 를 가진 SpotNode 가 둘 이상이면 startup validation 이 실패한다 |
 | `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_ActorManager_Without_SpotNode` | SpotNode 없는 구성에서는 `IZLinkActorManager` 가 DI 에 없다 |
 | `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_ActorManager_With_SpotNode_Only` | SpotNode 만 있고 actor factory 가 없으면 `IZLinkActorManager` 가 DI 에 없다 |
 | `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotServices_Without_SpotNode` | SpotNode 없는 구성에서는 Spot service 가 DI 에 없다 |

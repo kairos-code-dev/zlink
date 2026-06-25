@@ -157,22 +157,22 @@ missing proxy 패턴은 사용 시점까지 오류를 늦춘다. bound session f
 
 ### 4.1 Actor factory 와 SpotNode
 
-`.actorFactory(...)` 로 actor factory 를 하나라도 등록했다면(.NET
-`AddActorFactory<TFactory>(actorType)` 대응) 최소 1개 이상의 `SpotNode` 가
-필요하다.
+SpotNode builder 아래의 `.actorFactory(...)` 로 actor factory 를 등록한다(.NET
+`spot.AddActorFactory<TFactory>(actorType)` 대응). ActorManager 는 actor factory 를
+가진 SpotNode 가 정확히 하나일 때만 기본 actor target 을 선택한다.
 
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .actorFactory('player', PlayerActorFactory)
     .addSpotMesh('play-node')
       .enablePubSub('tcp://127.0.0.1:9000')
       .addEntrySpot(GameEntrySpot)
+      .actorFactory('player', PlayerActorFactory)
     .build()
 );
 ```
 
-`SpotNode` 없이 actor factory 만 등록하면 다음 오류로 실패한다.
+actor factory 를 가진 SpotNode 가 둘 이상이면 target 이 모호하므로 startup validation 이 실패한다.
 
 ```text
 ZLinkConfigurationException:

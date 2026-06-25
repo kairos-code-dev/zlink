@@ -111,8 +111,8 @@ public 기준은 typed handler(`ZLinkRuntimeEventHandler<TEvent>`)다.
 - **discovery 상태를 받고 싶다** -> discovery는 runtime event가 아니다. Registry
   snapshot/query로 조회한다([09-registry](08-registry.ko.md)).
 - **등록되지 않은 메시지를 알고 싶다** -> `configureDispatch()` 에
-  `ZLinkMessageDispatchErrorObserver` 를 등록한다. request 실패는 error reply 로 돌아가고,
-  send/publish/subscription/actor send 실패는 drop 되지만 로그, counter, observer event 로 남는다.
+  `ZLinkMessageFlowObserver` 를 등록하고 `outcome() == ERROR` event 를 본다. request 실패는 error reply 로 돌아가고,
+  send/publish/subscription/actor send 실패는 drop 되지만 로그, counter, message-flow event 로 남는다.
   observer 는 관측용이므로 callback 이 실패해도 원래 dispatch 결과를 바꾸지 않는다.
 
 ## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
@@ -130,7 +130,7 @@ ZLinkFrameworkConfigurer dispatchTracing() {
         // OFF → ERRORS_ONLY(기본) → KEY_TRANSITIONS → VERBOSE → DIAGNOSTIC
         .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
         .traceLogFile("logs/flow-api.log")   // 지정=전용 파일, 미지정=앱 로거 통합, 둘 다 없으면 stderr
-        .traceNodeId("api");                 // 구조화 필드 node=
+        .traceLabel("api");                  // 구조화 필드 label=
 }
 ```
 

@@ -92,7 +92,7 @@ spot mesh는 discovery 채널 이름으로 노드들을 발견한다([8장 §2](
 ```cpp
 options.add_spot_mesh ("bingo.room.discovery")    // 이 이름이 discovery 채널
   .add_node ("bingo.room.node")
-  .enable_router (topology.play_spot_router_endpoint, topology.play_rid)
+  .set_routing_id (topology.play_rid).enable_router (topology.play_spot_router_endpoint)
   .enable_pub_sub (topology.play_spot_endpoint)
   // ...
 ```

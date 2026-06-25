@@ -66,12 +66,11 @@ ZLinkStreamNodeBuilder stream = options.addStreamNode("chat");
 stream.bind("tcp://0.0.0.0:7710");
 stream.registerSession(ChatSession.class);
 
-options.addActorFactory("user", UserActorFactory.class);
-
 ZLinkSpotMeshBuilder node = options.addSpotMesh("rooms");
 node.enableRouter("tcp://0.0.0.0:7700");
 node.enablePubSub("tcp://0.0.0.0:7701");
 node.addSpotFactory(ChatRoomSpot.class);
+node.addActorFactory("user", UserActorFactory.class);
 ```
 
 ```java

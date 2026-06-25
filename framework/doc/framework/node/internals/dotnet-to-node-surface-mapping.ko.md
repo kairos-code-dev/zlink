@@ -251,7 +251,7 @@ dotnet `IZLinkFrameworkOptions` 의 등록 메서드를 node fluent builder 표�
 | `UseFilter<TFilter>()` | `filters: [FilterClass]` | [handler-interfaces §filter](../spec/handler-interfaces.ko.md) |
 | `ConfigureDispatch(...)` | `dispatch: { mode }` | handler-interfaces |
 | `AddHandlersFromAssemblyOf<TMarker>()` | `discover: { modules / include }`(NestJS DiscoveryService) | §4.2 |
-| `AddActorFactory(...)` | `actorFactory(actorType, factoryType)` | [nestjs-actor](../spec/nestjs-actor.ko.md) |
+| `spot.AddActorFactory(...)` | `addSpotMesh(...).actorFactory(actorType, factoryType)` | [nestjs-actor](../spec/nestjs-actor.ko.md) |
 | `Codecs.Use(ZLinkProtobufCodec.Default)` / `AddJson()` / `Use(ZLinkMessagePackCodec.Default)` | `codecs().use(zlinkProtobufCodec())` / `addJson()` / `use(zlinkMessagePackCodec())` | handler-interfaces §codec |
 | `ConfigureMetadata(...)` | `metadata: {...}` | nestjs-actor |
 

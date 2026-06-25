@@ -1223,7 +1223,7 @@ DI 등록 (Play 서버):
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<PlayerActorFactory>("player");
+    spot.AddActorFactory<PlayerActorFactory>("player");
     options.UseRegistrySpotRemoteAddresses("game");
     // routed channel 등록 + spot mesh 등록 (별도 문서 참고)
 });
@@ -1256,7 +1256,7 @@ options.UseDiscovery().AddRegistryEndpoint(registryEndpoint);
 options.AddRouteMesh("backend")
     .EnableServer(playEndpoint);
 
-options.AddActorFactory<TicTacToeActorFactory>("player");
+spot.AddActorFactory<TicTacToeActorFactory>("player");
 
 public sealed class TicTacToeActor(
     string actorId,

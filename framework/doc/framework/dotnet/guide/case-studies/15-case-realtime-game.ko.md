@@ -135,7 +135,7 @@ public sealed class PlaceMarkHandler
     s.RegisterSession<GameSession>();
 
 }
-options.AddActorFactory<PlayerActorFactory>("player");
+spot.AddActorFactory<PlayerActorFactory>("player");
 {
     var n = options.AddSpotMesh("play");
         n.EnableRouter("tcp://0.0.0.0:9200");

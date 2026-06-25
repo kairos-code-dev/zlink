@@ -63,7 +63,7 @@ gateway 가 **같은 프로세스의 그 SpotNode 로 자동 연결**된다. rel
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<PlayerActorFactory>("player");      // play 역할
+    spot.AddActorFactory<PlayerActorFactory>("player");      // play 역할
 
     // session 역할 — gateway 는 같은 프로세스의 SpotNode 로 자동 연결(in-process relay)
     options.AddStreamNode("client-stream")
@@ -282,7 +282,7 @@ builder.Services.AddZLinkFramework(options =>
     // STREAM session 의 actor-gateway 입구로 쓸 local SpotNode (router 만 있으면 됨)
     options.AddSpotMesh("game.session")
         .EnableRouter("tcp://0.0.0.0:9101")
-        .SetRouterRoutingId(sessionNodeRid);
+        .SetRoutingId(sessionNodeRid);
 
     options.AddStreamNode("client-stream")   // gateway 는 위 game.session 노드로 자동 연결
         .Bind("tcp://0.0.0.0:9000")
@@ -299,7 +299,7 @@ builder.Services.AddZLinkFramework(options =>
 {
         options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-    options.AddActorFactory<PlayerActorFactory>("player");  // actor 와 Spot 은 Play 서버가 호스팅(Session 서버엔 이 factory 가 없다)
+    spot.AddActorFactory<PlayerActorFactory>("player");  // actor 와 Spot 은 Play 서버가 호스팅(Session 서버엔 이 factory 가 없다)
 
     {
         var mesh =     options.AddSpotMesh("game.match");

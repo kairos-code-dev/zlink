@@ -59,7 +59,8 @@ var channel = options.addClientServerChannel(SampleNames.ApiChannel);
 channel.enableServer(topology.apiChannelEndpoint());
 channel.addHandlerGroup(SampleNames.ApiChannel);
 var node = options.addSpotMesh(SampleNames.SpotMesh);
-node.enableRouter(topology.spotEndpoint()).setRouterRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId));
+node.setRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId));
+node.enableRouter(topology.spotEndpoint());
 node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId));
 node.addEntrySpot(BingoEntrySpot.class);
 ```

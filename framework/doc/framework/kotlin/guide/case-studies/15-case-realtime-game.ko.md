@@ -83,12 +83,11 @@ val stream = options.addStreamNode("session")
 stream.bind("tcp://0.0.0.0:9100")
 stream.registerSession(GameSession::class.java)
 
-options.addActorFactory("player", PlayerActorFactory::class.java)
-
 val node = options.addSpotMesh("play")
 node.enableRouter("tcp://0.0.0.0:9200")
 node.addEntrySpot(PlayerEntrySpot::class.java)
 node.addSpotFactory(MatchSpot::class.java)
+node.addActorFactory("player", PlayerActorFactory::class.java)
 ```
 
 ```kotlin

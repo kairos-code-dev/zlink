@@ -122,7 +122,7 @@ fun dispatchTracing(): ZLinkFrameworkConfigurer =
             // OFF → ERRORS_ONLY(기본) → KEY_TRANSITIONS → VERBOSE → DIAGNOSTIC
             messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
             traceLogFile("logs/flow-api.log")   // 지정=전용 파일, 미지정=앱 로거 통합
-            traceNodeId("api")                  // 구조화 필드 node=
+            traceLabel("api")                   // 구조화 필드 label=
             onMessageFlow { event -> /* 콜렉터/OTel 어댑터(앱 레이어) */ }
         }
     }

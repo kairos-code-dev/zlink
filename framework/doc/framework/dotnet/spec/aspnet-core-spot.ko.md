@@ -1032,7 +1032,7 @@ local actor call 처럼 reply frame 이 없는 경로는 caller task 를 framewo
 
 SPOT route send, subscription, actor send 는 reply 를 만들 수 없으므로 실패한 메시지를 drop 한다.
 route send 와 actor send 는 Warning 로그와 metric, subscription 은 Debug 로그 또는 metric 과 전역
-`IZLinkMessageDispatchErrorObserver` event 를 남긴다. observer 실패는 dispatch loop 나 shutdown 을
+`IZLinkMessageFlowObserver` event 를 남긴다. observer 실패는 dispatch loop 나 shutdown 을
 깨지 않는다.
 
 ## 11. Router channel route 수신

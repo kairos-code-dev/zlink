@@ -2910,7 +2910,7 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotNodeBuilder ConnectRouter(string endpoint);
 
-    IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId);
+    IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId);
 
     IZLinkSocketConfig ConfigureRouterSocket();
 
@@ -2921,7 +2921,6 @@ public interface IZLinkSpotNodeBuilder
     IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint);
     IZLinkSpotNodeBuilder ConnectPubSub(string endpoint); // compatibility alias
 
-    IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId);
 
     IZLinkSpotPublisherConfig ConfigurePubSubPublisher();
 
@@ -3766,37 +3765,38 @@ channel 이름의 위치도 정해 둔다. handler class 나 method attribute �
 
 ### 14.1 message dispatch error observer
 
-미등록 메시지와 dispatch 실패 관측은 전역 `IZLinkMessageDispatchErrorObserver` 로 처리한다.
+미등록 메시지와 dispatch 실패 관측은 message flow observer 로 처리한다.
 channel 별, spot 별 observer 등록은 이 버전의 공개 계약이 아니다. request 실패는 reply path 가 있으면
 error reply 로 끝나고, one-way 실패는 drop 되지만 기본 로그, metric, observer event 를 남긴다.
 
 ```csharp
 public interface IZLinkDispatchOptions
 {
-    IZLinkDispatchOptions SetMessageDispatchErrorObserver<TObserver>()
-        where TObserver : class, IZLinkMessageDispatchErrorObserver;
+    IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
+        where TObserver : class, IZLinkMessageFlowObserver;
 
-    IZLinkDispatchOptions SetMessageDispatchErrorObserver(
-        IZLinkMessageDispatchErrorObserver observer);
+    IZLinkDispatchOptions SetMessageFlowObserver(
+        IZLinkMessageFlowObserver observer);
 }
 
-public interface IZLinkMessageDispatchErrorObserver
+public interface IZLinkMessageFlowObserver
 {
-    ValueTask OnDispatchErrorAsync(
-        ZLinkMessageDispatchErrorEvent error,
+    ValueTask OnMessageFlowAsync(
+        ZLinkMessageFlowEvent flow,
         CancellationToken cancellationToken);
 }
 ```
 
-`ZLinkMessageDispatchErrorEvent` 는 `Surface`, `MessageKind`, `Reason`, `Action`,
-`PacketName`, `ChannelName`, `Topic`, `SpotRid`, `ActorId`, `SourceRid`, `CorrelationId`,
-`Exception` 을 담는 불변 snapshot 이다. native message 소유권이나 frame 참조는 포함하지 않는다.
+dispatch 실패는 `ZLinkMessageFlowEvent` 의 `Outcome` 이 `Error` 인 event 로 전달된다.
+event 는 어느 channel 과 socket role 에서 실패가 났는지, 어느 routing id 와 관련되었는지,
+실패 이유와 runtime 이 선택한 처리 방식을 함께 담는다. native message 소유권이나 frame 참조는
+포함하지 않는다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
     options.ConfigureDispatch()
-        .SetMessageDispatchErrorObserver<MyDispatchErrorObserver>();
+        .SetMessageFlowObserver<MyDispatchErrorObserver>();
 });
 ```
 

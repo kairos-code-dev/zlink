@@ -32,13 +32,12 @@ Entry Spot/user Spot 위치 축이 결정한다. session close가 actor를 자�
 public class ActorConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        framework.addActorFactory("player", PlayerActorFactory.class);
-
         ZLinkSpotMeshBuilder node = framework.addSpotMesh("game.stage");
         node.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
         node.enableRouter("tcp://0.0.0.0:9001");
         node.addEntrySpot(GameEntrySpot.class);
         node.addSpotFactory(GameRoomSpot.class);
+        node.addActorFactory("player", PlayerActorFactory.class);
 
         ZLinkStreamNodeBuilder stream = framework.addStreamNode("gateway");
         stream.bind("tcp://0.0.0.0:7201");

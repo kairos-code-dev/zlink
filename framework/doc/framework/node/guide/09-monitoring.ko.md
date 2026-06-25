@@ -39,7 +39,7 @@ builder.configureDispatch()
   // off → errorsOnly(기본) → keyTransitions → verbose → diagnostic
   .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
   .traceLogFile(`${process.env.LOG_DIR ?? 'logs'}/flow-api.log`)  // 미지정이면 console.error 폴백
-  .traceNodeId('api');                                            // 구조화 필드 node=
+  .traceLabel('api');                                            // 구조화 필드 label=
 ```
 
 - 모드 게이팅: `Dropped`·에러는 `ErrorsOnly` 이상, 성공 전이는 `KeyTransitions` 이상. `Off` 면

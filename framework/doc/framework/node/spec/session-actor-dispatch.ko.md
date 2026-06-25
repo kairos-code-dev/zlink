@@ -1162,7 +1162,8 @@ Module 등록 (Play 서버):
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .actorFactory('player', PlayerActorFactory)
+    .addSpotMesh('game')
+      .actorFactory('player', PlayerActorFactory)
     .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
     .build()
 );
@@ -1196,7 +1197,8 @@ ZLinkModule.forRoot(
       .addRegistryEndpoint(registryEndpoint)
     .addRouteMesh('backend')
       .enableRouter(playEndpoint)
-    .actorFactory('player', TicTacToeActorFactory)
+    .addSpotMesh('game')
+      .actorFactory('player', TicTacToeActorFactory)
     .build()
 );
 

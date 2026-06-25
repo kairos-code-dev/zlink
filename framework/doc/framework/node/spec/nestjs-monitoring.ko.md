@@ -539,7 +539,7 @@ export class DiscoveryStatusProbe {
   즉시 만든다. discovery 는 runtime event 자체가 아니므로 별도 event payload 를 두지
   않는다.
 - 등록되지 않은 메시지와 dispatch 실패는 monitoring source 가 아니라
-  `configureDispatch().setMessageDispatchErrorObserver(...)` 로 등록한 전역 observer 가 받는다.
+  `configureDispatch().setMessageFlowObserver(...)` 로 등록한 전역 observer 가 받는다.
   request 실패는 error reply 로 돌아가고 one-way 실패는 drop 되지만 로그, counter, observer event 로
   남는다. observer 실패는 runtime error sink 로 분리한다.
 
@@ -578,10 +578,10 @@ Node/TypeScript 표면만 적는다. dispatch 제어가 아니라 관측이며, 
 | 공통 개념 | Node 타입 / 멤버 |
 |-----------|------------------|
 | 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
-| phase | `ZLinkMessageFlowPhase` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived` } |
+| outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived` } |
 | event | `ZLinkMessageFlowEvent`: `phase`, `surface`, `messageKind`, `packetName?`, `channelName?`, `topic?`, `correlationId?`, `sourceRid?`, `spotRid?`, `actorId?`, `messageSize?` |
 | observer | `ZLinkMessageFlowObserver.onMessageFlow(flow): Promise<void> \| void` |
-| 진단 옵션 | `ZLinkDiagnosticsOptions` { `messageFlowLogMode?`, `sampleRate?`, `includeMessageSizes?`, `logFile?`, `nodeId?` } |
+| 진단 옵션 | `ZLinkDiagnosticsOptions` { `messageFlowLogMode?`, `sampleRate?`, `includeMessageSizes?`, `logFile?`, `label?` } |
 | 런타임 토글 | host `ZLinkMessageFlowControl.setMessageFlowMode(mode)` / `messageFlowMode()` |
 
 게이팅(공통 규칙): `Dropped`·에러는 `ErrorsOnly` 이상, 성공 전이는 `KeyTransitions` 이상에서
@@ -596,14 +596,14 @@ const builder = zlinkFramework();
 builder.configureDispatch()
   .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
   .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-api.log`)  // 지정=전용 파일
-  .traceNodeId('api')                       // 구조화 필드 node=
+  .traceLabel('api')                       // 구조화 필드 label=
   .includeMessageSizes(true)                // Verbose에서 size=
   .setMessageFlowObserver(ApiFlowObserver); // 선택: 콜렉터/OTel 어댑터(앱 레이어)
 ```
 
 - `traceLogFile` 지정 시 트레이싱/에러는 전용 파일로만(`writeTraceFile`), 미지정이면 `console.error`
-  폴백. 출력은 구조화 필드 + `node=`로 콜렉터 ingest 가능.
-- 트레이서는 `enabled(phase)` 가드 + `flowIfEnabled(reporter?.flow, phase)?.trace(...)` 패턴으로
+  폴백. 출력은 구조화 필드 + `label=`로 콜렉터 ingest 가능.
+- 트레이서는 `enabled(outcome)` 가드 + `flowIfEnabled(reporter?.flow, outcome)?.trace(...)` 패턴으로
   `Off`일 때 이벤트 객체를 만들지 않아(제로-alloc) 운영 성능에 영향이 없다.
 - observer는 `setMessageFlowObserver(ObserverType)`(클래스/`Type<...>`)로 등록한다. OTel 어댑터는
   앱 레이어 책임이다(공통 스펙 §6).
@@ -616,7 +616,7 @@ host가 공유 live cell(`messageFlowModeCell`)을 모든 surface에 전달하�
 ### 9.4 샘플
 
 Bingo.Ts 3노드(Api/Play/Session)는 각자 `messageFlow(KeyTransitions)` +
-`traceLogFile(.../flow-<role>.log)` + `traceNodeId(role)`로 분리 파일 로깅을 시연한다
+`traceLogFile(.../flow-<role>.log)` + `traceLabel(role)`로 분리 파일 로깅을 시연한다
 (`BINGO_LOG_DIR` override). 한 요청을 `corr=`로 grep하면 노드 간 흐름이 이어진다.
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.

@@ -202,7 +202,7 @@ handler는 constructor injection을 사용한다. context에 Spring `Application
 | `UseDiscovery` | `addRegistryEndpoint` |
 | `UseFilter` | `useFilter` |
 | `ConfigureDispatch` | `configureDispatch` |
-| `AddActorFactory` | `addActorFactory` |
+| `spot.AddActorFactory` | `addSpotMesh(...).addActorFactory` |
 | `AddSpotRemoteAddressResolver` | `addSpotRemoteAddressResolver` |
 | `UseRegistrySpotRemoteAddresses` | `useRegistrySpotRemoteAddresses` |
 

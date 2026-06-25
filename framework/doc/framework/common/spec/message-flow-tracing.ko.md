@@ -99,9 +99,9 @@ class message_flow_observer_t { virtual void on_message_flow(const message_flow_
 - 옵저버 user code는 receive path에서 직접 실행하지 않고 전용 executor로 offload한다(핫패스 분리).
   bounded queue를 쓰면 overflow 시 새 event를 drop하고 overflow counter를 올린다.
 
-**언어별 투영**: phase enum, event record/struct/interface, observer/callback setter를 각 언어의
-canonical 이름으로 내려 적는다(예: `.NET` `IZLinkMessageFlowControl`, Java
-`ZLinkMessageFlowPhase`/`Event`/`Observer`). 단어 교체·생략 없이 케이싱만 변환한다.
+**언어별 투영**: outcome enum, event record/struct/interface, observer/callback setter를 각 언어의
+정식 이름으로 내려 적는다(예: `.NET` `IZLinkMessageFlowControl`, Java
+`ZLinkMessageFlowOutcome`/`Event`/`Observer`). 단어 교체·생략 없이 케이싱만 변환한다.
 
 ## 4. 성능 계약 — off 제로코스트 · 런타임 토글
 
@@ -150,11 +150,11 @@ zlink flow: phase=… surface=… kind=… packet=… channel=… topic=… corr
 > gateway 같은 별도 서브시스템엔 **명시 주입**이 필요하다(누락하면 그 surface만 조용히 로그가
 > 안 나온다). 파일 sink는 부모 디렉토리를 자동 생성해야 한다.
 
-### 5.1 구조화 필드와 node 식별자
+### 5.1 구조화 필드와 label 식별자
 
 로그는 텍스트 한 줄로만 내지 않고 `log_record`의 key/value 필드
 (phase/surface/kind/packet/channel/topic/corr/src/spot/actor/size)로도 채운다. 콜렉터가 정규식
-파싱 없이 ingest할 수 있어야 한다. 진단 옵션의 `node_id`(`node=`)로 여러 노드 로그를 집계 키로
+파싱 없이 ingest할 수 있어야 한다. 진단 옵션의 `label`(`label=`)로 여러 프로세스 로그를 집계 키로
 구분한다.
 
 ## 6. 관측 백엔드 경계 (중요 원칙)

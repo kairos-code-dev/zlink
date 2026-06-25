@@ -79,11 +79,11 @@ dispatch 가 가져간다. **per-room lock 도, Redis 세션 라우팅 캐시도
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .actorFactory('player', PlayerActorFactory)
     .addSpotMesh('play')
       .enableRouter('tcp://0.0.0.0:9200')
       .addEntrySpot(PlayerEntrySpot)
       .addSpotFactory(MatchSpot)
+      .actorFactory('player', PlayerActorFactory)
     .addStreamNode('session')
       .bind('tcp://0.0.0.0:9100')
       .registerSession(GameSession)

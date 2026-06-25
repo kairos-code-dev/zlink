@@ -30,8 +30,9 @@ factory는 `ZLinkSuspendingActorFactory`를 상속해 `createActor`를 `suspend`
 
 ```kotlin
 ZLinkFrameworkConfigurer { options ->
-    options.addActorFactory("player", PlayerActorFactory::class.java)
-    // Entry Spot / user Spot 등록은 SpotNode 쪽에서 (§3)
+    val node = options.addSpotMesh("play")
+    node.addActorFactory("player", PlayerActorFactory::class.java)
+    // Entry Spot / user Spot 등록도 같은 SpotNode 쪽에서 (§3)
 }
 
 import systems.zlink.framework.kotlin.ZLinkSuspendingActorFactory
@@ -232,7 +233,7 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
 
 - **Session 서버**: `addSpotMesh`로 session-node(router)를 두면 `addStreamNode(...)`의 gateway가
   그 노드로 자동 연결된다.
-- **Play 서버**: `addActorFactory(...)` + `addSpotMesh`로 play-node에
+- **Play 서버**: `addSpotMesh(...)` 아래 `addActorFactory(...)`로 play-node에
   `addEntrySpot(...)`, `addSpotFactory(...)`를 등록한다.
 
 전체 등록 시그니처와 sample 흐름은

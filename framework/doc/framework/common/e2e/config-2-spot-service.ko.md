@@ -47,9 +47,8 @@ handler 동작(공유):
   actor `Disconnected`가 발생한다.
 - user spot은 명시적 `CloseAsync`로만 닫힌다(joined actor가 남아 있으면 거부). close 시
   `OnClosingAsync` 콜백이 돈다.
-- 미등록 spot route/actor packet은 dispatch error로 처리되고 observer
-  evidence(`ZLinkMessageDispatchErrorEvent`: `Surface`=`SpotRoute`/`SpotActor`,
-  `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`)에 남는다.
+- 미등록 spot route/actor packet은 dispatch error로 처리되고 message-flow error evidence
+  (`Surface`=`SpotRoute`/`SpotActor`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`)에 남는다.
 
 ## 3. 실행 모델
 
@@ -197,7 +196,7 @@ actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 
 **한마디로:** handler 없는 actor packet을 보내면 error로 명확히 실패하고, 그 이유가 observer에 남는가.
 
 - 절차: handler 없는 actor packet 이름으로 request를 보낸다.
-- 검증: error reply로 끝나고 observer evidence(`ZLinkMessageDispatchErrorEvent`: `Surface`=`SpotActor`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`)가 남는다.
+- 검증: error reply로 끝나고 message-flow error evidence(`Surface`=`SpotActor`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`)가 남는다.
 - 세부 동작: actor negative path + 관측(enum 필드).
 
 #### SM-B6 actor leave vs disconnect callback
@@ -246,7 +245,7 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 - send: one-way send → reply 없이 spot evidence에 command 기록.
 - publish: channel이 publish → 구독한 spot이 수신(미구독 spot은 미수신).
 - timeout: 느린 spot handler에 짧은 timeout → client timeout 예외, 이후 같은 연결의 정상 messaging 비오염.
-- 미등록: handler 없는 spot packet → request는 error reply, send는 drop. observer evidence(`ZLinkMessageDispatchErrorEvent`: `Surface`=`SpotRoute`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`).
+- 미등록: handler 없는 spot packet → request는 error reply, send는 drop. message-flow error evidence(`Surface`=`SpotRoute`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`)가 남는다.
 - 세부 동작: 외부 channel에서 spot으로 들어오는 방향 전체 verb + negative.
 
 #### SM-C2 spot → channel messaging
@@ -439,7 +438,7 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 **한마디로:** handler 없는 spot route packet은 error로 실패하고, 그 이유가 observer에 남는가.
 
 - 절차: handler 없는 spot route packet으로 request를 보낸다.
-- 검증: error reply + observer evidence(`ZLinkMessageDispatchErrorEvent`: `Surface`=`SpotRoute`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`).
+- 검증: error reply + message-flow error evidence(`Surface`=`SpotRoute`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`).
 - 세부 동작: spot route negative path(enum 필드).
 
 #### SM-E2 spot timer
@@ -543,7 +542,7 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 - 검증:
   - (a) target spot route 없음: request는 error reply로 실패(client는 예외로 받음), send(command)는 reply 없이 drop되고 failure counter가 오른다.
   - (b) malformed relay packet: application route handler로 넘어가지 않고 error/drop으로 처리되어 observer에만 남는다.
-  - 두 경우 모두 observer evidence(`ZLinkMessageDispatchErrorEvent`: `Surface`=`SpotRoute`, `Reason`/`Action`)에 분류가 남고, 같은 channel의 다른 정상 spot routing은 영향받지 않는다.
+  - 두 경우 모두 message-flow error evidence(`Surface`=`SpotRoute`, `Reason`/`Action`)에 분류가 남고, 같은 channel의 다른 정상 spot routing은 영향받지 않는다.
 - 세부 동작: spot route bridge 에러 계약(route 없음·malformed) + 관측.
 
 #### SM-F5 channel socket 소유권 독립 (spot routing이 channel을 흔들지 않음)

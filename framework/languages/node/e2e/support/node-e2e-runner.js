@@ -71,6 +71,7 @@ async function pubSub() {
   PubSubAlphaHandler.events = [];
   PubSubBetaHandler.events = [];
   PubSubGammaHandler.events = [];
+  PubSubLateHandler.events = [];
   PubSubFlowObserver.events = [];
   const eventsEndpoint = await reserveTcpEndpoint();
   const nestjs = loadNest();
@@ -123,6 +124,15 @@ async function pubSub() {
       && PubSubGammaHandler.events.length === 2);
     marker('PS-A2');
 
+    PubSubLateHandler.events = [];
+    await publishEvent(fanout, 'all', 30);
+    await waitFor(() => PubSubAlphaHandler.events.some((event) => event.seq === 30));
+    subscribers.push(await startPubSubSubscriber('PubSubLateModule', PubSubLateHandler, eventsEndpoint));
+    await publishUntil(fanout, 'all', 31, () =>
+      PubSubLateHandler.events.some((event) => event.topic === 'all' && event.seq === 31));
+    assert.equal(PubSubLateHandler.events.some((event) => event.seq === 30), false);
+    marker('PS-A3');
+
     PubSubAlphaHandler.events = [];
     PubSubBetaHandler.events = [];
     PubSubGammaHandler.events = [];
@@ -137,8 +147,8 @@ async function pubSub() {
       && event.outcome === 'error'
       && event.errorReason === 'handlerMissing'
       && event.errorAction === 'drop'));
-    await publishEvent(fanout, 'all', 99);
-    await waitFor(() => commonSequence([PubSubAlphaHandler.events, PubSubBetaHandler.events, PubSubGammaHandler.events], 'all', [99]));
+    await publishUntil(fanout, 'all', 99, () =>
+      commonSequence([PubSubAlphaHandler.events, PubSubBetaHandler.events, PubSubGammaHandler.events], 'all', [99]));
     marker('PS-C1');
   } finally {
     for (const subscriber of subscribers.reverse()) {
@@ -385,6 +395,15 @@ class PubSubGammaHandler {
   }
 }
 
+class PubSubLateHandler {
+  static events = [];
+  handle(payload, context) {
+    if (context.topic === 'all') {
+      PubSubLateHandler.events.push({ topic: context.topic, seq: payload.seq });
+    }
+  }
+}
+
 class PubSubFlowObserver {
   static events = [];
   onMessageFlow(flow) {
@@ -544,8 +563,17 @@ function commonSequence(eventGroups, topic, sequence) {
     const actual = events
       .filter((event) => event.topic === topic && event.seq > 0)
       .map((event) => event.seq);
-    return sequence.every((seq, index) => actual[index] === seq);
+    return containsSequence(actual, sequence);
   });
+}
+
+function containsSequence(actual, expected) {
+  for (let start = 0; start <= actual.length - expected.length; start += 1) {
+    if (expected.every((seq, index) => actual[start + index] === seq)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasOnlyTopics(events, topics) {

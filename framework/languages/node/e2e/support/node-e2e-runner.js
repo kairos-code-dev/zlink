@@ -34,6 +34,7 @@ async function registryMessaging() {
   await runRegistryMessagingDiscovery(nestjs, framework);
   await runRegistryMessagingSameRidFailover(nestjs, framework);
   await runRegistryMessagingCrossChannelDiscovery(nestjs, framework);
+  await runRegistryMessagingScale(nestjs, framework);
   await runRegistryMessagingManualDistribution(nestjs);
   RMFlowObserver.events = [];
   EchoHandler.completed = [];
@@ -560,6 +561,120 @@ async function waitForRegistryMessagingChannelEndpoints(query, framework, channe
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`RM-A6 channel ${channelName} did not converge independently: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function runRegistryMessagingScale(nestjs, framework) {
+  RMScaleHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+  let providerB;
+
+  try {
+    const registry = await startApp(
+      nestModule('RegistryMessagingScaleRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 74
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    await startRegistryMessagingScaleProvider(nestjs, registryRouterEndpoint, providerAEndpoint, 'provider-a', apps);
+    const consumer = await startApp(
+      nestModule('RegistryMessagingScaleConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rm.scale')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rm.scale', [providerAEndpoint]);
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const before = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rm.scale', { requestId: 'rm-b1-before' })
+        .packetName('rm.scale.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(before, { requestId: 'rm-b1-before', handledBy: 'provider-a' });
+
+    providerB = await startRegistryMessagingScaleProvider(nestjs, registryRouterEndpoint, providerBEndpoint, 'provider-b', apps);
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rm.scale', [providerAEndpoint, providerBEndpoint]);
+    await waitForRegistryMessagingScaleProviders(client, ['provider-a', 'provider-b'], 'rm-b1-scale-out');
+    marker('RM-B1');
+
+    await providerB.app.close();
+    apps.splice(apps.indexOf(providerB.app), 1);
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rm.scale', [providerAEndpoint]);
+    const providerBCount = RMScaleHandler.requests.filter((request) => request.handledBy === 'provider-b').length;
+    for (let i = 0; i < 20; i += 1) {
+      const requestId = `rm-b2-after-scale-in-${i}`;
+      const reply = await client
+        .requestToChannel('rm.scale', { requestId })
+        .packetName('rm.scale.probe')
+        .timeout(1000)
+        .submit();
+      assert.deepEqual(reply, { requestId, handledBy: 'provider-a' });
+    }
+    assert.equal(RMScaleHandler.requests.filter((request) => request.handledBy === 'provider-b').length, providerBCount);
+    marker('RM-B2');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startRegistryMessagingScaleProvider(nestjs, registryRouterEndpoint, endpoint, providerId, apps) {
+  const handler = createRMScaleHandler(providerId);
+  const started = await startApp(
+    nestModule(`RegistryMessagingScale${providerId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rm.scale')
+            .enableServer(endpoint)
+            .routingId(providerId)
+            .addRequestHandler('rm.scale.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+  return started;
+}
+
+async function waitForRegistryMessagingScaleProviders(client, providerIds, prefix) {
+  const expected = new Set(providerIds);
+  const observed = new Set();
+  for (let i = 0; i < 80 && observed.size < expected.size; i += 1) {
+    const requestId = `${prefix}-${i}`;
+    const reply = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rm.scale', { requestId })
+        .packetName('rm.scale.probe')
+        .timeout(1000)
+        .submit());
+    assert.equal(reply.requestId, requestId);
+    assert.ok(expected.has(reply.handledBy), `unexpected scale provider: ${reply.handledBy}`);
+    observed.add(reply.handledBy);
+  }
+  assert.deepEqual([...observed].sort(), [...expected].sort());
 }
 
 async function runRegistryMessagingManualDistribution(nestjs) {
@@ -1190,6 +1305,23 @@ function createRMCrossChannelHandler(providerId) {
   return class {
     handle(payload, context) {
       return RMCrossChannelHandler.record(payload, providerId, context.channelName);
+    }
+  };
+}
+
+class RMScaleHandler {
+  static requests = [];
+  static record(payload, handledBy) {
+    const observed = { ...payload, handledBy };
+    RMScaleHandler.requests.push(observed);
+    return observed;
+  }
+}
+
+function createRMScaleHandler(providerId) {
+  return class {
+    handle(payload) {
+      return RMScaleHandler.record(payload, providerId);
     }
   };
 }

@@ -19,11 +19,13 @@
   전체 request 수와 일치하는지 확인한다.
 - `RM-C4`: RM-A1의 registry-resolved 연결 위에서 timeout 뒤 정상 request 두 번이 late reply에
   오염되지 않는지 확인한다.
+- `RM-B1`: registry discovery 연결에서 provider B를 추가한 뒤 consumer 재시작 없이 A/B가 모두
+  routing 대상이 되는지 확인한다.
+- `RM-B2`: provider B를 정상 종료한 뒤 topology에서 빠진 것을 확인하고, 이후 request가 provider A로만
+  처리되는지 확인한다.
 
 ## public API/harness 대기
 
-- `RM-B1`: provider scale-out Node runner와 marker가 아직 없다.
-- `RM-B2`: provider scale-in과 graceful drain Node runner와 marker가 아직 없다.
 - `RM-C2`: target rid route request Node runner와 marker가 아직 없다.
 - `RM-C7`: weighted 분산 Node runner와 marker가 아직 없다.
 - `RM-C8`: payload size policy Node runner와 marker가 아직 없다.

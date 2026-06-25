@@ -15,7 +15,7 @@ bound session이 붙는 배포다. 이걸 한 번 띄워 두고 spot messaging�
 
 ## 1. 목적과 범위
 
-- 다룬다: channel↔spot, spot↔spot messaging(send/request/publish), entry/user spot 생성과 상태, actor join과 remote actor, bound session push, stream session, 외부 channel→특정 spot route bridge(채널 종류 무관 egress·혼재 트래픽·에러 계약·소유권 독립).
+- 다룬다: channel↔spot, spot↔spot messaging(send/request/publish), entry/user spot 생성과 상태, actor join과 remote actor, bound session push, stream session, RouteMesh 기반 외부 channel→특정 spot route bridge(혼재 트래픽·에러 계약·소유권 독립).
 - 여기서 다루지 않는 것(다른 config로): codec 변주, registry scale/failover(Config 1), resilience(Config 5).
 
 ## 2. 서버 구성 (한 번 구동, 공유)
@@ -521,7 +521,7 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 
 - 절차: 외부 consumer가 route client로 target node(`play-b`)의 peer routing id를 지정해 그 노드의 target spot RoutingId로 request와 send를 보낸다. 수신 노드는 RouteMesh와 SpotMesh를 함께 등록해 자동 route ingress를 사용한다.
 - 검증: request가 target node로 relay되어 그 노드의 spot에서 처리되고 reply가 돌아온다. send는 그 노드 spot evidence에 기록된다. 지정하지 않은 노드에는 도달하지 않는다.
-- 세부 동작: route mesh(ROUTER) channel을 통한 cross-node target spot egress. (SM-F1과 같은 spot routing 의미를 channel 종류만 바꿔 확인 — 동등성.)
+- 세부 동작: route mesh(ROUTER) channel을 통한 cross-node target spot egress. (SM-F1과 같은 RouteMesh 기반 spot routing 의미를 target node 지정 경로에서 확인한다.)
 
 #### SM-F3 한 channel에 일반 packet과 spot route packet 혼재
 
@@ -533,19 +533,18 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
 - 검증: 일반 channel packet은 channel handler가, spot route packet은 target spot이 처리한다. 서로 오배달·간섭이 없고 두 종류 모두 각자 정상 reply를 받는다.
 - 세부 동작: 한 socket에서 application channel packet과 spot relay packet 공존 분기(channel inbound 허용 설정).
 
-#### SM-F4 spot route negative — route 없음 / 거부 / malformed
+#### SM-F4 spot route negative — route 없음 / malformed
 
 우선순위: `P0`
 
-**한마디로:** target spot route가 없거나 ingress가 거부하거나 packet이 malformed면, request는 error reply로 명확히 실패하고 command는 drop + counter로 끝나며, malformed는 application handler로 새지 않는가.
+**한마디로:** target spot route가 없거나 packet이 malformed면, request는 error reply로 명확히 실패하고 command는 drop + counter로 끝나며, malformed는 application handler로 새지 않는가.
 
-- 절차: (a) 존재하지 않는 target spot RoutingId로 request와 send를 보낸다. (b) spot route ingress를 받지 않도록 설정한 channel로 spot route request와 send를 보낸다. (c) malformed spot route packet을 유입시킨다.
+- 절차: (a) 존재하지 않는 target spot RoutingId로 request와 send를 보낸다. (b) malformed spot route packet을 유입시킨다. v1 implicit SPOT wiring에는 RouteMesh 단위 ingress opt-out이 없으므로 opt-out 거부 케이스는 이 시나리오에서 다루지 않는다.
 - 검증:
   - (a) target spot route 없음: request는 error reply로 실패(client는 예외로 받음), send(command)는 reply 없이 drop되고 failure counter가 오른다.
-  - (b) ingress 거부: request는 error reply, command는 drop + counter.
-  - (c) malformed relay packet: application route handler로 넘어가지 않고 error/drop으로 처리되어 observer에만 남는다.
-  - 세 경우 모두 observer evidence(`ZLinkMessageDispatchErrorEvent`: `Surface`=`SpotRoute`, `Reason`/`Action`)에 분류가 남고, 같은 channel의 다른 정상 spot routing은 영향받지 않는다.
-- 세부 동작: spot route bridge 에러 계약(route 없음·ingress 거부·malformed) + 관측.
+  - (b) malformed relay packet: application route handler로 넘어가지 않고 error/drop으로 처리되어 observer에만 남는다.
+  - 두 경우 모두 observer evidence(`ZLinkMessageDispatchErrorEvent`: `Surface`=`SpotRoute`, `Reason`/`Action`)에 분류가 남고, 같은 channel의 다른 정상 spot routing은 영향받지 않는다.
+- 세부 동작: spot route bridge 에러 계약(route 없음·malformed) + 관측.
 
 #### SM-F5 channel socket 소유권 독립 (spot routing이 channel을 흔들지 않음)
 

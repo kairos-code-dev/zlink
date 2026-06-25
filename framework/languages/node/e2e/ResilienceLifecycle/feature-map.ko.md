@@ -37,7 +37,10 @@
 - `RL-C1`: 다수 연결/요청 resource cleanup evidence Node harness가 아직 없다.
 - `RL-C2`: registry stale data cleanup Node harness가 아직 없다.
 - `RL-C3`: node disconnect/recovery Node harness가 아직 없다.
-- `RL-C4`: registry restart/outage recovery Node harness가 아직 없다.
+- `RL-C4`: registry restart/outage recovery Node marker가 아직 없다. 현재 public same-process
+  restart 시도는 provider 재광고와 restarted registry topology `Ready` evidence를 안정적으로 만들지
+  못했으므로 완료 처리하지 않는다. process-isolated registry restart harness로 기존 channel socket
+  지속과 복구 후 재조회 evidence를 함께 남길 때 닫는다.
 - `RL-D4`: normal public client는 error reply의 message 기반 예외만 노출하고, 공통 시나리오가 요구하는
   `errorCode` raw header evidence를 Node E2E runner가 아직 수집하지 않는다. 내부 codec/helper를
   직접 호출해 완료 처리하지 않고, raw envelope evidence를 public e2e harness로 남길 수 있을 때 닫는다.

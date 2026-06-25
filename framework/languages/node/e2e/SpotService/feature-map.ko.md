@@ -79,20 +79,50 @@
   앱과 subscriber spot 앱을 public API만으로 구성했을 때 `publishSpot(...).submit()`이 반환하지
   않아 E2E delivery evidence를 완료 marker로 고정하지 못했다. transport readiness/harness를
   분리해 무한 대기 없이 검증할 수 있어야 완료 처리한다.
-- `SM-D1`: local stream session bind/relay Node runner와 marker가 아직 없다.
-- `SM-D2`: remote stream session bind/relay Node runner와 marker가 아직 없다.
-- `SM-D3`: entry/user spot actor bind 비교 Node runner와 marker가 아직 없다.
-- `SM-D4`: multi actor bind Node runner와 marker가 아직 없다.
-- `SM-D5`: session disconnect actor notification Node runner와 marker가 아직 없다.
-- `SM-D6`: bound session push isolation Node runner와 marker가 아직 없다.
-- `SM-D7`: stream auth와 dispatch Node runner와 marker가 아직 없다.
-- `SM-D8`: stream reconnect Node runner와 marker가 아직 없다.
-- `SM-D9`: stream inbound observer Node runner와 marker가 아직 없다.
-- `SM-D10`: stream backpressure Node runner와 marker가 아직 없다.
-- `SM-D11`: stream/channel mixed request Node runner와 marker가 아직 없다.
-- `SM-D12`: 다른 gateway 재접속 Node runner와 marker가 아직 없다.
-- `SM-D13`: stream heartbeat Node runner와 marker가 아직 없다.
-- `SM-D14`: TLS stream Node runner와 marker가 아직 없다.
+- `SM-D1`: Node public surface에는 stream node `registerSession(...)`, session
+  `context.actors.bind(...)`, `ZLinkSessionActor.relay(...)`, actor
+  `context.boundSession.send(...)`가 있다. 하지만 SpotService runner에는 실제
+  `@zlink-systems/stream-connector` client를 띄워 local actor bind, client→actor relay,
+  actor→client push, 미bind client 미수신을 함께 검증하는 harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D2`: remote bind/relay는 `SM-D1`의 stream harness에 더해 gateway와 다른 play node로 actor
+  packet이 넘어가는 route evidence가 필요하다. 현재 runner에는 cross-node stream session
+  bind/relay harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D3`: Entry Spot actor와 user Spot actor 모두 `ZLinkSessionContext.actors.bind(...)`로
+  session에 묶을 수 있어야 한다. 현재 runner는 Entry/user Spot 양쪽 actor를 같은 stream session에서
+  bind하고 relay/push 의미를 비교하지 않으므로 완료 marker로 올리지 않는다.
+- `SM-D4`: 공통 시나리오는 한 stream session에 여러 actor를 bind한 뒤 metadata의 `actor-id`로
+  `context.actors.find(...)` 대상만 골라 `ZLinkSessionActor.relay(...)`하는지 본다. 현재 runner에는
+  multi-bind stream session과 actor별 push isolation harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D5`: Node spec은 session disconnect가 actor에 자동 전파되지 않고, session code가
+  `ZLinkSessionActor.notifyDisconnected(...)`를 호출한 actor만 `onDisconnectActor(...)`를 받는다고
+  설명한다. 현재 runner에는 stream disconnect 후 선택 actor 통지와 미통지 actor 무발화를 함께 검증하는
+  harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D6`: bound session push는 actor handler가 `context.boundSession.send(...)`로 현재 actor에 묶인
+  client에게만 push하는 경로다. 현재 runner에는 bind된 stream client와 bind되지 않은 client를 동시에
+  띄워 push 오배달 없음을 검증하는 harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D7`: Node stream server session과 connector는 public 표면이 있지만, 현재 SpotService runner에는
+  auth packet, auth 실패 public error, auth 이후 dispatch를 한 흐름으로 검증하는 stream E2E가 없어
+  완료 marker로 올리지 않는다.
+- `SM-D8`: connector에는 reconnect option이 있지만 공통 시나리오는 pending request 실패, 자동 재전송
+  없음, 재auth·rebind 후 정상 재개를 함께 요구한다. 현재 runner에는 연결 중단과 재접속을 통제하는
+  stream harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D9`: connector는 inbound observer model을 제공하지만, 현재 SpotService runner에는 observer를
+  등록한 실제 stream client로 inbound kind/name/seq evidence를 남기는 harness가 없어 완료 marker로
+  올리지 않는다.
+- `SM-D10`: Node stream spec은 backpressure를 public no-wait 옵션이 아니라 내부 queue와 ready
+  notification으로 처리한다고 설명한다. 현재 runner에는 그 정책을 stream session 단위로 압박하고
+  다른 session 비오염까지 확인하는 deterministic harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D11`: stream request와 channel request 혼합은 stream connector와 `ZLINK_CHANNEL_CLIENT`를 같은
+  consumer 흐름에서 함께 사용해야 한다. 현재 runner에는 두 reply 경로가 서로 섞이지 않는지 검증하는
+  mixed-path harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D12`: 다른 gateway 재접속은 둘 이상의 stream node/gateway와 같은 actor rebind evidence가 필요하다.
+  현재 runner에는 gateway 전환, 재auth, rebind, actor 상태 유지까지 확인하는 harness가 없어 완료 marker로
+  올리지 않는다.
+- `SM-D13`: connector heartbeat option과 server `onDisconnected(...)` callback은 public 표면에 있지만,
+  현재 runner에는 heartbeat 중단을 유도하고 session disconnect와 actor disconnect 수동 통지를 분리해
+  검증하는 harness가 없어 완료 marker로 올리지 않는다.
+- `SM-D14`: connector는 TLS endpoint와 certificate validation option을 갖지만, 현재 runner에는 TLS stream
+  server/client 인증서 fixture와 잘못된 인증서 거부 evidence가 없어 완료 marker로 올리지 않는다.
 - `SM-E1`: handler 없는 spot route packet request는 Node spec상 current Spot callback의
   `context.outbound.requestToSpot(...)` 경로로 검증해야 한다. 현재 runner에는 routed Spot
   outbound를 실제 route mesh와 함께 안정적으로 구성하는 harness가 없어 완료 marker로 올리지 않는다.

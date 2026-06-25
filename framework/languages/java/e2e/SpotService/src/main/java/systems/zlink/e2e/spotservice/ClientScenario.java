@@ -1,10 +1,17 @@
 package systems.zlink.e2e.spotservice;
 
+import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
+import systems.zlink.stream.connector.ZLinkStreamCompression;
+import systems.zlink.stream.connector.ZLinkStreamConnector;
+import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
+import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
+import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 
 public final class ClientScenario {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
@@ -29,6 +36,7 @@ public final class ClientScenario {
             case "normal" -> runNormal();
             case "owner" -> runOwnerRouting();
             case "route-mesh" -> runRouteMesh();
+            case "actor-session" -> runActorSession();
             case "worker" -> runWorkerOffload();
             case "spot-outbound" -> runSpotOutbound();
             case "spot-to-spot" -> runSpotToSpot();
@@ -146,6 +154,83 @@ public final class ClientScenario {
             .timeout(Duration.ofMillis(300))
             .await(Contracts.StateReply.class));
         System.out.println("scenario SM-F4-missing-route passed");
+    }
+
+    private void runActorSession() {
+        ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+        try {
+            Contracts.ActorProfile profile = new Contracts.ActorProfile(
+                "Player One",
+                7,
+                List.of("alpha", "beta"));
+            connector.connect().await();
+            Contracts.ActorAuthReply auth = connector
+                .request(new Contracts.ActorAuthRequest("actor-local-1", profile))
+                .await(Contracts.ActorAuthReply.class);
+            ensure("actor-local-1".equals(auth.actorId()), "SM-D1 auth actor mismatch");
+            ensure(auth.boundCount() == 1, "SM-D1 bound actor count mismatch");
+
+            var entryPush = connector.waitFor(Contracts.ActorPush.class)
+                .submit(Contracts.ActorPush.class);
+            Contracts.ActorEchoReply entryReply = connector
+                .request(new Contracts.ActorEchoRequest("entry-echo", 1, profile))
+                .metadata("actor-id", "actor-local-1")
+                .await(Contracts.ActorEchoReply.class);
+            Contracts.ActorPush entry = connector.await(entryPush).payload();
+            ensure("entry:entry-echo".equals(entryReply.value()), "SM-B1 entry actor request mismatch");
+            ensure("push:entry-echo".equals(entry.value()), "SM-D1 entry push mismatch");
+
+            Contracts.ActorJoinReply joined = connector
+                .request(new Contracts.ActorJoinRequest("room-a", profile, profile.tags()))
+                .metadata("actor-id", "actor-local-1")
+                .await(Contracts.ActorJoinReply.class);
+            ensure("room-a".equals(joined.spotRid()), "SM-B1 joined spot mismatch");
+            ensure(profile.tags().equals(joined.tags()), "SM-B3 join payload tags mismatch");
+            ensure(profile.displayName().equals(joined.displayName()), "SM-B3 join payload display name mismatch");
+            ensure(profile.level() == joined.level(), "SM-B3 join payload level mismatch");
+
+            var userPush = connector.waitFor(Contracts.ActorPush.class)
+                .submit(Contracts.ActorPush.class);
+            Contracts.ActorEchoReply userReply = connector
+                .request(new Contracts.ActorEchoRequest("user-echo", 2, profile))
+                .metadata("actor-id", "actor-local-1")
+                .await(Contracts.ActorEchoReply.class);
+            Contracts.ActorPush user = connector.await(userPush).payload();
+            ensure("room-a".equals(userReply.spotRid()), "SM-B1 user actor spot mismatch");
+            ensure("user:user-echo".equals(userReply.value()), "SM-B1 user actor request mismatch");
+            ensure("push:user-echo".equals(user.value()), "SM-D1 user push mismatch");
+
+            System.out.println("scenario SM-B1 passed");
+            System.out.println("scenario SM-B3 passed");
+            System.out.println("scenario SM-B7 passed");
+            System.out.println("scenario SM-D1 passed");
+        } catch (Exception error) {
+            throw new IllegalStateException("actor/session scenario failed", error);
+        } finally {
+            try {
+                connector.close().await();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private ZLinkStreamConnector createStreamConnector(String endpoint) {
+        return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
+            URI.create(endpoint),
+            ZLinkStreamDispatchMode.AUTO,
+            REQUEST_TIMEOUT,
+            2,
+            Duration.ofSeconds(5),
+            64 * 1024,
+            true,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(5),
+            false,
+            Duration.ofMillis(250),
+            Duration.ofSeconds(5),
+            2.0,
+            false,
+            ZLinkStreamCompression.LZ4));
     }
 
     private void runWorkerOffload() {

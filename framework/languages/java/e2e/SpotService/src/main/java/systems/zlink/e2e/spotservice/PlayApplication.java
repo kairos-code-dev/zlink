@@ -99,9 +99,18 @@ public final class PlayApplication {
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
                 .enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid));
+            node.addEntrySpot(ScenarioEntrySpot.class);
             node.addSpotFactory(UserSpot.class);
             node.addSpotFactory(MismatchedSpot.class);
             node.addSpotFactory(TimerScenarioSpot.class);
+            node.addActorFactory("scenario", ScenarioActorFactory.class);
+            String streamEndpoint = Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT");
+            if (!streamEndpoint.isBlank()) {
+                options.addStreamNode("gateway")
+                    .bind(streamEndpoint)
+                    .registerSession(ScenarioSession.class)
+                    .addSessionPacketHandler(ActorAuthHandler.class);
+            }
         };
     }
 

@@ -63,13 +63,13 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(15):
+    for _ in range(17):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
         ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:13]), end=" ")
-    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[13:]))
+    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:15]), end=" ")
+    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[15:]))
 finally:
     for sock in sockets:
         sock.close()
@@ -114,7 +114,7 @@ wait_port() {
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
+  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
 
 app_bin() {
@@ -138,6 +138,7 @@ start_play() {
   local ingress="$4"
   local http="$5"
   local spot_pub="$6"
+  local stream="$7"
   ZLINK_JAVA_E2E_ROLE=play \
   ZLINK_JAVA_E2E_NODE_RID="${rid}" \
   ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route}" \
@@ -148,6 +149,7 @@ start_play() {
   ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
   ZLINK_JAVA_E2E_SPOT_ENDPOINT="${spot}" \
   ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT="${spot_pub}" \
+  ZLINK_JAVA_E2E_STREAM_ENDPOINT="${stream}" \
   ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
   ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
@@ -158,6 +160,7 @@ start_play() {
   wait_port "${rid}-route" "${route}"
   wait_port "${rid}-spot" "${spot}"
   wait_port "${rid}-spot-pub" "${spot_pub}"
+  wait_port "${rid}-stream" "${stream}"
   wait_port "${rid}-http" "${http}"
 }
 
@@ -222,13 +225,13 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER HTTP_A HTTP_B <<<"$(reserve_ports)"
+read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B HTTP_A HTTP_B <<<"$(reserve_ports)"
 
 gradle_run installDist
 
 start_registry
-start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}"
-start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}"
+start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" "${STREAM_A}"
+start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}"
 sleep 2
 
 run_client_mode() {
@@ -249,6 +252,8 @@ run_client_mode() {
       ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
       ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
       ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
+      ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
+      ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
       ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
         timeout -k 5s 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
@@ -266,7 +271,7 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh idle-timer timer-overrun; do
+for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh actor-session idle-timer timer-overrun; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
     create_timer_spot "${HTTP_A}" idle-active
@@ -291,7 +296,7 @@ sleep 2
 assert_type_mismatch "${HTTP_A}" room-a
 echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
 echo "scenario SM-E2 passed" >>"${log_dir}/client.stdout.log"
-close_spot "${HTTP_A}" room-a
+close_spot "${HTTP_B}" room-b
 echo "scenario SM-A6 passed" >>"${log_dir}/client.stdout.log"
 
 cat "${log_dir}/client.stdout.log"
@@ -301,9 +306,13 @@ grep -Rq "message flow" "${log_dir}"/*-flow.log
 grep -q "packet=RoutePing" "${log_dir}/client-flow.log"
 grep -q '"marker":"RoutePing"' "${log_dir}/play-a-evidence.json"
 grep -q '"value":"route-mesh-normal"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorCreated"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorUserJoined"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorUserRequest"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"StreamInbound"' "${log_dir}/play-a-evidence.json"
 grep -q "DispatchError" "${log_dir}/play-a-evidence.json"
 grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"
-grep -q "SpotClosing" "${log_dir}/play-a-evidence.json"
+grep -q "SpotClosing" "${log_dir}/play-a-evidence.json" "${log_dir}/play-b-evidence.json"
 grep -q "SpotTypeMismatch" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTypeMismatchStateOk" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTimer" "${log_dir}/play-a-evidence.json"

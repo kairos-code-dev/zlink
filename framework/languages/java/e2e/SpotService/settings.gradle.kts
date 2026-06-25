@@ -18,6 +18,7 @@ val zlinkGitHubPackagesToken = providers.gradleProperty("zlink.githubPackagesTok
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        mavenLocal()
         mavenCentral()
         val packageUser = zlinkGitHubPackagesUser.orNull
         val packageToken = zlinkGitHubPackagesToken.orNull
@@ -42,9 +43,15 @@ if (gradle.parent == null) {
     }
 }
 
-includeBuild("../../../../../bindings/java") {
-    name = "zlink-bindings-java"
-    dependencySubstitution {
-        substitute(module("systems.zlink:zlink")).using(project(":"))
+val useLocalBindings = providers.gradleProperty("zlink.useLocalBindings")
+    .map(String::toBoolean)
+    .getOrElse(true)
+
+if (useLocalBindings) {
+    includeBuild("../../../../../bindings/java") {
+        name = "zlink-bindings-java"
+        dependencySubstitution {
+            substitute(module("systems.zlink:zlink")).using(project(":"))
+        }
     }
 }

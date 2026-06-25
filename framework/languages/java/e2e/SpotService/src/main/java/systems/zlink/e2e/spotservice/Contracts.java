@@ -60,6 +60,60 @@ public final class Contracts {
         String routeRid) {
     }
 
+    public record ActorProfile(
+        String displayName,
+        int level,
+        List<String> tags) {
+    }
+
+    public record ActorAuthRequest(
+        String actorId,
+        ActorProfile profile) {
+    }
+
+    public record ActorAuthReply(
+        String actorId,
+        String nodeRid,
+        int boundCount) {
+    }
+
+    public record ActorJoinRequest(
+        String spotRid,
+        ActorProfile profile,
+        List<String> tags) {
+    }
+
+    public record ActorJoinReply(
+        String actorId,
+        String spotRid,
+        String nodeRid,
+        String displayName,
+        int level,
+        List<String> tags) {
+    }
+
+    public record ActorEchoRequest(
+        String value,
+        int seq,
+        ActorProfile profile) {
+    }
+
+    public record ActorEchoReply(
+        String actorId,
+        String spotRid,
+        String nodeRid,
+        String value,
+        int seq,
+        List<String> tags) {
+    }
+
+    public record ActorPush(
+        String actorId,
+        String spotRid,
+        String value,
+        int seq) {
+    }
+
     public record EvidenceEntry(
         String marker,
         String nodeRid,

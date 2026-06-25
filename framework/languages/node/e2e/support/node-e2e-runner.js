@@ -32,6 +32,7 @@ async function registryMessaging() {
   const nestjs = loadNest();
   const framework = loadFramework();
   await runRegistryMessagingDiscovery(nestjs, framework);
+  await runRegistryMessagingManualDistribution(nestjs);
   RMFlowObserver.events = [];
   EchoHandler.completed = [];
   const builder = nestjs.zlinkFramework();
@@ -267,6 +268,92 @@ async function startRegistryMessagingDiscoveryProvider(nestjs, registryRouterEnd
     })
   );
   apps.push(started.app);
+}
+
+async function runRegistryMessagingManualDistribution(nestjs) {
+  RMManualDistributionHandler.requests = [];
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+
+  try {
+    await startRegistryMessagingManualProvider(nestjs, providerAEndpoint, 'api-a', apps);
+    await startRegistryMessagingManualProvider(nestjs, providerBEndpoint, 'api-b', apps);
+    const consumer = await startApp(
+      nestModule('RegistryMessagingManualDistributionConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addClientServerChannel('rm.manual-distribution')
+              .enableClient([providerAEndpoint, providerBEndpoint])
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const seenProviders = new Set();
+    for (let i = 0; i < 60 && seenProviders.size < 2; i += 1) {
+      const reply = await submitUntilReachable(() =>
+        client
+          .requestToChannel('rm.manual-distribution', { requestId: `rm-c3-warmup-${i}` })
+          .packetName('rm.manual-distribution.probe')
+          .timeout(1000)
+          .submit());
+      seenProviders.add(reply.handledBy);
+    }
+    assert.deepEqual([...seenProviders].sort(), ['api-a', 'api-b']);
+
+    RMManualDistributionHandler.requests = [];
+    const observed = new Map();
+    for (let i = 0; i < 90; i += 1) {
+      const requestId = `rm-c3-${i}`;
+      const reply = await submitUntilReachable(() =>
+        client
+          .requestToChannel('rm.manual-distribution', { requestId })
+          .packetName('rm.manual-distribution.probe')
+          .timeout(1000)
+          .submit());
+      observed.set(requestId, reply.handledBy);
+    }
+
+    assert.equal(observed.size, 90);
+    assert.equal(RMManualDistributionHandler.requests.length, 90);
+    assertManualDistributionHandledOnce(observed);
+    const counts = countBy([...observed.values()]);
+    assert.ok(counts['api-a'] >= 10, `api-a should handle enough requests: ${stringifyDiagnostic(counts)}`);
+    assert.ok(counts['api-b'] >= 10, `api-b should handle enough requests: ${stringifyDiagnostic(counts)}`);
+    marker('RM-C3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startRegistryMessagingManualProvider(nestjs, providerEndpoint, providerId, apps) {
+  const handler = createRMManualDistributionHandler(providerId);
+  const started = await startApp(
+    nestModule(`RegistryMessagingManualDistribution${providerId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .addClientServerChannel('rm.manual-distribution')
+            .enableServer(providerEndpoint)
+            .addRequestHandler('rm.manual-distribution.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+}
+
+function assertManualDistributionHandledOnce(observed) {
+  for (const [requestId, handledBy] of observed) {
+    const handledCount = RMManualDistributionHandler.requests.filter((request) =>
+      request.requestId === requestId && request.handledBy === handledBy).length;
+    assert.equal(handledCount, 1, `${requestId} should be handled once by ${handledBy}`);
+  }
 }
 
 async function pubSub() {
@@ -779,6 +866,22 @@ function createRMDiscoveryHandler(routingId) {
   };
 }
 
+class RMManualDistributionHandler {
+  static requests = [];
+  static record(payload, handledBy) {
+    RMManualDistributionHandler.requests.push({ ...payload, handledBy });
+    return { ...payload, handledBy };
+  }
+}
+
+function createRMManualDistributionHandler(routingId) {
+  return class {
+    handle(payload) {
+      return RMManualDistributionHandler.record(payload, routingId);
+    }
+  };
+}
+
 class PubSubAlphaHandler {
   static events = [];
   handle(payload, context) {
@@ -1205,6 +1308,14 @@ function isTransientMessagingConnectError(error) {
   return error instanceof Error &&
     (((error.code === 2 || error.code === 12) && /Host unreachable/.test(error.message)) ||
       (error.code === 5 && /Connection refused/.test(error.message)));
+}
+
+function countBy(values) {
+  const counts = {};
+  for (const value of values) {
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function stringifyDiagnostic(value) {

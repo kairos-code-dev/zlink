@@ -4,7 +4,9 @@
 
 ## 구현됨
 
-- 없음.
+- `SM-A7`: 같은 `spotRid`를 `UserSpot`으로 만든 뒤 다른 Spot 타입으로 다시 `getOrCreate(...)`하면
+  public `ZLinkFrameworkException.kind == SpotTypeMismatch`로 실패하고, 기존 Spot은 같은 타입으로
+  계속 조회되는지 확인한다.
 
 ## public API/harness 대기
 
@@ -14,7 +16,6 @@
 - `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.
 - `SM-A5`: Stage wrapper Node runner와 marker가 아직 없다.
 - `SM-A6`: initialize/closing callback과 actor 잔류 close rejection Node runner와 marker가 아직 없다.
-- `SM-A7`: spot type mismatch Node runner와 marker가 아직 없다.
 - `SM-A8`: worker offload Node runner와 marker가 아직 없다.
 - `SM-B1`: local actor join Node runner와 marker가 아직 없다.
 - `SM-B2`: remote actor join Node runner와 marker가 아직 없다.

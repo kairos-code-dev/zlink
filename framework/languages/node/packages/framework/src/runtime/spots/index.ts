@@ -2235,7 +2235,10 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     const existing = this.activations.get(spotRid);
     if (existing !== undefined) {
       if (existing.spotType !== spotType) {
-        throw new ZLinkConfigurationException(`Spot '${spotRid}' already exists with a different spot type.`);
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.SpotTypeMismatch,
+          `Spot '${spotRid}' already exists with a different spot type.`
+        );
       }
       return { spotRid, state: ZLinkSpotCreateState.Existing };
     }
@@ -2243,7 +2246,10 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     const pending = this.pending.get(spotRid);
     if (pending !== undefined) {
       if (pending.spotType !== spotType) {
-        throw new ZLinkConfigurationException(`Spot '${spotRid}' is being created with a different spot type.`);
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.SpotTypeMismatch,
+          `Spot '${spotRid}' is being created with a different spot type.`
+        );
       }
       const result = await pending.ready;
       return result.state === ZLinkSpotCreateState.Created

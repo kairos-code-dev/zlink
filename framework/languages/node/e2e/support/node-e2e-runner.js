@@ -1574,6 +1574,7 @@ async function spotService() {
             .routingId('sm-node-a')
             .addEntrySpot(EntrySpot)
             .addSpotFactory(UserSpot)
+            .addSpotFactory(OtherUserSpot)
           .build())
       ],
       providers: []
@@ -1586,6 +1587,18 @@ async function spotService() {
     assert.equal(created.state, 'created');
     assert.equal(await spotManager.close(created.spotRid), true);
     selfCheck('SM-SPOT-MANAGER-CREATE-CLOSE');
+
+    const first = await spotManager.getOrCreate(UserSpot, 'sm-a7-spot', { owner: 'u1' });
+    assert.equal(first.state, 'created');
+    await assert.rejects(
+      () => spotManager.getOrCreate(OtherUserSpot, 'sm-a7-spot', { owner: 'u1' }),
+      (error) =>
+        error instanceof loadFramework().ZLinkFrameworkException &&
+        error.kind === loadFramework().ZLinkFrameworkErrorKind.SpotTypeMismatch
+    );
+    const afterMismatch = await spotManager.getOrCreate(UserSpot, 'sm-a7-spot', { owner: 'u1' });
+    assert.equal(afterMismatch.state, 'existing');
+    marker('SM-A7');
   } finally {
     await app.close();
   }
@@ -2008,6 +2021,8 @@ class UserSpot {
     return { accepted: true, reply: { owner: this.owner } };
   }
 }
+
+class OtherUserSpot {}
 
 async function startApp(rootModule) {
   const { NestFactory } = require('@nestjs/core');

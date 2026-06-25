@@ -444,7 +444,9 @@ test('ZLinkSpotManager getOrCreate is keyed by spot type and spotRid', async () 
   });
   await assert.rejects(
     () => manager.getOrCreate(OtherSpot, 'stage-1'),
-    framework.ZLinkConfigurationException
+    (error) =>
+      error instanceof framework.ZLinkFrameworkException &&
+      error.kind === framework.ZLinkFrameworkErrorKind.SpotTypeMismatch
   );
 });
 

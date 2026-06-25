@@ -2687,12 +2687,43 @@ async function spotService() {
     const joined = await smA6Actor.context.joinSpot('sm-a6-spot', { actor: 'sm-a6-actor' }).submit();
     assert.equal(joined.resultCode, 0);
     assert.equal(await spotManager.close('sm-a6-spot'), false);
-    assert.deepEqual(lifecycleEvents, ['create:u1', 'initialize', 'join:sm-a6-actor']);
+    assert.deepEqual(lifecycleEvents, ['create:u1', 'initialize', 'join:sm-a6-actor', 'joined:sm-a6-actor']);
     await smA6Actor.context.getSpot(LifecycleSpot).leave(smA6Actor);
     assert.equal(await spotManager.close('sm-a6-spot'), true);
     assert.equal(await spotManager.find('sm-a6-spot'), null);
-    assert.deepEqual(lifecycleEvents, ['create:u1', 'initialize', 'join:sm-a6-actor', 'leave:sm-a6-actor', 'closing']);
+    assert.deepEqual(lifecycleEvents, [
+      'create:u1',
+      'initialize',
+      'join:sm-a6-actor',
+      'joined:sm-a6-actor',
+      'leave:sm-a6-actor',
+      'closing'
+    ]);
     marker('SM-A6');
+
+    lifecycleEvents.length = 0;
+    smB1Actor = undefined;
+    await spotManager.getOrCreate(LifecycleSpot, 'sm-b1-spot', { owner: 'play-a' });
+    const smB1ActorRef = await actorManager.getOrCreate('sm-b1-actor', 'sm-a6-player');
+    assert.equal(smB1ActorRef.actorId, 'sm-b1-actor');
+    assert.ok(smB1Actor);
+    assert.equal(smB1Actor.context.isJoined, false);
+    const localJoin = await smB1Actor.context
+      .joinSpot('sm-b1-spot', { actorId: 'sm-b1-actor', node: 'play-a' })
+      .submit();
+    assert.equal(localJoin.resultCode, 0);
+    assert.equal(localJoin.actor.actorId, 'sm-b1-actor');
+    assert.equal(smB1Actor.context.isJoined, true);
+    assert.equal(smB1Actor.context.spotRid, 'sm-b1-spot');
+    assert.deepEqual(lifecycleEvents, [
+      'create:play-a',
+      'initialize',
+      'join:sm-b1-actor',
+      'joined:sm-b1-actor'
+    ]);
+    await smB1Actor.context.getSpot(LifecycleSpot).leave(smB1Actor);
+    assert.equal(await spotManager.close('sm-b1-spot'), true);
+    selfCheck('SM-B1-LOCAL-JOIN-CALLBACK');
 
     const first = await spotManager.getOrCreate(UserSpot, 'sm-a7-spot', { owner: 'u1' });
     assert.equal(first.state, 'created');
@@ -3346,6 +3377,7 @@ class OtherUserSpot {}
 
 const lifecycleEvents = [];
 let smA6Actor;
+let smB1Actor;
 let smE3Actor;
 
 class LifecycleSpot {
@@ -3365,6 +3397,10 @@ class LifecycleSpot {
   async onActorJoin(actor) {
     lifecycleEvents.push(`join:${actor.actorId}`);
     return { accepted: true };
+  }
+
+  async onJoinedActor(actor) {
+    lifecycleEvents.push(`joined:${actor.actorId}`);
   }
 
   async onLeaveActor(actor) {
@@ -3392,6 +3428,9 @@ class LifecycleActorFactory {
     const actor = new LifecycleActor(actorId, context);
     if (actorId === 'sm-a6-actor') {
       smA6Actor = actor;
+    }
+    if (actorId === 'sm-b1-actor') {
+      smB1Actor = actor;
     }
     if (actorId === 'sm-e3-actor') {
       smE3Actor = actor;

@@ -29,7 +29,10 @@
 - `SM-A5`: Stage wrapper Node runner와 marker가 아직 없다.
 - `SM-A8`: public `context.runWorker(...).onCompleted(...)` self-check는 runner에 있으나, 공통
   시나리오가 요구하는 "worker 실행 중 같은 Spot/노드로 들어오는 다른 request" marker는 아직 없다.
-- `SM-B1`: local actor join Node runner와 marker가 아직 없다.
+- `SM-B1`: 단일 Node SpotService 앱에서 public actor manager와 actor `context.joinSpot(...)`,
+  `onActorJoin(...)`, `onJoinedActor(...)`, actor context `isJoined`/`spotRid`를 확인하는
+  self-check는 있으나, 공통 시나리오가 요구하는 두 play 노드 배포, `play-a` local mailbox
+  dispatch, 후속 actor request, `play-b` callback 없음 evidence가 아직 없다.
 - `SM-B2`: remote actor join Node runner와 marker가 아직 없다.
 - `SM-B3`: actor payload fidelity Node runner와 marker가 아직 없다.
 - `SM-B4`: remote actor request Node runner와 marker가 아직 없다.

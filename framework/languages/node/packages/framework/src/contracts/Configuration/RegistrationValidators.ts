@@ -47,6 +47,7 @@ export function validateFrameworkRegistration(
   validateRouteChannels(registration, hasDiscovery(options.discovery));
   validateStreamNodes(registration);
   validateWorkerOptions(registration.worker);
+  validateMonitoring(registration);
 }
 
 function toActorFactoryCount(value: ZLinkSpotNodeOptions['actorFactories']): number {
@@ -75,6 +76,78 @@ function validateWorkerOptions(worker: ZLinkWorkerOptions | undefined): void {
   ) {
     throw new ZLinkConfigurationException('Worker minThreads must not exceed maxThreads.');
   }
+}
+
+function validateMonitoring(registration: ZLinkFrameworkRegistration): void {
+  const monitoring = registration.monitoring;
+  if (monitoring === undefined) {
+    return;
+  }
+
+  validateDuplicateMonitoringSourceNames([
+    ...(monitoring.socket ?? []).map((source) => source.sourceName),
+    ...(monitoring.registry ?? []).map((source) => source.sourceName),
+    ...(monitoring.spot ?? []).map((source) => source.sourceName)
+  ]);
+
+  const socketSources = monitoringSocketSources(registration);
+  for (const source of monitoring.socket ?? []) {
+    requireName('Monitoring socket sourceName', source.sourceName);
+    if (!socketSources.has(source.sourceName)) {
+      throw new ZLinkConfigurationException(`Monitoring socket source '${source.sourceName}' is not registered.`);
+    }
+  }
+
+  for (const source of monitoring.registry ?? []) {
+    requireName('Monitoring registry sourceName', source.sourceName);
+    requirePositiveInteger(`Monitoring registry source '${source.sourceName}' intervalMs`, source.intervalMs);
+  }
+
+  for (const source of monitoring.spot ?? []) {
+    requireName('Monitoring spot sourceName', source.sourceName);
+    requirePositiveInteger(`Monitoring spot source '${source.sourceName}' intervalMs`, source.intervalMs);
+    if (!registration.spotNodes.has(source.sourceName)) {
+      throw new ZLinkConfigurationException(`Monitoring spot source '${source.sourceName}' is not registered.`);
+    }
+  }
+}
+
+function validateDuplicateMonitoringSourceNames(sourceNames: readonly string[]): void {
+  const seen = new Set<string>();
+  for (const sourceName of sourceNames) {
+    requireName('Monitoring sourceName', sourceName);
+    if (seen.has(sourceName)) {
+      throw new ZLinkConfigurationException(`Duplicate monitoring source '${sourceName}'.`);
+    }
+    seen.add(sourceName);
+  }
+}
+
+function monitoringSocketSources(registration: ZLinkFrameworkRegistration): ReadonlySet<string> {
+  const sources = new Set<string>();
+  for (const [channelName, channel] of registration.channels.entries()) {
+    if (channel.server !== undefined) {
+      sources.add(`${channelName}.server`);
+    }
+    if (channel.client !== undefined) {
+      sources.add(`${channelName}.client`);
+    }
+    if (channel.publisher !== undefined) {
+      sources.add(`${channelName}.publisher`);
+    }
+    if (channel.subscriber !== undefined) {
+      sources.add(`${channelName}.subscriber`);
+    }
+  }
+  for (const [routerChannelId, routeChannel] of registration.routeChannelOptions.entries()) {
+    if (hasBind(routeChannel.bind)) {
+      sources.add(`${routerChannelId}.router`);
+    }
+    if (isRouteClientEnabled(routeChannel) || (routeChannel.manualConnections ?? []).length > 0) {
+      sources.add(`${routerChannelId}.client`);
+    }
+  }
+  return sources;
 }
 
 function requireNonNegativeInteger(label: string, value: number | undefined): void {

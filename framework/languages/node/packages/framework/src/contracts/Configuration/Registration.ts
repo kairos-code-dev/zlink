@@ -16,6 +16,7 @@ import type {
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
   ZLinkHandlerFilter,
+  ZLinkMonitoringOptions,
   ZLinkSpot,
   ZLinkSpotMeshBuilder,
   ZLinkSpotNodeBuilder,
@@ -60,6 +61,7 @@ export interface ZLinkFrameworkRegistration {
   readonly filterTypes: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
+  readonly monitoring?: ZLinkMonitoringOptions;
 }
 
 /**
@@ -127,6 +129,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly filters?: readonly Type<ZLinkHandlerFilter>[];
   readonly worker?: ZLinkWorkerOptions;
   readonly dispatch?: ZLinkDispatchOptions;
+  readonly monitoring?: ZLinkMonitoringOptions;
 }
 
 export interface ZLinkDiscoveryOptions {
@@ -346,7 +349,8 @@ export function createFrameworkRegistration(
     registrySpotRemoteAddresses: normalizeRegistrySpotRemoteAddresses(options.registrySpotRemoteAddresses, options.discovery),
     filterTypes: [...(options.filters ?? [])],
     worker: options.worker === undefined ? undefined : { ...options.worker },
-    dispatch: options.dispatch === undefined ? undefined : { ...options.dispatch }
+    dispatch: options.dispatch === undefined ? undefined : { ...options.dispatch },
+    monitoring: options.monitoring === undefined ? undefined : { ...options.monitoring }
   };
   validateFrameworkRegistration(registration, options);
   return registration;

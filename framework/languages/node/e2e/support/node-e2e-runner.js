@@ -1223,9 +1223,89 @@ async function monitoring() {
     await client.requestToChannel('mon.api', { ok: true }).packetName('mon.echo').submit();
     await waitFor(() => fs.existsSync(logFile) && fs.readFileSync(logFile, 'utf8').includes('mon.echo'));
     selfCheck('MON-DISPATCH-TRACE');
+    await assertInvalidMonitoringRegistration(nestjs);
+    marker('MON-B2');
   } finally {
     await app.close();
   }
+}
+
+async function assertInvalidMonitoringRegistration(nestjs) {
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('mon.duplicate')
+        .enableServer(uniqueEndpoint('mon-duplicate'))
+      .options({
+        monitoring: {
+          socket: [{ sourceName: 'mon.duplicate.server' }],
+          registry: [{ sourceName: 'mon.duplicate.server', intervalMs: 100 }]
+        }
+      })
+      .build()),
+    /duplicate monitoring source|mon\.duplicate\.server/i
+  );
+
+  await assert.rejects(
+    async () => {
+      const { app } = await startApp(
+        nestModule('MonitoringInvalidSocketSourceModule', {
+          imports: [
+            nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+              .addClientServerChannel('mon.invalid.socket')
+                .enableServer(uniqueEndpoint('mon-invalid-socket'))
+              .options({
+                monitoring: {
+                  socket: [{ sourceName: 'mon.invalid.socket.missing' }]
+                }
+              })
+              .build())
+          ]
+        })
+      );
+      await app.close();
+    },
+    /monitoring socket source|not registered|mon\.invalid\.socket\.missing/i
+  );
+
+  await assert.rejects(
+    async () => {
+      const { app } = await startApp(
+        nestModule('MonitoringInvalidRegistryIntervalModule', {
+          imports: [
+            nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+              .options({
+                monitoring: {
+                  registry: [{ sourceName: 'registry', intervalMs: 0 }]
+                }
+              })
+              .build())
+          ]
+        })
+      );
+      await app.close();
+    },
+    /monitoring registry source|intervalMs|positive/i
+  );
+
+  await assert.rejects(
+    async () => {
+      const { app } = await startApp(
+        nestModule('MonitoringInvalidSpotSourceModule', {
+          imports: [
+            nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+              .options({
+                monitoring: {
+                  spot: [{ sourceName: 'missing-spot', intervalMs: 100 }]
+                }
+              })
+              .build())
+          ]
+        })
+      );
+      await app.close();
+    },
+    /monitoring spot source|not registered|missing-spot/i
+  );
 }
 
 async function discoveryRegistryHa() {

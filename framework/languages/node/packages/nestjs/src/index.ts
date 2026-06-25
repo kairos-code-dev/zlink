@@ -1705,6 +1705,7 @@ function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions):
     dispatch: options.dispatch,
     discovery: options.discovery,
     filters: options.filters,
+    monitoring: options.monitoring,
     registrySpotRemoteAddresses: options.registrySpotRemoteAddresses,
     routeChannels,
     spotFactories: options.spotFactories,

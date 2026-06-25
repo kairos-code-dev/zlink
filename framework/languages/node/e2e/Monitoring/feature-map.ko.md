@@ -4,7 +4,9 @@
 
 ## 구현됨
 
-- 없음.
+- `MON-B2`: public `monitoring` 등록이 framework registration으로 전달되고, 존재하지 않는 socket/spot
+  source 이름, 중복 source 이름, 0 이하 polling interval이 startup validation에서
+  `ZLinkConfigurationException`으로 차단되는지 확인한다.
 
 ## public contract gap
 
@@ -33,9 +35,6 @@ Node framework의 monitoring event 계약 타입은 public `@zlink-systems/frame
 - `MON-B1`: socket event kind filter는 `ZLinkSocketMonitoringRegistration.events` 계약 타입은 있으나,
   해당 registration을 live socket source에 붙이고 필터 결과를 handler evidence로 받는 public NestJS
   통합이 아직 없다.
-- `MON-B2`: invalid monitoring 등록 검증은 public `monitoring: {...}` 등록 표면, source preflight,
-  startup validator가 구현된 뒤에만 검증할 수 있다. 지금은 미구현 registration을 runner에서 가정하지
-  않는다.
 - `MON-C1`: event handler 실패 격리는 public event handler discovery, detached dispatch, runtime error
   sink reporting이 한 경로로 연결된 뒤 검증해야 한다. 내부 dispatcher를 직접 호출해 완료 처리하지 않는다.
 - `MON-D1`: 장애·복구 반복 중 관측 연속성은 monitoring delivery 통합에 더해 provider restart/failover

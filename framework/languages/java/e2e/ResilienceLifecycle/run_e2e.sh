@@ -225,6 +225,29 @@ touch "${control_dir}/a2-up"
 wait "${reschedule_client_pid}"
 
 ZLINK_JAVA_E2E_ROLE=client \
+ZLINK_JAVA_E2E_CLIENT_MODE=flapping \
+ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
+ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
+ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/client-flapping.stdout.log" 2>"${log_dir}/client-flapping.stderr.log" &
+flapping_client_pid="$!"
+pids+=("${flapping_client_pid}")
+
+wait_file "${control_dir}/a5-ready"
+for _ in $(seq 1 3); do
+  stop_pid "${PROVIDER_A_PID}"
+  wait_port_down api-a "${API_A_REPLACEMENT}"
+  sleep 1
+  start_provider api-a "${API_A_REPLACEMENT}" "${HTTP_A_REPLACEMENT}"
+  PROVIDER_A_PID="${pids[-1]}"
+  sleep 2
+done
+touch "${control_dir}/a5-stop"
+wait "${flapping_client_pid}"
+
+ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
@@ -233,9 +256,11 @@ ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
 
 cat "${log_dir}/client-restart.stdout.log"
 cat "${log_dir}/client-reschedule.stdout.log"
+cat "${log_dir}/client-flapping.stdout.log"
 cat "${log_dir}/client.stdout.log"
 grep -q "scenario RL-A1 passed" "${log_dir}/client-restart.stdout.log"
 grep -q "scenario RL-A2 passed" "${log_dir}/client-reschedule.stdout.log"
+grep -q "scenario RL-A5 passed" "${log_dir}/client-flapping.stdout.log"
 grep -q "scenario RL-B1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario RL-B3 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario RL-B4 passed" "${log_dir}/client.stdout.log"

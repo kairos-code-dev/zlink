@@ -42,6 +42,10 @@ public final class ClientScenario {
             runProviderReschedule();
             return;
         }
+        if ("flapping".equals(mode)) {
+            runProviderFlapping();
+            return;
+        }
         runClientTimeoutCleanup();
         runDrainRestore();
         runDrainInFlight();
@@ -81,6 +85,41 @@ public final class ClientScenario {
         post(adminB() + "/admin/restore");
         waitForWeight(adminB(), 100);
         System.out.println("scenario RL-A2 passed");
+    }
+
+    private void runProviderFlapping() {
+        waitForTopology(2);
+        signal("a5-ready");
+        Set<String> providers = new HashSet<>();
+        int successes = 0;
+        int index = 0;
+        while (!hasSignal("a5-stop")) {
+            try {
+                Contracts.WorkReply reply = client.requestToChannel(
+                        Contracts.CHANNEL,
+                        new Contracts.WorkRequest("a5-flap-" + index))
+                    .timeout(Duration.ofSeconds(3))
+                    .await(Contracts.WorkReply.class);
+                ensure(reply.value().equals("work:a5-flap-" + index),
+                    "RL-A5 reply payload mismatch");
+                providers.add(reply.providerRid());
+                successes++;
+            } catch (RuntimeException error) {
+                throw new IllegalStateException("RL-A5 request failed during provider flapping", error);
+            }
+            index++;
+            sleep(100);
+        }
+        waitForTopology(2);
+        Contracts.WorkReply followUp = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.WorkRequest("a5-follow-up"))
+            .timeout(Duration.ofSeconds(3))
+            .await(Contracts.WorkReply.class);
+        ensure("work:a5-follow-up".equals(followUp.value()), "RL-A5 follow-up payload mismatch");
+        ensure(successes >= 10, "RL-A5 did not send enough traffic during flapping");
+        ensure(providers.contains("api-b"), "RL-A5 did not converge to live api-b during flapping");
+        System.out.println("scenario RL-A5 passed");
     }
 
     private void expectRestartWindowFailure() {
@@ -404,6 +443,10 @@ public final class ClientScenario {
             sleep(100);
         }
         throw new IllegalStateException("control signal was not observed: " + name);
+    }
+
+    private boolean hasSignal(String name) {
+        return Files.exists(controlDir().resolve(name));
     }
 
     private Path controlDir() {

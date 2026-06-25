@@ -1515,6 +1515,7 @@ function normalizeDiscoveryTopology(entries) {
 
 async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
+  await runResilienceLifecycleHighFanout();
   await runResilienceLifecycleObserverIsolation();
   await runResilienceLifecycleLoggingMarker();
 }
@@ -1563,6 +1564,57 @@ async function runResilienceLifecyclePendingCleanup() {
     marker('RL-B1');
   } finally {
     await app.close();
+  }
+}
+
+async function runResilienceLifecycleHighFanout() {
+  RLFanoutEvidence.events = [];
+  const eventsEndpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  let publisher;
+  const subscribers = [];
+
+  try {
+    publisher = await startApp(
+      nestModule('ResilienceHighFanoutPublisherModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addFanoutChannel('ps.events')
+              .enablePublisher(eventsEndpoint)
+            .build())
+        ]
+      })
+    );
+
+    for (let index = 0; index < 6; index += 1) {
+      subscribers.push(await startPubSubSubscriber(
+        `ResilienceHighFanoutSubscriber${index}Module`,
+        createRLFanoutHandler(index),
+        eventsEndpoint
+      ));
+    }
+
+    const fanout = publisher.app.get(nestjs.ZLINK_FANOUT_CLIENT, { strict: false });
+    await publishUntil(fanout, 'rl-d1', -1, () =>
+      hasRLFanoutSequence(6, [-1]));
+    RLFanoutEvidence.events = [];
+
+    for (let seq = 1; seq <= 8; seq += 1) {
+      await publishEvent(fanout, 'rl-d1', seq);
+    }
+
+    await waitFor(() => hasRLFanoutSequence(6, [1, 2, 3, 4, 5, 6, 7, 8]));
+    assert.equal(new Set(RLFanoutEvidence.events
+      .filter((event) => event.seq > 0)
+      .map((event) => `${event.subscriberId}:${event.seq}`)).size, 48);
+    marker('RL-D1');
+  } finally {
+    for (const subscriber of subscribers.reverse()) {
+      await subscriber.app.close();
+    }
+    if (publisher !== undefined) {
+      await publisher.app.close();
+    }
   }
 }
 
@@ -1837,6 +1889,32 @@ class RLLoggingObserver {
       ].join(' ') + '\n'
     );
   }
+}
+
+class RLFanoutEvidence {
+  static events = [];
+}
+
+function createRLFanoutHandler(subscriberId) {
+  return class ResilienceHighFanoutHandler {
+    handle(payload, context) {
+      if (context.topic === 'rl-d1') {
+        RLFanoutEvidence.events.push({ subscriberId, seq: payload.seq });
+      }
+    }
+  };
+}
+
+function hasRLFanoutSequence(subscriberCount, sequence) {
+  for (let subscriberId = 0; subscriberId < subscriberCount; subscriberId += 1) {
+    const actual = RLFanoutEvidence.events
+      .filter((event) => event.subscriberId === subscriberId)
+      .map((event) => event.seq);
+    if (!sequence.every((seq) => actual.includes(seq))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 class AuditHandler {

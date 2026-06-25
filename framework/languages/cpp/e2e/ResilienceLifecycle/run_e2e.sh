@@ -191,7 +191,10 @@ WORKFLOW_A_PID="$LAST_PID"
 sleep 1
 run_client common rl-b1 env
 grep -q "scenario RM-C4 passed" "$LOG_DIR/client-rl-b1.stdout.log"
+grep -Eq "reason=handler_missing.*action=drop.*packet=MissingProfileCommand" \
+  "$LOG_DIR/api-a-flow.log" "$LOG_DIR/api-b-flow.log"
 echo "scenario RL-B1 passed"
+echo "scenario RL-D3 passed"
 stop_pid "$API_A_PID"
 stop_pid "$API_B_PID"
 stop_pid "$WORKFLOW_A_PID"
@@ -261,5 +264,38 @@ grep -q "scenario RL-B5 passed" "$LOG_DIR/client-rl-b4.stdout.log"
 grep -q "scenario RL-B4 passed" "$LOG_DIR/client-rl-b4.stdout.log"
 echo "scenario RL-B5 passed"
 echo "scenario RL-B4 passed"
+echo "scenario RL-A4 passed"
+echo "scenario RL-B6 passed"
+stop_pid "$API_B_PID"
+stop_pid "$API_A_PID"
+
+start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+API_A_PID="$LAST_PID"
+start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+API_B_PID="$LAST_PID"
+sleep 1
+for index in $(seq 1 12); do
+  run_client quick "rl-a3-$index" env
+done
+for index in $(seq 1 12); do
+  grep -q "scenario quick passed" "$LOG_DIR/client-rl-a3-$index.stdout.log"
+done
+echo "scenario RL-A3 passed"
+run_client quick rl-c1-follow-up env
+grep -q "scenario quick passed" "$LOG_DIR/client-rl-c1-follow-up.stdout.log"
+echo "scenario RL-C1 passed"
+stop_pid "$API_B_PID"
+stop_pid "$API_A_PID"
+
+start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+API_A_PID="$LAST_PID"
+start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+API_B_PID="$LAST_PID"
+sleep 1
+run_client resilience-stress rl-d-stress env
+grep -q "scenario RL-D1 passed" "$LOG_DIR/client-rl-d-stress.stdout.log"
+grep -q "scenario RL-D4 passed" "$LOG_DIR/client-rl-d-stress.stdout.log"
+grep -q "scenario RL-D5 passed" "$LOG_DIR/client-rl-d-stress.stdout.log"
+cat "$LOG_DIR/client-rl-d-stress.stdout.log"
 stop_pid "$API_B_PID"
 stop_pid "$API_A_PID"

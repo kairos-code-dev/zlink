@@ -199,6 +199,13 @@ stop_pid "$API_A_PID"
 
 start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
+sleep 1
+run_client backpressure rm-c9 env
+cat "$LOG_DIR/client-rm-c9.stdout.log"
+stop_pid "$API_A_PID"
+
+start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
+API_A_PID="$LAST_PID"
 READY="$LOG_DIR/rm-b1-ready"
 CONTINUE="$LOG_DIR/rm-b1-continue"
 run_client scale-out rm-b1 env \

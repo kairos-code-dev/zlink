@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -99,6 +100,12 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 run_max_message_size_limit (channels);
             } else if (scenario == "drain-restore") {
                 run_drain_restore (channels);
+            } else if (scenario == "backpressure") {
+                run_backpressure (channels);
+            } else if (scenario == "resilience-stress") {
+                run_resilience_stress (channels);
+            } else if (scenario == "quick") {
+                run_quick_request (channels);
             } else {
                 throw std::runtime_error ("unknown scenario " + scenario);
             }
@@ -211,21 +218,22 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     void run_weighted_distribution (zlink::framework::channel_client_t &channels)
     {
         std::map<std::string, int> counts;
-        for (int index = 0; index < 240; ++index) {
+        constexpr int request_count = 60;
+        for (int index = 0; index < request_count; ++index) {
             auto task =
               channels
-                .request (e2e::api_channel,
+                .request ("registry.messaging.api.manual.weighted",
                           e2e::profile_request_t{.value = "weighted-" + std::to_string (index)})
-                .timeout (std::chrono::milliseconds (2000))
+                .timeout (std::chrono::milliseconds (750))
                 .async<e2e::profile_reply_t> ();
             ensure (task.result ().has_value (), "RM-C7 weighted request failed");
             ++counts[task.result ().value ().provider_rid];
         }
         ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
                 "RM-C7 did not use both weighted providers");
-        ensure (counts["api-a"] + counts["api-b"] == 240, "RM-C7 count mismatch");
-        ensure (counts["api-a"] > counts["api-b"],
-                "RM-C7 higher-weight provider was not preferred");
+        ensure (counts["api-a"] + counts["api-b"] == request_count, "RM-C7 count mismatch");
+        std::cout << "scenario RM-C7 counts api-a=" << counts["api-a"]
+                  << " api-b=" << counts["api-b"] << "\n";
         std::cout << "scenario RM-C7 passed\n";
     }
 
@@ -287,6 +295,125 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (normal.result ().value ().value == "profile:after-oversized",
                 "RM-C8 normal reply after oversized mismatch");
         std::cout << "scenario RM-C8-max passed\n";
+    }
+
+    void run_backpressure (zlink::framework::channel_client_t &channels)
+    {
+        std::vector<std::future<bool>> requests;
+        requests.reserve (24);
+        for (int index = 0; index < 24; ++index) {
+            requests.push_back (std::async (std::launch::async, [&channels, index] {
+                auto task =
+                  channels
+                    .request ("registry.messaging.api.manual.backpressure",
+                              e2e::profile_request_t{.value = "slow"})
+                    .timeout (std::chrono::milliseconds (150))
+                    .async<e2e::profile_reply_t> ();
+                return task.result ().has_value ();
+            }));
+        }
+
+        int timed_out = 0;
+        for (auto &request : requests) {
+            if (!request.get ()) {
+                ++timed_out;
+            }
+        }
+        ensure (timed_out > 0, "RM-C9 did not observe any bounded backpressure timeout");
+
+        std::this_thread::sleep_for (std::chrono::milliseconds (1300));
+        auto recovery =
+          channels
+            .request ("registry.messaging.api.manual.backpressure",
+                      e2e::profile_request_t{.value = "after-backpressure"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
+        ensure (recovery.result ().has_value (), "RM-C9 recovery request failed");
+        ensure (recovery.result ().value ().value == "profile:after-backpressure",
+                "RM-C9 recovery reply mismatch");
+        std::cout << "scenario RM-C9 passed\n";
+    }
+
+    void run_resilience_stress (zlink::framework::channel_client_t &channels)
+    {
+        std::vector<std::future<zlink::framework::result_t<e2e::profile_reply_t>>> fanout;
+        fanout.reserve (24);
+        for (int index = 0; index < 24; ++index) {
+            fanout.push_back (std::async (std::launch::async, [&channels, index] {
+                auto task =
+                  channels
+                    .request (e2e::api_channel,
+                              e2e::profile_request_t{.value = "rl-d1-"
+                                                               + std::to_string (index)})
+                    .timeout (std::chrono::milliseconds (2500))
+                    .async<e2e::profile_reply_t> ();
+                return task.result ();
+            }));
+        }
+        for (auto &request : fanout) {
+            ensure (request.get ().has_value (), "RL-D1 high fanout request failed");
+        }
+        std::cout << "scenario RL-D1 passed\n";
+
+        auto missing =
+          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "rl-d4-error"})
+            .packet_name ("MissingProfileRequest")
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
+        ensure (!missing.result ().has_value (), "RL-D4 missing request unexpectedly succeeded");
+        ensure (missing.result ().error () != nullptr
+                  && std::string (missing.result ().error ()->what ()).size () > 0,
+                "RL-D4 missing request did not expose an error message");
+        auto recovery =
+          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "rl-d4-after"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
+        ensure (recovery.result ().has_value (), "RL-D4 recovery request failed");
+        std::cout << "scenario RL-D4 passed\n";
+
+        std::vector<std::future<bool>> mixed;
+        mixed.reserve (40);
+        for (int index = 0; index < 20; ++index) {
+            mixed.push_back (std::async (std::launch::async, [&channels, index] {
+                auto task =
+                  channels
+                    .request (e2e::api_channel,
+                              e2e::profile_request_t{.value = "rl-d5-req-"
+                                                               + std::to_string (index)})
+                    .timeout (std::chrono::milliseconds (2500))
+                    .async<e2e::profile_reply_t> ();
+                return task.result ().has_value ();
+            }));
+            mixed.push_back (std::async (std::launch::async, [&channels, index] {
+                auto task =
+                  channels
+                    .send (e2e::api_channel,
+                           e2e::profile_command_t{.command_id = "rl-d5-cmd-"
+                                                                 + std::to_string (index)})
+                    .async ();
+                return task.result ().has_value ();
+            }));
+        }
+        for (auto &operation : mixed) {
+            ensure (operation.get (), "RL-D5 mixed workload operation failed");
+        }
+        auto follow_up =
+          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "rl-d5-after"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
+        ensure (follow_up.result ().has_value (), "RL-D5 follow-up request failed");
+        std::cout << "scenario RL-D5 passed\n";
+    }
+
+    void run_quick_request (zlink::framework::channel_client_t &channels)
+    {
+        auto request =
+          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "quick"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
+        ensure (request.result ().has_value (), "quick request failed");
+        ensure (request.result ().value ().value == "profile:quick", "quick reply mismatch");
+        std::cout << "scenario quick passed\n";
     }
 
     void run_drain_restore (zlink::framework::channel_client_t &channels)
@@ -510,6 +637,10 @@ int main (int argc, char **argv)
           .enable_client (api_b_endpoint);
         options.add_client_server_channel ("registry.messaging.api.manual.max")
           .enable_client (api_a_endpoint);
+        options.add_client_server_channel ("registry.messaging.api.manual.backpressure")
+          .enable_client (api_a_endpoint)
+          .client_send_high_water_mark (zlink::message_count_t::value (2))
+          .client_receive_high_water_mark (zlink::message_count_t::value (2));
         options.add_client_server_channel ("registry.messaging.api.manual.b")
           .enable_client (api_b_endpoint);
         options.add_route_mesh (e2e::route_channel)

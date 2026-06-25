@@ -130,6 +130,9 @@ async function pubSub() {
 }
 
 async function registrationCodec() {
+  applyRcDecorators();
+  RcDecoratedRequestHandler.requests = [];
+  RcDecoratedSendHandler.messages = [];
   RcManualRequestHandler.requests = [];
   RcManualSendHandler.messages = [];
   const apiEndpoint = uniqueEndpoint('rc-api');
@@ -142,11 +145,17 @@ async function registrationCodec() {
           .addClientServerChannel('rc.api')
             .enableServer(apiEndpoint)
             .enableClient(apiEndpoint)
+            .addHandlerGroup('rc-decorated')
             .addRequestHandler('rc.echo.manual', RcManualRequestHandler)
             .addSendHandler('rc.audit.manual', RcManualSendHandler)
           .build())
       ],
-      providers: [RcManualRequestHandler, RcManualSendHandler]
+      providers: [
+        RcDecoratedRequestHandler,
+        RcDecoratedSendHandler,
+        RcManualRequestHandler,
+        RcManualSendHandler
+      ]
     })
   );
 
@@ -166,6 +175,21 @@ async function registrationCodec() {
       .submit();
     await waitFor(() => RcManualSendHandler.messages.some((message) => message.id === 22));
     marker('RC-A3');
+
+    const decoratedReply = await client
+      .requestToChannel('rc.api', { id: 23, codec: 'json', ok: true })
+      .packetName('rc.echo.decorated')
+      .submit();
+    assert.equal(decoratedReply.id, 23);
+    assert.equal(decoratedReply.codec, 'json');
+    assert.equal(decoratedReply.ok, true);
+    assert.equal(RcDecoratedRequestHandler.requests.length, 1);
+    await client
+      .sendToChannel('rc.api', { id: 24, codec: 'json', ok: true })
+      .packetName('rc.audit.decorated')
+      .submit();
+    await waitFor(() => RcDecoratedSendHandler.messages.some((message) => message.id === 24));
+    marker('RC-A2');
     selfCheck('RC-JSON-REQUEST');
   } finally {
     await app.close();
@@ -340,6 +364,21 @@ class PubSubGammaHandler {
   }
 }
 
+class RcDecoratedRequestHandler {
+  static requests = [];
+  handle(payload, context) {
+    RcDecoratedRequestHandler.requests.push({ ...payload, contentType: context.contentType });
+    return { ...payload, contentType: context.contentType };
+  }
+}
+
+class RcDecoratedSendHandler {
+  static messages = [];
+  handle(payload, context) {
+    RcDecoratedSendHandler.messages.push({ ...payload, contentType: context.contentType });
+  }
+}
+
 class RcManualRequestHandler {
   static requests = [];
   handle(payload, context) {
@@ -353,6 +392,16 @@ class RcManualSendHandler {
   handle(payload, context) {
     RcManualSendHandler.messages.push({ ...payload, contentType: context.contentType });
   }
+}
+
+function applyRcDecorators() {
+  if (applyRcDecorators.applied === true) {
+    return;
+  }
+  const nestjs = loadNest();
+  nestjs.zlinkRequestHandler('rc-decorated', 'rc.echo.decorated')(RcDecoratedRequestHandler);
+  nestjs.zlinkSendHandler('rc-decorated', 'rc.audit.decorated')(RcDecoratedSendHandler);
+  applyRcDecorators.applied = true;
 }
 
 class EntrySpot {}

@@ -5,8 +5,10 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { fork } = require('node:child_process');
+const { Inject } = require('@nestjs/common');
 
 const nodeRoot = path.resolve(__dirname, '../..');
+const nestjsPublic = require(path.join(nodeRoot, 'packages/nestjs/dist'));
 
 const suites = new Map([
   ['RegistryMessaging', registryMessaging],
@@ -2838,6 +2840,34 @@ async function spotService() {
     assert.equal(await spotManager.close(created.spotRid), true);
     selfCheck('SM-SPOT-MANAGER-CREATE-CLOSE');
 
+    entrySpotEvents.length = 0;
+    smA1Actor = undefined;
+    const entryActorRef = await actorManager.getOrCreate('sm-a1-actor', 'sm-a6-player');
+    assert.equal(entryActorRef.actorId, 'sm-a1-actor');
+    assert.ok(smA1Actor);
+    const entryJoin = await smA1Actor.context
+      .joinEntrySpot(entryActorRef.nodeRid, { spotRid: 'sm-a1-room', owner: 'entry-user' })
+      .submit();
+    assert.equal(entryJoin.resultCode, 0);
+    assert.equal(entryJoin.actor.actorId, 'sm-a1-actor');
+    assert.deepEqual(entryJoin.reply, {
+      spotRid: 'sm-a1-room',
+      state: 'created',
+      owner: 'entry-user'
+    });
+    assert.deepEqual(entrySpotEvents, [
+      'entry-join:sm-a1-actor:sm-a1-room',
+      'user-create:sm-a1-room:entry-user',
+      'entry-created:sm-a1-room:created',
+      'entry-joined:sm-a1-actor'
+    ]);
+    assert.deepEqual(await spotManager.getOrCreate(UserSpot, 'sm-a1-room', { owner: 'ignored' }), {
+      spotRid: 'sm-a1-room',
+      state: 'existing'
+    });
+    await spotManager.close('sm-a1-room');
+    selfCheck('SM-A1-ENTRY-JOIN-CREATE');
+
     lifecycleEvents.length = 0;
     smA6Actor = undefined;
     const lifecycle = await spotManager.getOrCreate(LifecycleSpot, 'sm-a6-spot', { owner: 'u1' });
@@ -3525,12 +3555,41 @@ async function assertInvalidRegistration(nestjs) {
   );
 }
 
-class EntrySpot {}
+const entrySpotEvents = [];
+
+class EntrySpot {
+  constructor(spots) {
+    this.spots = spots;
+  }
+
+  async onActorJoin(actor, request) {
+    const payload = request.decode();
+    entrySpotEvents.push(`entry-join:${actor.actorId}:${payload.spotRid}`);
+    const created = await this.spots.getOrCreate(UserSpot, payload.spotRid, { owner: payload.owner });
+    entrySpotEvents.push(`entry-created:${created.spotRid}:${created.state}`);
+    return {
+      accepted: true,
+      reply: {
+        spotRid: created.spotRid,
+        state: created.state,
+        owner: created.reply?.owner
+      }
+    };
+  }
+
+  async onJoinedActor(actor) {
+    entrySpotEvents.push(`entry-joined:${actor.actorId}`);
+  }
+}
+Inject(nestjsPublic.ZLINK_SPOT_MANAGER)(EntrySpot, undefined, 0);
 
 class UserSpot {
   async onCreate(request) {
     const payload = request.decode();
     this.owner = payload.owner;
+    if (payload.owner === 'entry-user') {
+      entrySpotEvents.push(`user-create:${this.context.spotRid}:${this.owner}`);
+    }
     return { accepted: true, reply: { owner: this.owner } };
   }
 }
@@ -3538,6 +3597,7 @@ class UserSpot {
 class OtherUserSpot {}
 
 const lifecycleEvents = [];
+let smA1Actor;
 let smA6Actor;
 let smB1Actor;
 let smE3Actor;
@@ -3590,6 +3650,9 @@ class LifecycleActorFactory {
     const actor = new LifecycleActor(actorId, context);
     if (actorId === 'sm-a6-actor') {
       smA6Actor = actor;
+    }
+    if (actorId === 'sm-a1-actor') {
+      smA1Actor = actor;
     }
     if (actorId === 'sm-b1-actor') {
       smB1Actor = actor;

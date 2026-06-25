@@ -22,7 +22,10 @@
 
 ## public API/harness 대기
 
-- `SM-A1`: entry spot dispatch/request evidence Node runner와 marker가 아직 없다.
+- `SM-A1`: same-process public actor manager와 actor `context.joinEntrySpot(...)`, Entry Spot
+  `onActorJoin(...)`, public `ZLINK_SPOT_MANAGER` 기반 user Spot 생성 self-check는 runner에 있다.
+  그러나 공통 시나리오가 요구하는 consumer의 registry-resolved entry spot join/request 경로 evidence는
+  아직 없어 완료 marker로 올리지 않는다.
 - `SM-A2`: 반복 state mutation과 concurrency consistency Node runner와 marker가 아직 없다.
 - `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
 - `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.

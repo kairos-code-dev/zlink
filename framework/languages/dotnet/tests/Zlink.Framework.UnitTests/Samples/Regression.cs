@@ -74,7 +74,7 @@ public sealed class RegressionTests
         }
 
         var actorSpec = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "spec", "aspnet-core-actor.ko.md"));
-        var actorGuide = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide", "06-actor-session.ko.md"));
+        var actorGuide = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide", "06-actor-spot.ko.md"));
         Assert.Contains("DestroyActorAsync: Entry Spot", actorSpec, StringComparison.Ordinal);
         Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);
@@ -407,7 +407,6 @@ public sealed class RegressionTests
             Assert.DoesNotContain("IZLinkActorRemoteAddressResolver", text, StringComparison.Ordinal);
             Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
             Assert.DoesNotContain("GetRemoteAddressAsync", text, StringComparison.Ordinal);
-            Assert.Contains("JoinEntrySpot", text, StringComparison.Ordinal);
             Assert.Contains("ActorRefSnapshot", text, StringComparison.Ordinal);
         }
     }

@@ -46,7 +46,8 @@ final class ConnectorDispatchTest {
 
             connector.dispatch().await();
 
-            assertEquals(0, connector.pendingDispatchCount());
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> connector.pendingDispatchCount() == 0 && handled.get() == 1);
             assertEquals(1, handled.get());
             } finally {
                 connector.close().await();

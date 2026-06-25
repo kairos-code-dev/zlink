@@ -244,8 +244,7 @@ configuration error 로 표현한다.
 | `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotServices_Without_SpotNode` | SpotNode 없는 구성에서는 Spot service 가 DI 에 없다 |
 | `NodesAndServicesTests.AddZLinkFramework_Registers_SpotServices_When_SpotNode_Exists` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
 | `NodesAndServicesTests.AddZLinkFramework_Registers_ActorManager_When_SpotNode_And_ActorFactory_Exist` | SpotNode 와 actor factory 가 있으면 `IZLinkActorManager` 가 등록된다 |
-| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotPublisher_Without_PublisherCapability` | SpotNode 가 있어도 publisher 역할이 없으면 Spot publisher service 는 DI 에 없다 |
-| `NodesAndServicesTests.AddZLinkFramework_Registers_SpotPublisher_When_PublisherCapability_Exists` | Spot publisher 역할이 있으면 Spot publisher service 가 DI 에 등록된다 |
+| `NodesAndServicesTests.AddZLinkFramework_Registers_SpotPublisher_Client` | Spot publisher 역할이 있으면 Spot publisher service 가 DI 에 등록된다 |
 | `NodesAndServicesTests.AddZLinkFramework_Registers_BoundSession_Factory` | bound session factory 는 framework runtime 과 함께 등록된다 |
 | `NodesAndServicesTests.AddZLinkFramework_Allows_SpotRemoteAddressResolver_Without_SpotNode` | remote address 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
 | `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotOutbound_With_Resolver_Only` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |

@@ -276,7 +276,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
             ZLinkSpotPublisherClient publisher =
                 context.getBean(ZLinkSpotPublisherClient.class);
-            publisher.publishSpot("game.stage", "stage.events", "opened")
+            publisher.publishSpot("game", "stage.events", "opened")
                 .packetName("StageOpened")
                 .submit()
                 .toCompletableFuture()
@@ -793,7 +793,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class SpotPublisherConfig {
         @Bean
         ZLinkFrameworkConfigurer spotPublisherConfigurer() {
-            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enablePubSub("inproc://spot-pub");}; };
+            return options -> {
+                var mesh = options.addSpotMesh("game");
+                mesh.enablePubSub("inproc://spot-pub");
+                mesh.addSpotFactory(GameSpot.class);
+            };
         }
     }
 

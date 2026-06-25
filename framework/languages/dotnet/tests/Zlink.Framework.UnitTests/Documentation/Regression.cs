@@ -79,13 +79,14 @@ public sealed class RegressionTests
         "03-concepts.ko.md",
         "04-channel-messaging.ko.md",
         "05-spot.ko.md",
-        "06-actor-session.ko.md",
-        "07-stream.ko.md",
-        "08-registry.ko.md",
-        "09-monitoring.ko.md",
-        "10-feature-map.ko.md",
-        "11-interface-catalog.ko.md",
-        "12-grpc-alternative.ko.md",
+        "06-actor-spot.ko.md",
+        "07-actor-session.ko.md",
+        "08-stream.ko.md",
+        "09-registry.ko.md",
+        "10-monitoring.ko.md",
+        "11-feature-map.ko.md",
+        "12-interface-catalog.ko.md",
+        "13-grpc-alternative.ko.md",
     ];
 
     private static readonly string[] GuideCaseStudyDocuments =

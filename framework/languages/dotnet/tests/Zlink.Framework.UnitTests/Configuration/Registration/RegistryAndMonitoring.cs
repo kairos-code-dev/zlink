@@ -145,7 +145,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         Assert.NotNull(registration.SpotDiscovery);
         Assert.Contains("profile", registration.Channels.Keys);
         Assert.Contains("stream.node", registration.StreamNodes.Keys);
-        Assert.Contains("stage-node", registration.SpotNodes.Keys);
+        Assert.Contains("game.stage", registration.SpotNodes.Keys);
     }
 
     [Fact]

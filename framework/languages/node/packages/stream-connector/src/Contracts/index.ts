@@ -4,6 +4,7 @@ export {
   ZlinkStreamCompression,
   ZlinkStreamDispatchMode,
   ZlinkStreamMessageKind,
+  ZlinkStreamHeaderFlags,
   ZlinkStreamErrorCode,
   ZlinkStreamConnectionState
 } from './ZlinkStreamEnums';

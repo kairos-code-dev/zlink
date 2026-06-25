@@ -65,10 +65,10 @@ public sealed class ZLinkAsyncSubmitterTests
 
         var task = submitter.Async(
             Message.From("payload"),
-            parts =>
+            message =>
             {
                 submitted++;
-                using var moved = parts[0].Move();
+                Assert.Equal("payload", message.GetString());
                 return submitted == 3;
             });
 

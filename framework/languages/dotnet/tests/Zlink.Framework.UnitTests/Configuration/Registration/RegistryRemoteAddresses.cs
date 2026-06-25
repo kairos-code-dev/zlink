@@ -19,6 +19,7 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddSpotMesh("spot");
                 mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+                mesh.EnableRouter("tcp://127.0.0.1:6201");
 
             }
             {
@@ -26,7 +27,7 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
                 routed.EnableServer("tcp://127.0.0.1:6202");
 
             }
-            options.UseRegistrySpotRemoteAddresses("bingo");
+            options.UseRegistrySpotRemoteAddresses("bingo").RouterChannelId = "play";
         });
 
         using var provider = services.BuildServiceProvider();
@@ -98,6 +99,7 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
                 {
                     var mesh = options.AddSpotMesh("spot");
                     mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+                    mesh.EnableRouter("tcp://127.0.0.1:6201");
 
                 }
                 {

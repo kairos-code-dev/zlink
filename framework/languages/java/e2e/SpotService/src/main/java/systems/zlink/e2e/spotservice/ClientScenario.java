@@ -158,12 +158,14 @@ public final class ClientScenario {
 
     private void runActorSession() {
         ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+        ZLinkStreamConnector unbound = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
         try {
             Contracts.ActorProfile profile = new Contracts.ActorProfile(
                 "Player One",
                 7,
                 List.of("alpha", "beta"));
             connector.connect().await();
+            unbound.connect().await();
             Contracts.ActorAuthReply auth = connector
                 .request(new Contracts.ActorAuthRequest("actor-local-1", profile))
                 .await(Contracts.ActorAuthReply.class);
@@ -178,6 +180,11 @@ public final class ClientScenario {
                 .await(Contracts.ActorEchoReply.class);
             Contracts.ActorPush entry = connector.await(entryPush).payload();
             ensure("entry:entry-echo".equals(entryReply.value()), "SM-B1 entry actor request mismatch");
+            ensure(entryReply.requestSeq() == 1, "SM-B3 entry request sequence mismatch");
+            ensure(profile.displayName().equals(entryReply.displayName()), "SM-B3 entry profile display name mismatch");
+            ensure(profile.level() == entryReply.level(), "SM-B3 entry profile level mismatch");
+            ensure(profile.tags().equals(entryReply.tags()), "SM-B3 entry profile tags mismatch");
+            ensure(entry.requestSeq() == 1, "SM-D1 entry push request sequence mismatch");
             ensure("push:entry-echo".equals(entry.value()), "SM-D1 entry push mismatch");
 
             Contracts.ActorJoinReply joined = connector
@@ -189,16 +196,51 @@ public final class ClientScenario {
             ensure(profile.displayName().equals(joined.displayName()), "SM-B3 join payload display name mismatch");
             ensure(profile.level() == joined.level(), "SM-B3 join payload level mismatch");
 
-            var userPush = connector.waitFor(Contracts.ActorPush.class)
+            var unboundPush = unbound.waitFor(Contracts.ActorPush.class)
+                .timeout(Duration.ofMillis(400))
                 .submit(Contracts.ActorPush.class);
-            Contracts.ActorEchoReply userReply = connector
-                .request(new Contracts.ActorEchoRequest("user-echo", 2, profile))
+            var userPush1 = connector.waitFor(Contracts.ActorPush.class)
+                .submit(Contracts.ActorPush.class);
+            Contracts.ActorEchoReply userReply1 = connector
+                .request(new Contracts.ActorEchoRequest("user-echo-1", 2, profile))
                 .metadata("actor-id", "actor-local-1")
                 .await(Contracts.ActorEchoReply.class);
-            Contracts.ActorPush user = connector.await(userPush).payload();
-            ensure("room-a".equals(userReply.spotRid()), "SM-B1 user actor spot mismatch");
-            ensure("user:user-echo".equals(userReply.value()), "SM-B1 user actor request mismatch");
-            ensure("push:user-echo".equals(user.value()), "SM-D1 user push mismatch");
+            Contracts.ActorPush user1 = connector.await(userPush1).payload();
+            ensure("room-a".equals(userReply1.spotRid()), "SM-B1 user actor spot mismatch");
+            ensure("user:user-echo-1".equals(userReply1.value()), "SM-B1 user actor request mismatch");
+            ensure(userReply1.requestSeq() == 2, "SM-B3 user request sequence mismatch");
+            ensure(profile.displayName().equals(userReply1.displayName()), "SM-B3 user profile display name mismatch");
+            ensure(profile.level() == userReply1.level(), "SM-B3 user profile level mismatch");
+            ensure(profile.tags().equals(userReply1.tags()), "SM-B3 user profile tags mismatch");
+            ensure(user1.requestSeq() == 2, "SM-D1 user push request sequence mismatch");
+            ensure("push:user-echo-1".equals(user1.value()), "SM-D1 user push mismatch");
+            expectFailure(() -> awaitUnchecked(unbound, unboundPush));
+
+            var userPush2 = connector.waitFor(Contracts.ActorPush.class)
+                .submit(Contracts.ActorPush.class);
+            Contracts.ActorEchoReply userReply2 = connector
+                .request(new Contracts.ActorEchoRequest("user-echo-2", 3, profile))
+                .metadata("actor-id", "actor-local-1")
+                .await(Contracts.ActorEchoReply.class);
+            Contracts.ActorPush user2 = connector.await(userPush2).payload();
+            ensure(userReply2.requestSeq() == 3, "SM-B7 second packet request sequence mismatch");
+            ensure(user2.requestSeq() == 3, "SM-B7 second push request sequence mismatch");
+
+            var userPush3 = connector.waitFor(Contracts.ActorPush.class)
+                .submit(Contracts.ActorPush.class);
+            Contracts.ActorEchoReply userReply3 = connector
+                .request(new Contracts.ActorEchoRequest("user-echo-3", 4, profile))
+                .metadata("actor-id", "actor-local-1")
+                .await(Contracts.ActorEchoReply.class);
+            Contracts.ActorPush user3 = connector.await(userPush3).payload();
+            ensure(userReply3.requestSeq() == 4, "SM-B7 third packet request sequence mismatch");
+            ensure(user3.requestSeq() == 4, "SM-B7 third push request sequence mismatch");
+            ensure(userReply1.handlerSeq() < userReply2.handlerSeq()
+                    && userReply2.handlerSeq() < userReply3.handlerSeq(),
+                "SM-B7 actor packet handler sequence was not preserved");
+            ensure(user1.handlerSeq() < user2.handlerSeq()
+                    && user2.handlerSeq() < user3.handlerSeq(),
+                "SM-B7 actor push sequence was not preserved");
 
             System.out.println("scenario SM-B1 passed");
             System.out.println("scenario SM-B3 passed");
@@ -211,6 +253,20 @@ public final class ClientScenario {
                 connector.close().await();
             } catch (Exception ignored) {
             }
+            try {
+                unbound.close().await();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private static <T> void awaitUnchecked(
+        ZLinkStreamConnector connector,
+        java.util.concurrent.CompletionStage<T> stage) {
+        try {
+            connector.await(stage);
+        } catch (Exception error) {
+            throw new RuntimeException(error);
         }
     }
 

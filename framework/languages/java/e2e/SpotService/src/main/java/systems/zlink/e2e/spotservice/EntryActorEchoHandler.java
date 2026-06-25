@@ -15,14 +15,17 @@ public final class EntryActorEchoHandler {
         int seq = actor.nextSequence();
         spot.record("ActorEntryRequest", actor.actorId() + "/" + request.value() + "#" + seq);
         actor.context().boundSession()
-            .send(new Contracts.ActorPush(actor.actorId(), "entry", "push:" + request.value(), seq))
+            .send(new Contracts.ActorPush(actor.actorId(), "entry", "push:" + request.value(), request.seq(), seq))
             .submit();
         return new Contracts.ActorEchoReply(
             actor.actorId(),
             "entry",
             spot.nodeRid(),
             "entry:" + request.value(),
+            request.seq(),
             seq,
+            request.profile().displayName(),
+            request.profile().level(),
             request.profile().tags());
     }
 }

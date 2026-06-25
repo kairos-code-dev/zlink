@@ -103,7 +103,10 @@ public final class Contracts {
         String spotRid,
         String nodeRid,
         String value,
-        int seq,
+        int requestSeq,
+        int handlerSeq,
+        String displayName,
+        int level,
         List<String> tags) {
     }
 
@@ -111,7 +114,8 @@ public final class Contracts {
         String actorId,
         String spotRid,
         String value,
-        int seq) {
+        int requestSeq,
+        int handlerSeq) {
     }
 
     public record EvidenceEntry(

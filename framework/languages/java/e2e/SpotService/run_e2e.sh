@@ -309,6 +309,16 @@ grep -q '"value":"route-mesh-normal"' "${log_dir}/play-a-evidence.json"
 grep -q '"marker":"ActorCreated"' "${log_dir}/play-a-evidence.json"
 grep -q '"marker":"ActorUserJoined"' "${log_dir}/play-a-evidence.json"
 grep -q '"marker":"ActorUserRequest"' "${log_dir}/play-a-evidence.json"
+grep -q 'ActorCreated.*ActorUserJoined.*ActorUserRequest' "${log_dir}/play-a-evidence.json"
+grep -q 'user-echo-1.*user-echo-2.*user-echo-3' "${log_dir}/play-a-evidence.json"
+if grep -q '"marker":"ActorCreated"' "${log_dir}/play-b-evidence.json"; then
+  echo "unexpected play-b actor creation evidence" >&2
+  exit 1
+fi
+if grep -q '"marker":"ActorUserJoined"' "${log_dir}/play-b-evidence.json"; then
+  echo "unexpected play-b actor join evidence" >&2
+  exit 1
+fi
 grep -q '"marker":"StreamInbound"' "${log_dir}/play-a-evidence.json"
 grep -q "DispatchError" "${log_dir}/play-a-evidence.json"
 grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"

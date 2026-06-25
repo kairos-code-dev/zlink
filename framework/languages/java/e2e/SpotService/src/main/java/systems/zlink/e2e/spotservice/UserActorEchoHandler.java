@@ -15,14 +15,17 @@ public final class UserActorEchoHandler {
         int seq = actor.nextSequence();
         spot.record("ActorUserRequest", actor.actorId() + "/" + request.value() + "#" + seq);
         actor.context().boundSession()
-            .send(new Contracts.ActorPush(actor.actorId(), spot.spotRid(), "push:" + request.value(), seq))
+            .send(new Contracts.ActorPush(actor.actorId(), spot.spotRid(), "push:" + request.value(), request.seq(), seq))
             .submit();
         return new Contracts.ActorEchoReply(
             actor.actorId(),
             spot.spotRid(),
             spot.nodeRid(),
             "user:" + request.value(),
+            request.seq(),
             seq,
+            request.profile().displayName(),
+            request.profile().level(),
             request.profile().tags());
     }
 }

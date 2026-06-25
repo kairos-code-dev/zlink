@@ -115,6 +115,23 @@ start_provider() {
   wait_port "$rid-api" "$endpoint"
 }
 
+start_provider_instance() {
+  local rid="$1"
+  local instance="$2"
+  local endpoint="$3"
+  local registry_router="$4"
+  ZLINK_CPP_E2E_ROLE=provider \
+  ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
+  ZLINK_CPP_E2E_PROVIDER_INSTANCE="$instance" \
+  ZLINK_CPP_E2E_API_ENDPOINT="$endpoint" \
+  ZLINK_CPP_E2E_REGISTRY_ROUTER="$registry_router" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR/$instance" \
+    "$PROVIDER" >"$LOG_DIR/$instance.stdout.log" 2>"$LOG_DIR/$instance.stderr.log" &
+  LAST_PID="$!"
+  PIDS+=("$LAST_PID")
+  wait_port "$instance-api" "$endpoint"
+}
+
 start_embedded_provider() {
   local rid="$1"
   local endpoint="$2"
@@ -260,6 +277,21 @@ kill "${PIDS[@]}" >/dev/null 2>&1 || true
 wait >/dev/null 2>&1 || true
 PIDS=()
 
+read -r R1_PUB R1_ROUTER R1_HTTP R2_PUB R2_ROUTER R2_HTTP A_ENDPOINT B_ENDPOINT <<<"$(ports 8)"
+R1_PUB="tcp://127.0.0.1:$R1_PUB"; R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"; R1_HTTP="http://127.0.0.1:$R1_HTTP"
+R2_PUB="tcp://127.0.0.1:$R2_PUB"; R2_ROUTER="tcp://127.0.0.1:$R2_ROUTER"; R2_HTTP="http://127.0.0.1:$R2_HTTP"
+A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"; B_ENDPOINT="tcp://127.0.0.1:$B_ENDPOINT"
+start_registry dr-a4-reg1 "$R1_PUB" "$R1_ROUTER" "$R1_HTTP" "$R2_PUB"
+start_registry dr-a4-reg2 "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+start_provider_instance api-a api-a-p1 "$A_ENDPOINT" "$R1_ROUTER"
+start_provider_instance api-a api-a-p2 "$B_ENDPOINT" "$R2_ROUTER"
+run_client dr-a4-client-r1 "$R1_ROUTER" "api-a"
+run_client dr-a4-client-r2 "$R2_ROUTER" "api-a"
+echo "scenario DR-A4 passed"
+kill "${PIDS[@]}" >/dev/null 2>&1 || true
+wait >/dev/null 2>&1 || true
+PIDS=()
+
 read -r R1_PUB R1_ROUTER R1_HTTP R2_PUB R2_ROUTER R2_HTTP A_ENDPOINT <<<"$(ports 7)"
 R1_PUB="tcp://127.0.0.1:$R1_PUB"; R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"; R1_HTTP="http://127.0.0.1:$R1_HTTP"
 R2_PUB="tcp://127.0.0.1:$R2_PUB"; R2_ROUTER="tcp://127.0.0.1:$R2_ROUTER"; R2_HTTP="http://127.0.0.1:$R2_HTTP"
@@ -289,6 +321,29 @@ wait_member_peers "$R2_HTTP" 1
 stop_pid "$REG2_PID"
 run_client dr-b2-client "$R1_ROUTER" "api-a"
 echo "scenario DR-B2 passed"
+kill "${PIDS[@]}" >/dev/null 2>&1 || true
+wait >/dev/null 2>&1 || true
+PIDS=()
+
+read -r R1_PUB R1_ROUTER R1_HTTP R2_PUB R2_ROUTER R2_HTTP A_ENDPOINT <<<"$(ports 7)"
+R1_PUB="tcp://127.0.0.1:$R1_PUB"; R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"; R1_HTTP="http://127.0.0.1:$R1_HTTP"
+R2_PUB="tcp://127.0.0.1:$R2_PUB"; R2_ROUTER="tcp://127.0.0.1:$R2_ROUTER"; R2_HTTP="http://127.0.0.1:$R2_HTTP"
+A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"
+start_registry dr-b3-reg1 "$R1_PUB" "$R1_ROUTER" "$R1_HTTP" "$R2_PUB"
+start_registry dr-b3-reg2-a "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+REG2_PID="$LAST_PID"
+start_provider api-a "$A_ENDPOINT" "$R1_ROUTER,$R2_ROUTER"
+wait_member_peers "$R1_HTTP" 1
+wait_member_peers "$R2_HTTP" 1
+for cycle in 1 2; do
+  stop_pid "$REG2_PID"
+  run_client "dr-b3-client-r1-down-$cycle" "$R1_ROUTER" "api-a"
+  start_registry "dr-b3-reg2-b-$cycle" "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+  REG2_PID="$LAST_PID"
+  wait_member_peers "$R2_HTTP" 1
+  run_client "dr-b3-client-r2-up-$cycle" "$R2_ROUTER" "api-a"
+done
+echo "scenario DR-B3 passed"
 kill "${PIDS[@]}" >/dev/null 2>&1 || true
 wait >/dev/null 2>&1 || true
 PIDS=()

@@ -143,7 +143,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                         "discovery registry request failed: "
                           + std::string (task.result ().error ()
                                            ? task.result ().error ()->what ()
-                                           : "unknown"));
+                                          : "unknown"));
                 seen.insert (task.result ().value ().provider_rid);
                 if (!expected.empty ()) {
                     bool complete = true;

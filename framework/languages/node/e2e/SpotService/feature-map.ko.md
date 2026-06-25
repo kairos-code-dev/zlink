@@ -24,7 +24,8 @@
 - `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
 - `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.
 - `SM-A5`: Stage wrapper Node runner와 marker가 아직 없다.
-- `SM-A8`: worker offload Node runner와 marker가 아직 없다.
+- `SM-A8`: public `context.runWorker(...).onCompleted(...)` self-check는 runner에 있으나, 공통
+  시나리오가 요구하는 "worker 실행 중 같은 Spot/노드로 들어오는 다른 request" marker는 아직 없다.
 - `SM-B1`: local actor join Node runner와 marker가 아직 없다.
 - `SM-B2`: remote actor join Node runner와 marker가 아직 없다.
 - `SM-B3`: actor payload fidelity Node runner와 marker가 아직 없다.

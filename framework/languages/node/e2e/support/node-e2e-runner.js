@@ -1578,6 +1578,7 @@ async function spotService() {
             .addSpotFactory(LifecycleSpot)
             .addSpotFactory(TimerSpot)
             .addSpotFactory(IdleCloseSpot)
+            .addSpotFactory(WorkerSpot)
             .actorFactory('sm-a6-player', LifecycleActorFactory)
           .build())
       ],
@@ -1622,6 +1623,33 @@ async function spotService() {
     const afterMismatch = await spotManager.getOrCreate(UserSpot, 'sm-a7-spot', { owner: 'u1' });
     assert.equal(afterMismatch.state, 'existing');
     marker('SM-A7');
+
+    workerEvents.length = 0;
+    releaseWorker = undefined;
+    await spotManager.getOrCreate(WorkerSpot, 'sm-a8-spot', { owner: 'u1' });
+    let workerDone;
+    await spotManager.executeOnSpot(WorkerSpot, 'sm-a8-spot', (spot) => {
+      workerDone = spot.startWorker();
+    });
+    await waitFor(() => typeof releaseWorker === 'function' && workerEvents.includes('work:start'));
+    await spotManager.executeOnSpot(WorkerSpot, 'sm-a8-spot', (spot) => {
+      spot.recordFastPath();
+    });
+    assert.equal(workerEvents.includes('completed:worker-result:fast'), false);
+    releaseWorker();
+    await Promise.race([
+      workerDone,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('SM-A8 worker completion timed out.')), 3000))
+    ]);
+    assert.deepEqual(workerEvents, [
+      'scheduled',
+      'work:start',
+      'fast',
+      'work:end',
+      'completed:worker-result:fast'
+    ]);
+    assert.equal(await spotManager.close('sm-a8-spot'), true);
+    selfCheck('SM-WORKER-OFFLOAD');
 
     timerEvents.length = 0;
     await spotManager.getOrCreate(TimerSpot, 'sm-e2-spot', { owner: 'u1' });
@@ -2215,6 +2243,46 @@ class IdleCloseTimerHandler {
     }
     const closed = await spot.context.close();
     idleEvents.push(`close-after-leave:${closed}`);
+  }
+}
+
+const workerEvents = [];
+let releaseWorker;
+
+class WorkerSpot {
+  constructor(context) {
+    this.context = context;
+    this.state = [];
+  }
+
+  startWorker() {
+    let resolveCompletion;
+    let rejectCompletion;
+    const completion = new Promise((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    this.context.runWorker(async () => {
+      workerEvents.push('work:start');
+      await new Promise((resolve) => {
+        releaseWorker = resolve;
+      });
+      workerEvents.push('work:end');
+      return 'worker-result';
+    }).onCompleted((result) => {
+      workerEvents.push(`completed:${result}:${this.state.join(',')}`);
+      this.state.push(result);
+      resolveCompletion();
+    }, (error) => {
+      rejectCompletion(error);
+    });
+    workerEvents.push('scheduled');
+    return completion;
+  }
+
+  recordFastPath() {
+    this.state.push('fast');
+    workerEvents.push('fast');
   }
 }
 

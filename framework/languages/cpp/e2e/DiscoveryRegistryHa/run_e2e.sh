@@ -115,6 +115,29 @@ start_provider() {
   wait_port "$rid-api" "$endpoint"
 }
 
+start_embedded_provider() {
+  local rid="$1"
+  local endpoint="$2"
+  local registry_pub="$3"
+  local registry_router="$4"
+  local http="$5"
+  ZLINK_CPP_E2E_ROLE=provider \
+  ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
+  ZLINK_CPP_E2E_PROVIDER_INSTANCE="$rid" \
+  ZLINK_CPP_E2E_API_ENDPOINT="$endpoint" \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
+  ZLINK_CPP_E2E_EMBEDDED_REGISTRY_PUB="$registry_pub" \
+  ZLINK_CPP_E2E_EMBEDDED_REGISTRY_ROUTER="$registry_router" \
+  ZLINK_CPP_E2E_REGISTRY_ROUTER="$registry_router" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR/$rid" \
+    "$PROVIDER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  LAST_PID="$!"
+  PIDS+=("$LAST_PID")
+  wait_port "$rid-api" "$endpoint"
+  wait_port "$rid-registry-router" "$registry_router"
+  wait_port "$rid-http" "$http"
+}
+
 run_client() {
   local name="$1"
   local registry_router="$2"
@@ -266,3 +289,15 @@ wait_member_peers "$R2_HTTP" 1
 run_client dr-c2-client "$R2_ROUTER" "api-a"
 echo "scenario DR-C2 passed"
 echo "scenario DR-D2 passed"
+kill "${PIDS[@]}" >/dev/null 2>&1 || true
+wait >/dev/null 2>&1 || true
+PIDS=()
+
+read -r R1_PUB R1_ROUTER HTTP A_ENDPOINT <<<"$(ports 4)"
+R1_PUB="tcp://127.0.0.1:$R1_PUB"
+R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"
+HTTP="http://127.0.0.1:$HTTP"
+A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"
+start_embedded_provider api-a "$A_ENDPOINT" "$R1_PUB" "$R1_ROUTER" "$HTTP"
+run_client dr-d1-client "$R1_ROUTER" "api-a"
+echo "scenario DR-D1 passed"

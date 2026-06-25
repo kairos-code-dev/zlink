@@ -237,6 +237,8 @@ int main (int argc, char **argv)
     const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto embedded_registry_pub = env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_PUB");
+    const auto embedded_registry_router = env_or ("ZLINK_CPP_E2E_EMBEDDED_REGISTRY_ROUTER");
     const auto server_weight = parse_int_env ("ZLINK_CPP_E2E_SERVER_WEIGHT");
     const auto max_message_size = parse_int_env ("ZLINK_CPP_E2E_MAX_MESSAGE_SIZE");
 
@@ -257,6 +259,9 @@ int main (int argc, char **argv)
         options.handlers ()
           .add<profile_request_handler_t> (e2e::handler_group)
           .add_send<profile_command_handler_t> (e2e::handler_group);
+        if (!embedded_registry_pub.empty () && !embedded_registry_router.empty ()) {
+            options.enable_registry (embedded_registry_pub, embedded_registry_router);
+        }
         for (const auto &endpoint : split_csv (registry_router)) {
             options.use_discovery ().add_registry_endpoint (endpoint);
         }

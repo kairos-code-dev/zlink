@@ -154,10 +154,11 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         try {
             auto scope = services.create_scope ();
             auto &routes = scope.get_required<zlink::framework::route_client_t> ();
+            auto &channels = scope.get_required<zlink::framework::channel_client_t> ();
             auto &actors = scope.get_required<zlink::framework::session_actor_manager_t> ();
             auto &channel_state = scope.get_required<client_channel_state_t> ();
             auto &publisher = scope.get_required<zlink::framework::spot_publisher_client_t> ();
-            run (routes, actors, channel_state, publisher);
+            run (routes, channels, actors, channel_state, publisher);
             passed = true;
         }
         catch (const std::exception &error) {
@@ -220,6 +221,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     }
 
     void run (zlink::framework::route_client_t &routes,
+              zlink::framework::channel_client_t &channels,
               zlink::framework::session_actor_manager_t &actors,
               client_channel_state_t &channel_state,
               zlink::framework::spot_publisher_client_t &publisher)
@@ -233,6 +235,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             run_stream_session_scenario (routes, "SM-D2", "play-b", "stream-remote",
                                          "b-stream-room", "stream-remote-push");
             run_multi_stream_session_scenario (routes);
+            run_stream_and_channel_mixed_scenario (routes, channels);
             run_stream_reconnect_migration_scenario (routes);
             return;
         }
@@ -864,6 +867,69 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario SM-D6 passed\n";
     }
 
+    void run_stream_and_channel_mixed_scenario (zlink::framework::route_client_t &routes,
+                                                zlink::framework::channel_client_t &channels)
+    {
+        const auto actor_id = std::string ("stream-channel-mixed-d11");
+        auto actor = ensure_actor_ref (routes, "play-a", actor_id, actor_id + "-display");
+
+        auto core = make_stream_connector ();
+        core.codecs ().add_json ();
+        auto stream = zlink::stream_e2e_client::use (core);
+        auto connected = stream.connect ().submit ();
+        ensure (static_cast<bool> (connected), "SM-D11 stream connect failed");
+
+        auto auth =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (auth), "SM-D11 stream auth failed: " + stream_error_text (auth));
+
+        auto joined = zlink::stream_e2e_client::codecs::request (
+                        stream, e2e::join_req_t{.key = "a-stream-channel-mixed",
+                                                .actor_id = actor_id,
+                                                .display_name = actor_id + "-display",
+                                                .level = 91,
+                                                .tags = {"stream", "SM-D11"}})
+                        .packet_name ("JoinReq")
+                        .timeout (std::chrono::milliseconds (5000))
+                        .async<e2e::join_res_t> ()
+                        .result ();
+        ensure (static_cast<bool> (joined),
+                "SM-D11 stream join failed: " + stream_error_text (joined));
+
+        auto stream_request = std::async (std::launch::async, [&] {
+            return zlink::stream_e2e_client::codecs::request (
+                     stream, e2e::state_req_t{.op = "add", .amount = 11})
+              .packet_name ("StateReq")
+              .timeout (std::chrono::milliseconds (5000))
+              .async<e2e::state_res_t> ()
+              .result ();
+        });
+        auto channel_request = std::async (std::launch::async, [&] {
+            return channels
+              .request (e2e::api_channel, e2e::channel_echo_req_t{"sm-d11-channel"})
+              .timeout (std::chrono::milliseconds (5000))
+              .async<e2e::channel_echo_res_t> ()
+              .result ();
+        });
+
+        const auto stream_reply = stream_request.get ();
+        const auto channel_reply = channel_request.get ();
+        ensure (static_cast<bool> (stream_reply),
+                "SM-D11 stream request failed: " + stream_error_text (stream_reply));
+        ensure (stream_reply.value ().value == 11, "SM-D11 stream reply mismatch");
+        ensure (channel_reply.has_value (), "SM-D11 channel request failed");
+        ensure (channel_reply.value ().value == "channel:sm-d11-channel",
+                "SM-D11 channel reply mismatch");
+
+        (void) stream.close ().submit ();
+        std::cout << "scenario SM-D11 passed\n";
+    }
+
     void run_stream_disconnect_notification_scenario (zlink::framework::route_client_t &routes)
     {
         const auto notified_actor_id = std::string ("stream-disconnect-d5-notified");
@@ -1442,10 +1508,14 @@ int main (int argc, char **argv)
           .add<channel_echo_handler_t> (e2e::handler_group)
           .add_send<channel_command_handler_t> (e2e::handler_group);
         options.use_discovery ().add_registry_endpoint (registry_router);
-        options.add_client_server_channel (e2e::api_channel)
-          .enable_server (api_endpoint)
-          .server_routing_id (zlink::routing_id_t::from (std::string ("client-api")))
-          .use_handler_group (e2e::handler_group);
+        auto api_channel = options.add_client_server_channel (e2e::api_channel)
+                             .enable_server (api_endpoint)
+                             .server_routing_id (
+                               zlink::routing_id_t::from (std::string ("client-api")));
+        if (scenario_mode == "stream") {
+            api_channel.enable_client (api_endpoint);
+        }
+        api_channel.use_handler_group (e2e::handler_group);
         options.add_fanout_channel (e2e::publisher_channel).enable_publisher (publisher_endpoint);
         auto route = options.add_route_mesh (e2e::route_channel)
                        .enable_server (route_endpoint)

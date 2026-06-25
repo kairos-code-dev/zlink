@@ -125,16 +125,20 @@ jobs:
           echo "$binPath" >> $env:GITHUB_PATH
 
       - name: Install binding dependencies
-        run: npm --prefix bindings/node install
+        working-directory: bindings/node
+        run: npm install
 
       - name: Install framework dependencies
-        run: npm --prefix framework/languages/node ci
+        working-directory: framework/languages/node
+        run: npm ci
 
       - name: Build Node binding JavaScript surface
-        run: npm --prefix bindings/node run build
+        working-directory: bindings/node
+        run: npm run build
 
       - name: Build Node binding native addon
-        run: npm --prefix bindings/node run rebuild-native
+        working-directory: bindings/node
+        run: npm run rebuild-native
 
       - name: Expose synced core runtime beside Node addon
         if: startsWith(matrix.target.name, 'linux-') || startsWith(matrix.target.name, 'darwin-')
@@ -150,7 +154,8 @@ jobs:
           fi
 
       - name: Run Node framework release gate
-        run: npm --prefix framework/languages/node run verify:ci
+        working-directory: framework/languages/node
+        run: npm run verify:ci
 
   framework-node-cross-language:
     name: cross-language smoke
@@ -185,16 +190,20 @@ jobs:
           echo "ZLINK_RUNTIME_PATH=$runtime" >> "$GITHUB_ENV"
 
       - name: Install binding dependencies
-        run: npm --prefix bindings/node install
+        working-directory: bindings/node
+        run: npm install
 
       - name: Install framework dependencies
-        run: npm --prefix framework/languages/node ci
+        working-directory: framework/languages/node
+        run: npm ci
 
       - name: Build Node binding JavaScript surface
-        run: npm --prefix bindings/node run build
+        working-directory: bindings/node
+        run: npm run build
 
       - name: Build Node binding native addon
-        run: npm --prefix bindings/node run rebuild-native
+        working-directory: bindings/node
+        run: npm run rebuild-native
 
       - name: Expose synced core runtime beside Node addon
         run: |
@@ -204,7 +213,8 @@ jobs:
           fi
 
       - name: Run Node framework cross-language smoke
-        run: npm --prefix framework/languages/node run verify:cross-language
+        working-directory: framework/languages/node
+        run: npm run verify:cross-language
 
   framework-node-gate:
     name: release-gate

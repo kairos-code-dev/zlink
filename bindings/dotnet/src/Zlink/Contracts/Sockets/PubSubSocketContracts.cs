@@ -70,6 +70,17 @@ public interface IPubSocket : IPublisherSocket
     new PubSocketOptions Options { get; }
 
     /// <summary>
+    /// Sets the routing id used to identify this publisher socket. Apply before
+    /// binding or connecting so peers observe the configured identity.
+    /// </summary>
+    void SetRoutingId(RoutingId routingId);
+
+    /// <summary>
+    /// Gets the routing id currently assigned to this publisher socket.
+    /// </summary>
+    RoutingId GetRoutingId();
+
+    /// <summary>
     /// Attaches a discovery service so publishes can reach discovered
     /// subscribers without manual connect.
     /// </summary>
@@ -86,6 +97,17 @@ public interface ISubSocket : ISubscriberSocket
     /// Gets the SUB-specific typed options facade.
     /// </summary>
     new SubSocketOptions Options { get; }
+
+    /// <summary>
+    /// Sets the routing id used to identify this subscriber socket. Apply before
+    /// binding or connecting so peers observe the configured identity.
+    /// </summary>
+    void SetRoutingId(RoutingId routingId);
+
+    /// <summary>
+    /// Gets the routing id currently assigned to this subscriber socket.
+    /// </summary>
+    RoutingId GetRoutingId();
 
     /// <summary>
     /// Attaches a discovery service so subscriptions can reach discovered

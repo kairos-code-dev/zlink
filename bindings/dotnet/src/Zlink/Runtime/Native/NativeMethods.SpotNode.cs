@@ -21,6 +21,14 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_set_pub_routing_id(
+        IntPtr node, IntPtr data, nuint size);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_set_sub_routing_id(
+        IntPtr node, IntPtr data, nuint size);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_set_router_bind(
         IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 

@@ -2176,6 +2176,28 @@ public final class Native {
         }
     }
 
+    public static int spotNodeSetPubRoutingId(MemorySegment node,
+                                              MemorySegment value,
+                                              long len) {
+        try {
+            return (int) NativeSpotSymbols.MH_SPOT_NODE_SET_PUB_ROUTING_ID.invokeExact(
+                node, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_set_pub_routing_id failed", t);
+        }
+    }
+
+    public static int spotNodeSetSubRoutingId(MemorySegment node,
+                                              MemorySegment value,
+                                              long len) {
+        try {
+            return (int) NativeSpotSymbols.MH_SPOT_NODE_SET_SUB_ROUTING_ID.invokeExact(
+                node, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_set_sub_routing_id failed", t);
+        }
+    }
+
     public static int spotNodeConnectPeer(MemorySegment node, MemorySegment ep) {
         try {
             return (int) NativeSpotSymbols.MH_SPOT_NODE_CONN_PEER.invokeExact(node, ep);

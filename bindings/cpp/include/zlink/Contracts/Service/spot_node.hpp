@@ -105,6 +105,10 @@ class spot_node_t
 
     void set_routing_id (const routing_id_t &routing_id_);
 
+    void set_publisher_routing_id (const routing_id_t &routing_id_);
+
+    void set_subscriber_routing_id (const routing_id_t &routing_id_);
+
     void get_routing_id (routing_id_t &out_) const;
 
     routing_id_t routing_id () const

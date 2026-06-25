@@ -173,6 +173,8 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("spotNodeDestroy", spot_node_destroy),
       ZLINK_METHOD ("spotNodeSetPubBind", spot_node_set_pub_bind),
       ZLINK_METHOD ("spotNodeSetRouterBind", spot_node_set_router_bind),
+      ZLINK_METHOD ("spotNodeSetPubRoutingId", spot_node_set_pub_routing_id),
+      ZLINK_METHOD ("spotNodeSetSubRoutingId", spot_node_set_sub_routing_id),
       ZLINK_METHOD ("spotNodeConnectPeerPub", spot_node_connect_peer),
       ZLINK_METHOD ("spotNodeConnectPeerRidPub", spot_node_connect_peer_rid),
       ZLINK_METHOD ("spotNodeDisconnectPeerPub", spot_node_disconnect_peer),

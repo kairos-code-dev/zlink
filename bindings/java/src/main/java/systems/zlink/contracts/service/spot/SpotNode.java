@@ -50,6 +50,10 @@ public interface SpotNode extends AutoCloseable {
 
     RoutingId getRoutingId();
 
+    void setPublisherRoutingId(RoutingId rid);
+
+    void setSubscriberRoutingId(RoutingId rid);
+
     Spot createSpot();
 
     Spot entrySpot();

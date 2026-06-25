@@ -77,6 +77,8 @@ internal static partial class NativeMethods
         "zlink_spot_node_publisher_new",
         "zlink_spot_node_publisher_publish",
         "zlink_spot_node_publisher_close",
+        "zlink_spot_node_set_pub_routing_id",
+        "zlink_spot_node_set_sub_routing_id",
         "zlink_spot_drain_reply",
         "zlink_spot_drain_channel_reply",
         "zlink_discovery_resolve_actor",

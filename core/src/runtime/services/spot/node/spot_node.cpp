@@ -56,11 +56,15 @@ spot_node_t::spot_node_t (ctx_t *ctx_, zlink_spot_node_mode_t mode_) :
     _lifecycle (ctx_),
     _spot_node_mode (mode_),
     _runtime (NULL),
+    _pub_routing_id_set (false),
+    _sub_routing_id_set (false),
     _send_ready_handler (NULL),
     _send_ready_handler_userdata (NULL),
     _send_ready_signal_armed (false)
 {
     generate_random_uuid_routing_id (&_node_routing_id);
+    memset (&_pub_routing_id, 0, sizeof (_pub_routing_id));
+    memset (&_sub_routing_id, 0, sizeof (_sub_routing_id));
 
     _lifecycle.transition_to (service_state_starting);
 
@@ -148,6 +152,95 @@ int spot_node_t::node_routing_id (zlink_routing_id_t *out_) const
     scoped_lock_t lock (_sync);
     *out_ = _node_routing_id;
     return 0;
+}
+
+int spot_node_t::set_pub_routing_id (const void *data_, size_t size_)
+{
+    if (!data_ || size_ == 0 || size_ > sizeof (_pub_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_routing_id_t next;
+    memset (&next, 0, sizeof (next));
+    next.size = static_cast<uint8_t> (size_);
+    memcpy (next.data, data_, size_);
+
+    {
+        scoped_lock_t lock (_sync);
+        _pub_routing_id = next;
+        _pub_routing_id_set = true;
+    }
+
+    if (_runtime) {
+        if (_runtime->mesh_pub
+            && _runtime->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, next.data, next.size)
+                 != 0)
+            return -1;
+        if (_runtime->local_fanout_xpub
+            && _runtime->local_fanout_xpub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, next.data,
+                                                        next.size)
+                 != 0)
+            return -1;
+    }
+    return 0;
+}
+
+int spot_node_t::set_sub_routing_id (const void *data_, size_t size_)
+{
+    if (!data_ || size_ == 0 || size_ > sizeof (_sub_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_routing_id_t next;
+    memset (&next, 0, sizeof (next));
+    next.size = static_cast<uint8_t> (size_);
+    memcpy (next.data, data_, size_);
+
+    {
+        scoped_lock_t lock (_sync);
+        _sub_routing_id = next;
+        _sub_routing_id_set = true;
+    }
+
+    if (_runtime) {
+        if (_runtime->mesh_xsub
+            && _runtime->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, next.data,
+                                                next.size)
+                 != 0)
+            return -1;
+        if (_runtime->pub_ingress_sub
+            && _runtime->pub_ingress_sub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, next.data,
+                                                      next.size)
+                 != 0)
+            return -1;
+    }
+    return 0;
+}
+
+bool spot_node_t::pub_routing_id (zlink_routing_id_t *out_) const
+{
+    if (!out_)
+        return false;
+
+    scoped_lock_t lock (_sync);
+    if (!_pub_routing_id_set)
+        return false;
+    *out_ = _pub_routing_id;
+    return true;
+}
+
+bool spot_node_t::sub_routing_id (zlink_routing_id_t *out_) const
+{
+    if (!out_)
+        return false;
+
+    scoped_lock_t lock (_sync);
+    if (!_sub_routing_id_set)
+        return false;
+    *out_ = _sub_routing_id;
+    return true;
 }
 
 bool spot_node_t::peer_has_positive_weight (const zlink_routing_id_t *peer_rid_) const

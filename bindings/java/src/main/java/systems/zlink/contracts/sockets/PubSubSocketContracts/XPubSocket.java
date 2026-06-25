@@ -13,6 +13,7 @@ public interface XPubSocket extends Socket {
     void unbind(String endpoint);
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
+    void setRoutingId(RoutingId rid);
     SendOperation publish(String topicId);
     boolean receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags);
     @Override PubSocketOptions options();

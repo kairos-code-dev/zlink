@@ -123,6 +123,14 @@ final class NativeSpotSymbols {
     static final MethodHandle MH_SPOT_NODE_SET_ROUTER_BIND = downcall(
             "zlink_spot_node_set_router_bind",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    static final MethodHandle MH_SPOT_NODE_SET_PUB_ROUTING_ID = downcall(
+            "zlink_spot_node_set_pub_routing_id",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    static final MethodHandle MH_SPOT_NODE_SET_SUB_ROUTING_ID = downcall(
+            "zlink_spot_node_set_sub_routing_id",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     static final MethodHandle MH_SPOT_NODE_CONN_PEER = downcall("zlink_spot_node_connect_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     static final MethodHandle MH_SPOT_NODE_CONN_PEER_RID = downcall("zlink_spot_node_connect_peer_rid",

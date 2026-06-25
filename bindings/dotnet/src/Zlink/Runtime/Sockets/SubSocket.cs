@@ -13,6 +13,16 @@ internal sealed class SubSocket : SubscriberSocketBase, ISubSocket
         Options = new SubSocketOptions(this);
     }
 
+    public void SetRoutingId(RoutingId routingId)
+    {
+        Kernel.SetOption(SocketOptions.RoutingId, routingId.ToBytes());
+    }
+
+    public RoutingId GetRoutingId()
+    {
+        return RoutingId.From(Kernel.GetOption(SocketOptions.RoutingId));
+    }
+
     public void AttachDiscovery(IDiscovery discovery)
     {
         Kernel.AttachDiscovery(SocketInterop.RequireDiscovery(discovery,

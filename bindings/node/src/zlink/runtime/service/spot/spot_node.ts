@@ -97,6 +97,18 @@ export class SpotNode extends NativeHandle {
     });
     this._nodeRoutingId = routingId;
   }
+  setPublisherRoutingId(routingId: RoutingId): void {
+    const normalizedRoutingId = normalizeRoutingId(routingId);
+    configCall('spot node publisher routing id set failed', () => {
+      requireNative().spotNodeSetPubRoutingId(this._native, normalizedRoutingId);
+    });
+  }
+  setSubscriberRoutingId(routingId: RoutingId): void {
+    const normalizedRoutingId = normalizeRoutingId(routingId);
+    configCall('spot node subscriber routing id set failed', () => {
+      requireNative().spotNodeSetSubRoutingId(this._native, normalizedRoutingId);
+    });
+  }
   get routingId(): RoutingId {
     this._nodeRoutingId = RoutingId.from(configCall('spot node routing id get failed', () =>
       requireNative().handleGetRoutingId(this._native) as Buffer

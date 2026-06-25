@@ -54,6 +54,14 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     void SetRoutingId(RoutingId routingId);
     /// <summary>
+    /// Sets the local SPOT publisher socket routing id.
+    /// </summary>
+    void SetPublisherRoutingId(RoutingId routingId);
+    /// <summary>
+    /// Sets the local SPOT subscriber socket routing id.
+    /// </summary>
+    void SetSubscriberRoutingId(RoutingId routingId);
+    /// <summary>
     /// Sets the router bind.
     /// </summary>
     void SetRouterBind(string endpoint);

@@ -13,6 +13,16 @@ internal sealed class PubSocket : PublisherSocketBase, IPubSocket
         Options = new PubSocketOptions(this);
     }
 
+    public void SetRoutingId(RoutingId routingId)
+    {
+        Kernel.SetOption(SocketOptions.RoutingId, routingId.ToBytes());
+    }
+
+    public RoutingId GetRoutingId()
+    {
+        return RoutingId.From(Kernel.GetOption(SocketOptions.RoutingId));
+    }
+
     public void AttachDiscovery(IDiscovery discovery)
     {
         Kernel.AttachDiscovery(SocketInterop.RequireDiscovery(discovery,

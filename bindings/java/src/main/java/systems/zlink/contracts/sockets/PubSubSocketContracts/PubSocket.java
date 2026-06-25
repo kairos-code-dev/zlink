@@ -14,6 +14,7 @@ public interface PubSocket extends Socket {
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
     void attachDiscovery(Discovery discovery);
+    void setRoutingId(RoutingId rid);
     SendOperation publish(String topicId);
     @Override PubSocketOptions options();
 }

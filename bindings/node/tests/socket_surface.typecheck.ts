@@ -136,6 +136,8 @@ const spotNode = zlink.createSpotNode(ctx);
 spotNode.setTlsServer('cert', 'key');
 spotNode.setTlsClient('ca', 'host');
 spotNode.setRoutingId(routingId);
+spotNode.setPublisherRoutingId(routingId);
+spotNode.setSubscriberRoutingId(routingId);
 spotNode.routingId;
 const spot = spotNode.createSpot();
 const actor = spotNode.createActor('typed-actor');

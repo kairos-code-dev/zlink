@@ -1671,6 +1671,42 @@ napi_value spot_node_set_router_bind (napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_node_set_pub_routing_id (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &node);
+    zlink_routing_id_t routing_id;
+    if (!parse_routing_id_value (env, argv[1], &routing_id))
+        return NULL;
+    int rc = zlink_spot_node_set_pub_routing_id (node, routing_id.data, routing_id.size);
+    if (rc != 0)
+        return throw_last_error (env, "spot_node_set_pub_routing_id failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value spot_node_set_sub_routing_id (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &node);
+    zlink_routing_id_t routing_id;
+    if (!parse_routing_id_value (env, argv[1], &routing_id))
+        return NULL;
+    int rc = zlink_spot_node_set_sub_routing_id (node, routing_id.data, routing_id.size);
+    if (rc != 0)
+        return throw_last_error (env, "spot_node_set_sub_routing_id failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
 napi_value spot_node_connect_peer (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];

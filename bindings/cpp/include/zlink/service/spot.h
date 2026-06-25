@@ -198,6 +198,12 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_router_bind (void *node,
  */
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_pub_bind (void *node, const char *endpoint);
 
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_pub_routing_id (
+  void *node, const void *data, size_t size);
+
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_sub_routing_id (
+  void *node, const void *data, size_t size);
+
 /**
  * @brief Connect to a peer SPOT node endpoint (mesh topology).
  */

@@ -83,6 +83,46 @@ internal sealed partial class SpotNode : ISpotNode
         }
     }
 
+    public void SetPublisherRoutingId(RoutingId routingId)
+    {
+        SetSpotPlaneRoutingId(routingId,
+            static (handle, data, size) =>
+                NativeMethods.zlink_spot_node_set_pub_routing_id(handle, data, size));
+    }
+
+    public void SetSubscriberRoutingId(RoutingId routingId)
+    {
+        SetSpotPlaneRoutingId(routingId,
+            static (handle, data, size) =>
+                NativeMethods.zlink_spot_node_set_sub_routing_id(handle, data, size));
+    }
+
+    private delegate int SpotNodeRoutingIdSetter(
+        IntPtr handle,
+        IntPtr data,
+        nuint size);
+
+    private void SetSpotPlaneRoutingId(
+        RoutingId routingId,
+        SpotNodeRoutingIdSetter setter)
+    {
+        EnsureNotDisposed();
+        if (setter == null)
+            throw new ArgumentNullException(nameof(setter));
+        byte[] routingIdBytes = routingId.ToByteArray();
+        unsafe
+        {
+            fixed (byte* routingIdPtr = routingIdBytes)
+            {
+                int rc = setter(
+                    _handle,
+                    (IntPtr)routingIdPtr,
+                    (nuint)routingIdBytes.Length);
+                ZlinkException.ThrowConfigIfError(rc);
+            }
+        }
+    }
+
     public RoutingId RoutingId
     {
         get

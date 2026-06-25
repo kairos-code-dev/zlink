@@ -240,7 +240,9 @@ export interface ServiceNativeBinding {
   spotNodeSetDiscovery: (node: NativeHandle, discovery: NativeHandle) => void;
   spotNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
   spotNodeSetPubBind: (node: NativeHandle, endpoint: string) => void;
+  spotNodeSetPubRoutingId: (node: NativeHandle, routingId: Buffer) => void;
   spotNodeSetRouterBind: (node: NativeHandle, endpoint: string) => void;
+  spotNodeSetSubRoutingId: (node: NativeHandle, routingId: Buffer) => void;
   spotNodeSetTlsClient: (
     node: NativeHandle,
     ca: string,

@@ -268,6 +268,37 @@ public final class NativeSpotNode implements SpotNode {
         }
     }
 
+    public void setPublisherRoutingId(RoutingId rid) {
+        Objects.requireNonNull(rid, "rid");
+        ensureOpen();
+        setRoleRoutingId(rid, true);
+    }
+
+    public void setSubscriberRoutingId(RoutingId rid) {
+        Objects.requireNonNull(rid, "rid");
+        ensureOpen();
+        setRoleRoutingId(rid, false);
+    }
+
+    private void setRoleRoutingId(RoutingId rid, boolean publisher) {
+        byte[] value = InternalAccess.routingIdTrustedBytes(rid);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(value.length);
+            if (value.length > 0) {
+                MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeValue,
+                  0, value.length);
+            }
+            int rc = publisher
+                ? Native.spotNodeSetPubRoutingId(handle, nativeValue, value.length)
+                : Native.spotNodeSetSubRoutingId(handle, nativeValue, value.length);
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(publisher
+                    ? "zlink_spot_node_set_pub_routing_id"
+                    : "zlink_spot_node_set_sub_routing_id");
+            }
+        }
+    }
+
     /** Returns the current logical routing id for this spot node. */
     public RoutingId getRoutingId() {
         ensureOpen();

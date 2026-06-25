@@ -208,6 +208,28 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
         state_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, node_rid.data,
                                              node_rid.size);
     }
+    zlink_routing_id_t mesh_pub_rid;
+    memset (&mesh_pub_rid, 0, sizeof (mesh_pub_rid));
+    if (runtime_ && runtime_->owner && runtime_->owner->pub_routing_id (&mesh_pub_rid)
+        && mesh_pub_rid.size > 0) {
+        if (state_->mesh_pub)
+            state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, mesh_pub_rid.data,
+                                          mesh_pub_rid.size);
+        if (state_->fanout)
+            state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, mesh_pub_rid.data,
+                                        mesh_pub_rid.size);
+    }
+    zlink_routing_id_t mesh_sub_rid;
+    memset (&mesh_sub_rid, 0, sizeof (mesh_sub_rid));
+    if (runtime_ && runtime_->owner && runtime_->owner->sub_routing_id (&mesh_sub_rid)
+        && mesh_sub_rid.size > 0) {
+        if (state_->mesh_xsub)
+            state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, mesh_sub_rid.data,
+                                           mesh_sub_rid.size);
+        if (state_->pub_ingress_sub)
+            state_->pub_ingress_sub->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, mesh_sub_rid.data,
+                                                 mesh_sub_rid.size);
+    }
     int mesh_xsub_rcvhwm = pubsub_admission_hwm;
     int mesh_pub_sndhwm = pubsub_admission_hwm;
     int peer_ctrl_rcvhwm = spot_internal_peer_ctrl_rcvhwm_default;

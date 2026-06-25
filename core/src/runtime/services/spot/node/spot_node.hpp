@@ -58,6 +58,10 @@ class spot_node_t : public discovery_observer_t
     bool routed_enabled () const;
     int set_node_routing_id (const void *data_, size_t size_);
     int node_routing_id (zlink_routing_id_t *out_) const;
+    int set_pub_routing_id (const void *data_, size_t size_);
+    int set_sub_routing_id (const void *data_, size_t size_);
+    bool pub_routing_id (zlink_routing_id_t *out_) const;
+    bool sub_routing_id (zlink_routing_id_t *out_) const;
     bool spot_owner_route_synced () const;
     bool actor_route_sync_enabled () const;
     int bind_actor_route (const char *actor_id_, const void *value_, size_t value_size_);
@@ -323,6 +327,10 @@ class spot_node_t : public discovery_observer_t
     spot_runtime_t *_runtime;
     zlink_spot_node_mode_t _spot_node_mode;
     zlink_routing_id_t _node_routing_id;
+    zlink_routing_id_t _pub_routing_id;
+    zlink_routing_id_t _sub_routing_id;
+    bool _pub_routing_id_set;
+    bool _sub_routing_id_set;
     spot_peer_state_t _peer_state;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_handler_userdata;

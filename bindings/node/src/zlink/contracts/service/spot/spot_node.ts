@@ -48,6 +48,10 @@ export interface SpotNode {
   attachDiscovery(discovery: Discovery): void;
   /** Set the node's routing id. */
   setRoutingId(routingId: RoutingId): void;
+  /** Set the routing id used by the node's publisher side. */
+  setPublisherRoutingId(routingId: RoutingId): void;
+  /** Set the routing id used by the node's subscriber side. */
+  setSubscriberRoutingId(routingId: RoutingId): void;
   /** The node's routing id. */
   readonly routingId: RoutingId;
   /** Configure the node as a TLS server; apply before binding. */

@@ -386,6 +386,34 @@ zlink_config_result_t zlink_spot_node_set_pub_bind (void *node_, const char *end
       zlink::spot_node_access_t::set_pub_bind (node, endpoint_));
 }
 
+zlink_config_result_t
+zlink_spot_node_set_pub_routing_id (void *node_, const void *data_, size_t size_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+    if (!admission.acquired ())
+        return zlink::config_result_internal::from_errno (errno);
+    return zlink::config_result_internal::from_rc (node->set_pub_routing_id (data_, size_));
+}
+
+zlink_config_result_t
+zlink_spot_node_set_sub_routing_id (void *node_, const void *data_, size_t size_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    zlink::service_public_api_scope_t admission (node->public_api_guard ());
+    if (!admission.acquired ())
+        return zlink::config_result_internal::from_errno (errno);
+    return zlink::config_result_internal::from_rc (node->set_sub_routing_id (data_, size_));
+}
+
 zlink_config_result_t zlink_spot_node_set_router_bind (void *node_, const char *endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);

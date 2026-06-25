@@ -59,7 +59,7 @@ async function registryMessaging() {
       .packetName('rm.audit')
       .submit();
     await waitFor(() => AuditHandler.messages.some((message) => message.id === 8));
-    marker('RM-C1');
+    selfCheck('RM-MANUAL-REQUEST-SEND');
     marker('RM-A2');
   } finally {
     await app.close();

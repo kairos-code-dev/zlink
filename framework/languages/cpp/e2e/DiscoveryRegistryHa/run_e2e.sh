@@ -184,6 +184,39 @@ start_provider api-a "$A_ENDPOINT" "$R1_ROUTER"
 wait_member_peers "$R1_HTTP" 1
 run_client dr-a1-client "$R1_ROUTER" "api-a"
 echo "scenario DR-A1 passed"
+TOPOLOGY_KEYS="$(python3 - "$R1_HTTP/evidence" <<'PY'
+import json, sys, time, urllib.request
+url = sys.argv[1]
+role_map = {
+    "router": "server",
+    "dealer": "client",
+    "pub": "publisher",
+    "sub": "subscriber",
+    "spot": "spot_node",
+    "invalid": "server",
+}
+deadline = time.time() + 5
+while time.time() < deadline:
+    with urllib.request.urlopen(url, timeout=2) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    keys = sorted(
+        f"{entry.get('channel','')}|{role_map.get(entry.get('role',''), entry.get('role',''))}|{entry.get('endpoint','')}|{entry.get('routing_id','')}"
+        for entry in data.get("topology", [])
+    )
+    if keys:
+        print("\n".join(keys))
+        raise SystemExit(0)
+    time.sleep(0.05)
+raise SystemExit("registry topology was empty")
+PY
+)"
+ZLINK_CPP_E2E_REGISTRY_ROUTER="$R1_ROUTER" \
+ZLINK_CPP_E2E_TOPOLOGY_COMPARE=1 \
+ZLINK_CPP_E2E_EXPECT_TOPOLOGY_KEYS="$TOPOLOGY_KEYS" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR/dr-d4-client" \
+  "$CLIENT" >"$LOG_DIR/dr-d4-client.stdout.log" 2>"$LOG_DIR/dr-d4-client.stderr.log"
+grep -q "scenario DR-D4 passed" "$LOG_DIR/dr-d4-client.stdout.log"
+echo "scenario DR-D4 passed"
 kill "${PIDS[@]}" >/dev/null 2>&1 || true
 wait >/dev/null 2>&1 || true
 PIDS=()

@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace rm = zlink::framework::e2e::registry_messaging;
@@ -33,6 +34,19 @@ std::set<std::string> split_expected (const std::string &text)
     std::stringstream input (text);
     std::string item;
     while (std::getline (input, item, ',')) {
+        if (!item.empty ()) {
+            result.insert (item);
+        }
+    }
+    return result;
+}
+
+std::set<std::string> split_keys (const std::string &text)
+{
+    std::set<std::string> result;
+    std::stringstream input (text);
+    std::string item;
+    while (std::getline (input, item, '\n')) {
         if (!item.empty ()) {
             result.insert (item);
         }
@@ -68,6 +82,37 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<rm::profile_command_t> ();
 }
 
+std::string role_name (zlink::framework::service_role_t role)
+{
+    switch (role) {
+        case zlink::framework::service_role_t::client:
+            return "client";
+        case zlink::framework::service_role_t::server:
+            return "server";
+        case zlink::framework::service_role_t::publisher:
+            return "publisher";
+        case zlink::framework::service_role_t::subscriber:
+            return "subscriber";
+        case zlink::framework::service_role_t::spot_node:
+            return "spot_node";
+        case zlink::framework::service_role_t::stream_endpoint:
+            return "stream_endpoint";
+        default:
+            return "unknown";
+    }
+}
+
+std::set<std::string> topology_keys (
+  const std::vector<zlink::framework::topology_entry_t> &entries)
+{
+    std::set<std::string> result;
+    for (const auto &entry : entries) {
+        result.insert (entry.name + "|" + role_name (entry.role) + "|" + entry.endpoint + "|"
+                       + (entry.routing_id ? entry.routing_id->to_string () : ""));
+    }
+    return result;
+}
+
 class scenario_service_t final : public zlink::framework::hosted_service_t
 {
   public:
@@ -76,6 +121,13 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     void start (zlink::framework::service_provider_t &services) override
     {
         try {
+            if (env_or ("ZLINK_CPP_E2E_TOPOLOGY_COMPARE") == "1") {
+                run_topology_compare ();
+                passed = true;
+                std::cout << "scenario DR-D4 passed\n";
+                _app.stop ();
+                return;
+            }
             auto expected = split_expected (env_or ("ZLINK_CPP_E2E_EXPECT_PROVIDERS"));
             const auto attempts = std::stoi (env_or ("ZLINK_CPP_E2E_REQUEST_ATTEMPTS", "40"));
             auto &channels = services.get_required<zlink::framework::channel_client_t> ();
@@ -124,6 +176,43 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     bool passed = false;
 
   private:
+    void run_topology_compare ()
+    {
+        const auto expected_keys =
+          split_keys (env_or ("ZLINK_CPP_E2E_EXPECT_TOPOLOGY_KEYS"));
+        ensure (!expected_keys.empty (), "DR-D4 expected topology keys are required");
+        zlink::framework::registry_query_client_t remote_client;
+        auto connected = remote_client.connect (env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"));
+        ensure (static_cast<bool> (connected),
+                "DR-D4 remote registry query connect failed");
+
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+        while (std::chrono::steady_clock::now () < deadline) {
+            auto remote_topology = remote_client.topology ();
+            ensure (static_cast<bool> (remote_topology),
+                    "DR-D4 remote registry query failed");
+            const auto remote_keys = topology_keys (remote_topology.value ());
+            if (expected_keys == remote_keys) {
+                remote_client.close ();
+                return;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        }
+        std::cerr << "DR-D4 expected topology keys:\n";
+        for (const auto &key : expected_keys) {
+            std::cerr << "  " << key << "\n";
+        }
+        auto remote_topology = remote_client.topology ();
+        if (remote_topology) {
+            std::cerr << "DR-D4 remote topology keys:\n";
+            for (const auto &key : topology_keys (remote_topology.value ())) {
+                std::cerr << "  " << key << "\n";
+            }
+        }
+        remote_client.close ();
+        throw std::runtime_error ("DR-D4 topology snapshots did not match");
+    }
+
     zlink::framework::app_t &_app;
 };
 

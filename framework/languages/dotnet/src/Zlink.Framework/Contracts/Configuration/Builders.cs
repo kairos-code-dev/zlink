@@ -141,8 +141,6 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint);
 
-    IZLinkSpotNodeBuilder ConnectPubSub(string endpoint);
-
     IZLinkSpotPublisherConfig ConfigurePubSubPublisher();
 
     IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber();

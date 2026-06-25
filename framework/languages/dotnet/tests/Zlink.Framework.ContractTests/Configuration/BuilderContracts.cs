@@ -535,11 +535,6 @@ public sealed class BuilderContracts
             return this;
         }
 
-        public IZLinkSpotNodeBuilder ConnectPubSub(string endpoint)
-        {
-            return this;
-        }
-
         public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
         {
             return new ConnectionAndConfigContracts.SpotPublisherConfig();

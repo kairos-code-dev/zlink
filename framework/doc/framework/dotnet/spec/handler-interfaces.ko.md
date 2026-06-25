@@ -2919,7 +2919,6 @@ public interface IZLinkSpotNodeBuilder
     IZLinkSpotNodeBuilder EnablePubSub(string endpoint);
 
     IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint);
-    IZLinkSpotNodeBuilder ConnectPubSub(string endpoint); // compatibility alias
 
 
     IZLinkSpotPublisherConfig ConfigurePubSubPublisher();

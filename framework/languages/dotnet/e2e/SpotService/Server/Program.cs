@@ -85,7 +85,7 @@ else if (options.Role == "play")
             .AddSpotFactory<ScenarioAlternateSpot>();
         if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))
         {
-            spot.ConnectPubSub(options.ClientSpotPubEndpoint);
+            spot.ConnectPeerPub(options.ClientSpotPubEndpoint);
         }
     });
 }

@@ -69,11 +69,6 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
-    public IZLinkSpotNodeBuilder ConnectPubSub(string endpoint)
-    {
-        return ConnectPeerPub(endpoint);
-    }
-
     public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
     {
         return EnsurePubSub().PublisherConfig;

@@ -1884,7 +1884,7 @@ static IHost CreateRouteEgressHost(
                 .EnableRouter(options.ClientSpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From("client-edge"))
                 .EnablePubSub(options.ClientSpotPubEndpoint)
-                .ConnectPubSub(options.PlayASpotPubEndpoint);
+                .ConnectPeerPub(options.PlayASpotPubEndpoint);
         }
         if (includeControlChannel)
         {

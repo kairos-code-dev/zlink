@@ -6,6 +6,9 @@
 
 - `RL-A1`: provider를 같은 endpoint와 같은 routing id로 정상 종료 후 재시작하고, consumer 재시작 없이
   다운 구간 public failure와 재시작 뒤 `v2` provider reply 정상화를 확인한다.
+- `RL-A3`: public client application 12개가 같은 server endpoint에 요청한 뒤 동시에 종료되고,
+  한꺼번에 재기동해도 모든 client의 request가 다시 성공하며 후속 normalized wave도 안정적으로
+  처리되는지 확인한다.
 - `RL-A5`: 안정 provider를 유지한 채 다른 provider를 세 번 정상 종료/재기동하고, down 구간에는
   안정 provider로만 처리되며 up 후에는 다시 두 provider가 routing 대상이 되는지 확인한다.
 - `RL-B1`: 처리 중인 request가 timeout으로 실패한 뒤, 같은 client의 후속 request가 정상 reply를
@@ -24,7 +27,6 @@
 ## public API/harness 대기
 
 - `RL-A2`: 같은 rid와 새 endpoint로 pod 재스케줄을 검증하는 Node harness가 아직 없다.
-- `RL-A3`: client reconnect storm Node harness가 아직 없다.
 - `RL-A4`: rolling restart Node harness가 아직 없다.
 - `RL-B2`: in-flight request 중 provider crash Node runner와 marker가 아직 없다.
 - `RL-B4`: runtime drain/restore Node marker가 아직 없다.

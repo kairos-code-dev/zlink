@@ -1516,6 +1516,7 @@ function normalizeDiscoveryTopology(entries) {
 async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
   await runResilienceLifecycleServerRestart();
+  await runResilienceLifecycleClientReconnectStorm();
   await runResilienceLifecycleProviderFlapping();
   await runResilienceLifecycleGracefulShutdown();
   await runResilienceLifecycleHighFanout();
@@ -1680,6 +1681,98 @@ async function waitForResilienceRestartProviderRemoved(query, providerEndpoint) 
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`RL-A1 provider remained in topology: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function runResilienceLifecycleClientReconnectStorm() {
+  RLReconnectHandler.requests = [];
+  const endpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const apps = [];
+  const clients = [];
+  const clientCount = 12;
+
+  try {
+    const server = await startApp(
+      nestModule('ResilienceReconnectStormServerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addClientServerChannel('rl.reconnect')
+              .enableServer(endpoint)
+              .routingId('rl-reconnect-server')
+              .addRequestHandler('rl.reconnect.probe', RLReconnectHandler)
+            .build())
+        ],
+        providers: [RLReconnectHandler]
+      })
+    );
+    apps.push(server.app);
+
+    for (let index = 0; index < clientCount; index += 1) {
+      const clientApp = await startResilienceReconnectClient(nestjs, endpoint, `before-${index}`);
+      clients.push(clientApp);
+      apps.push(clientApp.app);
+    }
+
+    const warmupReplies = await Promise.all(clients.map((clientApp, index) =>
+      submitResilienceReconnectProbe(clientApp.app, nestjs, `client-${index}`, 'before')));
+    assert.deepEqual(warmupReplies.map((reply) => reply.clientId).sort(), expectedReconnectClientIds(clientCount));
+    assert.deepEqual(new Set(warmupReplies.map((reply) => reply.phase)), new Set(['before']));
+
+    await Promise.all(clients.map((clientApp) => clientApp.app.close()));
+    for (const clientApp of clients) {
+      apps.splice(apps.indexOf(clientApp.app), 1);
+    }
+    clients.length = 0;
+
+    await Promise.all(Array.from({ length: clientCount }, async (_, index) => {
+      const clientApp = await startResilienceReconnectClient(nestjs, endpoint, `after-${index}`);
+      clients.push(clientApp);
+      apps.push(clientApp.app);
+    }));
+
+    const reconnectReplies = await Promise.all(clients.map((clientApp, index) =>
+      submitUntilReachable(() =>
+        submitResilienceReconnectProbe(clientApp.app, nestjs, `client-${index}`, 'after'))));
+    assert.deepEqual(reconnectReplies.map((reply) => reply.clientId).sort(), expectedReconnectClientIds(clientCount));
+    assert.deepEqual(new Set(reconnectReplies.map((reply) => reply.phase)), new Set(['after']));
+
+    const normalizedReplies = await Promise.all(clients.map((clientApp, index) =>
+      submitResilienceReconnectProbe(clientApp.app, nestjs, `client-${index}`, 'normalized')));
+    assert.deepEqual(normalizedReplies.map((reply) => reply.clientId).sort(), expectedReconnectClientIds(clientCount));
+    assert.deepEqual(new Set(normalizedReplies.map((reply) => reply.phase)), new Set(['normalized']));
+    assert.equal(RLReconnectHandler.requests.length, clientCount * 3);
+    marker('RL-A3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startResilienceReconnectClient(nestjs, endpoint, suffix) {
+  return startApp(
+    nestModule(`ResilienceReconnectStormClient${suffix}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .addClientServerChannel('rl.reconnect')
+            .enableClient(endpoint)
+          .build())
+      ]
+    })
+  );
+}
+
+async function submitResilienceReconnectProbe(app, nestjs, clientId, phase) {
+  const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+  return client
+    .requestToChannel('rl.reconnect', { clientId, phase })
+    .packetName('rl.reconnect.probe')
+    .timeout(1000)
+    .submit();
+}
+
+function expectedReconnectClientIds(clientCount) {
+  return Array.from({ length: clientCount }, (_, index) => `client-${index}`).sort();
 }
 
 async function runResilienceLifecycleProviderFlapping() {
@@ -2296,6 +2389,16 @@ function createRLRestartHandler(generation) {
       return RLRestartHandler.record(payload, generation);
     }
   };
+}
+
+class RLReconnectHandler {
+  static requests = [];
+
+  handle(payload) {
+    const observed = { ...payload, handledBy: 'rl-reconnect-server' };
+    RLReconnectHandler.requests.push(observed);
+    return observed;
+  }
 }
 
 class RLFlapHandler {

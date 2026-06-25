@@ -38,6 +38,12 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 - 검증은 샘플처럼 `ensure` 구문으로 직접 표현한다.
 - 연결 부트스트랩(host 구성)은 샘플의 `HostFactory`/`CreateClient`처럼 얇게 분리해도 되지만,
   request/send/publish/resolve 같은 framework 호출은 시나리오 안에 직접 둔다.
+- E2E 시나리오가 요구하는 기능이 특정 언어에 없더라도, spec 또는 공통 framework spec/guide에
+  공개 계약 근거가 없으면 새 public API를 바로 추가하지 않는다. 다른 언어 구현은 계약 해석을
+  비교하는 참고 자료일 뿐, 그 자체로 새 계약의 근거가 아니다.
+- 공개 계약 근거가 없어서 구현할 수 없는 항목은 내부 helper, private API, raw-frame 우회로
+  메우지 않는다. feature-map에 public contract gap으로 남기고, 필요한 draft/spec/guide 검토를
+  별도 작업으로 분리한다.
 
 ## 2. 표준 프로젝트 구조
 

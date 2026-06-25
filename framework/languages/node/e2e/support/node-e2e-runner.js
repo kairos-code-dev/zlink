@@ -3946,37 +3946,43 @@ async function runResilienceLifecycleMixedWorkloadSoak() {
 async function spotService() {
   const channelEndpoint = uniqueEndpoint('sm-c2-channel');
   const nestjs = loadNest();
+  const framework = loadFramework();
+  const builder = nestjs.zlinkFramework();
+  builder.configureDispatch()
+    .setMessageFlowObserver(SMFlowObserver)
+    .messageFlow(framework.ZLinkMessageFlowLogMode.ErrorsOnly);
+  builder
+    .addClientServerChannel('sm.c2.channel')
+      .enableServer(channelEndpoint)
+      .enableClient(channelEndpoint)
+      .addRequestHandler('sm.c2.channel.request', SMChannelRequestHandler)
+      .addRequestHandler('sm.c2.channel.slow', SMChannelSlowRequestHandler)
+      .addSendHandler('sm.c2.channel.send', SMChannelSendHandler)
+    .addSpotMesh('sm.play')
+      .routingId('sm-node-a')
+      .addEntrySpot(EntrySpot)
+      .addSpotFactory(UserSpot)
+      .addSpotFactory(OtherUserSpot)
+      .addSpotFactory(LifecycleSpot)
+      .addSpotFactory(PayloadFidelitySpot)
+      .addSpotFactory(StageWrapperSpot)
+      .addSpotFactory(TimerSpot)
+      .addSpotFactory(IdleCloseSpot)
+      .addSpotFactory(OverrunPolicySpot)
+      .addSpotFactory(WorkerSpot)
+      .addSpotFactory(OutboundSpot)
+      .actorFactory('sm-a6-player', LifecycleActorFactory);
   const { app } = await startApp(
     nestModule('SpotServiceModule', {
       imports: [
-        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-          .addClientServerChannel('sm.c2.channel')
-            .enableServer(channelEndpoint)
-            .enableClient(channelEndpoint)
-            .addRequestHandler('sm.c2.channel.request', SMChannelRequestHandler)
-            .addRequestHandler('sm.c2.channel.slow', SMChannelSlowRequestHandler)
-            .addSendHandler('sm.c2.channel.send', SMChannelSendHandler)
-          .addSpotMesh('sm.play')
-            .routingId('sm-node-a')
-            .addEntrySpot(EntrySpot)
-            .addSpotFactory(UserSpot)
-            .addSpotFactory(OtherUserSpot)
-            .addSpotFactory(LifecycleSpot)
-            .addSpotFactory(PayloadFidelitySpot)
-            .addSpotFactory(StageWrapperSpot)
-            .addSpotFactory(TimerSpot)
-            .addSpotFactory(IdleCloseSpot)
-            .addSpotFactory(OverrunPolicySpot)
-            .addSpotFactory(WorkerSpot)
-            .addSpotFactory(OutboundSpot)
-            .actorFactory('sm-a6-player', LifecycleActorFactory)
-          .build())
+        nestjs.ZLinkModule.forRoot(builder.build())
       ],
       providers: [
         SMChannelRequestHandler,
         SMChannelSlowRequestHandler,
         SMChannelSendHandler,
-        OutboundSpotRequestHandler
+        OutboundSpotRequestHandler,
+        SMFlowObserver
       ]
     })
   );
@@ -4141,6 +4147,7 @@ async function spotService() {
     marker('SM-A5');
 
     smC2ChannelEvidence.length = 0;
+    SMFlowObserver.events = [];
     const outbound = await spotManager.getOrCreate(OutboundSpot, 'sm-c2-spot', { owner: 'sm-c2' });
     assert.equal(outbound.state, 'created');
     const smC2Reply = await spotManager.executeOnSpot(OutboundSpot, 'sm-c2-spot', (spot) =>
@@ -4158,6 +4165,12 @@ async function spotService() {
     assert.deepEqual(smC2ChannelEvidence.filter((event) => event.kind === 'send'), [
       { kind: 'send', payload: { id: 'sm-c2-send' }, packetName: 'sm.c2.channel.send' }
     ]);
+    await waitFor(() => SMFlowObserver.events.some((event) =>
+      event.surface === framework.ZLinkDispatchErrorSurface.Channel &&
+      event.messageKind === framework.ZLinkDispatchMessageKind.Send &&
+      event.packetName === 'sm.c2.channel.missing.send' &&
+      event.errorReason === framework.ZLinkDispatchErrorReason.HandlerMissing &&
+      event.errorAction === framework.ZLinkDispatchErrorAction.Drop));
     assert.equal(await spotManager.close('sm-c2-spot'), true);
     selfCheck('SM-C2-CHANNEL-OUTBOUND');
 
@@ -4902,6 +4915,14 @@ async function assertInvalidRegistration(nestjs) {
 const entrySpotEvents = [];
 let entrySpotInstance;
 const smC2ChannelEvidence = [];
+
+class SMFlowObserver {
+  static events = [];
+
+  onMessageFlow(event) {
+    SMFlowObserver.events.push(event);
+  }
+}
 
 class SMChannelRequestHandler {
   async handle(payload, context) {

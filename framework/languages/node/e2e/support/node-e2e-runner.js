@@ -1211,6 +1211,7 @@ async function discoveryRegistryHa() {
   await runDiscoveryRegistryHaSingle(nestjs, framework);
   await runDiscoveryRegistryHaPeerTwo(nestjs, framework);
   await runDiscoveryRegistryHaPeerThree(nestjs, framework);
+  await runDiscoveryRegistryHaLateStart(nestjs, framework);
 }
 
 async function runDiscoveryRegistryHaSingle(nestjs, framework) {
@@ -1340,6 +1341,57 @@ async function runDiscoveryRegistryHaPeerThree(nestjs, framework) {
       await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.peer3', `dr-a3-peer3-reg${index + 1}`, ['dr-peer3-a', 'dr-peer3-b']);
     }
     marker('DR-A3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function runDiscoveryRegistryHaLateStart(nestjs, framework) {
+  DRHandler.requests = [];
+  const reg1Pub = await reserveTcpEndpoint();
+  const reg1Router = await reserveTcpEndpoint();
+  const reg2Pub = await reserveTcpEndpoint();
+  const reg2Router = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+  let reg2;
+
+  try {
+    const reg1 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaLateStartReg1Module', {
+      pubEndpoint: reg1Pub,
+      routerEndpoint: reg1Router,
+      registryId: 67,
+      broadcastIntervalMs: 100,
+      peers: [reg2Pub]
+    });
+    apps.push(reg1.app);
+    await startDiscoveryProvider(nestjs, reg1Router, 'dr.late', providerEndpoint, 'dr-late-provider', apps);
+
+    const activeConsumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaLateStartActiveConsumerModule', reg1Router, 'dr.late');
+    apps.push(activeConsumer.app);
+    await waitForDiscoveryTopologySnapshot(reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false }), framework, 'dr.late', [providerEndpoint]);
+    await assertDiscoveryMessaging(activeConsumer.app, nestjs, 'dr.late', 'dr-b1-before-late-registry', ['dr-late-provider']);
+
+    const lateConsumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaLateStartConsumerModule', reg2Router, 'dr.late');
+    apps.push(lateConsumer.app);
+    reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaLateStartReg2Module', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 68,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    apps.push(reg2.app);
+
+    const reg1Query = reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const reg2Query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryPeerConnection(reg1Query, 1);
+    await waitForRegistryPeerConnection(reg2Query, 1);
+    await waitForDiscoveryMemberPeers(reg2Query, framework, 'dr.late', [providerEndpoint]);
+    await assertDiscoveryMessaging(lateConsumer.app, nestjs, 'dr.late', 'dr-b1-after-late-registry', ['dr-late-provider']);
+    marker('DR-B1');
   } finally {
     for (const app of apps.reverse()) {
       await app.close();

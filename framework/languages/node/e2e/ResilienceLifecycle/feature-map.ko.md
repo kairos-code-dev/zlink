@@ -27,7 +27,9 @@
 ## public API/harness 대기
 
 - `RL-A2`: 같은 rid와 새 endpoint로 pod 재스케줄을 검증하는 Node harness가 아직 없다.
-- `RL-A4`: rolling restart Node harness가 아직 없다.
+- `RL-A4`: public client request를 계속 보내는 동안 provider를 한 대씩 정상 종료하는 방식만으로는
+  timeout 없이 rolling update를 증명할 수 없다. Node channel public API에는 provider를 종료 전에
+  신규 request 대상에서 빼는 drain/weight runtime 계약이 아직 없어 완료 처리하지 않는다.
 - `RL-B2`: in-flight request 중 provider crash Node runner와 marker가 아직 없다.
 - `RL-B4`: runtime drain/restore Node marker가 아직 없다.
 - `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.

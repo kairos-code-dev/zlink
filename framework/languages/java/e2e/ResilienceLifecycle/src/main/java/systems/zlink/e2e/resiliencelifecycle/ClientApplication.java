@@ -9,6 +9,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
+import systems.zlink.framework.runtime.registry.ZLinkRemoteRegistryQueryClient;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -51,6 +53,13 @@ public final class ClientApplication {
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.addClientServerChannel(Contracts.CHANNEL).enableClient();
         };
+    }
+
+    @Bean
+    ZLinkRegistryQueryClient registryQueryClient(ZLinkBackendAdapterFactory backendAdapterFactory) {
+        return ZLinkRemoteRegistryQueryClient.connect(
+            Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"),
+            backendAdapterFactory);
     }
 
     @Bean

@@ -10,6 +10,8 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
 - `RL-A1`: 같은 client 프로세스가 provider-b를 drain한 상태에서 provider-a 종료 구간의 public
   실패를 관찰하고, provider-a를 같은 endpoint로 재시작한 뒤 follow-up request가 다시 성공하는지
   확인한다.
+- `RL-A2`: provider-a를 같은 routing id의 다른 endpoint로 재기동하고, 같은 client 프로세스가
+  registry topology의 endpoint 갱신과 follow-up request 성공을 확인한다.
 - `RL-B1`: 처리 중인 request를 client timeout으로 끝낸 뒤 같은 client의 후속 request가 정상 reply를
   받아 late reply가 pending을 오염시키지 않는지 확인한다.
 - `RL-B3`: provider 정상 종료 뒤 registry topology에서 빠지고 같은 client의 후속 request가 남은
@@ -23,7 +25,6 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
 
 ## public API/harness 대기
 
-- `RL-A2`: provider 추가/제거 반복 중 traffic 안정성을 보는 장시간 harness가 필요하다.
 - `RL-A3`: process crash/replace 중 in-flight 결과를 고정하는 kill/restart harness가 필요하다.
 - `RL-A4`: rolling restart를 provider 그룹 단위로 수행하는 orchestration이 아직 없다.
 - `RL-A5`: blue/green provider 교체와 registry view 검증을 묶는 harness가 아직 없다.

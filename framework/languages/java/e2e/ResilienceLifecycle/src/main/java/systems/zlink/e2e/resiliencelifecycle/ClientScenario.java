@@ -38,6 +38,10 @@ public final class ClientScenario {
             runServerRestart();
             return;
         }
+        if ("reschedule".equals(mode)) {
+            runProviderReschedule();
+            return;
+        }
         runClientTimeoutCleanup();
         runDrainRestore();
         runDrainInFlight();
@@ -62,14 +66,39 @@ public final class ClientScenario {
         System.out.println("scenario RL-A1 passed");
     }
 
+    private void runProviderReschedule() {
+        waitForTopology(2);
+        post(adminB() + "/admin/drain");
+        waitForWeight(adminB(), 0);
+        collectStableProvidersWithout("a2-before-reschedule", "api-b", "api-a");
+        signal("a2-ready");
+        waitForSignal("a2-down");
+        expectRescheduleWindowFailure();
+        signal("a2-down-observed");
+        waitForSignal("a2-up");
+        waitForTopologyEndpoint("api-a", Env.get("ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT"));
+        collectStableProvidersWithout("a2-after-reschedule", "api-b", "api-a");
+        post(adminB() + "/admin/restore");
+        waitForWeight(adminB(), 100);
+        System.out.println("scenario RL-A2 passed");
+    }
+
     private void expectRestartWindowFailure() {
+        expectSingleProviderDownFailure("RL-A1", "a1-down-window");
+    }
+
+    private void expectRescheduleWindowFailure() {
+        expectSingleProviderDownFailure("RL-A2", "a2-down-window");
+    }
+
+    private void expectSingleProviderDownFailure(String scenario, String value) {
         try {
             client.requestToChannel(
                     Contracts.CHANNEL,
-                    new Contracts.WorkRequest("a1-down-window"))
+                    new Contracts.WorkRequest(value))
                 .timeout(Duration.ofMillis(700))
                 .await(Contracts.WorkReply.class);
-            throw new IllegalStateException("RL-A1 down-window request unexpectedly completed");
+            throw new IllegalStateException(scenario + " down-window request unexpectedly completed");
         } catch (RuntimeException expected) {
             // The scenario only requires a public failure while the sole admissible provider is down.
         }
@@ -265,6 +294,31 @@ public final class ClientScenario {
         }
         throw new IllegalStateException("registry topology did not report " + expectedRouters
             + " routers for " + Contracts.CHANNEL);
+    }
+
+    private void waitForTopologyEndpoint(String routingId, String endpoint) {
+        if (registry == null) {
+            throw new IllegalStateException("registry query client is not configured");
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (System.nanoTime() < deadline) {
+            try {
+                boolean found = registry.topology().toCompletableFuture()
+                    .get(3, TimeUnit.SECONDS)
+                    .stream()
+                    .filter(entry -> Contracts.CHANNEL.equals(entry.channelName()))
+                    .filter(entry -> entry.serviceRole() == ServiceRole.ROUTER)
+                    .anyMatch(entry -> routingId.equals(entry.routingId().toString())
+                        && endpoint.equals(entry.endpoint()));
+                if (found) {
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
+            sleep(200);
+        }
+        throw new IllegalStateException(
+            "registry topology did not report " + routingId + " at " + endpoint);
     }
 
     private void waitForWeight(String baseUrl, int expected) {

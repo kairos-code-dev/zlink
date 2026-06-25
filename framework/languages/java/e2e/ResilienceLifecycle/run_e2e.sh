@@ -63,13 +63,13 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(6):
+    for _ in range(8):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
         ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:4]), end=" ")
-    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[4:]))
+    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:5]), end=" ")
+    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[5:]))
 finally:
     for sock in sockets:
         sock.close()
@@ -165,7 +165,7 @@ start_provider() {
   wait_port "${rid}-http" "${http}"
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B HTTP_A HTTP_B <<<"$(reserve_ports)"
+read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B API_A_REPLACEMENT HTTP_A HTTP_B HTTP_A_REPLACEMENT <<<"$(reserve_ports)"
 
 gradle_run installDist
 
@@ -202,15 +202,40 @@ touch "${control_dir}/a1-up"
 wait "${restart_client_pid}"
 
 ZLINK_JAVA_E2E_ROLE=client \
+ZLINK_JAVA_E2E_CLIENT_MODE=reschedule \
+ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT="${API_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
+ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/client-reschedule.stdout.log" 2>"${log_dir}/client-reschedule.stderr.log" &
+reschedule_client_pid="$!"
+pids+=("${reschedule_client_pid}")
+
+wait_file "${control_dir}/a2-ready"
+stop_pid "${PROVIDER_A_PID}"
+wait_port_down api-a "${API_A}"
+touch "${control_dir}/a2-down"
+wait_file "${control_dir}/a2-down-observed"
+start_provider api-a "${API_A_REPLACEMENT}" "${HTTP_A_REPLACEMENT}"
+PROVIDER_A_PID="${pids[-1]}"
+sleep 2
+touch "${control_dir}/a2-up"
+wait "${reschedule_client_pid}"
+
+ZLINK_JAVA_E2E_ROLE=client \
+ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(app_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client-restart.stdout.log"
+cat "${log_dir}/client-reschedule.stdout.log"
 cat "${log_dir}/client.stdout.log"
 grep -q "scenario RL-A1 passed" "${log_dir}/client-restart.stdout.log"
+grep -q "scenario RL-A2 passed" "${log_dir}/client-reschedule.stdout.log"
 grep -q "scenario RL-B1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario RL-B3 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario RL-B4 passed" "${log_dir}/client.stdout.log"

@@ -32,6 +32,7 @@ async function registryMessaging() {
   const nestjs = loadNest();
   const framework = loadFramework();
   RMFlowObserver.events = [];
+  EchoHandler.completed = [];
   const builder = nestjs.zlinkFramework();
   builder.configureDispatch()
     .setMessageFlowObserver(RMFlowObserver)
@@ -67,6 +68,29 @@ async function registryMessaging() {
     await waitFor(() => AuditHandler.messages.some((message) => message.id === 8));
     selfCheck('RM-MANUAL-REQUEST-SEND');
     marker('RM-A2');
+
+    await assert.rejects(
+      () => client
+        .requestToChannel('rm.api', { id: 12, text: 'slow' })
+        .packetName('rm.echo')
+        .timeout(50)
+        .submit(),
+      /timed out|timeout|result 101/i
+    );
+    const afterTimeout = await client
+      .requestToChannel('rm.api', { id: 13, text: 'after-timeout' })
+      .packetName('rm.echo')
+      .timeout(3000)
+      .submit();
+    assert.deepEqual(afterTimeout, { id: 13, text: 'after-timeout', handledBy: 'rm-provider-a' });
+    await waitFor(() => EchoHandler.completed.some((message) => message.id === 12), 3000);
+    const afterLateReply = await client
+      .requestToChannel('rm.api', { id: 14, text: 'after-late-reply' })
+      .packetName('rm.echo')
+      .timeout(3000)
+      .submit();
+    assert.deepEqual(afterLateReply, { id: 14, text: 'after-late-reply', handledBy: 'rm-provider-a' });
+    selfCheck('RM-MANUAL-TIMEOUT-LATE-REPLY');
 
     await assert.rejects(
       () => client
@@ -568,7 +592,12 @@ async function spotService() {
 }
 
 class EchoHandler {
-  handle(payload, context) {
+  static completed = [];
+  async handle(payload, context) {
+    if (payload.text === 'slow') {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    EchoHandler.completed.push(payload);
     return { ...payload, handledBy: context.routingId ?? 'rm-provider-a' };
   }
 }

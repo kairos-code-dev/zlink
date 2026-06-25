@@ -18,7 +18,7 @@
 - `RM-C1`: registry-resolved 연결 위의 request/send Node runner와 marker가 아직 없다.
 - `RM-C2`: target rid route request Node runner와 marker가 아직 없다.
 - `RM-C3`: multi-endpoint 분산 Node runner와 marker가 아직 없다.
-- `RM-C4`: timeout 뒤 late reply 비오염 Node runner와 marker가 아직 없다.
+- `RM-C4`: registry-resolved 연결 위에서 timeout 뒤 late reply 비오염을 검증하는 Node marker가 아직 없다.
 - `RM-C7`: weighted 분산 Node runner와 marker가 아직 없다.
 - `RM-C8`: payload size policy Node runner와 marker가 아직 없다.
 - `RM-C9`: HWM/backpressure Node harness가 아직 없다.

@@ -4030,7 +4030,7 @@ async function spotService() {
       'completed:worker-result:fast'
     ]);
     assert.equal(await spotManager.close('sm-a8-spot'), true);
-    selfCheck('SM-WORKER-OFFLOAD');
+    marker('SM-A8');
 
     timerEvents.length = 0;
     await spotManager.getOrCreate(TimerSpot, 'sm-e2-spot', { owner: 'u1' });

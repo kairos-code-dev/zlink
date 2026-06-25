@@ -22,6 +22,10 @@
 - `SM-E4`: public `context.addTimer(...)` overrun policy 세 가지(`SkipLateTicks`,
   `CatchUpBounded`, `DelayNextTick`)를 실제 Spot timer로 등록하고, 느린 첫 tick 이후의
   `scheduledIndex`/`skippedTicks` 패턴이 정책별 의미와 맞는지 확인한다.
+- `SM-A8`: public `context.runWorker(...).onCompleted(...)`로 worker 작업을 Spot 직렬 실행 밖에서
+  대기시키고, 그 사이 같은 Spot에 public `ZLINK_SPOT_MANAGER.executeOnSpot(...)` 작업이 먼저 처리되는지
+  확인한다. worker 결과 callback은 다시 Spot 직렬 실행으로 돌아와 앞서 처리된 상태를 보고 안전하게
+  상태를 갱신한다.
 
 ## public API/harness 대기
 
@@ -42,8 +46,6 @@
   public `ZLINK_SPOT_MANAGER`가 같은 key의 user Spot을 재사용하는 self-check
   `SM-A4-KEY-ROUTING-MAPPING`은 runner에 있다. 다만 공통 시나리오가 요구하는 cross-node
   spot lookup과 owner 노드 evidence는 아직 없어 완료 marker로 올리지 않는다.
-- `SM-A8`: public `context.runWorker(...).onCompleted(...)` self-check는 runner에 있으나, 공통
-  시나리오가 요구하는 "worker 실행 중 같은 Spot/노드로 들어오는 다른 request" marker는 아직 없다.
 - `SM-B1`: 단일 Node SpotService 앱에서 public actor manager와 actor `context.joinSpot(...)`,
   `onActorJoin(...)`, `onJoinedActor(...)`, actor context `isJoined`/`spotRid`를 확인하는
   self-check는 있으나, 공통 시나리오가 요구하는 두 play 노드 배포, `play-a` local mailbox

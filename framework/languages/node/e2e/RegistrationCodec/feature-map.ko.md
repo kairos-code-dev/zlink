@@ -21,9 +21,11 @@
 - `RC-A4`: Node NestJS 통합은 handler 호출 때 public Nest `ModuleRef.get(...)`으로 provider instance를
   가져온다. 현재 public contract에는 dispatch마다 scoped 의존성을 새로 만들고 dispose하는 보장이
   없으므로, 공통 lifecycle 시나리오는 Node에서 완료로 표시하지 않는다.
-- `RC-B4`: 현재 Node channel payload 선택은 등록 serializer가 하나일 때만 기본 serializer로 고른다.
-  여러 serializer를 한 host에 함께 등록했을 때 payload 타입별로 codec을 자동 선택하는 public contract가
-  구현되어 있지 않아 완료로 표시하지 않는다.
+- `RC-B4`: 공통 시나리오는 한 host에 JSON/Protobuf/MessagePack을 함께 등록한 뒤 payload 타입별로
+  codec을 자동 선택하는 계약을 요구한다. 현재 Node guide는 framework당 custom serializer를 하나만
+  두도록 설명하고, runtime도 serializer가 둘 이상이면 payload serializer 선택을 모호성 오류로 처리한다.
+  따라서 다른 언어 구현만 근거로 Node public API를 넓히지 않고, Node spec/guide에서 다중 codec 선택
+  계약이 확정되기 전까지 완료로 표시하지 않는다.
 - `RC-B5`: peer 간 codec registry 불일치에 대해 Node public spec/guide가 fallback 또는 error
   규칙을 공개 계약으로 고정하지 않는다. runtime 내부에는 decode failure 처리 경로가 있지만, 현재
   공통 정책상 다른 언어 구현이나 내부 동작만 근거로 public contract를 추가하지 않는다. 계약이

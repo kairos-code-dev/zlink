@@ -130,6 +130,8 @@ async function pubSub() {
 }
 
 async function registrationCodec() {
+  RcManualRequestHandler.requests = [];
+  RcManualSendHandler.messages = [];
   const apiEndpoint = uniqueEndpoint('rc-api');
   const nestjs = loadNest();
   const { app } = await startApp(
@@ -140,20 +142,30 @@ async function registrationCodec() {
           .addClientServerChannel('rc.api')
             .enableServer(apiEndpoint)
             .enableClient(apiEndpoint)
-            .addRequestHandler('rc.echo', EchoHandler)
+            .addRequestHandler('rc.echo.manual', RcManualRequestHandler)
+            .addSendHandler('rc.audit.manual', RcManualSendHandler)
           .build())
       ],
-      providers: [EchoHandler]
+      providers: [RcManualRequestHandler, RcManualSendHandler]
     })
   );
 
   try {
     const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
     const reply = await client
-      .requestToChannel('rc.api', { codec: 'json', ok: true })
-      .packetName('rc.echo')
+      .requestToChannel('rc.api', { id: 21, codec: 'json', ok: true })
+      .packetName('rc.echo.manual')
       .submit();
-    assert.deepEqual(reply, { codec: 'json', ok: true, handledBy: 'rm-provider-a' });
+    assert.equal(reply.id, 21);
+    assert.equal(reply.codec, 'json');
+    assert.equal(reply.ok, true);
+    assert.equal(RcManualRequestHandler.requests.length, 1);
+    await client
+      .sendToChannel('rc.api', { id: 22, codec: 'json', ok: true })
+      .packetName('rc.audit.manual')
+      .submit();
+    await waitFor(() => RcManualSendHandler.messages.some((message) => message.id === 22));
+    marker('RC-A3');
     selfCheck('RC-JSON-REQUEST');
   } finally {
     await app.close();
@@ -325,6 +337,21 @@ class PubSubGammaHandler {
     if (context.topic === 'all' || context.topic === 'alpha' || context.topic === 'gamma') {
       PubSubGammaHandler.events.push({ topic: context.topic, seq: payload.seq });
     }
+  }
+}
+
+class RcManualRequestHandler {
+  static requests = [];
+  handle(payload, context) {
+    RcManualRequestHandler.requests.push({ ...payload, contentType: context.contentType });
+    return { ...payload, contentType: context.contentType };
+  }
+}
+
+class RcManualSendHandler {
+  static messages = [];
+  handle(payload, context) {
+    RcManualSendHandler.messages.push({ ...payload, contentType: context.contentType });
   }
 }
 

@@ -49,7 +49,11 @@ void format_routing_id_debug (const zlink_routing_id_t *rid_, char *buf_, size_t
 
 int zlink::router_t::xsend (msg_t *msg_)
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+    // Public send enters this path through socket_public_send_scope_t. Do not
+    // add socket_msg_dispatch_mutex() here: SPOT route echo hot paths call
+    // router send for every small message, and a second socket-level mutex
+    // serializes those sends. Pipe teardown still updates router pipe state
+    // under socket_msg_dispatch_mutex() in xpipe_terminated().
 
     if (!_more_out) {
         zlink_assert (!_current_out);
@@ -142,8 +146,6 @@ int zlink::router_t::xsend (msg_t *msg_)
 
 int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t *msg_)
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
-
     zlink_assert (!_more_out);
     zlink_assert (!_current_out);
 

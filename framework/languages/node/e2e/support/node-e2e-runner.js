@@ -32,6 +32,7 @@ async function registryMessaging() {
   const nestjs = loadNest();
   const framework = loadFramework();
   await runRegistryMessagingDiscovery(nestjs, framework);
+  await runRegistryMessagingSameRidFailover(nestjs, framework);
   await runRegistryMessagingManualDistribution(nestjs);
   RMFlowObserver.events = [];
   EchoHandler.completed = [];
@@ -301,6 +302,130 @@ async function startRegistryMessagingDiscoveryProvider(nestjs, registryRouterEnd
     })
   );
   apps.push(started.app);
+}
+
+async function runRegistryMessagingSameRidFailover(nestjs, framework) {
+  RMFailoverHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerV1Endpoint = await reserveTcpEndpoint();
+  const providerV2Endpoint = await reserveTcpEndpoint();
+  const apps = [];
+  let providerV1;
+  let providerV2;
+
+  try {
+    const registry = await startApp(
+      nestModule('RegistryMessagingFailoverRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 72
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    providerV1 = await startRegistryMessagingFailoverProvider(
+      nestjs,
+      registryRouterEndpoint,
+      providerV1Endpoint,
+      'provider-v1'
+    );
+    apps.push(providerV1.app);
+    const consumer = await startApp(
+      nestModule('RegistryMessagingFailoverConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rm.failover')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryMessagingSingleReadyProvider(query, framework, 'rm.failover', 'api-a', providerV1Endpoint);
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const before = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rm.failover', { requestId: 'rm-a4-v1' })
+        .packetName('rm.failover.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(before, { requestId: 'rm-a4-v1', handledBy: 'provider-v1' });
+
+    await providerV1.app.close();
+    apps.splice(apps.indexOf(providerV1.app), 1);
+    providerV2 = await startRegistryMessagingFailoverProvider(
+      nestjs,
+      registryRouterEndpoint,
+      providerV2Endpoint,
+      'provider-v2'
+    );
+    apps.push(providerV2.app);
+    await waitForRegistryMessagingSingleReadyProvider(query, framework, 'rm.failover', 'api-a', providerV2Endpoint);
+
+    const providerV1Count = RMFailoverHandler.requests.filter((request) => request.handledBy === 'provider-v1').length;
+    for (let i = 0; i < 20; i += 1) {
+      const requestId = `rm-a4-v2-${i}`;
+      const reply = await client
+        .requestToChannel('rm.failover', { requestId })
+        .packetName('rm.failover.probe')
+        .timeout(1000)
+        .submit();
+      assert.deepEqual(reply, { requestId, handledBy: 'provider-v2' });
+    }
+    assert.equal(RMFailoverHandler.requests.filter((request) => request.handledBy === 'provider-v1').length, providerV1Count);
+    marker('RM-A4');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startRegistryMessagingFailoverProvider(nestjs, registryRouterEndpoint, providerEndpoint, providerId) {
+  const handler = createRMFailoverHandler(providerId);
+  return startApp(
+    nestModule(`RegistryMessagingFailover${providerId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rm.failover')
+            .enableServer(providerEndpoint)
+            .routingId('api-a')
+            .addRequestHandler('rm.failover.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+}
+
+async function waitForRegistryMessagingSingleReadyProvider(query, framework, channelName, routingId, endpoint) {
+  const deadline = Date.now() + 5000;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({
+      autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
+      serviceKind: framework.ZLinkServiceKind.Socket,
+      serviceRole: framework.ZLinkServiceRole.Router,
+      channelName,
+      routingId,
+      state: framework.ZLinkTopologyState.Ready
+    });
+    if (lastTopology.length === 1 && lastTopology[0].routingId === routingId && lastTopology[0].endpoint === endpoint) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`RM-A4 provider did not converge: ${stringifyDiagnostic(lastTopology)}`);
 }
 
 async function runRegistryMessagingManualDistribution(nestjs) {
@@ -898,6 +1023,22 @@ function createRMDiscoveryHandler(routingId) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
       return RMDiscoveryHandler.record(payload, routingId);
+    }
+  };
+}
+
+class RMFailoverHandler {
+  static requests = [];
+  static record(payload, handledBy) {
+    RMFailoverHandler.requests.push({ ...payload, handledBy });
+    return { ...payload, handledBy };
+  }
+}
+
+function createRMFailoverHandler(providerId) {
+  return class {
+    handle(payload) {
+      return RMFailoverHandler.record(payload, providerId);
     }
   };
 }

@@ -60,10 +60,12 @@
 - `RL-B5`: drain 중 in-flight 완료는 `RL-B4`와 같은 runtime drain/restore 계약이 먼저 필요하다.
   Node public API에는 신규 request 차단과 처리 중 request 보존을 분리해 제어하는 provider drain
   표면이 없으므로 완료 marker로 올리지 않는다.
-- `RL-C4`: registry restart/outage recovery Node marker가 아직 없다. 현재 public same-process
-  restart 시도는 provider 재광고와 restarted registry topology `Ready` evidence를 안정적으로 만들지
-  못했으므로 완료 처리하지 않는다. process-isolated registry restart harness로 기존 channel socket
-  지속과 복구 후 재조회 evidence를 함께 남길 때 닫는다.
+- `RL-C4`: 공통 시나리오는 registry 프로세스만 restart하는 동안 이미 연결된 channel socket messaging이
+  계속 동작하고, 복구 뒤 provider heartbeat 재등록과 consumer의 명시 재조회로 topology가 다시 `Ready`로
+  수렴하는지 본다. 현재 runner의 public same-process restart 시도는 provider 재광고와 restarted registry
+  topology `Ready` evidence를 안정적으로 만들지 못했다. registry runtime 내부 재생성이나 private
+  re-advertise helper로 완료 처리하지 않고, process-isolated registry restart harness가 기존 channel
+  socket 지속과 복구 후 재조회 evidence를 함께 남길 때 닫는다.
 - `RL-D4`: normal public client는 error reply의 message 기반 예외만 노출하고, 공통 시나리오가 요구하는
   `errorCode` raw header evidence를 Node E2E runner가 아직 수집하지 않는다. 내부 codec/helper를
   직접 호출해 완료 처리하지 않고, raw envelope evidence를 public e2e harness로 남길 수 있을 때 닫는다.

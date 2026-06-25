@@ -26,7 +26,8 @@ public final class ClientApplication {
                 .web(WebApplicationType.NONE)
                 .run(args);
         try {
-            context.getBean(ClientScenario.class).run();
+            context.getBean(ClientScenario.class)
+                .run(Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", "default"));
             System.out.println("resilience-lifecycle e2e result=passed");
         } finally {
             context.close();

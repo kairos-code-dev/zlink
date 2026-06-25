@@ -95,6 +95,42 @@ wait_port() {
   return 1
 }
 
+wait_port_down() {
+  local name="$1"
+  local endpoint="$2"
+  local port
+  port="$(port_of "${endpoint}")"
+  for _ in $(seq 1 200); do
+    if ! (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} to stop at ${endpoint}" >&2
+  return 1
+}
+
+wait_file() {
+  local file="$1"
+  for _ in $(seq 1 300); do
+    if [[ -f "${file}" ]]; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${file}" >&2
+  return 1
+}
+
+stop_pid() {
+  local pid="$1"
+  for child in $(descendants "${pid}"); do
+    kill "${child}" >/dev/null 2>&1 || true
+  done
+  kill "${pid}" >/dev/null 2>&1 || true
+  wait "${pid}" >/dev/null 2>&1 || true
+}
+
 gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
@@ -135,8 +171,35 @@ gradle_run installDist
 
 start_registry
 start_provider api-a "${API_A}" "${HTTP_A}"
+PROVIDER_A_PID="${pids[-1]}"
 start_provider api-b "${API_B}" "${HTTP_B}"
+PROVIDER_B_PID="${pids[-1]}"
 sleep 2
+
+control_dir="${log_dir}/control"
+mkdir -p "${control_dir}"
+
+ZLINK_JAVA_E2E_ROLE=client \
+ZLINK_JAVA_E2E_CLIENT_MODE=restart \
+ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
+ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
+ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/client-restart.stdout.log" 2>"${log_dir}/client-restart.stderr.log" &
+restart_client_pid="$!"
+pids+=("${restart_client_pid}")
+
+wait_file "${control_dir}/a1-ready"
+stop_pid "${PROVIDER_A_PID}"
+wait_port_down api-a "${API_A}"
+touch "${control_dir}/a1-down"
+wait_file "${control_dir}/a1-down-observed"
+start_provider api-a "${API_A}" "${HTTP_A}"
+PROVIDER_A_PID="${pids[-1]}"
+sleep 2
+touch "${control_dir}/a1-up"
+wait "${restart_client_pid}"
 
 ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
@@ -145,7 +208,9 @@ ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(app_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
+cat "${log_dir}/client-restart.stdout.log"
 cat "${log_dir}/client.stdout.log"
+grep -q "scenario RL-A1 passed" "${log_dir}/client-restart.stdout.log"
 grep -q "scenario RL-B1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario RL-B3 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario RL-B4 passed" "${log_dir}/client.stdout.log"

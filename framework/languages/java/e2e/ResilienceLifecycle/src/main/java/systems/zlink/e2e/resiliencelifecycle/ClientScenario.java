@@ -3,6 +3,8 @@ package systems.zlink.e2e.resiliencelifecycle;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,12 +33,46 @@ public final class ClientScenario {
         this.json = json;
     }
 
-    public void run() {
+    public void run(String mode) {
+        if ("restart".equals(mode)) {
+            runServerRestart();
+            return;
+        }
         runClientTimeoutCleanup();
         runDrainRestore();
         runDrainInFlight();
         runDispatchErrorMarker();
         runGracefulShutdown();
+    }
+
+    private void runServerRestart() {
+        waitForTopology(2);
+        post(adminB() + "/admin/drain");
+        waitForWeight(adminB(), 0);
+        collectStableProvidersWithout("a1-before-restart", "api-b", "api-a");
+        signal("a1-ready");
+        waitForSignal("a1-down");
+        expectRestartWindowFailure();
+        signal("a1-down-observed");
+        waitForSignal("a1-up");
+        waitForTopology(2);
+        collectStableProvidersWithout("a1-after-restart", "api-b", "api-a");
+        post(adminB() + "/admin/restore");
+        waitForWeight(adminB(), 100);
+        System.out.println("scenario RL-A1 passed");
+    }
+
+    private void expectRestartWindowFailure() {
+        try {
+            client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.WorkRequest("a1-down-window"))
+                .timeout(Duration.ofMillis(700))
+                .await(Contracts.WorkReply.class);
+            throw new IllegalStateException("RL-A1 down-window request unexpectedly completed");
+        } catch (RuntimeException expected) {
+            // The scenario only requires a public failure while the sole admissible provider is down.
+        }
     }
 
     private void runClientTimeoutCleanup() {
@@ -292,6 +328,36 @@ public final class ClientScenario {
 
     private String adminB() {
         return Env.get("ZLINK_JAVA_E2E_HTTP_B_ENDPOINT");
+    }
+
+    private void signal(String name) {
+        Path dir = controlDir();
+        try {
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve(name), "ok\n");
+        } catch (IOException error) {
+            throw new IllegalStateException("failed to write control signal " + name, error);
+        }
+    }
+
+    private void waitForSignal(String name) {
+        Path file = controlDir().resolve(name);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (System.nanoTime() < deadline) {
+            if (Files.exists(file)) {
+                return;
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException("control signal was not observed: " + name);
+    }
+
+    private Path controlDir() {
+        String value = Env.get("ZLINK_JAVA_E2E_CONTROL_DIR");
+        if (value.isBlank()) {
+            throw new IllegalStateException("ZLINK_JAVA_E2E_CONTROL_DIR is required");
+        }
+        return Path.of(value);
     }
 
     private String get(String url) {

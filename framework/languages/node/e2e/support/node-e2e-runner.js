@@ -1207,26 +1207,310 @@ async function monitoring() {
 
 async function discoveryRegistryHa() {
   const nestjs = loadNest();
-  const { app } = await startApp(
-    nestModule('DiscoveryRegistryHaModule', {
+  const framework = loadFramework();
+  await runDiscoveryRegistryHaSingle(nestjs, framework);
+  await runDiscoveryRegistryHaPeerTwo(nestjs, framework);
+  await runDiscoveryRegistryHaPeerThree(nestjs, framework);
+}
+
+async function runDiscoveryRegistryHaSingle(nestjs, framework) {
+  DRHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+
+  try {
+    const registry = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaSingleRegistryModule', {
+      pubEndpoint: registryPubEndpoint,
+      routerEndpoint: registryRouterEndpoint,
+      registryId: 61
+    });
+    apps.push(registry.app);
+    await startDiscoveryProvider(nestjs, registryRouterEndpoint, 'dr.single', providerAEndpoint, 'dr-a', apps);
+    await startDiscoveryProvider(nestjs, registryRouterEndpoint, 'dr.single', providerBEndpoint, 'dr-b', apps);
+    const consumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaSingleConsumerModule', registryRouterEndpoint, 'dr.single');
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForDiscoveryEndpoints(query, framework, 'dr.single', [providerAEndpoint, providerBEndpoint]);
+    await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.single', 'dr-a1-baseline', ['dr-a', 'dr-b']);
+    marker('DR-A1');
+    marker('DR-D2');
+
+    const remoteQuery = await startApp(
+      nestModule('DiscoveryRegistryHaRemoteQueryModule', {
+        imports: [
+          nestjs.ZLinkRegistryQueryClientModule.forRoot({
+            endpoint: registryRouterEndpoint
+          })
+        ]
+      })
+    );
+    apps.push(remoteQuery.app);
+    const queryClient = remoteQuery.app.get(nestjs.ZLINK_REGISTRY_QUERY_CLIENT, { strict: false });
+    const localTopology = await waitForDiscoveryTopologySnapshot(query, framework, 'dr.single', [providerAEndpoint, providerBEndpoint]);
+    const remoteTopology = await waitForDiscoveryTopologySnapshot(queryClient, framework, 'dr.single', [providerAEndpoint, providerBEndpoint]);
+    assert.deepEqual(normalizeDiscoveryTopology(remoteTopology), normalizeDiscoveryTopology(localTopology));
+    marker('DR-D4');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function runDiscoveryRegistryHaPeerTwo(nestjs, framework) {
+  DRHandler.requests = [];
+  const reg1Pub = await reserveTcpEndpoint();
+  const reg1Router = await reserveTcpEndpoint();
+  const reg2Pub = await reserveTcpEndpoint();
+  const reg2Router = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+
+  try {
+    const reg1 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaPeerTwoReg1Module', {
+      pubEndpoint: reg1Pub,
+      routerEndpoint: reg1Router,
+      registryId: 62,
+      broadcastIntervalMs: 100,
+      peers: [reg2Pub]
+    });
+    const reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaPeerTwoReg2Module', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 63,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    apps.push(reg1.app, reg2.app);
+    await startDiscoveryProvider(nestjs, reg1Router, 'dr.peer2', providerEndpoint, 'dr-peer2-provider', apps);
+    const consumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaPeerTwoConsumerModule', reg2Router, 'dr.peer2');
+    apps.push(consumer.app);
+
+    const query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryPeerConnection(reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false }), 1);
+    await waitForRegistryPeerConnection(query, 1);
+    await waitForDiscoveryMemberPeers(query, framework, 'dr.peer2', [providerEndpoint]);
+    await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.peer2', 'dr-a2-peer2', ['dr-peer2-provider']);
+    marker('DR-A2');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function runDiscoveryRegistryHaPeerThree(nestjs, framework) {
+  DRHandler.requests = [];
+  const regs = [
+    { pub: await reserveTcpEndpoint(), router: await reserveTcpEndpoint(), id: 64 },
+    { pub: await reserveTcpEndpoint(), router: await reserveTcpEndpoint(), id: 65 },
+    { pub: await reserveTcpEndpoint(), router: await reserveTcpEndpoint(), id: 66 }
+  ];
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+
+  try {
+    for (const reg of regs) {
+      const started = await startDiscoveryRegistry(nestjs, `DiscoveryRegistryHaPeerThreeReg${reg.id}Module`, {
+        pubEndpoint: reg.pub,
+        routerEndpoint: reg.router,
+        registryId: reg.id,
+        broadcastIntervalMs: 100,
+        peers: regs.filter((peer) => peer !== reg).map((peer) => peer.pub)
+      });
+      apps.push(started.app);
+    }
+    await startDiscoveryProvider(nestjs, regs[0].router, 'dr.peer3', providerAEndpoint, 'dr-peer3-a', apps);
+    await startDiscoveryProvider(nestjs, regs[2].router, 'dr.peer3', providerBEndpoint, 'dr-peer3-b', apps);
+
+    for (const regApp of apps.slice(0, 3)) {
+      const query = regApp.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+      await waitForRegistryPeerConnection(query, 2);
+      await waitForDiscoveryMemberPeers(query, framework, 'dr.peer3', [providerAEndpoint, providerBEndpoint]);
+    }
+
+    for (const [index, reg] of regs.entries()) {
+      const consumer = await startDiscoveryConsumer(nestjs, `DiscoveryRegistryHaPeerThreeConsumer${index + 1}Module`, reg.router, 'dr.peer3');
+      apps.push(consumer.app);
+      await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.peer3', `dr-a3-peer3-reg${index + 1}`, ['dr-peer3-a', 'dr-peer3-b']);
+    }
+    marker('DR-A3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startDiscoveryRegistry(nestjs, moduleName, options) {
+  return startApp(
+    nestModule(moduleName, {
       imports: [
-        nestjs.ZLinkRegistryModule.forRoot({
-          pubEndpoint: uniqueEndpoint('dr-pub'),
-          routerEndpoint: uniqueEndpoint('dr-router'),
-          registryId: 61
-        })
+        nestjs.ZLinkRegistryModule.forRoot(options)
       ]
     })
   );
+}
 
-  try {
-    const query = app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
-    const status = await query.status();
-    assert.equal(status.registryId, 61);
-    selfCheck('DR-STANDALONE-STATUS');
-  } finally {
-    await app.close();
+async function startDiscoveryProvider(nestjs, registryRouterEndpoint, channelName, providerEndpoint, routingId, apps) {
+  const handler = createDRHandler(routingId);
+  const started = await startApp(
+    nestModule(`DiscoveryRegistryHaProvider${routingId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel(channelName)
+            .enableServer(providerEndpoint)
+            .routingId(routingId)
+            .addRequestHandler('dr.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+  return started;
+}
+
+async function startDiscoveryConsumer(nestjs, moduleName, registryRouterEndpoint, channelName) {
+  return startDiscoveryConsumerWithRegistries(nestjs, moduleName, [registryRouterEndpoint], channelName);
+}
+
+async function startDiscoveryConsumerWithRegistries(nestjs, moduleName, registryRouterEndpoints, channelName) {
+  const builder = nestjs.zlinkFramework().useDiscovery();
+  for (const endpoint of registryRouterEndpoints) {
+    builder.addRegistryEndpoint(endpoint);
   }
+  return startApp(
+    nestModule(moduleName, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(builder
+          .addClientServerChannel(channelName)
+            .enableClient()
+          .build())
+      ]
+    })
+  );
+}
+
+async function waitForDiscoveryTopologySnapshot(query, framework, channelName, endpoints, timeoutMs = 7000) {
+  const expected = new Set(endpoints);
+  const deadline = Date.now() + timeoutMs;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({
+      autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
+      serviceKind: framework.ZLinkServiceKind.Socket,
+      serviceRole: framework.ZLinkServiceRole.Router,
+      channelName
+    });
+    if ([...expected].every((endpoint) => lastTopology.some((entry) =>
+      entry.endpoint === endpoint &&
+      entry.state === framework.ZLinkTopologyState.Ready))) {
+      return lastTopology;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`Discovery topology snapshot for ${channelName} did not converge: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function waitForDiscoveryEndpoints(query, framework, channelName, endpoints, timeoutMs = 7000) {
+  const expected = new Set(endpoints);
+  const deadline = Date.now() + timeoutMs;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({
+      autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
+      serviceKind: framework.ZLinkServiceKind.Socket,
+      serviceRole: framework.ZLinkServiceRole.Router,
+      channelName,
+      state: framework.ZLinkTopologyState.Ready
+    });
+    if ([...expected].every((endpoint) => lastTopology.some((entry) => entry.endpoint === endpoint))) {
+      return lastTopology.filter((entry) => expected.has(entry.endpoint));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`Discovery endpoints for ${channelName} did not converge: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function waitForRegistryPeerConnection(query, expectedConnectedCount) {
+  const deadline = Date.now() + 7000;
+  let lastStatus;
+  while (Date.now() < deadline) {
+    lastStatus = await query.status();
+    if (lastStatus.connectedPeerRegistryCount >= expectedConnectedCount) {
+      return lastStatus;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`Registry peers did not converge: ${stringifyDiagnostic(lastStatus)}`);
+}
+
+async function waitForDiscoveryMemberPeers(query, framework, channelName, endpoints, timeoutMs = 7000) {
+  const expected = new Set(endpoints);
+  const deadline = Date.now() + timeoutMs;
+  let lastPeers = [];
+  while (Date.now() < deadline) {
+    lastPeers = await query.memberPeers(channelName);
+    const matchingPeers = lastPeers.filter((entry) =>
+      entry.autoConnectType === framework.ZLinkAutoConnectType.ClientServer &&
+      entry.serviceRole === framework.ZLinkServiceRole.Router &&
+      entry.channelName === channelName);
+    if ([...expected].every((endpoint) => matchingPeers.some((entry) => entry.endpoint === endpoint))) {
+      return matchingPeers.filter((entry) => expected.has(entry.endpoint));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`Discovery member peers for ${channelName} did not converge: ${stringifyDiagnostic(lastPeers)}`);
+}
+
+function createDRHandler(routingId) {
+  return class DiscoveryRegistryHaHandler {
+    handle(payload) {
+      DRHandler.requests.push({ ...payload, handledBy: routingId });
+      return { ...payload, handledBy: routingId };
+    }
+  };
+}
+
+async function assertDiscoveryMessaging(app, nestjs, channelName, requestId, expectedProviders) {
+  const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+  const expected = new Set(expectedProviders);
+  const observed = new Set();
+  for (let i = 0; i < 80 && observed.size < expected.size; i += 1) {
+    const id = `${requestId}-${i}`;
+    const reply = await submitUntilReachable(() =>
+      client
+        .requestToChannel(channelName, { requestId: id })
+        .packetName('dr.probe')
+        .timeout(1000)
+        .submit());
+    assert.equal(reply.requestId, id);
+    assert.ok(expected.has(reply.handledBy), `unexpected DiscoveryRegistryHa provider: ${reply.handledBy}`);
+    observed.add(reply.handledBy);
+  }
+  assert.deepEqual([...observed].sort(), [...expected].sort());
+}
+
+function normalizeDiscoveryTopology(entries) {
+  return entries
+    .map((entry) => ({
+      autoConnectType: entry.autoConnectType,
+      channelName: entry.channelName,
+      endpoint: entry.endpoint,
+      routingId: entry.routingId,
+      serviceKind: entry.serviceKind,
+      serviceRole: entry.serviceRole,
+      state: entry.state
+    }))
+    .sort((left, right) => `${left.channelName}:${left.endpoint}`.localeCompare(`${right.channelName}:${right.endpoint}`));
 }
 
 async function resilienceLifecycle() {
@@ -1316,6 +1600,15 @@ class AuditHandler {
   static messages = [];
   handle(payload) {
     AuditHandler.messages.push(payload);
+  }
+}
+
+class DRHandler {
+  static requests = [];
+  handle(payload, context) {
+    const handledBy = context.routingId ?? 'dr-provider';
+    DRHandler.requests.push({ ...payload, handledBy });
+    return { ...payload, handledBy };
   }
 }
 

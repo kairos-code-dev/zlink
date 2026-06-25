@@ -1516,6 +1516,7 @@ function normalizeDiscoveryTopology(entries) {
 async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
   await runResilienceLifecycleServerRestart();
+  await runResilienceLifecycleProviderFlapping();
   await runResilienceLifecycleGracefulShutdown();
   await runResilienceLifecycleHighFanout();
   await runResilienceLifecycleObserverIsolation();
@@ -1679,6 +1680,134 @@ async function waitForResilienceRestartProviderRemoved(query, providerEndpoint) 
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`RL-A1 provider remained in topology: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function runResilienceLifecycleProviderFlapping() {
+  RLFlapHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const apps = [];
+  let providerB;
+
+  try {
+    const registry = await startApp(
+      nestModule('ResilienceFlapRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 92
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    await startResilienceFlapProvider(nestjs, registryRouterEndpoint, providerAEndpoint, 'provider-a', apps);
+    providerB = await startResilienceFlapProvider(nestjs, registryRouterEndpoint, providerBEndpoint, 'provider-b', apps);
+    const consumer = await startApp(
+      nestModule('ResilienceFlapConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rl.flap')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.flap', [providerAEndpoint, providerBEndpoint]);
+    await waitForResilienceFlapProviders(client, ['provider-a', 'provider-b'], 'rl-a5-warmup');
+
+    for (let cycle = 1; cycle <= 3; cycle += 1) {
+      await providerB.app.close();
+      apps.splice(apps.indexOf(providerB.app), 1);
+      await waitForResilienceFlapProviderRemoved(query, providerAEndpoint, providerBEndpoint);
+      const providerBCount = RLFlapHandler.requests.filter((request) => request.handledBy === 'provider-b').length;
+      for (let i = 0; i < 5; i += 1) {
+        const requestId = `rl-a5-down-${cycle}-${i}`;
+        const reply = await client
+          .requestToChannel('rl.flap', { requestId })
+          .packetName('rl.flap.probe')
+          .timeout(1000)
+          .submit();
+        assert.deepEqual(reply, { requestId, handledBy: 'provider-a' });
+      }
+      assert.equal(RLFlapHandler.requests.filter((request) => request.handledBy === 'provider-b').length, providerBCount);
+
+      providerB = await startResilienceFlapProvider(nestjs, registryRouterEndpoint, providerBEndpoint, 'provider-b', apps);
+      await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.flap', [providerAEndpoint, providerBEndpoint]);
+      await waitForResilienceFlapProviders(client, ['provider-a', 'provider-b'], `rl-a5-up-${cycle}`);
+    }
+
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.flap', [providerAEndpoint, providerBEndpoint]);
+    marker('RL-A5');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startResilienceFlapProvider(nestjs, registryRouterEndpoint, endpoint, providerId, apps) {
+  const handler = createRLFlapHandler(providerId);
+  const started = await startApp(
+    nestModule(`ResilienceFlap${providerId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rl.flap')
+            .enableServer(endpoint)
+            .routingId(providerId)
+            .addRequestHandler('rl.flap.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+  return started;
+}
+
+async function waitForResilienceFlapProviders(client, providerIds, prefix) {
+  const expected = new Set(providerIds);
+  const observed = new Set();
+  for (let i = 0; i < 80 && observed.size < expected.size; i += 1) {
+    const requestId = `${prefix}-${i}`;
+    const reply = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rl.flap', { requestId })
+        .packetName('rl.flap.probe')
+        .timeout(1000)
+        .submit());
+    assert.equal(reply.requestId, requestId);
+    assert.ok(expected.has(reply.handledBy), `unexpected flapping provider: ${reply.handledBy}`);
+    observed.add(reply.handledBy);
+  }
+  assert.deepEqual([...observed].sort(), [...expected].sort());
+}
+
+async function waitForResilienceFlapProviderRemoved(query, providerAEndpoint, providerBEndpoint) {
+  const deadline = Date.now() + 5000;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({ channelName: 'rl.flap' });
+    if (lastTopology.some((entry) => entry.endpoint === providerAEndpoint) &&
+      !lastTopology.some((entry) => entry.endpoint === providerBEndpoint)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`RL-A5 provider-b remained in topology: ${stringifyDiagnostic(lastTopology)}`);
 }
 
 async function runResilienceLifecycleGracefulShutdown() {
@@ -2165,6 +2294,24 @@ function createRLRestartHandler(generation) {
   return class {
     handle(payload) {
       return RLRestartHandler.record(payload, generation);
+    }
+  };
+}
+
+class RLFlapHandler {
+  static requests = [];
+
+  static record(payload, handledBy) {
+    const observed = { ...payload, handledBy };
+    RLFlapHandler.requests.push(observed);
+    return observed;
+  }
+}
+
+function createRLFlapHandler(providerId) {
+  return class {
+    handle(payload) {
+      return RLFlapHandler.record(payload, providerId);
     }
   };
 }

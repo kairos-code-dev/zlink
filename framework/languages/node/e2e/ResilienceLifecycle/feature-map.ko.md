@@ -53,8 +53,13 @@
 - `RL-A4`: public client request를 계속 보내는 동안 provider를 한 대씩 정상 종료하는 방식만으로는
   timeout 없이 rolling update를 증명할 수 없다. Node channel public API에는 provider를 종료 전에
   신규 request 대상에서 빼는 drain/weight runtime 계약이 아직 없어 완료 처리하지 않는다.
-- `RL-B4`: runtime drain/restore Node marker가 아직 없다.
-- `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.
+- `RL-B4`: 공통 시나리오는 provider socket을 죽이지 않고 runtime weight를 0으로 내려 신규 request만
+  다른 provider로 보내고, 다시 weight를 복구하는 drain/restore 계약을 요구한다. Node channel public
+  builder와 NestJS runtime에는 client/server provider socket weight를 실행 중 바꾸는 계약이 없어
+  완료 marker로 올리지 않는다.
+- `RL-B5`: drain 중 in-flight 완료는 `RL-B4`와 같은 runtime drain/restore 계약이 먼저 필요하다.
+  Node public API에는 신규 request 차단과 처리 중 request 보존을 분리해 제어하는 provider drain
+  표면이 없으므로 완료 marker로 올리지 않는다.
 - `RL-C4`: registry restart/outage recovery Node marker가 아직 없다. 현재 public same-process
   restart 시도는 provider 재광고와 restarted registry topology `Ready` evidence를 안정적으로 만들지
   못했으므로 완료 처리하지 않는다. process-isolated registry restart harness로 기존 channel socket

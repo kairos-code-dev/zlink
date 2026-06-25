@@ -88,11 +88,10 @@ async function pubSub() {
   const subscribers = [];
 
   try {
-    subscribers.push(
-      await startPubSubSubscriber('PubSubAlphaModule', PubSubAlphaHandler, eventsEndpoint),
-      await startPubSubSubscriber('PubSubBetaModule', PubSubBetaHandler, eventsEndpoint),
-      await startPubSubSubscriber('PubSubGammaModule', PubSubGammaHandler, eventsEndpoint)
-    );
+    const alphaSubscriber = await startPubSubSubscriber('PubSubAlphaModule', PubSubAlphaHandler, eventsEndpoint);
+    let betaSubscriber = await startPubSubSubscriber('PubSubBetaModule', PubSubBetaHandler, eventsEndpoint);
+    const gammaSubscriber = await startPubSubSubscriber('PubSubGammaModule', PubSubGammaHandler, eventsEndpoint);
+    subscribers.push(alphaSubscriber, betaSubscriber, gammaSubscriber);
 
     const fanout = publisher.app.get(nestjs.ZLINK_FANOUT_CLIENT, { strict: false });
     await publishUntil(fanout, 'all', -1, () =>
@@ -132,6 +131,24 @@ async function pubSub() {
       PubSubLateHandler.events.some((event) => event.topic === 'all' && event.seq === 31));
     assert.equal(PubSubLateHandler.events.some((event) => event.seq === 30), false);
     marker('PS-A3');
+
+    PubSubAlphaHandler.events = [];
+    PubSubBetaHandler.events = [];
+    PubSubGammaHandler.events = [];
+    await betaSubscriber.app.close();
+    subscribers.splice(subscribers.indexOf(betaSubscriber), 1);
+    await publishUntil(fanout, 'all', 40, () =>
+      PubSubAlphaHandler.events.some((event) => event.seq === 40)
+      && PubSubGammaHandler.events.some((event) => event.seq === 40));
+    assert.equal(PubSubBetaHandler.events.some((event) => event.seq === 40), false);
+    betaSubscriber = await startPubSubSubscriber('PubSubBetaRestartedModule', PubSubBetaHandler, eventsEndpoint);
+    subscribers.push(betaSubscriber);
+    await publishUntil(fanout, 'all', 41, () =>
+      PubSubAlphaHandler.events.some((event) => event.seq === 41)
+      && PubSubBetaHandler.events.some((event) => event.seq === 41)
+      && PubSubGammaHandler.events.some((event) => event.seq === 41));
+    assert.equal(PubSubBetaHandler.events.some((event) => event.seq === 40), false);
+    marker('PS-A4');
 
     PubSubAlphaHandler.events = [];
     PubSubBetaHandler.events = [];

@@ -155,8 +155,7 @@ async function monitoring() {
     const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
     await client.requestToChannel('mon.api', { ok: true }).packetName('mon.echo').submit();
     await waitFor(() => fs.existsSync(logFile) && fs.readFileSync(logFile, 'utf8').includes('mon.echo'));
-    marker('MON-A1');
-    marker('MON-B1');
+    selfCheck('MON-DISPATCH-TRACE');
   } finally {
     await app.close();
   }
@@ -318,6 +317,10 @@ function nestModule(name, metadata) {
 
 function marker(id) {
   console.log(`scenario ${id} passed`);
+}
+
+function selfCheck(id) {
+  console.log(`self-check ${id} passed`);
 }
 
 function uniqueEndpoint(label) {

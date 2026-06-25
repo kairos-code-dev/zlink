@@ -3602,6 +3602,19 @@ async function spotService() {
     assert.equal(await spotManager.close('sm-b1-spot'), true);
     selfCheck('SM-B1-LOCAL-JOIN-CALLBACK');
 
+    smB8Actor = undefined;
+    lifecycleEvents.length = 0;
+    const smB8ActorRef = await actorManager.getOrCreate('sm-b8-actor', 'sm-a6-player');
+    assert.equal(smB8ActorRef.actorId, 'sm-b8-actor');
+    assert.ok(smB8Actor);
+    assert.ok(entrySpotInstance);
+    assert.equal(smB8Actor.context.isJoined, false);
+    await entrySpotInstance.context.destroyActor(smB8Actor);
+    await entrySpotInstance.context.destroyActor(smB8Actor);
+    assert.equal(await actorManager.find('sm-b8-actor'), undefined);
+    assert.deepEqual(lifecycleEvents, []);
+    selfCheck('SM-B8-ENTRY-DESTROY-CLEANUP');
+
     stageWrapperEvents.length = 0;
     await spotManager.getOrCreate(StageWrapperSpot, 'sm-a5-stage', { stageId: 'stage-17', initialScore: 3 });
     assert.deepEqual(stageWrapperEvents, [
@@ -4328,10 +4341,12 @@ async function assertInvalidRegistration(nestjs) {
 }
 
 const entrySpotEvents = [];
+let entrySpotInstance;
 
 class EntrySpot {
   constructor(spots) {
     this.spots = spots;
+    entrySpotInstance = this;
   }
 
   async onActorJoin(actor, request) {
@@ -4350,7 +4365,16 @@ class EntrySpot {
   }
 
   async onJoinedActor(actor) {
+    if (actor.actorId === 'sm-b8-actor') {
+      lifecycleEvents.push(`entry-joined:${actor.actorId}`);
+    }
     entrySpotEvents.push(`entry-joined:${actor.actorId}`);
+  }
+
+  async onCreateActor(actor) {
+    if (actor.actorId === 'sm-b8-actor') {
+      lifecycleEvents.push(`entry-created:${actor.actorId}`);
+    }
   }
 }
 Inject(nestjsPublic.ZLINK_SPOT_MANAGER)(EntrySpot, undefined, 0);
@@ -4372,6 +4396,7 @@ const lifecycleEvents = [];
 let smA1Actor;
 let smA6Actor;
 let smB1Actor;
+let smB8Actor;
 let smE3Actor;
 
 class LifecycleSpot {
@@ -4428,6 +4453,9 @@ class LifecycleActorFactory {
     }
     if (actorId === 'sm-b1-actor') {
       smB1Actor = actor;
+    }
+    if (actorId === 'sm-b8-actor') {
+      smB8Actor = actor;
     }
     if (actorId === 'sm-e3-actor') {
       smE3Actor = actor;

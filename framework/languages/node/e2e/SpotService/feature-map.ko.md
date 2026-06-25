@@ -44,7 +44,10 @@
 - `SM-B5`: actor 미등록 request negative path Node runner와 marker가 아직 없다.
 - `SM-B6`: leave와 disconnect callback 차이 Node runner와 marker가 아직 없다.
 - `SM-B7`: actor handler 실행 순서 Node runner와 marker가 아직 없다.
-- `SM-B8`: actor explicit destroy Node runner와 marker가 아직 없다.
+- `SM-B8`: public Entry Spot `context.destroyActor(...)` self-check는 runner에 있다. Entry Spot에
+  있는 actor destroy가 actor manager에서 정리되고 두 번째 destroy가 idempotent하게 끝나는지 확인한다.
+  다만 공통 시나리오가 요구하는 user Spot join 뒤 Entry Spot 복귀, 파괴 후 actor request의 정해진
+  public error, lifecycle callback evidence가 아직 없어 완료 marker로 올리지 않는다.
 - `SM-C1`: channel to spot messaging Node runner와 marker가 아직 없다.
 - `SM-C2`: spot to channel messaging Node runner와 marker가 아직 없다.
 - `SM-C3`: spot to spot messaging Node runner와 marker가 아직 없다.

@@ -78,6 +78,18 @@ async function registryMessaging() {
       .submit();
     assert.deepEqual(reply, { id: 7, text: 'hello', handledBy: 'rm-provider-a' });
 
+    const largeText = 'payload-'.repeat(16 * 1024);
+    const largeReply = await client
+      .requestToChannel('rm.api', { id: 15, text: largeText })
+      .packetName('rm.echo')
+      .timeout(3000)
+      .submit();
+    assert.equal(largeReply.id, 15);
+    assert.equal(largeReply.text.length, largeText.length);
+    assert.equal(largeReply.text, largeText);
+    assert.equal(largeReply.handledBy, 'rm-provider-a');
+    selfCheck('RM-C8-PAYLOAD-ROUNDTRIP');
+
     await client
       .sendToChannel('rm.api', { id: 8, text: 'audit' })
       .packetName('rm.audit')

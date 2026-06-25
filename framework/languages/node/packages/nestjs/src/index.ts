@@ -81,6 +81,8 @@ interface RegistryRuntime {
   readonly isStarted: boolean;
   start(signal?: AbortSignal): Promise<void>;
   stop(signal?: AbortSignal): Promise<void>;
+  onApplicationBootstrap?: () => Promise<void>;
+  onApplicationShutdown?: () => Promise<void>;
 }
 
 interface DisposableRegistryQueryClient {
@@ -354,7 +356,7 @@ export const ZLINK_SPOT_OUTBOUND = Symbol.for('@zlink-systems/framework:spot-out
 export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:spot-publisher-client');
 export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
 export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
-export const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:registry-runtime');
+const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:registry-runtime');
 export const ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-query');
 export const ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:registry-query-client');
 
@@ -1204,7 +1206,7 @@ export class ZLinkRegistryModule {
     return {
       module: ZLinkRegistryModule,
       providers,
-      exports: providers.map(providerToken)
+      exports: [ZLINK_REGISTRY_QUERY]
     };
   }
 
@@ -1305,7 +1307,7 @@ function createRegistryDynamicModuleFromFactory(options: {
         useFactory: options.createQuery
       }
     ],
-    exports: [options.runtimeToken, options.queryToken]
+    exports: [options.queryToken]
   };
 }
 
@@ -2439,12 +2441,34 @@ function createRuntimeHost(
     providerResolver: createProviderResolver(moduleRef, discovery)
   }) as RuntimeHostWithNestLifecycle;
   runtime.onModuleInit = async () => {
+    const embeddedRegistryRuntime = resolveEmbeddedRegistryRuntime(moduleRef);
+    suppressEmbeddedRegistryLifecycle(embeddedRegistryRuntime);
+    await embeddedRegistryRuntime?.start();
     await runtime.start();
   };
   runtime.onModuleDestroy = async () => {
     await runtime.stop();
+    await resolveEmbeddedRegistryRuntime(moduleRef)?.stop();
   };
+  runtime.onApplicationBootstrap = async () => {};
+  runtime.onApplicationShutdown = async () => {};
   return runtime;
+}
+
+function resolveEmbeddedRegistryRuntime(moduleRef: ModuleRef): RegistryRuntime | undefined {
+  try {
+    return moduleRef.get(ZLINK_REGISTRY_RUNTIME, { strict: false }) as RegistryRuntime | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function suppressEmbeddedRegistryLifecycle(runtime: RegistryRuntime | undefined): void {
+  if (runtime === undefined) {
+    return;
+  }
+  runtime.onApplicationBootstrap = async () => {};
+  runtime.onApplicationShutdown = async () => {};
 }
 
 function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryService): ZLinkProviderResolver {

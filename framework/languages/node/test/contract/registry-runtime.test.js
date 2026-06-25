@@ -135,7 +135,7 @@ test('registry spot remote address resolver accepts framework string RoutingId w
   }
 });
 
-test('registry modules expose runtime query and remote query client providers', () => {
+test('registry modules expose in-process query and remote query client providers', () => {
   const registryModule = nestjs.ZLinkRegistryModule.forRoot({
     pubEndpoint: 'tcp://0.0.0.0:5550',
     routerEndpoint: 'tcp://0.0.0.0:5551'
@@ -144,15 +144,12 @@ test('registry modules expose runtime query and remote query client providers', 
     endpoint: 'tcp://registry:5551'
   });
 
-  assert.equal(providerTokens(registryModule).has(nestjs.ZLINK_REGISTRY_RUNTIME), true);
   assert.equal(providerTokens(registryModule).has(nestjs.ZLINK_REGISTRY_QUERY), true);
   assert.equal(providerTokens(queryClientModule).has(nestjs.ZLINK_REGISTRY_QUERY_CLIENT), true);
 
-  const runtime = registryModule.providers.find((provider) => provider.provide === nestjs.ZLINK_REGISTRY_RUNTIME).useValue;
   const query = registryModule.providers.find((provider) => provider.provide === nestjs.ZLINK_REGISTRY_QUERY).useValue;
   const client = queryClientModule.providers.find((provider) => provider.provide === nestjs.ZLINK_REGISTRY_QUERY_CLIENT);
 
-  assert.equal(runtime instanceof framework.ZLinkRegistryRuntime, true);
   assert.equal(query instanceof framework.DefaultZLinkRegistryQuery, true);
   assert.equal(typeof client.useFactory, 'function');
 });
@@ -185,15 +182,64 @@ test('registry modules support NestJS async imports inject and lifecycle', async
   })(RegistryModule);
 
   const app = await NestFactory.createApplicationContext(RegistryModule, { logger: false, abortOnError: false });
-  const runtime = app.get(nestjs.ZLINK_REGISTRY_RUNTIME, { strict: false });
   const query = app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
 
-  assert.equal(runtime instanceof framework.ZLinkRegistryRuntime, true);
   assert.equal(query instanceof framework.DefaultZLinkRegistryQuery, true);
-  assert.equal(runtime.isStarted, true);
+  const status = await query.status();
+  assert.equal(typeof status.registryId, 'number');
 
   await app.close();
-  assert.equal(runtime.isStarted, false);
+});
+
+test('embedded registry runtime is started before framework runtime and stopped after it', async () => {
+  const events = [];
+  const pubEndpoint = await reserveTcpEndpoint();
+  const routerEndpoint = await reserveTcpEndpoint();
+  class EmbeddedAppModule {}
+  Module({
+    imports: [
+      nestjs.ZLinkRegistryModule.forRoot({
+        pubEndpoint,
+        routerEndpoint
+      }),
+      nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework().build())
+    ]
+  })(EmbeddedAppModule);
+
+  const originalRegistryStart = framework.ZLinkRegistryRuntime.prototype.start;
+  const originalRegistryStop = framework.ZLinkRegistryRuntime.prototype.stop;
+  const originalStart = framework.ZLinkFrameworkRuntimeHost.prototype.start;
+  const originalStop = framework.ZLinkFrameworkRuntimeHost.prototype.stop;
+  framework.ZLinkRegistryRuntime.prototype.start = async function startWithTrace(...args) {
+    events.push('registry:start');
+    return originalRegistryStart.call(this, ...args);
+  };
+  framework.ZLinkRegistryRuntime.prototype.stop = async function stopWithTrace(...args) {
+    events.push('registry:stop');
+    return originalRegistryStop.call(this, ...args);
+  };
+  framework.ZLinkFrameworkRuntimeHost.prototype.start = async function startWithTrace() {
+    events.push('framework:start');
+    return originalStart.call(this);
+  };
+  framework.ZLinkFrameworkRuntimeHost.prototype.stop = async function stopWithTrace() {
+    events.push('framework:stop');
+    return originalStop.call(this);
+  };
+
+  let app;
+  try {
+    app = await NestFactory.createApplicationContext(EmbeddedAppModule, { logger: false, abortOnError: false });
+    assert.deepEqual(events.slice(0, 2), ['registry:start', 'framework:start']);
+  } finally {
+    await app?.close();
+    framework.ZLinkRegistryRuntime.prototype.start = originalRegistryStart;
+    framework.ZLinkRegistryRuntime.prototype.stop = originalRegistryStop;
+    framework.ZLinkFrameworkRuntimeHost.prototype.start = originalStart;
+    framework.ZLinkFrameworkRuntimeHost.prototype.stop = originalStop;
+  }
+
+  assert.deepEqual(events, ['registry:start', 'framework:start', 'framework:stop', 'registry:stop']);
 });
 
 test('registry query client module supports NestJS async imports and inject', async () => {

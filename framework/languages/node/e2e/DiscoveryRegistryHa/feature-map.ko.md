@@ -33,6 +33,12 @@
   확인한다.
 - `DR-D2`: registry만 별도 context로 띄운 standalone 배포에서 discovery와 messaging이 동작하는지
   확인한다.
+- `DR-D1`: 같은 Nest application에 public `ZLinkRegistryModule.forRoot(...)`와
+  `ZLinkModule.forRoot(...)`를 함께 import한 embedded 배포에서 provider 광고, in-process topology
+  조회, 외부 consumer discovery messaging이 standalone과 같은 의미로 동작하는지 확인한다.
+- `DR-D3`: embedded registry/service node와 standalone registry 두 대를 peer cluster로 묶고,
+  standalone registry의 public peer 합산 view와 그 registry만 보는 consumer discovery messaging이
+  embedded provider까지 정상 수렴하는지 확인한다.
 - `DR-D4`: 같은 registry router endpoint를 in-process `ZLinkRegistryQuery`와 remote
   `ZLinkRegistryQueryClient`로 조회했을 때 동일한 topology snapshot을 반환하는지 확인한다.
 
@@ -41,14 +47,3 @@
 - `DR-A4`: 같은 rid 충돌은 public `memberPeers(...)`로 합산 view를 고정해야 한다. 현재 Node runner
   시도에서는 같은 rid를 서로 다른 registry에 광고했을 때 peer 쪽 `memberPeers(...)`가 안정적인
   두-endpoint view를 제공하지 않아 완료 marker로 올리지 않는다.
-- `DR-D1`: registry와 service를 한 embedded application으로 띄우는 Node marker가 아직 없다. 같은
-  Nest application에 public `ZLinkRegistryModule.forRoot(...)`와 `ZLinkModule.forRoot(...)`를 함께
-  import하는 구성은 spec에 있지만, 현재 E2E runner에서는 provider 광고·topology·consumer messaging
-  완료 증거가 안정적으로 나오지 않고 실행이 멈춰 완료 marker로 올리지 않는다.
-- `DR-D3`: embedded registry/service node와 standalone registry를 섞은 cluster marker가 아직 없다.
-  공통 시나리오는 embedded node의 provider 광고, standalone registry peer 합산 view, consumer
-  discovery·messaging을 함께 요구한다. Node spec은 같은 Nest application 안에서
-  `ZLinkRegistryModule.forRoot(...)`와 `ZLinkModule.forRoot(...)`를 함께 쓰는 배포 형태를
-  설명하지만, 현재 E2E runner에서 `DR-D1`의 embedded provider 광고·topology·messaging 증거가
-  안정적으로 나오지 않는다. 따라서 `DR-D3`도 `DR-D1`이 닫힌 뒤 같은 public API만으로 혼합 peer
-  cluster 수렴까지 검증해야 하며, 내부 registry helper나 private peer 조작으로 완료 처리하지 않는다.

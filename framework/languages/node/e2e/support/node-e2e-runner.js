@@ -1232,6 +1232,8 @@ async function discoveryRegistryHa() {
   const nestjs = loadNest();
   const framework = loadFramework();
   await runDiscoveryRegistryHaSingle(nestjs, framework);
+  await runDiscoveryRegistryHaEmbedded(nestjs, framework);
+  await runDiscoveryRegistryHaEmbeddedMixedCluster(nestjs, framework);
   await runDiscoveryRegistryHaPeerTwo(nestjs, framework);
   await runDiscoveryRegistryHaPeerThree(nestjs, framework);
   await runDiscoveryRegistryHaLateStart(nestjs, framework);
@@ -1240,6 +1242,124 @@ async function discoveryRegistryHa() {
   await runDiscoveryRegistryHaKilledRegistry(nestjs, framework);
   await runDiscoveryRegistryHaRegistryRecovery(nestjs, framework);
   await runDiscoveryRegistryHaFullOutageRecovery(nestjs, framework);
+}
+
+async function runDiscoveryRegistryHaEmbeddedMixedCluster(nestjs, framework) {
+  DRHandler.requests = [];
+  const reg1Pub = await reserveTcpEndpoint();
+  const reg1Router = await reserveTcpEndpoint();
+  const reg2Pub = await reserveTcpEndpoint();
+  const reg2Router = await reserveTcpEndpoint();
+  const reg3Pub = await reserveTcpEndpoint();
+  const reg3Router = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const handler = createDRHandler('dr-mixed-embedded-provider');
+  const apps = [];
+
+  try {
+    const embedded = await startApp(
+      nestModule('DiscoveryRegistryHaEmbeddedMixedReg1Module', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: reg1Pub,
+            routerEndpoint: reg1Router,
+            registryId: 82,
+            broadcastIntervalMs: 100,
+            peers: [reg2Pub, reg3Pub]
+          }),
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(reg1Router)
+            .addClientServerChannel('dr.mixed')
+              .enableServer(providerEndpoint)
+              .routingId('dr-mixed-embedded-provider')
+              .addRequestHandler('dr.probe', handler)
+            .build())
+        ],
+        providers: [handler]
+      })
+    );
+    apps.push(embedded.app);
+    const reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaEmbeddedMixedReg2Module', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 83,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub, reg3Pub]
+    });
+    const reg3 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaEmbeddedMixedReg3Module', {
+      pubEndpoint: reg3Pub,
+      routerEndpoint: reg3Router,
+      registryId: 84,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub, reg2Pub]
+    });
+    apps.push(reg2.app, reg3.app);
+
+    const reg1Query = embedded.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const reg2Query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const reg3Query = reg3.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryPeerConnection(reg1Query, 2);
+    await waitForRegistryPeerConnection(reg2Query, 2);
+    await waitForRegistryPeerConnection(reg3Query, 2);
+    await waitForDiscoveryTopologySnapshot(reg1Query, framework, 'dr.mixed', [providerEndpoint]);
+    await waitForDiscoveryMemberPeers(reg2Query, framework, 'dr.mixed', [providerEndpoint]);
+    await waitForDiscoveryMemberPeers(reg3Query, framework, 'dr.mixed', [providerEndpoint]);
+
+    const consumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaEmbeddedMixedConsumerModule', reg3Router, 'dr.mixed');
+    apps.push(consumer.app);
+    await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.mixed', 'dr-d3-mixed', ['dr-mixed-embedded-provider']);
+    marker('DR-D3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function runDiscoveryRegistryHaEmbedded(nestjs, framework) {
+  DRHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const handler = createDRHandler('dr-embedded-provider');
+  const apps = [];
+
+  try {
+    const embedded = await startApp(
+      nestModule('DiscoveryRegistryHaEmbeddedModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 81,
+            broadcastIntervalMs: 100
+          }),
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('dr.embedded')
+              .enableServer(providerEndpoint)
+              .routingId('dr-embedded-provider')
+              .addRequestHandler('dr.probe', handler)
+            .build())
+        ],
+        providers: [handler]
+      })
+    );
+    apps.push(embedded.app);
+
+    const query = embedded.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForDiscoveryEndpoints(query, framework, 'dr.embedded', [providerEndpoint]);
+    const consumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaEmbeddedConsumerModule', registryRouterEndpoint, 'dr.embedded');
+    apps.push(consumer.app);
+    await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.embedded', 'dr-d1-embedded', ['dr-embedded-provider']);
+    marker('DR-D1');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
 }
 
 async function runDiscoveryRegistryHaSingle(nestjs, framework) {

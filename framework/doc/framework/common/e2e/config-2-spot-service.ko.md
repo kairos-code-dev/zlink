@@ -474,10 +474,10 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 
 ### Track F — Channel↔Spot route bridge (외부 channel → 특정 spot)
 
-외부 channel을 통해 특정 `Spot`으로 메시지를 보내는 경로를 본다. channel은 두 종류 모두 쓸 수
-있다 — client/server channel(내부적으로 `DEALER`)과 route mesh channel(내부적으로 `ROUTER`).
-어느 쪽을 쓰든 "외부 channel client가 target `Spot`(RoutingId)으로 send/request를 보내고 reply를
-받는다"는 의미는 같아야 한다.
+외부 route mesh channel을 통해 특정 `Spot`으로 메시지를 보내는 경로를 본다. implicit SPOT
+wiring v1에서는 외부→spot route를 RouteMesh 채널에만 자동으로 얹는다. 일반 client/server
+channel은 spot route로 새지 않으므로, 이 트랙은 route mesh channel 안에서 일반 route packet과
+target spot packet이 함께 오가도 서로 오염되지 않는지 검증한다.
 
 핵심 전제 두 가지:
 
@@ -485,10 +485,9 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
   `SpotNode`가 channel socket을 직접 들고 있지 않다. spot routing을 얹어도 그 channel의 일반
   messaging은 그대로 동작한다.
 - 외부 channel과 spot 사이의 relay packet 의미(frame 순서·request/reply·error·policy)는 한 곳에서
-  정의되고 모든 언어가 같은 의미로 투영한다. core 내부 구현은 **SPOT route channel bridge**로 정리
-  중이지만(draft: `core/doc/spec/draft/spot-route-channel-bridge-plan.ko.md`), **공개 API와 기능은
-  현재 제공되므로 아래 시나리오는 현 public API로 검증 가능**하다(draft는 내부 구현 교체일 뿐 공개
-  표면을 유지한다).
+  정의되고 모든 언어가 같은 의미로 투영한다. core 내부 구현은 implicit SPOT wiring으로 정리
+  중이며(draft: `core/doc/spec/draft/spot-implicit-channel-wiring-plan.ko.md`), v1 공개 검증 범위는
+  RouteMesh 기반 spot route에 한정한다.
 
 이 트랙이 쓰는 공개 API(현재 제공, guide 05-spot 문서화):
 
@@ -500,7 +499,7 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 - low-level relay packet은 직접 조립하지 않는다(framework가 처리).
 
 > Track C(messaging 방향)와의 관계: Track C는 channel↔spot의 verb(send/request/publish)와 방향을
-> 본다. Track F는 그 아래에서 **channel 종류 무관 동등성, 한 socket의 app packet·spot relay 공존,
+> 본다. Track F는 그 아래에서 **RouteMesh 안의 app packet·spot route packet 공존,
 > route 없음·거부·malformed 에러 계약, channel socket 소유권 독립**처럼 bridge가 새로 보장하는
 > 부분을 콕 집어 고정한다.
 

@@ -2243,6 +2243,7 @@ async function resilienceLifecycle() {
   await runResilienceLifecycleClientReconnectStorm();
   await runResilienceLifecycleProviderFlapping();
   await runResilienceLifecycleGracefulShutdown();
+  await runResilienceLifecycleRegistryStaleCleanup();
   await runResilienceLifecycleHighFanout();
   await runResilienceLifecycleObserverIsolation();
   await runResilienceLifecycleLoggingMarker();
@@ -2994,6 +2995,145 @@ async function waitForResilienceGracefulProviderRemoved(query, providerAEndpoint
   assert.fail(`RL-B3 provider-b remained in topology: ${stringifyDiagnostic(lastTopology)}`);
 }
 
+async function runResilienceLifecycleRegistryStaleCleanup() {
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const apps = [];
+  const children = [];
+
+  try {
+    const registry = await startApp(
+      nestModule('ResilienceStaleRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 97,
+            heartbeatIntervalMs: 100,
+            heartbeatTimeoutMs: 350,
+            broadcastIntervalMs: 100
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    await startResilienceLifecycleStaleProvider(nestjs, registryRouterEndpoint, providerAEndpoint, 'provider-a', apps);
+    const killedProvider = await startResilienceInFlightProviderChild({
+      moduleName: 'ResilienceStaleKilledProviderModule',
+      registryRouterEndpoint,
+      providerEndpoint: providerBEndpoint,
+      channelName: 'rl.stale',
+      packetName: 'rl.stale.probe',
+      providerId: 'provider-b',
+      routingId: 'provider-b',
+      blockRequestIds: []
+    });
+    children.push(killedProvider.child);
+
+    const consumer = await startApp(
+      nestModule('ResilienceStaleConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rl.stale')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.stale', [providerAEndpoint, providerBEndpoint]);
+    await waitForResilienceProviderReplies(client, 'rl.stale', 'rl.stale.probe', ['provider-a', 'provider-b'], 'rl-c2-before');
+
+    await stopChildProcess(killedProvider.child, 'SIGKILL');
+    children.splice(children.indexOf(killedProvider.child), 1);
+    await waitForRegistryChannelEndpointAbsent(query, framework, 'rl.stale', providerBEndpoint);
+
+    for (let index = 0; index < 10; index += 1) {
+      const requestId = `rl-c2-after-${index}`;
+      const reply = await client
+        .requestToChannel('rl.stale', { requestId })
+        .packetName('rl.stale.probe')
+        .timeout(1000)
+        .submit();
+      assert.deepEqual(reply, { requestId, handledBy: 'provider-a' });
+    }
+    marker('RL-C2');
+  } finally {
+    for (const child of children.reverse()) {
+      await stopChildProcess(child, 'SIGKILL');
+    }
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startResilienceLifecycleStaleProvider(nestjs, registryRouterEndpoint, endpoint, providerId, apps) {
+  const handler = createRLStaleHandler(providerId);
+  const started = await startApp(
+    nestModule(`ResilienceStale${providerId}ProviderModule`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rl.stale')
+            .enableServer(endpoint)
+            .routingId(providerId)
+            .addRequestHandler('rl.stale.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+  return started;
+}
+
+async function waitForResilienceProviderReplies(client, channelName, packetName, providerIds, prefix) {
+  const expected = new Set(providerIds);
+  const observed = new Set();
+  for (let index = 0; index < 80 && observed.size < expected.size; index += 1) {
+    const requestId = `${prefix}-${index}`;
+    const reply = await submitUntilReachable(() =>
+      client
+        .requestToChannel(channelName, { requestId })
+        .packetName(packetName)
+        .timeout(1000)
+        .submit());
+    assert.equal(reply.requestId, requestId);
+    assert.ok(expected.has(reply.handledBy), `unexpected provider for ${channelName}: ${reply.handledBy}`);
+    observed.add(reply.handledBy);
+  }
+  assert.deepEqual([...observed].sort(), [...expected].sort());
+}
+
+async function waitForRegistryChannelEndpointAbsent(query, framework, channelName, endpoint) {
+  const deadline = Date.now() + 5000;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({
+      autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
+      serviceKind: framework.ZLinkServiceKind.Socket,
+      serviceRole: framework.ZLinkServiceRole.Router,
+      channelName
+    });
+    const readyEntries = lastTopology.filter((entry) => entry.state === framework.ZLinkTopologyState.Ready);
+    if (!readyEntries.some((entry) => entry.endpoint === endpoint)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`Registry stale endpoint remained ready: ${endpoint}; topology=${stringifyDiagnostic(lastTopology)}`);
+}
+
 async function runResilienceLifecycleHighFanout() {
   RLFanoutEvidence.events = [];
   const eventsEndpoint = await reserveTcpEndpoint();
@@ -3566,6 +3706,14 @@ function createRLGracefulHandler(providerId) {
   return class {
     handle(payload) {
       return RLGracefulHandler.record(payload, providerId);
+    }
+  };
+}
+
+function createRLStaleHandler(providerId) {
+  return class {
+    handle(payload) {
+      return { ...payload, handledBy: providerId };
     }
   };
 }

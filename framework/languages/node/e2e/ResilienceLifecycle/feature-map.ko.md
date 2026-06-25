@@ -30,6 +30,9 @@
   보고되며 후속 정상 request가 계속 성공하는지 확인한다.
 - `RL-D3`: public message-flow observer를 명시적 logging sink로 등록하고, dispatch error event의
   `reason`·`action`·`packetName` marker가 파일 evidence에 남는지 확인한다.
+- `RL-C2`: provider 한 대를 child process로 띄운 뒤 `SIGKILL`로 비정상 종료하고, 짧은 registry
+  heartbeat timeout 뒤 해당 endpoint가 ready topology에서 사라지며 follow-up request가 살아 있는
+  provider로만 처리되는지 확인한다.
 - `RL-D5`: public channel client 6개가 2초 동안 request와 send를 계속 섞어 보내는 bounded soak를
   실행한다. 모든 request reply와 send delivery가 누락 없이 수집되고, latency sample의 최대값과
   앞/뒤 절반 평균 drift가 bounded threshold 안에 머무는지 관측한다. 리소스 누수의 엄밀한 증명은
@@ -44,7 +47,6 @@
 - `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.
 - `RL-B6`: gray failure Node harness가 아직 없다.
 - `RL-C1`: 다수 연결/요청 resource cleanup evidence Node harness가 아직 없다.
-- `RL-C2`: registry stale data cleanup Node harness가 아직 없다.
 - `RL-C3`: node disconnect/recovery Node harness가 아직 없다.
 - `RL-C4`: registry restart/outage recovery Node marker가 아직 없다. 현재 public same-process
   restart 시도는 provider 재광고와 restarted registry topology `Ready` evidence를 안정적으로 만들지

@@ -1576,6 +1576,8 @@ async function spotService() {
             .addSpotFactory(UserSpot)
             .addSpotFactory(OtherUserSpot)
             .addSpotFactory(LifecycleSpot)
+            .addSpotFactory(TimerSpot)
+            .addSpotFactory(IdleCloseSpot)
             .actorFactory('sm-a6-player', LifecycleActorFactory)
           .build())
       ],
@@ -1620,6 +1622,38 @@ async function spotService() {
     const afterMismatch = await spotManager.getOrCreate(UserSpot, 'sm-a7-spot', { owner: 'u1' });
     assert.equal(afterMismatch.state, 'existing');
     marker('SM-A7');
+
+    timerEvents.length = 0;
+    await spotManager.getOrCreate(TimerSpot, 'sm-e2-spot', { owner: 'u1' });
+    await waitFor(() => timerEvents.filter((event) => event.startsWith('tick:')).length >= 2);
+    assert.deepEqual(timerEvents.slice(0, 2), ['tick:1:1', 'tick:2:2']);
+    assert.equal(await spotManager.close('sm-e2-spot'), true);
+    const timerClosing = timerEvents.find((event) => event.startsWith('closing:'));
+    assert.ok(timerClosing);
+    assert.ok(Number(timerClosing.slice('closing:'.length)) >= 2);
+    marker('SM-E2');
+
+    idleEvents.length = 0;
+    smE3Actor = undefined;
+    await spotManager.getOrCreate(IdleCloseSpot, 'sm-e3-spot', { owner: 'u1' });
+    const idleActorRef = await actorManager.getOrCreate('sm-e3-actor', 'sm-a6-player');
+    assert.equal(idleActorRef.actorId, 'sm-e3-actor');
+    assert.ok(smE3Actor);
+    const idleJoined = await smE3Actor.context.joinSpot('sm-e3-spot', { actor: 'sm-e3-actor' }).submit();
+    assert.equal(idleJoined.resultCode, 0);
+    await waitFor(() => idleEvents.includes('close-with-actor:false'));
+    assert.deepEqual(await spotManager.find('sm-e3-spot'), { spotRid: 'sm-e3-spot' });
+    await smE3Actor.context.getSpot(IdleCloseSpot).leave(smE3Actor);
+    await waitFor(async () => (await spotManager.find('sm-e3-spot')) === null && idleEvents.includes('closing'));
+    assert.deepEqual(idleEvents, [
+      'join:sm-e3-actor',
+      'activity',
+      'close-with-actor:false',
+      'leave:sm-e3-actor',
+      'close-after-leave:true',
+      'closing'
+    ]);
+    marker('SM-E3');
   } finally {
     await app.close();
   }
@@ -2047,6 +2081,7 @@ class OtherUserSpot {}
 
 const lifecycleEvents = [];
 let smA6Actor;
+let smE3Actor;
 
 class LifecycleSpot {
   constructor(context) {
@@ -2089,8 +2124,97 @@ class LifecycleActor {
 
 class LifecycleActorFactory {
   create(actorId, context) {
-    smA6Actor = new LifecycleActor(actorId, context);
-    return smA6Actor;
+    const actor = new LifecycleActor(actorId, context);
+    if (actorId === 'sm-a6-actor') {
+      smA6Actor = actor;
+    }
+    if (actorId === 'sm-e3-actor') {
+      smE3Actor = actor;
+    }
+    return actor;
+  }
+}
+
+const timerEvents = [];
+
+class TimerSpot {
+  constructor(context) {
+    this.context = context;
+    this.count = 0;
+  }
+
+  async onInitialize() {
+    await this.context.addTimer('sm-e2-heartbeat', 10, TimerTickHandler);
+  }
+
+  async onClosing() {
+    timerEvents.push(`closing:${this.count}`);
+  }
+}
+
+class TimerTickHandler {
+  async handle(spot, tick) {
+    spot.count += 1;
+    timerEvents.push(`tick:${tick.deliveryIndex}:${spot.count}`);
+  }
+}
+
+const idleEvents = [];
+
+class IdleCloseSpot {
+  constructor(context) {
+    this.context = context;
+    this.actorJoined = false;
+    this.activityObserved = false;
+    this.closeWhileJoinedObserved = false;
+    this.leaveObserved = false;
+  }
+
+  async onInitialize() {
+    await this.context.addTimer('sm-e3-idle-close', 10, IdleCloseTimerHandler);
+  }
+
+  async onActorJoin(actor) {
+    this.actorJoined = true;
+    idleEvents.push(`join:${actor.actorId}`);
+    return { accepted: true };
+  }
+
+  async onLeaveActor(actor) {
+    this.leaveObserved = true;
+    idleEvents.push(`leave:${actor.actorId}`);
+  }
+
+  async onClosing() {
+    idleEvents.push('closing');
+  }
+
+  leave(actor) {
+    return this.context.leaveActor(actor);
+  }
+}
+
+class IdleCloseTimerHandler {
+  async handle(spot) {
+    if (!spot.actorJoined) {
+      return;
+    }
+    if (!spot.activityObserved) {
+      spot.activityObserved = true;
+      idleEvents.push('activity');
+      return;
+    }
+    if (!spot.leaveObserved) {
+      if (spot.closeWhileJoinedObserved) {
+        return;
+      }
+      spot.closeWhileJoinedObserved = true;
+      const closed = await spot.context.close();
+      idleEvents.push(`close-with-actor:${closed}`);
+      return;
+    }
+    const closed = await spot.context.close();
+    idleEvents.push(`close-after-leave:${closed}`);
   }
 }
 

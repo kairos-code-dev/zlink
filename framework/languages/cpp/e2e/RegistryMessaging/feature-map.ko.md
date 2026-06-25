@@ -16,7 +16,6 @@
 | `RM-C3` | 구현 | 수동 multi-endpoint client-server channel에서 두 provider가 모두 처리하는지 검증한다. |
 | `RM-C4` | 구현 | timeout 뒤 정상 request가 late reply에 오염되지 않는지 검증한다. |
 | `RM-C5` | 구현 | 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. |
-| `RM-C6` | 제거 | DealerMesh 채널 타입 제거로 시나리오가 제거됐다. 다중 provider 분산은 RM-C3에서 client-server multi-endpoint로 검증한다. |
 | `RM-C7` | 구현 | `server_peer_weight`로 build-time server weight를 다르게 준 provider 두 개를 띄우고, registry-discovered client에서 high-weight provider가 더 많이 처리되는지 검증한다. |
 | `RM-C8` | 구현 | public typed client로 소형, 대형, near-large payload 왕복을 검증하고, `server_max_message_size`를 낮춘 별도 provider에서 초과 payload 실패 뒤 정상 request가 복구되는지 검증한다. |
 | `RM-C9` | 구현 | 느린 provider handler에 다량 request를 보내 bounded timeout을 관측하고, 적체가 풀린 뒤 정상 request가 같은 channel에서 복구되는지 검증한다. |

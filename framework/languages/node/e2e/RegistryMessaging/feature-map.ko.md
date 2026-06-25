@@ -13,6 +13,8 @@
 - `RM-C1`: RM-A1의 registry-resolved 연결 위에서 request reply와 send handler evidence를 모두 확인한다.
 - `RM-C3`: 수동 multi-endpoint client가 provider 2개에 request를 분산하고, 두 provider evidence 합이
   전체 request 수와 일치하는지 확인한다.
+- `RM-C4`: RM-A1의 registry-resolved 연결 위에서 timeout 뒤 정상 request 두 번이 late reply에
+  오염되지 않는지 확인한다.
 
 ## public API/harness 대기
 
@@ -21,7 +23,6 @@
 - `RM-B1`: provider scale-out Node runner와 marker가 아직 없다.
 - `RM-B2`: provider scale-in과 graceful drain Node runner와 marker가 아직 없다.
 - `RM-C2`: target rid route request Node runner와 marker가 아직 없다.
-- `RM-C4`: registry-resolved 연결 위에서 timeout 뒤 late reply 비오염을 검증하는 Node marker가 아직 없다.
 - `RM-C7`: weighted 분산 Node runner와 marker가 아직 없다.
 - `RM-C8`: payload size policy Node runner와 marker가 아직 없다.
 - `RM-C9`: HWM/backpressure Node harness가 아직 없다.

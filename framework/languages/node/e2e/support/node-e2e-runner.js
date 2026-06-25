@@ -217,6 +217,39 @@ async function runRegistryMessagingDiscovery(nestjs, framework) {
     }]);
     assert.ok(readyProviders.some((provider) => provider.routingId === RMDiscoveryHandler.commands[0].handledBy));
     marker('RM-C1');
+
+    await assert.rejects(
+      () => client
+        .requestToChannel('rm.discovery', { id: 3, text: 'slow' })
+        .packetName('rm.discovery.echo')
+        .timeout(50)
+        .submit(),
+      /timed out|timeout|result 101/i
+    );
+    const afterTimeout = await client
+      .requestToChannel('rm.discovery', { id: 4, text: 'after-timeout' })
+      .packetName('rm.discovery.echo')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(afterTimeout, {
+      id: 4,
+      text: 'after-timeout',
+      handledBy: RMDiscoveryHandler.requests.find((request) => request.id === 4)?.handledBy
+    });
+    assert.ok(readyProviders.some((provider) => provider.routingId === afterTimeout.handledBy));
+    await waitFor(() => RMDiscoveryHandler.requests.some((request) => request.id === 3), 3000);
+    const afterLateReply = await client
+      .requestToChannel('rm.discovery', { id: 5, text: 'after-late-reply' })
+      .packetName('rm.discovery.echo')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(afterLateReply, {
+      id: 5,
+      text: 'after-late-reply',
+      handledBy: RMDiscoveryHandler.requests.find((request) => request.id === 5)?.handledBy
+    });
+    assert.ok(readyProviders.some((provider) => provider.routingId === afterLateReply.handledBy));
+    marker('RM-C4');
   } finally {
     for (const app of apps.reverse()) {
       await app.close();
@@ -856,10 +889,13 @@ class RMDiscoveryHandler {
 
 function createRMDiscoveryHandler(routingId) {
   return class {
-    handle(payload, context) {
+    async handle(payload, context) {
       if (context.packetName === 'rm.discovery.command') {
         RMDiscoveryHandler.recordCommand(payload, routingId);
         return undefined;
+      }
+      if (payload.text === 'slow') {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
       return RMDiscoveryHandler.record(payload, routingId);
     }

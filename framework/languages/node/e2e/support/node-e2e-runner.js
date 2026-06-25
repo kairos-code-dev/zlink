@@ -261,12 +261,17 @@ async function registrationCodec() {
     assert.equal(reply.id, 21);
     assert.equal(reply.codec, 'json');
     assert.equal(reply.ok, true);
+    assert.equal(reply.contentType, 'application/json');
     assert.equal(RcManualRequestHandler.requests.length, 1);
+    assert.equal(RcManualRequestHandler.requests[0].contentType, 'application/json');
     await client
       .sendToChannel('rc.api', { id: 22, codec: 'json', ok: true })
       .packetName('rc.audit.manual')
       .submit();
-    await waitFor(() => RcManualSendHandler.messages.some((message) => message.id === 22));
+    await waitFor(() => RcManualSendHandler.messages.some((message) =>
+      message.id === 22 &&
+      message.contentType === 'application/json'));
+    marker('RC-B1');
     marker('RC-A3');
 
     const decoratedReply = await client

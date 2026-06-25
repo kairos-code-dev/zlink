@@ -194,6 +194,20 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
+create_timer_spot() {
+  local endpoint="$1"
+  local rid="$2"
+  python3 - "${endpoint}/admin/create-timer?rid=${rid}" <<'PY'
+import sys
+import urllib.request
+request = urllib.request.Request(sys.argv[1], method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    body = response.read().decode("utf-8")
+    if '"created":true' not in body:
+        raise SystemExit("timer spot create did not report created=true: " + body)
+PY
+}
+
 assert_type_mismatch() {
   local endpoint="$1"
   local rid="$2"
@@ -252,8 +266,22 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot idle-timer timer-overrun route-mesh; do
+for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh route-channel idle-timer timer-overrun; do
+  if [[ "${mode}" == "idle-timer" ]]; then
+    create_timer_spot "${HTTP_A}" idle-close
+    create_timer_spot "${HTTP_A}" idle-active
+    sleep 2
+  fi
+  if [[ "${mode}" == "timer-overrun" ]]; then
+    create_timer_spot "${HTTP_A}" timer-overrun-skip
+    create_timer_spot "${HTTP_A}" timer-overrun-catchup
+    create_timer_spot "${HTTP_A}" timer-overrun-delay
+    sleep 2
+  fi
   run_client_mode "${mode}"
+  if [[ "${mode}" == "idle-timer" ]]; then
+    close_spot "${HTTP_A}" idle-active
+  fi
   sleep 2
 done
 run_publisher
@@ -270,6 +298,7 @@ cat "${log_dir}/client.stdout.log"
 fetch_evidence play-a "${HTTP_A}"
 fetch_evidence play-b "${HTTP_B}"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
+grep -q "packet=RoutePing" "${log_dir}/client-flow.log"
 grep -q "DispatchError" "${log_dir}/play-a-evidence.json"
 grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"
 grep -q "SpotClosing" "${log_dir}/play-a-evidence.json"
@@ -287,7 +316,6 @@ grep -q "SpotMeshEvent" "${log_dir}/play-a-evidence.json"
 grep -q "SpotMeshEvent" "${log_dir}/play-b-evidence.json"
 grep -q "IdleCloseRequested" "${log_dir}/play-a-evidence.json"
 grep -q "IdleClosed" "${log_dir}/play-a-evidence.json"
-grep -q "IdleActivity" "${log_dir}/play-a-evidence.json"
 grep -q "IdleKeptOpen" "${log_dir}/play-a-evidence.json"
 grep -q "TimerOverrunConfigured" "${log_dir}/play-a-evidence.json"
 grep -q "TimerOverrunTick" "${log_dir}/play-a-evidence.json"

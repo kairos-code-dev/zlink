@@ -36,10 +36,14 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   남기는지 확인한다.
 - `SM-E2`: user spot이 public `context.addTimer`로 등록한 timer를 주기적으로 실행하고 tick evidence를
   남기는지 확인한다.
+- `SM-E3`: public `context.addTimer`로 만든 idle timer가 idle spot을 public `context.close`로 닫고,
+  계속 열려 있어야 하는 spot은 닫지 않는지 evidence로 확인한다.
+- `SM-E4`: public `ZLinkTimerOptions`와 `ZLinkTimerOverrunPolicy`로 skip/catch-up/delay overrun
+  policy를 설정하고, `ZLinkTimerTick`의 delivery/skipped evidence가 남는지 확인한다.
 - `SM-F1`: 외부 consumer가 RouteMesh 경로로 target spot에 도달하는지 확인한다.
 - `SM-F2`: RouteMesh 채널명이 target spot egress의 실제 channel 기준으로 동작하는지 확인한다.
-- `SM-F3`: 같은 RouteMesh에서 일반 route request와 target spot request/send가 함께 동작하는지
-  확인한다.
+- `SM-F3`: 같은 RouteMesh에서 일반 route-channel request 송신과 target spot request/send가 한
+  channel 위에서 함께 구성되는지 확인한다.
 
 ## public contract parity 또는 spec 검토 대기
 
@@ -81,8 +85,6 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 갖추지 못한 상태로 관리한다. 구현 과정에서 다른 언어에 public 기능이 확인되면 위
 `public contract parity 또는 spec 검토 대기`로 옮긴다.
 
-- `SM-E3`: idle timer 기반 명시 close를 검증하는 scenario가 아직 없다.
-- `SM-E4`: timer overrun policy별 tick 처리 evidence를 검증하는 scenario가 아직 없다.
 - `SM-F4`: 존재하지 않는 route target request가 timeout이 아닌 framework error로 실패하는
   missing-route 부분은 runner가 `SM-F4-missing-route`로 확인한다. malformed spot route packet
   주입과 command drop/failure counter 분류는 public typed client로 만들 수 없어 raw-frame harness가

@@ -84,7 +84,7 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
         if ("idle-close".equals(rid)
             && Duration.between(lastActivity, Instant.now()).compareTo(Duration.ofMillis(700)) > 0) {
             evidence.record("IdleCloseRequested", rid, "idle");
-            context.close().toCompletableFuture().join();
+            context.close();
             return;
         }
         if ("idle-active".equals(rid)) {

@@ -2246,6 +2246,7 @@ async function resilienceLifecycle() {
   await runResilienceLifecycleHighFanout();
   await runResilienceLifecycleObserverIsolation();
   await runResilienceLifecycleLoggingMarker();
+  await runResilienceLifecycleMixedWorkloadSoak();
 }
 
 async function runResilienceLifecyclePendingCleanup() {
@@ -3151,6 +3152,91 @@ async function runResilienceLifecycleLoggingMarker() {
   }
 }
 
+async function runResilienceLifecycleMixedWorkloadSoak() {
+  RLSoakEvidence.requests = [];
+  RLSoakEvidence.sends = [];
+  const endpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const apps = [];
+  const clients = [];
+  const clientCount = 6;
+  const durationMs = 2000;
+
+  try {
+    const server = await startApp(
+      nestModule('ResilienceMixedWorkloadSoakServerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addClientServerChannel('rl.soak')
+              .enableServer(endpoint)
+              .routingId('rl-soak-provider')
+              .addRequestHandler('rl.soak.request', RLSoakRequestHandler)
+              .addSendHandler('rl.soak.send', RLSoakSendHandler)
+            .build())
+        ],
+        providers: [RLSoakRequestHandler, RLSoakSendHandler]
+      })
+    );
+    apps.push(server.app);
+
+    for (let index = 0; index < clientCount; index += 1) {
+      const clientApp = await startApp(
+        nestModule(`ResilienceMixedWorkloadSoakClient${index}Module`, {
+          imports: [
+            nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+              .addClientServerChannel('rl.soak')
+                .enableClient(endpoint)
+              .build())
+          ]
+        })
+      );
+      clients.push(clientApp);
+      apps.push(clientApp.app);
+    }
+
+    const startedAt = Date.now();
+    const latencies = [];
+    let requestCount = 0;
+    let sendCount = 0;
+    await Promise.all(clients.map(async (clientApp, clientIndex) => {
+      const client = clientApp.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+      let seq = 0;
+      while (Date.now() - startedAt < durationMs) {
+        const requestId = `rl-d5-c${clientIndex}-r${seq}`;
+        const sentAt = Date.now();
+        const reply = await client
+          .requestToChannel('rl.soak', { requestId, clientIndex, seq })
+          .packetName('rl.soak.request')
+          .timeout(1000)
+          .submit();
+        latencies.push(Date.now() - sentAt);
+        assert.deepEqual(reply, { requestId, clientIndex, seq, handledBy: 'rl-soak-provider' });
+        requestCount += 1;
+
+        const sendId = `rl-d5-c${clientIndex}-s${seq}`;
+        await client
+          .sendToChannel('rl.soak', { sendId, clientIndex, seq })
+          .packetName('rl.soak.send')
+          .submit();
+        sendCount += 1;
+        seq += 1;
+      }
+    }));
+
+    await waitFor(() => RLSoakEvidence.sends.length === sendCount, 3000);
+    assert.equal(RLSoakEvidence.requests.length, requestCount);
+    assert.ok(requestCount >= clientCount * 10, `RL-D5 request count too low: ${requestCount}`);
+    assert.equal(new Set(RLSoakEvidence.requests.map((item) => item.requestId)).size, requestCount);
+    assert.equal(new Set(RLSoakEvidence.sends.map((item) => item.sendId)).size, sendCount);
+    assertSoakLatencyStable(latencies);
+    marker('RL-D5');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
 async function spotService() {
   const nestjs = loadNest();
   const { app } = await startApp(
@@ -3509,6 +3595,25 @@ class RLLoggingObserver {
         `channelName=${flow.channelName}`
       ].join(' ') + '\n'
     );
+  }
+}
+
+class RLSoakEvidence {
+  static requests = [];
+  static sends = [];
+}
+
+class RLSoakRequestHandler {
+  handle(payload, context) {
+    const observed = { ...payload, handledBy: context.routingId ?? 'rl-soak-provider' };
+    RLSoakEvidence.requests.push(observed);
+    return observed;
+  }
+}
+
+class RLSoakSendHandler {
+  handle(payload) {
+    RLSoakEvidence.sends.push(payload);
   }
 }
 
@@ -4389,6 +4494,25 @@ function isPublicInFlightCrashError(error) {
     ].includes(error.kind);
   }
   return error instanceof Error && /ZLink async submit timed out/i.test(error.message);
+}
+
+function assertSoakLatencyStable(latencies) {
+  assert.ok(latencies.length >= 10, `RL-D5 latency sample count too low: ${latencies.length}`);
+  const midpoint = Math.floor(latencies.length / 2);
+  const firstHalf = latencies.slice(0, midpoint);
+  const secondHalf = latencies.slice(midpoint);
+  const firstAverage = average(firstHalf);
+  const secondAverage = average(secondHalf);
+  const maxLatency = Math.max(...latencies);
+  assert.ok(maxLatency < 1000, `RL-D5 max latency too high: ${maxLatency}ms`);
+  assert.ok(
+    secondAverage <= Math.max(firstAverage * 4, firstAverage + 100),
+    `RL-D5 latency drift too high: first=${firstAverage}ms second=${secondAverage}ms`
+  );
+}
+
+function average(values) {
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function countBy(values) {

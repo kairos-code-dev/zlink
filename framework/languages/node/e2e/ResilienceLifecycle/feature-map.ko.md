@@ -30,6 +30,10 @@
   보고되며 후속 정상 request가 계속 성공하는지 확인한다.
 - `RL-D3`: public message-flow observer를 명시적 logging sink로 등록하고, dispatch error event의
   `reason`·`action`·`packetName` marker가 파일 evidence에 남는지 확인한다.
+- `RL-D5`: public channel client 6개가 2초 동안 request와 send를 계속 섞어 보내는 bounded soak를
+  실행한다. 모든 request reply와 send delivery가 누락 없이 수집되고, latency sample의 최대값과
+  앞/뒤 절반 평균 drift가 bounded threshold 안에 머무는지 관측한다. 리소스 누수의 엄밀한 증명은
+  `RL-C1` 범위로 남긴다.
 
 ## public API/harness 대기
 
@@ -49,4 +53,3 @@
 - `RL-D4`: normal public client는 error reply의 message 기반 예외만 노출하고, 공통 시나리오가 요구하는
   `errorCode` raw header evidence를 Node E2E runner가 아직 수집하지 않는다. 내부 codec/helper를
   직접 호출해 완료 처리하지 않고, raw envelope evidence를 public e2e harness로 남길 수 있을 때 닫는다.
-- `RL-D5`: 지속 혼합 workload Node soak runner가 아직 없다.

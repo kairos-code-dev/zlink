@@ -6,6 +6,10 @@
 
 - `RL-A1`: provider를 같은 endpoint와 같은 routing id로 정상 종료 후 재시작하고, consumer 재시작 없이
   다운 구간 public failure와 재시작 뒤 `v2` provider reply 정상화를 확인한다.
+- `RL-A2`: provider v1을 같은 routing id와 첫 endpoint에 광고한 뒤 public `app.close()` 정상 종료
+  경로로 내리고, 같은 routing id를 새 endpoint에서 provider v2로 다시 광고한다. registry topology가
+  v2 endpoint 하나로 수렴한 뒤 기존 consumer가 재시작 없이 후속 request 20개를 모두 v2 reply로
+  받는지 확인한다.
 - `RL-A3`: public client application 12개가 같은 server endpoint에 요청한 뒤 동시에 종료되고,
   한꺼번에 재기동해도 모든 client의 request가 다시 성공하며 후속 normalized wave도 안정적으로
   처리되는지 확인한다.
@@ -29,7 +33,6 @@
 
 ## public API/harness 대기
 
-- `RL-A2`: 같은 rid와 새 endpoint로 pod 재스케줄을 검증하는 Node harness가 아직 없다.
 - `RL-A4`: public client request를 계속 보내는 동안 provider를 한 대씩 정상 종료하는 방식만으로는
   timeout 없이 rolling update를 증명할 수 없다. Node channel public API에는 provider를 종료 전에
   신규 request 대상에서 빼는 drain/weight runtime 계약이 아직 없어 완료 처리하지 않는다.

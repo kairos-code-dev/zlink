@@ -1877,20 +1877,23 @@ async function resilienceProviderChildMain(options) {
   let started;
   let keepAlive;
   try {
-    RLInFlightCrashHandler.started = [];
+    const channelName = options.channelName ?? 'rl.inflight';
+    const packetName = options.packetName ?? 'rl.inflight.probe';
+    const providerId = options.providerId ?? 'provider-b';
+    const handlerType = createRLChildProviderHandler(providerId, new Set(options.blockRequestIds ?? ['rl-b2-slow-crash']));
     started = await startApp(
-      nestModule('ResilienceInFlightCrashProviderChildModule', {
+      nestModule(options.moduleName ?? 'ResilienceProviderChildModule', {
         imports: [
           nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
             .useDiscovery()
               .addRegistryEndpoint(options.registryRouterEndpoint)
-            .addClientServerChannel('rl.inflight')
+            .addClientServerChannel(channelName)
               .enableServer(options.providerEndpoint)
-              .routingId('provider-b')
-              .addRequestHandler('rl.inflight.probe', RLInFlightCrashHandler)
+              .routingId(options.routingId ?? providerId)
+              .addRequestHandler(packetName, handlerType)
             .build())
         ],
-        providers: [RLInFlightCrashHandler]
+        providers: [handlerType]
       })
     );
     keepAlive = setInterval(() => {}, 1000);
@@ -2236,6 +2239,7 @@ async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
   await runResilienceLifecycleInFlightProviderCrash();
   await runResilienceLifecycleServerRestart();
+  await runResilienceLifecyclePodReschedule();
   await runResilienceLifecycleClientReconnectStorm();
   await runResilienceLifecycleProviderFlapping();
   await runResilienceLifecycleGracefulShutdown();
@@ -2512,6 +2516,121 @@ async function waitForResilienceRestartProviderRemoved(query, providerEndpoint) 
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`RL-A1 provider remained in topology: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function runResilienceLifecyclePodReschedule() {
+  RLRescheduleHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerV1Endpoint = await reserveTcpEndpoint();
+  const providerV2Endpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const apps = [];
+  let providerV1;
+  let providerV2;
+
+  try {
+    const registry = await startApp(
+      nestModule('ResiliencePodRescheduleRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 94
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    providerV1 = await startResilienceRescheduleProvider(
+      nestjs,
+      registryRouterEndpoint,
+      providerV1Endpoint,
+      'provider-v1',
+      apps
+    );
+    const consumer = await startApp(
+      nestModule('ResiliencePodRescheduleConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rl.reschedule')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryMessagingSingleReadyProvider(query, framework, 'rl.reschedule', 'provider-a', providerV1Endpoint);
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const before = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rl.reschedule', { requestId: 'rl-a2-before-reschedule' })
+        .packetName('rl.reschedule.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(before, { requestId: 'rl-a2-before-reschedule', handledBy: 'provider-v1' });
+
+    await providerV1.app.close();
+    apps.splice(apps.indexOf(providerV1.app), 1);
+    providerV1 = undefined;
+    providerV2 = await startResilienceRescheduleProvider(
+      nestjs,
+      registryRouterEndpoint,
+      providerV2Endpoint,
+      'provider-v2',
+      apps
+    );
+    await waitForRegistryMessagingSingleReadyProvider(query, framework, 'rl.reschedule', 'provider-a', providerV2Endpoint);
+
+    for (let i = 0; i < 20; i += 1) {
+      const requestId = `rl-a2-after-reschedule-${i}`;
+      const reply = await client
+        .requestToChannel('rl.reschedule', { requestId })
+        .packetName('rl.reschedule.probe')
+        .timeout(1000)
+        .submit();
+      assert.deepEqual(reply, { requestId, handledBy: 'provider-v2' });
+    }
+    marker('RL-A2');
+  } finally {
+    if (providerV1 !== undefined && apps.includes(providerV1.app)) {
+      await providerV1.app.close();
+      apps.splice(apps.indexOf(providerV1.app), 1);
+    }
+    if (providerV2 !== undefined && apps.includes(providerV2.app)) {
+      await providerV2.app.close();
+      apps.splice(apps.indexOf(providerV2.app), 1);
+    }
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startResilienceRescheduleProvider(nestjs, registryRouterEndpoint, endpoint, providerId, apps) {
+  const handler = createRLRescheduleHandler(providerId);
+  const started = await startApp(
+    nestModule(`ResiliencePodReschedule${providerId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rl.reschedule')
+            .enableServer(endpoint)
+            .routingId('provider-a')
+            .addRequestHandler('rl.reschedule.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+  return started;
 }
 
 async function runResilienceLifecycleClientReconnectStorm() {
@@ -3297,19 +3416,36 @@ class RLInFlightStableHandler {
   }
 }
 
-class RLInFlightCrashHandler {
-  static started = [];
+class RLRescheduleHandler {
+  static requests = [];
 
-  async handle(payload) {
-    RLInFlightCrashHandler.started.push(payload);
-    if (typeof process.send === 'function') {
-      process.send({ type: 'handling', requestId: payload.requestId, handledBy: 'provider-b' });
-    }
-    if (payload.requestId === 'rl-b2-slow-crash') {
-      await new Promise(() => {});
-    }
-    return { ...payload, handledBy: 'provider-b' };
+  static record(payload, handledBy) {
+    const observed = { ...payload, handledBy };
+    RLRescheduleHandler.requests.push(observed);
+    return observed;
   }
+}
+
+function createRLRescheduleHandler(providerId) {
+  return class {
+    handle(payload) {
+      return RLRescheduleHandler.record(payload, providerId);
+    }
+  };
+}
+
+function createRLChildProviderHandler(providerId, blockRequestIds) {
+  return class {
+    async handle(payload) {
+      if (typeof process.send === 'function') {
+        process.send({ type: 'handling', requestId: payload.requestId, handledBy: providerId });
+      }
+      if (blockRequestIds.has(payload.requestId)) {
+        await new Promise(() => {});
+      }
+      return { ...payload, handledBy: providerId };
+    }
+  };
 }
 
 class RLFlapHandler {

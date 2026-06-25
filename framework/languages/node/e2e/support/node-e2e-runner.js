@@ -1235,6 +1235,7 @@ async function discoveryRegistryHa() {
   await runDiscoveryRegistryHaEmbedded(nestjs, framework);
   await runDiscoveryRegistryHaEmbeddedMixedCluster(nestjs, framework);
   await runDiscoveryRegistryHaPeerTwo(nestjs, framework);
+  await runDiscoveryRegistryHaCollisionAdvertisement(nestjs, framework);
   await runDiscoveryRegistryHaPeerThree(nestjs, framework);
   await runDiscoveryRegistryHaLateStart(nestjs, framework);
   await runDiscoveryRegistryHaRegistryStop(nestjs, framework);
@@ -1445,6 +1446,57 @@ async function runDiscoveryRegistryHaPeerTwo(nestjs, framework) {
     await waitForDiscoveryMemberPeers(query, framework, 'dr.peer2', [providerEndpoint]);
     await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.peer2', 'dr-a2-peer2', ['dr-peer2-provider']);
     marker('DR-A2');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function runDiscoveryRegistryHaCollisionAdvertisement(nestjs, framework) {
+  DRHandler.requests = [];
+  const reg1Pub = await reserveTcpEndpoint();
+  const reg1Router = await reserveTcpEndpoint();
+  const reg2Pub = await reserveTcpEndpoint();
+  const reg2Router = await reserveTcpEndpoint();
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+
+  try {
+    const reg1 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaCollisionReg1Module', {
+      pubEndpoint: reg1Pub,
+      routerEndpoint: reg1Router,
+      registryId: 85,
+      broadcastIntervalMs: 100,
+      peers: [reg2Pub]
+    });
+    const reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaCollisionReg2Module', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 86,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    apps.push(reg1.app, reg2.app);
+    await startDiscoveryProvider(nestjs, reg1Router, 'dr.collision', providerAEndpoint, 'dr-collision-provider', apps);
+    await startDiscoveryProvider(nestjs, reg2Router, 'dr.collision', providerBEndpoint, 'dr-collision-provider', apps);
+
+    const reg1Query = reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const reg2Query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryPeerConnection(reg1Query, 1);
+    await waitForRegistryPeerConnection(reg2Query, 1);
+    await waitForDiscoveryTopologySnapshot(reg1Query, framework, 'dr.collision', [providerAEndpoint]);
+    await waitForDiscoveryTopologySnapshot(reg2Query, framework, 'dr.collision', [providerBEndpoint]);
+    await waitForDiscoveryMemberPeerConflictHidden(reg1Query, framework, 'dr.collision', 'dr-collision-provider');
+    await waitForDiscoveryMemberPeerConflictHidden(reg2Query, framework, 'dr.collision', 'dr-collision-provider');
+
+    const reg1Consumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaCollisionReg1ConsumerModule', reg1Router, 'dr.collision');
+    const reg2Consumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaCollisionReg2ConsumerModule', reg2Router, 'dr.collision');
+    apps.push(reg1Consumer.app, reg2Consumer.app);
+    await assertDiscoveryMessaging(reg1Consumer.app, nestjs, 'dr.collision', 'dr-a4-reg1', ['dr-collision-provider']);
+    await assertDiscoveryMessaging(reg2Consumer.app, nestjs, 'dr.collision', 'dr-a4-reg2', ['dr-collision-provider']);
+    marker('DR-A4');
   } finally {
     for (const app of apps.reverse()) {
       await app.close();
@@ -2323,6 +2375,24 @@ async function waitForDiscoveryMemberPeers(query, framework, channelName, endpoi
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`Discovery member peers for ${channelName} did not converge: ${stringifyDiagnostic(lastPeers)}`);
+}
+
+async function waitForDiscoveryMemberPeerConflictHidden(query, framework, channelName, routingId, timeoutMs = 7000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastPeers = [];
+  while (Date.now() < deadline) {
+    lastPeers = await query.memberPeers(channelName);
+    const conflictingPeers = lastPeers.filter((entry) =>
+      entry.autoConnectType === framework.ZLinkAutoConnectType.ClientServer &&
+      entry.serviceRole === framework.ZLinkServiceRole.Router &&
+      entry.channelName === channelName &&
+      entry.routingId === routingId);
+    if (conflictingPeers.length === 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`Discovery member peers for ${channelName} kept conflicted routingId ${routingId}: ${stringifyDiagnostic(lastPeers)}`);
 }
 
 function createDRHandler(routingId) {

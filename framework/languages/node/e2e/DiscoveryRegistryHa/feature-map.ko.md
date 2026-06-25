@@ -9,6 +9,10 @@
 - `DR-A2`: registry 2대를 peer로 묶고 provider는 `reg-1`에만 광고한다. `reg-2`의 public
   `memberPeers(...)`가 provider를 합산하고, `reg-2`만 보는 consumer가 request에 성공하는지
   확인한다.
+- `DR-A4`: 같은 channel·routing id를 가진 provider 두 개를 서로 다른 registry와 endpoint에
+  광고한다. 각 registry의 public topology에서 해당 registry가 노출하는 live endpoint를 관측하고,
+  public `memberPeers(...)`는 충돌 routing id를 숨기는 현재 동작을 확인한다. 각 registry만 보는
+  consumer가 stale 대기 없이 request에 성공하는지도 함께 확인한다.
 - `DR-A3`: registry 3대를 peer로 묶고 provider 2개를 서로 다른 registry에 광고한다. 모든 registry의
   public `memberPeers(...)`가 두 provider를 합산하고, 나머지 registry만 보는 consumer가 두 provider로
   request를 보낼 수 있는지 확인한다.
@@ -44,6 +48,4 @@
 
 ## public API/harness 대기
 
-- `DR-A4`: 같은 rid 충돌은 public `memberPeers(...)`로 합산 view를 고정해야 한다. 현재 Node runner
-  시도에서는 같은 rid를 서로 다른 registry에 광고했을 때 peer 쪽 `memberPeers(...)`가 안정적인
-  두-endpoint view를 제공하지 않아 완료 marker로 올리지 않는다.
+- 없음.

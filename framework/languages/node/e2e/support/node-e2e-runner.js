@@ -1213,6 +1213,7 @@ async function discoveryRegistryHa() {
   await runDiscoveryRegistryHaPeerThree(nestjs, framework);
   await runDiscoveryRegistryHaLateStart(nestjs, framework);
   await runDiscoveryRegistryHaRegistryStop(nestjs, framework);
+  await runDiscoveryRegistryHaPeerFlapping(nestjs, framework);
 }
 
 async function runDiscoveryRegistryHaSingle(nestjs, framework) {
@@ -1495,6 +1496,76 @@ async function runDiscoveryRegistryHaRegistryStop(nestjs, framework) {
   }
 }
 
+async function runDiscoveryRegistryHaPeerFlapping(nestjs, framework) {
+  DRHandler.requests = [];
+  const reg1Pub = await reserveTcpEndpoint();
+  const reg1Router = await reserveTcpEndpoint();
+  const reg2Pub = await reserveTcpEndpoint();
+  const reg2Router = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+  let reg2;
+
+  try {
+    const reg1 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaFlapReg1Module', {
+      pubEndpoint: reg1Pub,
+      routerEndpoint: reg1Router,
+      registryId: 72,
+      broadcastIntervalMs: 100,
+      peers: [reg2Pub]
+    });
+    apps.push(reg1.app);
+    reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaFlapReg2Module', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 73,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    apps.push(reg2.app);
+    await startDiscoveryProvider(nestjs, reg1Router, 'dr.flap', providerEndpoint, 'dr-flap-provider', apps);
+    const stableConsumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaFlapStableConsumerModule', reg1Router, 'dr.flap');
+    apps.push(stableConsumer.app);
+
+    const reg1Query = reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForDiscoveryTopologySnapshot(reg1Query, framework, 'dr.flap', [providerEndpoint]);
+    await assertDiscoveryMessaging(stableConsumer.app, nestjs, 'dr.flap', 'dr-b3-before-flap', ['dr-flap-provider']);
+
+    for (let cycle = 1; cycle <= 3; cycle += 1) {
+      await reg2.app.close();
+      apps.splice(apps.indexOf(reg2.app), 1);
+      await waitForRegistryPeerConnectionExact(reg1Query, 0);
+      await waitForDiscoveryTopologySnapshot(reg1Query, framework, 'dr.flap', [providerEndpoint]);
+      await waitForDiscoveryMemberPeers(reg1Query, framework, 'dr.flap', [providerEndpoint]);
+      await assertDiscoveryMessaging(stableConsumer.app, nestjs, 'dr.flap', `dr-b3-during-flap-${cycle}`, ['dr-flap-provider']);
+
+      reg2 = await startDiscoveryRegistry(nestjs, `DiscoveryRegistryHaFlapReg2Cycle${cycle}Module`, {
+        pubEndpoint: reg2Pub,
+        routerEndpoint: reg2Router,
+        registryId: 73,
+        broadcastIntervalMs: 100,
+        peers: [reg1Pub]
+      });
+      apps.push(reg2.app);
+      const reg2Query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+      await waitForRegistryPeerConnectionExact(reg1Query, 1);
+      await waitForRegistryPeerConnectionExact(reg2Query, 1);
+      await waitForDiscoveryMemberPeers(reg2Query, framework, 'dr.flap', [providerEndpoint]);
+      const recoveredConsumer = await startDiscoveryConsumer(nestjs, `DiscoveryRegistryHaFlapRecoveredConsumer${cycle}Module`, reg2Router, 'dr.flap');
+      apps.push(recoveredConsumer.app);
+      await assertDiscoveryMessaging(recoveredConsumer.app, nestjs, 'dr.flap', `dr-b3-after-flap-${cycle}`, ['dr-flap-provider']);
+      await recoveredConsumer.app.close();
+      apps.splice(apps.indexOf(recoveredConsumer.app), 1);
+    }
+
+    marker('DR-B3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
 async function startDiscoveryRegistry(nestjs, moduleName, options) {
   return startApp(
     nestModule(moduleName, {
@@ -1605,6 +1676,19 @@ async function waitForRegistryPeerConnection(query, expectedConnectedCount) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`Registry peers did not converge: ${stringifyDiagnostic(lastStatus)}`);
+}
+
+async function waitForRegistryPeerConnectionExact(query, expectedConnectedCount) {
+  const deadline = Date.now() + 7000;
+  let lastStatus;
+  while (Date.now() < deadline) {
+    lastStatus = await query.status();
+    if (lastStatus.connectedPeerRegistryCount === expectedConnectedCount) {
+      return lastStatus;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`Registry peer count did not converge to ${expectedConnectedCount}: ${stringifyDiagnostic(lastStatus)}`);
 }
 
 async function waitForDiscoveryMemberPeers(query, framework, channelName, endpoints, timeoutMs = 7000) {

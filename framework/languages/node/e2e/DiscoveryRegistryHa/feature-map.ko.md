@@ -18,6 +18,9 @@
 - `DR-B2`: provider와 consumer가 `reg-1`·`reg-2`를 모두 configured로 둔 상태에서 `reg-2`를 정상
   종료한다. 기존 consumer의 request가 계속 성공하고, `reg-1` topology와 `reg-1`만 보는 fresh consumer로
   살아 있는 registry 경로의 discovery가 유지되는지 확인한다.
+- `DR-B3`: provider를 살아 있는 `reg-1`에 직접 광고한 상태에서 peer registry `reg-2`를 세 번 정상
+  종료/재기동한다. flapping 중 `reg-1` 경로 messaging이 계속 성공하고, 각 재기동 뒤 `reg-2`의
+  `memberPeers(...)`와 `reg-2`만 보는 consumer messaging이 다시 수렴하는지 확인한다.
 - `DR-D2`: registry만 별도 context로 띄운 standalone 배포에서 discovery와 messaging이 동작하는지
   확인한다.
 - `DR-D4`: 같은 registry router endpoint를 in-process `ZLinkRegistryQuery`와 remote
@@ -28,7 +31,6 @@
 - `DR-A4`: 같은 rid 충돌은 public `memberPeers(...)`로 합산 view를 고정해야 한다. 현재 Node runner
   시도에서는 같은 rid를 서로 다른 registry에 광고했을 때 peer 쪽 `memberPeers(...)`가 안정적인
   두-endpoint view를 제공하지 않아 완료 marker로 올리지 않는다.
-- `DR-B3`: registry flapping Node harness가 아직 없다.
 - `DR-C1`: registry 1대 다운 중 지속 Node runner와 marker가 아직 없다.
 - `DR-C2`: registry 장애 중 fallback Node harness가 아직 없다.
 - `DR-C3`: 전체 registry 장애와 복구 Node harness가 아직 없다.

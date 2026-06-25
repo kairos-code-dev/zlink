@@ -44,6 +44,10 @@ public final class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
         if (!createRequest.isEmpty()) {
             Contracts.ActorAuthRequest request = createRequest.decode(Contracts.ActorAuthRequest.class);
             actor.applyProfile(request.profile());
+            evidence.record("ActorCreatedPayload", "entry",
+                request.profile().displayName() + "/"
+                    + request.profile().level() + "/"
+                    + String.join(",", request.profile().tags()));
         }
         evidence.record("ActorCreated", "entry", actor.actorId() + "#" + actor.nextSequence());
     }

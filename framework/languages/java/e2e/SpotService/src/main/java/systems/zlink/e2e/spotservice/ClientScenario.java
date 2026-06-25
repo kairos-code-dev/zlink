@@ -171,6 +171,9 @@ public final class ClientScenario {
                 .await(Contracts.ActorAuthReply.class);
             ensure("actor-local-1".equals(auth.actorId()), "SM-D1 auth actor mismatch");
             ensure(auth.boundCount() == 1, "SM-D1 bound actor count mismatch");
+            ensure(profile.displayName().equals(auth.displayName()), "SM-B3 create profile display name mismatch");
+            ensure(profile.level() == auth.level(), "SM-B3 create profile level mismatch");
+            ensure(profile.tags().equals(auth.tags()), "SM-B3 create profile tags mismatch");
 
             var entryPush = connector.waitFor(Contracts.ActorPush.class)
                 .submit(Contracts.ActorPush.class);

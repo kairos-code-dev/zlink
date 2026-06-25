@@ -74,7 +74,10 @@ public final class Contracts {
     public record ActorAuthReply(
         String actorId,
         String nodeRid,
-        int boundCount) {
+        int boundCount,
+        String displayName,
+        int level,
+        List<String> tags) {
     }
 
     public record ActorJoinRequest(

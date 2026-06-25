@@ -35,4 +35,8 @@ public final class ScenarioActor implements ZLinkActor {
     public void applyProfile(Contracts.ActorProfile next) {
         profile = next;
     }
+
+    public Contracts.ActorProfile profile() {
+        return profile;
+    }
 }

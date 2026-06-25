@@ -43,7 +43,10 @@ public final class ActorAuthHandler
             .reply(new Contracts.ActorAuthReply(
                 bound.actorId(),
                 bound.ref().nodeRid().toString(),
-                context.actors().bound().size()))
+                context.actors().bound().size(),
+                request.profile().displayName(),
+                request.profile().level(),
+                request.profile().tags()))
             .await();
     }
 }

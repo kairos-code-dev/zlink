@@ -1,7 +1,5 @@
 namespace Systems.Zlink.Stream.Connector.Contracts;
 
-internal readonly record struct ZlinkStreamRequestSeq(ulong Value);
-
 public sealed record ZlinkStreamEncodedPayload(
     ZlinkStreamCodec Codec,
     ReadOnlyMemory<byte> Payload,
@@ -16,17 +14,6 @@ public sealed record ZlinkStreamMessage<TPayload>(
     string Name,
     ZlinkStreamMetadata Metadata,
     TPayload Payload);
-
-internal sealed record ZlinkStreamHeader(
-    ZlinkStreamMessageKind Kind,
-    ZlinkStreamCodec Codec,
-    ZlinkStreamHeaderFlags Flags,
-    ZlinkStreamRequestSeq? RequestSeq,
-    string Name,
-    ZlinkStreamMetadata Metadata,
-    // First-class correlation id (flag 0x08, wire layout: after metadata, u8 length +
-    // UTF-8 bytes). Client-generated, server-echoed. Null = absent.
-    string? CorrelationId = null);
 
 public sealed record ZlinkStreamError(
     ZlinkStreamErrorCode Code,

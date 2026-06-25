@@ -25,10 +25,10 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   FRAMEWORK_SOLUTION: framework/languages/dotnet/Zlink.Framework.sln
-  FRAMEWORK_TESTS: framework/languages/dotnet/tests/Zlink.Framework.Tests/Zlink.Framework.Tests.csproj
-  FRAMEWORK_RUNTIME_TESTS: framework/languages/dotnet/tests/Zlink.Framework.RuntimeTests/Zlink.Framework.RuntimeTests.csproj
-  FRAMEWORK_MONITORING_RUNTIME_TESTS: framework/languages/dotnet/tests/Zlink.Framework.MonitoringRuntimeTests/Zlink.Framework.MonitoringRuntimeTests.csproj
-  FRAMEWORK_MULTIPROCESS_TESTS: framework/languages/dotnet/tests/Zlink.Framework.MultiProcessTests/Zlink.Framework.MultiProcessTests.csproj
+  FRAMEWORK_UNIT_TESTS: framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Zlink.Framework.UnitTests.csproj
+  FRAMEWORK_CONTRACT_TESTS: framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Zlink.Framework.ContractTests.csproj
+  STREAM_CONNECTOR_TESTS: framework/languages/dotnet/tests/Systems.Zlink.Stream.Connector.Tests/Systems.Zlink.Stream.Connector.Tests.csproj
+  HTTP_CLIENT_TESTS: framework/languages/dotnet/tests/Zlink.HttpClient.UnitTests/Zlink.HttpClient.UnitTests.csproj
   ZLinkFrameworkTargetFrameworks: net8.0;net10.0
 
 jobs:
@@ -81,29 +81,29 @@ jobs:
       - name: Build framework solution (Release)
         run: dotnet build ${{ env.FRAMEWORK_SOLUTION }} -c Release --no-restore
 
-      - name: Run unit and single-process tests (Debug, net8.0)
-        run: dotnet test ${{ env.FRAMEWORK_TESTS }} -c Debug -f net8.0 --no-build
+      - name: Run framework unit tests (Debug, net8.0)
+        run: dotnet test ${{ env.FRAMEWORK_UNIT_TESTS }} -c Debug -f net8.0 --no-build
 
-      - name: Run channel runtime tests (Debug, net8.0)
-        run: dotnet test ${{ env.FRAMEWORK_RUNTIME_TESTS }} -c Debug -f net8.0 --no-build
+      - name: Run framework contract tests (Debug, net8.0)
+        run: dotnet test ${{ env.FRAMEWORK_CONTRACT_TESTS }} -c Debug -f net8.0 --no-build
 
-      - name: Run monitoring runtime tests (Debug, net8.0)
-        run: dotnet test ${{ env.FRAMEWORK_MONITORING_RUNTIME_TESTS }} -c Debug -f net8.0 --no-build
+      - name: Run stream connector tests (Debug, net8.0)
+        run: dotnet test ${{ env.STREAM_CONNECTOR_TESTS }} -c Debug -f net8.0 --no-build
 
-      - name: Run unit and single-process tests (Release, net10.0)
-        run: dotnet test ${{ env.FRAMEWORK_TESTS }} -c Release -f net10.0 --no-build
+      - name: Run HTTP client tests (Debug, net8.0)
+        run: dotnet test ${{ env.HTTP_CLIENT_TESTS }} -c Debug -f net8.0 --no-build
 
-      - name: Run channel runtime tests (Release, net10.0)
-        run: dotnet test ${{ env.FRAMEWORK_RUNTIME_TESTS }} -c Release -f net10.0 --no-build
+      - name: Run framework unit tests (Release, net10.0)
+        run: dotnet test ${{ env.FRAMEWORK_UNIT_TESTS }} -c Release -f net10.0 --no-build
 
-      - name: Run monitoring runtime tests (Release, net10.0)
-        run: dotnet test ${{ env.FRAMEWORK_MONITORING_RUNTIME_TESTS }} -c Release -f net10.0 --no-build
+      - name: Run framework contract tests (Release, net10.0)
+        run: dotnet test ${{ env.FRAMEWORK_CONTRACT_TESTS }} -c Release -f net10.0 --no-build
 
-      - name: Run multi-process tests (Release, net8.0)
-        run: dotnet test ${{ env.FRAMEWORK_MULTIPROCESS_TESTS }} -c Release -f net8.0 --no-build
+      - name: Run stream connector tests (Release, net10.0)
+        run: dotnet test ${{ env.STREAM_CONNECTOR_TESTS }} -c Release -f net10.0 --no-build
 
-      - name: Run multi-process tests (Release, net10.0)
-        run: dotnet test ${{ env.FRAMEWORK_MULTIPROCESS_TESTS }} -c Release -f net10.0 --no-build
+      - name: Run HTTP client tests (Release, net10.0)
+        run: dotnet test ${{ env.HTTP_CLIENT_TESTS }} -c Release -f net10.0 --no-build
 
   framework-dotnet-gate:
     name: release-gate
@@ -115,4 +115,4 @@ jobs:
         run: |
           echo "Framework .NET release gate passed."
           echo "RID matrix: win-x64, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64"
-          echo "Test matrix: net8.0 Debug/Release-hosted coverage and net10.0 Release coverage"
+          echo "Test matrix: framework unit, contract, stream connector, and HTTP client tests on net8.0 Debug and net10.0 Release"

@@ -33,12 +33,10 @@ jobs:
           - name: win-x64
             runner: windows-latest
             msvc_arch: x64
-            cmake_arch: x64
             vcpkg_triplet: x64-windows
           - name: win-arm64
             runner: windows-11-arm
             msvc_arch: arm64
-            cmake_arch: ARM64
             vcpkg_triplet: arm64-windows-static
           - name: linux-x64
             runner: ubuntu-24.04
@@ -104,8 +102,7 @@ jobs:
         shell: pwsh
         run: |
           cmake -S core -B core/build `
-            -G "Visual Studio 17 2022" `
-            -A "${{ matrix.target.cmake_arch }}" `
+            -G "Ninja" `
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_SHARED=ON `
             -DBUILD_STATIC=OFF `
@@ -114,9 +111,16 @@ jobs:
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
             -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
             -DVCPKG_TARGET_TRIPLET="$env:VCPKG_TARGET_TRIPLET"
-          cmake --build core/build --config Release --parallel
-          $libPath = (Join-Path $PWD "core/build/lib/Release/zlink.lib").Replace('\', '/')
-          $binPath = (Join-Path $PWD "core/build/bin/Release")
+          cmake --build core/build --parallel
+          $libPath = Join-Path $PWD "core/build/lib/zlink.lib"
+          $binPath = Join-Path $PWD "core/build/bin"
+          if (-not (Test-Path $libPath)) {
+            $libPath = Join-Path $PWD "core/build/lib/Release/zlink.lib"
+          }
+          if (-not (Test-Path $binPath)) {
+            $binPath = Join-Path $PWD "core/build/bin/Release"
+          }
+          $libPath = $libPath.Replace('\', '/')
           echo "ZLINK_LIB_PATH=$libPath" >> $env:GITHUB_ENV
           echo "$binPath" >> $env:GITHUB_PATH
 

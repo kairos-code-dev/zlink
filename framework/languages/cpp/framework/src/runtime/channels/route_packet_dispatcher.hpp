@@ -41,7 +41,7 @@ class route_packet_dispatcher_t
                  const runtime::messaging::envelope_header_t &header,
                  const framework_exception_t &error) const;
 
-    void trace_flow (message_flow_phase_t phase,
+    void trace_flow (message_flow_outcome_t outcome,
                      dispatch_message_kind_t kind,
                      const route_received_packet_t &received,
                      const runtime::messaging::envelope_header_t &header) const;

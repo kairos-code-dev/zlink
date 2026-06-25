@@ -672,7 +672,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/client-flow.log")
-          .trace_node_id ("cpp-rm-client");
+          .trace_label ("cpp-rm-client");
         configure_common_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (registry_router);
         options.add_client_server_channel (e2e::api_channel).enable_client ();

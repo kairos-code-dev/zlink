@@ -312,6 +312,8 @@ final class ZLinkChannelRuntimeTest {
 
         @Override public RoutingId routingId() { return RoutingId.from("owner-node"); }
         @Override public void setRoutingId(RoutingId routingId) { }
+        @Override public void setPublisherRoutingId(RoutingId routingId) { }
+        @Override public void setSubscriberRoutingId(RoutingId routingId) { }
         @Override public void setRouterBind(String endpoint) { }
         @Override public void setPubBind(String endpoint) { }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }

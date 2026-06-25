@@ -215,7 +215,7 @@ test('spot handler registry records packet and subscribe registrations from conf
 test('ZLinkSpotManager reports SPOT subscription dispatch errors to global observer', async () => {
   const dispatchEvents = [];
   class DispatchObserver {
-    onDispatchError(event) {
+    onMessageFlow(event) {
       dispatchEvents.push(event);
     }
   }
@@ -248,9 +248,8 @@ test('ZLinkSpotManager reports SPOT subscription dispatch errors to global obser
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
     createNativeSpot: () => nativeSpot,
-    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+    dispatchErrors: dispatchErrorReporter(
       DispatchObserver,
-      undefined,
       { reportRuntimeTaskException() {} }
     )
   });
@@ -262,8 +261,9 @@ test('ZLinkSpotManager reports SPOT subscription dispatch errors to global obser
   assert.equal(dispatchEvents.length, 1);
   assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.SpotSubscription);
   assert.equal(dispatchEvents[0].messageKind, framework.ZLinkDispatchMessageKind.Publish);
-  assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.InvalidFrame);
-  assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.Drop);
+  assert.equal(dispatchEvents[0].outcome, framework.ZLinkMessageFlowOutcome.Error);
+  assert.equal(dispatchEvents[0].errorReason, framework.ZLinkDispatchErrorReason.InvalidFrame);
+  assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.Drop);
   assert.equal(dispatchEvents[0].topic, 'unmatched');
   assert.equal(dispatchEvents[0].sourceRid, 'source-node');
 });
@@ -271,7 +271,7 @@ test('ZLinkSpotManager reports SPOT subscription dispatch errors to global obser
 test('ZLinkSpotManager reports SPOT actor dispatch errors to global observer', async () => {
   const dispatchEvents = [];
   class DispatchObserver {
-    onDispatchError(event) {
+    onMessageFlow(event) {
       dispatchEvents.push(event);
     }
   }
@@ -300,9 +300,8 @@ test('ZLinkSpotManager reports SPOT actor dispatch errors to global observer', a
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
     createNativeSpot: () => nativeSpot,
-    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+    dispatchErrors: dispatchErrorReporter(
       DispatchObserver,
-      undefined,
       { reportRuntimeTaskException() {} }
     )
   });
@@ -320,8 +319,9 @@ test('ZLinkSpotManager reports SPOT actor dispatch errors to global observer', a
     assert.equal(dispatchEvents.length, 1);
     assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.SpotActor);
     assert.equal(dispatchEvents[0].messageKind, framework.ZLinkDispatchMessageKind.ActorSend);
-    assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.InvalidFrame);
-    assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.Drop);
+    assert.equal(dispatchEvents[0].outcome, framework.ZLinkMessageFlowOutcome.Error);
+    assert.equal(dispatchEvents[0].errorReason, framework.ZLinkDispatchErrorReason.InvalidFrame);
+    assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.Drop);
     assert.equal(dispatchEvents[0].spotRid, 'stage-actor');
     assert.equal(dispatchEvents[0].actorId, 'actor-1');
   } finally {
@@ -334,7 +334,7 @@ test('ZLinkSpotManager replies routed actor request dispatch errors', async () =
   const dispatchEvents = [];
   const replyMessages = [];
   class DispatchObserver {
-    onDispatchError(event) {
+    onMessageFlow(event) {
       dispatchEvents.push(event);
     }
   }
@@ -386,9 +386,8 @@ test('ZLinkSpotManager replies routed actor request dispatch errors', async () =
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
     createNativeSpot: () => nativeSpot,
-    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+    dispatchErrors: dispatchErrorReporter(
       DispatchObserver,
-      undefined,
       { reportRuntimeTaskException() {} }
     )
   });
@@ -402,8 +401,9 @@ test('ZLinkSpotManager replies routed actor request dispatch errors', async () =
     assert.equal(JSON.parse(replyMessages[0]).ok, false);
     assert.equal(dispatchEvents.length, 1);
     assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.SpotActor);
-    assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.HandlerMissing);
-    assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.ReplyError);
+    assert.equal(dispatchEvents[0].outcome, framework.ZLinkMessageFlowOutcome.Error);
+    assert.equal(dispatchEvents[0].errorReason, framework.ZLinkDispatchErrorReason.HandlerMissing);
+    assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.ReplyError);
   } finally {
     relay.close();
   }
@@ -1260,4 +1260,17 @@ async function waitFor(predicate, timeoutMs = 1000) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   assert.fail('timed out waiting for condition');
+}
+
+function dispatchErrorReporter(observerType, sink) {
+  return new framework.ZLinkDispatchErrorReporter(
+    undefined,
+    undefined,
+    sink,
+    {
+      diagnostics: {},
+      liveMode: { mode: framework.ZLinkMessageFlowLogMode.ErrorsOnly },
+      messageFlowObserverType: observerType
+    }
+  );
 }

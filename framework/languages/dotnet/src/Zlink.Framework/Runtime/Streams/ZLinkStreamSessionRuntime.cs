@@ -131,10 +131,10 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
             if (_context.TryCompleteResponse(decoded, payload))
             {
-                if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+                if (_flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
                 {
                     _flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.ReplyReceived,
+                        ZLinkMessageFlowOutcome.ReplyReceived,
                         ZLinkDispatchErrorSurface.StreamSession,
                         ZLinkDispatchMessageKind.Response,
                         PacketName: decoded.Name,
@@ -144,10 +144,10 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 return;
             }
 
-            if (_flow.Enabled(ZLinkMessageFlowPhase.Received))
+            if (_flow.Enabled(ZLinkMessageFlowOutcome.Received))
             {
                 _flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.Received,
+                    ZLinkMessageFlowOutcome.Received,
                     ZLinkDispatchErrorSurface.StreamSession,
                     decoded.RequestSeq.HasValue
                         ? ZLinkDispatchMessageKind.Request
@@ -168,10 +168,10 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                         _runtime.Registration.StreamCompressionCodec),
                     CancellationToken.None);
 
-                if (_flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+                if (_flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
                 {
                     _flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.Dispatched,
+                        ZLinkMessageFlowOutcome.Dispatched,
                         ZLinkDispatchErrorSurface.StreamSession,
                         decoded.RequestSeq.HasValue
                             ? ZLinkDispatchMessageKind.Request

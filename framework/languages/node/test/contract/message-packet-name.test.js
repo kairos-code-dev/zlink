@@ -72,6 +72,10 @@ test('class instance payload supplies packetName to stream send calls', async ()
       written.push(message.bytes);
       return true;
     },
+    writeRaw(message) {
+      written.push(message.bytes);
+      return true;
+    },
     async close() {}
   });
 

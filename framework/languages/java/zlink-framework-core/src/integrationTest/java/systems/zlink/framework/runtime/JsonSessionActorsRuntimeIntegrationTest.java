@@ -54,12 +54,12 @@ final class JsonSessionActorsRuntimeIntegrationTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.codecs().addJson();
         options.addHandlersFromPackageOf(JsonSessionActorsRuntimeIntegrationTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(SessionActorsRuntimeIntegrationTest.GameSpot.class);
-                node.addEntrySpot(SessionActorsRuntimeIntegrationTest.GameEntrySpot.class); }; };
-        options.addActorFactory(
-            "player",
-            SessionActorsRuntimeIntegrationTest.PlayerActorFactory.class);
+                node.addEntrySpot(SessionActorsRuntimeIntegrationTest.GameEntrySpot.class);
+                node.addActorFactory(
+                    "player",
+                    SessionActorsRuntimeIntegrationTest.PlayerActorFactory.class); }; };
         { var stream = options.addStreamNode("local-json"); stream.bind("inproc://local-json-bind-" + System.nanoTime());
             stream.registerSession(SessionActorsRuntimeIntegrationTest.GameSession.class); };
 

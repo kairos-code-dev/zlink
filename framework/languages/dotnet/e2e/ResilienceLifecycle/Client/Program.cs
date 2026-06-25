@@ -22,7 +22,7 @@ using var host = Host.CreateDefaultBuilder(args)
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, "client-flow.log"))
-                .TraceNodeId("client");
+                .TraceLabel("client");
             framework.AddClientServerChannel(ResilienceLifecycleNames.Channel).EnableClient();
         });
     })
@@ -628,7 +628,7 @@ static async Task<ProfileReply> RequestWithRetryAsync(
     throw new InvalidOperationException($"Request retry window expired for {marker}.", last);
 }
 
-static IHost CreateClientHost(ClientOptions options, string traceNodeId)
+static IHost CreateClientHost(ClientOptions options, string traceLabel)
 {
     return Host.CreateDefaultBuilder()
         .ConfigureServices(services =>
@@ -638,15 +638,15 @@ static IHost CreateClientHost(ClientOptions options, string traceNodeId)
                 framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
                 framework.ConfigureDispatch()
                     .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                    .TraceLogFile(Path.Combine(options.LogDir, $"{traceNodeId}-flow.log"))
-                    .TraceNodeId(traceNodeId);
+                    .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
+                    .TraceLabel(traceLabel);
                 framework.AddClientServerChannel(ResilienceLifecycleNames.Channel).EnableClient();
             });
         })
         .Build();
 }
 
-static IHost CreateDirectClientHost(ClientOptions options, string endpoint, string traceNodeId)
+static IHost CreateDirectClientHost(ClientOptions options, string endpoint, string traceLabel)
 {
     return Host.CreateDefaultBuilder()
         .ConfigureServices(services =>
@@ -655,8 +655,8 @@ static IHost CreateDirectClientHost(ClientOptions options, string endpoint, stri
             {
                 framework.ConfigureDispatch()
                     .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                    .TraceLogFile(Path.Combine(options.LogDir, $"{traceNodeId}-flow.log"))
-                    .TraceNodeId(traceNodeId);
+                    .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
+                    .TraceLabel(traceLabel);
                 framework.AddClientServerChannel(ResilienceLifecycleNames.Channel)
                     .EnableClient(endpoint);
             });

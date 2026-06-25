@@ -17,10 +17,9 @@ internal sealed class ApiServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<TicTacToeDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
-                .TraceNodeId(settings.InstanceName);
+                .TraceLabel(settings.InstanceName);
             options.Codecs.AddJson();
 
             options.AddClientServerChannel(SampleChannels.Api)

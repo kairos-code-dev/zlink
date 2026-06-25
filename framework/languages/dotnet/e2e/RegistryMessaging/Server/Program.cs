@@ -41,22 +41,21 @@ if (options.Role == "registry")
 }
 else if (options.Role == "provider")
 {
-    builder.Services.AddSingleton<IZLinkMessageDispatchErrorObserver, EvidenceDispatchErrorObserver>();
     builder.Services.AddZLinkFramework(framework =>
     {
         framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint
             ?? throw new InvalidOperationException("--registry-router-endpoint is required."));
         framework.ConfigureDispatch()
-            .SetMessageDispatchErrorObserver<EvidenceDispatchErrorObserver>()
+            .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-            .TraceNodeId(options.Rid);
+            .TraceLabel(options.Rid);
 
         if (!string.IsNullOrWhiteSpace(options.ChannelEndpoint))
         {
             var clientServer = framework.AddClientServerChannel("profile")
-                .EnableServer(options.ChannelEndpoint);
-            clientServer.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
+                .EnableServer(options.ChannelEndpoint)
+                .SetRoutingId(RoutingId.From(options.Rid));
             clientServer.ConfigureServerSocket().Weight = options.Weight;
             clientServer.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
             clientServer.AddRequestHandler<PayloadRequestHandler, PayloadRequest, PayloadReply>("PayloadRequest");
@@ -66,8 +65,8 @@ else if (options.Role == "provider")
         if (!string.IsNullOrWhiteSpace(options.WorkflowEndpoint))
         {
             var workflow = framework.AddClientServerChannel("workflow")
-                .EnableServer(options.WorkflowEndpoint);
-            workflow.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
+                .EnableServer(options.WorkflowEndpoint)
+                .SetRoutingId(RoutingId.From(options.Rid));
             workflow.ConfigureServerSocket().Weight = options.Weight;
             workflow.AddRequestHandler<WorkflowRequestHandler, WorkflowRequest, WorkflowReply>("WorkflowRequest");
         }
@@ -190,21 +189,26 @@ internal sealed class RoutePingHandler(EvidenceStore evidence)
 }
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkMessageDispatchErrorObserver
+    : IZLinkMessageFlowObserver
 {
-    public ValueTask OnDispatchErrorAsync(
-        ZLinkMessageDispatchErrorEvent error,
+    public ValueTask OnMessageFlowAsync(
+        ZLinkMessageFlowEvent flow,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
+        {
+            return ValueTask.CompletedTask;
+        }
+
         evidence.Add(
             "dispatch-error"
-            + $"|surface={error.Surface}"
-            + $"|kind={error.MessageKind}"
-            + $"|reason={error.Reason}"
-            + $"|action={error.Action}"
-            + $"|packet={error.PacketName ?? "<null>"}"
-            + $"|channel={error.ChannelName ?? "<null>"}");
+            + $"|surface={flow.Surface}"
+            + $"|kind={flow.MessageKind}"
+            + $"|reason={flow.ErrorReason}"
+            + $"|action={flow.ErrorAction}"
+            + $"|packet={flow.PacketName ?? "<null>"}"
+            + $"|channel={flow.ChannelName ?? "<null>"}");
         return ValueTask.CompletedTask;
     }
 }

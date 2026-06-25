@@ -101,6 +101,7 @@ public final class PlayApplication {
                 .setRoutingId(RoutingId.from(nodeRid));
             node.addSpotFactory(UserSpot.class);
             node.addSpotFactory(MismatchedSpot.class);
+            node.addSpotFactory(TimerScenarioSpot.class);
         };
     }
 
@@ -113,6 +114,18 @@ public final class PlayApplication {
             spots.getOrCreate(UserSpot.class, RoutingId.from(spotRid), "bootstrap")
                 .toCompletableFuture()
                 .join();
+            if ("play-a".equals(state.nodeRid())) {
+                for (String rid : java.util.List.of(
+                    "idle-close",
+                    "idle-active",
+                    "timer-overrun-skip",
+                    "timer-overrun-catchup",
+                    "timer-overrun-delay")) {
+                    spots.getOrCreate(TimerScenarioSpot.class, RoutingId.from(rid), "bootstrap")
+                        .toCompletableFuture()
+                        .join();
+                }
+            }
         };
     }
 }

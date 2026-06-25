@@ -36,10 +36,9 @@ internal static class Program
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(apiName))
-                .TraceNodeId(apiName);
+                .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {

@@ -20,10 +20,9 @@ builder.Services.AddSingleton(new CourierOptions(courierId, mode));
 builder.Services.AddZLinkFramework(options =>
 {
     options.ConfigureDispatch()
-        .SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>()
         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
         .TraceLogFile(SampleFlowLog.Path(courierId))
-        .TraceNodeId(courierId);
+        .TraceLabel(courierId);
     options.AddHandlersFromAssemblyOf(typeof(OfferDeliveryHandler));
     options.Codecs.AddJson();
     options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

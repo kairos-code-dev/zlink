@@ -429,7 +429,7 @@ int main (int argc, char **argv)
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (log_dir + "/server-flow.log")
-              .trace_node_id ("cpp-rc-server");
+              .trace_label ("cpp-rc-server");
             if (!invalid_mode.empty ()) {
                 configure_invalid (options, invalid_mode, api_endpoint);
                 return;

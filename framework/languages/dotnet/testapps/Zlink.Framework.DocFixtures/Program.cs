@@ -161,8 +161,6 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureActorPacketSession>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddActorFactory<FixtureActorFactory>("hero");
-
             {
                 var stream = options.AddStreamNode("stream.actor");
                 stream.Bind("tcp://127.0.0.1:7701");
@@ -180,6 +178,7 @@ internal static class FixtureSamples
 
                     }
                     spot.AddSpotFactory<FixtureActorSpot>();
+                    spot.AddActorFactory<FixtureActorFactory>("hero");
 
                 }
 

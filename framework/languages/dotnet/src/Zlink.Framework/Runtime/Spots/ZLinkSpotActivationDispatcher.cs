@@ -428,7 +428,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 "handler-exception",
                 ex,
                 channelName: descriptor.Topic);
-            _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            _dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
                 ZLinkDispatchErrorReason.HandlerException,

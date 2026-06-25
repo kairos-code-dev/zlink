@@ -30,10 +30,10 @@ internal sealed class ZLinkSpotRouteDispatcher(
 
             var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
             {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.Received,
+                    ZLinkMessageFlowOutcome.Received,
                     ZLinkDispatchErrorSurface.SpotRoute,
                     header.Kind == ZLinkMessageKind.Request
                         ? ZLinkDispatchMessageKind.Request
@@ -71,7 +71,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         new ZLinkFrameworkException(
 	                            ZLinkFrameworkErrorKind.HandlerNotFound,
 	                            $"No SPOT route request handler is registered for '{channelName}:{header.MessageName}'."));
-                    dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                    dispatchErrors.Report(new ZLinkDispatchFailure(
                         ZLinkDispatchErrorSurface.SpotRoute,
                         ZLinkDispatchMessageKind.Request,
                         ZLinkDispatchErrorReason.HandlerMissing,
@@ -95,7 +95,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         "no-handler",
                         channelName,
                         spotRid: dispatchSpotRid);
-                    dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                    dispatchErrors.Report(new ZLinkDispatchFailure(
                         ZLinkDispatchErrorSurface.SpotRoute,
                         ZLinkDispatchMessageKind.Send,
                         ZLinkDispatchErrorReason.HandlerMissing,
@@ -132,7 +132,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         ZLinkFrameworkErrorKind.PayloadDecodeFailed,
 	                        $"PayloadDecodeFailed: failed to decode SPOT route request payload for '{channelName}:{header.MessageName}'.",
 	                        innerException: ex));
-                dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                dispatchErrors.Report(new ZLinkDispatchFailure(
                     ZLinkDispatchErrorSurface.SpotRoute,
                     ZLinkDispatchMessageKind.Request,
                     ZLinkDispatchErrorReason.PayloadDecodeFailed,
@@ -152,10 +152,10 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         .InvokePacketAsync(descriptor, message, cancellationToken)
                         .ConfigureAwait(false);
 
-                    if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+                    if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
                     {
                         dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                            ZLinkMessageFlowPhase.Dispatched,
+                            ZLinkMessageFlowOutcome.Dispatched,
                             ZLinkDispatchErrorSurface.SpotRoute,
                             ZLinkDispatchMessageKind.Send,
                             PacketName: header.MessageName,
@@ -175,7 +175,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         "handler-exception",
                         ex,
                         channelName);
-                    dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                    dispatchErrors.Report(new ZLinkDispatchFailure(
                         ZLinkDispatchErrorSurface.SpotRoute,
                         ZLinkDispatchMessageKind.Send,
                         ZLinkDispatchErrorReason.HandlerException,
@@ -202,10 +202,10 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     descriptor.ReplyType,
                     codecs);
 
-                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
                 {
                     dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.Replied,
+                        ZLinkMessageFlowOutcome.Replied,
                         ZLinkDispatchErrorSurface.SpotRoute,
                         ZLinkDispatchMessageKind.Request,
                         PacketName: header.MessageName,
@@ -221,7 +221,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     descriptor.MessageName,
                     header.CorrelationId,
                     ex);
-                dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                dispatchErrors.Report(new ZLinkDispatchFailure(
                     ZLinkDispatchErrorSurface.SpotRoute,
                     ZLinkDispatchMessageKind.Request,
                     ZLinkDispatchErrorReason.HandlerException,

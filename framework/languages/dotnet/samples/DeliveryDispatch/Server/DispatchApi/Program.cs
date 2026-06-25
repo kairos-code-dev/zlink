@@ -13,10 +13,9 @@ builder.Services.AddSingleton<EvidenceStore>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.ConfigureDispatch()
-        .SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>()
         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
         .TraceLogFile(SampleFlowLog.Path("dispatch-api"))
-        .TraceNodeId("dispatch-api");
+        .TraceLabel("dispatch-api");
     options.Codecs.AddJson();
     options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
     {

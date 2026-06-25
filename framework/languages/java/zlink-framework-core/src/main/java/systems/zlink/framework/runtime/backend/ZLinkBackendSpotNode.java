@@ -15,6 +15,10 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
 
     void setRoutingId(RoutingId routingId);
 
+    void setPublisherRoutingId(RoutingId routingId);
+
+    void setSubscriberRoutingId(RoutingId routingId);
+
     void setRouterBind(String endpoint);
 
     void setPubBind(String endpoint);

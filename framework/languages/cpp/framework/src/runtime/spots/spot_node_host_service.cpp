@@ -7,10 +7,29 @@
 #include "runtime/registry/discovery_registry_connection.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace zlink::framework::runtime
 {
+
+namespace
+{
+
+zlink::routing_id_t derive_routing_id (const zlink::routing_id_t &base, std::string_view suffix)
+{
+    auto bytes = base.to_bytes ();
+    if (bytes.size () + 1u + suffix.size () > 255u) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "derived routing id must be at most 255 bytes");
+    }
+    bytes.push_back (0);
+    bytes.insert (bytes.end (), suffix.begin (), suffix.end ());
+    return zlink::routing_id_t::from (bytes);
+}
+
+} // namespace
 
 struct spot_node_host_service_t::native_node_t
 {
@@ -45,8 +64,14 @@ void spot_node_host_service_t::start (service_provider_t &services)
             continue;
         }
         auto native = std::make_unique<native_node_t> (configured.runtime);
-        if (snapshot.router_routing_id) {
-            native->node->set_routing_id (*snapshot.router_routing_id);
+        if (snapshot.routing_id) {
+            native->node->set_routing_id (*snapshot.routing_id);
+            if (snapshot.pub_bind_endpoint) {
+                native->node->set_publisher_routing_id (
+                  derive_routing_id (*snapshot.routing_id, "pub"));
+                native->node->set_subscriber_routing_id (
+                  derive_routing_id (*snapshot.routing_id, "sub"));
+            }
         }
         if (snapshot.router_bind_endpoint) {
             native->node->set_router_bind (*snapshot.router_bind_endpoint);

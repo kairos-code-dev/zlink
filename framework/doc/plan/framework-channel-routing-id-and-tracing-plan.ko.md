@@ -538,3 +538,33 @@ message flow event 는 source/binary break 를 허용하고 새 모양으로 정
 - Bingo 와 framework e2e 가 새 RID 정책, tracing 필드, dispatch error 통합, SpotNode 소유 actor factory 등록을
   검증한다.
 - 정식 spec/guide/internals 문서가 구현 결과와 맞게 갱신된다.
+
+## 종료 전 Codex 리뷰 루프
+
+구현자는 위 완료 기준을 만족했다고 판단한 뒤에도 바로 종료하지 않는다. 별도 Codex 에이전트를 사용해
+작업 결과를 리뷰하고, 누락된 작업이나 남은 이슈가 없을 때까지 아래 과정을 반복한다.
+
+1. Codex 에이전트에게 이 plan 문서와 실제 diff 를 함께 제공한다.
+2. 리뷰 요청은 코드 적용 범위, public API 제거, 언어별 표면 일치, 샘플/e2e 수정, 문서 반영, 테스트 증거를
+   모두 확인하도록 작성한다.
+3. 리뷰 결과에서 누락, 모순, 테스트 부족, stale document, 남은 제거 대상 API 가 발견되면 구현자가 수정한다.
+4. 수정 뒤 같은 기준으로 Codex 리뷰를 다시 요청한다.
+5. 리뷰 결과가 `NO DEFECTS` 또는 동등한 clean verdict 를 반환하고, 구현자가 grep/test 결과로 이를 재확인한
+   경우에만 작업을 종료한다.
+
+종료 전 최종 확인 grep 은 최소한 아래 항목을 포함한다.
+
+```text
+TraceNodeId
+node=
+SetMessageDispatchErrorObserver
+IZLinkMessageDispatchErrorObserver
+ZLinkMessageDispatchErrorEvent
+ConfigureServerRouting().RoutingId
+ConfigureClientRouting().RoutingId
+AddActorFactory
+.actorFactory(
+```
+
+단, 제거 대상 이름이 git history, 이 plan 문서, migration note 에만 남는 경우는 허용한다. public source,
+sample, e2e, 정식 spec/guide 에 남아 있으면 완료로 보지 않는다.

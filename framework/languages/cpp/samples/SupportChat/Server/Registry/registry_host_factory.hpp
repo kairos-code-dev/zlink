@@ -30,7 +30,7 @@ class registry_host_factory_t
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("registry"))
-              .trace_node_id ("supportchat-registry");
+              .trace_label ("supportchat-registry");
             options.enable_registry (topology.registry_pub_endpoint,
                                      topology.registry_router_endpoint);
         });

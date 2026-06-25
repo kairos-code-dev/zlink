@@ -15,13 +15,13 @@ class KotlinMessageFlowTracingTest {
         options.configureDispatch {
             messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
             traceLogFile("logs/flow.log")
-            traceNodeId("api")
+            traceLabel("api")
         }
 
         val diagnostics = options.registration().dispatchOptions().diagnostics()
         assertEquals(ZLinkMessageFlowLogMode.KEY_TRANSITIONS, diagnostics.messageFlow())
         assertEquals("logs/flow.log", diagnostics.logFile())
-        assertEquals("api", diagnostics.nodeId())
+        assertEquals("api", diagnostics.label())
         assertEquals(ZLinkMessageFlowLogMode.KEY_TRANSITIONS, diagnostics.effectiveMessageFlow())
     }
 

@@ -18,7 +18,7 @@ using var host = Host.CreateDefaultBuilder(args)
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, "client-flow.log"))
-                .TraceNodeId("client");
+                .TraceLabel("client");
         });
     })
     .Build();

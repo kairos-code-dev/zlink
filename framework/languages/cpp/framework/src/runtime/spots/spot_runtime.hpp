@@ -179,11 +179,8 @@ inline void record_actor_context_route_unlocked (spot_node_builder_state_t &stat
 
 inline std::string effective_spot_node_rid (const spot_node_snapshot_t &snapshot)
 {
-    if (snapshot.router_routing_id) {
-        return snapshot.router_routing_id->to_string ();
-    }
-    if (snapshot.pub_routing_id) {
-        return snapshot.pub_routing_id->to_string ();
+    if (snapshot.routing_id) {
+        return snapshot.routing_id->to_string ();
     }
     return snapshot.name;
 }

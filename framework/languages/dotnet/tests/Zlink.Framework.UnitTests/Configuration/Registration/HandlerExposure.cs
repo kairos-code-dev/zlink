@@ -293,7 +293,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var route = registration.RouteChannels["route"];
 
         Assert.Equal("tcp://0.0.0.0:5700", route.BindEndpoint);
-        Assert.Equal(RoutingId.From("route-node"), route.RoutingConfig.RoutingId);
+        Assert.Equal(RoutingId.From("route-node"), route.RoutingId);
         Assert.Empty(route.ManualConnections);
         Assert.Single(route.RequestHandlers);
     }
@@ -319,7 +319,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var route = registration.RouteChannels["route"];
 
         Assert.Equal("tcp://0.0.0.0:5700", route.BindEndpoint);
-        Assert.Equal(RoutingId.From("route-node"), route.RoutingConfig.RoutingId);
+        Assert.Equal(RoutingId.From("route-node"), route.RoutingId);
         Assert.False(route.RoutingConfig.EnablePeerProbe);
         Assert.Equal("tcp://10.0.0.2:5700", Assert.Single(route.ManualConnections));
     }

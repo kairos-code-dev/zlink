@@ -49,7 +49,7 @@ public final class PlayServerApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-play.log")
-                .traceNodeId("play");
+                .traceLabel("play");
             options.codecs().addJson();
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(PlayServerApplication.class);
@@ -60,16 +60,15 @@ public final class PlayServerApplication {
             route.enableClient();
             route.addHandlerGroup("play-route");
             route.setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
-            options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
             options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
                 .setRouterChannelId(SampleNames.PlayChannel);
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
-                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
-            node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
+                .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
+            node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint());
             node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);
+            node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
         };
     }
 

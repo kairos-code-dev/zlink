@@ -47,11 +47,10 @@ class TrackingApplication {
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-tracking.log")
-                traceNodeId("tracking")
+                traceLabel("tracking")
             }
             options.codecs().addJson()
             options.addHandlersFromPackageOf(TrackingApplication::class.java)
-            options.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory::class.java)
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(SampleTopology.TrackingChannelEndpoint)
                 .addHandlerGroup("tracking")
@@ -66,10 +65,11 @@ class TrackingApplication {
             val node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)
 
             node.enableRouter(SampleTopology.TrackingSpotRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid))
+                .setRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid))
             node.enablePubSub(SampleTopology.TrackingSpotEndpoint)
             node.addEntrySpot(CustomerEntrySpot::class.java)
             node.addSpotFactory(DeliveryTrackingSpot::class.java)
+            node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory::class.java)
         }
 
     companion object {

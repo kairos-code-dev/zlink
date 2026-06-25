@@ -44,18 +44,17 @@ enum class message_flow_log_mode_t
     diagnostic
 };
 
-// A transition in a message's lifecycle on the success path. Errors are
-// reported separately via message_dispatch_error_event_t; these phases describe
-// healthy traffic so that "did the message arrive / get handled / get replied"
-// can be followed by correlation id without resorting to ad-hoc printf debugging.
-enum class message_flow_phase_t
+// A transition or error result in a message's lifecycle. It lets healthy traffic
+// and dispatch failures share one observer stream keyed by correlation id.
+enum class message_flow_outcome_t
 {
     received,       // a well-formed envelope arrived at a dispatch surface (inbound)
     dispatched,     // a fire-and-forget message was handed to its handler (inbound)
     replied,        // a request completed and a reply was produced (inbound)
     dropped,        // a message was intentionally discarded (no handler, decode failed, ...)
     sent,           // a message left this node toward another channel/spot/node (outbound)
-    reply_received  // a reply came back for an outbound request (outbound)
+    reply_received, // a reply came back for an outbound request (outbound)
+    error           // dispatch failed before the normal lifecycle transition completed
 };
 
 struct unhandled_dispatch_options_t
@@ -69,7 +68,7 @@ struct unhandled_dispatch_options_t
 
 // Diagnostics/tracing config. Fields are encapsulated: configure them only through
 // the fluent builder on dispatch_options_t (configure_dispatch().message_flow(...)
-// .trace_log_file(...).trace_node_id(...)...). Read access is via getters.
+// .trace_log_file(...).trace_label(...)...). Read access is via getters.
 class dispatch_diagnostics_options_t
 {
   public:
@@ -79,7 +78,7 @@ class dispatch_diagnostics_options_t
     bool include_message_sizes () const noexcept { return _include_message_sizes; }
     bool include_native_diagnostics () const noexcept { return _include_native_diagnostics; }
     const std::optional<std::string> &log_file () const noexcept { return _log_file; }
-    const std::optional<std::string> &node_id () const noexcept { return _node_id; }
+    const std::optional<std::string> &label () const noexcept { return _label; }
     const std::shared_ptr<std::atomic<message_flow_log_mode_t>> &live_mode () const noexcept
     {
         return _live_mode;
@@ -103,9 +102,9 @@ class dispatch_diagnostics_options_t
     // When set, tracing/error logs go to this dedicated file (separated from app
     // logs). Empty = shared app logger (or std::clog if no sink).
     std::optional<std::string> _log_file;
-    // Node/runtime identity stamped on each trace line (`node=`) for cross-node
+    // Runtime label stamped on each trace line (`label=`) for cross-node
     // aggregation of process-local correlation ids. App-provided; empty = omitted.
-    std::optional<std::string> _node_id;
+    std::optional<std::string> _label;
     // Shared, runtime-mutable mode override (installed by the host at apply); copying
     // dispatch options shares the same atomic so every surface observes changes.
     std::shared_ptr<std::atomic<message_flow_log_mode_t>> _live_mode;
@@ -164,16 +163,9 @@ struct message_dispatch_error_event_t
     std::exception_ptr exception;
 };
 
-class message_dispatch_error_observer_t
-{
-  public:
-    virtual ~message_dispatch_error_observer_t () = default;
-    virtual void on_dispatch_error (const message_dispatch_error_event_t &error) = 0;
-};
-
 struct message_flow_event_t
 {
-    message_flow_phase_t phase;
+    message_flow_outcome_t outcome;
     dispatch_error_surface_t surface;
     dispatch_message_kind_t message_kind;
     std::optional<std::string> packet_name;
@@ -184,6 +176,9 @@ struct message_flow_event_t
     std::optional<std::string> spot_rid;
     std::optional<std::string> actor_id;
     std::optional<std::size_t> message_size;
+    std::optional<dispatch_error_reason_t> error_reason;
+    std::optional<dispatch_error_action_t> error_action;
+    std::exception_ptr exception;
 };
 
 class message_flow_observer_t
@@ -199,8 +194,6 @@ struct dispatch_options_t
     dispatch_mode_t stream_dispatch_mode = dispatch_mode_t::compiled;
     unhandled_dispatch_options_t unhandled;
     dispatch_diagnostics_options_t diagnostics;
-    std::shared_ptr<message_dispatch_error_observer_t> message_dispatch_error_observer;
-    std::function<void (const message_dispatch_error_event_t &)> message_dispatch_error_callback;
     std::shared_ptr<message_flow_observer_t> message_flow_observer;
     std::function<void (const message_flow_event_t &)> message_flow_callback;
     // When set, message-flow transitions and dispatch errors are emitted through
@@ -208,22 +201,6 @@ struct dispatch_options_t
     // of the std::clog fallback. Wired by the host at apply() only if a logging
     // output sink is configured; otherwise left empty to preserve clog behavior.
     std::optional<logger_t<>> diagnostics_logger;
-
-    dispatch_options_t &set_message_dispatch_error_observer (
-      std::shared_ptr<message_dispatch_error_observer_t> observer)
-    {
-        message_dispatch_error_observer = std::move (observer);
-        message_dispatch_error_callback = {};
-        return *this;
-    }
-
-    dispatch_options_t &set_message_dispatch_error_observer (
-      std::function<void (const message_dispatch_error_event_t &)> observer)
-    {
-        message_dispatch_error_callback = std::move (observer);
-        message_dispatch_error_observer.reset ();
-        return *this;
-    }
 
     dispatch_options_t &set_message_flow_observer (
       std::shared_ptr<message_flow_observer_t> observer)
@@ -274,11 +251,11 @@ struct dispatch_options_t
         return *this;
     }
 
-    // Node/runtime identity stamped on every trace line (`node=`) for cross-node
+    // Runtime label stamped on every trace line (`label=`) for cross-node
     // aggregation of process-local correlation ids.
-    dispatch_options_t &trace_node_id (std::string id)
+    dispatch_options_t &trace_label (std::string id)
     {
-        diagnostics._node_id = std::move (id);
+        diagnostics._label = std::move (id);
         return *this;
     }
 

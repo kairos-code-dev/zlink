@@ -10,17 +10,16 @@ import systems.zlink.framework.configuration.ZLinkDiagnosticsOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
-import systems.zlink.framework.configuration.ZLinkMessageFlowPhase;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 
-// Success-path message-flow tracer — the twin of ZLinkDispatchErrorReporter for
-// received/dispatched/replied/sent/reply_received transitions, keyed by correlation
-// id. Mirrors the C++ message_flow_tracer / .NET ZLinkMessageFlowTracer.
+// Message-flow tracer for success transitions and dispatch errors, keyed by
+// correlation id. Mirrors the C++ message_flow_tracer / .NET ZLinkMessageFlowTracer.
 //
-// PERFORMANCE: callers MUST guard event construction with enabled(phase) so an "off"
+// PERFORMANCE: callers MUST guard event construction with enabled(outcome) so an "off"
 // dispatch pays nothing but a volatile mode read:
-//     if (tracer.enabled(phase)) tracer.trace(new ZLinkMessageFlowEvent(...));
+//     if (tracer.enabled(outcome)) tracer.trace(new ZLinkMessageFlowEvent(...));
 public final class ZLinkMessageFlowTracer {
     private static final Logger LOGGER =
         Logger.getLogger(ZLinkMessageFlowTracer.class.getName());
@@ -43,15 +42,17 @@ public final class ZLinkMessageFlowTracer {
 
     // Cheap mode gate (volatile read of the live mode). Build the event only after
     // this returns true.
-    public boolean enabled(ZLinkMessageFlowPhase phase) {
-        return options.diagnostics().effectiveMessageFlow().ordinal() >= requiredMode(phase).ordinal();
+    public boolean enabled(ZLinkMessageFlowOutcome outcome) {
+        return options.diagnostics().effectiveMessageFlow().ordinal() >= requiredMode(outcome).ordinal();
     }
 
     public void trace(ZLinkMessageFlowEvent flow) {
-        if (!enabled(flow.phase())) {
+        if (!enabled(flow.outcome())) {
             return;
         }
-        if (flow.phase() != ZLinkMessageFlowPhase.DROPPED && !sample()) {
+        if (flow.outcome() != ZLinkMessageFlowOutcome.DROPPED
+            && flow.outcome() != ZLinkMessageFlowOutcome.ERROR
+            && !sample()) {
             return;
         }
         tracedCount.incrementAndGet();
@@ -91,8 +92,9 @@ public final class ZLinkMessageFlowTracer {
         return observerFailureCount.get();
     }
 
-    private static ZLinkMessageFlowLogMode requiredMode(ZLinkMessageFlowPhase phase) {
-        return phase == ZLinkMessageFlowPhase.DROPPED
+    private static ZLinkMessageFlowLogMode requiredMode(ZLinkMessageFlowOutcome outcome) {
+        return outcome == ZLinkMessageFlowOutcome.DROPPED
+            || outcome == ZLinkMessageFlowOutcome.ERROR
             ? ZLinkMessageFlowLogMode.ERRORS_ONLY
             : ZLinkMessageFlowLogMode.KEY_TRANSITIONS;
     }
@@ -128,7 +130,7 @@ public final class ZLinkMessageFlowTracer {
             size = flow.messageSize();
         }
 
-        String line = ZLinkTraceFormat.flowLine(flow, diagnostics.nodeId(), size);
+        String line = ZLinkTraceFormat.flowLine(flow, diagnostics.label(), size);
         // Separated file (diagnostics.logFile) vs the shared app logger. Both carry
         // structured key=value tokens (greppable by corr); the observer gets the
         // typed event for collector ingest.

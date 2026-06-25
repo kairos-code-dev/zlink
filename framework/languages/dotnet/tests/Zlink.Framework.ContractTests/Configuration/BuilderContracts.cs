@@ -23,7 +23,6 @@ public sealed class BuilderContracts
         options.AddHandlersFromAssemblyOf<BuilderContracts>();
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
         options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");
-        options.AddActorFactory<ActorFactory>("player");
         options.AddSpotRemoteAddressResolver<SpotRemoteAddressResolver>();
         options.UseRegistrySpotRemoteAddresses("game").RouterChannelId = "play-router";
         options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6000");
@@ -77,9 +76,9 @@ public sealed class BuilderContracts
         {
             var channel = options.AddClientServerChannel("api")
                 .EnableServer("tcp://127.0.0.1:5000")
-                .EnableClient("tcp://127.0.0.1:5000");
+                .EnableClient("tcp://127.0.0.1:5000")
+                .SetRoutingId(RoutingId.From("api"));
             channel.ConfigureServerSocket().TcpNoDelay = true;
-            channel.ConfigureServerRouting().RoutingId = RoutingId.From("api-server");
             channel.ConfigureClientSocket().SendTimeout = TimeSpan.FromSeconds(1);
             channel.ConfigureClientRouting().ProbeRouterOnConnect = true;
             channel.AddHandlerGroup("api");
@@ -93,7 +92,8 @@ public sealed class BuilderContracts
         {
             var channel = options.AddFanoutChannel("events")
                 .EnablePublisher("tcp://127.0.0.1:5100")
-                .EnableSubscriber("tcp://127.0.0.1:5100");
+                .EnableSubscriber("tcp://127.0.0.1:5100")
+                .SetRoutingId(RoutingId.From("events"));
             channel.AddHandlerGroup("events");
             channel.AddPublishHandler<EventHandler, ApiEvent>();
             channel.AddPublishHandler<AttributePublishHandler>("api.event");
@@ -103,7 +103,8 @@ public sealed class BuilderContracts
         {
             var channel = options.AddRouteMesh("play-router")
                 .EnableServer("tcp://127.0.0.1:5300")
-                .EnableClient("tcp://127.0.0.1:5301");
+                .EnableClient("tcp://127.0.0.1:5301")
+                .SetRoutingId(RoutingId.From("play-router"));
             channel.AddHandlerGroup("play");
             channel.AddSendHandler<RouteSendHandler, ApiEvent>();
             channel.AddSendHandler<AttributeRouteSendHandler>("route.event");
@@ -160,7 +161,7 @@ public sealed class BuilderContracts
     private static void ConfigureSpotNode(IZLinkSpotNodeBuilder spot)
     {
         spot.EnableRouter("tcp://127.0.0.1:5501")
-            .SetRouterRoutingId(RoutingId.From("spot-router"))
+            .SetRoutingId(RoutingId.From("spot-router"))
             .ConnectRouter("tcp://127.0.0.1:5501");
         spot.ConfigureRouterSocket().TcpNoDelay = true;
 
@@ -172,6 +173,7 @@ public sealed class BuilderContracts
         spot.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
         spot.AddSpotFactory<RoomSpot>();
         spot.AddEntrySpot<EntrySpot>();
+        spot.AddActorFactory<ActorFactory>("player");
     }
 
     private sealed record ApiEvent(string Value);
@@ -218,9 +220,6 @@ public sealed class BuilderContracts
         {
             return Metadata;
         }
-
-        public void AddActorFactory<TFactory>(string actorType)
-            where TFactory : class, IZLinkActorFactory { }
 
         public void AddSpotRemoteAddressResolver<TResolver>()
             where TResolver : class, IZLinkSpotRemoteAddressResolver { }
@@ -363,6 +362,11 @@ public sealed class BuilderContracts
             return this;
         }
 
+        public IZLinkClientServerChannelBuilder SetRoutingId(RoutingId routingId)
+        {
+            return this;
+        }
+
         public IZLinkSocketConfig ConfigureServerSocket()
         {
             return _serverSocket;
@@ -414,6 +418,11 @@ public sealed class BuilderContracts
         }
 
         public IZLinkFanoutChannelBuilder EnableSubscriber(string endpoint)
+        {
+            return this;
+        }
+
+        public IZLinkFanoutChannelBuilder SetRoutingId(RoutingId routingId)
         {
             return this;
         }
@@ -501,7 +510,7 @@ public sealed class BuilderContracts
             return this;
         }
 
-        public IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId)
+        public IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId)
         {
             return this;
         }
@@ -531,11 +540,6 @@ public sealed class BuilderContracts
             return this;
         }
 
-        public IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId)
-        {
-            return this;
-        }
-
         public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
         {
             return new ConnectionAndConfigContracts.SpotPublisherConfig();
@@ -556,6 +560,9 @@ public sealed class BuilderContracts
 
         public IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
             where TEntrySpot : IZLinkEntrySpot => this;
+
+        public IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
+            where TFactory : class, IZLinkActorFactory => this;
     }
 
     private sealed class SpotMeshBuilder : SpotNodeBuilder, IZLinkSpotMeshBuilder

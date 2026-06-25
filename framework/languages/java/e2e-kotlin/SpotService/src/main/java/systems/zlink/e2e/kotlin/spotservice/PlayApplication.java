@@ -7,6 +7,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -60,12 +61,15 @@ public final class PlayApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
-                .traceNodeId("kotlin-sm-" + nodeRid)
-                .setMessageDispatchErrorObserver(error -> {
+                .traceLabel("kotlin-sm-" + nodeRid)
+                .setMessageFlowObserver(error -> {
+                    if (error.outcome() != ZLinkMessageFlowOutcome.ERROR) {
+                        return java.util.concurrent.CompletableFuture.completedFuture(null);
+                    }
                     state.record(
                         "DispatchError",
                         error.spotRid(),
-                        error.reason() + "/" + error.action() + "/" + error.packetName());
+                        error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return java.util.concurrent.CompletableFuture.completedFuture(null);
                 });
             options.addRouteMesh(Contracts.ROUTE_CHANNEL)
@@ -80,11 +84,11 @@ public final class PlayApplication {
                     Contracts.ROUTE_PACKET);
             options.addClientServerChannel(Contracts.INGRESS_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_INGRESS_ENDPOINT"))
-                .serverRoutingId(RoutingId.from(nodeRid))
+                .setRoutingId(RoutingId.from(nodeRid))
                 .addRequestHandler(NoopIngressHandler.class, String.class, String.class, "Noop");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
-                .setRouterRoutingId(RoutingId.from(nodeRid));
+                .setRoutingId(RoutingId.from(nodeRid));
             node.addSpotFactory(UserSpot.class);
             node.addSpotFactory(MismatchedSpot.class);
         };

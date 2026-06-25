@@ -19,7 +19,7 @@ const {
   ZLinkMessageFlowTracer,
   createDiagnosticsContext,
   createMessageFlowModeCell,
-  ZLinkMessageFlowPhase,
+  ZLinkMessageFlowOutcome,
   ZLinkMessageFlowLogMode,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind
@@ -38,7 +38,7 @@ function makeTracer(diagnostics, providerResolver) {
 
 function receivedEvent() {
   return {
-    phase: ZLinkMessageFlowPhase.Received,
+    outcome: ZLinkMessageFlowOutcome.Received,
     surface: ZLinkDispatchErrorSurface.Channel,
     messageKind: ZLinkDispatchMessageKind.Request,
     packetName: 'EchoRequest',
@@ -49,37 +49,37 @@ function receivedEvent() {
 
 test('MFLOW-001 off mode is zero-cost: enabled() false and trace() is a no-op', () => {
   const { tracer } = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.Off });
-  assert.equal(tracer.enabled(ZLinkMessageFlowPhase.Received), false);
-  assert.equal(tracer.enabled(ZLinkMessageFlowPhase.Dropped), false);
+  assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), false);
+  assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Dropped), false);
   tracer.trace(receivedEvent());
   assert.equal(tracer.tracedCount, 0);
 });
 
 test('MFLOW-002 mode ladder gates phases by severity', () => {
   const errorsOnly = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.ErrorsOnly }).tracer;
-  assert.equal(errorsOnly.enabled(ZLinkMessageFlowPhase.Dropped), true);
-  assert.equal(errorsOnly.enabled(ZLinkMessageFlowPhase.Received), false);
+  assert.equal(errorsOnly.enabled(ZLinkMessageFlowOutcome.Dropped), true);
+  assert.equal(errorsOnly.enabled(ZLinkMessageFlowOutcome.Received), false);
 
   const keyTransitions = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.KeyTransitions }).tracer;
-  assert.equal(keyTransitions.enabled(ZLinkMessageFlowPhase.Received), true);
-  assert.equal(keyTransitions.enabled(ZLinkMessageFlowPhase.Replied), true);
-  assert.equal(keyTransitions.enabled(ZLinkMessageFlowPhase.Dropped), true);
+  assert.equal(keyTransitions.enabled(ZLinkMessageFlowOutcome.Received), true);
+  assert.equal(keyTransitions.enabled(ZLinkMessageFlowOutcome.Replied), true);
+  assert.equal(keyTransitions.enabled(ZLinkMessageFlowOutcome.Dropped), true);
 });
 
-test('MFLOW-003/005 structured key=value line with node= is written to the separated log file', () => {
+test('MFLOW-003/005 structured key=value line with label= is written to the separated log file', () => {
   const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-mflow-'));
   const logFile = path.join(logDir, 'flow.log');
   const { tracer } = makeTracer({
     messageFlowLogMode: ZLinkMessageFlowLogMode.KeyTransitions,
     logFile,
-    nodeId: 'api'
+    label: 'api'
   });
   tracer.trace(receivedEvent());
   assert.equal(tracer.tracedCount, 1);
   const line = fs.readFileSync(logFile, 'utf8').trim();
   assert.match(line, /phase=received/);
   assert.match(line, /surface=channel/);
-  assert.match(line, /node=api/);
+  assert.match(line, /label=api/);
   assert.match(line, /packet=EchoRequest/);
   assert.match(line, /channel=api/);
   assert.match(line, /corr=corr-1/);
@@ -109,18 +109,18 @@ test('MFLOW-004 observer offload delivers the event asynchronously', async () =>
   assert.equal(events.length, 0, 'observer is offloaded, not synchronous');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(events.length, 1);
-  assert.equal(events[0].phase, ZLinkMessageFlowPhase.Received);
+  assert.equal(events[0].outcome, ZLinkMessageFlowOutcome.Received);
   assert.equal(events[0].correlationId, 'corr-1');
   void tracer;
 });
 
 test('MFLOW-009 live-mode cell toggles every reader without rebuilding the tracer', () => {
   const { tracer, cell } = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.Off });
-  assert.equal(tracer.enabled(ZLinkMessageFlowPhase.Received), false);
+  assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), false);
   cell.mode = ZLinkMessageFlowLogMode.Verbose;
-  assert.equal(tracer.enabled(ZLinkMessageFlowPhase.Received), true);
+  assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), true);
   cell.mode = ZLinkMessageFlowLogMode.Off;
-  assert.equal(tracer.enabled(ZLinkMessageFlowPhase.Received), false);
+  assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), false);
 });
 
 test('MFLOW-010 stream correlation_id round-trips byte-identically across framework and connector codecs', () => {

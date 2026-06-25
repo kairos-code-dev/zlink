@@ -35,7 +35,7 @@ class api_server_host_factory_t
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("api"))
-              .trace_node_id ("tictactoe-api");
+              .trace_label ("tictactoe-api");
             options.handlers ().add<authenticate_player_handler_t> ("api");
 
             options.codecs ()

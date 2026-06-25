@@ -42,7 +42,7 @@ final class StreamSessionTest {
     @Test
     void streamNodeBindsAndAttachesConfiguredSessionRelaySpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(GameSession.class); };
@@ -239,9 +239,9 @@ final class StreamSessionTest {
     void constructorSessionContextExposesClientAndActorsFromFrameworkRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
-                node.addSpotFactory(GameSpot.class); }; };
-        options.addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActorFactory.class);
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+                node.addSpotFactory(GameSpot.class);
+                node.addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActorFactory.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(ContextSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -268,7 +268,9 @@ final class StreamSessionTest {
     void gatewayAttachedSessionContextExposesActorsWithoutLocalActorRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("session-node")); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh
+                .enableRouter("inproc://session-node")
+                .setRoutingId(RoutingId.from("session-node")); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(ContextSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -328,11 +330,11 @@ final class StreamSessionTest {
             backendFactory.dispatchStreamRequest("Compress", "hello", 91);
         }
 
-        assertTrue(backendFactory.calls().stream()
+        awaitCondition(() -> backendFactory.calls().stream()
             .anyMatch(call -> call.startsWith("stream.send.fake-session.Notify.")
                 && call.contains("PAYLOAD_COMPRESSED")
                 && call.contains("trace=send-trace")));
-        assertTrue(backendFactory.calls().stream()
+        awaitCondition(() -> backendFactory.calls().stream()
             .anyMatch(call -> call.startsWith("stream.reply.fake-session.91.String.")
                 && call.contains("PAYLOAD_COMPRESSED")
                 && call.contains("trace=reply-trace")));

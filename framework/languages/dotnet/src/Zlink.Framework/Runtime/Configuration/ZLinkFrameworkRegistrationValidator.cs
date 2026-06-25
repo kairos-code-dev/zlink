@@ -11,12 +11,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         ValidateDispatchOptions(registration.DispatchOptions);
 
-        if (registration.ActorFactories.Count > 0 && registration.SpotNodes.Count == 0)
-        {
-            throw new ZLinkConfigurationException(
-                "Actor factory registration requires at least one SpotNode.");
-        }
-
         if (registration.RegistrySpotRemoteAddresses is not null
             && registration.Discovery?.Endpoints.Count is not > 0
             && !registration.SpotDiscoveries.Values.Any(
@@ -63,6 +57,15 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 spotNode,
                 registration,
                 globalSpotFactories);
+        }
+
+        var actorCapableNodes = registration.SpotNodes.Values
+            .Where(static spotNode => spotNode.ActorFactories.Count > 0)
+            .ToArray();
+        if (actorCapableNodes.Length > 1)
+        {
+            throw new ZLinkConfigurationException(
+                "Actor factory registration is ambiguous because more than one SpotNode owns actor factories.");
         }
     }
 

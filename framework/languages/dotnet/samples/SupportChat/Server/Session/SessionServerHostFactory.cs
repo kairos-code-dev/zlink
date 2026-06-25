@@ -18,10 +18,9 @@ public static class SessionServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("session"))
-                .TraceNodeId("session");
+                .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
@@ -41,12 +40,11 @@ public static class SessionServerHostFactory
                     var node = mesh;
                     {
                         var router = node.EnableRouter(session.RouterEndpoint);
-                        router.SetRouterRoutingId(session.RouterRoutingId);
+                        router.SetRoutingId(session.RoutingId);
 
                     }
                     {
                         var pubsub = node.EnablePubSub(session.PubEndpoint);
-                        pubsub.SetPubSubRoutingId(session.PubRoutingId);
 
                     }
 

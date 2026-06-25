@@ -798,8 +798,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer spotNodeWithActorConfigurer() {
             return options -> {
                 { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                        node.addSpotFactory(GameSpot.class); }; };
-                options.addActorFactory("player", PlayerActorFactory.class);
+                        node.addSpotFactory(GameSpot.class);
+                        node.addActorFactory("player", PlayerActorFactory.class); }; };
             };
         }
     }
@@ -826,8 +826,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer injectedSpotAndActorConfigurer() {
             return options -> {
                 { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                        node.addSpotFactory(InjectedGameSpot.class); }; };
-                options.addActorFactory("player", InjectedPlayerActorFactory.class);
+                        node.addSpotFactory(InjectedGameSpot.class);
+                        node.addActorFactory("player", InjectedPlayerActorFactory.class); }; };
             };
         }
     }

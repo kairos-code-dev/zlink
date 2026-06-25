@@ -6,6 +6,7 @@
 
 #include "runtime/diagnostics/diagnostic_event_sink.hpp"
 #include "runtime/diagnostics/dispatch_diagnostics_names.hpp"
+#include "runtime/diagnostics/message_flow_tracer.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -31,15 +32,21 @@ class dispatch_error_reporter_t
         if (_options.diagnostics.effective_message_flow () != message_flow_log_mode_t::off) {
             log_default (event);
         }
-        diagnostic_event_sink_t::deliver_observer (
-          _options.message_dispatch_error_observer, _options.message_dispatch_error_callback,
-          std::move (event),
-          [] (message_dispatch_error_observer_t &observer,
-              const message_dispatch_error_event_t &event) { observer.on_dispatch_error (event); },
-          [] (const std::function<void (const message_dispatch_error_event_t &)> &callback,
-              const message_dispatch_error_event_t &event) { callback (event); },
-          [] { observer_failure_count ().fetch_add (1, std::memory_order_relaxed); },
-          [] { observer_dropped_count ().fetch_add (1, std::memory_order_relaxed); });
+        message_flow_tracer_t (_options).trace (message_flow_event_t{
+          message_flow_outcome_t::error,
+          event.surface,
+          event.message_kind,
+          std::move (event.packet_name),
+          std::move (event.channel_name),
+          std::move (event.topic),
+          std::move (event.correlation_id),
+          std::move (event.source_rid),
+          std::move (event.spot_rid),
+          std::move (event.actor_id),
+          std::nullopt,
+          event.reason,
+          event.action,
+          event.exception});
     }
 
     static std::uint64_t reported () noexcept
@@ -49,12 +56,12 @@ class dispatch_error_reporter_t
 
     static std::uint64_t observer_failures () noexcept
     {
-        return observer_failure_count ().load (std::memory_order_relaxed);
+        return message_flow_tracer_t::observer_failures ();
     }
 
     static std::uint64_t observer_dropped () noexcept
     {
-        return observer_dropped_count ().load (std::memory_order_relaxed);
+        return message_flow_tracer_t::observer_dropped ();
     }
 
   private:
@@ -70,8 +77,8 @@ class dispatch_error_reporter_t
             add ("kind", std::string (enum_name (event.message_kind)));
             add ("reason", std::string (enum_name (event.reason)));
             add ("action", std::string (enum_name (event.action)));
-            if (_options.diagnostics.node_id ()) {
-                add ("node", *_options.diagnostics.node_id ());
+            if (_options.diagnostics.label ()) {
+                add ("label", *_options.diagnostics.label ());
             }
             if (event.packet_name) {
                 add ("packet", *event.packet_name);
@@ -101,23 +108,11 @@ class dispatch_error_reporter_t
               "zlink framework dispatch error:", std::move (fields));
         }
         catch (...) {
-            observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
+            (void) observer_failures ();
         }
     }
 
     static std::atomic<std::uint64_t> &reported_count () noexcept
-    {
-        static std::atomic<std::uint64_t> value{0};
-        return value;
-    }
-
-    static std::atomic<std::uint64_t> &observer_failure_count () noexcept
-    {
-        static std::atomic<std::uint64_t> value{0};
-        return value;
-    }
-
-    static std::atomic<std::uint64_t> &observer_dropped_count () noexcept
     {
         static std::atomic<std::uint64_t> value{0};
         return value;

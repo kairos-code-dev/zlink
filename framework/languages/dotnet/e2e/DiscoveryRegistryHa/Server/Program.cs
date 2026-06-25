@@ -76,11 +76,11 @@ else if (options.Role == "provider" || options.Role == "embedded")
         framework.ConfigureDispatch()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-            .TraceNodeId(options.Rid);
+            .TraceLabel(options.Rid);
 
         var channel = framework.AddClientServerChannel(DiscoveryRegistryHaNames.Channel)
-            .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"));
-        channel.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
+            .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
+            .SetRoutingId(RoutingId.From(options.Rid));
         channel.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
     });
 }

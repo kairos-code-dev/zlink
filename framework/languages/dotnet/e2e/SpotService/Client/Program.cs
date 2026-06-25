@@ -1866,16 +1866,15 @@ static IHost CreateRouteEgressHost(
 {
     var builder = Host.CreateApplicationBuilder();
     builder.Services.AddSingleton<ClientEvidenceStore>();
-    builder.Services.AddSingleton<IZLinkMessageDispatchErrorObserver, ClientEvidenceDispatchErrorObserver>();
     builder.Services.AddZLinkFramework(framework =>
     {
         framework.AddHandlersFromAssemblyOf(typeof(Program));
         framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
         framework.ConfigureDispatch()
-            .SetMessageDispatchErrorObserver<ClientEvidenceDispatchErrorObserver>()
+            .SetMessageFlowObserver<ClientEvidenceDispatchErrorObserver>()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, traceName))
-            .TraceNodeId("client-framework");
+            .TraceLabel("client-framework");
         if (includeRouteMeshEgress
             || includeClientServerEgress
             || includeExternalChannelServer)
@@ -1883,9 +1882,8 @@ static IHost CreateRouteEgressHost(
             framework.AddSpotMesh(SpotServiceNames.SpotChannel)
                 .UseRegistrySpotResolver()
                 .EnableRouter(options.ClientSpotRouterEndpoint)
-                .SetRouterRoutingId(RoutingId.From("client-edge"))
+                .SetRoutingId(RoutingId.From("client-edge"))
                 .EnablePubSub(options.ClientSpotPubEndpoint)
-                .SetPubSubRoutingId(RoutingId.From("client-edge-publisher"))
                 .ConnectPubSub(options.PlayASpotPubEndpoint);
         }
         if (includeControlChannel)
@@ -1941,7 +1939,7 @@ static IHost CreateControlRouteHost(
         framework.ConfigureDispatch()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, traceName))
-            .TraceNodeId("client-framework");
+            .TraceLabel("client-framework");
         framework.AddRouteMesh(SpotServiceNames.ControlChannel)
             .EnableServer(bindEndpoint)
             .EnableClient(targetEndpoint)
@@ -1988,7 +1986,7 @@ static IHost CreateDirectMultiNodeRouteHost(
         spotMesh.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
         spotMesh
             .EnableRouter(options.ClientSpotRouterEndpoint)
-            .SetRouterRoutingId(localSpotNodeRid);
+            .SetRoutingId(localSpotNodeRid);
     });
     return builder.Build();
 }
@@ -2438,19 +2436,24 @@ internal sealed class ChannelNotifyHandler(ClientEvidenceStore evidence)
 }
 
 internal sealed class ClientEvidenceDispatchErrorObserver(ClientEvidenceStore evidence)
-    : IZLinkMessageDispatchErrorObserver
+    : IZLinkMessageFlowObserver
 {
-    public ValueTask OnDispatchErrorAsync(
-        ZLinkMessageDispatchErrorEvent error,
+    public ValueTask OnMessageFlowAsync(
+        ZLinkMessageFlowEvent flow,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
+        {
+            return ValueTask.CompletedTask;
+        }
+
         evidence.Add(
             "dispatch-error"
-            + $"|surface={error.Surface}"
-            + $"|reason={error.Reason}"
-            + $"|action={error.Action}"
-            + $"|packet={error.PacketName ?? "<null>"}");
+            + $"|surface={flow.Surface}"
+            + $"|reason={flow.ErrorReason}"
+            + $"|action={flow.ErrorAction}"
+            + $"|packet={flow.PacketName ?? "<null>"}");
         return ValueTask.CompletedTask;
     }
 }

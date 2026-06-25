@@ -4,12 +4,11 @@ import type { ZLinkProviderResolver } from '../../contracts';
 import {
   MESSAGE_FLOW_MODE_RANK,
   ZLinkMessageFlowLogMode,
-  ZLinkMessageFlowPhase
+  ZLinkMessageFlowOutcome
 } from '../../contracts';
 import type {
   ZLinkDiagnosticsOptions,
-  ZLinkMessageDispatchErrorEvent,
-  ZLinkMessageDispatchErrorObserver,
+  ZLinkDispatchFailure,
   ZLinkMessageFlowEvent,
   ZLinkMessageFlowObserver,
   Type
@@ -29,7 +28,6 @@ export interface ZLinkMessageFlowModeCell {
 export interface ZLinkDiagnosticsContext {
   readonly diagnostics: ZLinkDiagnosticsOptions;
   readonly liveMode: ZLinkMessageFlowModeCell;
-  readonly messageDispatchErrorObserverType?: Type<ZLinkMessageDispatchErrorObserver>;
   readonly messageFlowObserverType?: Type<ZLinkMessageFlowObserver>;
   readonly providerResolver?: ZLinkProviderResolver;
 }
@@ -50,7 +48,6 @@ export function createDiagnosticsContext(
   dispatch:
     | {
         diagnostics?: ZLinkDiagnosticsOptions;
-        messageDispatchErrorObserverType?: Type<ZLinkMessageDispatchErrorObserver>;
         messageFlowObserverType?: Type<ZLinkMessageFlowObserver>;
       }
     | undefined,
@@ -60,35 +57,35 @@ export function createDiagnosticsContext(
   return {
     diagnostics: dispatch?.diagnostics ?? {},
     liveMode,
-    messageDispatchErrorObserverType: dispatch?.messageDispatchErrorObserverType,
     messageFlowObserverType: dispatch?.messageFlowObserverType,
     providerResolver
   };
 }
 
-function requiredMode(phase: ZLinkMessageFlowPhase): ZLinkMessageFlowLogMode {
-  return phase === ZLinkMessageFlowPhase.Dropped
+function requiredMode(outcome: ZLinkMessageFlowOutcome): ZLinkMessageFlowLogMode {
+  return outcome === ZLinkMessageFlowOutcome.Dropped
+    || outcome === ZLinkMessageFlowOutcome.Error
     ? ZLinkMessageFlowLogMode.ErrorsOnly
     : ZLinkMessageFlowLogMode.KeyTransitions;
 }
 
 /**
- * Returns the tracer only when this phase is enabled, so call sites read as
- * `flowIfEnabled(reporter?.flow, phase)?.trace({ ...event })`. Optional chaining
+ * Returns the tracer only when this outcome is enabled, so call sites read as
+ * `flowIfEnabled(reporter?.flow, outcome)?.trace({ ...event })`. Optional chaining
  * short-circuits, so the event object literal is never built when tracing is off —
  * keeping the disabled path allocation-free.
  */
 export function flowIfEnabled(
   flow: ZLinkMessageFlowTracer | undefined,
-  phase: ZLinkMessageFlowPhase
+  outcome: ZLinkMessageFlowOutcome
 ): ZLinkMessageFlowTracer | undefined {
-  return flow !== undefined && flow.enabled(phase) ? flow : undefined;
+  return flow !== undefined && flow.enabled(outcome) ? flow : undefined;
 }
 
 /**
  * Success-path message-flow tracer — the twin of ZLinkDispatchErrorReporter for
  * received/dispatched/replied/sent/replyReceived transitions, keyed by correlation id.
- * Mirrors the C++/.NET/Java tracer. Build the event only after enabled(phase) so an
+ * Mirrors the C++/.NET/Java tracer. Build the event only after enabled(outcome) so an
  * "off" dispatch pays nothing but a mode read.
  */
 export class ZLinkMessageFlowTracer {
@@ -101,15 +98,19 @@ export class ZLinkMessageFlowTracer {
     private readonly errorSink: ZLinkDispatchErrorSink
   ) {}
 
-  enabled(phase: ZLinkMessageFlowPhase): boolean {
-    return MESSAGE_FLOW_MODE_RANK[effectiveMessageFlow(this.ctx)] >= MESSAGE_FLOW_MODE_RANK[requiredMode(phase)];
+  enabled(outcome: ZLinkMessageFlowOutcome): boolean {
+    return MESSAGE_FLOW_MODE_RANK[effectiveMessageFlow(this.ctx)] >= MESSAGE_FLOW_MODE_RANK[requiredMode(outcome)];
   }
 
   trace(flow: ZLinkMessageFlowEvent): void {
-    if (!this.enabled(flow.phase)) {
+    if (!this.enabled(flow.outcome)) {
       return;
     }
-    if (flow.phase !== ZLinkMessageFlowPhase.Dropped && !this.sample()) {
+    if (
+      flow.outcome !== ZLinkMessageFlowOutcome.Dropped &&
+      flow.outcome !== ZLinkMessageFlowOutcome.Error &&
+      !this.sample()
+    ) {
       return;
     }
     this.tracedEvents += 1;
@@ -160,7 +161,7 @@ export class ZLinkMessageFlowTracer {
       flow.messageSize !== undefined &&
       MESSAGE_FLOW_MODE_RANK[effectiveMessageFlow(this.ctx)] >= MESSAGE_FLOW_MODE_RANK[ZLinkMessageFlowLogMode.Verbose] &&
       d.includeMessageSizes !== false;
-    const line = flowLine(flow, d.nodeId, includeSize ? flow.messageSize : undefined);
+    const line = flowLine(flow, d.label, includeSize ? flow.messageSize : undefined);
     if (d.logFile !== undefined) {
       writeTraceFile(d.logFile, line);
     } else {
@@ -187,21 +188,13 @@ function field(name: string, value: string | undefined): string | undefined {
   return value === undefined || value === '' ? undefined : `${name}=${value}`;
 }
 
-function errorField(error: unknown): string | undefined {
-  if (error === undefined) {
-    return undefined;
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  return field('error', JSON.stringify(message));
-}
-
-export function flowLine(flow: ZLinkMessageFlowEvent, nodeId: string | undefined, size: number | undefined): string {
+export function flowLine(flow: ZLinkMessageFlowEvent, label: string | undefined, size: number | undefined): string {
   return [
     'message flow',
-    `phase=${flow.phase}`,
+    `phase=${flow.outcome}`,
     `surface=${flow.surface}`,
     `kind=${flow.messageKind}`,
-    field('node', nodeId),
+    field('label', label),
     field('packet', flow.packetName),
     field('channel', flow.channelName),
     field('topic', flow.topic),
@@ -215,14 +208,14 @@ export function flowLine(flow: ZLinkMessageFlowEvent, nodeId: string | undefined
     .join(' ');
 }
 
-export function errorLine(event: ZLinkMessageDispatchErrorEvent, nodeId: string | undefined): string {
+export function errorLine(event: ZLinkDispatchFailure, label: string | undefined): string {
   return [
     'dispatch error',
     `surface=${event.surface}`,
     `kind=${event.messageKind}`,
     `reason=${event.reason}`,
     `action=${event.action}`,
-    field('node', nodeId),
+    field('label', label),
     field('packet', event.packetName),
     field('channel', event.channelName),
     field('topic', event.topic),
@@ -230,7 +223,8 @@ export function errorLine(event: ZLinkMessageDispatchErrorEvent, nodeId: string 
     field('src', event.sourceRid),
     field('spot', event.spotRid),
     field('actor', event.actorId),
-    errorField(event.error)
+    field('errorType', event.errorType),
+    field('errorMessage', event.errorMessage)
   ]
     .filter((value): value is string => value !== undefined)
     .join(' ');

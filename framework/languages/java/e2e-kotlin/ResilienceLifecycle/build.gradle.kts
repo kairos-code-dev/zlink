@@ -1,4 +1,5 @@
 plugins {
+    kotlin("jvm") version "2.0.21"
     application
 }
 
@@ -8,6 +9,7 @@ if (!e2eBuildDir.isNullOrBlank()) {
 }
 
 dependencies {
+    implementation(kotlin("stdlib"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink:6.0.4")
@@ -21,8 +23,12 @@ java {
     }
 }
 
+kotlin {
+    jvmToolchain(22)
+}
+
 application {
     applicationName = "resilience-lifecycle-kotlin"
-    mainClass.set("systems.zlink.e2e.kotlin.resiliencelifecycle.Program")
+    mainClass.set("systems.zlink.e2e.kotlin.resiliencelifecycle.ProgramKt")
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }

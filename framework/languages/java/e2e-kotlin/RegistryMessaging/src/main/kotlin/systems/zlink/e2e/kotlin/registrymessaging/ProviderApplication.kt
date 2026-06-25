@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -32,11 +33,14 @@ class ProviderApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/${state.providerRid}-flow.log")
-                .traceNodeId("kotlin-rm-${state.providerRid}")
-                .setMessageDispatchErrorObserver { error ->
+                .traceLabel("kotlin-rm-${state.providerRid}")
+                .setMessageFlowObserver { error ->
+                    if (error.outcome() != ZLinkMessageFlowOutcome.ERROR) {
+                        return@setMessageFlowObserver CompletableFuture.completedFuture(null)
+                    }
                     state.record(
                         "DispatchError",
-                        "${error.reason()}/${error.action()}/${error.packetName()}",
+                        "${error.errorReason()}/${error.errorAction()}/${error.packetName()}",
                     )
                     CompletableFuture.completedFuture(null)
                 }
@@ -47,7 +51,7 @@ class ProviderApplication {
             if (apiEndpoint.isNotBlank()) {
                 options.addClientServerChannel(Contracts.API_CHANNEL)
                     .enableServer(apiEndpoint)
-                    .serverRoutingId(RoutingId.from(state.providerRid))
+                    .setRoutingId(RoutingId.from(state.providerRid))
                     .addHandlerGroup(Contracts.HANDLER_GROUP)
             }
 
@@ -55,7 +59,7 @@ class ProviderApplication {
             if (workflowEndpoint.isNotBlank()) {
                 options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL)
                     .enableServer(workflowEndpoint)
-                    .serverRoutingId(RoutingId.from(state.providerRid))
+                    .setRoutingId(RoutingId.from(state.providerRid))
                     .addHandlerGroup(Contracts.HANDLER_GROUP)
             }
 

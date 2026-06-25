@@ -39,7 +39,7 @@ function createBingoPlayModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-play.log`)
-            .traceNodeId('play');
+            .traceLabel('play');
           return builder
           .options({
             registrySpotRemoteAddresses: {
@@ -59,12 +59,12 @@ function createBingoPlayModule(config: {
             .routingId(config.playSpotNodeRid)
             .connect(config.routePeerEndpoints)
             .addRequestHandler(PacketNames.ensurePlayerActorReq, EnsurePlayerActorHandler)
-          .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
           .addSpotMesh(SampleNames.roomSpotNode)
             .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)
             .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid)
             .addEntrySpot(BingoEntrySpot)
             .addSpotFactory(BingoRoomSpot)
+            .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
           .build();
         }
       })

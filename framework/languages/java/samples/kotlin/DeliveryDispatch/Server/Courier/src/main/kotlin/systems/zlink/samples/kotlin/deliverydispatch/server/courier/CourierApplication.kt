@@ -32,7 +32,7 @@ class CourierApplication {
             configurer.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-${options.courierId}.log")
-                traceNodeId(options.courierId)
+                traceLabel(options.courierId)
             }
             configurer.codecs().addJson()
             configurer.addClientServerChannel(SampleNames.courierChannel(options.courierId))

@@ -71,7 +71,7 @@ public final class ServerApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/server-flow.log")
-                .traceNodeId("java-rc-server");
+                .traceLabel("java-rc-server");
             options.addHandlersFromPackageOf(AutoRequestHandler.class);
             var channel = options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_SERVER_ENDPOINT"))

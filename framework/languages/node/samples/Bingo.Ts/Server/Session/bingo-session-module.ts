@@ -26,7 +26,7 @@ function createBingoSessionModule(endpoints: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-session.log`)
-            .traceNodeId('session');
+            .traceLabel('session');
           return builder
           .options({
             registrySpotRemoteAddresses: {

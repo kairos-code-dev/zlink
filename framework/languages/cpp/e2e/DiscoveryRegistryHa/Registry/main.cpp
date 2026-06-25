@@ -186,7 +186,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/registry-flow.log")
-          .trace_node_id ("cpp-dr-registry");
+          .trace_label ("cpp-dr-registry");
         options.http ().listen (http).map_health ("/health").map_get<evidence_handler_t> (
           "/evidence");
     });

@@ -16,7 +16,7 @@ function createSupportChatApiModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-api.log`)
-            .traceNodeId('api');
+            .traceLabel('api');
           return builder
           .codecs()
             .addJson()

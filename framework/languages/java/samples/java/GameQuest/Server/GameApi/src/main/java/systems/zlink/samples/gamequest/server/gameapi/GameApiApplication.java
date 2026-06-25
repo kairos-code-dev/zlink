@@ -46,7 +46,7 @@ public final class GameApiApplication {
             configurer.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs") + "/flow-" + apiName + ".log")
-                .traceNodeId(apiName);
+                .traceLabel(apiName);
             configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(GameApiApplication.class);
 

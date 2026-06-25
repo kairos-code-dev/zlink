@@ -1,0 +1,109 @@
+package systems.zlink.e2e.spotservice;
+
+import java.time.Duration;
+import java.time.Instant;
+import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.spots.ZLinkTimer;
+import systems.zlink.framework.spots.ZLinkTimerOptions;
+import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy;
+
+public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
+    private final ZLinkSpotContext context;
+    private final ScenarioState evidence;
+    private Instant lastActivity = Instant.now();
+    private int tickCount;
+    private long skippedTicks;
+    private String status = "open";
+    private ZLinkTimer overrunTimer;
+    private boolean idleKeepRecorded;
+
+    public TimerScenarioSpot(
+        ZLinkSpotContext context,
+        ScenarioState evidence) {
+        this.context = context;
+        this.evidence = evidence;
+    }
+
+    @Override
+    public ZLinkSpotContext context() {
+        return context;
+    }
+
+    @Override
+    public void configure() {
+        context.handlers().addPacket(TimerActivityHandler.class);
+        context.handlers().addPacket(TimerStatusHandler.class);
+    }
+
+    @Override
+    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        String rid = context.spotRid().toString();
+        if (rid.startsWith("timer-overrun-")) {
+            ZLinkTimerOptions options = new ZLinkTimerOptions();
+            if (rid.endsWith("catchup")) {
+                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED);
+                options.setMaxCatchUpTicks(2);
+            } else if (rid.endsWith("delay")) {
+                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK);
+            } else {
+                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS);
+            }
+            options.setStopOnUnhandledException(false);
+            context.addTimer("overrun", Duration.ofMillis(50), TimerOverrunHandler.class, options)
+                .thenAccept(timer -> overrunTimer = timer);
+            evidence.record("TimerOverrunConfigured", rid, options.overrunPolicy().name());
+        } else {
+            context.addTimer("idle", Duration.ofMillis(250), IdleCloseTimerHandler.class, new ZLinkTimerOptions());
+            evidence.record("IdleTimerConfigured", rid, "idle");
+        }
+        return ZLinkSpotCreateResponse.accept();
+    }
+
+    @Override
+    public void onClosing() {
+        status = "closed";
+        evidence.record("IdleClosed", context.spotRid().toString(), "closed");
+    }
+
+    public void activity(String value) {
+        lastActivity = Instant.now();
+        status = "active:" + value;
+        evidence.record("IdleActivity", context.spotRid().toString(), value);
+    }
+
+    public Contracts.TimerStatus status() {
+        return new Contracts.TimerStatus(context.spotRid().toString(), status);
+    }
+
+    public void idleTick() {
+        String rid = context.spotRid().toString();
+        if ("idle-close".equals(rid)
+            && Duration.between(lastActivity, Instant.now()).compareTo(Duration.ofMillis(700)) > 0) {
+            evidence.record("IdleCloseRequested", rid, "idle");
+            context.close().toCompletableFuture().join();
+            return;
+        }
+        if ("idle-active".equals(rid)) {
+            if (!idleKeepRecorded) {
+                idleKeepRecorded = true;
+                evidence.record("IdleKeptOpen", rid, status);
+            }
+        }
+    }
+
+    public void overrunTick(long deliveryIndex, long skipped) {
+        tickCount++;
+        skippedTicks += skipped;
+        String rid = context.spotRid().toString();
+        status = "ticks=" + tickCount + ",skipped=" + skippedTicks;
+        evidence.record("TimerOverrunTick", rid, deliveryIndex + "/" + skipped + "/" + tickCount);
+        if (tickCount >= 3 && overrunTimer != null) {
+            overrunTimer.close();
+            evidence.record("TimerOverrunStopped", rid, status);
+        }
+    }
+}

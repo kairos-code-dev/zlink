@@ -27,10 +27,9 @@ public static class SupportServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("support"))
-                .TraceNodeId("support");
+                .TraceLabel("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
@@ -45,14 +44,13 @@ public static class SupportServerHostFactory
                 channel.EnableClient();
 
             }
-            options.AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType);
             {
                 var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
                 {
                     var spot = mesh;
                     {
                         var router = spot.EnableRouter(topology.SupportEntrySpotRouterEndpoint);
-                        router.SetRouterRoutingId(topology.SupportEntryRid);
+                        router.SetRoutingId(topology.SupportEntryRid);
 
                     }
                     {
@@ -60,6 +58,7 @@ public static class SupportServerHostFactory
 
                     }
                     spot.AddEntrySpot<SupportEntrySpot>();
+                    spot.AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType);
                     spot.AddSpotFactory<ConversationSpot>();
 
                 }

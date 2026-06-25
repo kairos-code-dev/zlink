@@ -54,7 +54,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (zlink::samples::deliverydispatch::flow_log_path ("client"))
-          .trace_node_id ("deliverydispatch-client");
+          .trace_label ("deliverydispatch-client");
         options.codecs ()
           .add_json ()
           .add_json<zlink::samples::deliverydispatch::create_delivery_req_t> ()

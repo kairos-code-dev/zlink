@@ -13,6 +13,7 @@ import systems.zlink.e2e.registrymessaging.handlers.RoutePingHandler;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -45,11 +46,14 @@ public final class ProviderApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + state.providerRid() + "-flow.log")
-                .traceNodeId("java-rm-" + state.providerRid())
-                .setMessageDispatchErrorObserver(error -> {
+                .traceLabel("java-rm-" + state.providerRid())
+                .setMessageFlowObserver(error -> {
+                    if (error.outcome() != ZLinkMessageFlowOutcome.ERROR) {
+                        return CompletableFuture.completedFuture(null);
+                    }
                     state.record(
                         "DispatchError",
-                        error.reason() + "/" + error.action() + "/" + error.packetName());
+                        error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return CompletableFuture.completedFuture(null);
                 });
             options.addHandlersFromPackageOf(ProfileRequestHandler.class);
@@ -59,7 +63,7 @@ public final class ProviderApplication {
             if (!apiEndpoint.isBlank()) {
                 options.addClientServerChannel(Contracts.API_CHANNEL)
                     .enableServer(apiEndpoint)
-                    .serverRoutingId(RoutingId.from(state.providerRid()))
+                    .setRoutingId(RoutingId.from(state.providerRid()))
                     .addHandlerGroup(Contracts.HANDLER_GROUP);
             }
 
@@ -67,7 +71,7 @@ public final class ProviderApplication {
             if (!workflowEndpoint.isBlank()) {
                 options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL)
                     .enableServer(workflowEndpoint)
-                    .serverRoutingId(RoutingId.from(state.providerRid()))
+                    .setRoutingId(RoutingId.from(state.providerRid()))
                     .addHandlerGroup(Contracts.HANDLER_GROUP);
             }
 

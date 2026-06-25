@@ -59,5 +59,5 @@ public sealed record SampleSessionNode(
     string PubEndpoint,
     string RouterEndpoint,
     string StreamEndpoint,
-    RoutingId RouterRoutingId,
-    RoutingId PubRoutingId);
+    RoutingId RoutingId,
+    RoutingId PublisherRoutingId);

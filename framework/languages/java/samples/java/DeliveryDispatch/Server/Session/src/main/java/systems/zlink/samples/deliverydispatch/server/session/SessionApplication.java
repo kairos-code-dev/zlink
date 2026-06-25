@@ -45,7 +45,7 @@ public final class SessionApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-session.log")
-                .traceNodeId("session");
+                .traceLabel("session");
             options.codecs().addJson();
             options.addHandlersFromPackageOf(SessionApplication.class);
             options.addClientServerChannel(SampleNames.TrackingChannel)
@@ -65,9 +65,8 @@ public final class SessionApplication {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)
                 ;
             node.enableRouter(SampleTopology.SessionSpotRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid));
-            node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionSpotPubRid));
+                .setRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid));
+            node.enablePubSub(SampleTopology.SessionSpotEndpoint);
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.SessionStreamEndpoint)
                 .registerSession(CustomerSession.class)

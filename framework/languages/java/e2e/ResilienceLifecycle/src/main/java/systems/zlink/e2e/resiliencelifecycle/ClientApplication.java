@@ -49,7 +49,7 @@ public final class ClientApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/client-flow.log")
-                .traceNodeId("java-rl-client");
+                .traceLabel("java-rl-client");
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.addClientServerChannel(Contracts.CHANNEL).enableClient();
         };

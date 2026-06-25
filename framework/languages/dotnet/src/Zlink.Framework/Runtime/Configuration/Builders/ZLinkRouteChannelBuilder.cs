@@ -32,7 +32,7 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
 
     public IZLinkRouteMeshChannelBuilder SetRoutingId(RoutingId routingId)
     {
-        registration.RoutingConfig.RoutingId = routingId;
+        registration.RoutingId = routingId;
         return this;
     }
 

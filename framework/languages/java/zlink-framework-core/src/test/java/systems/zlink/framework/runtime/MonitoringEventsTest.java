@@ -329,6 +329,14 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public void setPublisherRoutingId(RoutingId routingId) {
+        }
+
+        @Override
+        public void setSubscriberRoutingId(RoutingId routingId) {
+        }
+
+        @Override
         public void setRouterBind(String endpoint) {
         }
 

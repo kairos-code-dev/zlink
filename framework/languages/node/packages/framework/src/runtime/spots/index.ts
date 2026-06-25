@@ -44,7 +44,7 @@ import {
   ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind,
-  ZLinkMessageFlowPhase,
+  ZLinkMessageFlowOutcome,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkEncodedPayload,
@@ -505,6 +505,10 @@ class ZLinkSpotNodeConnector {
     if (routingId !== undefined) {
       node.setRoutingId(routingId);
     }
+    if (spotNode.pubSub?.routingId !== undefined) {
+      node.setPublisherRoutingId(spotNode.pubSub.routingId);
+      node.setSubscriberRoutingId(spotNode.pubSub.routingId);
+    }
     if (spotNode.entrySpot?.routingId !== undefined) {
       node.entrySpot().setRoutingId(spotNode.entrySpot.routingId);
     } else if (spotNode.router?.routingId !== undefined) {
@@ -772,8 +776,8 @@ class ZLinkSpotSubscriptionDispatcher {
     const spot = this.getTarget() as ZLinkSpot;
     const subSource = message.routingId === null ? undefined : String(message.routingId);
     const subCorr = envelope.header.correlationId ?? undefined;
-    flowIfEnabled(this.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
-      phase: ZLinkMessageFlowPhase.Received,
+    flowIfEnabled(this.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Received)?.trace({
+      outcome: ZLinkMessageFlowOutcome.Received,
       surface: ZLinkDispatchErrorSurface.SpotSubscription,
       messageKind: ZLinkDispatchMessageKind.Publish,
       packetName: envelope.packetName,
@@ -796,8 +800,8 @@ class ZLinkSpotSubscriptionDispatcher {
             topic: message.topic,
             source: subSource
           });
-          flowIfEnabled(this.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
-            phase: ZLinkMessageFlowPhase.Dispatched,
+          flowIfEnabled(this.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Dispatched)?.trace({
+            outcome: ZLinkMessageFlowOutcome.Dispatched,
             surface: ZLinkDispatchErrorSurface.SpotSubscription,
             messageKind: ZLinkDispatchMessageKind.Publish,
             packetName: envelope.packetName,
@@ -1978,8 +1982,8 @@ export class ZLinkEntrySpotActivation {
     const action = messageKind === ZLinkDispatchMessageKind.ActorRequest
       ? ZLinkDispatchErrorAction.ReplyError
       : ZLinkDispatchErrorAction.Drop;
-    flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
-      phase: ZLinkMessageFlowPhase.Received,
+    flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Received)?.trace({
+      outcome: ZLinkMessageFlowOutcome.Received,
       surface: ZLinkDispatchErrorSurface.SpotActor,
       messageKind,
       packetName: header.name,
@@ -2047,8 +2051,8 @@ export class ZLinkEntrySpotActivation {
         await dispatcher.dispatchSend(actor, header.name, payload, {
           metadata: Object.fromEntries(header.metadata)
         });
-        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
-          phase: ZLinkMessageFlowPhase.Dispatched,
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Dispatched)?.trace({
+          outcome: ZLinkMessageFlowOutcome.Dispatched,
           surface: ZLinkDispatchErrorSurface.SpotActor,
           messageKind: ZLinkDispatchMessageKind.ActorSend,
           packetName: header.name,
@@ -2073,8 +2077,8 @@ export class ZLinkEntrySpotActivation {
       const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
         metadata: Object.fromEntries(header.metadata)
       });
-      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Replied)?.trace({
-        phase: ZLinkMessageFlowPhase.Replied,
+      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Replied)?.trace({
+        outcome: ZLinkMessageFlowOutcome.Replied,
         surface: ZLinkDispatchErrorSurface.SpotActor,
         messageKind: ZLinkDispatchMessageKind.ActorRequest,
         packetName: header.name,
@@ -2672,8 +2676,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     const action = messageKind === ZLinkDispatchMessageKind.ActorRequest
       ? ZLinkDispatchErrorAction.ReplyError
       : ZLinkDispatchErrorAction.Drop;
-    flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
-      phase: ZLinkMessageFlowPhase.Received,
+    flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Received)?.trace({
+      outcome: ZLinkMessageFlowOutcome.Received,
       surface: ZLinkDispatchErrorSurface.SpotActor,
       messageKind,
       packetName: header.name,
@@ -2727,8 +2731,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         await dispatcher.dispatchSend(actor, header.name, payload, {
           metadata: Object.fromEntries(header.metadata)
         });
-        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
-          phase: ZLinkMessageFlowPhase.Dispatched,
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Dispatched)?.trace({
+          outcome: ZLinkMessageFlowOutcome.Dispatched,
           surface: ZLinkDispatchErrorSurface.SpotActor,
           messageKind: ZLinkDispatchMessageKind.ActorSend,
           packetName: header.name,
@@ -2753,8 +2757,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
         metadata: Object.fromEntries(header.metadata)
       });
-      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Replied)?.trace({
-        phase: ZLinkMessageFlowPhase.Replied,
+      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Replied)?.trace({
+        outcome: ZLinkMessageFlowOutcome.Replied,
         surface: ZLinkDispatchErrorSurface.SpotActor,
         messageKind: ZLinkDispatchMessageKind.ActorRequest,
         packetName: header.name,

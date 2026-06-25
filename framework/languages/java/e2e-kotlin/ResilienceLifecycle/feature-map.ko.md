@@ -18,7 +18,7 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행
 - `RL-C1`: 다량의 request와 send를 처리한 client가 정상 종료하고 runner가 프로세스 종료를 확인해 public 경로의 cleanup을 관측한다.
 - `RL-C3`: provider-a 정지 구간의 public 실패와 재기동 후 topology 회복, 후속 request 성공을 같은 restart orchestration에서 확인한다.
 - `RL-D1`: 다수 client 프로세스가 동시에 request를 보내는 high fanout burst에서 정상 reply를 유지하는지 확인한다.
-- `RL-D3`: 명시 `ZLinkMessageDispatchErrorObserver`가 미등록 request의 reason/action/packetName marker를 evidence에 남기고, 이후 request가 정상 동작하는지 확인한다.
+- `RL-D3`: 명시 `ZLinkMessageFlowObserver`가 미등록 request의 error reason/action/packetName marker를 evidence에 남기고, 이후 request가 정상 동작하는지 확인한다.
 - `RL-D5`: 같은 실행 안에서 request와 send를 섞어 여러 window로 지속 주입하고, 처리 성공과 단순 latency drift 한계를 관측한다.
 
 ## public API/harness 대기

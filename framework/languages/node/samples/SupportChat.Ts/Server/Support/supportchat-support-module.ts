@@ -47,7 +47,7 @@ function createSupportChatSupportModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-support.log`)
-            .traceNodeId('support');
+            .traceLabel('support');
           return builder
           .codecs()
             .addJson()
@@ -61,10 +61,10 @@ function createSupportChatSupportModule(config: {
           .addClientServerChannel(SampleNames.notificationChannel)
             .enableServer(config.notificationEndpoint)
             .addHandlerGroup('notifications')
-          .actorFactory(SampleNames.supportActorType, SupportUserActorFactory)
           .addSpotMesh(SampleNames.conversationSpotType)
             .addEntrySpot(SupportEntrySpot)
             .addSpotFactory(ConversationSpot)
+            .actorFactory(SampleNames.supportActorType, SupportUserActorFactory)
           .build();
         }
       })

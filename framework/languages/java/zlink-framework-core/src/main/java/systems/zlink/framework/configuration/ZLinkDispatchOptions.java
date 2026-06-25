@@ -13,12 +13,6 @@ public interface ZLinkDispatchOptions {
 
     ZLinkDiagnosticsOptions diagnostics();
 
-    ZLinkDispatchOptions setMessageDispatchErrorObserver(
-        Class<? extends ZLinkMessageDispatchErrorObserver> observerType);
-
-    ZLinkDispatchOptions setMessageDispatchErrorObserver(
-        ZLinkMessageDispatchErrorObserver observer);
-
     ZLinkDispatchOptions setMessageFlowObserver(
         Class<? extends ZLinkMessageFlowObserver> observerType);
 
@@ -36,6 +30,6 @@ public interface ZLinkDispatchOptions {
     // Send tracing/error logs to a dedicated file (separated from app logs).
     ZLinkDispatchOptions traceLogFile(String path);
 
-    // Node identity stamped on every trace line (node=) for cross-node aggregation.
-    ZLinkDispatchOptions traceNodeId(String id);
+    // Label stamped on every trace line (label=) for cross-node aggregation.
+    ZLinkDispatchOptions traceLabel(String label);
 }

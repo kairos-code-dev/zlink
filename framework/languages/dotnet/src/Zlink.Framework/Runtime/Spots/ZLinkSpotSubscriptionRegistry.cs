@@ -109,7 +109,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 "<unknown>",
                 "invalid-frame",
                 channelName: message.Topic);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
                 ZLinkDispatchErrorReason.InvalidFrame,
@@ -130,7 +130,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 "<unknown>",
                 "no-handler",
                 channelName: message.Topic);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
                 ZLinkDispatchErrorReason.HandlerMissing,
@@ -143,10 +143,10 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         var header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts);
         LastMessageName = header.MessageName;
 
-        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
         {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Received,
+                ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
                 PacketName: header.MessageName,
@@ -169,10 +169,10 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             Interlocked.Increment(ref _dispatchCount);
         }
 
-        if (dispatched && dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+        if (dispatched && dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
         {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Dispatched,
+                ZLinkMessageFlowOutcome.Dispatched,
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
                 PacketName: header.MessageName,
@@ -192,7 +192,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 header.MessageName,
                 "no-handler",
                 channelName: message.Topic);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
                 ZLinkDispatchErrorReason.HandlerMissing,

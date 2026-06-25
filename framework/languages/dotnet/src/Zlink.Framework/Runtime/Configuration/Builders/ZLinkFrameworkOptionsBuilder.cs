@@ -59,17 +59,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkMetadataPolicyBuilder(_registration.MetadataPolicy);
     }
 
-    public void AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory
-    {
-        ZLinkRegistrationBuilderGuard.AddUnique(
-            _registration.ActorFactories,
-            actorType,
-            typeof(TFactory),
-            "Actor factory name must not be empty.",
-            $"Duplicate actor factory '{actorType}'.");
-    }
-
     public void AddSpotRemoteAddressResolver<TResolver>()
         where TResolver : class, IZLinkSpotRemoteAddressResolver
     {
@@ -248,8 +237,8 @@ internal sealed class ZLinkSpotMeshBuilder(
     public IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint)
         => DefaultNode().ConnectRouter(peerRid, endpoint);
 
-    public IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId)
-        => DefaultNode().SetRouterRoutingId(routingId);
+    public IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId)
+        => DefaultNode().SetRoutingId(routingId);
 
     public IZLinkSocketConfig ConfigureRouterSocket()
         => DefaultNode().ConfigureRouterSocket();
@@ -265,9 +254,6 @@ internal sealed class ZLinkSpotMeshBuilder(
 
     public IZLinkSpotNodeBuilder ConnectPubSub(string endpoint)
         => DefaultNode().ConnectPubSub(endpoint);
-
-    public IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId)
-        => DefaultNode().SetPubSubRoutingId(routingId);
 
     public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
         => DefaultNode().ConfigurePubSubPublisher();
@@ -285,6 +271,10 @@ internal sealed class ZLinkSpotMeshBuilder(
     public IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot
         => DefaultNode().AddEntrySpot<TEntrySpot>();
+
+    public IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
+        where TFactory : class, IZLinkActorFactory
+        => DefaultNode().AddActorFactory<TFactory>(actorType);
 
     private ZLinkSpotNodeBuilder DefaultNode()
     {

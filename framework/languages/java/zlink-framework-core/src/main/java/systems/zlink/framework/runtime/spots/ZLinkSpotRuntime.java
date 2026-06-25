@@ -68,11 +68,12 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
-import systems.zlink.framework.configuration.ZLinkMessageFlowPhase;
-import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
+import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.configuration.ZLinkRegistrySpotRemoteAddressesRegistration;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
@@ -121,6 +122,7 @@ import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
+import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy;
 import systems.zlink.framework.spots.ZLinkTimerTick;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -146,6 +148,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     }
 
     private final ZLinkBackendContext context;
+    private final ZLinkFrameworkRegistration frameworkRegistration;
     private final List<ZLinkBackendSpotNode> nodes = new ArrayList<>();
     private final List<ZLinkBackendDiscovery> attachedChannelDiscoveries = new ArrayList<>();
     private final Map<String, ZLinkBackendSpotNode> nodesByName = new HashMap<>();
@@ -241,6 +244,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         if (registration.spotNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one SpotNode is required");
         }
+        this.frameworkRegistration = registration;
         this.channels = channels;
         this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.handlerFactory = handlerFactory;
@@ -273,6 +277,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 spotAdapter.createSpotNode(context, resolveSpotNodeMode(nodeRegistration));
             if (nodeRegistration.nodeRoutingId() != null) {
                 node.setRoutingId(nodeRegistration.nodeRoutingId());
+                if (nodeRegistration.pubSubEnabled()) {
+                    node.setPublisherRoutingId(deriveRoutingId(
+                        nodeRegistration.nodeRoutingId(),
+                        "pub"));
+                    node.setSubscriberRoutingId(deriveRoutingId(
+                        nodeRegistration.nodeRoutingId(),
+                        "sub"));
+                }
             }
             if (nodeRegistration.entrySpotRoutingId() != null
                 || !nodeRegistration.entrySpots().isEmpty()) {
@@ -342,6 +354,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         throw new ZLinkConfigurationException(
             "spot node must enable router or pub/sub capability: "
                 + registration.nodeName());
+    }
+
+    private static RoutingId deriveRoutingId(RoutingId base, String suffix) {
+        byte[] baseBytes = base.toBytes();
+        byte[] suffixBytes = suffix.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (baseBytes.length + 1 + suffixBytes.length > RoutingId.MAX_LENGTH) {
+            throw new ZLinkConfigurationException(
+                "derived routing id must be at most 255 bytes");
+        }
+        byte[] bytes = new byte[baseBytes.length + 1 + suffixBytes.length];
+        System.arraycopy(baseBytes, 0, bytes, 0, baseBytes.length);
+        System.arraycopy(suffixBytes, 0, bytes, baseBytes.length + 1, suffixBytes.length);
+        return RoutingId.from(bytes);
     }
 
     private static Map<String, List<SpotActorPacketHandlerRegistration>> actorPacketHandlersByPacket(
@@ -653,6 +678,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return primaryNode;
     }
 
+    public ZLinkBackendSpotNode node(String nodeName) {
+        ZLinkBackendSpotNode node = nodesByName.get(nodeName);
+        if (node == null) {
+            throw new ZLinkConfigurationException("unknown SpotNode: " + nodeName);
+        }
+        return node;
+    }
+
     public void attachActorRuntime(ZLinkActorRuntime actorRuntime) {
         this.actorRuntime = actorRuntime;
         this.actorRuntime.setCreatedNotifier(this::notifyEntrySpotActorCreated);
@@ -717,8 +750,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         if (remoteAddressResolver != null) {
             return remoteAddressResolver.resolveSpotRemoteAddressAsync(spotRid);
         }
+        ZLinkRegistrySpotRemoteAddressesRegistration registry =
+            frameworkRegistration.registrySpotRemoteAddresses();
+        String namespaceName = registry == null ? null : registry.namespaceName();
+        String routerChannelId = configuredRouterChannelId != null
+            ? configuredRouterChannelId
+            : registry == null ? null : registry.routerChannelId();
         return CompletableFuture.completedFuture(
-            resolveRegistrySpotRemoteAddress(null, configuredRouterChannelId, spotRid));
+            resolveRegistrySpotRemoteAddress(namespaceName, routerChannelId, spotRid));
     }
 
     public CompletionStage<Optional<Message>> dispatchLocalSessionActor(
@@ -940,9 +979,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         ZLinkDispatchMessageKind actorKind = actorIsRequest
             ? ZLinkDispatchMessageKind.ACTOR_REQUEST
             : ZLinkDispatchMessageKind.ACTOR_SEND;
-        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+        if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
             dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.RECEIVED,
+                ZLinkMessageFlowOutcome.RECEIVED,
                 ZLinkDispatchErrorSurface.SPOT_ACTOR,
                 actorKind,
                 actorPacketName, null, null,
@@ -987,9 +1026,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 payload.close();
                 headerPart.close();
                 if (error == null) {
-                    ZLinkMessageFlowPhase phase = actorIsRequest
-                        ? ZLinkMessageFlowPhase.REPLIED
-                        : ZLinkMessageFlowPhase.DISPATCHED;
+                    ZLinkMessageFlowOutcome phase = actorIsRequest
+                        ? ZLinkMessageFlowOutcome.REPLIED
+                        : ZLinkMessageFlowOutcome.DISPATCHED;
                     if (dispatchErrors.flow().enabled(phase)) {
                         dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                             phase,
@@ -1635,9 +1674,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkMessageFlowOutcome.RECEIVED,
                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                     received.requestSeq().isPresent()
                         ? ZLinkDispatchMessageKind.REQUEST
@@ -1731,9 +1770,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             payloadCopy.close();
                             received.close();
                             if (error == null
-                                && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLIED)) {
+                                && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLIED)) {
                                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                    ZLinkMessageFlowPhase.REPLIED,
+                                    ZLinkMessageFlowOutcome.REPLIED,
                                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                                     ZLinkDispatchMessageKind.REQUEST,
                                     packet.packetName(), null, null,
@@ -1768,9 +1807,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         .whenComplete((ignored, error) -> {
                             payloadCopy.close();
                             if (error == null
-                                && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                                && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
                                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                    ZLinkMessageFlowPhase.DISPATCHED,
+                                    ZLinkMessageFlowOutcome.DISPATCHED,
                                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                                     ZLinkDispatchMessageKind.SEND,
                                     sendPacketName, null, null, null,
@@ -1868,9 +1907,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     return;
                 }
                 ParsedPacket packet = parsePacket(received.parts());
-                if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+                if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                     dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.RECEIVED,
+                        ZLinkMessageFlowOutcome.RECEIVED,
                         ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
                         ZLinkDispatchMessageKind.PUBLISH,
                         packet.packetName(), null, received.topic(),
@@ -1889,9 +1928,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             invokeSpotSubscriptionHandler(handler, entrySpot, payloadCopy))
                             .whenComplete((ignored, error) -> payloadCopy.close()));
                 }
-                if (dispatched && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                if (dispatched && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
                     dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.DISPATCHED,
+                        ZLinkMessageFlowOutcome.DISPATCHED,
                         ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
                         ZLinkDispatchMessageKind.PUBLISH,
                         packet.packetName(), null, received.topic(),
@@ -2437,7 +2476,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (period == null || period.isNegative() || period.isZero()) {
                 throw new ZLinkConfigurationException("timer period must be positive");
             }
-            ManagedTimer timer = new ManagedTimer(name, period, handlerType, options);
+            ZLinkTimerOptions timerOptions = options == null ? new ZLinkTimerOptions() : options;
+            if (timerOptions.overrunPolicy() == null) {
+                throw new ZLinkConfigurationException("timer overrun policy is required");
+            }
+            if (timerOptions.overrunPolicy() == ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED
+                && timerOptions.maxCatchUpTicks() <= 0) {
+                throw new ZLinkConfigurationException(
+                    "timer maxCatchUpTicks must be greater than zero");
+            }
+            ManagedTimer timer = new ManagedTimer(name, period, handlerType, timerOptions);
             timers.add(timer);
             timer.start();
             return CompletableFuture.completedFuture(timer);
@@ -2519,7 +2567,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             private final Class<?> handlerType;
             private final ZLinkTimerOptions options;
             private final Instant startedAt = Instant.now();
-            private long tickIndex;
+            private final long startedNanos = System.nanoTime();
+            private final long periodNanos;
+            private long deliveryIndex;
+            private long lastScheduledIndex;
             private volatile boolean disposed;
             private ScheduledFuture<?> future;
 
@@ -2532,13 +2583,20 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 this.period = period;
                 this.handlerType = handlerType;
                 this.options = options == null ? new ZLinkTimerOptions() : options;
+                this.periodNanos = Math.max(1L, period.toNanos());
             }
 
             void start() {
-                future = timerExecutor.scheduleAtFixedRate(
+                scheduleNext(periodNanos);
+            }
+
+            private void scheduleNext(long delayNanos) {
+                if (disposed) {
+                    return;
+                }
+                future = timerExecutor.schedule(
                     this::dispatch,
-                    period.toNanos(),
-                    period.toNanos(),
+                    Math.max(0L, delayNanos),
                     TimeUnit.NANOSECONDS);
             }
 
@@ -2546,39 +2604,92 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 if (disposed) {
                     return;
                 }
-                long index = ++tickIndex;
+                long startedElapsedNanos = Math.max(0L, System.nanoTime() - startedNanos);
+                long scheduledIndex = nextScheduledIndex(startedElapsedNanos);
+                long skipped = options.overrunPolicy() == ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK
+                    ? 0L
+                    : scheduledIndex - lastScheduledIndex - 1L;
+                long index = ++deliveryIndex;
                 Instant now = Instant.now();
                 ZLinkTimerTick tick = new ZLinkTimerTick(
                     name,
                     index,
-                    index,
+                    scheduledIndex,
                     period,
-                    startedAt.plusNanos(period.toNanos() * index),
+                    startedAt.plusNanos(saturatedMultiply(periodNanos, scheduledIndex)),
                     now,
-                    Duration.ofNanos(period.toNanos() * index),
-                    Duration.between(startedAt, now),
-                    Duration.between(startedAt.plusNanos(period.toNanos() * index), now),
-                    0);
+                    Duration.ofNanos(saturatedMultiply(periodNanos, scheduledIndex)),
+                    Duration.ofNanos(startedElapsedNanos),
+                    Duration.between(startedAt.plusNanos(
+                        saturatedMultiply(periodNanos, scheduledIndex)), now),
+                    skipped);
                 enqueueDispatch(() ->
                     disposed
                         ? CompletableFuture.completedFuture(null)
                         : withCurrentOutbound(DefaultSpotContext.this.outbound, () ->
                             invokeTimerHandler(handlerType, spot, tick)))
                     .whenComplete((ignored, error) -> {
+                        boolean stopped = false;
                         if (error == null) {
-                            return;
+                            lastScheduledIndex = scheduledIndex;
+                        } else {
+                            stopped = this.options.stopOnUnhandledException();
+                            if (stopped) {
+                                close();
+                            }
+                            publishTimerFailureEvent(
+                                DefaultSpotContext.this,
+                                this,
+                                tick,
+                                error,
+                                stopped);
                         }
-                        boolean stopped = this.options.stopOnUnhandledException();
-                        if (stopped) {
-                            close();
+                        if (!stopped) {
+                            scheduleAfterDispatch();
                         }
-                        publishTimerFailureEvent(
-                            DefaultSpotContext.this,
-                            this,
-                            tick,
-                            error,
-                            stopped);
                     });
+            }
+
+            private long nextScheduledIndex(long startedElapsedNanos) {
+                if (options.overrunPolicy() == ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK) {
+                    return deliveryIndex + 1L;
+                }
+                long next = lastScheduledIndex + 1L;
+                long due = Math.max(next, Math.max(1L, startedElapsedNanos / periodNanos));
+                if (options.overrunPolicy() == ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS) {
+                    return due;
+                }
+                long available = due - lastScheduledIndex;
+                long maxCatchUp = options.maxCatchUpTicks();
+                if (available > maxCatchUp) {
+                    return due - maxCatchUp + 1L;
+                }
+                return next;
+            }
+
+            private void scheduleAfterDispatch() {
+                if (disposed) {
+                    return;
+                }
+                if (options.overrunPolicy() == ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK) {
+                    scheduleNext(periodNanos);
+                    return;
+                }
+                long nextScheduledElapsed = saturatedMultiply(
+                    periodNanos,
+                    lastScheduledIndex + 1L);
+                long currentElapsed = Math.max(0L, System.nanoTime() - startedNanos);
+                scheduleNext(nextScheduledElapsed - currentElapsed);
+            }
+
+            private long saturatedMultiply(long left, long right) {
+                if (left <= 0 || right <= 0) {
+                    return 0L;
+                }
+                if (left > Long.MAX_VALUE / right) {
+                    return Long.MAX_VALUE;
+                }
+                return left * right;
             }
 
             @Override
@@ -2845,7 +2956,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (channels != null && !routeMeshChannels.isEmpty()) {
                 return new EgressSpotSendCall(
                     channels,
-                    resolveRouterChannelId(null),
+                    null,
                     spotRid,
                     encoded.payload(),
                     Optional.of(encoded.packetName()));
@@ -2866,7 +2977,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (channels != null && !routeMeshChannels.isEmpty()) {
                 return new EgressSpotRequestCall(
                     channels,
-                    resolveRouterChannelId(null),
+                    null,
                     spotRid,
                     encoded.payload(),
                     Optional.of(encoded.packetName()),
@@ -2948,9 +3059,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         @Override
         public CompletionStage<Void> submit() {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                     ZLinkDispatchMessageKind.SEND,
                     packetName.orElse(null), egressChannelName, null, null, null,
@@ -3034,9 +3145,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         @Override
         public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                     ZLinkDispatchMessageKind.REQUEST,
                     packetName.orElse(null), egressChannelName, null, null, null,
@@ -3064,9 +3175,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         spotParts,
                         timeout)
                         .thenApply(replyParts -> {
-                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLY_RECEIVED)) {
                                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                    ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                                    ZLinkMessageFlowOutcome.REPLY_RECEIVED,
                                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                                     ZLinkDispatchMessageKind.RESPONSE,
                                     packetName.orElse(null), egressChannelName, null, null, null,
@@ -3184,9 +3295,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         @Override
         public CompletionStage<Void> submit() {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), channelName, topic, null, null, null, null, null));
@@ -3267,9 +3378,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         @Override
         public CompletionStage<Void> submit() {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                     ZLinkDispatchMessageKind.SEND,
                     packetName.orElse(null), null, null, null,
@@ -3340,9 +3451,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             CompletableFuture<TReply> result = new CompletableFuture<>();
             List<Message> requestParts = parts(packetName, payload);
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                     ZLinkDispatchMessageKind.REQUEST,
                     packetName.orElse(null), null, null, null,
@@ -3350,9 +3461,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             }
             try {
                 spot.requestToSpot(targetNodeRid, spotRid, requestParts, reply -> {
-                    if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                    if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLY_RECEIVED)) {
                         dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                            ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                            ZLinkMessageFlowOutcome.REPLY_RECEIVED,
                             ZLinkDispatchErrorSurface.SPOT_ROUTE,
                             ZLinkDispatchMessageKind.RESPONSE,
                             packetName.orElse(null), null, null, null,
@@ -3458,8 +3569,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         String actorId,
         RoutingId sourceRid,
         String correlationId,
-        Throwable exception) {
-        dispatchErrors.report(new ZLinkMessageDispatchErrorEvent(
+        Throwable error) {
+        dispatchErrors.report(new ZLinkDispatchFailure(
             surface,
             messageKind,
             reason,
@@ -3471,10 +3582,29 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             actorId,
             sourceRid == null ? null : sourceRid.toString(),
             correlationId,
-            exception));
+            errorType(error),
+            errorMessage(error)));
+    }
+
+    private static String errorType(Throwable error) {
+        if (error == null) {
+            return null;
+        }
+        Throwable current = unwrapDispatchError(error);
+        return current.getClass().getSimpleName();
     }
 
     private static String errorMessage(Throwable error) {
+        if (error == null) {
+            return null;
+        }
+        Throwable current = unwrapDispatchError(error);
+        return current.getMessage() == null
+            ? current.getClass().getName()
+            : current.getMessage();
+    }
+
+    private static Throwable unwrapDispatchError(Throwable error) {
         Throwable current = error;
         while ((current instanceof CompletionException
             || current instanceof InvocationTargetException)
@@ -3487,9 +3617,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             && current.getMessage().startsWith("failed to invoke ")) {
             current = current.getCause();
         }
-        return current.getMessage() == null
-            ? current.getClass().getName()
-            : current.getMessage();
+        return current;
     }
 
     private final class SpotPublishCall implements ZLinkPublishCall {
@@ -3521,9 +3649,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         @Override
         public CompletionStage<Void> submit() {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), null, topic, null, null, null, null, null));
@@ -4135,9 +4263,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return CompletableFuture.completedFuture(null);
             }
             ParsedPacket packet = parsePacket(received.parts());
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkMessageFlowOutcome.RECEIVED,
                     ZLinkDispatchErrorSurface.SPOT_ROUTE,
                     received.requestSeq().isPresent()
                         ? ZLinkDispatchMessageKind.REQUEST
@@ -4231,9 +4359,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         payloadCopy.close();
                         received.close();
                         if (error == null
-                            && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLIED)) {
+                            && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLIED)) {
                             dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                ZLinkMessageFlowPhase.REPLIED,
+                                ZLinkMessageFlowOutcome.REPLIED,
                                 ZLinkDispatchErrorSurface.SPOT_ROUTE,
                                 ZLinkDispatchMessageKind.REQUEST,
                                 packet.packetName(), null, null,
@@ -4267,9 +4395,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 .whenComplete((ignored, error) -> {
                     payloadCopy.close();
                     if (error == null
-                        && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                        && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
                         dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                            ZLinkMessageFlowPhase.DISPATCHED,
+                            ZLinkMessageFlowOutcome.DISPATCHED,
                             ZLinkDispatchErrorSurface.SPOT_ROUTE,
                             ZLinkDispatchMessageKind.SEND,
                             routeAsyncSendPacket, null, null, null,
@@ -4309,9 +4437,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     return CompletableFuture.completedFuture(null);
                 }
                 ParsedPacket packet = parsePacket(received.parts());
-                if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+                if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                     dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.RECEIVED,
+                        ZLinkMessageFlowOutcome.RECEIVED,
                         ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
                         ZLinkDispatchMessageKind.PUBLISH,
                         packet.packetName(), null, received.topic(),
@@ -4331,9 +4459,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             invokeSpotSubscriptionHandler(handler, spot, payloadCopy))
                             .whenComplete((ignored2, error) -> payloadCopy.close()));
                 }
-                if (dispatched && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                if (dispatched && dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
                     dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.DISPATCHED,
+                        ZLinkMessageFlowOutcome.DISPATCHED,
                         ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
                         ZLinkDispatchMessageKind.PUBLISH,
                         packet.packetName(), null, received.topic(),

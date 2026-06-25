@@ -25,7 +25,7 @@ function createDeliveryDispatchModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-dispatch.log`)
-            .traceNodeId('dispatch');
+            .traceLabel('dispatch');
           return builder
           .codecs()
             .addJson()

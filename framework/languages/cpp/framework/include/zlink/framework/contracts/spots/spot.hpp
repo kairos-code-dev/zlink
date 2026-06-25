@@ -374,8 +374,7 @@ struct spot_node_snapshot_t
     std::string bind_endpoint;
     std::optional<std::string> router_bind_endpoint;
     std::optional<std::string> pub_bind_endpoint;
-    std::optional<zlink::routing_id_t> router_routing_id;
-    std::optional<zlink::routing_id_t> pub_routing_id;
+    std::optional<zlink::routing_id_t> routing_id;
     std::vector<std::string> router_manual_connections;
     std::vector<std::string> pub_sub_manual_connections;
     bool actor_gateway_enabled = false;
@@ -1082,11 +1081,10 @@ class spot_node_builder_t
     spot_node_builder_t &operator= (const spot_node_builder_t &) = default;
 
     spot_node_builder_t &bind (std::string endpoint);
+    spot_node_builder_t &set_routing_id (zlink::routing_id_t routing_id);
     spot_node_builder_t &enable_router (std::string endpoint);
-    spot_node_builder_t &enable_router (std::string endpoint, zlink::routing_id_t routing_id);
     spot_node_builder_t &connect_router (std::string endpoint);
     spot_node_builder_t &enable_pub_sub (std::string endpoint);
-    spot_node_builder_t &enable_pub_sub (std::string endpoint, zlink::routing_id_t routing_id);
     spot_node_builder_t &connect_pub_sub (std::string endpoint);
     spot_node_builder_t &connect_peer_pub (std::string endpoint);
     spot_node_builder_t &enable_actor_gateway ();

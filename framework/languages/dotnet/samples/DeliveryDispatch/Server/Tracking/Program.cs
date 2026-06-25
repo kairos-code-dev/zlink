@@ -15,14 +15,12 @@ builder.Services.AddSingleton<DeliverySpotDirectory>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.ConfigureDispatch()
-        .SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>()
         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
         .TraceLogFile(SampleFlowLog.Path("tracking"))
-        .TraceNodeId("tracking");
+        .TraceLabel("tracking");
     options.AddHandlersFromAssemblyOf(typeof(EnsureCustomerActorHandler));
     options.Codecs.AddJson();
     options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-    options.AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
     {
         var channel = options.AddClientServerChannel(SampleNames.TrackingRouteChannel);
         channel.EnableServer(topology.TrackingRouteEndpoint);
@@ -43,11 +41,12 @@ builder.Services.AddZLinkFramework(options =>
             var spot = mesh;
             {
                 var router = spot.EnableRouter(topology.TrackingSpotRouterEndpoint);
-                router.SetRouterRoutingId(topology.TrackingSpotNodeRid);
+                router.SetRoutingId(topology.TrackingSpotNodeRid);
 
             }
             spot.EnablePubSub(topology.TrackingSpotEndpoint);
             spot.AddEntrySpot<CustomerEntrySpot>();
+            spot.AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
             spot.AddSpotFactory<DeliveryTrackingSpot>();
 
         }

@@ -41,15 +41,17 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
 
         var message = ZLinkEnvelopeCodec.EncodeParts(header, _message, _message?.GetType(), _registration.Codecs);
 
-        if (_runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (_runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             _runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
+                ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Send,
                 PacketName: header.MessageName,
                 ChannelName: _channelName,
-                CorrelationId: header.CorrelationId));
+                CorrelationId: header.CorrelationId,
+                LocalRid: bundle.LocalRid,
+                SocketRole: bundle.SocketRole));
         }
 
         return (bundle.Submitter
@@ -95,15 +97,17 @@ internal sealed class ZLinkRequestCall<TMessage>(
             timeout);
         var message = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, registration.Codecs);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
+                ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Request,
                 PacketName: header.MessageName,
                 ChannelName: channelName,
-                CorrelationId: header.CorrelationId));
+                CorrelationId: header.CorrelationId,
+                LocalRid: bundle.LocalRid,
+                SocketRole: bundle.SocketRole));
         }
 
         var reply = await (bundle.Submitter
@@ -124,15 +128,17 @@ internal sealed class ZLinkRequestCall<TMessage>(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
         {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.ReplyReceived,
+                ZLinkMessageFlowOutcome.ReplyReceived,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Response,
                 PacketName: header.MessageName,
                 ChannelName: channelName,
-                CorrelationId: header.CorrelationId));
+                CorrelationId: header.CorrelationId,
+                LocalRid: bundle.LocalRid,
+                SocketRole: bundle.SocketRole));
         }
 
         return reply;
@@ -168,16 +174,18 @@ internal sealed class ZLinkPublishCall(
             source: channelName);
         var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType(), registration.Codecs);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
+                ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Publish,
                 PacketName: header.MessageName,
                 ChannelName: channelName,
                 Topic: topic,
-                CorrelationId: header.CorrelationId));
+                CorrelationId: header.CorrelationId,
+                LocalRid: bundle.LocalRid,
+                SocketRole: bundle.SocketRole));
         }
 
         return (bundle.Submitter

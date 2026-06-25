@@ -717,6 +717,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
+        @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic + "." + firstPart(parts)); return true; }
     }
 
@@ -826,6 +827,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
         @Override public RoutingId routingId() { return routingId; }
         @Override public void setRoutingId(RoutingId routingId) { this.routingId = routingId; record("setRoutingId"); }
+        @Override public void setPublisherRoutingId(RoutingId routingId) { record("setPublisherRoutingId"); }
+        @Override public void setSubscriberRoutingId(RoutingId routingId) { record("setSubscriberRoutingId"); }
         @Override public void setRouterBind(String endpoint) { record("setRouterBind." + endpoint); }
         @Override public void setPubBind(String endpoint) { record("setPubBind." + endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }

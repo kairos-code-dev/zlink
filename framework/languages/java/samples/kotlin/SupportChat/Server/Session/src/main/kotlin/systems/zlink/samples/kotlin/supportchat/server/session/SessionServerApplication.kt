@@ -31,7 +31,7 @@ class SessionServerApplication {
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("SUPPORTCHAT_LOG_DIR") ?: "logs") + "/flow-session.log")
-                traceNodeId("session")
+                traceLabel("session")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addClientServerChannel(SampleNames.ApiChannel)
@@ -47,9 +47,8 @@ class SessionServerApplication {
             val node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
 
             node.enableRouter(SampleTopology.SessionRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
+                .setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
             node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionPubRid))
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.StreamEndpoint)
                 .registerSession(SupportChatSession::class.java)

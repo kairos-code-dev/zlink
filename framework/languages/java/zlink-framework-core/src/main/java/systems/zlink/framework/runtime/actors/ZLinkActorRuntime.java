@@ -24,7 +24,7 @@ import systems.zlink.framework.actors.ZLinkActorJoinSpotCall;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
-import systems.zlink.framework.configuration.ZLinkMessageFlowPhase;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
@@ -1085,9 +1085,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
 
         @Override
         public CompletionStage<ZLinkActorJoinResult<Void>> submit() {
-            if (flow != null && flow.enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (flow != null && flow.enabled(ZLinkMessageFlowOutcome.SENT)) {
                 flow.trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.SPOT_ACTOR,
                     ZLinkDispatchMessageKind.ACTOR_REQUEST,
                     "JoinSpot", null, null, null, null,
@@ -1134,9 +1134,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             if (replyType == null) {
                 throw new ZLinkConfigurationException("replyType is required");
             }
-            if (flow != null && flow.enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (flow != null && flow.enabled(ZLinkMessageFlowOutcome.SENT)) {
                 flow.trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.SPOT_ACTOR,
                     ZLinkDispatchMessageKind.ACTOR_REQUEST,
                     "JoinSpot", null, null, null, null,
@@ -1178,9 +1178,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         private void traceJoinReplyReceived(Throwable error) {
-            if (error == null && flow != null && flow.enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+            if (error == null && flow != null && flow.enabled(ZLinkMessageFlowOutcome.REPLY_RECEIVED)) {
                 flow.trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                    ZLinkMessageFlowOutcome.REPLY_RECEIVED,
                     ZLinkDispatchErrorSurface.SPOT_ACTOR,
                     ZLinkDispatchMessageKind.RESPONSE,
                     "JoinSpot", null, null, null, null,

@@ -305,7 +305,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     private bool ShouldAttachActorDispatchPump()
     {
         return _registration.Router is not null
-            && _frameworkRegistration.ActorFactories.Count > 0;
+            && _registration.ActorFactories.Count > 0;
     }
 
     private async ValueTask DisposeEntrySpotAsync()

@@ -44,17 +44,15 @@ if (options.Role == "registry")
 }
 else if (options.Role == "play")
 {
-    builder.Services.AddSingleton<IZLinkMessageDispatchErrorObserver, EvidenceDispatchErrorObserver>();
     builder.Services.AddZLinkFramework(framework =>
     {
         framework.AddHandlersFromAssemblyOf(typeof(Program));
         framework.ConfigureDispatch()
-            .SetMessageDispatchErrorObserver<EvidenceDispatchErrorObserver>()
+            .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-            .TraceNodeId(options.Rid);
+            .TraceLabel(options.Rid);
         framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
-        framework.AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
         framework.AddRouteMesh(SpotServiceNames.ControlChannel)
             .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
             .EnableClient()
@@ -79,10 +77,10 @@ else if (options.Role == "play")
         var spot = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
             .UseRegistrySpotResolver()
             .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
-            .SetRouterRoutingId(RoutingId.From(options.Rid))
+            .SetRoutingId(RoutingId.From(options.Rid))
             .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
-            .SetPubSubRoutingId(RoutingId.From(options.Rid))
             .AddEntrySpot<ScenarioEntrySpot>()
+            .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
             .AddSpotFactory<ScenarioUserSpot>()
             .AddSpotFactory<ScenarioAlternateSpot>();
         if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))
@@ -93,17 +91,15 @@ else if (options.Role == "play")
 }
 else if (options.Role == "session")
 {
-    builder.Services.AddSingleton<IZLinkMessageDispatchErrorObserver, EvidenceDispatchErrorObserver>();
     builder.Services.AddZLinkFramework(framework =>
     {
         framework.AddHandlersFromAssemblyOf(typeof(Program));
         framework.ConfigureDispatch()
-            .SetMessageDispatchErrorObserver<EvidenceDispatchErrorObserver>()
+            .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-            .TraceNodeId(options.Rid);
+            .TraceLabel(options.Rid);
         framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
-        framework.AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
         framework.AddRouteMesh(SpotServiceNames.ControlChannel)
             .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
             .EnableClient()
@@ -112,8 +108,9 @@ else if (options.Role == "session")
         framework.AddSpotMesh(SpotServiceNames.SpotChannel)
             .UseRegistrySpotResolver()
             .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
-            .SetRouterRoutingId(RoutingId.From(options.Rid))
-            .AddEntrySpot<ScenarioEntrySpot>();
+            .SetRoutingId(RoutingId.From(options.Rid))
+            .AddEntrySpot<ScenarioEntrySpot>()
+            .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
         framework.AddStreamNode(SpotServiceNames.StreamNode)
             .Bind(Require(options.StreamEndpoint, "--stream-endpoint"))
             .RegisterSession<ScenarioSession>();
@@ -152,7 +149,7 @@ else if (options.Role == "multi-node")
             framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeA)
                 .UseRegistrySpotResolver()
                 .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
-                .SetRouterRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
+                .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
                 .AddSpotFactory<MultiNodeSpotA>();
         }
         if (isNodeB)
@@ -165,7 +162,7 @@ else if (options.Role == "multi-node")
             framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeB)
                 .UseRegistrySpotResolver()
                 .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
-                .SetRouterRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
+                .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
                 .AddSpotFactory<MultiNodeSpotB>();
         }
     });
@@ -1590,19 +1587,19 @@ internal sealed class UserSpotAuthSessionHandler(
 }
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkMessageDispatchErrorObserver
+    : IZLinkMessageFlowObserver
 {
-    public ValueTask OnDispatchErrorAsync(
-        ZLinkMessageDispatchErrorEvent error,
+    public ValueTask OnMessageFlowAsync(
+        ZLinkMessageFlowEvent flow,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
             "dispatch-error"
-            + $"|surface={error.Surface}"
-            + $"|reason={error.Reason}"
-            + $"|action={error.Action}"
-            + $"|packet={error.PacketName ?? "<null>"}");
+            + $"|surface={flow.Surface}"
+            + $"|reason={flow.ErrorReason}"
+            + $"|action={flow.ErrorAction}"
+            + $"|packet={flow.PacketName ?? "<null>"}");
         return ValueTask.CompletedTask;
     }
 }

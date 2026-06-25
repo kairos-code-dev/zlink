@@ -291,9 +291,10 @@ int main ()
       .set_routing_id (zlink::routing_id_t::from ("7200"))
       .enable_client ("tcp://peer:7201");
     options.add_spot_mesh ("game.spots")
-      .enable_router (framework_router_endpoint, zlink::routing_id_t::from ("7300"))
+      .set_routing_id (zlink::routing_id_t::from ("7300"))
+      .enable_router (framework_router_endpoint)
       .connect_router ("tcp://router-peer:7302")
-      .enable_pub_sub (framework_pub_endpoint, zlink::routing_id_t::from ("7301"))
+      .enable_pub_sub (framework_pub_endpoint)
       .connect_pub_sub ("tcp://pub-peer:7303")
       .add_spot<stage_spot_t> ("stage");
     options.apply ();
@@ -308,12 +309,10 @@ int main ()
         || *framework_spots[0].router_bind_endpoint != framework_router_endpoint
         || !framework_spots[0].pub_bind_endpoint
         || *framework_spots[0].pub_bind_endpoint != framework_pub_endpoint
-        || !framework_spots[0].router_routing_id
-        || framework_spots[0].router_routing_id->to_string () != "7300"
+        || !framework_spots[0].routing_id
+        || framework_spots[0].routing_id->to_string () != "7300"
         || framework_spots[0].router_manual_connections.size () != 1
         || framework_spots[0].router_manual_connections[0] != "tcp://router-peer:7302"
-        || !framework_spots[0].pub_routing_id
-        || framework_spots[0].pub_routing_id->to_string () != "7301"
         || framework_spots[0].pub_sub_manual_connections.size () != 1
         || framework_spots[0].pub_sub_manual_connections[0] != "tcp://pub-peer:7303"
         || !framework_spots[0].discovery_channel_name

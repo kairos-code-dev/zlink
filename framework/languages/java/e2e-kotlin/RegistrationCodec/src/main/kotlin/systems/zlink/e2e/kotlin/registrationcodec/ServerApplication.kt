@@ -52,7 +52,7 @@ class ServerApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/server-flow.log")
-                .traceNodeId("kotlin-rc-server")
+                .traceLabel("kotlin-rc-server")
             options.addHandlersFromPackageOf(AutoRequestHandler::class.java)
             val channel = options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_SERVER_ENDPOINT"))

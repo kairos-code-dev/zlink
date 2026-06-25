@@ -53,7 +53,7 @@ class QuestMissionApplication {
             configurer.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("GAMEQUEST_LOG_DIR") ?: "logs") + "/flow-${instance.missionName}.log")
-                traceNodeId(instance.missionName)
+                traceLabel(instance.missionName)
             }
             configurer.codecs().addJson()
             configurer.addHandlersFromPackageOf(QuestMissionApplication::class.java)
@@ -79,7 +79,7 @@ class QuestMissionApplication {
             val node = configurer.addSpotMesh(SampleNames.QuestSpotDiscovery)
 
             node.enableRouter(instance.spotRouterEndpoint)
-                .setRouterRoutingId(instance.spotRid)
+                .setRoutingId(instance.spotRid)
             node.enablePubSub(instance.spotEndpoint)
             node.addSpotFactory(PlayerQuestSpot::class.java)
         }

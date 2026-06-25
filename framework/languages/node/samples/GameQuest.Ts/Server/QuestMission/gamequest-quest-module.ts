@@ -34,7 +34,7 @@ function createGameQuestModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.GAMEQUEST_LOG_DIR ?? 'logs'}/flow-quest.log`)
-            .traceNodeId('quest');
+            .traceLabel('quest');
           return builder
           .codecs()
             .addJson()

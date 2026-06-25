@@ -11,6 +11,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.resiliencelifecycle.handlers.WorkRequestHandler;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.e2e.resiliencelifecycle.handlers.WorkCommandHandler;
@@ -62,18 +63,21 @@ public final class ProviderApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + state.providerRid() + "-flow.log")
-                .traceNodeId("java-rl-" + state.providerRid())
-                .setMessageDispatchErrorObserver(error -> {
+                .traceLabel("java-rl-" + state.providerRid())
+                .setMessageFlowObserver(error -> {
+                    if (error.outcome() != ZLinkMessageFlowOutcome.ERROR) {
+                        return CompletableFuture.completedFuture(null);
+                    }
                     state.record(
                         "DispatchError",
-                        error.reason() + "/" + error.action() + "/" + error.packetName());
+                        error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return CompletableFuture.completedFuture(null);
                 });
             options.addHandlersFromPackageOf(WorkRequestHandler.class);
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"))
-                .serverRoutingId(RoutingId.from(state.providerRid()))
+                .setRoutingId(RoutingId.from(state.providerRid()))
                 .addHandlerGroup(Contracts.HANDLER_GROUP);
         };
     }

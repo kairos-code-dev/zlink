@@ -31,8 +31,8 @@ public final class ChannelBuilders {
         }
 
         @Override
-        public ClientServerChannelBuilder serverRoutingId(RoutingId routingId) {
-            registration.setServerRoutingId(routingId);
+        public ClientServerChannelBuilder setRoutingId(RoutingId routingId) {
+            registration.setRoutingId(routingId);
             return this;
         }
 
@@ -107,6 +107,12 @@ public final class ChannelBuilders {
         public FanoutChannelBuilder enablePublisher(String endpoint) {
             registration.enablePublisher();
             registration.addPublisherBind(endpoint);
+            return this;
+        }
+
+        @Override
+        public FanoutChannelBuilder setRoutingId(RoutingId routingId) {
+            registration.setRoutingId(routingId);
             return this;
         }
 

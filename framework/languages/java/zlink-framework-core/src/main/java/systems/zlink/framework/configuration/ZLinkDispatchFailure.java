@@ -1,6 +1,6 @@
 package systems.zlink.framework.configuration;
 
-public record ZLinkMessageDispatchErrorEvent(
+public record ZLinkDispatchFailure(
     ZLinkDispatchErrorSurface surface,
     ZLinkDispatchMessageKind messageKind,
     ZLinkDispatchErrorReason reason,
@@ -12,5 +12,6 @@ public record ZLinkMessageDispatchErrorEvent(
     String actorId,
     String sourceRid,
     String correlationId,
-    Throwable exception) {
+    String errorType,
+    String errorMessage) {
 }

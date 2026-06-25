@@ -44,7 +44,7 @@ class play_server_host_factory_t
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("play-" + topology.play_node))
-              .trace_node_id ("play-" + topology.play_node);
+              .trace_label ("play-" + topology.play_node);
             options.services ()
               .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
               .add_singleton<bingo_match_queue_t> (
@@ -87,11 +87,10 @@ class play_server_host_factory_t
               .enable_client ();
             options.add_spot_mesh (sample_names_t::room_spot_discovery)
               .use_registry_spot_resolver (sample_names_t::play_channel)
-              .enable_router (topology.selected_play_spot_router_endpoint (),
-                              zlink::routing_id_t::from (topology.selected_play_node_rid ()))
+              .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
+              .enable_router (topology.selected_play_spot_router_endpoint ())
               .enable_actor_gateway ()
-              .enable_pub_sub (topology.selected_play_spot_endpoint (),
-                               zlink::routing_id_t::from (topology.selected_play_node_rid ()))
+              .enable_pub_sub (topology.selected_play_spot_endpoint ())
               .add_entry_spot<bingo_entry_spot_t> ()
               .add_spot<bingo_room_spot_t> (sample_names_t::room_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type);

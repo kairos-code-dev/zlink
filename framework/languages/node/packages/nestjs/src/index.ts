@@ -18,7 +18,6 @@ import type {
   ZLinkDispatchOptionsBuilder,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
-  ZLinkMessageDispatchErrorObserver,
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver,
   ZLinkMessageSerializer,
@@ -270,7 +269,6 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   options(options: ZLinkNestFrameworkAdditionalOptions): this;
   codecs(): ZLinkNestCodecRegistryBuilder;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
-  actorFactory(actorType: string, factoryType: Type): this;
   useDiscovery(): ZLinkNestDiscoveryBuilder;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
@@ -327,15 +325,16 @@ export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBui
 }
 
 export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  routingId(routingId: string | undefined): this;
   enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
   connectRouter(endpoint: string): this;
   connectRouter(peerRid: string, endpoint: string): this;
   enablePubSub(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
   connectPeerPub(endpoint: string): this;
-  connectPubSub(endpoint: string): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+  actorFactory(actorType: string, factoryType: Type): this;
 }
 
 export const ZLINK_NEST_HANDLER_GROUP = Symbol.for('@zlink-systems/nestjs:handler-group');
@@ -528,7 +527,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   private readonly routerMeshes: Record<string, ZLinkNestRouterMeshOptions> = {};
   private readonly streams: Record<string, ZLinkStreamNodeOptions> = {};
   private readonly spotNodes: Record<string, ZLinkSpotNodeOptions> = {};
-  private readonly actorFactories: Record<string, Type> = {};
   private readonly codecOptions: MutableCodecRegistryOptions = { codecs: [], serializers: [], streamCodecs: [] };
 
   options(options: ZLinkNestFrameworkAdditionalOptions): this {
@@ -576,11 +574,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     }
   }
 
-  actorFactory(actorType: string, factoryType: Type): this {
-    this.actorFactories[actorType] = factoryType;
-    return this;
-  }
-
   useDiscovery(): ZLinkNestDiscoveryBuilder {
     this.additionalOptions = {
       ...this.additionalOptions,
@@ -624,7 +617,6 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
       routerMeshes: { ...this.routerMeshes },
       streams: { ...this.streams },
       spotNodes: { ...this.spotNodes },
-      actorFactories: { ...this.actorFactories, ...(this.additionalOptions.actorFactories as Record<string, Type> | undefined ?? {}) },
       codecs: this.codecOptions.codecs.length === 0 &&
           this.codecOptions.serializers.length === 0 &&
           this.codecOptions.streamCodecs.length === 0
@@ -653,11 +645,6 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
 
   configureDispatch(): ZLinkDispatchOptionsBuilder {
     return this.root.configureDispatch();
-  }
-
-  actorFactory(actorType: string, factoryType: Type): this {
-    this.root.actorFactory(actorType, factoryType);
-    return this;
   }
 
   useDiscovery(): ZLinkNestDiscoveryBuilder {
@@ -703,11 +690,6 @@ class DefaultZLinkNestDiscoveryBuilder extends ZLinkNestChildBuilder implements 
 class DefaultZLinkNestDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilder {
   constructor(private readonly dispatch: NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>) {}
 
-  setMessageDispatchErrorObserver(observerType: Type<ZLinkMessageDispatchErrorObserver>): this {
-    this.dispatch.messageDispatchErrorObserverType = observerType;
-    return this;
-  }
-
   setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this {
     this.dispatch.messageFlowObserverType = observerType;
     return this;
@@ -733,8 +715,8 @@ class DefaultZLinkNestDispatchOptionsBuilder implements ZLinkDispatchOptionsBuil
     return this;
   }
 
-  traceNodeId(id: string): this {
-    (this.dispatch.diagnostics ??= {}).nodeId = id;
+  traceLabel(id: string): this {
+    (this.dispatch.diagnostics ??= {}).label = id;
     return this;
   }
 }
@@ -895,10 +877,21 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
     super(root);
   }
 
+  routingId(routingId: string | undefined): this {
+    this.spotOptions.routingId = routingId;
+    if (this.spotOptions.router !== undefined) {
+      (this.spotOptions.router as Mutable<NonNullable<ZLinkSpotNodeOptions['router']>>).routingId = routingId;
+    }
+    if (this.spotOptions.pubSub !== undefined) {
+      (this.spotOptions.pubSub as Mutable<NonNullable<ZLinkSpotNodeOptions['pubSub']>>).routingId = routingId;
+    }
+    return this;
+  }
+
   enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
     this.spotOptions.router = {
       bind,
-      routingId,
+      routingId: routingId ?? this.spotOptions.routingId,
       manualConnections: connect === undefined ? undefined : endpointList(connect)
     };
     return this;
@@ -926,7 +919,7 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
   enablePubSub(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
     this.spotOptions.pubSub = {
       bind,
-      routingId,
+      routingId: routingId ?? this.spotOptions.routingId,
       manualConnections: connect === undefined ? undefined : endpointList(connect)
     };
     return this;
@@ -942,10 +935,6 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
     return this;
   }
 
-  connectPubSub(endpoint: string): this {
-    return this.connectPeerPub(endpoint);
-  }
-
   configureEntrySpot(options: ZLinkEntrySpotOptions): this {
     this.spotOptions.entrySpot = { ...options };
     return this;
@@ -958,6 +947,14 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
 
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
     this.spotOptions.spotFactories = [...(this.spotOptions.spotFactories ?? []), spotType];
+    return this;
+  }
+
+  actorFactory(actorType: string, factoryType: Type): this {
+    this.spotOptions.actorFactories = {
+      ...(this.spotOptions.actorFactories as Record<string, Type> | undefined),
+      [actorType]: factoryType
+    };
     return this;
   }
 }
@@ -1687,7 +1684,6 @@ function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions):
   }
 
   return {
-    actorFactories: options.actorFactories,
     channels,
     codecs: options.codecs,
     dispatch: options.dispatch,

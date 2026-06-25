@@ -27,8 +27,8 @@ namespace zlink::framework::detail
 //
 // Mode gating (modes are ordered off < errors_only < key_transitions < verbose
 // < diagnostic):
-//   * received / dispatched / replied / sent / reply_received require key_transitions+.
-//   * dropped requires errors_only or higher (it mirrors an error decision).
+    //   * received / dispatched / replied / sent / reply_received require key_transitions+.
+    //   * dropped / error require errors_only or higher.
 //   * message sizes are appended only at verbose+ when include_message_sizes.
 class message_flow_tracer_t
 {
@@ -40,25 +40,29 @@ class message_flow_tracer_t
         return rank (_options->diagnostics.effective_message_flow ()) >= rank (min_mode);
     }
 
-    static message_flow_log_mode_t required_mode (message_flow_phase_t phase) noexcept
+    static message_flow_log_mode_t required_mode (message_flow_outcome_t outcome) noexcept
     {
-        return phase == message_flow_phase_t::dropped ? message_flow_log_mode_t::errors_only
-                                                      : message_flow_log_mode_t::key_transitions;
+        return (outcome == message_flow_outcome_t::dropped
+                || outcome == message_flow_outcome_t::error)
+                 ? message_flow_log_mode_t::errors_only
+                 : message_flow_log_mode_t::key_transitions;
     }
 
-    bool enabled_for (message_flow_phase_t phase) const noexcept
+    bool enabled_for (message_flow_outcome_t outcome) const noexcept
     {
-        return enabled (required_mode (phase));
+        return enabled (required_mode (outcome));
     }
 
     // Lazy form: the event (and its string fields) is built only after the cheap
     // mode/sample gate passes, so an "off" dispatch pays nothing but the gate.
-    template <typename Fn> void trace (message_flow_phase_t phase, Fn &&build_event) const noexcept
+    template <typename Fn> void trace (message_flow_outcome_t outcome, Fn &&build_event) const noexcept
     {
-        if (!enabled_for (phase)) {
+        if (!enabled_for (outcome)) {
             return;
         }
-        if (phase != message_flow_phase_t::dropped && !sample (_options->diagnostics.sample_rate ())) {
+        if (outcome != message_flow_outcome_t::dropped
+            && outcome != message_flow_outcome_t::error
+            && !sample (_options->diagnostics.sample_rate ())) {
             return;
         }
         // build_event() builds the event (allocates strings); guard it so a throw
@@ -75,10 +79,11 @@ class message_flow_tracer_t
     // doing any work, but the caller has already paid to build the event.
     void trace (message_flow_event_t event) const noexcept
     {
-        if (!enabled_for (event.phase)) {
+        if (!enabled_for (event.outcome)) {
             return;
         }
-        if (event.phase != message_flow_phase_t::dropped
+        if (event.outcome != message_flow_outcome_t::dropped
+            && event.outcome != message_flow_outcome_t::error
             && !sample (_options->diagnostics.sample_rate ())) {
             return;
         }
@@ -143,15 +148,15 @@ class message_flow_tracer_t
             // Build structured key/value fields once (so collectors can ingest
             // without parsing text); reuse them for the clog fallback too.
             std::vector<log_field_t> fields;
-            fields.reserve (12);
+            fields.reserve (14);
             auto add = [&fields] (const char *key, std::string value) {
                 diagnostic_event_sink_t::append_field (fields, key, std::move (value));
             };
-            add ("phase", std::string (enum_name (event.phase)));
+            add ("outcome", std::string (enum_name (event.outcome)));
             add ("surface", std::string (enum_name (event.surface)));
             add ("kind", std::string (enum_name (event.message_kind)));
-            if (_options->diagnostics.node_id ()) {
-                add ("node", *_options->diagnostics.node_id ());
+            if (_options->diagnostics.label ()) {
+                add ("label", *_options->diagnostics.label ());
             }
             if (event.packet_name) {
                 add ("packet", *event.packet_name);
@@ -173,6 +178,12 @@ class message_flow_tracer_t
             }
             if (event.actor_id) {
                 add ("actor", *event.actor_id);
+            }
+            if (event.error_reason) {
+                add ("reason", std::string (enum_name (*event.error_reason)));
+            }
+            if (event.error_action) {
+                add ("action", std::string (enum_name (*event.error_action)));
             }
             if (event.message_size && enabled (message_flow_log_mode_t::verbose)
                 && _options->diagnostics.include_message_sizes ()) {

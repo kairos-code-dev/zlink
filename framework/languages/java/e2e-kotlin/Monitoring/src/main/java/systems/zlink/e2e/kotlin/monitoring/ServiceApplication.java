@@ -56,10 +56,10 @@ public final class ServiceApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/service-flow.log")
-                .traceNodeId("kotlin-mon-service");
+                .traceLabel("kotlin-mon-service");
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"))
-                .serverRoutingId(RoutingId.from("svc-a"))
+                .setRoutingId(RoutingId.from("svc-a"))
                 .addRequestHandler(
                     WorkRequestHandler.class,
                     Contracts.WorkRequest.class,
@@ -67,7 +67,7 @@ public final class ServiceApplication {
                     "WorkRequest");
             options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT"))
-                .serverRoutingId(RoutingId.from("svc-a-handshake"))
+                .setRoutingId(RoutingId.from("svc-a-handshake"))
                 .addRequestHandler(
                     WorkRequestHandler.class,
                     Contracts.WorkRequest.class,
@@ -76,9 +76,8 @@ public final class ServiceApplication {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH)
                 ;
             node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
-                .setRouterRoutingId(RoutingId.from("svc-a-spot"));
-            node.enablePubSub(Env.get("ZLINK_KOTLIN_E2E_SPOT_PUB_ENDPOINT"))
-                .setPubSubRoutingId(RoutingId.from("svc-a-spot-pub"));
+                .setRoutingId(RoutingId.from("svc-a-spot"));
+            node.enablePubSub(Env.get("ZLINK_KOTLIN_E2E_SPOT_PUB_ENDPOINT"));
             node.addSpotFactory(MonitoringSpot.class);
         };
     }

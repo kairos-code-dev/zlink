@@ -13,10 +13,9 @@ public static class ApiServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("api"))
-                .TraceNodeId("api");
+                .TraceLabel("api");
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

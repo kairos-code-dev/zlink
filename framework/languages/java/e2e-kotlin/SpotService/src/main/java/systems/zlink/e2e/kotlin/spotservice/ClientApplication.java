@@ -40,7 +40,7 @@ public final class ClientApplication {
 
     @Bean
     ScenarioState scenarioState() {
-        return new ScenarioState("client");
+        return new ScenarioState(clientNodeRid());
     }
 
     @Bean
@@ -53,18 +53,22 @@ public final class ClientApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/client-flow.log")
-                .traceNodeId("kotlin-sm-client");
+                .traceLabel("kotlin-sm-client");
             options.addRouteMesh(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT"))
-                .setRoutingId(RoutingId.from("client"));
+                .setRoutingId(RoutingId.from(clientNodeRid()));
             options.addClientServerChannel(Contracts.EGRESS_CHANNEL)
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_INGRESS_A_ENDPOINT"));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
-                .setRouterRoutingId(RoutingId.from("client"));
+                .setRoutingId(RoutingId.from(clientNodeRid()));
             node.addSpotFactory(ClientDriverSpot.class);
         };
+    }
+
+    private static String clientNodeRid() {
+        return "client-" + Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "state1");
     }
 }

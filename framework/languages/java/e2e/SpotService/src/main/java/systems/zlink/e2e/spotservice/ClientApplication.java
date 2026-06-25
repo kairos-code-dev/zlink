@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import java.util.UUID;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
@@ -28,7 +29,8 @@ public final class ClientApplication {
                 context.getBean(systems.zlink.framework.spots.ZLinkSpotManager.class);
             String mode = Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", "state1");
             ClientDriverSpot.configure(mode);
-            spots.create(ClientDriverSpot.class, RoutingId.from("client-driver-" + mode))
+            spots.create(ClientDriverSpot.class, RoutingId.from(
+                    "client-driver-" + mode + "-" + UUID.randomUUID().toString().replace("-", "")))
                 .toCompletableFuture()
                 .join();
             ClientDriverSpot.awaitResult();

@@ -48,7 +48,7 @@ class support_server_host_factory_t
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("support"))
-              .trace_node_id ("supportchat-support");
+              .trace_label ("supportchat-support");
             options.services ()
               .add_singleton<support_conversation_allocator_t> ()
               .add_singleton<agent_availability_directory_t> ()
@@ -71,8 +71,8 @@ class support_server_host_factory_t
               .enable_client (topology.session_actor_route_endpoint);
             options.add_spot_mesh (sample_names_t::support_spot_discovery)
               .use_registry_spot_resolver (sample_names_t::actor_session_route_channel)
-              .enable_router (topology.support_router_endpoint,
-                              zlink::routing_id_t::from (sample_names_t::support_spot_node))
+              .set_routing_id (zlink::routing_id_t::from (sample_names_t::support_spot_node))
+              .enable_router (topology.support_router_endpoint)
               .enable_actor_gateway ()
               .enable_pub_sub (topology.support_spot_endpoint)
               .add_spot<conversation_spot_t> (sample_names_t::conversation_spot)

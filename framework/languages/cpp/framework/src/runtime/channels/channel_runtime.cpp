@@ -959,8 +959,8 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                              router_channel_id, packet_name);
         header.metadata = metadata;
         detail::message_flow_tracer_t (state->runtime->dispatch)
-          .trace (message_flow_phase_t::sent, [&] {
-              return message_flow_event_t{message_flow_phase_t::sent,
+          .trace (message_flow_outcome_t::sent, [&] {
+              return message_flow_event_t{message_flow_outcome_t::sent,
                                           dispatch_error_surface_t::route_mesh_channel,
                                           dispatch_message_kind_t::send,
                                           packet_name,
@@ -1020,8 +1020,8 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
                                              router_channel_id, packet_name, effective_timeout);
         header.metadata = metadata;
         detail::message_flow_tracer_t (state->runtime->dispatch)
-          .trace (message_flow_phase_t::sent, [&] {
-              return message_flow_event_t{message_flow_phase_t::sent,
+          .trace (message_flow_outcome_t::sent, [&] {
+              return message_flow_event_t{message_flow_outcome_t::sent,
                                           dispatch_error_surface_t::route_mesh_channel,
                                           dispatch_message_kind_t::request,
                                           packet_name,
@@ -1079,8 +1079,8 @@ task_t<void> route_client_t::submit_spot_send_erased (
                                              router_channel_id, packet_name);
         header.metadata = metadata;
         detail::message_flow_tracer_t (state->runtime->dispatch)
-          .trace (message_flow_phase_t::sent, [&] {
-              return message_flow_event_t{message_flow_phase_t::sent,
+          .trace (message_flow_outcome_t::sent, [&] {
+              return message_flow_event_t{message_flow_outcome_t::sent,
                                           dispatch_error_surface_t::spot_route,
                                           dispatch_message_kind_t::send,
                                           packet_name,
@@ -1143,8 +1143,8 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
                                              router_channel_id, packet_name, effective_timeout);
         header.metadata = metadata;
         detail::message_flow_tracer_t (state->runtime->dispatch)
-          .trace (message_flow_phase_t::sent, [&] {
-              return message_flow_event_t{message_flow_phase_t::sent,
+          .trace (message_flow_outcome_t::sent, [&] {
+              return message_flow_event_t{message_flow_outcome_t::sent,
                                           dispatch_error_surface_t::spot_route,
                                           dispatch_message_kind_t::request,
                                           packet_name,
@@ -1206,8 +1206,8 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                                              router_channel_id, packet_name, effective_timeout);
         header.metadata = std::move (metadata);
         detail::message_flow_tracer_t (state->runtime->dispatch)
-          .trace (message_flow_phase_t::sent, [&] {
-              return message_flow_event_t{message_flow_phase_t::sent,
+          .trace (message_flow_outcome_t::sent, [&] {
+              return message_flow_event_t{message_flow_outcome_t::sent,
                                           dispatch_error_surface_t::route_mesh_channel,
                                           dispatch_message_kind_t::request,
                                           packet_name,
@@ -1261,8 +1261,8 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                     body.error () ? body.error ()->what () : "route reply body decode failed");
               }
               detail::message_flow_tracer_t (state->runtime->dispatch)
-                .trace (message_flow_phase_t::reply_received, [&] {
-                    return message_flow_event_t{message_flow_phase_t::reply_received,
+                .trace (message_flow_outcome_t::reply_received, [&] {
+                    return message_flow_event_t{message_flow_outcome_t::reply_received,
                                                 dispatch_error_surface_t::route_mesh_channel,
                                                 dispatch_message_kind_t::response,
                                                 packet_name,
@@ -1312,8 +1312,8 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                              router_channel_id, packet_name, effective_timeout);
         header.metadata = std::move (metadata);
         detail::message_flow_tracer_t (state->runtime->dispatch)
-          .trace (message_flow_phase_t::sent, [&] {
-              return message_flow_event_t{message_flow_phase_t::sent,
+          .trace (message_flow_outcome_t::sent, [&] {
+              return message_flow_event_t{message_flow_outcome_t::sent,
                                           dispatch_error_surface_t::spot_route,
                                           dispatch_message_kind_t::request,
                                           packet_name,
@@ -1367,8 +1367,8 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                     body.error () ? body.error ()->what () : "route spot reply body decode failed");
               }
               detail::message_flow_tracer_t (state->runtime->dispatch)
-                .trace (message_flow_phase_t::reply_received, [&] {
-                    return message_flow_event_t{message_flow_phase_t::reply_received,
+                .trace (message_flow_outcome_t::reply_received, [&] {
+                    return message_flow_event_t{message_flow_outcome_t::reply_received,
                                                 dispatch_error_surface_t::spot_route,
                                                 dispatch_message_kind_t::response,
                                                 packet_name,

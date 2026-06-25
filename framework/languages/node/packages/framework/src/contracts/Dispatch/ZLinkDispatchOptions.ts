@@ -5,15 +5,10 @@ export interface ZLinkDispatchOptions {
   mode?: ZLinkDispatchMode;
   unhandled?: ZLinkUnhandledDispatchOptions;
   diagnostics?: ZLinkDiagnosticsOptions;
-  messageDispatchErrorObserverType?: Type<ZLinkMessageDispatchErrorObserver>;
   messageFlowObserverType?: Type<ZLinkMessageFlowObserver>;
 }
 
 export interface ZLinkDispatchOptionsBuilder {
-  setMessageDispatchErrorObserver(
-    observerType: Type<ZLinkMessageDispatchErrorObserver>
-  ): this;
-
   setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this;
 
   /** Fluent diagnostics/tracing config (builder-chain only). */
@@ -26,26 +21,26 @@ export interface ZLinkDispatchOptionsBuilder {
   /** Send tracing/error logs to a dedicated file (separated from app logs). */
   traceLogFile(path: string): this;
 
-  /** Node identity stamped on every trace line (node=) for cross-node aggregation. */
-  traceNodeId(id: string): this;
+  /** Human-readable label stamped on every trace line (label=) for aggregation. */
+  traceLabel(label: string): this;
 }
 
 /**
- * A success-path transition in a message's lifecycle. Errors are reported separately
- * via ZLinkMessageDispatchErrorEvent. received/dispatched/replied are inbound;
- * sent/replyReceived are outbound.
+ * A message lifecycle outcome. Error outcomes carry the dispatch error fields on the
+ * same typed event used by the success path.
  */
-export enum ZLinkMessageFlowPhase {
+export enum ZLinkMessageFlowOutcome {
   Received = 'received',
   Dispatched = 'dispatched',
   Replied = 'replied',
   Dropped = 'dropped',
   Sent = 'sent',
-  ReplyReceived = 'replyReceived'
+  ReplyReceived = 'replyReceived',
+  Error = 'error'
 }
 
 export interface ZLinkMessageFlowEvent {
-  readonly phase: ZLinkMessageFlowPhase;
+  readonly outcome: ZLinkMessageFlowOutcome;
   readonly surface: ZLinkDispatchErrorSurface;
   readonly messageKind: ZLinkDispatchMessageKind;
   readonly packetName?: string;
@@ -56,6 +51,10 @@ export interface ZLinkMessageFlowEvent {
   readonly spotRid?: string;
   readonly actorId?: string;
   readonly messageSize?: number;
+  readonly errorReason?: ZLinkDispatchErrorReason;
+  readonly errorAction?: ZLinkDispatchErrorAction;
+  readonly errorType?: string;
+  readonly errorMessage?: string;
 }
 
 export interface ZLinkMessageFlowObserver {
@@ -71,11 +70,7 @@ export interface ZLinkMessageFlowControl {
   messageFlowMode(): ZLinkMessageFlowLogMode;
 }
 
-export interface ZLinkMessageDispatchErrorObserver {
-  onDispatchError(error: ZLinkMessageDispatchErrorEvent): Promise<void> | void;
-}
-
-export interface ZLinkMessageDispatchErrorEvent {
+export interface ZLinkDispatchFailure {
   readonly surface: ZLinkDispatchErrorSurface;
   readonly messageKind: ZLinkDispatchMessageKind;
   readonly reason: ZLinkDispatchErrorReason;
@@ -87,7 +82,8 @@ export interface ZLinkMessageDispatchErrorEvent {
   readonly actorId?: string;
   readonly sourceRid?: string;
   readonly correlationId?: string;
-  readonly error?: unknown;
+  readonly errorType?: string;
+  readonly errorMessage?: string;
 }
 
 export interface ZLinkUnhandledDispatchOptions {
@@ -100,8 +96,8 @@ export interface ZLinkDiagnosticsOptions {
   includeMessageSizes?: boolean;
   /** When set, tracing/error logs go to this dedicated file (separated from app logs). */
   logFile?: string;
-  /** Node/runtime identity stamped on each trace line. */
-  nodeId?: string;
+  /** Human-readable runtime label stamped on each trace line. */
+  label?: string;
 }
 
 export enum ZLinkUnhandledDispatchAction {

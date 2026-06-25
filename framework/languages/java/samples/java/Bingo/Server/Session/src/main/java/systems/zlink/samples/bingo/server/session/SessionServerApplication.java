@@ -41,7 +41,7 @@ public final class SessionServerApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-session.log")
-                .traceNodeId("session");
+                .traceLabel("session");
             options.codecs().addJson();
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addClientServerChannel(SampleNames.ApiChannel)
@@ -52,7 +52,7 @@ public final class SessionServerApplication {
             route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
-                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
+                .setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession.class)

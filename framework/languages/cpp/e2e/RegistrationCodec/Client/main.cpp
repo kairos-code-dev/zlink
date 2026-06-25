@@ -275,7 +275,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/client-flow.log")
-          .trace_node_id ("cpp-rc-client");
+          .trace_label ("cpp-rc-client");
         add_json_codecs (options.codecs ());
         add_custom_codecs (options.codecs ());
         options.add_client_server_channel (e2e::api_channel).enable_client (api_endpoint);

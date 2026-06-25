@@ -8,15 +8,23 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public ZLinkChannelRuntimeBundle(
         IZLinkBackendSocket socket,
-        ZLinkAsyncSubmitter? submitter = null)
+        ZLinkAsyncSubmitter? submitter = null,
+        RoutingId localRid = default,
+        string? socketRole = null)
     {
         Socket = socket;
         Submitter = submitter;
+        LocalRid = localRid.Size > 0 ? localRid.ToString() : null;
+        SocketRole = socketRole;
     }
 
     public IZLinkBackendSocket Socket { get; }
 
     public ZLinkAsyncSubmitter? Submitter { get; }
+
+    public string? LocalRid { get; }
+
+    public string? SocketRole { get; }
 
     public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
 

@@ -294,6 +294,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void bind(String endpoint) { socket.bind(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { socket.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
         @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
+        @Override public void setRoutingId(RoutingId routingId) { socket.setRoutingId(routingId); }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { return submit(socket.publish(topic), parts, flags); }
         @Override public void close() { socket.close(); }
     }
@@ -484,6 +485,8 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public String name() { return "spotNode"; }
         @Override public RoutingId routingId() { return spotNode.getRoutingId(); }
         @Override public void setRoutingId(RoutingId routingId) { spotNode.setRoutingId(routingId); }
+        @Override public void setPublisherRoutingId(RoutingId routingId) { spotNode.setPublisherRoutingId(routingId); }
+        @Override public void setSubscriberRoutingId(RoutingId routingId) { spotNode.setSubscriberRoutingId(routingId); }
         @Override public void setRouterBind(String endpoint) { spotNode.setRouterBind(endpoint); }
         @Override public void setPubBind(String endpoint) { spotNode.setPubBind(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { spotNode.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }

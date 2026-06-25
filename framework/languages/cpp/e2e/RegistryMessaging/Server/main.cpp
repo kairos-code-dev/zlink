@@ -226,7 +226,7 @@ int main (int argc, char **argv)
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (log_dir + "/registry-flow.log")
-              .trace_node_id ("cpp-rm-registry");
+              .trace_label ("cpp-rm-registry");
             options.enable_registry (pub, router);
         });
         return app.run (argc, argv);
@@ -252,7 +252,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/" + provider_rid + "-flow.log")
-          .trace_node_id ("cpp-rm-" + provider_rid);
+          .trace_label ("cpp-rm-" + provider_rid);
         options.services ().add_singleton<scenario_state_t> (
           std::make_unique<scenario_state_t> (provider_rid, instance_id));
         options.services ().add_transient<route_ping_handler_t, scenario_state_t> ();
@@ -274,7 +274,7 @@ int main (int argc, char **argv)
         if (!api_endpoint.empty ()) {
             auto channel = options.add_client_server_channel (e2e::api_channel);
             channel.enable_server (api_endpoint)
-              .server_routing_id (zlink::routing_id_t::from (provider_rid));
+              .set_routing_id (zlink::routing_id_t::from (provider_rid));
             if (server_weight) {
                 channel.server_peer_weight (
                   zlink::peer_weight_t::value (static_cast<std::uint32_t> (*server_weight)));
@@ -288,7 +288,7 @@ int main (int argc, char **argv)
         if (!workflow_endpoint.empty ()) {
             options.add_client_server_channel (e2e::workflow_channel)
               .enable_server (workflow_endpoint)
-              .server_routing_id (zlink::routing_id_t::from (provider_rid))
+              .set_routing_id (zlink::routing_id_t::from (provider_rid))
               .use_handler_group (e2e::handler_group);
         }
         if (!route_endpoint.empty ()) {

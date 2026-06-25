@@ -47,7 +47,7 @@ public final class CommerceApiApplication {
             configurer.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("SHOPPINGMALL_LOG_DIR", "logs") + "/flow-" + options.instanceId() + ".log")
-                .traceNodeId(options.instanceId());
+                .traceLabel(options.instanceId());
             configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(CommerceApiApplication.class);
 

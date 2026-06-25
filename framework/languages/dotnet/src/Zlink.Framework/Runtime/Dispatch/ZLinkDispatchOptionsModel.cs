@@ -12,10 +12,6 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
 
     public ZLinkDiagnosticsOptionsModel Diagnostics { get; } = new();
 
-    public Type? MessageDispatchErrorObserverType { get; private set; }
-
-    public IZLinkMessageDispatchErrorObserver? MessageDispatchErrorObserver { get; private set; }
-
     public Type? MessageFlowObserverType { get; private set; }
 
     public IZLinkMessageFlowObserver? MessageFlowObserver { get; private set; }
@@ -23,23 +19,6 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
     IZLinkUnhandledDispatchOptions IZLinkDispatchOptions.Unhandled => Unhandled;
 
     IZLinkDiagnosticsOptions IZLinkDispatchOptions.Diagnostics => Diagnostics;
-
-    public IZLinkDispatchOptions SetMessageDispatchErrorObserver<TObserver>()
-        where TObserver : class, IZLinkMessageDispatchErrorObserver
-    {
-        MessageDispatchErrorObserverType = typeof(TObserver);
-        MessageDispatchErrorObserver = null;
-        return this;
-    }
-
-    public IZLinkDispatchOptions SetMessageDispatchErrorObserver(
-        IZLinkMessageDispatchErrorObserver observer)
-    {
-        ArgumentNullException.ThrowIfNull(observer);
-        MessageDispatchErrorObserver = observer;
-        MessageDispatchErrorObserverType = null;
-        return this;
-    }
 
     public IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
         where TObserver : class, IZLinkMessageFlowObserver
@@ -82,10 +61,10 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
         return this;
     }
 
-    public IZLinkDispatchOptions TraceNodeId(string id)
+    public IZLinkDispatchOptions TraceLabel(string label)
     {
-        ArgumentException.ThrowIfNullOrEmpty(id);
-        Diagnostics.NodeId = id;
+        ArgumentException.ThrowIfNullOrEmpty(label);
+        Diagnostics.Label = label;
         return this;
     }
 }
@@ -131,7 +110,7 @@ internal sealed class ZLinkDiagnosticsOptionsModel : IZLinkDiagnosticsOptions
 
     public string? LogFile { get; internal set; }
 
-    public string? NodeId { get; internal set; }
+    public string? Label { get; internal set; }
 
     // Installed by the host at apply (ZLinkFrameworkServiceRegistrar). Shared across
     // surfaces so SetMessageFlowMode flips it live. Null before apply.

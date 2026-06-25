@@ -35,7 +35,7 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 header.MessageName,
                 "no-handler",
                 channelName);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ResolveSurface(transportName),
                 ZLinkDispatchMessageKind.Send,
                 ZLinkDispatchErrorReason.HandlerMissing,
@@ -62,7 +62,7 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 "payload-decode-failed",
                 ex,
                 channelName);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ResolveSurface(transportName),
                 ZLinkDispatchMessageKind.Send,
                 ZLinkDispatchErrorReason.PayloadDecodeFailed,
@@ -84,10 +84,10 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
             await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
             {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.Dispatched,
+                    ZLinkMessageFlowOutcome.Dispatched,
                     ResolveSurface(transportName),
                     ZLinkDispatchMessageKind.Send,
                     PacketName: header.MessageName,
@@ -106,7 +106,7 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 "handler-exception",
                 ex,
                 channelName);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ResolveSurface(transportName),
                 ZLinkDispatchMessageKind.Send,
                 ZLinkDispatchErrorReason.HandlerException,

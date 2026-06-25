@@ -12,7 +12,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkMessageFlowPhase;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 
@@ -28,7 +28,7 @@ class ZLinkMessageFlowTracerTest {
         return new ZLinkMessageFlowTracer(options, ZLinkHandlerFactory.reflection(), Runnable::run);
     }
 
-    private static ZLinkMessageFlowEvent flow(ZLinkMessageFlowPhase phase) {
+    private static ZLinkMessageFlowEvent flow(ZLinkMessageFlowOutcome phase) {
         return new ZLinkMessageFlowEvent(
             phase,
             ZLinkDispatchErrorSurface.CHANNEL,
@@ -39,22 +39,22 @@ class ZLinkMessageFlowTracerTest {
     @Test
     void offSuppressesAllTransitions() {
         ZLinkMessageFlowTracer tracer = tracer(options(ZLinkMessageFlowLogMode.OFF));
-        assertFalse(tracer.enabled(ZLinkMessageFlowPhase.RECEIVED));
-        assertFalse(tracer.enabled(ZLinkMessageFlowPhase.DROPPED));
+        assertFalse(tracer.enabled(ZLinkMessageFlowOutcome.RECEIVED));
+        assertFalse(tracer.enabled(ZLinkMessageFlowOutcome.DROPPED));
     }
 
     @Test
     void errorsOnlyEmitsDroppedNotReceived() {
         ZLinkMessageFlowTracer tracer = tracer(options(ZLinkMessageFlowLogMode.ERRORS_ONLY));
-        assertFalse(tracer.enabled(ZLinkMessageFlowPhase.RECEIVED));
-        assertTrue(tracer.enabled(ZLinkMessageFlowPhase.DROPPED));
+        assertFalse(tracer.enabled(ZLinkMessageFlowOutcome.RECEIVED));
+        assertTrue(tracer.enabled(ZLinkMessageFlowOutcome.DROPPED));
     }
 
     @Test
     void keyTransitionsEmitsLifecycle() {
         ZLinkMessageFlowTracer tracer = tracer(options(ZLinkMessageFlowLogMode.KEY_TRANSITIONS));
-        assertTrue(tracer.enabled(ZLinkMessageFlowPhase.RECEIVED));
-        assertTrue(tracer.enabled(ZLinkMessageFlowPhase.REPLIED));
+        assertTrue(tracer.enabled(ZLinkMessageFlowOutcome.RECEIVED));
+        assertTrue(tracer.enabled(ZLinkMessageFlowOutcome.REPLIED));
     }
 
     @Test
@@ -65,11 +65,11 @@ class ZLinkMessageFlowTracerTest {
         options.diagnostics().installLiveMode(cell);
         ZLinkMessageFlowTracer tracer = tracer(options);
 
-        assertFalse(tracer.enabled(ZLinkMessageFlowPhase.RECEIVED));
+        assertFalse(tracer.enabled(ZLinkMessageFlowOutcome.RECEIVED));
         cell.set(ZLinkMessageFlowLogMode.KEY_TRANSITIONS);
-        assertTrue(tracer.enabled(ZLinkMessageFlowPhase.RECEIVED));
+        assertTrue(tracer.enabled(ZLinkMessageFlowOutcome.RECEIVED));
         cell.set(ZLinkMessageFlowLogMode.OFF);
-        assertFalse(tracer.enabled(ZLinkMessageFlowPhase.RECEIVED));
+        assertFalse(tracer.enabled(ZLinkMessageFlowOutcome.RECEIVED));
     }
 
     @Test
@@ -77,17 +77,17 @@ class ZLinkMessageFlowTracerTest {
         Path file = Files.createTempFile("zlink-flow", ".log");
         Files.deleteIfExists(file);
         ZLinkDispatchOptionsRegistration options = options(ZLinkMessageFlowLogMode.KEY_TRANSITIONS);
-        options.traceLogFile(file.toString()).traceNodeId("api");
+        options.traceLogFile(file.toString()).traceLabel("api");
         ZLinkMessageFlowTracer tracer = tracer(options);
 
-        tracer.trace(flow(ZLinkMessageFlowPhase.RECEIVED));
-        tracer.trace(flow(ZLinkMessageFlowPhase.REPLIED));
+        tracer.trace(flow(ZLinkMessageFlowOutcome.RECEIVED));
+        tracer.trace(flow(ZLinkMessageFlowOutcome.REPLIED));
 
         String content = Files.readString(file);
-        assertTrue(content.contains("phase=RECEIVED"), content);
-        assertTrue(content.contains("phase=REPLIED"), content);
+        assertTrue(content.contains("outcome=RECEIVED"), content);
+        assertTrue(content.contains("outcome=REPLIED"), content);
         assertTrue(content.contains("corr=corr-1"), content);
-        assertTrue(content.contains("node=api"), content);
+        assertTrue(content.contains("label=api"), content);
         Files.deleteIfExists(file);
         assertEquals(2L, tracer.tracedCount());
     }

@@ -241,7 +241,7 @@ internal sealed class ZLinkActorDispatchRouter(
             "no-handler",
             actorId: actor.ActorId,
             actorType: actor.GetType().FullName);
-        _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+        _dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.SpotActor,
             kind,
             ZLinkDispatchErrorReason.HandlerMissing,

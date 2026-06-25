@@ -38,14 +38,14 @@ public final class ProviderApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + state.providerRid() + "-flow.log")
-                .traceNodeId("java-dr-" + state.providerRid());
+                .traceLabel("java-dr-" + state.providerRid());
             options.addHandlersFromPackageOf(WorkRequestHandler.class);
             for (String registry : Env.csv("ZLINK_JAVA_E2E_REGISTRY_ROUTERS")) {
                 options.useDiscovery().addRegistryEndpoint(registry);
             }
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"))
-                .serverRoutingId(RoutingId.from(state.providerRid()))
+                .setRoutingId(RoutingId.from(state.providerRid()))
                 .addHandlerGroup(Contracts.HANDLER_GROUP);
         };
     }

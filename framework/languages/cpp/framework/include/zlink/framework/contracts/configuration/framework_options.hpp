@@ -356,9 +356,9 @@ class client_server_channel_builder_t
         return *this;
     }
 
-    client_server_channel_builder_t &server_routing_id (zlink::routing_id_t routing_id)
+    client_server_channel_builder_t &set_routing_id (zlink::routing_id_t routing_id)
     {
-        _server_routing_id = std::move (routing_id);
+        _routing_id = std::move (routing_id);
         apply_channel ();
         return *this;
     }
@@ -467,7 +467,7 @@ class client_server_channel_builder_t
     {
         const auto channel_name = _channel_name;
         const auto server_endpoint = _server_endpoint;
-        const auto server_routing_id = _server_routing_id;
+        const auto routing_id = _routing_id;
         const auto server_send_high_water_mark = _server_send_high_water_mark;
         const auto server_receive_high_water_mark = _server_receive_high_water_mark;
         const auto server_max_message_size = _server_max_message_size;
@@ -498,7 +498,7 @@ class client_server_channel_builder_t
         }
         _options->set_zlink_action (
           "client_server_channel:" + channel_name,
-          [channel_name, server_endpoint, server_routing_id, server_send_high_water_mark,
+          [channel_name, server_endpoint, routing_id, server_send_high_water_mark,
            server_receive_high_water_mark, server_max_message_size, server_peer_weight,
            client_enabled, client_endpoints, client_uses_discovery,
            client_send_high_water_mark, client_receive_high_water_mark, client_max_message_size,
@@ -509,8 +509,8 @@ class client_server_channel_builder_t
               }
               if (!server_endpoint.empty ()) {
                   auto server = channel.enable_server ();
-                  if (server_routing_id) {
-                      server.set_routing_id (*server_routing_id);
+                  if (routing_id) {
+                      server.set_routing_id (*routing_id);
                   }
                   if (server_send_high_water_mark) {
                       server.send_high_water_mark (*server_send_high_water_mark);
@@ -555,7 +555,7 @@ class client_server_channel_builder_t
     std::shared_ptr<detail::framework_options_state_t> _options;
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _server_endpoint;
-    std::optional<zlink::routing_id_t> _server_routing_id;
+    std::optional<zlink::routing_id_t> _routing_id;
     std::optional<zlink::message_count_t> _server_send_high_water_mark;
     std::optional<zlink::message_count_t> _server_receive_high_water_mark;
     std::optional<zlink::byte_size_t> _server_max_message_size;
@@ -593,6 +593,13 @@ class fanout_channel_builder_t
         return *this;
     }
 
+    fanout_channel_builder_t &set_routing_id (zlink::routing_id_t routing_id)
+    {
+        _routing_id = std::move (routing_id);
+        apply ();
+        return *this;
+    }
+
     fanout_channel_builder_t &enable_subscriber ()
     {
         _subscriber_enabled = true;
@@ -625,6 +632,7 @@ class fanout_channel_builder_t
     {
         const auto channel_name = _channel_name;
         const auto publisher_endpoint = _publisher_endpoint;
+        const auto routing_id = _routing_id;
         const auto subscriber_enabled = _subscriber_enabled;
         const auto subscriber_endpoints = _subscriber_endpoints;
         const auto subscriber_uses_discovery = _subscriber_uses_discovery;
@@ -646,11 +654,15 @@ class fanout_channel_builder_t
         }
         _options->set_zlink_action ("fanout_channel:" + channel_name,
                                     [channel_name, publisher_endpoint, subscriber_enabled,
-                                     subscriber_endpoints,
+                                     subscriber_endpoints, routing_id,
                                      subscriber_uses_discovery] (zlink_builder_t &zlink) {
                                         auto channel = zlink.channel (channel_name);
                                         if (!publisher_endpoint.empty ()) {
-                                            channel.enable_publisher ().bind (publisher_endpoint);
+                                            auto publisher = channel.enable_publisher ();
+                                            if (routing_id) {
+                                                publisher.set_routing_id (*routing_id);
+                                            }
+                                            publisher.bind (publisher_endpoint);
                                         }
                                         if (subscriber_enabled) {
                                             auto subscriber = channel.enable_subscriber ();
@@ -669,6 +681,7 @@ class fanout_channel_builder_t
     std::shared_ptr<detail::framework_options_state_t> _options;
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _publisher_endpoint;
+    std::optional<zlink::routing_id_t> _routing_id;
     std::vector<std::string> _subscriber_endpoints;
     bool _subscriber_enabled = false;
     bool _subscriber_uses_discovery = false;
@@ -821,65 +834,6 @@ class route_mesh_channel_builder_t
     std::vector<std::function<void (route_channel_builder_t &)>> _route_handlers;
 };
 
-class spot_router_capability_builder_t
-{
-  public:
-    spot_router_capability_builder_t (std::optional<zlink::routing_id_t> &routing_id,
-                                      std::vector<std::string> &manual_connections) :
-        _routing_id (&routing_id), _manual_connections (&manual_connections)
-    {
-    }
-
-    spot_router_capability_builder_t &set_routing_id (zlink::routing_id_t routing_id)
-    {
-        *_routing_id = std::move (routing_id);
-        return *this;
-    }
-
-    spot_router_capability_builder_t &connect (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "SPOT router manual endpoint is required");
-        _manual_connections->push_back (std::move (endpoint));
-        return *this;
-    }
-
-  private:
-    std::optional<zlink::routing_id_t> *_routing_id;
-    std::vector<std::string> *_manual_connections;
-};
-
-class spot_pub_sub_capability_builder_t
-{
-  public:
-    spot_pub_sub_capability_builder_t (std::optional<zlink::routing_id_t> &routing_id,
-                                       std::vector<std::string> &manual_connections) :
-        _routing_id (&routing_id), _manual_connections (&manual_connections)
-    {
-    }
-
-    spot_pub_sub_capability_builder_t &set_routing_id (zlink::routing_id_t routing_id)
-    {
-        *_routing_id = std::move (routing_id);
-        return *this;
-    }
-
-    spot_pub_sub_capability_builder_t &connect (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "SPOT pub/sub manual endpoint is required");
-        _manual_connections->push_back (std::move (endpoint));
-        return *this;
-    }
-
-    spot_pub_sub_capability_builder_t &connect_peer_pub (std::string endpoint)
-    {
-        return connect (std::move (endpoint));
-    }
-
-  private:
-    std::optional<zlink::routing_id_t> *_routing_id;
-    std::vector<std::string> *_manual_connections;
-};
-
 class spot_node_options_builder_t
 {
   public:
@@ -899,24 +853,17 @@ class spot_node_options_builder_t
         return *this;
     }
 
-    spot_node_options_builder_t &enable_router (std::string endpoint)
+    spot_node_options_builder_t &set_routing_id (zlink::routing_id_t routing_id)
     {
-        detail::require_non_blank (endpoint, "SPOT router endpoint is required");
-        _router_endpoint = std::move (endpoint);
-        _router_routing_id.reset ();
-        _router_manual_connections.clear ();
-        _options->spot_nodes_with_router.insert (_spot_node_name);
-        _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
+        _routing_id = std::move (routing_id);
         apply ();
         return *this;
     }
 
-    spot_node_options_builder_t &enable_router (std::string endpoint,
-                                                zlink::routing_id_t routing_id)
+    spot_node_options_builder_t &enable_router (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "SPOT router endpoint is required");
         _router_endpoint = std::move (endpoint);
-        _router_routing_id = std::move (routing_id);
         _router_manual_connections.clear ();
         _options->spot_nodes_with_router.insert (_spot_node_name);
         _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
@@ -936,7 +883,6 @@ class spot_node_options_builder_t
     {
         detail::require_non_blank (endpoint, "SPOT pub/sub endpoint is required");
         _pub_endpoint = std::move (endpoint);
-        _pub_routing_id.reset ();
         _pub_sub_manual_connections.clear ();
         _options->spot_nodes_with_pub_sub.insert (_spot_node_name);
         _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
@@ -955,19 +901,6 @@ class spot_node_options_builder_t
     spot_node_options_builder_t &connect_peer_pub (std::string endpoint)
     {
         return connect_pub_sub (std::move (endpoint));
-    }
-
-    spot_node_options_builder_t &enable_pub_sub (std::string endpoint,
-                                                 zlink::routing_id_t routing_id)
-    {
-        detail::require_non_blank (endpoint, "SPOT pub/sub endpoint is required");
-        _pub_endpoint = std::move (endpoint);
-        _pub_routing_id = std::move (routing_id);
-        _pub_sub_manual_connections.clear ();
-        _options->spot_nodes_with_pub_sub.insert (_spot_node_name);
-        _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
-        apply ();
-        return *this;
     }
 
     spot_node_options_builder_t &use_discovery (std::string channel_name)
@@ -1066,8 +999,7 @@ class spot_node_options_builder_t
         const auto endpoint = _endpoint;
         const auto router_endpoint = _router_endpoint;
         const auto pub_endpoint = _pub_endpoint;
-        const auto router_routing_id = _router_routing_id;
-        const auto pub_routing_id = _pub_routing_id;
+        const auto routing_id = _routing_id;
         const auto router_manual_connections = _router_manual_connections;
         const auto pub_sub_manual_connections = _pub_sub_manual_connections;
         const auto discovery_channel = _discovery_channel;
@@ -1078,22 +1010,17 @@ class spot_node_options_builder_t
             if (!endpoint.empty ()) {
                 spot_node.bind (endpoint);
             }
+            if (routing_id) {
+                spot_node.set_routing_id (*routing_id);
+            }
             if (!router_endpoint.empty ()) {
-                if (router_routing_id) {
-                    spot_node.enable_router (router_endpoint, *router_routing_id);
-                } else {
-                    spot_node.enable_router (router_endpoint);
-                }
+                spot_node.enable_router (router_endpoint);
                 for (const auto &endpoint : router_manual_connections) {
                     spot_node.connect_router (endpoint);
                 }
             }
             if (!pub_endpoint.empty ()) {
-                if (pub_routing_id) {
-                    spot_node.enable_pub_sub (pub_endpoint, *pub_routing_id);
-                } else {
-                    spot_node.enable_pub_sub (pub_endpoint);
-                }
+                spot_node.enable_pub_sub (pub_endpoint);
                 for (const auto &endpoint : pub_sub_manual_connections) {
                     spot_node.connect_pub_sub (endpoint);
                 }
@@ -1134,8 +1061,7 @@ class spot_node_options_builder_t
     std::string _endpoint;
     std::string _router_endpoint;
     std::string _pub_endpoint;
-    std::optional<zlink::routing_id_t> _router_routing_id;
-    std::optional<zlink::routing_id_t> _pub_routing_id;
+    std::optional<zlink::routing_id_t> _routing_id;
     std::vector<std::string> _router_manual_connections;
     std::vector<std::string> _pub_sub_manual_connections;
     std::string _discovery_channel;

@@ -29,7 +29,7 @@ function createShoppingMallModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.SHOPPINGMALL_LOG_DIR ?? 'logs'}/flow-workflow.log`)
-            .traceNodeId('workflow');
+            .traceLabel('workflow');
           return builder
           .codecs()
             .addJson()

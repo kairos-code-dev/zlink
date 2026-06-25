@@ -297,27 +297,30 @@ class dispatch_observer_actor_t
 {
 };
 
-class recording_dispatch_observer_t : public zlink::framework::message_dispatch_error_observer_t
+class recording_dispatch_observer_t : public zlink::framework::message_flow_observer_t
 {
   public:
     explicit recording_dispatch_observer_t (
-      std::vector<zlink::framework::message_dispatch_error_event_t> &events,
+      std::vector<zlink::framework::message_flow_event_t> &events,
       std::mutex &mutex,
       std::filesystem::path log_path = {}) :
         _events (&events), _mutex (&mutex), _log_path (std::move (log_path))
     {
     }
 
-    void on_dispatch_error (const zlink::framework::message_dispatch_error_event_t &error) override
+    void on_message_flow (const zlink::framework::message_flow_event_t &error) override
     {
+        if (error.outcome != zlink::framework::message_flow_outcome_t::error) {
+            return;
+        }
         std::lock_guard lock (*_mutex);
         _events->push_back (error);
         if (!_log_path.empty ()) {
             std::ofstream log (_log_path, std::ios::app);
             log << "dispatch-error" << " surface=" << surface_name (error.surface)
                 << " messageKind=" << message_kind_name (error.message_kind)
-                << " reason=" << reason_name (error.reason)
-                << " action=" << action_name (error.action)
+                << " reason=" << reason_name (*error.error_reason)
+                << " action=" << action_name (*error.error_action)
                 << " packetName=" << error.packet_name.value_or ("")
                 << " channelName=" << error.channel_name.value_or ("")
                 << " correlationId=" << error.correlation_id.value_or ("") << '\n';
@@ -400,7 +403,7 @@ class recording_dispatch_observer_t : public zlink::framework::message_dispatch_
         }
     }
 
-    std::vector<zlink::framework::message_dispatch_error_event_t> *_events;
+    std::vector<zlink::framework::message_flow_event_t> *_events;
     std::mutex *_mutex;
     std::filesystem::path _log_path;
 };
@@ -424,8 +427,8 @@ std::size_t count_occurrences (const std::string &text, const std::string &needl
     return count;
 }
 
-std::vector<zlink::framework::message_dispatch_error_event_t>
-wait_dispatch_errors (std::vector<zlink::framework::message_dispatch_error_event_t> &events,
+std::vector<zlink::framework::message_flow_event_t>
+wait_dispatch_errors (std::vector<zlink::framework::message_flow_event_t> &events,
                       std::mutex &mutex,
                       std::size_t expected)
 {
@@ -442,7 +445,7 @@ wait_dispatch_errors (std::vector<zlink::framework::message_dispatch_error_event
     return events;
 }
 
-void clear_dispatch_errors (std::vector<zlink::framework::message_dispatch_error_event_t> &events,
+void clear_dispatch_errors (std::vector<zlink::framework::message_flow_event_t> &events,
                             std::mutex &mutex)
 {
     std::lock_guard lock (mutex);
@@ -789,7 +792,7 @@ int main ()
 
     zlink::framework::zlink_builder_t local_server;
     local_server.channel ("local").enable_server ().bind ("tcp://127.0.0.1:7401");
-    std::vector<zlink::framework::message_dispatch_error_event_t> dispatch_errors;
+    std::vector<zlink::framework::message_flow_event_t> dispatch_errors;
     std::mutex dispatch_errors_mutex;
     const auto dispatch_log_path =
       std::filesystem::temp_directory_path ()
@@ -798,7 +801,7 @@ int main ()
          + ".log");
     std::filesystem::remove (dispatch_log_path);
     zlink::framework::dispatch_options_t local_dispatch;
-    local_dispatch.set_message_dispatch_error_observer (
+    local_dispatch.set_message_flow_observer (
       std::make_shared<recording_dispatch_observer_t> (dispatch_errors, dispatch_errors_mutex,
                                                        dispatch_log_path));
     zlink::framework::detail::apply_dispatch_options (local_server, local_dispatch);
@@ -930,9 +933,9 @@ int main ()
              != zlink::framework::dispatch_error_surface_t::channel
         || observed_dispatch_errors[0].message_kind
              != zlink::framework::dispatch_message_kind_t::request
-        || observed_dispatch_errors[0].reason
+        || observed_dispatch_errors[0].error_reason
              != zlink::framework::dispatch_error_reason_t::handler_missing
-        || observed_dispatch_errors[0].action
+        || observed_dispatch_errors[0].error_action
              != zlink::framework::dispatch_error_action_t::reply_error
         || observed_dispatch_errors[0].packet_name.value_or ("") != "missing"
         || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
@@ -961,9 +964,9 @@ int main ()
              != zlink::framework::dispatch_error_surface_t::channel
         || observed_dispatch_errors[0].message_kind
              != zlink::framework::dispatch_message_kind_t::send
-        || observed_dispatch_errors[0].reason
+        || observed_dispatch_errors[0].error_reason
              != zlink::framework::dispatch_error_reason_t::handler_missing
-        || observed_dispatch_errors[0].action != zlink::framework::dispatch_error_action_t::drop
+        || observed_dispatch_errors[0].error_action != zlink::framework::dispatch_error_action_t::drop
         || observed_dispatch_errors[0].packet_name.value_or ("") != "missing-command"
         || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
         || observed_dispatch_errors[0].topic.value_or ("") != "command"
@@ -1002,9 +1005,9 @@ int main ()
              != zlink::framework::dispatch_error_surface_t::channel
         || observed_dispatch_errors[0].message_kind
              != zlink::framework::dispatch_message_kind_t::publish
-        || observed_dispatch_errors[0].reason
+        || observed_dispatch_errors[0].error_reason
              != zlink::framework::dispatch_error_reason_t::handler_missing
-        || observed_dispatch_errors[0].action != zlink::framework::dispatch_error_action_t::drop
+        || observed_dispatch_errors[0].error_action != zlink::framework::dispatch_error_action_t::drop
         || observed_dispatch_errors[0].packet_name.value_or ("") != "missing-publish"
         || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
         || observed_dispatch_errors[0].topic.value_or ("") != "publish"
@@ -1043,9 +1046,9 @@ int main ()
              != zlink::framework::dispatch_error_surface_t::channel
         || observed_dispatch_errors[0].message_kind
              != zlink::framework::dispatch_message_kind_t::request
-        || observed_dispatch_errors[0].reason
+        || observed_dispatch_errors[0].error_reason
              != zlink::framework::dispatch_error_reason_t::payload_decode_failed
-        || observed_dispatch_errors[0].action
+        || observed_dispatch_errors[0].error_action
              != zlink::framework::dispatch_error_action_t::reply_error
         || observed_dispatch_errors[0].packet_name.value_or ("") != "request"
         || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
@@ -1084,9 +1087,9 @@ int main ()
              != zlink::framework::dispatch_error_surface_t::channel
         || observed_dispatch_errors[0].message_kind
              != zlink::framework::dispatch_message_kind_t::request
-        || observed_dispatch_errors[0].reason
+        || observed_dispatch_errors[0].error_reason
              != zlink::framework::dispatch_error_reason_t::handler_exception
-        || observed_dispatch_errors[0].action
+        || observed_dispatch_errors[0].error_action
              != zlink::framework::dispatch_error_action_t::reply_error
         || observed_dispatch_errors[0].packet_name.value_or ("") != "throw"
         || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
@@ -2104,9 +2107,9 @@ int main ()
              != zlink::framework::dispatch_error_surface_t::route_mesh_channel
         || observed_dispatch_errors[0].message_kind
              != zlink::framework::dispatch_message_kind_t::request
-        || observed_dispatch_errors[0].reason
+        || observed_dispatch_errors[0].error_reason
              != zlink::framework::dispatch_error_reason_t::handler_missing
-        || observed_dispatch_errors[0].action
+        || observed_dispatch_errors[0].error_action
              != zlink::framework::dispatch_error_action_t::reply_error
         || observed_dispatch_errors[0].packet_name.value_or ("") != "request"
         || observed_dispatch_errors[0].channel_name.value_or ("") != "game.route"
@@ -2137,9 +2140,9 @@ int main ()
              != zlink::framework::dispatch_error_surface_t::spot_subscription
         || observed_dispatch_errors[0].message_kind
              != zlink::framework::dispatch_message_kind_t::publish
-        || observed_dispatch_errors[0].reason
+        || observed_dispatch_errors[0].error_reason
              != zlink::framework::dispatch_error_reason_t::handler_missing
-        || observed_dispatch_errors[0].action != zlink::framework::dispatch_error_action_t::drop
+        || observed_dispatch_errors[0].error_action != zlink::framework::dispatch_error_action_t::drop
         || observed_dispatch_errors[0].topic.value_or ("") != "missing-topic"
         || observed_dispatch_errors[0].spot_rid.value_or ("") != created_spot.spot_rid.value ()) {
         return 100;
@@ -2161,9 +2164,9 @@ int main ()
              != zlink::framework::dispatch_error_surface_t::spot_actor
         || observed_dispatch_errors[0].message_kind
              != zlink::framework::dispatch_message_kind_t::actor_request
-        || observed_dispatch_errors[0].reason
+        || observed_dispatch_errors[0].error_reason
              != zlink::framework::dispatch_error_reason_t::handler_missing
-        || observed_dispatch_errors[0].action
+        || observed_dispatch_errors[0].error_action
              != zlink::framework::dispatch_error_action_t::reply_error
         || observed_dispatch_errors[0].packet_name.value_or ("") != "MissingActorPacket"
         || observed_dispatch_errors[0].actor_id.value_or ("") != "actor-1"

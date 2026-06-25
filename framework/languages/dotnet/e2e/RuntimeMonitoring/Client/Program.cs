@@ -211,23 +211,23 @@ Console.WriteLine("runtime-monitoring e2e result=passed");
 
 static IHost CreateDiscoveryClientHost(ClientOptions options)
 {
-    return CreateClientHostCore(options, directEndpoint: null, traceNodeId: "client");
+    return CreateClientHostCore(options, directEndpoint: null, traceLabel: "client");
 }
 
-static IHost CreateDirectClientHost(ClientOptions options, string directEndpoint, string traceNodeId)
+static IHost CreateDirectClientHost(ClientOptions options, string directEndpoint, string traceLabel)
 {
-    return CreateClientHostCore(options, directEndpoint, traceNodeId, monitorClientSocket: false);
+    return CreateClientHostCore(options, directEndpoint, traceLabel, monitorClientSocket: false);
 }
 
-static IHost CreateMonitoredDirectClientHost(ClientOptions options, string directEndpoint, string traceNodeId)
+static IHost CreateMonitoredDirectClientHost(ClientOptions options, string directEndpoint, string traceLabel)
 {
-    return CreateClientHostCore(options, directEndpoint, traceNodeId, monitorClientSocket: true);
+    return CreateClientHostCore(options, directEndpoint, traceLabel, monitorClientSocket: true);
 }
 
 static IHost CreateClientHostCore(
     ClientOptions options,
     string? directEndpoint,
-    string traceNodeId,
+    string traceLabel,
     bool monitorClientSocket = false)
 {
     return Host.CreateDefaultBuilder()
@@ -243,8 +243,8 @@ static IHost CreateClientHostCore(
             {
                 framework.ConfigureDispatch()
                     .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                    .TraceLogFile(Path.Combine(options.LogDir, $"{traceNodeId}-flow.log"))
-                    .TraceNodeId(traceNodeId);
+                    .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
+                    .TraceLabel(traceLabel);
                 var channel = framework.AddClientServerChannel(RuntimeMonitoringNames.Channel);
                 if (directEndpoint is null)
                 {

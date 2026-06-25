@@ -72,10 +72,10 @@ internal sealed class ZLinkChannelPacketDispatcher(
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
 
-        if (_flow.Enabled(ZLinkMessageFlowPhase.Received))
+        if (_flow.Enabled(ZLinkMessageFlowOutcome.Received))
         {
             _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Received,
+                ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.Channel,
                 header.Kind == ZLinkMessageKind.Request
                     ? ZLinkDispatchMessageKind.Request
@@ -115,10 +115,10 @@ internal sealed class ZLinkChannelPacketDispatcher(
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts);
 
-        if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
         {
             _dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Received,
+                ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.Channel,
                 ZLinkDispatchMessageKind.Publish,
                 PacketName: header.MessageName,

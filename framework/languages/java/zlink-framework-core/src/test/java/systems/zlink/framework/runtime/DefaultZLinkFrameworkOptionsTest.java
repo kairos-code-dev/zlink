@@ -40,8 +40,9 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkDispatchMode;
-import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
-import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorObserver;
+import systems.zlink.framework.configuration.ZLinkDispatchFailure;
+import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
+import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -141,28 +142,28 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void configureDispatchRegistersMessageDispatchErrorObserver() {
+    void configureDispatchRegistersMessageFlowObserver() {
         DefaultZLinkFrameworkOptions byType = new DefaultZLinkFrameworkOptions();
         { var dispatch = byType.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(TestDispatchErrorObserver.class); };
+            dispatch.setMessageFlowObserver(TestMessageFlowObserver.class); };
 
         assertEquals(
-            TestDispatchErrorObserver.class,
-            byType.registration().dispatchOptions().messageDispatchErrorObserverType());
+            TestMessageFlowObserver.class,
+            byType.registration().dispatchOptions().messageFlowObserverType());
 
         DefaultZLinkFrameworkOptions byInstance = new DefaultZLinkFrameworkOptions();
-        TestDispatchErrorObserver observer = new TestDispatchErrorObserver();
+        TestMessageFlowObserver observer = new TestMessageFlowObserver();
         { var dispatch = byInstance.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(observer); };
+            dispatch.setMessageFlowObserver(observer); };
 
         assertEquals(
             observer,
-            byInstance.registration().dispatchOptions().messageDispatchErrorObserver());
+            byInstance.registration().dispatchOptions().messageFlowObserver());
     }
 
     @Test
     void dispatchErrorReporterIsolatesObserverFailures() {
-        ZLinkMessageDispatchErrorEvent error = new ZLinkMessageDispatchErrorEvent(
+        ZLinkDispatchFailure error = new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.CHANNEL,
             ZLinkDispatchMessageKind.REQUEST,
             ZLinkDispatchErrorReason.HANDLER_MISSING,
@@ -174,11 +175,12 @@ final class DefaultZLinkFrameworkOptionsTest {
             null,
             null,
             "corr-1",
+            null,
             null);
 
         DefaultZLinkFrameworkOptions callbackFailure = new DefaultZLinkFrameworkOptions();
         { var dispatch = callbackFailure.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(new ThrowingDispatchErrorObserver()); };
+            dispatch.setMessageFlowObserver(new ThrowingMessageFlowObserver()); };
         ZLinkDispatchErrorReporter callbackReporter = new ZLinkDispatchErrorReporter(
             callbackFailure.registration().dispatchOptions(),
             ZLinkHandlerFactory.reflection(),
@@ -190,7 +192,7 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         DefaultZLinkFrameworkOptions factoryFailure = new DefaultZLinkFrameworkOptions();
         { var dispatch = factoryFailure.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(TestDispatchErrorObserver.class); };
+            dispatch.setMessageFlowObserver(TestMessageFlowObserver.class); };
         ZLinkDispatchErrorReporter factoryReporter = new ZLinkDispatchErrorReporter(
             factoryFailure.registration().dispatchOptions(),
             ignored -> { throw new IllegalStateException("factory failed"); },
@@ -212,7 +214,7 @@ final class DefaultZLinkFrameworkOptionsTest {
 
     @Test
     void dispatchErrorReporterDefersObserverConstructionToExecutor() {
-        ZLinkMessageDispatchErrorEvent error = new ZLinkMessageDispatchErrorEvent(
+        ZLinkDispatchFailure error = new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.CHANNEL,
             ZLinkDispatchMessageKind.REQUEST,
             ZLinkDispatchErrorReason.HANDLER_MISSING,
@@ -224,10 +226,11 @@ final class DefaultZLinkFrameworkOptionsTest {
             null,
             null,
             "corr-1",
+            null,
             null);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var dispatch = options.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(TestDispatchErrorObserver.class); };
+            dispatch.setMessageFlowObserver(TestMessageFlowObserver.class); };
         List<Runnable> queued = new ArrayList<>();
         AtomicBoolean factoryCalled = new AtomicBoolean(false);
         ZLinkDispatchErrorReporter reporter = new ZLinkDispatchErrorReporter(
@@ -347,16 +350,12 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         RoutingId nodeRid =
             RoutingId.from("spot-node-1");
-        RoutingId pubSubRid =
-            RoutingId.from("spot-pub-1");
 
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
-                node.setRouterRoutingId(nodeRid).connectRouter("inproc://spot-router-peer");
-                node.setPubSubRoutingId(pubSubRid).connectPeerPub("inproc://spot-pub-peer"); }; };
+                node.setRoutingId(nodeRid).connectRouter("inproc://spot-router-peer");
+                node.connectPeerPub("inproc://spot-pub-peer"); }; };
 
         options.validate();
-        assertEquals(nodeRid, options.registration().spotNodes().get(0).routerRoutingId());
-        assertEquals(pubSubRid, options.registration().spotNodes().get(0).pubSubRoutingId());
         assertEquals(nodeRid, options.registration().spotNodes().get(0).nodeRoutingId());
         assertEquals(
             "inproc://spot-router-peer",
@@ -378,15 +377,13 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void spotNodeRejectsConflictingRouterAndPubSubRoutingIds() {
+    void spotNodeRejectsReplacingRoutingId() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(
                         RoutingId.from("node-a"));
-                node.setPubSubRoutingId(
-                        RoutingId.from("node-b")); }; };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
+                assertThrows(ZLinkConfigurationException.class, () -> node.setRoutingId(
+                        RoutingId.from("node-b"))); }; };
     }
 
     @Test
@@ -848,18 +845,18 @@ final class DefaultZLinkFrameworkOptionsTest {
         }
     }
 
-    public static final class TestDispatchErrorObserver
-        implements ZLinkMessageDispatchErrorObserver {
+    public static final class TestMessageFlowObserver
+        implements ZLinkMessageFlowObserver {
         @Override
-        public CompletionStage<Void> onDispatchError(ZLinkMessageDispatchErrorEvent error) {
+        public CompletionStage<Void> onMessageFlow(ZLinkMessageFlowEvent error) {
             return CompletableFuture.completedFuture(null);
         }
     }
 
-    public static final class ThrowingDispatchErrorObserver
-        implements ZLinkMessageDispatchErrorObserver {
+    public static final class ThrowingMessageFlowObserver
+        implements ZLinkMessageFlowObserver {
         @Override
-        public CompletionStage<Void> onDispatchError(ZLinkMessageDispatchErrorEvent error) {
+        public CompletionStage<Void> onMessageFlow(ZLinkMessageFlowEvent error) {
             throw new IllegalStateException("observer failed");
         }
     }

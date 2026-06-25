@@ -32,10 +32,9 @@ internal static class Program
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(missionName))
-                .TraceNodeId(missionName);
+                .TraceLabel(missionName);
             options.Codecs.AddJson();
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
@@ -52,7 +51,7 @@ internal static class Program
                     var spot = mesh;
                     {
                         var router = spot.EnableRouter(instance.SpotRouterEndpoint);
-                        router.SetRouterRoutingId(instance.SpotRid);
+                        router.SetRoutingId(instance.SpotRid);
 
                     }
                     spot.EnablePubSub(instance.SpotEndpoint);

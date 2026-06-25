@@ -15,8 +15,7 @@ import type {
   ZLinkSpotPublisherClient,
   Type,
   RoutingId,
-  ZLinkMessageDispatchErrorObserver,
-  ZLinkMessageDispatchErrorEvent,
+  ZLinkDispatchFailure,
   ZLinkProviderResolver
 } from '../../contracts';
 import type { ZLinkDiagnosticsContext, ZLinkMessageFlowModeCell } from '../diagnostics';
@@ -36,7 +35,7 @@ import {
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind,
   ZLinkMessageFlowLogMode,
-  ZLinkMessageFlowPhase,
+  ZLinkMessageFlowOutcome,
   ZLinkMessageFlowEvent,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
@@ -70,6 +69,11 @@ import {
 } from '../backend/contracts';
 import type { ZLinkRuntimeErrorSink, ZLinkRuntimeTaskRunner } from '../execution';
 import { ZLinkAsyncSubmitter } from '../messaging';
+
+type ZLinkRuntimeDispatchFailure = ZLinkDispatchFailure & {
+  readonly error?: unknown;
+};
+
 import {
   closeMessages,
   decodeChannelEnvelope,
@@ -270,9 +274,6 @@ export interface ZLinkDispatchErrorSink {
 
 export class ZLinkDispatchErrorReporter {
   private reportedEvents = 0;
-  private observerFailures = 0;
-  private readonly observerType: Type<ZLinkMessageDispatchErrorObserver> | undefined;
-  private readonly providerResolver: ZLinkProviderResolver | undefined;
   private readonly ctx: ZLinkDiagnosticsContext | undefined;
   /**
    * Success-path tracer companion: every surface already receives a reporter, so
@@ -282,14 +283,12 @@ export class ZLinkDispatchErrorReporter {
   readonly flow: ZLinkMessageFlowTracer;
 
   constructor(
-    observerType: Type<ZLinkMessageDispatchErrorObserver> | undefined,
+    _observerType: undefined,
     providerResolver: ZLinkProviderResolver | undefined,
     private readonly errorSink: ZLinkDispatchErrorSink,
     ctx?: ZLinkDiagnosticsContext
   ) {
     this.ctx = ctx;
-    this.observerType = ctx?.messageDispatchErrorObserverType ?? observerType;
-    this.providerResolver = ctx?.providerResolver ?? providerResolver;
     const flowCtx: ZLinkDiagnosticsContext = ctx ?? {
       diagnostics: {},
       liveMode: { mode: ZLinkMessageFlowLogMode.ErrorsOnly },
@@ -298,34 +297,24 @@ export class ZLinkDispatchErrorReporter {
     this.flow = new ZLinkMessageFlowTracer(flowCtx, errorSink);
   }
 
-  report(event: ZLinkMessageDispatchErrorEvent): void {
+  report(event: ZLinkRuntimeDispatchFailure): void {
+    const errorInfo = dispatchErrorInfo(event);
     this.reportedEvents += 1;
-    // off silences the default error log; every other mode keeps reporting errors
-    // (errorsOnly is the default). A registered observer still fires.
-    const mode = this.ctx !== undefined ? effectiveMessageFlow(this.ctx) : ZLinkMessageFlowLogMode.ErrorsOnly;
-    if (mode !== ZLinkMessageFlowLogMode.Off) {
-      const line = errorLine(event, this.ctx?.diagnostics.nodeId);
-      if (this.ctx?.diagnostics.logFile !== undefined) {
-        writeTraceFile(this.ctx.diagnostics.logFile, line);
-      } else {
-        const reportedError = new Error(line) as Error & { cause?: unknown };
-        if (event.error !== undefined) {
-          reportedError.cause = event.error;
-        }
-        this.errorSink.reportRuntimeTaskException('dispatch-error', reportedError);
-      }
-    }
-    const observerType = this.observerType;
-    if (observerType === undefined) {
-      return;
-    }
-    queueMicrotask(() => {
-      void this.resolveObserver(observerType)
-        .then((observer) => observer.onDispatchError(event))
-        .catch((error) => {
-          this.observerFailures += 1;
-          this.errorSink.reportRuntimeTaskException('dispatch-error-observer', error);
-        });
+    this.flow.trace({
+      outcome: ZLinkMessageFlowOutcome.Error,
+      surface: event.surface,
+      messageKind: event.messageKind,
+      packetName: event.packetName,
+      channelName: event.channelName,
+      topic: event.topic,
+      correlationId: event.correlationId,
+      sourceRid: event.sourceRid,
+      spotRid: event.spotRid,
+      actorId: event.actorId,
+      errorReason: event.reason,
+      errorAction: event.action,
+      errorType: errorInfo.errorType,
+      errorMessage: errorInfo.errorMessage
     });
   }
 
@@ -334,25 +323,24 @@ export class ZLinkDispatchErrorReporter {
   }
 
   get observerFailureCount(): number {
-    return this.observerFailures;
-  }
-
-  private async resolveObserver(
-    observerType: Type<ZLinkMessageDispatchErrorObserver>
-  ): Promise<ZLinkMessageDispatchErrorObserver> {
-    const existing = this.providerResolver?.get?.(observerType);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const created = await this.providerResolver?.create?.(observerType);
-    if (created !== undefined) {
-      return created;
-    }
-    return new observerType();
+    return this.flow.observerFailureCount;
   }
 }
 
-function formatDispatchErrorEvent(event: ZLinkMessageDispatchErrorEvent): string {
+function dispatchErrorInfo(event: ZLinkRuntimeDispatchFailure): { readonly errorType?: string; readonly errorMessage?: string } {
+  if (event.errorType !== undefined || event.errorMessage !== undefined) {
+    return { errorType: event.errorType, errorMessage: event.errorMessage };
+  }
+  if (event.error === undefined) {
+    return {};
+  }
+  if (event.error instanceof Error) {
+    return { errorType: event.error.name, errorMessage: event.error.message };
+  }
+  return { errorType: typeof event.error, errorMessage: String(event.error) };
+}
+
+function formatDispatchErrorEvent(event: ZLinkDispatchFailure): string {
   return [
     `surface=${event.surface}`,
     `messageKind=${event.messageKind}`,
@@ -616,7 +604,7 @@ export class ZLinkChannelRuntimeManager {
   }
 
   private traceOutbound(
-    phase: ZLinkMessageFlowPhase,
+    outcome: ZLinkMessageFlowOutcome,
     surface: ZLinkDispatchErrorSurface,
     messageKind: ZLinkDispatchMessageKind,
     channelName: string,
@@ -625,8 +613,8 @@ export class ZLinkChannelRuntimeManager {
     topic?: string,
     sourceRid?: string
   ): void {
-    flowIfEnabled(this.outboundFlow(), phase)?.trace({
-      phase,
+    flowIfEnabled(this.outboundFlow(), outcome)?.trace({
+      outcome,
       surface,
       messageKind,
       channelName,
@@ -646,7 +634,7 @@ export class ZLinkChannelRuntimeManager {
       () => dealer.send(parts, 0),
       signal
     );
-    this.traceOutbound(ZLinkMessageFlowPhase.Sent, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Send, channelName, packetName, correlationId);
+    this.traceOutbound(ZLinkMessageFlowOutcome.Sent, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Send, channelName, packetName, correlationId);
   }
 
   async request<TReply>(
@@ -660,7 +648,7 @@ export class ZLinkChannelRuntimeManager {
     const dealer = this.sockets.clientDealer(channelName);
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs, undefined, this.codecs, correlationId) as readonly Message[];
-    this.traceOutbound(ZLinkMessageFlowPhase.Sent, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Request, channelName, packetName, correlationId);
+    this.traceOutbound(ZLinkMessageFlowOutcome.Sent, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Request, channelName, packetName, correlationId);
     return this.sockets.requireSubmitter(dealer).submitRequest(
       (resolve, reject) => dealer.request(
         parts,
@@ -671,7 +659,7 @@ export class ZLinkChannelRuntimeManager {
               return;
             }
             const reply = decodeChannelReply<TReply>(parts as readonly Message[], this.codecs);
-            this.traceOutbound(ZLinkMessageFlowPhase.ReplyReceived, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Request, channelName, packetName, correlationId);
+            this.traceOutbound(ZLinkMessageFlowOutcome.ReplyReceived, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Request, channelName, packetName, correlationId);
             resolve(reply);
           } catch (error) {
             reject(error);
@@ -699,7 +687,7 @@ export class ZLinkChannelRuntimeManager {
       ),
       signal
     );
-    this.traceOutbound(ZLinkMessageFlowPhase.Sent, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Publish, channelName, packetName, correlationId, topic);
+    this.traceOutbound(ZLinkMessageFlowOutcome.Sent, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Publish, channelName, packetName, correlationId, topic);
   }
 
   async routeSend(
@@ -726,7 +714,7 @@ export class ZLinkChannelRuntimeManager {
       () => router.send(targetNodeRid, parts, 0),
       signal
     );
-    this.traceOutbound(ZLinkMessageFlowPhase.Sent, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Send, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
+    this.traceOutbound(ZLinkMessageFlowOutcome.Sent, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Send, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
   }
 
   async routeRequest<TReply>(
@@ -750,7 +738,7 @@ export class ZLinkChannelRuntimeManager {
       codecsForFrameworkPacket(packetName, this.codecs),
       correlationId
     ) as readonly Message[];
-    this.traceOutbound(ZLinkMessageFlowPhase.Sent, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Request, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
+    this.traceOutbound(ZLinkMessageFlowOutcome.Sent, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Request, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
     return this.sockets.requireSubmitter(router).submitRequest(
       (resolve, reject) => {
         const submitted = router.request(
@@ -763,7 +751,7 @@ export class ZLinkChannelRuntimeManager {
                 return;
               }
               const reply = decodeChannelReply<TReply>(parts as readonly Message[], this.codecs);
-              this.traceOutbound(ZLinkMessageFlowPhase.ReplyReceived, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Request, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
+              this.traceOutbound(ZLinkMessageFlowOutcome.ReplyReceived, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Request, routerChannelId, packetName, correlationId, undefined, targetNodeRid);
               resolve(reply);
             } catch (error) {
               reject(error);
@@ -1605,15 +1593,15 @@ export class ZLinkChannelRequestDispatcher {
   }
 
   private traceChannelFlow(
-    phase: ZLinkMessageFlowPhase,
+    outcome: ZLinkMessageFlowOutcome,
     messageKind: ZLinkDispatchMessageKind,
     packetName: string,
     correlationId: string | undefined
   ): void {
     const flow = this.options.dispatchErrors.flow;
-    if (flow.enabled(phase)) {
+    if (flow.enabled(outcome)) {
       flow.trace({
-        phase,
+        outcome,
         surface: ZLinkDispatchErrorSurface.Channel,
         messageKind,
         packetName,
@@ -1649,7 +1637,7 @@ export class ZLinkChannelRequestDispatcher {
     }
     const correlationId = envelope.header.correlationId ?? undefined;
     if (envelope.header.kind === ZLinkChannelMessageKind.Command) {
-      this.traceChannelFlow(ZLinkMessageFlowPhase.Received, ZLinkDispatchMessageKind.Send, packetName, correlationId);
+      this.traceChannelFlow(ZLinkMessageFlowOutcome.Received, ZLinkDispatchMessageKind.Send, packetName, correlationId);
       const handler = this.options.sendHandlers?.get(packetName);
       if (handler === undefined) {
         this.options.dispatchErrors.report({
@@ -1674,7 +1662,7 @@ export class ZLinkChannelRequestDispatcher {
           { context, handler },
           () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
         );
-        this.traceChannelFlow(ZLinkMessageFlowPhase.Dispatched, ZLinkDispatchMessageKind.Send, packetName, correlationId);
+        this.traceChannelFlow(ZLinkMessageFlowOutcome.Dispatched, ZLinkDispatchMessageKind.Send, packetName, correlationId);
       } catch (error) {
         this.options.dispatchErrors.report({
           surface: ZLinkDispatchErrorSurface.Channel,
@@ -1725,7 +1713,7 @@ export class ZLinkChannelRequestDispatcher {
       throw new ZLinkConfigurationException('Channel request cannot be replied to because requestSeq is missing.');
     }
 
-    this.traceChannelFlow(ZLinkMessageFlowPhase.Received, ZLinkDispatchMessageKind.Request, packetName, correlationId);
+    this.traceChannelFlow(ZLinkMessageFlowOutcome.Received, ZLinkDispatchMessageKind.Request, packetName, correlationId);
     const context: ZLinkHandlerContext = {
       channelName: this.options.channelName,
       contentType: envelope.header.contentType,
@@ -1742,7 +1730,7 @@ export class ZLinkChannelRequestDispatcher {
           router.reply(received.routingId, received.requestSeq),
           encodeChannelReplyParts(envelope.header, reply, this.options.codecs)
         ).submit();
-        this.traceChannelFlow(ZLinkMessageFlowPhase.Replied, ZLinkDispatchMessageKind.Request, packetName, correlationId);
+        this.traceChannelFlow(ZLinkMessageFlowOutcome.Replied, ZLinkDispatchMessageKind.Request, packetName, correlationId);
       } catch (error) {
         this.options.dispatchErrors.report({
           surface: ZLinkDispatchErrorSurface.Channel,
@@ -1883,9 +1871,9 @@ export class ZLinkChannelPublishDispatcher {
     const publishSource = envelope.header.source ?? undefined;
     const publishCorr = envelope.header.correlationId ?? undefined;
     const flow = this.options.dispatchErrors.flow;
-    if (flow.enabled(ZLinkMessageFlowPhase.Received)) {
+    if (flow.enabled(ZLinkMessageFlowOutcome.Received)) {
       flow.trace({
-        phase: ZLinkMessageFlowPhase.Received,
+        outcome: ZLinkMessageFlowOutcome.Received,
         surface: ZLinkDispatchErrorSurface.Channel,
         messageKind: ZLinkDispatchMessageKind.Publish,
         packetName,
@@ -1924,9 +1912,9 @@ export class ZLinkChannelPublishDispatcher {
         { context, handler },
         () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
       );
-      if (flow.enabled(ZLinkMessageFlowPhase.Dispatched)) {
+      if (flow.enabled(ZLinkMessageFlowOutcome.Dispatched)) {
         flow.trace({
-          phase: ZLinkMessageFlowPhase.Dispatched,
+          outcome: ZLinkMessageFlowOutcome.Dispatched,
           surface: ZLinkDispatchErrorSurface.Channel,
           messageKind: ZLinkDispatchMessageKind.Publish,
           packetName,
@@ -2044,16 +2032,16 @@ export class ZLinkRoutePacketDispatcher {
   private readonly rawBridgeReplyHandler?: ZLinkRoutePacketDispatcherOptions['rawBridgeReplyHandler'];
 
   private traceRouteFlow(
-    phase: ZLinkMessageFlowPhase,
+    outcome: ZLinkMessageFlowOutcome,
     messageKind: ZLinkDispatchMessageKind,
     packetName: string,
     correlationId: string | undefined,
     sourceRid: string
   ): void {
     const flow = this.dispatchErrors.flow;
-    if (flow.enabled(phase)) {
+    if (flow.enabled(outcome)) {
       flow.trace({
-        phase,
+        outcome,
         surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
         messageKind,
         packetName,
@@ -2106,7 +2094,7 @@ export class ZLinkRoutePacketDispatcher {
     const routeCorr = envelope.header.correlationId ?? undefined;
     const routeSource = String(received.routingId);
     if (envelope.header.kind === ZLinkChannelMessageKind.Command) {
-      this.traceRouteFlow(ZLinkMessageFlowPhase.Received, ZLinkDispatchMessageKind.Send, packetName, routeCorr, routeSource);
+      this.traceRouteFlow(ZLinkMessageFlowOutcome.Received, ZLinkDispatchMessageKind.Send, packetName, routeCorr, routeSource);
       const handler = this.sendHandlers.get(packetName);
       if (handler === undefined) {
         this.dispatchErrors.report({
@@ -2126,7 +2114,7 @@ export class ZLinkRoutePacketDispatcher {
           decodeChannelPayload(envelope, codecsForFrameworkPacket(packetName, this.codecs)),
           this.createRouteContext(packetName, received.routingId)
         );
-        this.traceRouteFlow(ZLinkMessageFlowPhase.Dispatched, ZLinkDispatchMessageKind.Send, packetName, routeCorr, routeSource);
+        this.traceRouteFlow(ZLinkMessageFlowOutcome.Dispatched, ZLinkDispatchMessageKind.Send, packetName, routeCorr, routeSource);
       } catch (error) {
         this.dispatchErrors.report({
           surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
@@ -2161,7 +2149,7 @@ export class ZLinkRoutePacketDispatcher {
       throw new ZLinkConfigurationException('Route request cannot be replied to because requestSeq is missing.');
     }
 
-    this.traceRouteFlow(ZLinkMessageFlowPhase.Received, ZLinkDispatchMessageKind.Request, packetName, routeCorr, routeSource);
+    this.traceRouteFlow(ZLinkMessageFlowOutcome.Received, ZLinkDispatchMessageKind.Request, packetName, routeCorr, routeSource);
     const handler = this.requestHandlers.get(packetName);
     if (handler === undefined) {
       appendParts(
@@ -2191,7 +2179,7 @@ export class ZLinkRoutePacketDispatcher {
         router.reply(received.routingId, received.requestSeq),
         encodeChannelReplyParts(envelope.header, reply, codecs)
       ).submit();
-      this.traceRouteFlow(ZLinkMessageFlowPhase.Replied, ZLinkDispatchMessageKind.Request, packetName, routeCorr, routeSource);
+      this.traceRouteFlow(ZLinkMessageFlowOutcome.Replied, ZLinkDispatchMessageKind.Request, packetName, routeCorr, routeSource);
     } catch (error) {
       appendParts(
         router.reply(received.routingId, received.requestSeq),

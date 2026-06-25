@@ -34,7 +34,7 @@ class SessionApplication {
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-session.log")
-                traceNodeId("session")
+                traceLabel("session")
             }
             options.configureStreamCompression {
                 useLz4()
@@ -59,9 +59,8 @@ class SessionApplication {
             val node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)
 
             node.enableRouter(SampleTopology.SessionSpotRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid))
+                .setRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid))
             node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionSpotPubRid))
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.SessionStreamEndpoint)
                 .registerSession(CustomerSession::class.java)

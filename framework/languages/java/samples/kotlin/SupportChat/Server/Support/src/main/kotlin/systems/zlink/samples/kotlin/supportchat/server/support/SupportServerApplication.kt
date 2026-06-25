@@ -43,7 +43,7 @@ class SupportServerApplication {
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("SUPPORTCHAT_LOG_DIR") ?: "logs") + "/flow-support.log")
-                traceNodeId("support")
+                traceLabel("support")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addHandlersFromPackageOf(SupportServerApplication::class.java)
@@ -58,14 +58,14 @@ class SupportServerApplication {
             route.setRoutingId(RoutingId.from(SampleTopology.SupportRid))
             options.useRegistrySpotRemoteAddresses(SampleNames.SupportSpotDiscovery)
                 .setRouterChannelId(SampleNames.SupportRouteChannel)
-            options.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory::class.java)
             val node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
 
             node.enableRouter(SampleTopology.SupportSpotRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.SupportRid))
+                .setRoutingId(RoutingId.from(SampleTopology.SupportRid))
             node.enablePubSub(SampleTopology.SupportSpotEndpoint)
             node.addEntrySpot(SupportEntrySpot::class.java)
             node.addSpotFactory(ConversationSpot::class.java)
+            node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory::class.java)
         }
 
     @Bean

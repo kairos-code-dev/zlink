@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\.Program'
+role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\.ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -224,7 +224,7 @@ run_client_mode() {
       ZLINK_KOTLIN_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
       ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-        timeout 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
+        timeout -k 5s 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
     set -e
     if [[ "${status}" == "0" ]] || grep -q "spot-service kotlin e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then

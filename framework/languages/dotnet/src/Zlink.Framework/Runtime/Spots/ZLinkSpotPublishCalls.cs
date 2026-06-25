@@ -66,10 +66,10 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             runtime.Registration.Codecs,
             correlationId);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
+                ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.SpotSubscription,
                 ZLinkDispatchMessageKind.Publish,
                 PacketName: packetName,

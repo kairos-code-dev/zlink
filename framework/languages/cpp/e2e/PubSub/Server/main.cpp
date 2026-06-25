@@ -78,8 +78,11 @@ class evidence_state_t
         events.push_back ({subscriber_id, std::move (topic), std::move (value)});
     }
 
-    void record_error (const zlink::framework::message_dispatch_error_event_t &error)
+    void record_error (const zlink::framework::message_flow_event_t &error)
     {
+        if (error.outcome != zlink::framework::message_flow_outcome_t::error) {
+            return;
+        }
         std::string message;
         if (error.exception) {
             try {
@@ -93,8 +96,8 @@ class evidence_state_t
             }
         }
         std::lock_guard lock (_mutex);
-        errors.push_back ({kind_name (error.message_kind), reason_name (error.reason),
-                           action_name (error.action), error.packet_name.value_or (""),
+        errors.push_back ({kind_name (error.message_kind), reason_name (*error.error_reason),
+                           action_name (*error.error_action), error.packet_name.value_or (""),
                            error.topic.value_or (""), std::move (message)});
     }
 
@@ -188,7 +191,7 @@ int main (int argc, char **argv)
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (log_dir + "/registry-flow.log")
-              .trace_node_id ("cpp-ps-registry");
+              .trace_label ("cpp-ps-registry");
             options.enable_registry (pub, router);
         });
         return app.run (argc, argv);
@@ -210,9 +213,9 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/" + subscriber_id + "-flow.log")
-          .trace_node_id ("cpp-ps-" + subscriber_id)
-          .set_message_dispatch_error_observer (
-            [state_ptr] (const zlink::framework::message_dispatch_error_event_t &error) {
+          .trace_label ("cpp-ps-" + subscriber_id)
+          .set_message_flow_observer (
+            [state_ptr] (const zlink::framework::message_flow_event_t &error) {
                 state_ptr->record_error (error);
             });
         options.services ().add_singleton<evidence_state_t> (std::move (state));

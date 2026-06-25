@@ -30,7 +30,6 @@ import type { ZLinkCodecExtension, ZLinkCodecRegistryBuilder, ZLinkMessageSerial
 import type {
   ZLinkDispatchOptions,
   ZLinkDispatchOptionsBuilder,
-  ZLinkMessageDispatchErrorObserver,
   ZLinkMessageFlowLogMode,
   ZLinkMessageFlowObserver
 } from '../Dispatch';
@@ -109,7 +108,6 @@ export interface ZLinkCodecRegistryOptions {
 export interface ZLinkFrameworkRegistrationOptions {
   readonly codecs?: ZLinkCodecRegistryOptions;
   readonly requestTimeoutMs?: number;
-  readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
   readonly discovery?: ZLinkDiscoveryOptions;
@@ -186,11 +184,13 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 }
 
 export interface ZLinkSpotNodeOptions {
+  readonly routingId?: string;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
   readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
   readonly entrySpot?: ZLinkEntrySpotOptions;
   readonly entrySpotType?: Type<ZLinkEntrySpot>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
+  readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
   readonly entrySpotTimerHandlers?: readonly ZLinkEntrySpotTimerHandlerRegistration[];
   readonly entrySpotActorSendHandlers?: readonly ZLinkEntrySpotActorSendHandlerRegistration[];
   readonly entrySpotActorRequestHandlers?: readonly ZLinkEntrySpotActorRequestHandlerRegistration[];
@@ -325,7 +325,7 @@ export function createFrameworkRegistration(
     messageSerializers: codecRegistry.registeredSerializers,
     codecs: codecRegistry.registration,
     requestTimeoutMs: normalizeOptionalPositiveInteger(options.requestTimeoutMs, 'requestTimeoutMs'),
-    actorFactories: toTypeMap(options.actorFactories),
+    actorFactories: actorFactoriesFromSpotNodes(spotNodes),
     spotFactories: toSpotFactorySet(options.spotFactories, spotNodes),
     channels: toChannelMap(options.channels),
     channelClients: channelNamesWith(options.channels, (channel) => channel.client !== undefined),
@@ -478,11 +478,6 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
 class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilder {
   constructor(private readonly dispatch: ZLinkDispatchOptions) {}
 
-  setMessageDispatchErrorObserver(observerType: Type<ZLinkMessageDispatchErrorObserver>): this {
-    this.dispatch.messageDispatchErrorObserverType = observerType;
-    return this;
-  }
-
   setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this {
     this.dispatch.messageFlowObserverType = observerType;
     return this;
@@ -508,8 +503,8 @@ class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilder {
     return this;
   }
 
-  traceNodeId(id: string): this {
-    (this.dispatch.diagnostics ??= {}).nodeId = id;
+  traceLabel(id: string): this {
+    (this.dispatch.diagnostics ??= {}).label = id;
     return this;
   }
 }
@@ -669,6 +664,11 @@ class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
     return this.root.useDiscovery();
   }
 
+  routingId(routingId: RoutingId): this {
+    this.node.routingId(routingId);
+    return this;
+  }
+
   enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this {
     this.node.enableRouter(endpoint, routingId, connect);
     return this;
@@ -685,11 +685,6 @@ class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
     return this;
   }
 
-  routerRoutingId(routingId: RoutingId): this {
-    this.node.routerRoutingId(routingId);
-    return this;
-  }
-
   enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this {
     this.node.enablePubSub(endpoint, routingId, connect);
     return this;
@@ -697,16 +692,6 @@ class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
 
   connectPeerPub(endpoint: string): this {
     this.node.connectPeerPub(endpoint);
-    return this;
-  }
-
-  connectPubSub(endpoint: string): this {
-    this.node.connectPubSub(endpoint);
-    return this;
-  }
-
-  pubSubRoutingId(routingId: RoutingId): this {
-    this.node.pubSubRoutingId(routingId);
     return this;
   }
 
@@ -724,6 +709,11 @@ class DefaultSpotMeshBuilder implements ZLinkSpotMeshBuilder {
     this.node.addSpotFactory(spotType);
     return this;
   }
+
+  actorFactory(actorType: string, factoryType: Type): this {
+    this.node.actorFactory(actorType, factoryType);
+    return this;
+  }
 }
 
 class DefaultDiscoveryBuilder implements ZLinkDiscoveryBuilder {
@@ -738,11 +728,22 @@ class DefaultDiscoveryBuilder implements ZLinkDiscoveryBuilder {
 class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
   constructor(private readonly spotNode: MutableSpotNodeOptions) {}
 
+  routingId(routingId: RoutingId): this {
+    this.spotNode.routingId = routingId;
+    if (this.spotNode.router !== undefined) {
+      this.spotNode.router.routingId = routingId;
+    }
+    if (this.spotNode.pubSub !== undefined) {
+      this.spotNode.pubSub.routingId = routingId;
+    }
+    return this;
+  }
+
   enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this {
     this.spotNode.router = {
       ...(this.spotNode.router ?? {}),
       bind: endpoint,
-      routingId,
+      routingId: routingId ?? this.spotNode.routingId,
       manualConnections: connect === undefined ? this.spotNode.router?.manualConnections : endpointList(connect)
     };
     return this;
@@ -765,17 +766,11 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
-  routerRoutingId(routingId: RoutingId): this {
-    this.spotNode.router ??= { manualConnections: [] };
-    this.spotNode.router.routingId = routingId;
-    return this;
-  }
-
   enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this {
     this.spotNode.pubSub = {
       ...(this.spotNode.pubSub ?? {}),
       bind: endpoint,
-      routingId,
+      routingId: routingId ?? this.spotNode.routingId,
       manualConnections: connect === undefined ? this.spotNode.pubSub?.manualConnections : endpointList(connect)
     };
     return this;
@@ -785,16 +780,6 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     this.spotNode.pubSub ??= { manualConnections: [] };
     this.spotNode.pubSub.manualConnections ??= [];
     this.spotNode.pubSub.manualConnections.push(endpoint);
-    return this;
-  }
-
-  connectPubSub(endpoint: string): this {
-    return this.connectPeerPub(endpoint);
-  }
-
-  pubSubRoutingId(routingId: RoutingId): this {
-    this.spotNode.pubSub ??= { manualConnections: [] };
-    this.spotNode.pubSub.routingId = routingId;
     return this;
   }
 
@@ -817,6 +802,20 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
       throw new ZLinkConfigurationException('Duplicate SPOT factory registration on SpotNode.');
     }
     this.spotNode.spotFactories.push(spotType);
+    return this;
+  }
+
+  actorFactory(actorType: string, factoryType: Type): this {
+    const type = actorType.trim();
+    if (type.length === 0 || type !== actorType) {
+      throw new ZLinkConfigurationException('Actor factory type must not be empty or padded.');
+    }
+    const actorFactories = typeMapToRecord(this.spotNode.actorFactories);
+    if (actorFactories[type] !== undefined) {
+      throw new ZLinkConfigurationException(`Duplicate actor factory '${type}' on SpotNode.`);
+    }
+    actorFactories[type] = factoryType;
+    this.spotNode.actorFactories = actorFactories;
     return this;
   }
 
@@ -982,11 +981,13 @@ interface MutableStreamCompressionOptions {
 }
 
 interface MutableSpotNodeOptions {
+  routingId?: string;
   router?: MutableSpotRouterCapabilityOptions;
   pubSub?: MutableSpotPubSubCapabilityOptions;
   entrySpot?: ZLinkEntrySpotOptions;
   entrySpotType?: Type<ZLinkEntrySpot>;
   spotFactories?: Type<ZLinkSpot>[];
+  actorFactories?: Record<string, Type>;
 }
 
 interface MutableSpotRouterCapabilityOptions {
@@ -1120,7 +1121,7 @@ export function hasSpotRemoteAddressResolver(registration: ZLinkFrameworkRegistr
   return registration.hasSpotRemoteAddressResolver || registration.hasRegistrySpotRemoteAddresses;
 }
 
-function toTypeMap(value: ZLinkFrameworkRegistrationOptions['actorFactories']): Map<string, Type> {
+function toTypeMap(value: ZLinkSpotNodeOptions['actorFactories']): Map<string, Type> {
   if (value === undefined) {
     return new Map();
   }
@@ -1130,20 +1131,57 @@ function toTypeMap(value: ZLinkFrameworkRegistrationOptions['actorFactories']): 
   return new Map(Object.entries(value));
 }
 
+function typeMapToRecord(value: ZLinkSpotNodeOptions['actorFactories']): Record<string, Type> {
+  if (value === undefined) {
+    return {};
+  }
+  if (isTypeMap(value)) {
+    return Object.fromEntries(value) as Record<string, Type>;
+  }
+  return { ...(value as Readonly<Record<string, Type>>) };
+}
+
+function isTypeMap(value: ZLinkSpotNodeOptions['actorFactories']): value is Map<string, Type> {
+  return value instanceof Map;
+}
+
+function actorFactoriesFromSpotNodes(spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>): Map<string, Type> {
+  const actorCapableNodes = [...spotNodes.values()].filter((spotNode) => toTypeMap(spotNode.actorFactories).size > 0);
+  if (actorCapableNodes.length === 0) {
+    return new Map();
+  }
+  return toTypeMap(actorCapableNodes[0].actorFactories);
+}
+
 function toSpotNodeMap(value: ZLinkFrameworkRegistrationOptions['spotNodes']): Map<string, ZLinkSpotNodeOptions> {
   if (value === undefined) {
     return new Map();
   }
   if (!Array.isArray(value)) {
-    return new Map(Object.entries(value).map(([name, spotNode]) => [name, { ...spotNode }]));
+    return new Map(Object.entries(value).map(([name, spotNode]) => [name, normalizeSpotNodeOptions(spotNode)]));
   }
   return new Map(value.map((spotNode) => {
     if (typeof spotNode === 'string') {
       return [spotNode, {}];
     }
     const { name, ...options } = spotNode;
-    return [name, options];
+    return [name, normalizeSpotNodeOptions(options)];
   }));
+}
+
+function normalizeSpotNodeOptions(spotNode: ZLinkSpotNodeOptions): ZLinkSpotNodeOptions {
+  if (spotNode.routingId === undefined) {
+    return { ...spotNode };
+  }
+  return {
+    ...spotNode,
+    router: spotNode.router === undefined
+      ? undefined
+      : { ...spotNode.router, routingId: spotNode.router.routingId ?? spotNode.routingId },
+    pubSub: spotNode.pubSub === undefined
+      ? undefined
+      : { ...spotNode.pubSub, routingId: spotNode.pubSub.routingId ?? spotNode.routingId }
+  };
 }
 
 function toSpotFactorySet(

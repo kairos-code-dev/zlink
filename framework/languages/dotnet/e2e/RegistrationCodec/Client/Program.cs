@@ -21,7 +21,7 @@ using var host = Host.CreateDefaultBuilder(args)
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, "client-flow.log"))
-                .TraceNodeId("client");
+                .TraceLabel("client");
             framework.Codecs.AddJson();
             framework.Codecs.Use(ZLinkProtobufCodec.Default);
             framework.Codecs.Use(ZLinkMessagePackCodec.Default);
@@ -334,7 +334,7 @@ static IHost CreateClientHost(string channelEndpoint, string logDir, string node
                 framework.ConfigureDispatch()
                     .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                     .TraceLogFile(Path.Combine(logDir, $"{nodeId}-flow.log"))
-                    .TraceNodeId(nodeId);
+                    .TraceLabel(nodeId);
                 framework.Codecs.AddJson();
                 framework.Codecs.Use(ZLinkProtobufCodec.Default);
                 framework.Codecs.Use(ZLinkMessagePackCodec.Default);

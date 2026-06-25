@@ -146,7 +146,7 @@ void report_spot_dispatch_error (const std::shared_ptr<detail::spot_node_builder
 }
 
 void report_spot_dispatch_trace (const std::shared_ptr<detail::spot_node_builder_state_t> &state,
-                                 message_flow_phase_t phase,
+                                 message_flow_outcome_t outcome,
                                  dispatch_error_surface_t surface,
                                  dispatch_message_kind_t message_kind,
                                  std::string_view packet_name = {},
@@ -159,7 +159,7 @@ void report_spot_dispatch_trace (const std::shared_ptr<detail::spot_node_builder
     }
     // string_view params + lazy build: callers pass cheap views; std::string is
     // only allocated inside the lambda after the gate passes (zero cost when off).
-    detail::message_flow_tracer_t (state->dispatch).trace (phase, [&] {
+    detail::message_flow_tracer_t (state->dispatch).trace (outcome, [&] {
         auto field = [] (std::string_view value) -> std::optional<std::string> {
             if (value.empty ()) {
                 return std::nullopt;
@@ -167,7 +167,7 @@ void report_spot_dispatch_trace (const std::shared_ptr<detail::spot_node_builder
             return std::string (value);
         };
         return message_flow_event_t{
-          phase,         surface,      message_kind, field (packet_name), std::nullopt,
+          outcome,         surface,      message_kind, field (packet_name), std::nullopt,
           field (topic), std::nullopt, std::nullopt, field (spot_rid),    field (actor_id),
           std::nullopt};
     });
@@ -694,8 +694,8 @@ send_call_t spot_context_t::publish_erased (std::string topic,
               }
               if (state->node) {
                   detail::message_flow_tracer_t (state->node->dispatch)
-                    .trace (message_flow_phase_t::sent, [&] {
-                        return message_flow_event_t{message_flow_phase_t::sent,
+                    .trace (message_flow_outcome_t::sent, [&] {
+                        return message_flow_event_t{message_flow_outcome_t::sent,
                                                     dispatch_error_surface_t::spot_subscription,
                                                     dispatch_message_kind_t::publish,
                                                     submitted_packet_name,
@@ -1049,20 +1049,18 @@ spot_node_builder_t &spot_node_builder_t::bind (std::string endpoint)
     return *this;
 }
 
+spot_node_builder_t &spot_node_builder_t::set_routing_id (zlink::routing_id_t routing_id)
+{
+    _state->snapshot.routing_id = std::move (routing_id);
+    return *this;
+}
+
 spot_node_builder_t &spot_node_builder_t::enable_router (std::string endpoint)
 {
     _state->snapshot.router_bind_endpoint = endpoint;
     if (_state->snapshot.bind_endpoint.empty ()) {
         _state->snapshot.bind_endpoint = std::move (endpoint);
     }
-    return *this;
-}
-
-spot_node_builder_t &spot_node_builder_t::enable_router (std::string endpoint,
-                                                         zlink::routing_id_t routing_id)
-{
-    enable_router (std::move (endpoint));
-    _state->snapshot.router_routing_id = std::move (routing_id);
     return *this;
 }
 
@@ -1082,14 +1080,6 @@ spot_node_builder_t &spot_node_builder_t::enable_pub_sub (std::string endpoint)
     if (_state->snapshot.bind_endpoint.empty ()) {
         _state->snapshot.bind_endpoint = std::move (endpoint);
     }
-    return *this;
-}
-
-spot_node_builder_t &spot_node_builder_t::enable_pub_sub (std::string endpoint,
-                                                          zlink::routing_id_t routing_id)
-{
-    enable_pub_sub (std::move (endpoint));
-    _state->snapshot.pub_routing_id = std::move (routing_id);
     return *this;
 }
 
@@ -1951,7 +1941,7 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
             + ", spot=" + std::string (found_location->second.value ()));
     }
 
-    report_spot_dispatch_trace (_state, message_flow_phase_t::received,
+    report_spot_dispatch_trace (_state, message_flow_outcome_t::received,
                                 dispatch_error_surface_t::spot_actor,
                                 dispatch_message_kind_t::actor_request, packet_name, {},
                                 found_location->second.value (), actor_ref.actor_id ());
@@ -1971,7 +1961,7 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         return result_t<std::optional<zlink::message_t>>::failure (
           reply.error_kind (), error != nullptr ? error->what () : "actor packet relay failed");
     }
-    report_spot_dispatch_trace (_state, message_flow_phase_t::replied,
+    report_spot_dispatch_trace (_state, message_flow_outcome_t::replied,
                                 dispatch_error_surface_t::spot_actor,
                                 dispatch_message_kind_t::actor_request, packet_name, {},
                                 found_location->second.value (), actor_ref.actor_id ());
@@ -2355,7 +2345,7 @@ result_t<void> spot_node_runtime_t::dispatch_subscription (const spot_context_t 
                                         "spot context is not registered");
     }
     report_spot_dispatch_trace (
-      _state, message_flow_phase_t::received, dispatch_error_surface_t::spot_subscription,
+      _state, message_flow_outcome_t::received, dispatch_error_surface_t::spot_subscription,
       dispatch_message_kind_t::publish, {}, topic, context._state->spot_rid.value ());
     std::optional<std::string> packet_name;
     for (const auto &descriptor : context._state->handlers) {
@@ -2387,7 +2377,7 @@ result_t<void> spot_node_runtime_t::dispatch_subscription (const spot_context_t 
           result.error_kind (), error != nullptr ? error->what () : "spot subscription failed");
     }
     report_spot_dispatch_trace (
-      _state, message_flow_phase_t::dispatched, dispatch_error_surface_t::spot_subscription,
+      _state, message_flow_outcome_t::dispatched, dispatch_error_surface_t::spot_subscription,
       dispatch_message_kind_t::publish, *packet_name, topic, context._state->spot_rid.value ());
     return result_t<void>::success ();
 }
@@ -2444,7 +2434,7 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
                 ? dispatch_message_kind_t::request
                 : dispatch_message_kind_t::send;
             report_spot_dispatch_trace (
-              _state, message_flow_phase_t::received, dispatch_error_surface_t::spot_route,
+              _state, message_flow_outcome_t::received, dispatch_error_surface_t::spot_route,
               message_kind, header.value ().message_name, {}, context._state->spot_rid.value ());
             auto body = codec.decode_body (parts);
             auto reply_error = [&] (const framework_exception_t &error) {
@@ -2498,12 +2488,12 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
                   result.value ());
                 submit_reply (*native, inbound, reply_parts);
                 report_spot_dispatch_trace (
-                  _state, message_flow_phase_t::replied, dispatch_error_surface_t::spot_route,
+                  _state, message_flow_outcome_t::replied, dispatch_error_surface_t::spot_route,
                   dispatch_message_kind_t::response, header.value ().message_name, {},
                   context._state->spot_rid.value ());
             } else {
                 report_spot_dispatch_trace (
-                  _state, message_flow_phase_t::dispatched, dispatch_error_surface_t::spot_route,
+                  _state, message_flow_outcome_t::dispatched, dispatch_error_surface_t::spot_route,
                   dispatch_message_kind_t::send, header.value ().message_name, {},
                   context._state->spot_rid.value ());
             }

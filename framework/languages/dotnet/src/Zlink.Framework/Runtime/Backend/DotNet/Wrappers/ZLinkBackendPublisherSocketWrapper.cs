@@ -15,6 +15,11 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket
         nativeSocket.SetChannelName(channelName);
     }
 
+    public void SetRoutingId(RoutingId routingId)
+    {
+        nativeSocket.SetRoutingId(routingId);
+    }
+
     public void SetSendHighWaterMark(int value)
     {
         nativeSocket.Options.SendHighWaterMark = value;

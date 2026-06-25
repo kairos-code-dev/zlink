@@ -126,8 +126,8 @@ public sealed record SampleSessionNode(
     string RouterEndpoint,
     string StreamEndpoint,
     string PlayRouteEndpoint,
-    RoutingId RouterRoutingId,
-    RoutingId PubRoutingId,
+    RoutingId RoutingId,
+    RoutingId PublisherRoutingId,
     RoutingId PlayRouteRid,
     RoutingId PreferredPlayNodeRid,
     string PreferredPlayChannelEndpoint);

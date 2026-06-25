@@ -27,13 +27,11 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<TicTacToeDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
-                .TraceNodeId(settings.InstanceName);
+                .TraceLabel(settings.InstanceName);
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
             options.Codecs.AddJson();
-            options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);
             options.AddSpotRemoteAddressResolver<RedisSpotRemoteAddressResolver>();
 
             options.AddClientServerChannel(SampleChannels.Api)
@@ -50,13 +48,13 @@ internal sealed class PlayServer(SampleSettings settings)
 
             options.AddSpotMesh(SampleNodes.PlaySpot)
                 .EnableRouter(settings.SpotEndpoint)
-                .SetRouterRoutingId(RoutingId.From(settings.PlaySpotNodeRid))
-                .ConnectRouter(
-                    RoutingId.From(settings.PeerPlaySpotNodeRid),
-                    settings.PeerSpotEndpoint)
+                    .SetRoutingId(RoutingId.From(settings.PlaySpotNodeRid))
+                    .ConnectRouter(
+                    RoutingId.From(settings.PeerPlaySpotNodeRid),settings.PeerSpotEndpoint)
                 .EnablePubSub(settings.SpotPubSubEndpoint)
-                .ConnectPeerPub(settings.PeerSpotPubEndpoint)
+                    .ConnectPeerPub(settings.PeerSpotPubEndpoint)
                 .AddEntrySpot<PlayEntrySpot>()
+                .AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor)
                 .AddSpotFactory<TicTacToeGame>();
         });
 

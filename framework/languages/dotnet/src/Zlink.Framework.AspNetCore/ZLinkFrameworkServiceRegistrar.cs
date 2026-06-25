@@ -105,11 +105,6 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IZLinkMessageFlowControl>(
             new ZLinkMessageFlowControl(registration.DispatchOptions.Diagnostics));
 
-        if (registration.DispatchOptions.MessageDispatchErrorObserverType is { } observerType)
-        {
-            services.TryAddTransient(observerType);
-        }
-
         if (registration.DispatchOptions.MessageFlowObserverType is { } flowObserverType)
         {
             services.TryAddTransient(flowObserverType);
@@ -165,7 +160,7 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkSpotPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
         }
 
-        if (HasSpotNode(registration) && registration.ActorFactories.Count > 0)
+        if (HasActorCapableSpotNode(registration))
         {
             services.AddSingleton<ZLinkActorManagerService>();
             services.AddSingleton<IZLinkActorManager>(
@@ -198,7 +193,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddTransient(filterType);
         }
 
-        foreach (var actorFactoryType in registration.ActorFactories.Values)
+        foreach (var actorFactoryType in registration.SpotNodes.Values
+                     .SelectMany(static spotNode => spotNode.ActorFactories.Values))
         {
             services.TryAddScoped(actorFactoryType);
         }
@@ -249,6 +245,11 @@ internal static class ZLinkFrameworkServiceRegistrar
     private static bool HasSpotPublisherClient(ZLinkFrameworkRegistration registration)
     {
         return registration.SpotNodes.Count > 0;
+    }
+
+    private static bool HasActorCapableSpotNode(ZLinkFrameworkRegistration registration)
+    {
+        return registration.SpotNodes.Values.Any(static spotNode => spotNode.ActorFactories.Count > 0);
     }
 
 }

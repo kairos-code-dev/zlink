@@ -36,7 +36,7 @@ class api_server_host_factory_t
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("api"))
-              .trace_node_id ("supportchat-api");
+              .trace_label ("supportchat-api");
             options.handlers ()
               .add<authenticate_user_handler_t> ("api")
               .add<open_conversation_handler_t> ("api");

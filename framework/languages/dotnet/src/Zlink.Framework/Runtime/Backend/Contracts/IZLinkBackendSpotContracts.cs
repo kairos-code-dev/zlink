@@ -6,6 +6,10 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     void SetRoutingId(RoutingId routingId);
 
+    void SetPublisherRoutingId(RoutingId routingId);
+
+    void SetSubscriberRoutingId(RoutingId routingId);
+
     void SetRouterBind(string endpoint);
 
     void SetPubBind(string endpoint);

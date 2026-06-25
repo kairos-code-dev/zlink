@@ -17,10 +17,9 @@ builder.Services.AddHostedService<DispatchWorker>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.ConfigureDispatch()
-        .SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>()
         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
         .TraceLogFile(SampleFlowLog.Path("dispatch-center"))
-        .TraceNodeId("dispatch-center");
+        .TraceLabel("dispatch-center");
     options.AddHandlersFromAssemblyOf(typeof(AssignDeliveryHandler));
     options.Codecs.AddJson();
     options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

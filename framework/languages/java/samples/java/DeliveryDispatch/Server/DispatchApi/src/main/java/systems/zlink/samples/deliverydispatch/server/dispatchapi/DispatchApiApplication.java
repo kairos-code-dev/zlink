@@ -38,7 +38,7 @@ public final class DispatchApiApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-dispatch-api.log")
-                .traceNodeId("dispatch-api");
+                .traceLabel("dispatch-api");
             options.codecs().addJson();
             options.addHandlersFromPackageOf(DispatchApiApplication.class);
             options.addClientServerChannel(SampleNames.ApiChannel)

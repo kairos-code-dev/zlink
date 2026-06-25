@@ -85,6 +85,8 @@ public interface IZLinkClientServerChannelBuilder : IZLinkClientServerChannelOpt
 
     IZLinkClientServerChannelBuilder EnableClient(string endpoint);
 
+    IZLinkClientServerChannelBuilder SetRoutingId(RoutingId routingId);
+
     IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
 
     IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName);
@@ -110,6 +112,8 @@ public interface IZLinkFanoutChannelBuilder
 
     IZLinkFanoutChannelBuilder EnableSubscriber(string endpoint);
 
+    IZLinkFanoutChannelBuilder SetRoutingId(RoutingId routingId);
+
     IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName);
 
     IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>(string? packetName = null)
@@ -127,7 +131,7 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint);
 
-    IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId);
+    IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId);
 
     IZLinkSocketConfig ConfigureRouterSocket();
 
@@ -138,8 +142,6 @@ public interface IZLinkSpotNodeBuilder
     IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint);
 
     IZLinkSpotNodeBuilder ConnectPubSub(string endpoint);
-
-    IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId);
 
     IZLinkSpotPublisherConfig ConfigurePubSubPublisher();
 
@@ -152,6 +154,9 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot;
+
+    IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
+        where TFactory : class, IZLinkActorFactory;
 }
 
 public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
@@ -183,9 +188,6 @@ public interface IZLinkFrameworkOptions
     void AddHandlersFromAssembly(System.Reflection.Assembly assembly);
 
     IZLinkMetadataPolicyBuilder ConfigureMetadata();
-
-    void AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory;
 
     void AddSpotRemoteAddressResolver<TResolver>()
         where TResolver : class, IZLinkSpotRemoteAddressResolver;

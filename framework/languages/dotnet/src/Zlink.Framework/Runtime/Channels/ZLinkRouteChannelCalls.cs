@@ -149,19 +149,20 @@ internal sealed class ZLinkRouteChannelCalls
         string? correlationId,
         RoutingId targetNodeRid)
     {
-        if (!_flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (!_flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             return;
         }
 
         _flow.Trace(new ZLinkMessageFlowEvent(
-            ZLinkMessageFlowPhase.Sent,
+            ZLinkMessageFlowOutcome.Sent,
             ZLinkDispatchErrorSurface.RouteMeshChannel,
             kind,
             PacketName: packetName,
             ChannelName: _routerChannelId,
             CorrelationId: correlationId,
-            SourceRid: targetNodeRid.ToString()));
+            PeerRid: targetNodeRid.ToString(),
+            SocketRole: "router"));
     }
 
     private void TraceRouteReplyReceived(
@@ -169,19 +170,20 @@ internal sealed class ZLinkRouteChannelCalls
         string? correlationId,
         RoutingId targetNodeRid)
     {
-        if (!_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        if (!_flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
         {
             return;
         }
 
         _flow.Trace(new ZLinkMessageFlowEvent(
-            ZLinkMessageFlowPhase.ReplyReceived,
+            ZLinkMessageFlowOutcome.ReplyReceived,
             ZLinkDispatchErrorSurface.RouteMeshChannel,
             ZLinkDispatchMessageKind.Response,
             PacketName: packetName,
             ChannelName: _routerChannelId,
             CorrelationId: correlationId,
-            SourceRid: targetNodeRid.ToString()));
+            PeerRid: targetNodeRid.ToString(),
+            SocketRole: "router"));
     }
 
     private static IReadOnlyList<Message> PrependHeader(

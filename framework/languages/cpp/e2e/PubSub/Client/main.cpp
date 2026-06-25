@@ -220,7 +220,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/client-flow.log")
-          .trace_node_id ("cpp-ps-client");
+          .trace_label ("cpp-ps-client");
         configure_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (registry_router);
         options.add_fanout_channel (e2e::event_channel).enable_publisher (publisher_endpoint);

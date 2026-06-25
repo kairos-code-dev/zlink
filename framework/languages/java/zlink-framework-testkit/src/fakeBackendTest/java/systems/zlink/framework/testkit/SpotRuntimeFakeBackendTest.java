@@ -51,6 +51,8 @@ import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
@@ -369,8 +371,8 @@ final class SpotRuntimeFakeBackendTest {
         SerialSpotHandler.reset();
         SerialActorJoinHandler.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addActorFactory("player", PlayerActorFactory.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(SerialSpot.class); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(SerialSpot.class);
+                node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
         ZLinkHandlerFactory reflection = ZLinkHandlerFactory.reflection();
         ZLinkHandlerFactory handlerFactory = handlerType -> {
@@ -516,7 +518,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
         { var route = options.addRouteMesh("play"); route.enableServer("inproc://play"); };
-        options.useRegistrySpotRemoteAddresses("game");
+        options.useRegistrySpotRemoteAddresses("game").setRouterChannelId("play");
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
                 node.addSpotFactory(GameSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -570,13 +572,14 @@ final class SpotRuntimeFakeBackendTest {
 
         assertTrue(
             backendFactory.calls().contains(
-                "spotRouteBridge.bridge.send.egress.target-spot.Greeting"),
+                "spot.1.sendToSpot.spot-node.target-spot.Greeting"),
             backendFactory.calls().toString());
     }
 
     @Test
     void spotOutboundUsesConfiguredRouteMeshEgressChannel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotRemoteAddressResolver(RouteEgressResolver.class);
         { var route = options.addRouteMesh("egress"); route.enableServer("inproc://egress-route");
             route.enableClient("inproc://egress-peer");};
         { var route = options.addRouteMesh("ingress"); route.setRoutingId(RoutingId.from("ingress-route"));
@@ -604,7 +607,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "spotRouteBridge.bridge.request.egress.target-spot.Ping"));
+            "spotRouteBridge.bridge.request.egress.ingress-route.target-spot.Ping"));
     }
 
     @Test
@@ -624,7 +627,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             assertThrows(
-                CompletionException.class,
+                ZLinkConfigurationException.class,
                 () -> OutboundSpot.context.outbound()
                     .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
                     .packetName("Ping")
@@ -638,6 +641,7 @@ final class SpotRuntimeFakeBackendTest {
     void routeMeshSpotEgressUsesRegistryQueryRoutingId() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
+        options.useRegistrySpotRemoteAddresses("game").setRouterChannelId("egress");
         { var route = options.addRouteMesh("egress"); route.enableServer("inproc://egress-route");};
         { var route = options.addRouteMesh("ingress"); route.enableServer("inproc://ingress-route"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
@@ -660,15 +664,16 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "registryQueryClient.connect.tcp://127.0.0.1:17001"));
+            "discovery.game.connectRegistry.tcp://127.0.0.1:17001"));
         assertTrue(backendFactory.calls().contains(
-            "spotRouteBridge.bridge.send.egress.target-spot.Ping"));
+            "spotRouteBridge.bridge.send.egress.node.target-spot.Ping"));
     }
 
     @Test
     void routeMeshSpotEgressUsesDiscoveryMemberPeerRoutingIdBeforeRegistryQuery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
+        options.useRegistrySpotRemoteAddresses("game").setRouterChannelId("egress-discovery");
         { var route = options.addRouteMesh("egress-discovery"); route.enableServer("inproc://egress-discovery");};
         { var route = options.addRouteMesh("ingress-discovery"); route.enableServer("inproc://ingress-discovery"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
@@ -691,16 +696,14 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "spotRouteBridge.bridge.send.egress-discovery.target-spot.Ping"));
+            "spotRouteBridge.bridge.send.egress-discovery.node.target-spot.Ping"));
     }
 
     @Test
     void spotOutboundRejectsAmbiguousEgressChannels() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var channel = options.addClientServerChannel("egress-a").enableClient("inproc://ingress-a");};
-        { var channel = options.addClientServerChannel("egress-b").enableClient("inproc://ingress-b");};
-        { var channel = options.addClientServerChannel("ingress").enableServer("inproc://ingress-server");
-            channel.addSendHandler(NoopSendHandler.class, String.class, "Noop"); };
+        { var route = options.addRouteMesh("egress-a"); route.enableServer("inproc://egress-a"); };
+        { var route = options.addRouteMesh("egress-b"); route.enableServer("inproc://egress-b"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
 
         try (ZLinkFrameworkRuntime runtime =
@@ -713,7 +716,11 @@ final class SpotRuntimeFakeBackendTest {
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> OutboundSpot.context.outbound()
-                    .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping")));
+                    .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
+                    .packetName("Ping")
+                    .submit()
+                    .toCompletableFuture()
+                    .join());
         }
     }
 
@@ -749,7 +756,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotPublisherClient()
-                .publishSpot("game.stage", "stage.events", message("opened", "StageOpened"))
+                .publishSpot("game", "stage.events", message("opened", "StageOpened"))
                 .packetName("StageOpened")
                 .submit()
                 .toCompletableFuture()
@@ -765,7 +772,6 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "create.spotNode",
                 "spotNode.setPubBind.inproc://spot-pub",
-                "spotNode.connectPeer.inproc://game-stage-pub",
                 "spotNode.createSpot",
                 "create.spot.1",
                 "spot.1.publish.stage.events.StageOpened",
@@ -780,7 +786,7 @@ final class SpotRuntimeFakeBackendTest {
     void spotRouterAndPubSubManualPeersConnectThroughBackendNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-router")
-                    .setRouterRoutingId(RoutingId.from("spot-node-1"))
+                    .setRoutingId(RoutingId.from("spot-node-1"))
                     .connectRouter("inproc://spot-router-peer");
                 node.enablePubSub("inproc://spot-pub")
                     .connectPeerPub("inproc://spot-pub-peer"); }; };
@@ -800,6 +806,8 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "create.spotNode",
                 "spotNode.setRoutingId",
+                "spotNode.setPublisherRoutingId",
+                "spotNode.setSubscriberRoutingId",
                 "spotNode.setRouterBind.inproc://spot-router",
                 "spotNode.setPubBind.inproc://spot-pub",
                 "spotNode.connectPeer.inproc://spot-router-peer",
@@ -1029,8 +1037,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
-                node.addEntrySpot(LifecycleEntrySpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1059,8 +1066,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
-                node.addEntrySpot(LifecycleEntrySpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1088,8 +1094,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
-                node.addEntrySpot(LifecycleEntrySpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1112,8 +1117,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
-                node.addEntrySpot(LifecycleEntrySpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1140,8 +1144,7 @@ final class SpotRuntimeFakeBackendTest {
         InterfaceEntryActorRequestHandler.lastRequest.set(null);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
-                node.addEntrySpot(InterfaceEntrySpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addEntrySpot(InterfaceEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1171,8 +1174,8 @@ final class SpotRuntimeFakeBackendTest {
         InterfaceUserSpot.lastJoin.set(null);
         InterfaceUserSpot.lastPostJoin.set(null);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addActorFactory("player", PlayerActorFactory.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(InterfaceUserSpot.class); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(InterfaceUserSpot.class);
+                node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1204,8 +1207,7 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class);
-                node.addSpotFactory(OutboundSpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addSpotFactory(OutboundSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1233,8 +1235,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
-                node.addEntrySpot(LifecycleEntrySpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1257,8 +1258,7 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class);
-                node.addSpotFactory(OutboundSpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addSpotFactory(OutboundSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         RoutingId spotRid = RoutingId.from("game-joined");
@@ -1857,6 +1857,19 @@ final class SpotRuntimeFakeBackendTest {
             String actorId,
             ZLinkActorContext context) {
             return new PlayerActor(actorId, context);
+        }
+    }
+
+    public static final class RouteEgressResolver
+        implements ZLinkSpotRemoteAddressResolver {
+        @Override
+        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(RoutingId spotRid) {
+            return CompletableFuture.completedFuture(
+                new ZLinkSpotRemoteAddress(
+                    "egress",
+                    RoutingId.from("ingress-route"),
+                    spotRid,
+                    ZLinkSpotKind.USER));
         }
     }
 

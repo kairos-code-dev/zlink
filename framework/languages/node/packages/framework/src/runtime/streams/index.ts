@@ -30,7 +30,7 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkMessage,
-  ZLinkMessageFlowPhase
+  ZLinkMessageFlowOutcome
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
@@ -381,8 +381,8 @@ export class ZLinkStreamSessionRuntime {
         ? ZLinkDispatchMessageKind.Request
         : ZLinkDispatchMessageKind.Send;
       const streamCorr = decodedHeader.correlationId ?? decodedHeader.requestSeq?.toString();
-      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
-        phase: ZLinkMessageFlowPhase.Received,
+      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Received)?.trace({
+        outcome: ZLinkMessageFlowOutcome.Received,
         surface: ZLinkDispatchErrorSurface.StreamSession,
         messageKind: streamKind,
         packetName: decodedHeader.name,
@@ -393,8 +393,8 @@ export class ZLinkStreamSessionRuntime {
         createDispatchContext(decodedHeader),
         wrapFrameworkPayloadMessage(dispatchPayload, this.options.messageSerializers)
       );
-      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
-        phase: ZLinkMessageFlowPhase.Dispatched,
+      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Dispatched)?.trace({
+        outcome: ZLinkMessageFlowOutcome.Dispatched,
         surface: ZLinkDispatchErrorSurface.StreamSession,
         messageKind: streamKind,
         packetName: decodedHeader.name,

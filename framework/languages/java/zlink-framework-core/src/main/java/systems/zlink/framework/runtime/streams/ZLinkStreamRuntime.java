@@ -178,11 +178,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             ignored -> createSessionState(streamNode, stream, routingId));
         ZLinkStreamHeader streamHeader =
             ZLinkStreamHeaderCodec.decodeOrPlain(header.toByteArray());
-        if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowPhase.RECEIVED)) {
+        if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.RECEIVED)) {
             String corr = streamHeader.correlationId()
                 .orElseGet(() -> streamHeader.requestSequence().map(String::valueOf).orElse(null));
             flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
-                systems.zlink.framework.configuration.ZLinkMessageFlowPhase.RECEIVED,
+                systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.RECEIVED,
                 systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
                 streamHeader.requestSequence().isPresent()
                     ? systems.zlink.framework.configuration.ZLinkDispatchMessageKind.REQUEST
@@ -416,9 +416,9 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 currentDispatchHeader = null;
                 if (error == null
                     && header.requestSequence().isEmpty()
-                    && flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowPhase.DISPATCHED)) {
+                    && flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED)) {
                     flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
-                        systems.zlink.framework.configuration.ZLinkMessageFlowPhase.DISPATCHED,
+                        systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED,
                         systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
                         systems.zlink.framework.configuration.ZLinkDispatchMessageKind.SEND,
                         header.packetName(), null, null,
@@ -428,9 +428,9 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         void traceStreamReplied(ZLinkStreamHeader requestHeader) {
-            if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowPhase.REPLIED)) {
+            if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.REPLIED)) {
                 flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
-                    systems.zlink.framework.configuration.ZLinkMessageFlowPhase.REPLIED,
+                    systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.REPLIED,
                     systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
                     systems.zlink.framework.configuration.ZLinkDispatchMessageKind.REQUEST,
                     requestHeader.packetName(), null, null,

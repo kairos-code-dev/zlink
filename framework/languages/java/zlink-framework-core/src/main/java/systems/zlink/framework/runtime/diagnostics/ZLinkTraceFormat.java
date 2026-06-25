@@ -1,6 +1,5 @@
 package systems.zlink.framework.runtime.diagnostics;
 
-import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 
 // Shared formatter for the file/JUL key=value lines (present fields only) used by both
@@ -11,10 +10,12 @@ final class ZLinkTraceFormat {
 
     static String flowLine(ZLinkMessageFlowEvent flow, String nodeId, Long size) {
         StringBuilder builder = new StringBuilder("message flow");
-        append(builder, "phase", String.valueOf(flow.phase()));
+        append(builder, "outcome", String.valueOf(flow.outcome()));
         append(builder, "surface", String.valueOf(flow.surface()));
         append(builder, "kind", String.valueOf(flow.messageKind()));
-        append(builder, "node", nodeId);
+        append(builder, "label", nodeId);
+        append(builder, "reason", enumName(flow.errorReason()));
+        append(builder, "action", enumName(flow.errorAction()));
         append(builder, "packet", flow.packetName());
         append(builder, "channel", flow.channelName());
         append(builder, "topic", flow.topic());
@@ -22,26 +23,11 @@ final class ZLinkTraceFormat {
         append(builder, "src", flow.sourceRid());
         append(builder, "spot", flow.spotRid());
         append(builder, "actor", flow.actorId());
+        append(builder, "errorType", flow.errorType());
+        append(builder, "errorMessage", flow.errorMessage());
         if (size != null) {
             append(builder, "size", String.valueOf(size.longValue()));
         }
-        return builder.toString();
-    }
-
-    static String errorLine(ZLinkMessageDispatchErrorEvent error, String nodeId) {
-        StringBuilder builder = new StringBuilder("dispatch error");
-        append(builder, "surface", String.valueOf(error.surface()));
-        append(builder, "kind", String.valueOf(error.messageKind()));
-        append(builder, "reason", String.valueOf(error.reason()));
-        append(builder, "action", String.valueOf(error.action()));
-        append(builder, "node", nodeId);
-        append(builder, "packet", error.packetName());
-        append(builder, "channel", error.channelName());
-        append(builder, "topic", error.topic());
-        append(builder, "corr", error.correlationId());
-        append(builder, "src", error.sourceRid());
-        append(builder, "spot", error.spotRid());
-        append(builder, "actor", error.actorId());
         return builder.toString();
     }
 
@@ -49,5 +35,9 @@ final class ZLinkTraceFormat {
         if (value != null && !value.isEmpty()) {
             builder.append(' ').append(key).append('=').append(value);
         }
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : String.valueOf(value);
     }
 }

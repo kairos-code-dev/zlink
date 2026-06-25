@@ -41,8 +41,6 @@ public interface IZLinkSocketConfig
 
 public interface IZLinkRouteConfig
 {
-    RoutingId RoutingId { get; set; }
-
     bool RequireKnownPeer { get; set; }
 
     bool AllowPeerHandover { get; set; }
@@ -54,8 +52,6 @@ public interface IZLinkRouteConfig
 
 public interface IZLinkOutboundRouteConfig
 {
-    RoutingId RoutingId { get; set; }
-
     bool ProbeRouterOnConnect { get; set; }
 }
 

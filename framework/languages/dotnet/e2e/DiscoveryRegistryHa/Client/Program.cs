@@ -364,7 +364,7 @@ static IHost CreateClientHost(string nodeId, string logDir, IReadOnlyList<string
                 framework.ConfigureDispatch()
                     .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                     .TraceLogFile(Path.Combine(logDir, $"{nodeId}-flow.log"))
-                    .TraceNodeId(nodeId);
+                    .TraceLabel(nodeId);
                 framework.AddClientServerChannel(DiscoveryRegistryHaNames.Channel).EnableClient();
             });
         })

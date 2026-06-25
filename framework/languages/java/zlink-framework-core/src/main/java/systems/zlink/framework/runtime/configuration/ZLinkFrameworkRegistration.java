@@ -5,11 +5,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
@@ -36,8 +34,6 @@ public final class ZLinkFrameworkRegistration {
     private final List<ChannelRegistration> channels = new ArrayList<>();
     private final List<SpotNodeRegistration> spotNodes = new ArrayList<>();
     private final List<StreamNodeRegistration> streamNodes = new ArrayList<>();
-    private final Map<String, Class<? extends ZLinkActorFactory>> actorFactories =
-        new LinkedHashMap<>();
     private final Set<Class<?>> handlerPackageMarkers = new LinkedHashSet<>();
     private final List<Class<? extends ZLinkHandlerFilter>> filters = new ArrayList<>();
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers = new ArrayList<>();
@@ -88,10 +84,6 @@ public final class ZLinkFrameworkRegistration {
         return streamNodes;
     }
 
-    public Map<String, Class<? extends ZLinkActorFactory>> actorFactories() {
-        return actorFactories;
-    }
-
     public Set<Class<?>> handlerPackageMarkers() {
         return handlerPackageMarkers;
     }
@@ -127,7 +119,6 @@ public final class ZLinkFrameworkRegistration {
     public Set<Class<?>> applicationTypes() {
         Set<Class<?>> types = new LinkedHashSet<>();
         types.addAll(filters);
-        types.addAll(actorFactories.values());
         if (spotRemoteAddressResolverType != null) {
             types.add(spotRemoteAddressResolverType);
         }
@@ -137,6 +128,7 @@ public final class ZLinkFrameworkRegistration {
         for (SpotNodeRegistration spotNode : spotNodes) {
             types.addAll(spotNode.spotFactories());
             types.addAll(spotNode.entrySpots());
+            types.addAll(spotNode.actorFactories().values());
         }
         for (StreamNodeRegistration streamNode : streamNodes) {
             types.addAll(streamNode.applicationTypes());
@@ -194,15 +186,19 @@ public final class ZLinkFrameworkRegistration {
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(handlerPackageMarkers);
         validateRegistrySpotRemoteAddresses();
-        if (!actorFactories.isEmpty() && spotNodes.isEmpty()) {
-            throw new ZLinkConfigurationException(
-                "actor factories require at least one SpotNode");
-        }
         for (ChannelRegistration channel : channels) {
             channel.validate(discoveryEnabled(), handlerCatalog);
         }
+        int actorCapableNodes = 0;
         for (SpotNodeRegistration spotNode : spotNodes) {
             spotNode.validate();
+            if (!spotNode.actorFactories().isEmpty()) {
+                actorCapableNodes++;
+            }
+        }
+        if (actorCapableNodes > 1) {
+            throw new ZLinkConfigurationException(
+                "actor factory registration is ambiguous because more than one SpotNode owns actor factories");
         }
         for (StreamNodeRegistration streamNode : streamNodes) {
             streamNode.validate(spotNodes);

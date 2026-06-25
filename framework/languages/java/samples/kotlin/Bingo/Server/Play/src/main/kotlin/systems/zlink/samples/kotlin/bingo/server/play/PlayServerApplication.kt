@@ -42,7 +42,7 @@ class PlayServerApplication {
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("BINGO_LOG_DIR") ?: "logs") + "/flow-play.log")
-                traceNodeId("play")
+                traceLabel("play")
             }
             options.codecs().addJson()
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
@@ -53,16 +53,15 @@ class PlayServerApplication {
             route.enableClient()
             route.addHandlerGroup("play-route")
             route.setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
-            options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)
             val node: ZLinkSpotNodeBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
             options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
                 .setRouterChannelId(SampleNames.PlayChannel)
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
-                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+                .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             node.addEntrySpot(BingoEntrySpot::class.java)
             node.addSpotFactory(BingoRoomSpot::class.java)
+            node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)
         }
 
     @Bean

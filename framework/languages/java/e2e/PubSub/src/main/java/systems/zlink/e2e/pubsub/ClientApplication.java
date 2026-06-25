@@ -44,7 +44,7 @@ public final class ClientApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/client-flow.log")
-                .traceNodeId("java-ps-client");
+                .traceLabel("java-ps-client");
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.addFanoutChannel(Contracts.EVENT_CHANNEL)
                 .enablePublisher(Env.get("ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT"));

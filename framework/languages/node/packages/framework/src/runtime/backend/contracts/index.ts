@@ -296,6 +296,8 @@ export interface ZLinkBackendSpotRouteBridge extends ZLinkBackendObject {
 export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   readonly routingId: RoutingId;
   setRoutingId(routingId: RoutingId): void;
+  setPublisherRoutingId(routingId: RoutingId): void;
+  setSubscriberRoutingId(routingId: RoutingId): void;
   setRouterBind(endpoint: string): void;
   setPubBind(endpoint: string): void;
   attachDiscovery(discovery: ZLinkBackendDiscovery): void;

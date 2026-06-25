@@ -52,6 +52,8 @@ internal interface IZLinkBackendWeightedSocket : IZLinkBackendSocket
 
 internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket, IZLinkBackendSocketOptions
 {
+    void SetRoutingId(RoutingId routingId);
+
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
     void OnSendReady(Action handler);
@@ -138,6 +140,8 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, I
 
 internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket, IZLinkBackendSocketOptions
 {
+    void SetRoutingId(RoutingId routingId);
+
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
     void OnSendReady(Action handler);
@@ -155,6 +159,8 @@ internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket, IZLinkBac
 
 internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocket, IZLinkBackendSocketOptions
 {
+    void SetRoutingId(RoutingId routingId);
+
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
     void SetSubscription(string topic);

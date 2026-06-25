@@ -34,7 +34,7 @@ public final class ChannelRegistration {
     private boolean serverEnabled;
     private boolean publisherEnabled;
     private boolean subscriberEnabled;
-    private RoutingId serverRoutingId;
+    private RoutingId routingId;
     private RoutingId routeRoutingId;
     private Duration defaultRequestTimeout;
 
@@ -123,8 +123,8 @@ public final class ChannelRegistration {
         return routeRoutingId;
     }
 
-    public RoutingId serverRoutingId() {
-        return serverRoutingId;
+    public RoutingId routingId() {
+        return routingId;
     }
 
     public Duration defaultRequestTimeout() {
@@ -170,12 +170,14 @@ public final class ChannelRegistration {
         serverBinds.add(requireEndpoint(endpoint));
     }
 
-    void setServerRoutingId(RoutingId routingId) {
+    void setRoutingId(RoutingId routingId) {
         if (routingId == null) {
             throw new ZLinkConfigurationException(
-                "client/server channel server routing id is required: " + name);
+                kind == ChannelKind.FANOUT
+                    ? "fanout channel routing id is required: " + name
+                    : "client/server channel routing id is required: " + name);
         }
-        serverRoutingId = routingId;
+        this.routingId = routingId;
     }
 
     void addClientManualEndpoint(String endpoint) {

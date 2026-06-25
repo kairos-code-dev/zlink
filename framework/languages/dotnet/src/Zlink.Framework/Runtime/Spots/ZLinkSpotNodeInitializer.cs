@@ -30,7 +30,15 @@ internal sealed class ZLinkSpotNodeInitializer(
             var node = spotAdapter.CreateSpotNode(
                 state.Context,
                 ResolveSpotNodeMode(spotNodeRegistration));
-            node.SetRoutingId(CreateNodeRoutingId(spotNodeRegistration));
+            var nodeRoutingId = CreateNodeRoutingId(spotNodeRegistration);
+            node.SetRoutingId(nodeRoutingId);
+            if (nodeRoutingId.Size > 0 && spotNodeRegistration.PubSub is not null)
+            {
+                node.SetPublisherRoutingId(
+                    ZLinkRoutingIdPolicy.Derive(nodeRoutingId, "pub"));
+                node.SetSubscriberRoutingId(
+                    ZLinkRoutingIdPolicy.Derive(nodeRoutingId, "sub"));
+            }
             var nodeRuntime = new ZLinkSpotNodeRuntime(
                 services,
                 runtime,
@@ -131,13 +139,9 @@ internal sealed class ZLinkSpotNodeInitializer(
 
     private static RoutingId CreateNodeRoutingId(ZLinkSpotNodeRegistration registration)
     {
-        if (registration.Router?.RoutingConfig.RoutingId.Size > 0)
+        if (registration.RoutingId.Size > 0)
         {
-            return registration.Router.RoutingConfig.RoutingId;
-        }
-        if (registration.PubSub?.RoutingId.Size > 0)
-        {
-            return registration.PubSub.RoutingId;
+            return registration.RoutingId;
         }
 
         var bytes = RandomNumberGenerator.GetBytes(16);

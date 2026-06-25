@@ -203,16 +203,16 @@ internal sealed class ZLinkActorRemoteJoiner(
             static s => ((TaskCompletionSource<(ZLinkBackendActorJoinResult, IReadOnlyList<Message>)>)s!).TrySetCanceled(),
             tcs);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
+                ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.SpotActor,
                 ZLinkDispatchMessageKind.ActorRequest,
                 PacketName: "JoinSpot",
                 ChannelName: channelName,
                 CorrelationId: correlationId,
-                SourceRid: targetNodeRid.ToString(),
+                PeerRid: targetNodeRid.ToString(),
                 SpotRid: targetSpotRid.ToString(),
                 ActorId: actor.ActorId));
         }
@@ -235,16 +235,16 @@ internal sealed class ZLinkActorRemoteJoiner(
 
         var (joinResult, replyParts) = await tcs.Task.ConfigureAwait(false);
 
-        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
         {
             runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.ReplyReceived,
+                ZLinkMessageFlowOutcome.ReplyReceived,
                 ZLinkDispatchErrorSurface.SpotActor,
                 ZLinkDispatchMessageKind.Response,
                 PacketName: "JoinSpot",
                 ChannelName: channelName,
                 CorrelationId: correlationId,
-                SourceRid: targetNodeRid.ToString(),
+                PeerRid: targetNodeRid.ToString(),
                 SpotRid: targetSpotRid.ToString(),
                 ActorId: actor.ActorId));
         }

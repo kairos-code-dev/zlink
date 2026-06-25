@@ -28,7 +28,7 @@ class ApiServerApplication {
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("SUPPORTCHAT_LOG_DIR") ?: "logs") + "/flow-api.log")
-                traceNodeId("api")
+                traceLabel("api")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addClientServerChannel(SampleNames.ApiChannel)

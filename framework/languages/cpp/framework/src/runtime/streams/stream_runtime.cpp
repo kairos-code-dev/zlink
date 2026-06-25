@@ -865,12 +865,12 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
         }
     }
     detail::message_flow_tracer_t (_state->dispatch)
-      .trace (message_flow_phase_t::received, [&] {
+      .trace (message_flow_outcome_t::received, [&] {
           std::optional<std::string> correlation;
           if (auto id = header.correlation_id ()) {
               correlation = std::string (*id);
           }
-          return message_flow_event_t{message_flow_phase_t::received,
+          return message_flow_event_t{message_flow_outcome_t::received,
                                       dispatch_error_surface_t::stream_session,
                                       dispatch_message_kind_t::request,
                                       std::string (header.packet_name ()),

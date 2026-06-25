@@ -19,8 +19,12 @@ export function validateFrameworkRegistration(
   registration: ZLinkFrameworkRegistration,
   options: ZLinkFrameworkRegistrationOptions = {}
 ): void {
-  if (registration.actorFactories.size > 0 && registration.spotNodes.size === 0) {
-    throw new ZLinkConfigurationException('Actor factory registration requires at least one SpotNode.');
+  const actorCapableSpotNodes = [...registration.spotNodes.values()]
+    .filter((spotNode) => toActorFactoryCount(spotNode.actorFactories) > 0);
+  if (actorCapableSpotNodes.length > 1) {
+    throw new ZLinkConfigurationException(
+      'Actor factory registration is ambiguous because more than one SpotNode owns actor factories.'
+    );
   }
 
   if (registration.hasRegistrySpotRemoteAddresses && registration.routeChannels.size === 0) {
@@ -43,6 +47,13 @@ export function validateFrameworkRegistration(
   validateRouteChannels(registration, hasDiscovery(options.discovery));
   validateStreamNodes(registration);
   validateWorkerOptions(registration.worker);
+}
+
+function toActorFactoryCount(value: ZLinkSpotNodeOptions['actorFactories']): number {
+  if (value === undefined) {
+    return 0;
+  }
+  return value instanceof Map ? value.size : Object.keys(value).length;
 }
 
 export function hasDiscovery(discovery: ZLinkDiscoveryOptions | undefined): boolean {

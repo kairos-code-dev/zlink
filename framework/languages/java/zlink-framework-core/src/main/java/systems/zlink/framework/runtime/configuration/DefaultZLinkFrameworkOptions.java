@@ -6,7 +6,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import systems.zlink.framework.ZLinkHandlerFilter;
-import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
@@ -113,17 +112,6 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         StreamNodeRegistration streamNode = new StreamNodeRegistration(name);
         registration.streamNodes().add(streamNode);
         return StreamBuilders.streamNode(streamNode);
-    }
-
-    @Override
-    public void addActorFactory(
-        String actorType,
-        Class<? extends ZLinkActorFactory> factoryType) {
-        Objects.requireNonNull(factoryType, "factoryType");
-        String type = requireName(actorType, "actor type");
-        if (registration.actorFactories().putIfAbsent(type, factoryType) != null) {
-            throw new ZLinkConfigurationException("duplicate actor type: " + type);
-        }
     }
 
     @Override

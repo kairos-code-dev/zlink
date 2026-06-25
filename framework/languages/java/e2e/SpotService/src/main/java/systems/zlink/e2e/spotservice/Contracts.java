@@ -43,6 +43,14 @@ public final class Contracts {
     public record MeshEvent(String value) {
     }
 
+    public record TimerActivity(String value) {
+    }
+
+    public record TimerStatus(
+        String spotRid,
+        String value) {
+    }
+
     public record RoutePing(String value) {
     }
 

@@ -53,7 +53,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (zlink::samples::gamequest::flow_log_path ("client"))
-          .trace_node_id ("gamequest-client");
+          .trace_label ("gamequest-client");
         options.codecs ()
           .add_json ()
           .add_json<zlink::samples::gamequest::enter_area_req_t> ()

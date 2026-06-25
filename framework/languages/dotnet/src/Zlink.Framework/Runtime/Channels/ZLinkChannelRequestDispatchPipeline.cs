@@ -42,7 +42,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 "no-handler",
                 channelName);
             replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error));
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ResolveSurface(transportName),
                 ZLinkDispatchMessageKind.Request,
                 ZLinkDispatchErrorReason.HandlerMissing,
@@ -75,7 +75,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 ex,
                 channelName);
             replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error));
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ResolveSurface(transportName),
                 ZLinkDispatchMessageKind.Request,
                 ZLinkDispatchErrorReason.PayloadDecodeFailed,
@@ -102,10 +102,10 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 response,
                 endpoint.ReplyType);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
             {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.Replied,
+                    ZLinkMessageFlowOutcome.Replied,
                     ResolveSurface(transportName),
                     ZLinkDispatchMessageKind.Request,
                     PacketName: header.MessageName,
@@ -116,7 +116,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
         catch (Exception ex)
         {
             replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, ex));
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ResolveSurface(transportName),
                 ZLinkDispatchMessageKind.Request,
                 ZLinkDispatchErrorReason.HandlerException,

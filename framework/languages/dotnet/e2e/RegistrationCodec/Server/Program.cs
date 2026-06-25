@@ -35,7 +35,7 @@ builder.Services.AddZLinkFramework(framework =>
     framework.ConfigureDispatch()
         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
         .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-        .TraceNodeId(options.Rid);
+        .TraceLabel(options.Rid);
     framework.Codecs.AddJson();
     if (options.CodecMode != "json-only")
     {

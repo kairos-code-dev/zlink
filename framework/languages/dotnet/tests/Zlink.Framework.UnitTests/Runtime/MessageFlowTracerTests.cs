@@ -13,8 +13,8 @@ public sealed class MessageFlowTracerTests
     public void Off_SuppressesAllTransitions()
     {
         var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.Off);
-        tracer.Trace(Flow(ZLinkMessageFlowPhase.Received));
-        tracer.Trace(Flow(ZLinkMessageFlowPhase.Dropped));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Dropped));
         Assert.Empty(logger.Messages);
     }
 
@@ -22,20 +22,20 @@ public sealed class MessageFlowTracerTests
     public void ErrorsOnly_EmitsDroppedButNotHealthyTransitions()
     {
         var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.ErrorsOnly);
-        tracer.Trace(Flow(ZLinkMessageFlowPhase.Received));
-        tracer.Trace(Flow(ZLinkMessageFlowPhase.Dropped));
-        Assert.DoesNotContain(logger.Messages, m => m.Contains("phase=Received"));
-        Assert.Contains(logger.Messages, m => m.Contains("phase=Dropped"));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Dropped));
+        Assert.DoesNotContain(logger.Messages, m => m.Contains("outcome=received"));
+        Assert.Contains(logger.Messages, m => m.Contains("outcome=dropped"));
     }
 
     [Fact]
     public void KeyTransitions_EmitsLifecycleKeyedByCorrelation()
     {
         var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions);
-        tracer.Trace(Flow(ZLinkMessageFlowPhase.Received));
-        tracer.Trace(Flow(ZLinkMessageFlowPhase.Replied));
-        Assert.Contains(logger.Messages, m => m.Contains("phase=Received"));
-        Assert.Contains(logger.Messages, m => m.Contains("phase=Replied"));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Replied));
+        Assert.Contains(logger.Messages, m => m.Contains("outcome=received"));
+        Assert.Contains(logger.Messages, m => m.Contains("outcome=replied"));
         Assert.Contains(logger.Messages, m => m.Contains("corr=corr-1"));
     }
 
@@ -46,15 +46,15 @@ public sealed class MessageFlowTracerTests
         var cell = new ZLinkMessageFlowModeCell(ZLinkMessageFlowLogMode.Off);
         options.Diagnostics.LiveMode = cell;
 
-        Assert.False(tracer.Enabled(ZLinkMessageFlowPhase.Received));
+        Assert.False(tracer.Enabled(ZLinkMessageFlowOutcome.Received));
 
         cell.Mode = ZLinkMessageFlowLogMode.KeyTransitions;
-        Assert.True(tracer.Enabled(ZLinkMessageFlowPhase.Received));
-        tracer.Trace(Flow(ZLinkMessageFlowPhase.Received));
-        Assert.Contains(logger.Messages, m => m.Contains("phase=Received"));
+        Assert.True(tracer.Enabled(ZLinkMessageFlowOutcome.Received));
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received));
+        Assert.Contains(logger.Messages, m => m.Contains("outcome=received"));
 
         cell.Mode = ZLinkMessageFlowLogMode.Off;
-        Assert.False(tracer.Enabled(ZLinkMessageFlowPhase.Received));
+        Assert.False(tracer.Enabled(ZLinkMessageFlowOutcome.Received));
     }
 
     private static (ZLinkMessageFlowTracer Tracer, RecordingLogger Logger, ZLinkDispatchOptionsModel Options) Build(
@@ -67,9 +67,9 @@ public sealed class MessageFlowTracerTests
         return (new ZLinkMessageFlowTracer(options, services, logger), logger, options);
     }
 
-    private static ZLinkMessageFlowEvent Flow(ZLinkMessageFlowPhase phase) =>
+    private static ZLinkMessageFlowEvent Flow(ZLinkMessageFlowOutcome outcome) =>
         new(
-            phase,
+            outcome,
             ZLinkDispatchErrorSurface.Channel,
             ZLinkDispatchMessageKind.Request,
             PacketName: "PlaceOrder",

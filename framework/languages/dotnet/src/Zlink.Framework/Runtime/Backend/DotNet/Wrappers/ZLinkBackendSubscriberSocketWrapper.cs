@@ -35,6 +35,11 @@ internal sealed class ZLinkBackendSubscriberSocketWrapper(ISubSocket nativeSocke
         nativeSocket.Disconnect(endpoint);
     }
 
+    public void SetRoutingId(RoutingId routingId)
+    {
+        nativeSocket.SetRoutingId(routingId);
+    }
+
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
         nativeSocket.AttachDiscovery(discovery.RequireNative<IDiscovery>());

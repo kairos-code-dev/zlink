@@ -32,9 +32,9 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
-    public IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId)
+    public IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId)
     {
-        EnsureRouter().RoutingConfig.RoutingId = routingId;
+        registration.RoutingId = routingId;
         return this;
     }
 
@@ -72,12 +72,6 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     public IZLinkSpotNodeBuilder ConnectPubSub(string endpoint)
     {
         return ConnectPeerPub(endpoint);
-    }
-
-    public IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId)
-    {
-        EnsurePubSub().RoutingId = routingId;
-        return this;
     }
 
     public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
@@ -139,6 +133,18 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         }
 
         registration.EntrySpotType = typeof(TEntrySpot);
+        return this;
+    }
+
+    public IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
+        where TFactory : class, IZLinkActorFactory
+    {
+        ZLinkRegistrationBuilderGuard.AddUnique(
+            registration.ActorFactories,
+            actorType,
+            typeof(TFactory),
+            "Actor factory name must not be empty.",
+            $"Duplicate actor factory '{actorType}'.");
         return this;
     }
 }

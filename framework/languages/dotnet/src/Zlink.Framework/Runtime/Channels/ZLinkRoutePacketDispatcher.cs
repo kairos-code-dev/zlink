@@ -30,10 +30,10 @@ internal sealed class ZLinkRoutePacketDispatcher(
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
 
-        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
         {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Received,
+                ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.RouteMeshChannel,
                 header.Kind == ZLinkMessageKind.Request
                     ? ZLinkDispatchMessageKind.Request
@@ -80,7 +80,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 header.MessageName,
                 "no-handler",
                 routerChannelId);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.RouteMeshChannel,
                 ZLinkDispatchMessageKind.Send,
                 ZLinkDispatchErrorReason.HandlerMissing,
@@ -104,10 +104,10 @@ internal sealed class ZLinkRoutePacketDispatcher(
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
             {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.Dispatched,
+                    ZLinkMessageFlowOutcome.Dispatched,
                     ZLinkDispatchErrorSurface.RouteMeshChannel,
                     ZLinkDispatchMessageKind.Send,
                     PacketName: header.MessageName,
@@ -128,7 +128,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 ex,
                 routerChannelId,
                 spotRid: sourceRid.ToString());
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.RouteMeshChannel,
                 ZLinkDispatchMessageKind.Send,
                 ZLinkDispatchErrorReason.HandlerException,
@@ -182,7 +182,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RouteHandlerNotFound,
                     $"No routed request handler is registered for '{routerChannelId}:{header.MessageName}'."));
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.RouteMeshChannel,
                 ZLinkDispatchMessageKind.Request,
                 ZLinkDispatchErrorReason.HandlerMissing,
@@ -209,10 +209,10 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 .ConfigureAwait(false);
             Reply(sourceRid, received.RequestSeq, header, reply.Message, reply.MessageType);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
             {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.Replied,
+                    ZLinkMessageFlowOutcome.Replied,
                     ZLinkDispatchErrorSurface.RouteMeshChannel,
                     ZLinkDispatchMessageKind.Request,
                     PacketName: header.MessageName,
@@ -224,7 +224,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
         catch (Exception ex)
         {
             ReplyError(sourceRid, received.RequestSeq, header, ex);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.RouteMeshChannel,
                 ZLinkDispatchMessageKind.Request,
                 ZLinkDispatchErrorReason.HandlerException,
@@ -250,10 +250,10 @@ internal sealed class ZLinkRoutePacketDispatcher(
             using var reply = await dispatch(sourceRid, header, cancellationToken).ConfigureAwait(false);
             ReplyRaw(sourceRid, received.RequestSeq, header, reply);
 
-            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
             {
                 dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.Replied,
+                    ZLinkMessageFlowOutcome.Replied,
                     ZLinkDispatchErrorSurface.RouteMeshChannel,
                     ZLinkDispatchMessageKind.Request,
                     PacketName: header.MessageName,
@@ -265,7 +265,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
         catch (Exception ex)
         {
             ReplyError(sourceRid, received.RequestSeq, header, ex);
-            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            dispatchErrors.Report(new ZLinkDispatchFailure(
                 ZLinkDispatchErrorSurface.RouteMeshChannel,
                 ZLinkDispatchMessageKind.Request,
                 ZLinkDispatchErrorReason.HandlerException,

@@ -464,17 +464,16 @@ static_assert (
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::dispatch_options_t &> ()
-                .set_message_dispatch_error_observer (
-                  std::declval<
-                    std::shared_ptr<zlink::framework::message_dispatch_error_observer_t>> ())),
+                .set_message_flow_observer (
+                  std::declval<std::shared_ptr<zlink::framework::message_flow_observer_t>> ())),
     zlink::framework::dispatch_options_t &>);
 
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::dispatch_options_t &> ()
-                .set_message_dispatch_error_observer (
-                  std::declval<std::function<void (
-                    const zlink::framework::message_dispatch_error_event_t &)>> ())),
+                .set_message_flow_observer (
+                  std::declval<
+                    std::function<void (const zlink::framework::message_flow_event_t &)>> ())),
     zlink::framework::dispatch_options_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_context_t &> ()
@@ -534,7 +533,7 @@ static_assert (
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::client_server_channel_builder_t &> ()
-                             .server_routing_id (zlink::routing_id_t::from ("api"))),
+                             .set_routing_id (zlink::routing_id_t::from ("api"))),
                  zlink::framework::client_server_channel_builder_t &>);
 
 static_assert (
@@ -658,29 +657,9 @@ static_assert (
                  zlink::framework::relay_request_call_t>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
                              .set_routing_id (zlink::routing_id_t::from ("router"))),
-                 zlink::framework::spot_router_capability_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()
-                             .connect ("tcp://127.0.0.1:5501")),
-                 zlink::framework::spot_router_capability_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ()
-                             .set_routing_id (zlink::routing_id_t::from ("pub-sub"))),
-                 zlink::framework::spot_pub_sub_capability_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ()
-                             .connect ("tcp://127.0.0.1:5502")),
-                 zlink::framework::spot_pub_sub_capability_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ()
-                             .connect_peer_pub ("tcp://127.0.0.1:5502")),
-                 zlink::framework::spot_pub_sub_capability_builder_t &>);
+                 zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()

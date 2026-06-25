@@ -1500,7 +1500,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/client-flow.log")
-          .trace_node_id ("cpp-sm-client");
+          .trace_label ("cpp-sm-client");
         configure_codecs (options.codecs ());
         options.services ().add_singleton<client_channel_state_t> (
           std::make_unique<client_channel_state_t> ());
@@ -1510,7 +1510,7 @@ int main (int argc, char **argv)
         options.use_discovery ().add_registry_endpoint (registry_router);
         auto api_channel = options.add_client_server_channel (e2e::api_channel)
                              .enable_server (api_endpoint)
-                             .server_routing_id (
+                             .set_routing_id (
                                zlink::routing_id_t::from (std::string ("client-api")));
         if (scenario_mode == "stream") {
             api_channel.enable_client (api_endpoint);
@@ -1529,11 +1529,10 @@ int main (int argc, char **argv)
         }
         options.add_spot_mesh (e2e::spot_mesh)
           .use_registry_spot_resolver (e2e::route_channel)
-          .enable_router (spot_router_endpoint,
-                          zlink::routing_id_t::from (client_rid))
+          .set_routing_id (zlink::routing_id_t::from (client_rid))
+          .enable_router (spot_router_endpoint)
           .enable_actor_gateway ()
-          .enable_pub_sub (pubsub_endpoint,
-                           zlink::routing_id_t::from (client_rid));
+          .enable_pub_sub (pubsub_endpoint);
     });
     app.add_hosted_service (std::move (scenario));
     const auto code = app.run (argc, argv);

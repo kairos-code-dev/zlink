@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.spots;
 
 import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.configuration.ZLinkDiscoveryBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
@@ -28,6 +29,12 @@ public final class SpotBuilders {
         SpotNodeRegistration node,
         ZLinkFrameworkRegistration registration,
         Consumer<Class<?>> spotFactoryAdded) implements ZLinkSpotMeshBuilder {
+        @Override
+        public ZLinkSpotNodeBuilder setRoutingId(RoutingId routingId) {
+            node.setRoutingId(routingId);
+            return this;
+        }
+
         @Override
         public ZLinkDiscoveryBuilder useDiscovery() {
             return registration.registryEndpoints()::add;
@@ -64,13 +71,6 @@ public final class SpotBuilders {
         }
 
         @Override
-        public ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId) {
-            node.enableRouter();
-            node.setRouterRoutingId(routingId);
-            return this;
-        }
-
-        @Override
         public ZLinkSpotNodeBuilder enablePubSub(String endpoint) {
             node.enablePubSub();
             node.setPubBind(endpoint);
@@ -80,13 +80,6 @@ public final class SpotBuilders {
         @Override
         public ZLinkSpotNodeBuilder connectPeerPub(String endpoint) {
             node.addPubSubManualConnection(endpoint);
-            return this;
-        }
-
-        @Override
-        public ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId) {
-            node.enablePubSub();
-            node.setPubSubRoutingId(routingId);
             return this;
         }
 
@@ -105,6 +98,14 @@ public final class SpotBuilders {
         @Override
         public ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot<?>> entrySpotType) {
             node.addEntrySpot(entrySpotType);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder addActorFactory(
+            String actorType,
+            Class<? extends ZLinkActorFactory> factoryType) {
+            node.addActorFactory(actorType, factoryType);
             return this;
         }
     }

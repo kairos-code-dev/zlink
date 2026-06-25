@@ -29,7 +29,7 @@ class ApiServerApplication {
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("BINGO_LOG_DIR") ?: "logs") + "/flow-api.log")
-                traceNodeId("api")
+                traceLabel("api")
             }
             options.codecs().addJson()
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())

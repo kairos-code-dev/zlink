@@ -47,9 +47,9 @@ internal sealed class ZLinkRouteChannelInitializer(
         var router = adapter.CreateRouterSocket(state.Context);
         router.SetChannelName(routedRegistration.RouterChannelId);
         ZLinkChannelBundleFactory.ApplySocketConfig(router, routedRegistration.SocketConfig);
-        if (routedRegistration.RoutingConfig.RoutingId.Size > 0)
+        if (routedRegistration.RoutingId.Size > 0)
         {
-            router.SetRoutingId(routedRegistration.RoutingConfig.RoutingId);
+            router.SetRoutingId(routedRegistration.RoutingId);
         }
         // weight 는 bind/discovery 前에 적용해 default-weight 노출 창을 없앤다.
         router.SetPeerWeight(routedRegistration.SocketConfig.Weight);
@@ -114,11 +114,11 @@ internal sealed class ZLinkRouteChannelInitializer(
             return named;
         }
 
-        if (routeChannel.RoutingConfig.RoutingId.Size > 0)
+        if (routeChannel.RoutingId.Size > 0)
         {
             foreach (var spotNode in registration.SpotNodes.Values)
             {
-                if (spotNode.Router?.RoutingConfig.RoutingId == routeChannel.RoutingConfig.RoutingId)
+                if (spotNode.RoutingId == routeChannel.RoutingId)
                 {
                     return spotNode;
                 }

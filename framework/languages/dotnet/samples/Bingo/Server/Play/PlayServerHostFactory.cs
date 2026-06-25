@@ -29,27 +29,26 @@ public static class PlayServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("play"))
-                .TraceNodeId("play");
+                .TraceLabel("play");
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
+
             options.AddRouteMesh(SampleNames.PlayChannel)
                 .EnableServer(node.PlayChannelEndpoint)
                 .EnableClient()
                 .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
-            options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery).UseRegistrySpotResolver()
                 .EnableRouter(node.SpotRouterEndpoint)
-                .SetRouterRoutingId(node.NodeRid)
+                .SetRoutingId(node.NodeRid)
                 .EnablePubSub(node.SpotPubEndpoint)
-                .SetPubSubRoutingId(node.NodeRid)
                 .AddEntrySpot<BingoEntrySpot>()
+                .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
                 .AddSpotFactory<BingoRoom>();
         });
 

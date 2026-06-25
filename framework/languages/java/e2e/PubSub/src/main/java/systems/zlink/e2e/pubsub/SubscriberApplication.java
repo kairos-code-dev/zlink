@@ -8,6 +8,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.e2e.pubsub.handlers.EventNotifyHandler;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -53,14 +54,17 @@ public final class SubscriberApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + state.subscriberRid() + "-flow.log")
-                .traceNodeId("java-ps-" + state.subscriberRid())
-                .setMessageDispatchErrorObserver(error -> {
+                .traceLabel("java-ps-" + state.subscriberRid())
+                .setMessageFlowObserver(error -> {
+                    if (error.outcome() != ZLinkMessageFlowOutcome.ERROR) {
+                        return CompletableFuture.completedFuture(null);
+                    }
                     state.record(
                         "DispatchError",
                         error.topic(),
                         "observer",
                         -1,
-                        error.reason() + "/" + error.action() + "/" + error.packetName());
+                        error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return CompletableFuture.completedFuture(null);
                 });
             options.addHandlersFromPackageOf(EventNotifyHandler.class);

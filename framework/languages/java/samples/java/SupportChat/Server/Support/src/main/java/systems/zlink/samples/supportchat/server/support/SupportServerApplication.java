@@ -53,7 +53,7 @@ public final class SupportServerApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("SUPPORTCHAT_LOG_DIR", "logs") + "/flow-support.log")
-                .traceNodeId("support");
+                .traceLabel("support");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(SupportServerApplication.class);
             options.addClientServerChannel(SampleNames.SupportChannel)
@@ -67,13 +67,13 @@ public final class SupportServerApplication {
             route.setRoutingId(RoutingId.from(SampleTopology.SupportRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.SupportSpotDiscovery)
                 .setRouterChannelId(SampleNames.SupportRouteChannel);
-            options.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
                 ;
             node.enableRouter(SampleTopology.SupportSpotRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.SupportRid));
+                .setRoutingId(RoutingId.from(SampleTopology.SupportRid));
             node.enablePubSub(SampleTopology.SupportSpotEndpoint);node.addEntrySpot(SupportEntrySpot.class);
             node.addSpotFactory(ConversationSpot.class);
+            node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);
         };
     }
 

@@ -46,10 +46,13 @@ final class NodesAndServicesTest {
     }
 
     @Test
-    void addZLinkFramework_throws_whenActorFactoryWithoutSpotNode() {
+    void addZLinkFramework_throws_whenMultipleSpotNodesOwnActorFactories() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addActorFactory("player", PlayerActorFactory.class);
+        options.addSpotMesh("alpha")
+            .addActorFactory("player", PlayerActorFactory.class);
+        options.addSpotMesh("beta")
+            .addActorFactory("mage", PlayerActorFactory.class);
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
@@ -91,8 +94,8 @@ final class NodesAndServicesTest {
     private static DefaultZLinkFrameworkOptions optionsWithSpotNodeAndActorFactory() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.addSpotFactory(GameSpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+                node.addSpotFactory(GameSpot.class);
+                node.addActorFactory("player", PlayerActorFactory.class); }; };
         return options;
     }
 

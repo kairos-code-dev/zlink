@@ -18,7 +18,7 @@ function createSupportChatSessionModule(endpoints: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-session.log`)
-            .traceNodeId('session');
+            .traceLabel('session');
           return builder
           .codecs()
             .addJson()

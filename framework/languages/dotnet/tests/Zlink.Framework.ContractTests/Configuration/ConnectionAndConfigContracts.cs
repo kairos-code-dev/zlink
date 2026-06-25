@@ -14,7 +14,6 @@ public sealed class ConnectionAndConfigContracts
         typeof(IZLinkSpotSubscriberConfig),
         typeof(IZLinkEntrySpotOptions),
         typeof(IZLinkDispatchOptions),
-        typeof(IZLinkMessageDispatchErrorObserver),
         typeof(IZLinkUnhandledDispatchOptions),
         typeof(IZLinkDiagnosticsOptions))]
     public void Configuration_contracts_keep_socket_routing_spot_and_dispatch_options_typed()
@@ -38,7 +37,6 @@ public sealed class ConnectionAndConfigContracts
 
         var route = new RouteConfig
         {
-            RoutingId = RoutingId.From("router"),
             RequireKnownPeer = true,
             AllowPeerHandover = true,
             EnablePeerProbe = true,
@@ -47,7 +45,6 @@ public sealed class ConnectionAndConfigContracts
 
         var outbound = new OutboundRouteConfig
         {
-            RoutingId = RoutingId.From("client"),
             ProbeRouterOnConnect = true
         };
 
@@ -78,8 +75,8 @@ public sealed class ConnectionAndConfigContracts
         };
 
         Assert.True(socket.Immediate);
-        Assert.Equal(RoutingId.From("router"), route.RoutingId);
-        Assert.Equal(RoutingId.From("client"), outbound.RoutingId);
+        Assert.True(route.RequireKnownPeer);
+        Assert.True(outbound.ProbeRouterOnConnect);
         Assert.True(publisher.NoDrop);
         Assert.Equal(64, subscriber.ReceiveHighWaterMark);
         Assert.Equal(RoutingId.From("entry"), entrySpot.RoutingId);
@@ -119,8 +116,6 @@ public sealed class ConnectionAndConfigContracts
 
     internal sealed class RouteConfig : IZLinkRouteConfig
     {
-        public RoutingId RoutingId { get; set; }
-
         public bool RequireKnownPeer { get; set; }
 
         public bool AllowPeerHandover { get; set; }
@@ -132,8 +127,6 @@ public sealed class ConnectionAndConfigContracts
 
     internal sealed class OutboundRouteConfig : IZLinkOutboundRouteConfig
     {
-        public RoutingId RoutingId { get; set; }
-
         public bool ProbeRouterOnConnect { get; set; }
     }
 
@@ -172,18 +165,6 @@ public sealed class ConnectionAndConfigContracts
 
         public IZLinkDiagnosticsOptions Diagnostics { get; } = new DiagnosticsOptions();
 
-        public IZLinkDispatchOptions SetMessageDispatchErrorObserver<TObserver>()
-            where TObserver : class, IZLinkMessageDispatchErrorObserver
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions SetMessageDispatchErrorObserver(
-            IZLinkMessageDispatchErrorObserver observer)
-        {
-            return this;
-        }
-
         public IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
             where TObserver : class, IZLinkMessageFlowObserver => this;
 
@@ -197,7 +178,7 @@ public sealed class ConnectionAndConfigContracts
 
         public IZLinkDispatchOptions TraceLogFile(string path) => this;
 
-        public IZLinkDispatchOptions TraceNodeId(string id) => this;
+        public IZLinkDispatchOptions TraceLabel(string id) => this;
     }
 
     private sealed class UnhandledDispatchOptions : IZLinkUnhandledDispatchOptions
@@ -225,7 +206,7 @@ public sealed class ConnectionAndConfigContracts
 
         public string? LogFile { get; set; }
 
-        public string? NodeId { get; set; }
+        public string? Label { get; set; }
 
         public ZLinkMessageFlowLogMode EffectiveMessageFlow => MessageFlow;
     }

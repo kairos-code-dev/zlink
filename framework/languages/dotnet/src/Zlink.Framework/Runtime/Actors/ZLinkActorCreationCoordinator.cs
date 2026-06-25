@@ -17,7 +17,10 @@ internal sealed class ZLinkActorCreationCoordinator(
         bool failIfExists,
         CancellationToken cancellationToken)
     {
-        if (!runtime.Registration.ActorFactories.TryGetValue(actorType, out var factoryType))
+        var actorNode = runtime.Registration.SpotNodes.Values
+            .SingleOrDefault(static node => node.ActorFactories.Count > 0);
+        if (actorNode is null
+            || !actorNode.ActorFactories.TryGetValue(actorType, out var factoryType))
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorCreateFailed,

@@ -43,8 +43,8 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
         }
     }();
     message_flow_tracer_t flow (_runtime.dispatch_options_ref ());
-    flow.trace (message_flow_phase_t::received, [&] {
-        return message_flow_event_t{message_flow_phase_t::received,
+    flow.trace (message_flow_outcome_t::received, [&] {
+        return message_flow_event_t{message_flow_outcome_t::received,
                                     dispatch_error_surface_t::channel,
                                     inbound_kind,
                                     header.value ().message_name,
@@ -106,8 +106,8 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
                 writer.create_error_header (std::move (channel_name), header.value (), error),
                 zlink::message_t::from ("")));
         }
-        flow.trace (message_flow_phase_t::replied, [&] {
-            return message_flow_event_t{message_flow_phase_t::replied,
+        flow.trace (message_flow_outcome_t::replied, [&] {
+            return message_flow_event_t{message_flow_outcome_t::replied,
                                         dispatch_error_surface_t::channel,
                                         dispatch_message_kind_t::response,
                                         header.value ().message_name,
@@ -142,8 +142,8 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
             return result_t<runtime::messaging::message_parts_t>::success (
               runtime::messaging::message_parts_t{});
         }
-        flow.trace (message_flow_phase_t::dispatched, [&] {
-            return message_flow_event_t{message_flow_phase_t::dispatched,
+        flow.trace (message_flow_outcome_t::dispatched, [&] {
+            return message_flow_event_t{message_flow_outcome_t::dispatched,
                                         dispatch_error_surface_t::channel,
                                         inbound_kind,
                                         header.value ().message_name,

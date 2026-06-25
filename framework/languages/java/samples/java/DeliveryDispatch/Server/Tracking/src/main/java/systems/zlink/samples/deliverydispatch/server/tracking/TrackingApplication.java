@@ -62,10 +62,9 @@ public final class TrackingApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-tracking.log")
-                .traceNodeId("tracking");
+                .traceLabel("tracking");
             options.codecs().addJson();
             options.addHandlersFromPackageOf(TrackingApplication.class);
-            options.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory.class);
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(SampleTopology.TrackingChannelEndpoint)
                 .addHandlerGroup("tracking");
@@ -80,9 +79,10 @@ public final class TrackingApplication {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)
                 ;
             node.enableRouter(SampleTopology.TrackingSpotRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid));
+                .setRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid));
             node.enablePubSub(SampleTopology.TrackingSpotEndpoint);node.addEntrySpot(CustomerEntrySpot.class);
             node.addSpotFactory(DeliveryTrackingSpot.class);
+            node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory.class);
         };
     }
 }

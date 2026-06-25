@@ -41,7 +41,7 @@ public final class SessionServerApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("SUPPORTCHAT_LOG_DIR", "logs") + "/flow-session.log")
-                .traceNodeId("session");
+                .traceLabel("session");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
@@ -56,9 +56,8 @@ public final class SessionServerApplication {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
                 ;
             node.enableRouter(SampleTopology.SessionRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.SessionRouterRid));
-            node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionPubRid));
+                .setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid));
+            node.enablePubSub(SampleTopology.SessionSpotEndpoint);
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(SampleTopology.StreamEndpoint)
                 .registerSession(SupportChatSession.class)

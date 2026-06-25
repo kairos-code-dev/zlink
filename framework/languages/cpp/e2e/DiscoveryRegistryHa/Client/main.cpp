@@ -231,7 +231,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/client-flow.log")
-          .trace_node_id ("cpp-dr-client");
+          .trace_label ("cpp-dr-client");
         configure_codecs (options.codecs ());
         for (const auto &endpoint : split_csv (registry_router)) {
             options.use_discovery ().add_registry_endpoint (endpoint);

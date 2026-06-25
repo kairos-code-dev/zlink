@@ -89,9 +89,8 @@ final class StreamSessionTest {
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
-                node.addEntrySpot(GameEntrySpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+                node.addEntrySpot(GameEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
             stream.registerSession(ActorRelaySession.class); };
 

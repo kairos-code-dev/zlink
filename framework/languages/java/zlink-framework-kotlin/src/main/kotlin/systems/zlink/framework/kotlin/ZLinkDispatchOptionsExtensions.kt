@@ -13,7 +13,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowObserver
  * options.configureDispatch {
  *     messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
  *     traceLogFile("logs/flow.log")
- *     traceNodeId("api")
+ *     traceLabel("api")
  * }
  * ```
  * The underlying tracing runtime is the shared Java core, so this is purely ergonomic.

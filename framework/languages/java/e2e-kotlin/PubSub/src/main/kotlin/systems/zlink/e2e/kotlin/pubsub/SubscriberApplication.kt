@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -41,14 +42,17 @@ class SubscriberApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/${state.subscriberRid}-flow.log")
-                .traceNodeId("kotlin-ps-${state.subscriberRid}")
-                .setMessageDispatchErrorObserver { error ->
+                .traceLabel("kotlin-ps-${state.subscriberRid}")
+                .setMessageFlowObserver { error ->
+                    if (error.outcome() != ZLinkMessageFlowOutcome.ERROR) {
+                        return@setMessageFlowObserver CompletableFuture.completedFuture(null)
+                    }
                     state.record(
                         "DispatchError",
                         error.topic(),
                         "observer",
                         -1,
-                        "${error.reason()}/${error.action()}/${error.packetName()}",
+                        "${error.errorReason()}/${error.errorAction()}/${error.packetName()}",
                     )
                     CompletableFuture.completedFuture(null)
                 }

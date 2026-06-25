@@ -81,21 +81,23 @@ inline std::string_view enum_name (dispatch_error_action_t value) noexcept
     return "unknown";
 }
 
-inline std::string_view enum_name (message_flow_phase_t value) noexcept
+inline std::string_view enum_name (message_flow_outcome_t value) noexcept
 {
     switch (value) {
-        case message_flow_phase_t::received:
+        case message_flow_outcome_t::received:
             return "received";
-        case message_flow_phase_t::dispatched:
+        case message_flow_outcome_t::dispatched:
             return "dispatched";
-        case message_flow_phase_t::replied:
+        case message_flow_outcome_t::replied:
             return "replied";
-        case message_flow_phase_t::dropped:
+        case message_flow_outcome_t::dropped:
             return "dropped";
-        case message_flow_phase_t::sent:
+        case message_flow_outcome_t::sent:
             return "sent";
-        case message_flow_phase_t::reply_received:
+        case message_flow_outcome_t::reply_received:
             return "reply_received";
+        case message_flow_outcome_t::error:
+            return "error";
     }
     return "unknown";
 }

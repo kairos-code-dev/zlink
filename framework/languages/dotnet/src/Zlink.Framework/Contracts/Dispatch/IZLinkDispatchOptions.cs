@@ -12,12 +12,6 @@ public interface IZLinkDispatchOptions
 
     IZLinkDiagnosticsOptions Diagnostics { get; }
 
-    IZLinkDispatchOptions SetMessageDispatchErrorObserver<TObserver>()
-        where TObserver : class, IZLinkMessageDispatchErrorObserver;
-
-    IZLinkDispatchOptions SetMessageDispatchErrorObserver(
-        IZLinkMessageDispatchErrorObserver observer);
-
     IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
         where TObserver : class, IZLinkMessageFlowObserver;
 
@@ -34,15 +28,8 @@ public interface IZLinkDispatchOptions
     // Send tracing/error logs to a dedicated file (separated from app logs).
     IZLinkDispatchOptions TraceLogFile(string path);
 
-    // Node identity stamped on every trace line (node=) for cross-node aggregation.
-    IZLinkDispatchOptions TraceNodeId(string id);
-}
-
-public interface IZLinkMessageDispatchErrorObserver
-{
-    ValueTask OnDispatchErrorAsync(
-        ZLinkMessageDispatchErrorEvent error,
-        CancellationToken cancellationToken);
+    // Human-readable trace label stamped on trace lines as label=.
+    IZLinkDispatchOptions TraceLabel(string label);
 }
 
 public interface IZLinkMessageFlowObserver
@@ -62,21 +49,20 @@ public interface IZLinkMessageFlowControl
     ZLinkMessageFlowLogMode MessageFlowMode { get; }
 }
 
-// A success-path transition in a message's lifecycle. Errors are reported
-// separately via ZLinkMessageDispatchErrorEvent. received/dispatched/replied are
-// inbound (this node receives); sent/reply_received are outbound (this node sends).
-public enum ZLinkMessageFlowPhase
+// A transition or error result in a message's lifecycle.
+public enum ZLinkMessageFlowOutcome
 {
     Received,
     Dispatched,
     Replied,
     Dropped,
     Sent,
-    ReplyReceived
+    ReplyReceived,
+    Error
 }
 
 public sealed record ZLinkMessageFlowEvent(
-    ZLinkMessageFlowPhase Phase,
+    ZLinkMessageFlowOutcome Outcome,
     ZLinkDispatchErrorSurface Surface,
     ZLinkDispatchMessageKind MessageKind,
     string? PacketName = null,
@@ -84,11 +70,18 @@ public sealed record ZLinkMessageFlowEvent(
     string? Topic = null,
     string? CorrelationId = null,
     string? SourceRid = null,
+    string? LocalRid = null,
+    string? PeerRid = null,
+    string? SocketRole = null,
     string? SpotRid = null,
     string? ActorId = null,
-    long? MessageSize = null);
+    long? MessageSize = null,
+    ZLinkDispatchErrorReason? ErrorReason = null,
+    ZLinkDispatchErrorAction? ErrorAction = null,
+    string? ErrorType = null,
+    string? ErrorMessage = null);
 
-public sealed record ZLinkMessageDispatchErrorEvent(
+internal sealed record ZLinkDispatchFailure(
     ZLinkDispatchErrorSurface Surface,
     ZLinkDispatchMessageKind MessageKind,
     ZLinkDispatchErrorReason Reason,
@@ -132,8 +125,8 @@ public interface IZLinkDiagnosticsOptions
     // logs). Null = shared app logger.
     string? LogFile { get; }
 
-    // Node/runtime identity stamped on each trace line. Null = omitted.
-    string? NodeId { get; }
+    // Human-readable runtime label stamped on trace lines. Null = omitted.
+    string? Label { get; }
 
     // The mode actually in effect: the runtime-mutable live override if installed,
     // else the configured mode (read live on every dispatch).

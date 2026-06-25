@@ -212,25 +212,32 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddActorFactory<TestActorFactory>("warrior");
-                options.AddActorFactory<TestActorFactory>("warrior");
+                options.AddSpotMesh("actor-node")
+                    .EnableRouter("tcp://127.0.0.1:6102")
+                    .AddActorFactory<TestActorFactory>("warrior")
+                    .AddActorFactory<TestActorFactory>("warrior");
             }));
 
         Assert.Contains("Duplicate actor factory 'warrior'", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_When_ActorFactory_Without_SpotNode()
+    public void AddZLinkFramework_Throws_When_Multiple_SpotNodes_Own_ActorFactories()
     {
         var services = new ServiceCollection();
 
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddActorFactory<TestActorFactory>("warrior");
+                options.AddSpotMesh("actor-node-a")
+                    .EnableRouter("tcp://127.0.0.1:6103")
+                    .AddActorFactory<TestActorFactory>("warrior");
+                options.AddSpotMesh("actor-node-b")
+                    .EnableRouter("tcp://127.0.0.1:6104")
+                    .AddActorFactory<TestActorFactory>("mage");
             }));
 
-        Assert.Contains("requires at least one SpotNode", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("more than one SpotNode owns actor factories", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -315,19 +322,9 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddActorFactory<TestActorFactory>("warrior");
-            {
-                var mesh = options.AddSpotMesh("actor-node");
-                {
-                    var spot = mesh;
-                {
-                    var router = spot.EnableRouter("tcp://127.0.0.1:6201");
-
-                }
-
-                }
-
-            }
+            options.AddSpotMesh("actor-node")
+                .EnableRouter("tcp://127.0.0.1:6201")
+                .AddActorFactory<TestActorFactory>("warrior");
         });
 
         using var provider = services.BuildServiceProvider();

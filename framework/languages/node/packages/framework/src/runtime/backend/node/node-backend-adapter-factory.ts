@@ -230,6 +230,16 @@ function resolveBackendSpotNodeProperty(target: unknown, property: string | symb
     return (routingId: unknown) =>
       (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
   }
+  if (property === 'setPublisherRoutingId') {
+    return (routingId: unknown) =>
+      (target as unknown as { setPublisherRoutingId(routingId: unknown): void })
+        .setPublisherRoutingId(toNativeRoutingId(routingId));
+  }
+  if (property === 'setSubscriberRoutingId') {
+    return (routingId: unknown) =>
+      (target as unknown as { setSubscriberRoutingId(routingId: unknown): void })
+        .setSubscriberRoutingId(toNativeRoutingId(routingId));
+  }
   if (property === 'connectPeerRid') {
     return (targetNodeRid: unknown, endpoint: string) =>
       (target as unknown as { connectPeerRid(targetNodeRid: unknown, endpoint: string): void })

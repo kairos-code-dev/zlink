@@ -3,7 +3,6 @@ package systems.zlink.framework.configuration;
 import java.time.Duration;
 import java.util.concurrent.Executor;
 import systems.zlink.framework.ZLinkHandlerFilter;
-import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 
@@ -29,10 +28,6 @@ public interface ZLinkFrameworkOptions {
     ZLinkSpotMeshBuilder addSpotMesh(String channelName);
 
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
-
-    void addActorFactory(
-        String actorType,
-        Class<? extends ZLinkActorFactory> factoryType);
 
     void addSpotRemoteAddressResolver(
         Class<? extends ZLinkSpotRemoteAddressResolver> resolverType);

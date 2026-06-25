@@ -54,7 +54,7 @@ internal sealed class ZLinkRouteSpotChannelCalls
     {
         string? correlationId = null;
         string? packetName = null;
-        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (_flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             var header = ZLinkEnvelopeCodec.DecodeHeader(parts);
             correlationId = header.CorrelationId;
@@ -80,17 +80,17 @@ internal sealed class ZLinkRouteSpotChannelCalls
                 cancellationToken)
             .ConfigureAwait(false);
 
-        if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        if (_flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
         {
             RecoverReplyTraceFields(reply, ref correlationId, ref packetName);
             _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.ReplyReceived,
+                ZLinkMessageFlowOutcome.ReplyReceived,
                 ZLinkDispatchErrorSurface.SpotRoute,
                 ZLinkDispatchMessageKind.Response,
                 PacketName: packetName,
                 ChannelName: _routerChannelId,
                 CorrelationId: correlationId,
-                SourceRid: targetNodeRid.ToString(),
+                PeerRid: targetNodeRid.ToString(),
                 SpotRid: targetSpotRid.ToString()));
         }
 
@@ -104,13 +104,13 @@ internal sealed class ZLinkRouteSpotChannelCalls
         RoutingId targetSpotRid)
     {
         _flow.Trace(new ZLinkMessageFlowEvent(
-            ZLinkMessageFlowPhase.Sent,
+            ZLinkMessageFlowOutcome.Sent,
             ZLinkDispatchErrorSurface.SpotRoute,
             ZLinkDispatchMessageKind.Request,
             PacketName: packetName,
             ChannelName: _routerChannelId,
             CorrelationId: correlationId,
-            SourceRid: targetNodeRid.ToString(),
+            PeerRid: targetNodeRid.ToString(),
             SpotRid: targetSpotRid.ToString()));
     }
 

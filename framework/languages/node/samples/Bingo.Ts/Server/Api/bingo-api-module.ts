@@ -16,7 +16,7 @@ function createBingoApiModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-api.log`)
-            .traceNodeId('api');
+            .traceLabel('api');
           return builder
             .codecs()
               .use(zlinkProtobufCodec())

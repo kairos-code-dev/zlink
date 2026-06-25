@@ -64,7 +64,7 @@ public final class QuestMissionApplication {
             configurer.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs") + "/flow-" + instance.missionName() + ".log")
-                .traceNodeId(instance.missionName());
+                .traceLabel(instance.missionName());
             configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(QuestMissionApplication.class);
 
@@ -89,7 +89,7 @@ public final class QuestMissionApplication {
             ZLinkSpotNodeBuilder node = configurer.addSpotMesh(SampleNames.QuestSpotDiscovery)
                 ;
             node.enableRouter(instance.spotRouterEndpoint())
-                .setRouterRoutingId(instance.spotRid());
+                .setRoutingId(instance.spotRid());
             node.enablePubSub(instance.spotEndpoint());
             node.addSpotFactory(PlayerQuestSpot.class);
         };

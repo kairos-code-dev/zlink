@@ -94,7 +94,6 @@ static async ValueTask AssertTrackingChannelAsync(
     builder.Logging.ClearProviders();
     builder.Services.AddZLinkFramework(options =>
     {
-        options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
         options.Codecs.AddJson();
         options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
         {

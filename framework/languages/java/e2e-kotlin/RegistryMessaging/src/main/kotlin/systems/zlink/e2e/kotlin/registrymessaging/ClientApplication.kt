@@ -26,7 +26,7 @@ class ClientApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/client-flow.log")
-                .traceNodeId("kotlin-rm-client")
+                .traceLabel("kotlin-rm-client")
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"))
             options.addClientServerChannel(Contracts.API_CHANNEL).enableClient()
             options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL).enableClient()

@@ -28,10 +28,10 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             tcs);
 
         var correlationId = Guid.NewGuid().ToString("N");
-        if (flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
+                ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.SpotActor,
                 ZLinkDispatchMessageKind.ActorRequest,
                 PacketName: "JoinEntrySpot",
@@ -75,10 +75,10 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 .ConfigureAwait(false);
         }
 
-        if (flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        if (flow.Enabled(ZLinkMessageFlowOutcome.ReplyReceived))
         {
             flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.ReplyReceived,
+                ZLinkMessageFlowOutcome.ReplyReceived,
                 ZLinkDispatchErrorSurface.SpotActor,
                 ZLinkDispatchMessageKind.Response,
                 PacketName: "JoinEntrySpot",

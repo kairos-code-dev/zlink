@@ -109,10 +109,14 @@ public final class ZLinkFrameworkRuntime
         if (this.spots != null) {
             this.channels.registerSpotRouteBridgeOwner(this.spots::primaryNode);
         }
-        this.actors = spots != null && !options.registration().actorFactories().isEmpty()
+        var actorNodeRegistration = options.registration().spotNodes().stream()
+            .filter(node -> !node.actorFactories().isEmpty())
+            .findFirst()
+            .orElse(null);
+        this.actors = spots != null && actorNodeRegistration != null
             ? new ZLinkActorRuntime(
-                spots.primaryNode(),
-                options.registration().actorFactories(),
+                spots.node(actorNodeRegistration.nodeName()),
+                actorNodeRegistration.actorFactories(),
                 options.registration().defaultRequestTimeout(),
                 serializer,
                 runtimeHandlers,

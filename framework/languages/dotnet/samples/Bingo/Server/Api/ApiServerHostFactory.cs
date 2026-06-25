@@ -14,15 +14,15 @@ public static class ApiServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("api"))
-                .TraceNodeId("api");
+                .TraceLabel("api");
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableServer(node.ChannelEndpoint)
+                .SetRoutingId(node.RouteRid)
                 .AddHandlerGroup("api");
             options.AddRouteMesh(SampleNames.PlayChannel)
                 .EnableClient()

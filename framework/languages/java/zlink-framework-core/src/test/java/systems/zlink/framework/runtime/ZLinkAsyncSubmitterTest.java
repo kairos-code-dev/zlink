@@ -257,6 +257,7 @@ final class ZLinkAsyncSubmitterTest {
         @Override public void bind(String endpoint) { }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
         @Override public void setChannelName(String channelName) { }
+        @Override public void setRoutingId(RoutingId routingId) { }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) {
             entered.countDown();
             try {

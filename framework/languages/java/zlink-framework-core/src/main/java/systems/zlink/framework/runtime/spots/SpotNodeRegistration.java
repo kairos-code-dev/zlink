@@ -2,9 +2,12 @@ package systems.zlink.framework.runtime.spots;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -15,14 +18,15 @@ public final class SpotNodeRegistration {
     private final String nodeName;
     private final List<Class<? extends ZLinkSpot<?>>> spotFactories = new ArrayList<>();
     private final List<Class<? extends ZLinkEntrySpot<?>>> entrySpots = new ArrayList<>();
+    private final Map<String, Class<? extends ZLinkActorFactory>> actorFactories =
+        new LinkedHashMap<>();
     private final List<RouterManualConnection> routerManualConnections = new ArrayList<>();
     private final List<String> pubSubManualConnections = new ArrayList<>();
     private boolean routerEnabled;
     private boolean pubSubEnabled;
     private String routerBind;
     private String pubBind;
-    private RoutingId routerRoutingId;
-    private RoutingId pubSubRoutingId;
+    private RoutingId routingId;
     private RoutingId entrySpotRoutingId;
 
     public SpotNodeRegistration(String meshName, String nodeName) {
@@ -46,6 +50,10 @@ public final class SpotNodeRegistration {
         return List.copyOf(entrySpots);
     }
 
+    public Map<String, Class<? extends ZLinkActorFactory>> actorFactories() {
+        return Map.copyOf(actorFactories);
+    }
+
     public String routerBind() {
         return routerBind;
     }
@@ -54,19 +62,8 @@ public final class SpotNodeRegistration {
         return pubBind;
     }
 
-    public RoutingId routerRoutingId() {
-        return routerRoutingId;
-    }
-
-    public RoutingId pubSubRoutingId() {
-        return pubSubRoutingId;
-    }
-
     public RoutingId nodeRoutingId() {
-        if (routerRoutingId != null) {
-            return routerRoutingId;
-        }
-        return pubSubRoutingId;
+        return routingId;
     }
 
     public RoutingId entrySpotRoutingId() {
@@ -107,26 +104,15 @@ public final class SpotNodeRegistration {
         pubBind = requireEndpoint(endpoint, "pub endpoint");
     }
 
-    void setRouterRoutingId(RoutingId routingId) {
+    void setRoutingId(RoutingId routingId) {
         if (routingId == null) {
-            throw new ZLinkConfigurationException("spot router routing id is required");
+            throw new ZLinkConfigurationException("spot node routing id is required");
         }
-        if (routerRoutingId != null && !routerRoutingId.equals(routingId)) {
+        if (this.routingId != null && !this.routingId.equals(routingId)) {
             throw new ZLinkConfigurationException(
-                "spot router routing id is already configured: " + nodeName);
+                "spot node routing id is already configured: " + nodeName);
         }
-        routerRoutingId = routingId;
-    }
-
-    void setPubSubRoutingId(RoutingId routingId) {
-        if (routingId == null) {
-            throw new ZLinkConfigurationException("spot pub/sub routing id is required");
-        }
-        if (pubSubRoutingId != null && !pubSubRoutingId.equals(routingId)) {
-            throw new ZLinkConfigurationException(
-                "spot pub/sub routing id is already configured: " + nodeName);
-        }
-        pubSubRoutingId = routingId;
+        this.routingId = routingId;
     }
 
     ZLinkEntrySpotOptions entrySpotOptions() {
@@ -171,6 +157,19 @@ public final class SpotNodeRegistration {
         entrySpots.add(entrySpotType);
     }
 
+    void addActorFactory(
+        String actorType,
+        Class<? extends ZLinkActorFactory> factoryType) {
+        if (factoryType == null) {
+            throw new ZLinkConfigurationException("actor factory type is required");
+        }
+        String type = requireEndpoint(actorType, "actor type");
+        if (actorFactories.putIfAbsent(type, factoryType) != null) {
+            throw new ZLinkConfigurationException("duplicate actor type on node: " + type);
+        }
+        enableRouter();
+    }
+
     private final class EntrySpotOptions implements ZLinkEntrySpotOptions {
         @Override
         public RoutingId routingId() {
@@ -198,16 +197,6 @@ public final class SpotNodeRegistration {
         if (entrySpots.size() > 1) {
             throw new ZLinkConfigurationException(
                 "spot node registers multiple entry spots: " + nodeName);
-        }
-        if (routerRoutingId != null
-            && pubSubRoutingId != null
-            && !routerRoutingId.equals(pubSubRoutingId)
-            && routerBind == null
-            && pubBind == null
-            && routerManualConnections.isEmpty()
-            && pubSubManualConnections.isEmpty()) {
-            throw new ZLinkConfigurationException(
-                "spot router and pub/sub routing ids must match on node: " + nodeName);
         }
     }
 

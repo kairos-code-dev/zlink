@@ -5,7 +5,6 @@ import systems.zlink.framework.configuration.ZLinkDispatchMode;
 import systems.zlink.framework.configuration.ZLinkDispatchOptions;
 import systems.zlink.framework.configuration.ZLinkLogLevel;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorObserver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchOptions;
@@ -16,8 +15,6 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
     private final DiagnosticsOptions diagnostics = new DiagnosticsOptions();
     private ZLinkDispatchMode spotDispatchMode = ZLinkDispatchMode.COMPILED;
     private ZLinkDispatchMode streamDispatchMode = ZLinkDispatchMode.COMPILED;
-    private Class<? extends ZLinkMessageDispatchErrorObserver> messageDispatchErrorObserverType;
-    private ZLinkMessageDispatchErrorObserver messageDispatchErrorObserver;
     private Class<? extends ZLinkMessageFlowObserver> messageFlowObserverType;
     private ZLinkMessageFlowObserver messageFlowObserver;
 
@@ -51,14 +48,6 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
         return diagnostics;
     }
 
-    public Class<? extends ZLinkMessageDispatchErrorObserver> messageDispatchErrorObserverType() {
-        return messageDispatchErrorObserverType;
-    }
-
-    public ZLinkMessageDispatchErrorObserver messageDispatchErrorObserver() {
-        return messageDispatchErrorObserver;
-    }
-
     public Class<? extends ZLinkMessageFlowObserver> messageFlowObserverType() {
         return messageFlowObserverType;
     }
@@ -67,23 +56,6 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
         return messageFlowObserver;
     }
 
-    @Override
-    public ZLinkDispatchOptions setMessageDispatchErrorObserver(
-        Class<? extends ZLinkMessageDispatchErrorObserver> observerType) {
-        messageDispatchErrorObserverType = requireNonNull(observerType, "messageDispatchErrorObserverType");
-        messageDispatchErrorObserver = null;
-        return this;
-    }
-
-    @Override
-    public ZLinkDispatchOptions setMessageDispatchErrorObserver(
-        ZLinkMessageDispatchErrorObserver observer) {
-        messageDispatchErrorObserver = requireNonNull(observer, "messageDispatchErrorObserver");
-        messageDispatchErrorObserverType = null;
-        return this;
-    }
-
-    @Override
     public ZLinkDispatchOptions setMessageFlowObserver(
         Class<? extends ZLinkMessageFlowObserver> observerType) {
         messageFlowObserverType = requireNonNull(observerType, "messageFlowObserverType");
@@ -123,8 +95,8 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
     }
 
     @Override
-    public ZLinkDispatchOptions traceNodeId(String id) {
-        diagnostics.setNodeId(id);
+    public ZLinkDispatchOptions traceLabel(String label) {
+        diagnostics.setLabel(label);
         return this;
     }
 
@@ -210,7 +182,7 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
         private boolean includeMessageSizes = true;
         private boolean includeNativeDiagnostics;
         private String logFile;
-        private String nodeId;
+        private String label;
         // Shared, runtime-mutable mode cell installed by the host at start; shared
         // across surfaces so setMessageFlowMode flips it live. Null before install.
         private volatile java.util.concurrent.atomic.AtomicReference<ZLinkMessageFlowLogMode> liveMode;
@@ -235,8 +207,8 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
             return logFile;
         }
 
-        public String nodeId() {
-            return nodeId;
+        public String label() {
+            return label;
         }
 
         public ZLinkMessageFlowLogMode effectiveMessageFlow() {
@@ -274,8 +246,8 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
             logFile = path == null || path.isBlank() ? null : path;
         }
 
-        public void setNodeId(String id) {
-            nodeId = id == null || id.isBlank() ? null : id;
+        public void setLabel(String label) {
+            this.label = label == null || label.isBlank() ? null : label;
         }
     }
 }

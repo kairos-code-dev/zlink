@@ -51,8 +51,8 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
-import systems.zlink.framework.configuration.ZLinkMessageFlowPhase;
-import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
+import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
@@ -276,8 +276,8 @@ public final class ZLinkChannelRuntime
         }
         ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
         router.setChannelName(channel.name());
-        if (channel.serverRoutingId() != null) {
-            router.setRoutingId(channel.serverRoutingId());
+        if (channel.routingId() != null) {
+            router.setRoutingId(channel.routingId());
         }
         if (discovery != null) {
             router.attachDiscovery(discovery);
@@ -306,6 +306,9 @@ public final class ZLinkChannelRuntime
         if (channel.publisherEnabled()) {
             ZLinkBackendPublisherSocket publisher = backend.createPublisherSocket(context);
             publisher.setChannelName(channel.name());
+            if (channel.routingId() != null) {
+                publisher.setRoutingId(channel.routingId());
+            }
             if (discovery != null) {
                 publisher.attachDiscovery(discovery);
             } else {
@@ -833,9 +836,9 @@ public final class ZLinkChannelRuntime
                 return;
             }
             long requestSeq = received.requestSeq().get();
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkMessageFlowOutcome.RECEIVED,
                     ZLinkDispatchErrorSurface.CHANNEL,
                     ZLinkDispatchMessageKind.REQUEST,
                     packet.packetName(), channelName, null,
@@ -860,9 +863,9 @@ public final class ZLinkChannelRuntime
                                 error);
                         } else {
                             replyAndClose(router, routingId, requestSeq, reply);
-                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLIED)) {
+                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLIED)) {
                                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                    ZLinkMessageFlowPhase.REPLIED,
+                                    ZLinkMessageFlowOutcome.REPLIED,
                                     ZLinkDispatchErrorSurface.CHANNEL,
                                     ZLinkDispatchMessageKind.REQUEST,
                                     packetName, channelName, null,
@@ -1015,9 +1018,9 @@ public final class ZLinkChannelRuntime
                 return;
             }
             long requestSeq = received.requestSeq().get();
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkMessageFlowOutcome.RECEIVED,
                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                     ZLinkDispatchMessageKind.REQUEST,
                     packet.packetName(), channelName, null,
@@ -1045,9 +1048,9 @@ public final class ZLinkChannelRuntime
                                 error);
                         } else {
                             replyAndClose(router, routingId, requestSeq, reply);
-                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLIED)) {
+                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLIED)) {
                                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                    ZLinkMessageFlowPhase.REPLIED,
+                                    ZLinkMessageFlowOutcome.REPLIED,
                                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                                     ZLinkDispatchMessageKind.REQUEST,
                                     packet.packetName(), channelName, null,
@@ -1113,9 +1116,9 @@ public final class ZLinkChannelRuntime
             }
             String publishPacketName = packet.packetName();
             String publishTopic = received.topic();
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkMessageFlowOutcome.RECEIVED,
                     ZLinkDispatchErrorSurface.CHANNEL,
                     ZLinkDispatchMessageKind.PUBLISH,
                     publishPacketName, channelName, publishTopic,
@@ -1136,9 +1139,9 @@ public final class ZLinkChannelRuntime
                                 publishTopic,
                                 null,
                                 error);
-                        } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                        } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
                             dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                ZLinkMessageFlowPhase.DISPATCHED,
+                                ZLinkMessageFlowOutcome.DISPATCHED,
                                 ZLinkDispatchErrorSurface.CHANNEL,
                                 ZLinkDispatchMessageKind.PUBLISH,
                                 publishPacketName, channelName, publishTopic,
@@ -1167,9 +1170,9 @@ public final class ZLinkChannelRuntime
             return;
         }
         String sendPacketName = packet.packetName();
-        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+        if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
             dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.RECEIVED,
+                ZLinkMessageFlowOutcome.RECEIVED,
                 ZLinkDispatchErrorSurface.CHANNEL,
                 ZLinkDispatchMessageKind.SEND,
                 sendPacketName, channelName, null, null, null, null, null, null));
@@ -1188,9 +1191,9 @@ public final class ZLinkChannelRuntime
                             channelName,
                             null,
                             error);
-                    } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                    } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
                         dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                            ZLinkMessageFlowPhase.DISPATCHED,
+                            ZLinkMessageFlowOutcome.DISPATCHED,
                             ZLinkDispatchErrorSurface.CHANNEL,
                             ZLinkDispatchMessageKind.SEND,
                             sendPacketName, channelName, null, null, null, null, null, null));
@@ -1218,9 +1221,9 @@ public final class ZLinkChannelRuntime
             return;
         }
         String routeSendPacketName = packet.packetName();
-        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+        if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.RECEIVED)) {
             dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.RECEIVED,
+                ZLinkMessageFlowOutcome.RECEIVED,
                 ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                 ZLinkDispatchMessageKind.SEND,
                 routeSendPacketName, channelName, null, null,
@@ -1240,9 +1243,9 @@ public final class ZLinkChannelRuntime
                             channelName,
                             null,
                             error);
-                    } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                    } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.DISPATCHED)) {
                         dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                            ZLinkMessageFlowPhase.DISPATCHED,
+                            ZLinkMessageFlowOutcome.DISPATCHED,
                             ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                             ZLinkDispatchMessageKind.SEND,
                             routeSendPacketName, channelName, null, null,
@@ -1302,7 +1305,7 @@ public final class ZLinkChannelRuntime
         String sourceRid,
         Throwable error) {
         Throwable cause = unwrapCompletion(error);
-        dispatchErrors.report(new ZLinkMessageDispatchErrorEvent(
+        dispatchErrors.report(new ZLinkDispatchFailure(
             surface,
             kind,
             reason,
@@ -1314,7 +1317,8 @@ public final class ZLinkChannelRuntime
             null,
             sourceRid,
             null,
-            cause));
+            errorType(cause),
+            errorMessage(cause)));
     }
 
     private static Throwable unwrapCompletion(Throwable error) {
@@ -1322,6 +1326,14 @@ public final class ZLinkChannelRuntime
             return error.getCause();
         }
         return error;
+    }
+
+    private static String errorType(Throwable error) {
+        return error == null ? null : error.getClass().getSimpleName();
+    }
+
+    private static String errorMessage(Throwable error) {
+        return error == null ? null : error.getMessage();
     }
 
     private static ZLinkDispatchErrorReason dispatchReasonFromError(Throwable error) {
@@ -2009,9 +2021,9 @@ public final class ZLinkChannelRuntime
 
         @Override
         public CompletionStage<Void> submit() {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.CHANNEL,
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), null, topic, null, null, null, null, null));
@@ -2054,9 +2066,9 @@ public final class ZLinkChannelRuntime
 
         @Override
         public CompletionStage<Void> submit() {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.CHANNEL,
                     ZLinkDispatchMessageKind.SEND,
                     packetName.orElse(null), null, null, null, null, null, null, null));
@@ -2110,9 +2122,9 @@ public final class ZLinkChannelRuntime
             List<Message> requestParts = parts(packetName, payload);
             result.whenComplete((ignored, error) -> requestParts.forEach(Message::close));
             String reqPacket = packetName.orElse(null);
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.CHANNEL,
                     ZLinkDispatchMessageKind.REQUEST,
                     reqPacket, null, null, null, null, null, null, null));
@@ -2124,9 +2136,9 @@ public final class ZLinkChannelRuntime
                 reply -> {
                     try {
                         completeRequestReply(reply, replyType, result);
-                        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                        if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLY_RECEIVED)) {
                             dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                                ZLinkMessageFlowOutcome.REPLY_RECEIVED,
                                 ZLinkDispatchErrorSurface.CHANNEL,
                                 ZLinkDispatchMessageKind.RESPONSE,
                                 reqPacket, null, null, null, null, null, null, null));
@@ -2204,9 +2216,9 @@ public final class ZLinkChannelRuntime
 
         @Override
         public CompletionStage<Void> submit() {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                     ZLinkDispatchMessageKind.SEND,
                     packetName.orElse(null), null, null, null, target.toString(), null, null, null));
@@ -2271,9 +2283,9 @@ public final class ZLinkChannelRuntime
             CompletableFuture<TReply> result = new CompletableFuture<>();
             trackPendingRequest(result, timeout);
             List<Message> requestParts = parts(packetName, payload);
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkMessageFlowOutcome.SENT,
                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                     ZLinkDispatchMessageKind.REQUEST,
                     packetName.orElse(null), channelName, null, null,
@@ -2291,9 +2303,9 @@ public final class ZLinkChannelRuntime
                     reply -> {
                         try {
                             completeRequestReply(reply, replyType, result);
-                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.REPLY_RECEIVED)) {
                                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                                    ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                                    ZLinkMessageFlowOutcome.REPLY_RECEIVED,
                                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                                     ZLinkDispatchMessageKind.RESPONSE,
                                     packetName.orElse(null), channelName, null, null,

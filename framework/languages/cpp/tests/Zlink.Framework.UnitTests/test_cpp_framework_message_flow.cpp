@@ -41,9 +41,9 @@ dispatch_options_t options_with_mode (message_flow_log_mode_t mode)
     return options;
 }
 
-message_flow_event_t flow_event (message_flow_phase_t phase)
+message_flow_event_t flow_event (message_flow_outcome_t outcome)
 {
-    return message_flow_event_t{phase,
+    return message_flow_event_t{outcome,
                                 dispatch_error_surface_t::channel,
                                 dispatch_message_kind_t::request,
                                 std::string ("PlaceOrder"),
@@ -86,8 +86,8 @@ int main ()
         const auto out = capture_clog ([] {
             const auto opts = options_with_mode (message_flow_log_mode_t::off);
             message_flow_tracer_t tracer (opts);
-            tracer.trace (flow_event (message_flow_phase_t::received));
-            tracer.trace (flow_event (message_flow_phase_t::dropped));
+            tracer.trace (flow_event (message_flow_outcome_t::received));
+            tracer.trace (flow_event (message_flow_outcome_t::dropped));
         });
         if (!out.empty ()) {
             return 1;
@@ -99,13 +99,13 @@ int main ()
         const auto out = capture_clog ([] {
             const auto opts = options_with_mode (message_flow_log_mode_t::errors_only);
             message_flow_tracer_t tracer (opts);
-            tracer.trace (flow_event (message_flow_phase_t::received));
-            tracer.trace (flow_event (message_flow_phase_t::dropped));
+            tracer.trace (flow_event (message_flow_outcome_t::received));
+            tracer.trace (flow_event (message_flow_outcome_t::dropped));
         });
-        if (contains (out, "phase=received")) {
+        if (contains (out, "outcome=received")) {
             return 2;
         }
-        if (!contains (out, "phase=dropped")) {
+        if (!contains (out, "outcome=dropped")) {
             return 3;
         }
     }
@@ -115,13 +115,13 @@ int main ()
         const auto out = capture_clog ([] {
             const auto opts = options_with_mode (message_flow_log_mode_t::key_transitions);
             message_flow_tracer_t tracer (opts);
-            tracer.trace (flow_event (message_flow_phase_t::received));
-            tracer.trace (flow_event (message_flow_phase_t::replied));
+            tracer.trace (flow_event (message_flow_outcome_t::received));
+            tracer.trace (flow_event (message_flow_outcome_t::replied));
         });
-        if (!contains (out, "zlink flow: phase=received")) {
+        if (!contains (out, "zlink flow: outcome=received")) {
             return 4;
         }
-        if (!contains (out, "phase=replied")) {
+        if (!contains (out, "outcome=replied")) {
             return 5;
         }
         if (!contains (out, "corr=corr-123")) {
@@ -139,7 +139,7 @@ int main ()
     {
         const auto out = capture_clog ([] {
             message_flow_tracer_t (options_with_mode (message_flow_log_mode_t::verbose))
-              .trace (flow_event (message_flow_phase_t::received));
+              .trace (flow_event (message_flow_outcome_t::received));
         });
         if (!contains (out, "size=42")) {
             return 9;
@@ -151,7 +151,7 @@ int main ()
         auto options = options_with_mode (message_flow_log_mode_t::verbose);
         options.include_message_sizes (false);
         const auto out = capture_clog ([&] {
-            message_flow_tracer_t (options).trace (flow_event (message_flow_phase_t::received));
+            message_flow_tracer_t (options).trace (flow_event (message_flow_outcome_t::received));
         });
         if (contains (out, "size=")) {
             return 10;
@@ -198,7 +198,7 @@ int main ()
 
         // Static says off, live says off -> nothing.
         auto out = capture_clog ([&] {
-            message_flow_tracer_t (options).trace (flow_event (message_flow_phase_t::received));
+            message_flow_tracer_t (options).trace (flow_event (message_flow_outcome_t::received));
         });
         if (!out.empty ()) {
             return 15;
@@ -207,16 +207,16 @@ int main ()
         // Flip live to key_transitions at runtime -> now it traces, despite static off.
         live->store (message_flow_log_mode_t::key_transitions);
         out = capture_clog ([&] {
-            message_flow_tracer_t (options).trace (flow_event (message_flow_phase_t::received));
+            message_flow_tracer_t (options).trace (flow_event (message_flow_outcome_t::received));
         });
-        if (!contains (out, "phase=received")) {
+        if (!contains (out, "outcome=received")) {
             return 16;
         }
 
         // Flip back to off -> silent again.
         live->store (message_flow_log_mode_t::off);
         out = capture_clog ([&] {
-            message_flow_tracer_t (options).trace (flow_event (message_flow_phase_t::received));
+            message_flow_tracer_t (options).trace (flow_event (message_flow_outcome_t::received));
         });
         if (!out.empty ()) {
             return 17;

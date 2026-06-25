@@ -55,7 +55,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (flow_log_path ("registry"))
-          .trace_node_id ("gamequest-registry");
+          .trace_label ("gamequest-registry");
         options.enable_registry (registry_pub_endpoint (), registry_router_endpoint ());
     });
     std::thread registry_thread ([&] { (void) registry_app.run (argc, argv); });
@@ -65,7 +65,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (flow_log_path ("server"))
-          .trace_node_id ("gamequest-server");
+          .trace_label ("gamequest-server");
         options.services ().add_singleton<game_quest_server_role_t> (
           std::make_unique<game_quest_server_role_t> ());
         options.handlers ()

@@ -19,10 +19,9 @@ public static class SessionServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path("session"))
-                .TraceNodeId("session");
+                .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
@@ -34,7 +33,7 @@ public static class SessionServerHostFactory
                 .SetRoutingId(session.PlayRouteRid);
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
                 .EnableRouter(session.RouterEndpoint)
-                .SetRouterRoutingId(session.RouterRoutingId);
+                .SetRoutingId(session.RoutingId);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
                 .RegisterSession<Sessions.BingoSession>();

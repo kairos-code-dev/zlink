@@ -190,10 +190,10 @@ internal sealed class ZLinkSessionStreamTransport(
 
     private void TraceSent(string packetName, ZLinkDispatchMessageKind kind, string correlationId)
     {
-        if (flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        if (flow.Enabled(ZLinkMessageFlowOutcome.Sent))
         {
             flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
+                ZLinkMessageFlowOutcome.Sent,
                 ZLinkDispatchErrorSurface.StreamSession,
                 kind,
                 PacketName: packetName,

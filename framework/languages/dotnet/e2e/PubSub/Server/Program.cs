@@ -39,24 +39,24 @@ else if (options.Role == "publisher")
     {
         framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
         framework.ConfigureDispatch()
+            .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-            .TraceNodeId(options.Rid);
+            .TraceLabel(options.Rid);
         framework.AddFanoutChannel(PubSubNames.Channel)
             .EnablePublisher(Require(options.PublisherEndpoint, "--publisher-endpoint"));
     });
 }
 else if (options.Role == "subscriber")
 {
-    builder.Services.AddSingleton<IZLinkMessageDispatchErrorObserver, EvidenceDispatchErrorObserver>();
     builder.Services.AddZLinkFramework(framework =>
     {
         framework.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
         framework.ConfigureDispatch()
-            .SetMessageDispatchErrorObserver<EvidenceDispatchErrorObserver>()
+            .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-            .TraceNodeId(options.Rid);
+            .TraceLabel(options.Rid);
         framework.AddFanoutChannel(PubSubNames.Channel)
             .EnableSubscriber(Require(options.PublisherEndpoint, "--publisher-endpoint"))
             .AddPublishHandler<EventNotifyHandler, EventNotify>("EventNotify");
@@ -157,22 +157,27 @@ internal sealed class EventNotifyHandler(EvidenceStore evidence, HandlerDelayOpt
 internal sealed record HandlerDelayOptions(int DelayMs);
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkMessageDispatchErrorObserver
+    : IZLinkMessageFlowObserver
 {
-    public ValueTask OnDispatchErrorAsync(
-        ZLinkMessageDispatchErrorEvent error,
+    public ValueTask OnMessageFlowAsync(
+        ZLinkMessageFlowEvent flow,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
+        {
+            return ValueTask.CompletedTask;
+        }
+
         evidence.Add(
             "dispatch-error"
-            + $"|surface={error.Surface}"
-            + $"|kind={error.MessageKind}"
-            + $"|reason={error.Reason}"
-            + $"|action={error.Action}"
-            + $"|packet={error.PacketName ?? "<null>"}"
-            + $"|channel={error.ChannelName ?? "<null>"}"
-            + $"|topic={error.Topic ?? "<null>"}");
+            + $"|surface={flow.Surface}"
+            + $"|kind={flow.MessageKind}"
+            + $"|reason={flow.ErrorReason}"
+            + $"|action={flow.ErrorAction}"
+            + $"|packet={flow.PacketName ?? "<null>"}"
+            + $"|channel={flow.ChannelName ?? "<null>"}"
+            + $"|topic={flow.Topic ?? "<null>"}");
         return ValueTask.CompletedTask;
     }
 }

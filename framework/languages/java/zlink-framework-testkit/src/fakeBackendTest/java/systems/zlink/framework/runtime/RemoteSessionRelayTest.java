@@ -53,9 +53,8 @@ final class RemoteSessionRelayTest {
 
     static DefaultZLinkFrameworkOptions options() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRouterRoutingId(RoutingId.from("play-node"));
-                node.addSpotFactory(GameSpot.class); }; };
-        options.addActorFactory("player", PlayerActorFactory.class);
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+                node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
             stream.registerSession(GameSession.class); };
         return options;

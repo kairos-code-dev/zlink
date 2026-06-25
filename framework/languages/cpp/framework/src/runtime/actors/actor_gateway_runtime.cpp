@@ -265,8 +265,8 @@ actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &
         }
         dispatcher = _state->join_spot_dispatcher;
     }
-    detail::message_flow_tracer_t (_state->dispatch).trace (message_flow_phase_t::sent, [&] {
-        return message_flow_event_t{message_flow_phase_t::sent,
+    detail::message_flow_tracer_t (_state->dispatch).trace (message_flow_outcome_t::sent, [&] {
+        return message_flow_event_t{message_flow_outcome_t::sent,
                                     dispatch_error_surface_t::spot_actor,
                                     dispatch_message_kind_t::actor_request,
                                     std::nullopt,
@@ -285,8 +285,8 @@ actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &
           joined.error_kind (), error != nullptr ? error->what () : "actor join spot failed");
     }
     detail::message_flow_tracer_t (_state->dispatch)
-      .trace (message_flow_phase_t::reply_received, [&] {
-          return message_flow_event_t{message_flow_phase_t::reply_received,
+      .trace (message_flow_outcome_t::reply_received, [&] {
+          return message_flow_event_t{message_flow_outcome_t::reply_received,
                                       dispatch_error_surface_t::spot_actor,
                                       dispatch_message_kind_t::actor_request,
                                       std::nullopt,

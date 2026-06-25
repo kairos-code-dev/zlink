@@ -1,7 +1,11 @@
 package systems.zlink.framework.configuration;
 
+import systems.zlink.contracts.core.RoutingId;
+
 public interface FanoutChannelBuilder {
     FanoutChannelBuilder enablePublisher(String endpoint);
+
+    FanoutChannelBuilder setRoutingId(RoutingId routingId);
 
     FanoutChannelBuilder enableSubscriber();
 

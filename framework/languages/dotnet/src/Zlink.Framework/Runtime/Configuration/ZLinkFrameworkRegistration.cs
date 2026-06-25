@@ -23,8 +23,6 @@ internal sealed class ZLinkFrameworkRegistration
 
     public HashSet<Assembly> HandlerAssemblies { get; } = [];
 
-    public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
-
     public Type? SpotRemoteAddressResolverType { get; set; }
 
     public ZLinkRegistrySpotRemoteAddressesRegistration? RegistrySpotRemoteAddresses { get; set; }
@@ -96,6 +94,8 @@ internal sealed class ZLinkChannelRegistration
     public ZLinkChannelPublisherCapabilityRegistration? Publisher { get; set; }
 
     public ZLinkChannelSubscriberCapabilityRegistration? Subscriber { get; set; }
+
+    public RoutingId RoutingId { get; set; }
 
     public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
 
@@ -171,6 +171,8 @@ internal sealed class ZLinkRouteChannelRegistration
 
     public ZLinkRouteConfig RoutingConfig { get; } = new();
 
+    public RoutingId RoutingId { get; set; }
+
     public List<string> ManualConnections { get; } = [];
 
     public List<ZLinkRouteHandlerRegistration> SendHandlers { get; } = [];
@@ -205,6 +207,10 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public HashSet<Type> SpotFactories { get; } = [];
 
+    public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
+
+    public RoutingId RoutingId { get; set; }
+
     public ZLinkEntrySpotOptions EntrySpotOptions { get; } = new();
 
     public Type? EntrySpotType { get; set; }
@@ -233,8 +239,6 @@ internal sealed record ZLinkSpotRouterManualConnectionRegistration(
 internal sealed class ZLinkSpotPubSubCapabilityRegistration
 {
     public string? BindEndpoint { get; set; }
-
-    public RoutingId RoutingId { get; set; }
 
     public ZLinkSpotPublisherConfig PublisherConfig { get; } = new();
 

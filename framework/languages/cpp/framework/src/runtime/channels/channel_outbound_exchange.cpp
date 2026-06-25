@@ -172,8 +172,8 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                                                  channel_name, call_packet_name, timeout);
             header.metadata = metadata;
             detail::message_flow_tracer_t (_state->dispatch)
-              .trace (message_flow_phase_t::sent, [&] {
-                  return message_flow_event_t{message_flow_phase_t::sent,
+              .trace (message_flow_outcome_t::sent, [&] {
+                  return message_flow_event_t{message_flow_outcome_t::sent,
                                               dispatch_error_surface_t::channel,
                                               dispatch_message_kind_t::request,
                                               call_packet_name,
@@ -343,8 +343,8 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                   body.error () ? body.error ()->what () : "channel reply body decode failed"));
             }
             detail::message_flow_tracer_t (_state->dispatch)
-              .trace (message_flow_phase_t::reply_received, [&] {
-                  return message_flow_event_t{message_flow_phase_t::reply_received,
+              .trace (message_flow_outcome_t::reply_received, [&] {
+                  return message_flow_event_t{message_flow_outcome_t::reply_received,
                                               dispatch_error_surface_t::channel,
                                               dispatch_message_kind_t::response,
                                               call_packet_name,
@@ -420,8 +420,8 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
                                                  channel_name, call_packet_name, timeout);
             header.metadata = metadata;
             detail::message_flow_tracer_t (_state->dispatch)
-              .trace (message_flow_phase_t::sent, [&] {
-                  return message_flow_event_t{message_flow_phase_t::sent,
+              .trace (message_flow_outcome_t::sent, [&] {
+                  return message_flow_event_t{message_flow_outcome_t::sent,
                                               dispatch_error_surface_t::channel,
                                               dispatch_message_kind_t::send,
                                               call_packet_name,
@@ -531,8 +531,8 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
                                                  channel_name, call_packet_name, timeout, topic);
             header.metadata = metadata;
             detail::message_flow_tracer_t (_state->dispatch)
-              .trace (message_flow_phase_t::sent, [&] {
-                  return message_flow_event_t{message_flow_phase_t::sent,
+              .trace (message_flow_outcome_t::sent, [&] {
+                  return message_flow_event_t{message_flow_outcome_t::sent,
                                               dispatch_error_surface_t::channel,
                                               dispatch_message_kind_t::publish,
                                               call_packet_name,

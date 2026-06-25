@@ -56,11 +56,11 @@ else if (options.Role == "service")
         framework.ConfigureDispatch()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-            .TraceNodeId(options.Rid);
+            .TraceLabel(options.Rid);
 
         var channel = framework.AddClientServerChannel(RuntimeMonitoringNames.Channel)
-            .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"));
-        channel.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
+            .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
+            .SetRoutingId(RoutingId.From(options.Rid));
         channel.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
 
         if (options.MonitorMode == "all")
@@ -68,9 +68,8 @@ else if (options.Role == "service")
             var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
             spotMesh.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
             spotMesh.EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
-                .SetRouterRoutingId(RoutingId.From(options.Rid))
+                .SetRoutingId(RoutingId.From(options.Rid))
                 .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
-                .SetPubSubRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<MonitoringEntrySpot>();
         }
     });

@@ -20,10 +20,10 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
     {
         using var dispatch = runtimeState.EnterDispatch(header);
 
-        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
         {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Received,
+                ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.SpotActor,
                 ZLinkDispatchMessageKind.ActorSend,
                 PacketName: header.Name,
@@ -40,10 +40,10 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     .InvokeActorPacketAsync(descriptor, actor, header, body, cancellationToken)
                     .ConfigureAwait(false);
 
-                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Dispatched))
                 {
                     dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.Dispatched,
+                        ZLinkMessageFlowOutcome.Dispatched,
                         ZLinkDispatchErrorSurface.SpotActor,
                         ZLinkDispatchMessageKind.ActorSend,
                         PacketName: header.Name,
@@ -63,7 +63,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     ex,
                     actorId: actor.ActorId,
                     actorType: actor.GetType().FullName);
-                dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                dispatchErrors.Report(new ZLinkDispatchFailure(
                     ZLinkDispatchErrorSurface.SpotActor,
                     ZLinkDispatchMessageKind.ActorSend,
                     ZLinkDispatchErrorReason.HandlerException,
@@ -85,7 +85,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             "no-handler",
             actorId: actor.ActorId,
             actorType: actor.GetType().FullName);
-        dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+        dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.SpotActor,
             ZLinkDispatchMessageKind.ActorSend,
             ZLinkDispatchErrorReason.HandlerMissing,
@@ -104,10 +104,10 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
     {
         using var dispatch = runtimeState.EnterDispatch(header);
 
-        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Received))
         {
             dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Received,
+                ZLinkMessageFlowOutcome.Received,
                 ZLinkDispatchErrorSurface.SpotActor,
                 ZLinkDispatchMessageKind.ActorRequest,
                 PacketName: header.Name,
@@ -124,10 +124,10 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     .InvokeActorPacketForReplyAsync(descriptor, actor, header, body, cancellationToken)
                     .ConfigureAwait(false);
 
-                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Replied))
                 {
                     dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
-                        ZLinkMessageFlowPhase.Replied,
+                        ZLinkMessageFlowOutcome.Replied,
                         ZLinkDispatchErrorSurface.SpotActor,
                         ZLinkDispatchMessageKind.ActorRequest,
                         PacketName: header.Name,
@@ -149,7 +149,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     ex,
                     actorId: actor.ActorId,
                     actorType: actor.GetType().FullName);
-                dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                dispatchErrors.Report(new ZLinkDispatchFailure(
                     ZLinkDispatchErrorSurface.SpotActor,
                     ZLinkDispatchMessageKind.ActorRequest,
                     ZLinkDispatchErrorReason.HandlerException,
@@ -172,7 +172,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             "no-handler",
             actorId: actor.ActorId,
             actorType: actor.GetType().FullName);
-        dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+        dispatchErrors.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.SpotActor,
             ZLinkDispatchMessageKind.ActorRequest,
             ZLinkDispatchErrorReason.HandlerMissing,

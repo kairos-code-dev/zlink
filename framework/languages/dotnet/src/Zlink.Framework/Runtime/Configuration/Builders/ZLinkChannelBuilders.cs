@@ -26,6 +26,12 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
         return this;
     }
 
+    public IZLinkClientServerChannelBuilder SetRoutingId(RoutingId routingId)
+    {
+        registration.RoutingId = routingId;
+        return this;
+    }
+
     public IZLinkSocketConfig ConfigureServerSocket()
     {
         registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
@@ -124,6 +130,12 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
             registration.Subscriber.ManualConnections,
             endpoint,
             "Channel subscriber endpoint must not be empty.");
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder SetRoutingId(RoutingId routingId)
+    {
+        registration.RoutingId = routingId;
         return this;
     }
 

@@ -20,7 +20,7 @@ function createTicTacToeApiModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.TICTACTOE_LOG_DIR ?? 'logs'}/flow-api-${config.apiIndex}.log`)
-            .traceNodeId(`api-${config.apiIndex}`);
+            .traceLabel(`api-${config.apiIndex}`);
           return builder
           .codecs()
             .addJson()

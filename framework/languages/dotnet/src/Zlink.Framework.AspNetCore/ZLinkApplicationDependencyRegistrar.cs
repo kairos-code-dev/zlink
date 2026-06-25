@@ -34,11 +34,6 @@ internal static class ZLinkApplicationDependencyRegistrar
             yield return filterType;
         }
 
-        foreach (var actorFactoryType in registration.ActorFactories.Values)
-        {
-            yield return actorFactoryType;
-        }
-
         foreach (var stream in registration.StreamNodes.Values)
         {
             if (stream.HeaderSessionType is not null)
@@ -57,6 +52,11 @@ internal static class ZLinkApplicationDependencyRegistrar
             foreach (var spotType in spotNode.SpotFactories)
             {
                 yield return spotType;
+            }
+
+            foreach (var actorFactoryType in spotNode.ActorFactories.Values)
+            {
+                yield return actorFactoryType;
             }
         }
 

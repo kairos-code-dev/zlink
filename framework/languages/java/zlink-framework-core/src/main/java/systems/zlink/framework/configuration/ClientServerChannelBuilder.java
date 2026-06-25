@@ -5,7 +5,7 @@ import systems.zlink.contracts.core.RoutingId;
 public interface ClientServerChannelBuilder {
     ClientServerChannelBuilder enableServer(String endpoint);
 
-    ClientServerChannelBuilder serverRoutingId(RoutingId routingId);
+    ClientServerChannelBuilder setRoutingId(RoutingId routingId);
 
     ClientServerChannelBuilder enableClient();
 

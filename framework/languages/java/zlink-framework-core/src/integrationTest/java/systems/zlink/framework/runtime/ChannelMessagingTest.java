@@ -29,7 +29,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Handler;
-import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import org.junit.jupiter.api.DisplayName;
@@ -44,7 +43,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
-import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
+import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -66,9 +65,12 @@ import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
-import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
+import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 
 final class ChannelMessagingTest {
     private static final AtomicInteger NEXT_PORT =
@@ -101,6 +103,10 @@ final class ChannelMessagingTest {
     private static final AtomicReference<String> FILTER_REQUEST = new AtomicReference<>();
     private static final AtomicReference<String> FILTER_PACKET = new AtomicReference<>();
     private static final AtomicReference<String> FILTER_CHANNEL = new AtomicReference<>();
+    private static final RoutingId SPOT_EGRESS_TARGET_NODE_RID =
+        RoutingId.from("spot-egress-target-spot");
+    private static final RoutingId SPOT_EGRESS_TARGET_ROUTE_RID =
+        RoutingId.from("spot-egress-target-route");
 
     @Test
     @DisplayName("CH-001 manual client-server request-response")
@@ -194,9 +200,9 @@ final class ChannelMessagingTest {
         throws InterruptedException {
         String endpoint = "inproc://zlink-java-dispatch-error-" + UUID.randomUUID();
         CountDownLatch errorLatch = new CountDownLatch(1);
-        AtomicReference<ZLinkMessageDispatchErrorEvent> observedError = new AtomicReference<>();
+        AtomicReference<ZLinkMessageFlowEvent> observedError = new AtomicReference<>();
         CopyOnWriteArrayList<String> logMessages = new CopyOnWriteArrayList<>();
-        Logger logger = Logger.getLogger(ZLinkDispatchErrorReporter.class.getName());
+        Logger logger = Logger.getLogger(ZLinkMessageFlowTracer.class.getName());
         Handler logHandler = new Handler() {
             @Override
             public void publish(LogRecord record) {
@@ -216,7 +222,7 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.codecs().addJson();
         { var dispatch = options.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(error -> {
+            dispatch.setMessageFlowObserver(error -> {
                 observedError.set(error);
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
@@ -261,11 +267,11 @@ final class ChannelMessagingTest {
 
             assertTrue(errorLatch.await(1, TimeUnit.SECONDS),
                 "dispatch error observer was not called");
-            ZLinkMessageDispatchErrorEvent error = observedError.get();
+            ZLinkMessageFlowEvent error = observedError.get();
             assertEquals(ZLinkDispatchErrorSurface.CHANNEL, error.surface());
             assertEquals(ZLinkDispatchMessageKind.REQUEST, error.messageKind());
-            assertEquals(ZLinkDispatchErrorReason.HANDLER_MISSING, error.reason());
-            assertEquals(ZLinkDispatchErrorAction.REPLY_ERROR, error.action());
+            assertEquals(ZLinkDispatchErrorReason.HANDLER_MISSING, error.errorReason());
+            assertEquals(ZLinkDispatchErrorAction.REPLY_ERROR, error.errorAction());
             assertEquals("MissingReq", error.packetName());
             assertEquals("profile", error.channelName());
             assertTrue(logMessages.stream().anyMatch(message ->
@@ -293,9 +299,9 @@ final class ChannelMessagingTest {
         throws InterruptedException {
         String endpoint = "inproc://zlink-java-dispatch-send-error-" + UUID.randomUUID();
         CountDownLatch errorLatch = new CountDownLatch(1);
-        AtomicReference<ZLinkMessageDispatchErrorEvent> observedError = new AtomicReference<>();
+        AtomicReference<ZLinkMessageFlowEvent> observedError = new AtomicReference<>();
         CopyOnWriteArrayList<String> logMessages = new CopyOnWriteArrayList<>();
-        Logger logger = Logger.getLogger(ZLinkDispatchErrorReporter.class.getName());
+        Logger logger = Logger.getLogger(ZLinkMessageFlowTracer.class.getName());
         Handler logHandler = new Handler() {
             @Override
             public void publish(LogRecord record) {
@@ -314,7 +320,7 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var dispatch = options.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(error -> {
+            dispatch.setMessageFlowObserver(error -> {
                 observedError.set(error);
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
@@ -342,11 +348,11 @@ final class ChannelMessagingTest {
 
             assertTrue(errorLatch.await(1, TimeUnit.SECONDS),
                 "dispatch error observer was not called");
-            ZLinkMessageDispatchErrorEvent error = observedError.get();
+            ZLinkMessageFlowEvent error = observedError.get();
             assertEquals(ZLinkDispatchErrorSurface.CHANNEL, error.surface());
             assertEquals(ZLinkDispatchMessageKind.SEND, error.messageKind());
-            assertEquals(ZLinkDispatchErrorReason.HANDLER_MISSING, error.reason());
-            assertEquals(ZLinkDispatchErrorAction.DROP, error.action());
+            assertEquals(ZLinkDispatchErrorReason.HANDLER_MISSING, error.errorReason());
+            assertEquals(ZLinkDispatchErrorAction.DROP, error.errorAction());
             assertEquals("MissingCommand", error.packetName());
             assertEquals("profile", error.channelName());
             assertTrue(logMessages.stream().anyMatch(message ->
@@ -374,19 +380,13 @@ final class ChannelMessagingTest {
         throws Exception {
         String endpoint = tcpEndpoint();
         CountDownLatch errorLatch = new CountDownLatch(1);
-        AtomicReference<ZLinkMessageDispatchErrorEvent> observedError = new AtomicReference<>();
+        AtomicReference<ZLinkMessageFlowEvent> observedError = new AtomicReference<>();
         CopyOnWriteArrayList<String> logMessages = new CopyOnWriteArrayList<>();
-        AtomicReference<Throwable> loggedThrowable = new AtomicReference<>();
-        AtomicReference<Level> loggedLevel = new AtomicReference<>();
-        Logger logger = Logger.getLogger(ZLinkDispatchErrorReporter.class.getName());
+        Logger logger = Logger.getLogger(ZLinkMessageFlowTracer.class.getName());
         Handler logHandler = new Handler() {
             @Override
             public void publish(LogRecord record) {
                 logMessages.add(record.getMessage());
-                if (record.getMessage().contains("packet=DecodeReq")) {
-                    loggedThrowable.set(record.getThrown());
-                    loggedLevel.set(record.getLevel());
-                }
             }
 
             @Override
@@ -403,7 +403,7 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.codecs().addJson();
         { var dispatch = options.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(error -> {
+            dispatch.setMessageFlowObserver(error -> {
                 observedError.set(error);
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
@@ -450,22 +450,21 @@ final class ChannelMessagingTest {
             assertEquals(0, DecodeProbeHandler.invocations.get());
             assertTrue(errorLatch.await(1, TimeUnit.SECONDS),
                 "dispatch error observer was not called");
-            ZLinkMessageDispatchErrorEvent error = observedError.get();
+            ZLinkMessageFlowEvent error = observedError.get();
             assertEquals(ZLinkDispatchErrorSurface.CHANNEL, error.surface());
             assertEquals(ZLinkDispatchMessageKind.REQUEST, error.messageKind());
-            assertEquals(ZLinkDispatchErrorReason.PAYLOAD_DECODE_FAILED, error.reason());
-            assertEquals(ZLinkDispatchErrorAction.REPLY_ERROR, error.action());
+            assertEquals(ZLinkDispatchErrorReason.PAYLOAD_DECODE_FAILED, error.errorReason());
+            assertEquals(ZLinkDispatchErrorAction.REPLY_ERROR, error.errorAction());
             assertEquals("DecodeReq", error.packetName());
             assertEquals("profile", error.channelName());
-            assertTrue(error.exception().getMessage().contains("PayloadDecodeFailed"));
+            assertEquals("PayloadDecodeDispatchException", error.errorType());
+            assertTrue(error.errorMessage().contains("PayloadDecodeFailed"));
             assertTrue(logMessages.stream().anyMatch(message ->
                 message.contains("reason=PAYLOAD_DECODE_FAILED")
                     && message.contains("action=REPLY_ERROR")
                     && message.contains("packet=DecodeReq")
                     && message.contains("channel=profile")),
                 "dispatch error log marker was not written");
-            assertEquals(Level.SEVERE, loggedLevel.get());
-            assertTrue(loggedThrowable.get().getMessage().contains("PayloadDecodeFailed"));
 
             String after = runtime.client()
                 .requestToChannel("profile", new DecodePayload("after-decode-error"))
@@ -487,19 +486,13 @@ final class ChannelMessagingTest {
         throws InterruptedException {
         String endpoint = "inproc://zlink-java-dispatch-handler-error-" + UUID.randomUUID();
         CountDownLatch errorLatch = new CountDownLatch(1);
-        AtomicReference<ZLinkMessageDispatchErrorEvent> observedError = new AtomicReference<>();
+        AtomicReference<ZLinkMessageFlowEvent> observedError = new AtomicReference<>();
         CopyOnWriteArrayList<String> logMessages = new CopyOnWriteArrayList<>();
-        AtomicReference<Throwable> loggedThrowable = new AtomicReference<>();
-        AtomicReference<Level> loggedLevel = new AtomicReference<>();
-        Logger logger = Logger.getLogger(ZLinkDispatchErrorReporter.class.getName());
+        Logger logger = Logger.getLogger(ZLinkMessageFlowTracer.class.getName());
         Handler logHandler = new Handler() {
             @Override
             public void publish(LogRecord record) {
                 logMessages.add(record.getMessage());
-                if (record.getMessage().contains("packet=ThrowReq")) {
-                    loggedThrowable.set(record.getThrown());
-                    loggedLevel.set(record.getLevel());
-                }
             }
 
             @Override
@@ -514,7 +507,7 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var dispatch = options.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(error -> {
+            dispatch.setMessageFlowObserver(error -> {
                 observedError.set(error);
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
@@ -545,22 +538,21 @@ final class ChannelMessagingTest {
 
             assertTrue(errorLatch.await(1, TimeUnit.SECONDS),
                 "dispatch error observer was not called");
-            ZLinkMessageDispatchErrorEvent error = observedError.get();
+            ZLinkMessageFlowEvent error = observedError.get();
             assertEquals(ZLinkDispatchErrorSurface.CHANNEL, error.surface());
             assertEquals(ZLinkDispatchMessageKind.REQUEST, error.messageKind());
-            assertEquals(ZLinkDispatchErrorReason.HANDLER_EXCEPTION, error.reason());
-            assertEquals(ZLinkDispatchErrorAction.REPLY_ERROR, error.action());
+            assertEquals(ZLinkDispatchErrorReason.HANDLER_EXCEPTION, error.errorReason());
+            assertEquals(ZLinkDispatchErrorAction.REPLY_ERROR, error.errorAction());
             assertEquals("ThrowReq", error.packetName());
             assertEquals("profile", error.channelName());
-            assertTrue(error.exception() instanceof IllegalStateException);
+            assertEquals("IllegalStateException", error.errorType());
+            assertEquals("DERR-007 handler exception", error.errorMessage());
             assertTrue(logMessages.stream().anyMatch(message ->
                 message.contains("reason=HANDLER_EXCEPTION")
                     && message.contains("action=REPLY_ERROR")
                     && message.contains("packet=ThrowReq")
                     && message.contains("channel=profile")),
                 "dispatch error log marker was not written");
-            assertEquals(Level.SEVERE, loggedLevel.get());
-            assertTrue(loggedThrowable.get() instanceof IllegalStateException);
 
             String after = runtime.client()
                 .requestToChannel("profile", message("after-handler-error"))
@@ -584,7 +576,7 @@ final class ChannelMessagingTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.codecs().addJson();
         { var dispatch = options.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(error -> {
+            dispatch.setMessageFlowObserver(error -> {
                 try {
                     Files.writeString(
                         logPath,
@@ -723,7 +715,7 @@ final class ChannelMessagingTest {
         CountDownLatch sendLatch = new CountDownLatch(1);
         CountDownLatch publishLatch = new CountDownLatch(1);
         CountDownLatch errorLatch = new CountDownLatch(3);
-        CopyOnWriteArrayList<ZLinkMessageDispatchErrorEvent> observedErrors = new CopyOnWriteArrayList<>();
+        CopyOnWriteArrayList<ZLinkMessageFlowEvent> observedErrors = new CopyOnWriteArrayList<>();
         MANUAL_REG_SEND_LATCH.set(sendLatch);
         MANUAL_REG_SEND_MESSAGE.set(null);
         MANUAL_REG_SEND_PACKET.set(null);
@@ -735,7 +727,7 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions serverOptions = new DefaultZLinkFrameworkOptions();
         { var dispatch = serverOptions.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(error -> {
+            dispatch.setMessageFlowObserver(error -> {
                 observedErrors.add(error);
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
@@ -760,7 +752,7 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions subscriberOptions = new DefaultZLinkFrameworkOptions();
         { var dispatch = subscriberOptions.configureDispatch();
-            dispatch.setMessageDispatchErrorObserver(error -> {
+            dispatch.setMessageFlowObserver(error -> {
                 observedErrors.add(error);
                 errorLatch.countDown();
                 return CompletableFuture.completedFuture(null);
@@ -1124,6 +1116,7 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         sourceOptions.codecs().addJson();
+        sourceOptions.addSpotRemoteAddressResolver(SpotEgressAddressResolver.class);
         { var channel = sourceOptions.addClientServerChannel("egress");
             channel.enableClient(ingressEndpoint);};
         { var channel = sourceOptions.addRouteMesh("route");
@@ -1133,21 +1126,21 @@ final class ChannelMessagingTest {
         { var mesh = sourceOptions.addSpotMesh("game");
             { var node = mesh;
                 node.enableRouter(sourceSpotEndpoint)
-                    .setRouterRoutingId(RoutingId.from("spot-egress-source-node"));node.addSpotFactory(OutboundChannelSpot.class); }; };
+                    .setRoutingId(RoutingId.from("spot-egress-source-node"));node.addSpotFactory(OutboundChannelSpot.class); }; };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.codecs().addJson();
         { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
-            channel.serverRoutingId(RoutingId.from("spot-egress-target-node"));
+            channel.setRoutingId(RoutingId.from("spot-egress-target-node"));
             channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Noop"); };
         { var channel = targetOptions.addRouteMesh("route");
             channel.enableServer(routeTargetEndpoint);
             channel.enableClient(routeSourceEndpoint);
-            channel.setRoutingId(RoutingId.from("spot-egress-target-route")); };
+            channel.setRoutingId(SPOT_EGRESS_TARGET_ROUTE_RID); };
         { var mesh = targetOptions.addSpotMesh("game");
             { var node = mesh;
                 node.enableRouter(targetSpotEndpoint)
-                    .setRouterRoutingId(RoutingId.from("spot-egress-target-node"));
+                    .setRoutingId(SPOT_EGRESS_TARGET_NODE_RID);
                 node.addSpotFactory(RemoteStateSpot.class); }; };
 
         try (ZLinkFrameworkRuntime source =
@@ -1172,7 +1165,7 @@ final class ChannelMessagingTest {
                 .get(4, TimeUnit.SECONDS);
 
             assertEquals("spot-egress-target", reply.spotRid());
-            assertEquals("spot-egress-target-node", reply.nodeRid());
+            assertEquals(SPOT_EGRESS_TARGET_NODE_RID.toString(), reply.nodeRid());
             assertEquals("pong:ping", reply.value());
         } finally {
             OutboundChannelSpot.CONTEXT.set(null);
@@ -1586,12 +1579,12 @@ final class ChannelMessagingTest {
 
     private static void publishManualRegistrationUntilObserved(
         ZLinkFrameworkRuntime publisher,
-        List<ZLinkMessageDispatchErrorEvent> observedErrors,
+        List<ZLinkMessageFlowEvent> observedErrors,
         String packetName) {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && observedErrors.stream().noneMatch(error ->
             error.messageKind() == ZLinkDispatchMessageKind.PUBLISH
-                && error.reason() == ZLinkDispatchErrorReason.HANDLER_MISSING
+                && error.errorReason() == ZLinkDispatchErrorReason.HANDLER_MISSING
                 && packetName.equals(error.packetName()))) {
             publisher.fanout()
                 .publish("manual-events", "manual", message("missing-event"))
@@ -1696,12 +1689,12 @@ final class ChannelMessagingTest {
         return "tcp://127.0.0.1:" + nextPort();
     }
 
-    private static String dispatchLogLine(ZLinkMessageDispatchErrorEvent error) {
+    private static String dispatchLogLine(ZLinkMessageFlowEvent error) {
         return "dispatch-error"
             + " surface=" + error.surface()
             + " messageKind=" + error.messageKind()
-            + " reason=" + error.reason()
-            + " action=" + error.action()
+            + " reason=" + error.errorReason()
+            + " action=" + error.errorAction()
             + " packetName=" + error.packetName()
             + " channelName=" + error.channelName()
             + " correlationId=" + error.correlationId()
@@ -1721,7 +1714,7 @@ final class ChannelMessagingTest {
     }
 
     private static boolean hasDispatchError(
-        List<ZLinkMessageDispatchErrorEvent> errors,
+        List<ZLinkMessageFlowEvent> errors,
         ZLinkDispatchMessageKind kind,
         ZLinkDispatchErrorReason reason,
         ZLinkDispatchErrorAction action,
@@ -1730,14 +1723,14 @@ final class ChannelMessagingTest {
         return errors.stream().anyMatch(error ->
             error.surface() == ZLinkDispatchErrorSurface.CHANNEL
                 && error.messageKind() == kind
-                && error.reason() == reason
-                && error.action() == action
+                && error.errorReason() == reason
+                && error.errorAction() == action
                 && packetName.equals(error.packetName())
                 && channelName.equals(error.channelName()));
     }
 
     private static boolean waitForManualRegistrationErrors(
-        List<ZLinkMessageDispatchErrorEvent> errors)
+        List<ZLinkMessageFlowEvent> errors)
         throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
@@ -1861,6 +1854,19 @@ final class ChannelMessagingTest {
         String spotRid,
         String nodeRid,
         String value) {
+    }
+
+    public static final class SpotEgressAddressResolver
+        implements ZLinkSpotRemoteAddressResolver {
+        @Override
+        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(RoutingId spotRid) {
+            return CompletableFuture.completedFuture(
+                new ZLinkSpotRemoteAddress(
+                    "route",
+                    SPOT_EGRESS_TARGET_ROUTE_RID,
+                    spotRid,
+                    ZLinkSpotKind.USER));
+        }
     }
 
     public static final class ThrowingRequestHandler implements ZLinkRequestHandler<String, String> {

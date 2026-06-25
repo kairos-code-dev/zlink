@@ -14,10 +14,9 @@ builder.Services.AddSingleton<CustomerSessionDirectory>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.ConfigureDispatch()
-        .SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>()
         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
         .TraceLogFile(SampleFlowLog.Path("session"))
-        .TraceNodeId("session");
+        .TraceLabel("session");
     options.AddHandlersFromAssemblyOf(typeof(CustomerSession));
     options.Codecs.AddJson();
     options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
@@ -39,12 +38,11 @@ builder.Services.AddZLinkFramework(options =>
             var spot = mesh;
             {
                 var router = spot.EnableRouter(topology.SessionSpotRouterEndpoint);
-                router.SetRouterRoutingId(topology.SessionSpotNodeRid);
+                router.SetRoutingId(topology.SessionSpotNodeRid);
 
             }
             {
                 var pubsub = spot.EnablePubSub(topology.SessionSpotEndpoint);
-                pubsub.SetPubSubRoutingId(topology.SessionSpotPubRid);
 
             }
 

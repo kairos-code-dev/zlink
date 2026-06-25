@@ -651,7 +651,7 @@ static IHost CreateChannelClientHost(
         framework.ConfigureDispatch()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, "client-flow.log"))
-            .TraceNodeId("client");
+            .TraceLabel("client");
         configure(framework);
     });
     return builder.Build();
@@ -677,7 +677,7 @@ static IHost CreateRouteClientHost(ClientOptions options)
         framework.ConfigureDispatch()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, "client-route-flow.log"))
-            .TraceNodeId("client-route");
+            .TraceLabel("client-route");
         framework.AddRouteMesh("profile.route")
             .EnableServer(options.ClientRouteEndpoint)
             .EnableClient(options.ProviderARouteEndpoint)

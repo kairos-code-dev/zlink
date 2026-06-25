@@ -26,10 +26,9 @@ public final class PlayServer {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(SampleLogging.flowLogPath(settings.playSpotNodeRid()))
-                .traceNodeId(settings.playSpotNodeRid());
+                .traceLabel(settings.playSpotNodeRid());
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
             options.addHandlersFromPackageOf(PlayServer.class);
-            options.addActorFactory(SampleNames.PlayActor, PlayActorFactory.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient(settings.apiChannelEndpoint());
             options.addClientServerChannel(SampleNames.PlayChannel)
@@ -42,14 +41,14 @@ public final class PlayServer {
             options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh);
             node.enableRouter(settings.spotEndpoint())
-                .setRouterRoutingId(RoutingId.from(settings.playSpotNodeRid()));
+                .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
             node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid()), settings.peerSpotEndpoint());
-            node.enablePubSub(settings.spotPubSubEndpoint())
-                .setPubSubRoutingId(RoutingId.from(settings.playSpotNodeRid() + "-pub"));
+            node.enablePubSub(settings.spotPubSubEndpoint());
             node.connectPeerPub(settings.peerSpotPubSubEndpoint());
             node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId));
             node.addEntrySpot(PlayEntrySpot.class);
             node.addSpotFactory(TicTacToeGame.class);
+            node.addActorFactory(SampleNames.PlayActor, PlayActorFactory.class);
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint())
                 .registerSession(PlaySession.class)

@@ -32,6 +32,8 @@ public final class ClientScenario {
             case "worker" -> runWorkerOffload();
             case "spot-outbound" -> runSpotOutbound();
             case "spot-to-spot" -> runSpotToSpot();
+            case "idle-timer" -> runIdleTimer();
+            case "timer-overrun" -> runTimerOverrun();
             default -> throw new IllegalArgumentException("unknown client mode " + mode);
         }
     }
@@ -194,6 +196,31 @@ public final class ClientScenario {
         System.out.println("scenario SM-C3 passed");
     }
 
+    private void runIdleTimer() {
+        for (int i = 0; i < 4; i++) {
+            String activity = "active-" + i;
+            Contracts.TimerStatus status = eventually(() -> outbound.requestToSpot(
+                    RoutingId.from("idle-active"),
+                    new Contracts.TimerActivity(activity))
+                .timeout(REQUEST_TIMEOUT)
+                .await(Contracts.TimerStatus.class));
+            ensure(status.value().contains(activity), "SM-E3 active timer status mismatch");
+            sleep(150);
+        }
+        sleep(900);
+        expectFailure(() -> outbound.requestToSpot(
+                RoutingId.from("idle-close"),
+                "status")
+            .timeout(Duration.ofMillis(500))
+            .await(Contracts.TimerStatus.class));
+        System.out.println("scenario SM-E3 passed");
+    }
+
+    private void runTimerOverrun() {
+        sleep(1200);
+        System.out.println("scenario SM-E4 passed");
+    }
+
     private static void expectFailure(Runnable action) {
         try {
             action.run();
@@ -220,6 +247,15 @@ public final class ClientScenario {
             }
         }
         throw new IllegalStateException("operation did not succeed before timeout", lastFailure);
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("operation interrupted", error);
+        }
     }
 
     private static void ensure(boolean condition, String message) {

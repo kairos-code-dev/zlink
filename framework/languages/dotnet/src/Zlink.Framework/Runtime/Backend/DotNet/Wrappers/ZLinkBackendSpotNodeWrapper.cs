@@ -12,6 +12,16 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         nativeSpotNode.SetRoutingId(routingId);
     }
 
+    public void SetPublisherRoutingId(RoutingId routingId)
+    {
+        nativeSpotNode.SetPublisherRoutingId(routingId);
+    }
+
+    public void SetSubscriberRoutingId(RoutingId routingId)
+    {
+        nativeSpotNode.SetSubscriberRoutingId(routingId);
+    }
+
     public void SetRouterBind(string endpoint)
     {
         nativeSpotNode.SetRouterBind(endpoint);

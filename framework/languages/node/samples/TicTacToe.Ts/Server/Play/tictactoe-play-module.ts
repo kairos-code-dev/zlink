@@ -45,7 +45,7 @@ function createTicTacToePlayModule(config: {
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${process.env.TICTACTOE_LOG_DIR ?? 'logs'}/flow-play-${config.playSpotNodeRid}.log`)
-            .traceNodeId(config.playSpotNodeRid);
+            .traceLabel(config.playSpotNodeRid);
           return builder
           .options({
             spotRemoteAddressResolver: RedisSpotRemoteAddressResolver
@@ -57,7 +57,6 @@ function createTicTacToePlayModule(config: {
             .addRequestHandler(PacketNames.createGame, CreateGameHandler)
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient(config.apiEndpoints)
-            .actorFactory(SampleNames.playerActorType, PlayActorFactory)
             .addStreamNode(SampleNames.playStream)
               .bind(config.playStreamEndpoint)
             .registerSession(PlaySessionFactory)
@@ -68,6 +67,7 @@ function createTicTacToePlayModule(config: {
               .connectPeerPub(config.peerPlaySpotPubEndpoint)
               .addEntrySpot(PlayEntrySpot)
             .addSpotFactory(TicTacToeGameSpot)
+            .actorFactory(SampleNames.playerActorType, PlayActorFactory)
           .build();
         }
       })

@@ -739,7 +739,7 @@ int main (int argc, char **argv)
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (log_dir + "/registry-flow.log")
-              .trace_node_id ("cpp-sm-registry");
+              .trace_label ("cpp-sm-registry");
             options.enable_registry (pub, router);
         });
         return app.run (argc, argv);
@@ -765,7 +765,7 @@ int main (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/" + node_rid + "-flow.log")
-          .trace_node_id ("cpp-sm-" + node_rid);
+          .trace_label ("cpp-sm-" + node_rid);
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
           .add_transient<ensure_actor_handler_t, scenario_state_t,
@@ -788,9 +788,10 @@ int main (int argc, char **argv)
             }
             options.add_spot_mesh (e2e::spot_mesh)
               .use_registry_spot_resolver (e2e::route_channel)
-              .enable_router (spot_router_endpoint, zlink::routing_id_t::from (node_rid))
+              .set_routing_id (zlink::routing_id_t::from (node_rid))
+              .enable_router (spot_router_endpoint)
               .enable_actor_gateway ()
-              .enable_pub_sub (pubsub_endpoint, zlink::routing_id_t::from (node_rid));
+              .enable_pub_sub (pubsub_endpoint);
             options.add_stream_node ("spot-service-stream")
               .bind (stream_endpoint)
               .register_session<stream_session_t> ();
@@ -823,9 +824,10 @@ int main (int argc, char **argv)
         }
         options.add_spot_mesh (e2e::spot_mesh)
           .use_registry_spot_resolver (e2e::route_channel)
-          .enable_router (spot_router_endpoint, zlink::routing_id_t::from (node_rid))
+          .set_routing_id (zlink::routing_id_t::from (node_rid))
+          .enable_router (spot_router_endpoint)
           .enable_actor_gateway ()
-          .enable_pub_sub (pubsub_endpoint, zlink::routing_id_t::from (node_rid))
+          .enable_pub_sub (pubsub_endpoint)
           .add_entry_spot<entry_spot_t> (
             [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
           .add_spot<user_spot_t> (

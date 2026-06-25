@@ -42,7 +42,7 @@ class play_server_host_factory_t
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("play-" + topology.selected_play_node_rid ()))
-              .trace_node_id ("tictactoe-play-" + topology.selected_play_node_rid ());
+              .trace_label ("tictactoe-play-" + topology.selected_play_node_rid ());
             options.services ()
               .add_singleton<redis_room_route_store_t, sample_topology_t> ()
               .add_singleton<tictactoe_game_creator_t, sample_topology_t, redis_room_route_store_t> ();
@@ -83,11 +83,10 @@ class play_server_host_factory_t
               .enable_client (topology.api_endpoint);
             options.add_spot_mesh (sample_names_t::game_spot_discovery)
               .use_registry_spot_resolver (sample_names_t::play_route_channel)
-              .enable_router (topology.selected_play_spot_router_endpoint (),
-                              zlink::routing_id_t::from (topology.selected_play_node_rid ()))
+              .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
+              .enable_router (topology.selected_play_spot_router_endpoint ())
               .enable_actor_gateway ()
-              .enable_pub_sub (topology.selected_play_spot_endpoint (),
-                               zlink::routing_id_t::from (topology.selected_play_node_rid ()))
+              .enable_pub_sub (topology.selected_play_spot_endpoint ())
               .connect_peer_pub (topology.peer_play_spot_endpoint ())
               .add_entry_spot<entry_spot_t> ()
               .add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)

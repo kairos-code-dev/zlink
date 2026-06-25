@@ -32,7 +32,7 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
   같은 restart orchestration에서 확인한다.
 - `RL-D1`: 다수 client 프로세스가 동시에 request를 보내는 high fanout burst에서 정상 reply를
   유지하는지 확인한다.
-- `RL-D3`: 명시 `ZLinkMessageDispatchErrorObserver`가 미등록 request의
+- `RL-D3`: 명시 `ZLinkMessageFlowObserver`가 미등록 request의 `ERROR` outcome에서
   reason/action/packetName marker를 evidence에 남기고, 이후 request가 정상 동작하는지 확인한다.
 - `RL-D5`: 같은 실행 안에서 request와 send를 섞어 여러 window로 지속 주입하고, 처리 성공과 단순
   latency drift 한계를 관측한다.

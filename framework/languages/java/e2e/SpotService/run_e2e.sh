@@ -252,7 +252,7 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh; do
+for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot idle-timer timer-overrun route-mesh; do
   run_client_mode "${mode}"
   sleep 2
 done
@@ -285,3 +285,9 @@ grep -q "SpotOutbound" "${log_dir}/play-a-evidence.json"
 grep -q "SpotToSpotSend" "${log_dir}/play-b-evidence.json"
 grep -q "SpotMeshEvent" "${log_dir}/play-a-evidence.json"
 grep -q "SpotMeshEvent" "${log_dir}/play-b-evidence.json"
+grep -q "IdleCloseRequested" "${log_dir}/play-a-evidence.json"
+grep -q "IdleClosed" "${log_dir}/play-a-evidence.json"
+grep -q "IdleActivity" "${log_dir}/play-a-evidence.json"
+grep -q "IdleKeptOpen" "${log_dir}/play-a-evidence.json"
+grep -q "TimerOverrunConfigured" "${log_dir}/play-a-evidence.json"
+grep -q "TimerOverrunTick" "${log_dir}/play-a-evidence.json"

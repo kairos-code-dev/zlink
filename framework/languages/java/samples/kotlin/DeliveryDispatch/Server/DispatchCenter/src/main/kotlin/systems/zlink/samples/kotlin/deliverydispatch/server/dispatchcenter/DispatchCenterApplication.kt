@@ -27,7 +27,7 @@ class DispatchCenterApplication {
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-dispatch-center.log")
-                traceNodeId("dispatch-center")
+                traceLabel("dispatch-center")
             }
             options.codecs().addJson()
             options.addHandlersFromPackageOf(DispatchCenterApplication::class.java)

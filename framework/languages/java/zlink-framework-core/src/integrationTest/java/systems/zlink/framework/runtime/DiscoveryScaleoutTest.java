@@ -193,7 +193,7 @@ final class DiscoveryScaleoutTest {
         options.useDiscovery().addRegistryEndpoint(registryRouter);
         options.addClientServerChannel("profile")
             .enableServer(endpoint)
-            .serverRoutingId(routingId)
+            .setRoutingId(routingId)
             .addRequestHandler(handlerType, String.class, String.class, "Probe");
         return options;
     }

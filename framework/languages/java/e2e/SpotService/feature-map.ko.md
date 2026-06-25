@@ -5,6 +5,11 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행
 `ZLinkSpotManager`, `ZLinkSpotOutbound`, client/server channel builder, route mesh channel builder,
 SpotNode builder만 사용한다.
 
+공통 E2E 문서와 다른 언어의 구현에 존재하는 public 기능이 Java에 없으면 단순 미구현으로 완료
+처리하지 않는다. 다만 다른 언어 구현만으로 Java public contract를 새로 추가하지 않는다. spec 또는
+공통 계약 문서에 근거가 있는 항목은 parity gap으로 관리하고, 근거가 부족한 항목은 draft/spec 검토
+대상으로 분리한다.
+
 ## 구현됨
 
 - `SM-A1`: public `ZLinkSpotManager.getOrCreate`로 user spot을 생성하고 evidence로 확인한다.
@@ -25,12 +30,18 @@ SpotNode builder만 사용한다.
   남기는지 확인한다.
 - `SM-F1`: 외부 consumer가 RouteMesh 경로로 target spot에 도달하는지 확인한다.
 - `SM-F2`: RouteMesh 채널명이 target spot egress의 실제 channel 기준으로 동작하는지 확인한다.
-- `SM-F3`: 같은 RouteMesh에서 일반 spot route request와 one-way send가 함께 동작하는지 확인한다.
-- `SM-F4`: 존재하지 않는 route target이 timeout이 아닌 framework error로 실패하는지 확인한다.
+- `SM-F3`: 같은 RouteMesh에서 일반 route request와 target spot request/send가 함께 동작하는지
+  확인한다.
 
-## public API/harness 대기
+## public contract parity 또는 spec 검토 대기
 
-- `SM-A5`: Java E2E에는 Stage wrapper 계층이 아직 없다.
+아래 항목은 공통 E2E에 존재하고 .NET 또는 C++ SpotService E2E에서도 public framework 흐름으로
+검증되는 scenario다. Java에서 같은 public 기능을 제공할지는 spec, 공통 framework 문서, guide의
+계약 근거를 먼저 확인한다. 근거가 확인된 항목만 Java public contract parity 구현 대상으로 삼고,
+다른 언어 구현만 근거인 항목은 draft/spec 검토 대상으로 남긴다.
+
+- `SM-A5`: .NET에는 app-level Stage wrapper 경로가 있지만 Java에는 대응 public wrapper 계층이
+  아직 없다.
 - `SM-B1`: local actor join과 lifecycle callback을 검증하는 scenario가 아직 없다.
 - `SM-B2`: remote actor join과 cross-node mailbox 실행을 검증하는 scenario가 아직 없다.
 - `SM-B3`: actor join/request payload fidelity를 검증하는 scenario가 아직 없다.
@@ -59,8 +70,19 @@ SpotNode builder만 사용한다.
 - `SM-D12`: 다른 gateway로 재접속해 actor 상태를 이어받는 scenario가 아직 없다.
 - `SM-D13`: stream heartbeat 중단과 disconnect 감지를 검증하는 scenario가 아직 없다.
 - `SM-D14`: TLS stream endpoint와 certificate 구성이 아직 없다.
+
+## E2E/harness 대기
+
+아래 항목은 public API 자체의 부재로 단정하지 않고, 현재 Java E2E가 필요한 제어와 증거를 아직
+갖추지 못한 상태로 관리한다. 구현 과정에서 다른 언어에 public 기능이 확인되면 위
+`public contract parity 또는 spec 검토 대기`로 옮긴다.
+
 - `SM-E3`: idle timer 기반 명시 close를 검증하는 scenario가 아직 없다.
 - `SM-E4`: timer overrun policy별 tick 처리 evidence를 검증하는 scenario가 아직 없다.
+- `SM-F4`: 존재하지 않는 route target request가 timeout이 아닌 framework error로 실패하는
+  missing-route 부분은 runner가 `SM-F4-missing-route`로 확인한다. malformed spot route packet
+  주입과 command drop/failure counter 분류는 public typed client로 만들 수 없어 raw-frame harness가
+  필요하다.
 - `SM-F5`: spot routing 사용/중단과 channel socket lifecycle 독립성을 검증하는 scenario가 아직 없다.
 - `SM-G1`: play node crash와 재join/rebind 복구를 검증하는 kill/restart harness가 아직 없다.
 - `SM-G2`: scale-out 중 앱 주도 owner remap을 검증하는 harness가 아직 없다.

@@ -4,6 +4,7 @@ import java.util.List;
 
 public final class Contracts {
     public static final String ROUTE_CHANNEL = "spot.service.route";
+    public static final String ROUTE_PACKET = "RoutePing";
     public static final String EGRESS_CHANNEL = "spot.service.egress";
     public static final String INGRESS_CHANNEL = "spot.service.ingress";
     public static final String SPOT_MESH = "spot.service.mesh";
@@ -25,6 +26,15 @@ public final class Contracts {
     }
 
     public record SlowRequest(String value) {
+    }
+
+    public record RoutePing(String value) {
+    }
+
+    public record RoutePong(
+        String value,
+        String nodeRid,
+        String routeRid) {
     }
 
     public record EvidenceEntry(

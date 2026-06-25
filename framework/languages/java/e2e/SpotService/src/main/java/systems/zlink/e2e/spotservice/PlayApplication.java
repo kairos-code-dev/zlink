@@ -72,7 +72,12 @@ public final class PlayApplication {
                 .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
-                .setRoutingId(RoutingId.from(nodeRid));
+                .setRoutingId(RoutingId.from(nodeRid))
+                .addRequestHandler(
+                    RoutePingHandler.class,
+                    Contracts.RoutePing.class,
+                    Contracts.RoutePong.class,
+                    Contracts.ROUTE_PACKET);
             options.addClientServerChannel(Contracts.INGRESS_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_INGRESS_ENDPOINT"))
                 .serverRoutingId(RoutingId.from(nodeRid))

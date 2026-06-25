@@ -36,6 +36,43 @@
 새 언어별 문서를 `framework/languages/<lang>/doc/` 아래에 추가하지 않는다. 기존 문서를 수정해야
 하면 `framework/doc/` 아래의 대응 위치로 옮기거나 그 위치에서 갱신한다.
 
+### Framework public contract parity
+
+framework의 public contract는 언어별로 임의로 달라지면 안 된다. 하지만 다른 언어에 기능이 있다는
+이유만으로 새 public contract를 추가해서도 안 된다. public contract의 기준은 spec, 공통 framework
+문서, 공통 E2E 문서처럼 저장소가 명시한 계약 문서다. 다른 언어의 구현은 계약 여부를 확인할 때
+참고하는 증거일 뿐, 그 자체가 계약의 출처가 아니다.
+
+한 언어의 framework에 존재하는 public API, 동작, E2E scenario가 다른 언어에 없으면 먼저 공통 E2E
+문서, 해당 언어의 spec/guide 문서, 이미 구현된 다른 언어의 public surface를 비교한다. 비교 결과
+계약 문서에 근거가 있는 framework 공통 기능이면 모든 framework 언어가 같은 기능을 제공하도록
+구현해야 한다. 특정 언어에서 바로 구현할 수 없으면 feature-map 또는 draft 문서에 누락 사유,
+필요한 public API, 구현 계획을 명시하고 리뷰를 받은 뒤 gap으로 남긴다. gap 표기는 완료 판정이
+아니라 후속 public contract parity 작업의 입력이다.
+
+다른 언어에는 있지만 spec 또는 공통 계약 문서에 없는 기능은 바로 public API로 추가하지 않는다.
+그 경우 먼저 draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로 받아들일지 리뷰를
+받는다.
+
+금지 사항:
+
+- 한 언어에서만 public 기능을 제공하고 다른 언어의 누락을 단순 E2E 미구현으로 처리하지 않는다.
+- spec 또는 공통 계약 문서에 없는 기능을 다른 언어 구현만 근거로 public contract에 추가하지 않는다.
+- public contract 누락을 internal helper, private API, raw-frame 우회, 테스트 전용 adapter로
+  메우지 않는다.
+- 언어 특성 차이를 이유로 기능을 제외할 때는 사용자가 체감하는 public 동작 차이와 대체 계획을
+  문서화한다.
+
+기본 절차:
+
+1. 공통 E2E 문서에서 요구 scenario를 확인한다.
+2. spec, 공통 framework 문서, guide에 계약 근거가 있는지 확인한다.
+3. 이미 구현된 언어의 public API와 guide 예제를 참고해 계약 해석이 일관적인지 확인한다.
+4. 계약 근거가 있으면 누락 언어에서 같은 수준의 public API로 구현 가능한지 확인한다.
+5. 가능하면 해당 언어 framework에 public 기능과 E2E를 추가한다.
+6. 계약 근거가 없거나 바로 구현할 수 없으면 spec/guide/feature-map에 사유를 명시하고 별도 설계
+   이슈로 분리한다.
+
 ---
 
 ## Documentation Writing Rules

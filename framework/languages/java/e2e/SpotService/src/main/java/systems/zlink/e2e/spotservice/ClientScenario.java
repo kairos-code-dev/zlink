@@ -3,15 +3,20 @@ package systems.zlink.e2e.spotservice;
 import java.time.Duration;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 
 public final class ClientScenario {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration EVENTUAL_TIMEOUT = Duration.ofSeconds(30);
     private final ZLinkSpotOutbound outbound;
+    private final ZLinkRouteClient routes;
 
-    public ClientScenario(ZLinkSpotOutbound outbound) {
+    public ClientScenario(
+        ZLinkSpotOutbound outbound,
+        ZLinkRouteClient routes) {
         this.outbound = outbound;
+        this.routes = routes;
     }
 
     public void runMode(String mode) {
@@ -109,6 +114,17 @@ public final class ClientScenario {
     }
 
     private void runRouteMesh() {
+        Contracts.RoutePong routeReply = eventually(() -> routes.requestTo(
+                Contracts.ROUTE_CHANNEL,
+                RoutingId.from("play-a"),
+                new Contracts.RoutePing("route-mesh-normal"))
+            .packetName(Contracts.ROUTE_PACKET)
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.RoutePong.class));
+        ensure("play-a".equals(routeReply.nodeRid()), "SM-F3 normal route target mismatch");
+        ensure("route:route-mesh-normal".equals(routeReply.value()),
+            "SM-F3 normal route reply mismatch");
+
         Contracts.StateReply reply = eventually(() -> outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("route-mesh"))
@@ -125,7 +141,7 @@ public final class ClientScenario {
                 new Contracts.StateRequest("missing-route"))
             .timeout(Duration.ofMillis(300))
             .await(Contracts.StateReply.class));
-        System.out.println("scenario SM-F4 passed");
+        System.out.println("scenario SM-F4-missing-route passed");
     }
 
     private void runWorkerOffload() {

@@ -1575,6 +1575,8 @@ async function spotService() {
             .addEntrySpot(EntrySpot)
             .addSpotFactory(UserSpot)
             .addSpotFactory(OtherUserSpot)
+            .addSpotFactory(LifecycleSpot)
+            .actorFactory('sm-a6-player', LifecycleActorFactory)
           .build())
       ],
       providers: []
@@ -1583,10 +1585,29 @@ async function spotService() {
 
   try {
     const spotManager = app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false });
+    const actorManager = app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false });
     const created = await spotManager.create(UserSpot, { owner: 'u1' });
     assert.equal(created.state, 'created');
     assert.equal(await spotManager.close(created.spotRid), true);
     selfCheck('SM-SPOT-MANAGER-CREATE-CLOSE');
+
+    lifecycleEvents.length = 0;
+    smA6Actor = undefined;
+    const lifecycle = await spotManager.getOrCreate(LifecycleSpot, 'sm-a6-spot', { owner: 'u1' });
+    assert.equal(lifecycle.state, 'created');
+    assert.deepEqual(lifecycleEvents, ['create:u1', 'initialize']);
+    const actorRef = await actorManager.getOrCreate('sm-a6-actor', 'sm-a6-player');
+    assert.equal(actorRef.actorId, 'sm-a6-actor');
+    assert.ok(smA6Actor);
+    const joined = await smA6Actor.context.joinSpot('sm-a6-spot', { actor: 'sm-a6-actor' }).submit();
+    assert.equal(joined.resultCode, 0);
+    assert.equal(await spotManager.close('sm-a6-spot'), false);
+    assert.deepEqual(lifecycleEvents, ['create:u1', 'initialize', 'join:sm-a6-actor']);
+    await smA6Actor.context.getSpot(LifecycleSpot).leave(smA6Actor);
+    assert.equal(await spotManager.close('sm-a6-spot'), true);
+    assert.equal(await spotManager.find('sm-a6-spot'), null);
+    assert.deepEqual(lifecycleEvents, ['create:u1', 'initialize', 'join:sm-a6-actor', 'leave:sm-a6-actor', 'closing']);
+    marker('SM-A6');
 
     const first = await spotManager.getOrCreate(UserSpot, 'sm-a7-spot', { owner: 'u1' });
     assert.equal(first.state, 'created');
@@ -2023,6 +2044,55 @@ class UserSpot {
 }
 
 class OtherUserSpot {}
+
+const lifecycleEvents = [];
+let smA6Actor;
+
+class LifecycleSpot {
+  constructor(context) {
+    this.context = context;
+  }
+
+  async onCreate(request) {
+    lifecycleEvents.push(`create:${request.decode().owner}`);
+    return { accepted: true };
+  }
+
+  async onInitialize() {
+    lifecycleEvents.push('initialize');
+  }
+
+  async onActorJoin(actor) {
+    lifecycleEvents.push(`join:${actor.actorId}`);
+    return { accepted: true };
+  }
+
+  async onLeaveActor(actor) {
+    lifecycleEvents.push(`leave:${actor.actorId}`);
+  }
+
+  async onClosing() {
+    lifecycleEvents.push('closing');
+  }
+
+  leave(actor) {
+    return this.context.leaveActor(actor);
+  }
+}
+
+class LifecycleActor {
+  constructor(actorId, context) {
+    this.actorId = actorId;
+    this.context = context;
+  }
+}
+
+class LifecycleActorFactory {
+  create(actorId, context) {
+    smA6Actor = new LifecycleActor(actorId, context);
+    return smA6Actor;
+  }
+}
 
 async function startApp(rootModule) {
   const { NestFactory } = require('@nestjs/core');

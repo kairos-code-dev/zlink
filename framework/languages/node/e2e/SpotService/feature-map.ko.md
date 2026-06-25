@@ -4,6 +4,10 @@
 
 ## 구현됨
 
+- `SM-A6`: public NestJS `ZLINK_SPOT_MANAGER`로 user Spot을 생성해 `onCreate`와 `onInitialize`
+  순서를 확인하고, public actor manager와 actor `context.joinSpot(...)`으로 actor를 join한 뒤
+  actor가 남아 있으면 `close(...)`가 거부되는지 확인한다. 이후 public `leaveActor(...)`로 actor를
+  제거하고 close 시 `onClosing`이 한 번 호출되는지 확인한다.
 - `SM-A7`: 같은 `spotRid`를 `UserSpot`으로 만든 뒤 다른 Spot 타입으로 다시 `getOrCreate(...)`하면
   public `ZLinkFrameworkException.kind == SpotTypeMismatch`로 실패하고, 기존 Spot은 같은 타입으로
   계속 조회되는지 확인한다.
@@ -15,7 +19,6 @@
 - `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
 - `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.
 - `SM-A5`: Stage wrapper Node runner와 marker가 아직 없다.
-- `SM-A6`: initialize/closing callback과 actor 잔류 close rejection Node runner와 marker가 아직 없다.
 - `SM-A8`: worker offload Node runner와 marker가 아직 없다.
 - `SM-B1`: local actor join Node runner와 marker가 아직 없다.
 - `SM-B2`: remote actor join Node runner와 marker가 아직 없다.

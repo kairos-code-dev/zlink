@@ -36,10 +36,13 @@
 - `RL-C3`: process-isolated provider를 `SIGKILL`로 단절시키고, registry topology에서 빠진 동안
   public request가 정해진 실패로 끝나며 같은 endpoint/routing id로 재기동한 provider가 재광고된 뒤
   후속 request가 정상화되는지 확인한다.
+- `RL-C1`: client 8개가 TCP server endpoint에 각각 20개 request를 보낸 뒤 모든 Nest application을
+  public `app.close()` 경로로 정상 종료한다. 종료 후 Node harness에서 관찰한 active TCP handle 수가
+  시작 전 수준으로 돌아오고 heap 증가가 bounded threshold 안에 있는지 확인한다.
 - `RL-D5`: public channel client 6개가 2초 동안 request와 send를 계속 섞어 보내는 bounded soak를
   실행한다. 모든 request reply와 send delivery가 누락 없이 수집되고, latency sample의 최대값과
-  앞/뒤 절반 평균 drift가 bounded threshold 안에 머무는지 관측한다. 리소스 누수의 엄밀한 증명은
-  `RL-C1` 범위로 남긴다.
+  앞/뒤 절반 평균 drift가 bounded threshold 안에 머무는지 관측한다. 종료 후 resource cleanup은
+  별도 `RL-C1` marker에서 확인한다.
 
 ## public API/harness 대기
 
@@ -49,7 +52,6 @@
 - `RL-B4`: runtime drain/restore Node marker가 아직 없다.
 - `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.
 - `RL-B6`: gray failure Node harness가 아직 없다.
-- `RL-C1`: 다수 연결/요청 resource cleanup evidence Node harness가 아직 없다.
 - `RL-C4`: registry restart/outage recovery Node marker가 아직 없다. 현재 public same-process
   restart 시도는 provider 재광고와 restarted registry topology `Ready` evidence를 안정적으로 만들지
   못했으므로 완료 처리하지 않는다. process-isolated registry restart harness로 기존 channel socket

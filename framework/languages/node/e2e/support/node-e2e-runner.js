@@ -2236,19 +2236,20 @@ function normalizeDiscoveryTopology(entries) {
 }
 
 async function resilienceLifecycle() {
-  await runResilienceLifecyclePendingCleanup();
-  await runResilienceLifecycleInFlightProviderCrash();
-  await runResilienceLifecycleServerRestart();
-  await runResilienceLifecyclePodReschedule();
-  await runResilienceLifecycleClientReconnectStorm();
-  await runResilienceLifecycleProviderFlapping();
-  await runResilienceLifecycleGracefulShutdown();
-  await runResilienceLifecycleRegistryStaleCleanup();
-  await runResilienceLifecycleNodeDisconnectRecovery();
-  await runResilienceLifecycleHighFanout();
-  await runResilienceLifecycleObserverIsolation();
-  await runResilienceLifecycleLoggingMarker();
-  await runResilienceLifecycleMixedWorkloadSoak();
+  await runScenario('RL-B1', runResilienceLifecyclePendingCleanup);
+  await runScenario('RL-B2', runResilienceLifecycleInFlightProviderCrash);
+  await runScenario('RL-A1', runResilienceLifecycleServerRestart);
+  await runScenario('RL-A2', runResilienceLifecyclePodReschedule);
+  await runScenario('RL-A3', runResilienceLifecycleClientReconnectStorm);
+  await runScenario('RL-A5', runResilienceLifecycleProviderFlapping);
+  await runScenario('RL-B3', runResilienceLifecycleGracefulShutdown);
+  await runScenario('RL-C2', runResilienceLifecycleRegistryStaleCleanup);
+  await runScenario('RL-C3', runResilienceLifecycleNodeDisconnectRecovery);
+  await runScenario('RL-C1', runResilienceLifecycleResourceCleanup);
+  await runScenario('RL-D1', runResilienceLifecycleHighFanout);
+  await runScenario('RL-D2', runResilienceLifecycleObserverIsolation);
+  await runScenario('RL-D3', runResilienceLifecycleLoggingMarker);
+  await runScenario('RL-D5', runResilienceLifecycleMixedWorkloadSoak);
 }
 
 async function runResilienceLifecyclePendingCleanup() {
@@ -3248,6 +3249,74 @@ async function runResilienceLifecycleNodeDisconnectRecovery() {
       await app.close();
     }
   }
+}
+
+async function runResilienceLifecycleResourceCleanup() {
+  EchoHandler.completed = [];
+  const baselineHandles = activeTcpHandleCount();
+  const baselineHeap = process.memoryUsage().heapUsed;
+  const endpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const apps = [];
+  const clientCount = 8;
+  const requestCount = 20;
+
+  try {
+    const server = await startApp(
+      nestModule('ResilienceResourceCleanupServerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addClientServerChannel('rl.cleanup')
+              .enableServer(endpoint)
+              .routingId('rl-cleanup-provider')
+              .addRequestHandler('rl.cleanup.probe', EchoHandler)
+            .build())
+        ],
+        providers: [EchoHandler]
+      })
+    );
+    apps.push(server.app);
+
+    for (let index = 0; index < clientCount; index += 1) {
+      const clientApp = await startApp(
+        nestModule(`ResilienceResourceCleanupClient${index}Module`, {
+          imports: [
+            nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+              .addClientServerChannel('rl.cleanup')
+                .enableClient(endpoint)
+              .build())
+          ]
+        })
+      );
+      apps.push(clientApp.app);
+    }
+
+    const clients = apps.slice(1).map((app) => app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false }));
+    await Promise.all(clients.map(async (client, clientIndex) => {
+      for (let seq = 0; seq < requestCount; seq += 1) {
+        const id = clientIndex * requestCount + seq;
+        const reply = await client
+          .requestToChannel('rl.cleanup', { id, text: `cleanup-${id}` })
+          .packetName('rl.cleanup.probe')
+          .timeout(1000)
+          .submit();
+        assert.deepEqual(reply, { id, text: `cleanup-${id}`, handledBy: 'rm-provider-a' });
+      }
+    }));
+    assert.equal(EchoHandler.completed.length, clientCount * requestCount);
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+
+  await waitFor(() => activeTcpHandleCount() <= baselineHandles + 1, 5000);
+  const cleanupHeap = process.memoryUsage().heapUsed;
+  assert.ok(
+    cleanupHeap <= baselineHeap + 64 * 1024 * 1024,
+    `RL-C1 heap grew too much: before=${baselineHeap} after=${cleanupHeap}`
+  );
+  marker('RL-C1');
 }
 
 async function runResilienceLifecycleHighFanout() {
@@ -4739,6 +4808,22 @@ function selfCheck(id) {
   console.log(`self-check ${id} passed`);
 }
 
+async function runScenario(id, scenario) {
+  const selected = selectedScenarioIds();
+  if (selected.size > 0 && !selected.has(id)) {
+    return;
+  }
+  await scenario();
+}
+
+function selectedScenarioIds() {
+  const value = process.env.NODE_E2E_SCENARIOS ?? '';
+  return new Set(value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0));
+}
+
 async function startPubSubSubscriber(moduleName, handlerType, endpoint) {
   const nestjs = loadNest();
   const framework = loadFramework();
@@ -4897,6 +4982,16 @@ function assertSoakLatencyStable(latencies) {
     secondAverage <= Math.max(firstAverage * 4, firstAverage + 100),
     `RL-D5 latency drift too high: first=${firstAverage}ms second=${secondAverage}ms`
   );
+}
+
+function activeTcpHandleCount() {
+  if (typeof process._getActiveHandles !== 'function') {
+    return 0;
+  }
+  return process._getActiveHandles().filter((handle) =>
+    handle instanceof net.Server ||
+    (handle instanceof net.Socket && (handle.localAddress !== undefined || handle.remoteAddress !== undefined))
+  ).length;
 }
 
 function average(values) {

@@ -1515,6 +1515,7 @@ function normalizeDiscoveryTopology(entries) {
 
 async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
+  await runResilienceLifecycleServerRestart();
   await runResilienceLifecycleGracefulShutdown();
   await runResilienceLifecycleHighFanout();
   await runResilienceLifecycleObserverIsolation();
@@ -1566,6 +1567,118 @@ async function runResilienceLifecyclePendingCleanup() {
   } finally {
     await app.close();
   }
+}
+
+async function runResilienceLifecycleServerRestart() {
+  RLRestartHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const apps = [];
+  let provider;
+
+  try {
+    const registry = await startApp(
+      nestModule('ResilienceRestartRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 90
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    provider = await startResilienceRestartProvider(nestjs, registryRouterEndpoint, providerEndpoint, 'v1', apps);
+    const consumer = await startApp(
+      nestModule('ResilienceRestartConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rl.restart')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.restart', [providerEndpoint]);
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const before = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rl.restart', { requestId: 'rl-a1-before' })
+        .packetName('rl.restart.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(before, { requestId: 'rl-a1-before', handledBy: 'provider-a', generation: 'v1' });
+
+    await provider.app.close();
+    apps.splice(apps.indexOf(provider.app), 1);
+    await waitForResilienceRestartProviderRemoved(query, providerEndpoint);
+    await assert.rejects(
+      () => client
+        .requestToChannel('rl.restart', { requestId: 'rl-a1-down' })
+        .packetName('rl.restart.probe')
+        .timeout(100)
+        .submit(),
+      /timed out|timeout|not found|No .*target|RouteNotConnected|RequestTargetNotFound|Connection refused/i
+    );
+
+    provider = await startResilienceRestartProvider(nestjs, registryRouterEndpoint, providerEndpoint, 'v2', apps);
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.restart', [providerEndpoint]);
+    const after = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rl.restart', { requestId: 'rl-a1-after' })
+        .packetName('rl.restart.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(after, { requestId: 'rl-a1-after', handledBy: 'provider-a', generation: 'v2' });
+    marker('RL-A1');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startResilienceRestartProvider(nestjs, registryRouterEndpoint, endpoint, generation, apps) {
+  const handler = createRLRestartHandler(generation);
+  const started = await startApp(
+    nestModule(`ResilienceRestartProvider${generation}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rl.restart')
+            .enableServer(endpoint)
+            .routingId('provider-a')
+            .addRequestHandler('rl.restart.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+  return started;
+}
+
+async function waitForResilienceRestartProviderRemoved(query, providerEndpoint) {
+  const deadline = Date.now() + 5000;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({ channelName: 'rl.restart' });
+    if (!lastTopology.some((entry) => entry.endpoint === providerEndpoint)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`RL-A1 provider remained in topology: ${stringifyDiagnostic(lastTopology)}`);
 }
 
 async function runResilienceLifecycleGracefulShutdown() {
@@ -2036,6 +2149,24 @@ class EchoHandler {
 
 class RLObserverFailures {
   static events = [];
+}
+
+class RLRestartHandler {
+  static requests = [];
+
+  static record(payload, generation) {
+    const observed = { ...payload, handledBy: 'provider-a', generation };
+    RLRestartHandler.requests.push(observed);
+    return observed;
+  }
+}
+
+function createRLRestartHandler(generation) {
+  return class {
+    handle(payload) {
+      return RLRestartHandler.record(payload, generation);
+    }
+  };
 }
 
 class RLGracefulHandler {

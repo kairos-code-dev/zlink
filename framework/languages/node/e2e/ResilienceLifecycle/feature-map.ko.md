@@ -4,6 +4,8 @@
 
 ## 구현됨
 
+- `RL-A1`: provider를 같은 endpoint와 같은 routing id로 정상 종료 후 재시작하고, consumer 재시작 없이
+  다운 구간 public failure와 재시작 뒤 `v2` provider reply 정상화를 확인한다.
 - `RL-B1`: 처리 중인 request가 timeout으로 실패한 뒤, 같은 client의 후속 request가 정상 reply를
   받고 늦은 server 완료가 다음 request를 오염시키지 않는지 확인한다.
 - `RL-B3`: provider 두 대를 registry discovery로 붙인 뒤 provider 하나를 public `app.close()` 정상
@@ -19,7 +21,6 @@
 
 ## public API/harness 대기
 
-- `RL-A1`: consumer 지속 상태에서 같은 endpoint provider restart Node runner와 marker가 아직 없다.
 - `RL-A2`: 같은 rid와 새 endpoint로 pod 재스케줄을 검증하는 Node harness가 아직 없다.
 - `RL-A3`: client reconnect storm Node harness가 아직 없다.
 - `RL-A4`: rolling restart Node harness가 아직 없다.

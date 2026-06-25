@@ -72,9 +72,20 @@
   있는 actor destroy가 actor manager에서 정리되고 두 번째 destroy가 idempotent하게 끝나는지 확인한다.
   다만 공통 시나리오가 요구하는 user Spot join 뒤 Entry Spot 복귀, 파괴 후 actor request의 정해진
   public error, lifecycle callback evidence가 아직 없어 완료 marker로 올리지 않는다.
-- `SM-C1`: channel to spot messaging Node runner와 marker가 아직 없다.
-- `SM-C2`: spot to channel messaging Node runner와 marker가 아직 없다.
-- `SM-C3`: spot to spot messaging Node runner와 marker가 아직 없다.
+- `SM-C1`: 공통 시나리오는 외부 channel client가 target Spot으로 request/send/publish를 넣는 ingress를
+  요구한다. Node public spec은 외부 `ZLinkRouteClient`를 target node route용으로 두고, target Spot으로
+  가는 일반 egress client를 application 표면에 노출하지 않는다. 현재 Node에서 Spot route egress는 current
+  Spot callback 안의 `context.outbound.sendToSpot(...)` / `requestToSpot(...)` 경로이므로, 공통
+  channel→spot ingress contract가 정리되기 전까지 완료 marker로 올리지 않는다.
+- `SM-C2`: spot→channel send/request는 current Spot callback의
+  `context.outbound.sendToChannel(...)` / `requestToChannel(...)` public 표면으로 표현된다. 하지만
+  공통 시나리오는 reply 반영, timeout, 미등록 negative, SPOT mesh publish delivery까지 한 marker에서
+  요구한다. 현재 runner에는 route bridge channel socket과 SpotMesh publish readiness를 함께 안정적으로
+  띄우는 harness가 없어 완료 marker로 올리지 않는다.
+- `SM-C3`: spot→spot request/send는 current Spot callback의 `context.outbound.sendToSpot(...)` /
+  `requestToSpot(...)` public 표면으로 표현된다. 현재 runner에는 두 user Spot을 실제 SpotMesh route로
+  연결하고 request/send/publish/timeout/미등록 negative를 모두 검증하는 routed Spot harness가 없어
+  완료 marker로 올리지 않는다.
 - `SM-C4`: Node spec과 public DI에는 `ZLINK_SPOT_PUBLISHER_CLIENT`가 있지만, publish-only
   앱과 subscriber spot 앱을 public API만으로 구성했을 때 `publishSpot(...).submit()`이 반환하지
   않아 E2E delivery evidence를 완료 marker로 고정하지 못했다. transport readiness/harness를

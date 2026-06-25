@@ -30,19 +30,24 @@ async function main() {
 async function registryMessaging() {
   const apiEndpoint = uniqueEndpoint('rm-api');
   const nestjs = loadNest();
+  const framework = loadFramework();
+  RMFlowObserver.events = [];
+  const builder = nestjs.zlinkFramework();
+  builder.configureDispatch()
+    .setMessageFlowObserver(RMFlowObserver)
+    .messageFlow(framework.ZLinkMessageFlowLogMode.ErrorsOnly);
+  builder.addClientServerChannel('rm.api')
+    .enableServer(apiEndpoint)
+    .enableClient(apiEndpoint)
+    .routingId('rm-provider-a')
+    .addRequestHandler('rm.echo', EchoHandler)
+    .addSendHandler('rm.audit', AuditHandler);
   const { app } = await startApp(
     nestModule('RegistryMessagingModule', {
       imports: [
-        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-          .addClientServerChannel('rm.api')
-            .enableServer(apiEndpoint)
-            .enableClient(apiEndpoint)
-            .routingId('rm-provider-a')
-            .addRequestHandler('rm.echo', EchoHandler)
-            .addSendHandler('rm.audit', AuditHandler)
-          .build())
+        nestjs.ZLinkModule.forRoot(builder.build())
       ],
-      providers: [EchoHandler, AuditHandler]
+      providers: [EchoHandler, AuditHandler, RMFlowObserver]
     })
   );
 
@@ -62,6 +67,40 @@ async function registryMessaging() {
     await waitFor(() => AuditHandler.messages.some((message) => message.id === 8));
     selfCheck('RM-MANUAL-REQUEST-SEND');
     marker('RM-A2');
+
+    await assert.rejects(
+      () => client
+        .requestToChannel('rm.api', { id: 9, text: 'missing-request' })
+        .packetName('rm.missing.request')
+        .timeout(1000)
+        .submit(),
+      /No channel request handler is registered for 'rm\.api:rm\.missing\.request'/
+    );
+    await waitFor(() => RMFlowObserver.events.some((event) =>
+      event.messageKind === framework.ZLinkDispatchMessageKind.Request &&
+      event.errorReason === framework.ZLinkDispatchErrorReason.HandlerMissing &&
+      event.errorAction === framework.ZLinkDispatchErrorAction.ReplyError &&
+      event.packetName === 'rm.missing.request' &&
+      event.channelName === 'rm.api'));
+
+    await client
+      .sendToChannel('rm.api', { id: 10, text: 'missing-send' })
+      .packetName('rm.missing.send')
+      .submit();
+    await waitFor(() => RMFlowObserver.events.some((event) =>
+      event.messageKind === framework.ZLinkDispatchMessageKind.Send &&
+      event.errorReason === framework.ZLinkDispatchErrorReason.HandlerMissing &&
+      event.errorAction === framework.ZLinkDispatchErrorAction.Drop &&
+      event.packetName === 'rm.missing.send' &&
+      event.channelName === 'rm.api'));
+
+    const afterNegative = await client
+      .requestToChannel('rm.api', { id: 11, text: 'after-negative' })
+      .packetName('rm.echo')
+      .timeout(3000)
+      .submit();
+    assert.deepEqual(afterNegative, { id: 11, text: 'after-negative', handledBy: 'rm-provider-a' });
+    marker('RM-C5');
   } finally {
     await app.close();
   }
@@ -538,6 +577,13 @@ class AuditHandler {
   static messages = [];
   handle(payload) {
     AuditHandler.messages.push(payload);
+  }
+}
+
+class RMFlowObserver {
+  static events = [];
+  onMessageFlow(event) {
+    RMFlowObserver.events.push(event);
   }
 }
 

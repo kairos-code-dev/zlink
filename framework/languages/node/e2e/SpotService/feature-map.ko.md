@@ -49,8 +49,15 @@
   복합 객체 join payload가 `onActorJoin(...)`과 join reply까지 그대로 왕복하는 self-check
   `SM-B3-JOIN-PAYLOAD-FIDELITY`는 runner에 있다. 다만 공통 시나리오가 요구하는 후속 actor
   request payload fidelity marker는 아직 없어 완료 marker로 올리지 않는다.
-- `SM-B4`: remote actor request Node runner와 marker가 아직 없다.
-- `SM-B5`: actor 미등록 request negative path Node runner와 marker가 아직 없다.
+- `SM-B4`: 공통 시나리오는 다른 노드 actor로 request를 보내고 reply가 돌아오는지 본다. Node spec에서
+  public actor packet ingress는 stream session bind 결과인 `ZLinkSessionActor.relay(...)` 경로다.
+  현재 SpotService runner에는 cross-node stream session bind/relay harness가 없어 remote actor request를
+  완료 marker로 올리지 않는다.
+- `SM-B5`: handler 없는 actor packet request는 Node runtime에서
+  `ActorDispatchHandlerNotFound`/`HandlerMissing`으로 매핑되는 경로가 있지만, 공통 시나리오는 public
+  actor packet ingress와 message-flow observer evidence를 함께 요구한다. 현재 runner에는
+  `ZLinkSessionActor.relay(...)`로 미등록 actor request를 넣고 observer까지 검증하는 harness가 없어
+  완료 marker로 올리지 않는다.
 - `SM-B6`: 명시적 leave callback은 `SM-A6`/`SM-E3` self-check에서 public `leaveActor(...)`와
   `onLeaveActor(...)`로 관측된다. 하지만 공통 시나리오의 disconnect 절반은 stream session handler가
   bind 결과인 `ZLinkSessionActor.notifyDisconnected(...)`를 호출해 `onDisconnectActor(...)`가

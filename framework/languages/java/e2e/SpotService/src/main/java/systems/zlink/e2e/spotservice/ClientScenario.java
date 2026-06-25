@@ -118,6 +118,17 @@ public final class ClientScenario {
     }
 
     private void runRouteMesh() {
+        Contracts.RoutePong routeReply = routes.requestTo(
+                Contracts.ROUTE_CHANNEL,
+                RoutingId.from("play-a"),
+                new Contracts.RoutePing("route-mesh-normal"))
+            .packetName(Contracts.ROUTE_PACKET)
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.RoutePong.class);
+        ensure("play-a".equals(routeReply.nodeRid()), "SM-F3 route-channel target node mismatch");
+        ensure("client-route-mesh".equals(routeReply.routeRid()), "SM-F3 route-channel source routing id mismatch");
+        ensure("route:route-mesh-normal".equals(routeReply.value()), "SM-F3 route-channel reply mismatch");
+
         Contracts.StateReply reply = eventually(() -> outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("route-mesh"))
@@ -128,6 +139,7 @@ public final class ClientScenario {
             .await();
         System.out.println("scenario SM-F1 passed");
         System.out.println("scenario SM-F2 passed");
+        System.out.println("scenario SM-F3 passed");
         expectFailure(() -> outbound.requestToSpot(
                 RoutingId.from("missing-route"),
                 new Contracts.StateRequest("missing-route"))

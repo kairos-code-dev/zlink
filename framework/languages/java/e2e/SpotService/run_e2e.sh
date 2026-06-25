@@ -266,7 +266,7 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh route-channel idle-timer timer-overrun; do
+for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh idle-timer timer-overrun; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
     create_timer_spot "${HTTP_A}" idle-active
@@ -299,6 +299,8 @@ fetch_evidence play-a "${HTTP_A}"
 fetch_evidence play-b "${HTTP_B}"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
 grep -q "packet=RoutePing" "${log_dir}/client-flow.log"
+grep -q '"marker":"RoutePing"' "${log_dir}/play-a-evidence.json"
+grep -q '"value":"route-mesh-normal"' "${log_dir}/play-a-evidence.json"
 grep -q "DispatchError" "${log_dir}/play-a-evidence.json"
 grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"
 grep -q "SpotClosing" "${log_dir}/play-a-evidence.json"

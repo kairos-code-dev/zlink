@@ -42,8 +42,8 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   policy를 설정하고, `ZLinkTimerTick`의 delivery/skipped evidence가 남는지 확인한다.
 - `SM-F1`: 외부 consumer가 RouteMesh 경로로 target spot에 도달하는지 확인한다.
 - `SM-F2`: RouteMesh 채널명이 target spot egress의 실제 channel 기준으로 동작하는지 확인한다.
-- `SM-F3`: 같은 RouteMesh에서 일반 route-channel request 송신과 target spot request/send가 한
-  channel 위에서 함께 구성되는지 확인한다.
+- `SM-F3`: 같은 RouteMesh에서 일반 route-channel request/reply와 target spot request/send가 한
+  channel 위에서 함께 구성되고, 일반 packet은 channel handler가 처리하는지 확인한다.
 
 ## public contract parity 또는 spec 검토 대기
 

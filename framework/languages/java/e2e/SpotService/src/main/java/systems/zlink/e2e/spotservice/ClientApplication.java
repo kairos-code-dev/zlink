@@ -1,6 +1,5 @@
 package systems.zlink.e2e.spotservice;
 
-import java.time.Duration;
 import java.util.UUID;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -8,7 +7,6 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -30,11 +28,6 @@ public final class ClientApplication {
             systems.zlink.framework.spots.ZLinkSpotManager spots =
                 context.getBean(systems.zlink.framework.spots.ZLinkSpotManager.class);
             String mode = Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", "state1");
-            if ("route-channel".equals(mode)) {
-                runRouteChannel(context.getBean(ZLinkRouteClient.class));
-                System.out.println("spot-service e2e mode=" + mode + " result=passed");
-                return;
-            }
             ClientDriverSpot.configure(mode);
             spots.create(ClientDriverSpot.class, RoutingId.from(
                     "client-driver-" + mode + "-" + UUID.randomUUID().toString().replace("-", "")))
@@ -44,27 +37,6 @@ public final class ClientApplication {
             System.out.println("spot-service e2e mode=" + mode + " result=passed");
         } finally {
             context.close();
-        }
-    }
-
-    private static void runRouteChannel(ZLinkRouteClient routes) {
-        routes.requestTo(
-                Contracts.ROUTE_CHANNEL,
-                RoutingId.from("play-a"),
-                new Contracts.RoutePing("route-mesh-normal"))
-            .packetName(Contracts.ROUTE_PACKET)
-            .timeout(Duration.ofSeconds(5))
-            .submit(Contracts.RoutePong.class);
-        sleep(1500);
-        System.out.println("scenario SM-F3 passed");
-    }
-
-    private static void sleep(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("route channel wait interrupted", error);
         }
     }
 

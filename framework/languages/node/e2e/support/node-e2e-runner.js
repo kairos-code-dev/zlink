@@ -133,6 +133,7 @@ async function registryMessaging() {
 
 async function runRegistryMessagingDiscovery(nestjs, framework) {
   RMDiscoveryHandler.requests = [];
+  RMDiscoveryHandler.commands = [];
   const registryPubEndpoint = await reserveTcpEndpoint();
   const registryRouterEndpoint = await reserveTcpEndpoint();
   const providerAEndpoint = await reserveTcpEndpoint();
@@ -202,6 +203,19 @@ async function runRegistryMessagingDiscovery(nestjs, framework) {
       handledBy: reply.handledBy
     }]);
     marker('RM-A1');
+
+    await client
+      .sendToChannel('rm.discovery', { id: 2, text: 'registry-command' })
+      .packetName('rm.discovery.command')
+      .submit();
+    await waitFor(() => RMDiscoveryHandler.commands.length === 1);
+    assert.deepEqual(RMDiscoveryHandler.commands, [{
+      id: 2,
+      text: 'registry-command',
+      handledBy: RMDiscoveryHandler.commands[0]?.handledBy
+    }]);
+    assert.ok(readyProviders.some((provider) => provider.routingId === RMDiscoveryHandler.commands[0].handledBy));
+    marker('RM-C1');
   } finally {
     for (const app of apps.reverse()) {
       await app.close();
@@ -246,6 +260,7 @@ async function startRegistryMessagingDiscoveryProvider(nestjs, registryRouterEnd
             .enableServer(providerEndpoint)
             .routingId(routingId)
             .addRequestHandler('rm.discovery.echo', handler)
+            .addSendHandler('rm.discovery.command', handler)
           .build())
       ],
       providers: [handler]
@@ -742,15 +757,23 @@ class RMFlowObserver {
 
 class RMDiscoveryHandler {
   static requests = [];
+  static commands = [];
   static record(payload, handledBy) {
     RMDiscoveryHandler.requests.push({ ...payload, handledBy });
     return { ...payload, handledBy };
+  }
+  static recordCommand(payload, handledBy) {
+    RMDiscoveryHandler.commands.push({ ...payload, handledBy });
   }
 }
 
 function createRMDiscoveryHandler(routingId) {
   return class {
-    handle(payload) {
+    handle(payload, context) {
+      if (context.packetName === 'rm.discovery.command') {
+        RMDiscoveryHandler.recordCommand(payload, routingId);
+        return undefined;
+      }
       return RMDiscoveryHandler.record(payload, routingId);
     }
   };

@@ -46,3 +46,9 @@
   import하는 구성은 spec에 있지만, 현재 E2E runner에서는 provider 광고·topology·consumer messaging
   완료 증거가 안정적으로 나오지 않고 실행이 멈춰 완료 marker로 올리지 않는다.
 - `DR-D3`: embedded registry/service node와 standalone registry를 섞은 cluster marker가 아직 없다.
+  공통 시나리오는 embedded node의 provider 광고, standalone registry peer 합산 view, consumer
+  discovery·messaging을 함께 요구한다. Node spec은 같은 Nest application 안에서
+  `ZLinkRegistryModule.forRoot(...)`와 `ZLinkModule.forRoot(...)`를 함께 쓰는 배포 형태를
+  설명하지만, 현재 E2E runner에서 `DR-D1`의 embedded provider 광고·topology·messaging 증거가
+  안정적으로 나오지 않는다. 따라서 `DR-D3`도 `DR-D1`이 닫힌 뒤 같은 public API만으로 혼합 peer
+  cluster 수렴까지 검증해야 하며, 내부 registry helper나 private peer 조작으로 완료 처리하지 않는다.

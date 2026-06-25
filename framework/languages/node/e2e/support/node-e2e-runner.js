@@ -72,6 +72,8 @@ async function pubSub() {
   PubSubBetaHandler.events = [];
   PubSubGammaHandler.events = [];
   PubSubLateHandler.events = [];
+  PubSubSlowHandler.started = [];
+  PubSubSlowHandler.events = [];
   PubSubFlowObserver.events = [];
   const eventsEndpoint = await reserveTcpEndpoint();
   const nestjs = loadNest();
@@ -149,6 +151,23 @@ async function pubSub() {
       && PubSubGammaHandler.events.some((event) => event.seq === 41));
     assert.equal(PubSubBetaHandler.events.some((event) => event.seq === 40), false);
     marker('PS-A4');
+
+    PubSubAlphaHandler.events = [];
+    PubSubBetaHandler.events = [];
+    PubSubGammaHandler.events = [];
+    PubSubSlowHandler.started = [];
+    PubSubSlowHandler.events = [];
+    subscribers.push(await startPubSubSubscriber('PubSubSlowModule', PubSubSlowHandler, eventsEndpoint));
+    await publishEvent(fanout, 'all', 50);
+    await waitFor(() => PubSubSlowHandler.started.some((event) => event.seq === 50));
+    await publishEvent(fanout, 'all', 51);
+    await waitFor(() =>
+      PubSubAlphaHandler.events.some((event) => event.seq === 51)
+      && PubSubBetaHandler.events.some((event) => event.seq === 51)
+      && PubSubGammaHandler.events.some((event) => event.seq === 51)
+      && !PubSubSlowHandler.events.some((event) => event.seq === 50),
+      400);
+    marker('PS-B1');
 
     PubSubAlphaHandler.events = [];
     PubSubBetaHandler.events = [];
@@ -418,6 +437,19 @@ class PubSubLateHandler {
     if (context.topic === 'all') {
       PubSubLateHandler.events.push({ topic: context.topic, seq: payload.seq });
     }
+  }
+}
+
+class PubSubSlowHandler {
+  static started = [];
+  static events = [];
+  async handle(payload, context) {
+    if (context.topic !== 'all') {
+      return;
+    }
+    PubSubSlowHandler.started.push({ topic: context.topic, seq: payload.seq });
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    PubSubSlowHandler.events.push({ topic: context.topic, seq: payload.seq });
   }
 }
 

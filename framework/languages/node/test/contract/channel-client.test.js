@@ -217,6 +217,27 @@ test('ZLinkDealerChannelClientTransport rejects pre-aborted signal before creati
   assert.deepEqual(calls, []);
 });
 
+test('ZLinkDealerChannelClientTransport maps native request connectivity failures to public route error', async () => {
+  const nativeError = Object.assign(new Error('dealerRequest failed: Connection refused'), { code: 5 });
+  const transport = new framework.ZLinkDealerChannelClientTransport({
+    request() {
+      return createMultipartRequestOperation({
+        submit() {
+          throw nativeError;
+        }
+      });
+    }
+  });
+
+  await assert.rejects(
+    () => transport.request('api', 'Ping', 'ping', 100),
+    (error) => error instanceof framework.ZLinkFrameworkException &&
+      error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected &&
+      error.isRetriable === true &&
+      error.cause === nativeError
+  );
+});
+
 test('ZLinkModule.forRoot provides concrete channel and fanout clients', () => {
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .addClientServerChannel('api')
@@ -3023,6 +3044,9 @@ async function waitForTopology(query, predicate, routingId) {
 }
 
 function isHostUnreachable(error) {
+  if (error instanceof framework.ZLinkFrameworkException) {
+    return error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true;
+  }
   return error instanceof Error &&
     (((error.code === 2 || error.code === 12) && /Host unreachable/.test(error.message)) ||
       (error.code === 5 && /Connection refused/.test(error.message)));
@@ -3244,7 +3268,7 @@ function createMultipartSubmitOperation() {
   };
 }
 
-function createMultipartRequestOperation() {
+function createMultipartRequestOperation(overrides = {}) {
   return {
     message() {
       return this;
@@ -3255,7 +3279,8 @@ function createMultipartRequestOperation() {
     submit(callback) {
       callback(0, []);
       return true;
-    }
+    },
+    ...overrides
   };
 }
 

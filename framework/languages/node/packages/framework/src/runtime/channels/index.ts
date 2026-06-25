@@ -669,26 +669,43 @@ export class ZLinkChannelRuntimeManager {
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs, undefined, this.codecs, correlationId) as readonly Message[];
     this.traceOutbound(ZLinkMessageFlowOutcome.Sent, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Request, channelName, packetName, correlationId);
     return this.sockets.requireSubmitter(dealer).submitRequest(
-      (resolve, reject) => dealer.request(
-        parts,
-        (result, parts) => {
-          try {
-            if (result !== 0) {
-              reject(new ZLinkConfigurationException(`Channel '${channelName}' request failed with result ${result}.`));
-              return;
-            }
-            const reply = decodeChannelReply<TReply>(parts as readonly Message[], this.codecs);
-            this.traceOutbound(ZLinkMessageFlowOutcome.ReplyReceived, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Request, channelName, packetName, correlationId);
-            resolve(reply);
-          } catch (error) {
-            reject(error);
-          } finally {
-            closeMessages(parts as readonly Message[]);
-          }
-        },
-        0,
-        timeoutMs
-      ),
+      (resolve, reject) => {
+        try {
+          const submitted = dealer.request(
+            parts,
+            (result, parts) => {
+              try {
+                if (result !== 0) {
+                  reject(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RouteNotConnected,
+                    `Channel '${channelName}' request failed with result ${result}.`,
+                    true
+                  ));
+                  return;
+                }
+                const reply = decodeChannelReply<TReply>(parts as readonly Message[], this.codecs);
+                this.traceOutbound(ZLinkMessageFlowOutcome.ReplyReceived, ZLinkDispatchErrorSurface.Channel, ZLinkDispatchMessageKind.Request, channelName, packetName, correlationId);
+                resolve(reply);
+              } catch (error) {
+                reject(error);
+              } finally {
+                closeMessages(parts as readonly Message[]);
+              }
+            },
+            0,
+            timeoutMs
+          );
+          return submitted;
+        } catch (error) {
+          reject(new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.RouteNotConnected,
+            `Channel '${channelName}' request failed before a reply was received.`,
+            true,
+            error
+          ));
+          return true;
+        }
+      },
       signal
     );
   }
@@ -1551,7 +1568,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     if (timeoutMs !== undefined) {
       operation.timeout(timeoutMs);
     }
-    const reply = await submitRequestOperation(operation);
+    const reply = await submitRequestOperation(operation, 'channel request');
     return decodeChannelReply<TReply>(reply);
   }
 
@@ -2397,17 +2414,34 @@ function appendParts<TNext extends ZLinkMultipartOperation<TNext>>(
 
 function submitRequestOperation(operation: {
   submit(callback: (result: number, parts: readonly Message[]) => void): boolean;
-}): Promise<readonly Message[]> {
+}, label: string): Promise<readonly Message[]> {
   return new Promise((resolve, reject) => {
-    const accepted = operation.submit((result, parts) => {
-      if (result !== 0) {
-        reject(new Error(`Channel request failed with result ${result}.`));
-        return;
+    try {
+      const accepted = operation.submit((result, parts) => {
+        if (result !== 0) {
+          reject(new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.RouteNotConnected,
+            `Channel request failed with result ${result}.`,
+            true
+          ));
+          return;
+        }
+        resolve(parts);
+      });
+      if (!accepted) {
+        reject(new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.RouteNotConnected,
+          'Channel request submit was not accepted.',
+          true
+        ));
       }
-      resolve(parts);
-    });
-    if (!accepted) {
-      reject(new Error('Channel request submit was not accepted.'));
+    } catch (error) {
+      reject(new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RouteNotConnected,
+        `${label} failed before a reply was received.`,
+        true,
+        error
+      ));
     }
   });
 }

@@ -2244,6 +2244,7 @@ async function resilienceLifecycle() {
   await runResilienceLifecycleProviderFlapping();
   await runResilienceLifecycleGracefulShutdown();
   await runResilienceLifecycleRegistryStaleCleanup();
+  await runResilienceLifecycleNodeDisconnectRecovery();
   await runResilienceLifecycleHighFanout();
   await runResilienceLifecycleObserverIsolation();
   await runResilienceLifecycleLoggingMarker();
@@ -2466,7 +2467,7 @@ async function runResilienceLifecycleServerRestart() {
         .packetName('rl.restart.probe')
         .timeout(100)
         .submit(),
-      /timed out|timeout|not found|No .*target|RouteNotConnected|RequestTargetNotFound|Connection refused/i
+      (error) => isPublicRouteUnavailableError(error)
     );
 
     provider = await startResilienceRestartProvider(nestjs, registryRouterEndpoint, providerEndpoint, 'v2', apps);
@@ -3125,13 +3126,128 @@ async function waitForRegistryChannelEndpointAbsent(query, framework, channelNam
       serviceRole: framework.ZLinkServiceRole.Router,
       channelName
     });
-    const readyEntries = lastTopology.filter((entry) => entry.state === framework.ZLinkTopologyState.Ready);
-    if (!readyEntries.some((entry) => entry.endpoint === endpoint)) {
+    if (!lastTopology.some((entry) => entry.endpoint === endpoint)) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  assert.fail(`Registry stale endpoint remained ready: ${endpoint}; topology=${stringifyDiagnostic(lastTopology)}`);
+  assert.fail(`Registry endpoint remained in topology: ${endpoint}; topology=${stringifyDiagnostic(lastTopology)}`);
+}
+
+function isPublicRouteUnavailableError(error) {
+  const framework = loadFramework();
+  if (error instanceof framework.ZLinkFrameworkException) {
+    return [
+      framework.ZLinkFrameworkErrorKind.RouteNotConnected,
+      framework.ZLinkFrameworkErrorKind.RequestTargetNotFound
+    ].includes(error.kind);
+  }
+  return error instanceof Error && /ZLink async submit timed out/i.test(error.message);
+}
+
+async function runResilienceLifecycleNodeDisconnectRecovery() {
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const apps = [];
+  const children = [];
+
+  try {
+    const registry = await startApp(
+      nestModule('ResilienceDisconnectRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 98,
+            heartbeatIntervalMs: 100,
+            heartbeatTimeoutMs: 350,
+            broadcastIntervalMs: 100
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    let provider = await startResilienceInFlightProviderChild({
+      moduleName: 'ResilienceDisconnectProviderModule',
+      registryRouterEndpoint,
+      providerEndpoint,
+      channelName: 'rl.disconnect',
+      packetName: 'rl.disconnect.probe',
+      providerId: 'provider-v1',
+      routingId: 'provider-a',
+      blockRequestIds: []
+    });
+    children.push(provider.child);
+
+    const consumer = await startApp(
+      nestModule('ResilienceDisconnectConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rl.disconnect')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    await waitForRegistryMessagingSingleReadyProvider(query, framework, 'rl.disconnect', 'provider-a', providerEndpoint);
+    const before = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rl.disconnect', { requestId: 'rl-c3-before' })
+        .packetName('rl.disconnect.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(before, { requestId: 'rl-c3-before', handledBy: 'provider-v1' });
+
+    await stopChildProcess(provider.child, 'SIGKILL');
+    children.splice(children.indexOf(provider.child), 1);
+    await waitForRegistryChannelEndpointAbsent(query, framework, 'rl.disconnect', providerEndpoint);
+    const downStartedAt = Date.now();
+    await assert.rejects(
+      () => client
+        .requestToChannel('rl.disconnect', { requestId: 'rl-c3-down' })
+        .packetName('rl.disconnect.probe')
+        .timeout(100)
+        .submit(),
+      (error) => isPublicRouteUnavailableError(error)
+    );
+    assert.ok(Date.now() - downStartedAt < 1200, 'RL-C3 down request did not fail within the expected public timeout window.');
+
+    provider = await startResilienceInFlightProviderChild({
+      moduleName: 'ResilienceDisconnectRecoveredProviderModule',
+      registryRouterEndpoint,
+      providerEndpoint,
+      channelName: 'rl.disconnect',
+      packetName: 'rl.disconnect.probe',
+      providerId: 'provider-v2',
+      routingId: 'provider-a',
+      blockRequestIds: []
+    });
+    children.push(provider.child);
+    await waitForRegistryMessagingSingleReadyProvider(query, framework, 'rl.disconnect', 'provider-a', providerEndpoint);
+    const after = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rl.disconnect', { requestId: 'rl-c3-after' })
+        .packetName('rl.disconnect.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(after, { requestId: 'rl-c3-after', handledBy: 'provider-v2' });
+    marker('RL-C3');
+  } finally {
+    for (const child of children.reverse()) {
+      await stopChildProcess(child, 'SIGKILL');
+    }
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
 }
 
 async function runResilienceLifecycleHighFanout() {
@@ -4626,6 +4742,10 @@ async function submitUntilReachable(submit, timeoutMs = 5000) {
 }
 
 function isTransientMessagingConnectError(error) {
+  const framework = loadFramework();
+  if (error instanceof framework.ZLinkFrameworkException) {
+    return error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true;
+  }
   return error instanceof Error &&
     (((error.code === 2 || error.code === 12) && /Host unreachable/.test(error.message)) ||
       (error.code === 5 && /Connection refused/.test(error.message)));

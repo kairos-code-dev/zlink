@@ -33,6 +33,9 @@
 - `RL-C2`: provider 한 대를 child process로 띄운 뒤 `SIGKILL`로 비정상 종료하고, 짧은 registry
   heartbeat timeout 뒤 해당 endpoint가 ready topology에서 사라지며 follow-up request가 살아 있는
   provider로만 처리되는지 확인한다.
+- `RL-C3`: process-isolated provider를 `SIGKILL`로 단절시키고, registry topology에서 빠진 동안
+  public request가 정해진 실패로 끝나며 같은 endpoint/routing id로 재기동한 provider가 재광고된 뒤
+  후속 request가 정상화되는지 확인한다.
 - `RL-D5`: public channel client 6개가 2초 동안 request와 send를 계속 섞어 보내는 bounded soak를
   실행한다. 모든 request reply와 send delivery가 누락 없이 수집되고, latency sample의 최대값과
   앞/뒤 절반 평균 drift가 bounded threshold 안에 머무는지 관측한다. 리소스 누수의 엄밀한 증명은
@@ -47,7 +50,6 @@
 - `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.
 - `RL-B6`: gray failure Node harness가 아직 없다.
 - `RL-C1`: 다수 연결/요청 resource cleanup evidence Node harness가 아직 없다.
-- `RL-C3`: node disconnect/recovery Node harness가 아직 없다.
 - `RL-C4`: registry restart/outage recovery Node marker가 아직 없다. 현재 public same-process
   restart 시도는 provider 재광고와 restarted registry topology `Ready` evidence를 안정적으로 만들지
   못했으므로 완료 처리하지 않는다. process-isolated registry restart harness로 기존 channel socket

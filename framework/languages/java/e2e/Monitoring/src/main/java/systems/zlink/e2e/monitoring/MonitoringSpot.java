@@ -26,8 +26,10 @@ public final class MonitoringSpot implements ZLinkSpot<ZLinkActor> {
     public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
         ZLinkTimerOptions options = new ZLinkTimerOptions();
         options.setStopOnUnhandledException(false);
-        context.addTimer("failing-monitoring-timer", Duration.ofMillis(100),
+        context.addTimer("failing-monitoring-timer", Duration.ofMillis(500),
             FailingTimerHandler.class, options);
+        context.addTimer("stopping-monitoring-timer", Duration.ofMillis(500),
+            FailingTimerHandler.class, new ZLinkTimerOptions());
         return ZLinkSpotCreateResponse.accept();
     }
 

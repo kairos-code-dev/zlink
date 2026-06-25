@@ -63,7 +63,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(7):
+    for _ in range(8):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -110,11 +110,12 @@ app_bin() {
   echo "${ZLINK_JAVA_E2E_BUILD_DIR}/install/monitoring/bin/monitoring"
 }
 
-read -r REG_PUB_PORT REG_ROUTER_PORT REG_HTTP_PORT API_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT <<<"$(reserve_ports)"
+read -r REG_PUB_PORT REG_ROUTER_PORT REG_HTTP_PORT API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT <<<"$(reserve_ports)"
 REGISTRY_PUB="$(tcp "${REG_PUB_PORT}")"
 REGISTRY_ROUTER="$(tcp "${REG_ROUTER_PORT}")"
 REGISTRY_HTTP="$(http "${REG_HTTP_PORT}")"
 API_ENDPOINT="$(tcp "${API_PORT}")"
+HANDSHAKE_ENDPOINT="$(tcp "${HANDSHAKE_PORT}")"
 SPOT_ENDPOINT="$(tcp "${SPOT_PORT}")"
 SPOT_PUB_ENDPOINT="$(tcp "${SPOT_PUB_PORT}")"
 SERVICE_HTTP="$(http "${SVC_HTTP_PORT}")"
@@ -134,6 +135,7 @@ wait_port registry-http "${REGISTRY_HTTP}"
 ZLINK_JAVA_E2E_ROLE=service \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" \
+ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
 ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_ENDPOINT}" \
 ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT="${SPOT_PUB_ENDPOINT}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SERVICE_HTTP}" \
@@ -146,6 +148,7 @@ sleep 2
 
 ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" \
+ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
 ZLINK_JAVA_E2E_REGISTRY_HTTP="${REGISTRY_HTTP}" \
 ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
@@ -160,6 +163,7 @@ cat "${log_dir}/validation.stdout.log"
 grep -q "scenario MON-A1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A2 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A3 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario MON-A5 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-B1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-C1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-B2 passed" "${log_dir}/validation.stdout.log"

@@ -65,6 +65,14 @@ public final class ServiceApplication {
                     Contracts.WorkRequest.class,
                     Contracts.WorkReply.class,
                     "WorkRequest");
+            options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
+                .enableServer(Env.get("ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT"))
+                .serverRoutingId(RoutingId.from("svc-a-handshake"))
+                .addRequestHandler(
+                    WorkRequestHandler.class,
+                    Contracts.WorkRequest.class,
+                    Contracts.WorkReply.class,
+                    "HandshakeWorkRequest");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH)
                 ;
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
@@ -79,6 +87,7 @@ public final class ServiceApplication {
     ZLinkMonitoringOptionsCustomizer monitoringOptions() {
         return options -> {
             options.addSocketEvents(Contracts.CHANNEL, ZLinkSocketEventKind.CONNECTION_READY);
+            options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
             options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100));
         };
     }

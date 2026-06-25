@@ -14,6 +14,10 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
 - `MON-A3`: service host의 `monitoring.spot.mesh` source에서 `STATUS_CHANGED`,
   `PEERS_CHANGED`, `SUBJECTS_CHANGED`를 관찰하고, failing timer가 `TIMER_HANDLER_FAILED`를
   발행해도 channel messaging이 멈추지 않는지 확인한다.
+- `MON-A5`: handshake 전용 public channel에 잘못된 TCP 연결을 보내 socket 전이를 관찰하고,
+  registry/spot `STATUS_CHANGED`와 stop-on-unhandled timer의
+  `TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION`을 함께 확인한다. 현재 Java native backend는 raw malformed
+  연결을 `HANDSHAKE_FAILED`가 아니라 연결/해제 marker로 보고한다.
 - `MON-B1`: service host의 socket source를 `CONNECTION_READY` kind로 필터링하고, evidence에
   필터에 포함한 kind만 기록되는지 확인한다.
 - `MON-B2`: monitoring 등록 검증에서 비양수 polling interval은 구성 시점에 실패하고, 미존재
@@ -24,6 +28,4 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
 ## public API/harness 대기
 
 - `MON-A4`: failover/drain 전이를 socket/registry monitoring event로 묶어 보는 runner가 아직 없다.
-- `MON-A5`: handshake failure, status transition, timer stopped kind를 안정적으로 유발하는 trigger가
-  아직 없다.
 - `MON-D1`: 장애/복구 반복 중 monitoring event 연속성을 보는 장시간 harness가 아직 없다.

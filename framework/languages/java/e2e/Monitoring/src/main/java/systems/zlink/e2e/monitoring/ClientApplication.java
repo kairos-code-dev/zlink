@@ -3,6 +3,9 @@ package systems.zlink.e2e.monitoring;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -95,25 +98,52 @@ public final class ClientApplication {
                 "CONNECTED",
                 "CONNECTION_READY"));
             ensureFilteredSocketEvents();
+            triggerHandshakeFailure();
             waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "spot", Set.of(
                 "STATUS_CHANGED",
                 "PEERS_CHANGED",
                 "SUBJECTS_CHANGED",
-                "TIMER_HANDLER_FAILED"));
+                "TIMER_HANDLER_FAILED",
+                "TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION"));
+            waitForEvent(
+                Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"),
+                "socket",
+                Contracts.HANDSHAKE_CHANNEL,
+                Set.of("DISCONNECTED"));
             ensureMonitoringHandlerFailureIsIsolated();
             System.out.println("scenario MON-A1 passed");
             System.out.println("scenario MON-A2 passed");
             System.out.println("scenario MON-A3 passed");
+            System.out.println("scenario MON-A5 passed");
             System.out.println("scenario MON-B1 passed");
             System.out.println("scenario MON-C1 passed");
         }
 
         private void ensureFilteredSocketEvents() {
-            Set<String> observed = events(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "socket");
+            Set<String> observed = events(
+                Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"),
+                "socket",
+                Contracts.CHANNEL);
             ensure(observed.contains("CONNECTION_READY"),
                 "MON-B1 did not observe filtered CONNECTION_READY event");
             ensure(observed.equals(Set.of("CONNECTION_READY")),
                 "MON-B1 socket filter allowed unexpected events: " + observed);
+        }
+
+        private void triggerHandshakeFailure() {
+            String endpoint = Env.get("ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT");
+            int port = Integer.parseInt(endpoint.substring(endpoint.lastIndexOf(':') + 1));
+            for (int index = 0; index < 5; index++) {
+                try (Socket socket = new Socket()) {
+                    socket.connect(new InetSocketAddress("127.0.0.1", port), 500);
+                    OutputStream output = socket.getOutputStream();
+                    output.write(("invalid-zmtp-handshake-" + index).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    output.flush();
+                } catch (IOException ignored) {
+                    // The server is expected to reject the malformed handshake.
+                }
+                sleep(100);
+            }
         }
 
         private void ensureMonitoringHandlerFailureIsIsolated() {
@@ -129,15 +159,23 @@ public final class ClientApplication {
         }
 
         private void waitForEvent(String baseUrl, String surface, Set<String> expected) {
+            waitForEvent(baseUrl, surface, "", expected);
+        }
+
+        private void waitForEvent(
+            String baseUrl,
+            String surface,
+            String sourceName,
+            Set<String> expected) {
             long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
             while (System.nanoTime() < deadline) {
-                Set<String> observed = events(baseUrl, surface);
+                Set<String> observed = events(baseUrl, surface, sourceName);
                 if (observed.containsAll(expected)) {
                     return;
                 }
                 sleep(200);
             }
-            Set<String> observed = events(baseUrl, surface);
+            Set<String> observed = events(baseUrl, surface, sourceName);
             throw new IllegalStateException(
                 "missing " + surface + " events " + expected + " at " + baseUrl
                     + "; observed=" + observed + "; evidence=" + get(baseUrl + "/evidence"));
@@ -159,11 +197,17 @@ public final class ClientApplication {
         }
 
         private Set<String> events(String baseUrl, String surface) {
+            return events(baseUrl, surface, "");
+        }
+
+        private Set<String> events(String baseUrl, String surface, String sourceName) {
             try {
                 JsonNode root = json.readTree(get(baseUrl + "/evidence")).path("entries");
                 Set<String> events = new HashSet<>();
                 for (JsonNode entry : root) {
-                    if (surface.equals(entry.path("surface").asText())) {
+                    if (surface.equals(entry.path("surface").asText())
+                        && (sourceName.isBlank()
+                            || sourceName.equals(entry.path("sourceName").asText()))) {
                         events.add(entry.path("event").asText());
                     }
                 }

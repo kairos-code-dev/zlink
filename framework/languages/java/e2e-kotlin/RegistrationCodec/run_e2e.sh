@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+pids=()
+role_pattern='systems\.zlink\.e2e\.kotlin\.registrationcodec\.ProgramKt'
+run_id="$(date +%Y%m%d-%H%M%S)-$$"
+log_dir="$(pwd)/logs/${run_id}"
+repo_root="$(cd ../../../../.. && pwd)"
+default_core_lib="${repo_root}/core/build/lib/libzlink.so"
+mkdir -p "${log_dir}"
+echo "log_dir=${log_dir}"
+if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
+  export ZLINK_LIBRARY_PATH="${default_core_lib}"
+fi
+export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/RegistrationCodec}"
+export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/RegistrationCodec-gradle-cache}"
+
+print_logs() {
+  local status="$1"
+  if [[ "${status}" == "0" ]]; then
+    return
+  fi
+  for log in "${log_dir}"/*.log; do
+    [[ -f "${log}" ]] || continue
+    echo "===== ${log} =====" >&2
+    tail -n 200 "${log}" >&2 || true
+  done
+}
+
+descendants() {
+  local pid="$1"
+  local child
+  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
+    descendants "${child}"
+    echo "${child}"
+  done
+}
+
+cleanup() {
+  local status="$?"
+  set +e
+  print_logs "${status}"
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    local pid="${pids[$i]}"
+    for child in $(descendants "${pid}"); do
+      kill "${child}" >/dev/null 2>&1 || true
+    done
+    kill "${pid}" >/dev/null 2>&1 || true
+  done
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
+    kill -9 "${pid}" >/dev/null 2>&1 || true
+  done
+  wait >/dev/null 2>&1 || true
+  exit "${status}"
+}
+trap cleanup EXIT
+
+reserve_ports() {
+  local count="${1:-3}"
+  python3 - "${count}" <<'PY'
+import socket
+import sys
+count = int(sys.argv[1])
+sockets = []
+ports = []
+try:
+    for _ in range(count):
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sockets.append(sock)
+        ports.append(sock.getsockname()[1])
+    print(" ".join(str(port) for port in ports))
+finally:
+    for sock in sockets:
+        sock.close()
+PY
+}
+
+tcp() { echo "tcp://127.0.0.1:$1"; }
+http() { echo "http://127.0.0.1:$1"; }
+port_of() { echo "${1##*:}"; }
+
+wait_port() {
+  local name="$1"
+  local endpoint="$2"
+  local port
+  port="$(port_of "${endpoint}")"
+  for _ in $(seq 1 600); do
+    if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
+}
+
+gradle_run() {
+  ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
+}
+
+app_bin() {
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/install/registration-codec-kotlin/bin/registration-codec-kotlin"
+}
+
+read -r SERVER_PORT HTTP_PORT INVALID_PORT MISMATCH_PORT MISMATCH_HTTP_PORT <<<"$(reserve_ports 5)"
+SERVER_ENDPOINT="$(tcp "${SERVER_PORT}")"
+HTTP_ENDPOINT="$(http "${HTTP_PORT}")"
+INVALID_ENDPOINT="$(tcp "${INVALID_PORT}")"
+MISMATCH_ENDPOINT="$(tcp "${MISMATCH_PORT}")"
+MISMATCH_HTTP_ENDPOINT="$(http "${MISMATCH_HTTP_PORT}")"
+
+gradle_run installDist
+
+set +e
+ZLINK_KOTLIN_E2E_ROLE=invalid-server \
+ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${INVALID_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/invalid-server.stdout.log" 2>"${log_dir}/invalid-server.stderr.log"
+invalid_status="$?"
+set -e
+if [[ "${invalid_status}" == "0" ]]; then
+  echo "invalid registration server unexpectedly started" >&2
+  exit 1
+fi
+cat "${log_dir}/invalid-server.stdout.log" "${log_dir}/invalid-server.stderr.log" \
+  | grep -Eq "duplicate|Duplicate|registration|packet"
+echo "scenario RC-A6 passed"
+
+ZLINK_KOTLIN_E2E_ROLE=server \
+ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
+pids+=("$!")
+wait_port server "${SERVER_ENDPOINT}"
+wait_port evidence "${HTTP_ENDPOINT}"
+sleep 1
+
+ZLINK_KOTLIN_E2E_ROLE=client \
+ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+
+cat "${log_dir}/client.stdout.log"
+python3 - "${HTTP_ENDPOINT}/evidence" >"${log_dir}/server-evidence.json" <<'PY'
+import sys
+import urllib.request
+with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
+    sys.stdout.write(response.read().decode("utf-8"))
+PY
+
+grep -Rq "message flow" "${log_dir}"/*-flow.log
+grep -q "EchoAuto" "${log_dir}/server-evidence.json"
+grep -q "ProtobufEcho" "${log_dir}/server-evidence.json"
+grep -q "MsgpackEcho" "${log_dir}/server-evidence.json"
+
+stop_current() {
+  set +e
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    kill "${pids[$i]}" >/dev/null 2>&1 || true
+  done
+  wait >/dev/null 2>&1 || true
+  pids=()
+  set -e
+}
+
+stop_current
+
+ZLINK_KOTLIN_E2E_ROLE=server \
+ZLINK_KOTLIN_E2E_CODEC_MODE=json-only \
+ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
+pids+=("$!")
+wait_port mismatch-server "${MISMATCH_ENDPOINT}"
+wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
+sleep 1
+
+ZLINK_KOTLIN_E2E_ROLE=client \
+ZLINK_KOTLIN_E2E_CLIENT_MODE=codec-mismatch \
+ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
+ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/mismatch-client.stdout.log" 2>"${log_dir}/mismatch-client.stderr.log"
+
+cat "${log_dir}/mismatch-client.stdout.log"
+grep -q "scenario RC-A4 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario RC-B5 passed" "${log_dir}/mismatch-client.stdout.log"

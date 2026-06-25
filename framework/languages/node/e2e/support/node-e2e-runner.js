@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
+const { fork } = require('node:child_process');
 
 const nodeRoot = path.resolve(__dirname, '../..');
 
@@ -19,6 +20,10 @@ const suites = new Map([
 
 async function main() {
   const suiteName = process.argv[2];
+  if (suiteName === '__registry_child') {
+    await registryChildMain(JSON.parse(process.argv[3]));
+    return;
+  }
   const suite = suites.get(suiteName);
   if (suite === undefined) {
     throw new Error(`Unknown Node e2e suite: ${suiteName}`);
@@ -1214,6 +1219,7 @@ async function discoveryRegistryHa() {
   await runDiscoveryRegistryHaLateStart(nestjs, framework);
   await runDiscoveryRegistryHaRegistryStop(nestjs, framework);
   await runDiscoveryRegistryHaPeerFlapping(nestjs, framework);
+  await runDiscoveryRegistryHaKilledRegistry(nestjs, framework);
   await runDiscoveryRegistryHaRegistryRecovery(nestjs, framework);
   await runDiscoveryRegistryHaFullOutageRecovery(nestjs, framework);
 }
@@ -1568,6 +1574,80 @@ async function runDiscoveryRegistryHaPeerFlapping(nestjs, framework) {
   }
 }
 
+async function runDiscoveryRegistryHaKilledRegistry(nestjs, framework) {
+  DRHandler.requests = [];
+  const reg1Pub = await reserveTcpEndpoint();
+  const reg1Router = await reserveTcpEndpoint();
+  const reg2Pub = await reserveTcpEndpoint();
+  const reg2Router = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+  const children = [];
+
+  try {
+    const reg1 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaKillReg1Module', {
+      pubEndpoint: reg1Pub,
+      routerEndpoint: reg1Router,
+      registryId: 79,
+      broadcastIntervalMs: 100,
+      peers: [reg2Pub]
+    });
+    apps.push(reg1.app);
+    const reg2 = await startDiscoveryRegistryChild('DiscoveryRegistryHaKillReg2Module', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 80,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    children.push(reg2);
+    await startDiscoveryProviderWithRegistries(
+      nestjs,
+      [reg1Router, reg2Router],
+      'dr.kill',
+      providerEndpoint,
+      'dr-kill-provider',
+      apps
+    );
+    const consumer = await startDiscoveryConsumerWithRegistries(
+      nestjs,
+      'DiscoveryRegistryHaKillConsumerModule',
+      [reg1Router, reg2Router],
+      'dr.kill'
+    );
+    apps.push(consumer.app);
+
+    const reg2QueryApp = await startDiscoveryQueryClient(nestjs, 'DiscoveryRegistryHaKillReg2QueryModule', reg2Router);
+    apps.push(reg2QueryApp.app);
+    const reg1Query = reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const reg2Query = reg2QueryApp.app.get(nestjs.ZLINK_REGISTRY_QUERY_CLIENT, { strict: false });
+    await waitForDiscoveryMemberPeers(reg1Query, framework, 'dr.kill', [providerEndpoint]);
+    await waitForDiscoveryTopologySnapshot(reg2Query, framework, 'dr.kill', [providerEndpoint]);
+    await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.kill', 'dr-c1-before-kill', ['dr-kill-provider']);
+
+    await stopDiscoveryRegistryChild(reg2, 'SIGKILL');
+    children.splice(children.indexOf(reg2), 1);
+    await waitForDiscoveryMemberPeers(reg1Query, framework, 'dr.kill', [providerEndpoint]);
+    await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.kill', 'dr-c1-after-kill', ['dr-kill-provider']);
+    await assert.rejects(
+      () => withTimeout(
+        () => reg2Query.topology({ channelName: 'dr.kill' }),
+        2000,
+        'DR-C1 dead registry query did not fail in bounded time.'
+      ),
+      /registry_query_topology failed|Resource temporarily unavailable|timed out|bounded time/i
+    );
+    marker('DR-C1');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+    for (const child of children.reverse()) {
+      await stopDiscoveryRegistryChild(child, 'SIGKILL');
+    }
+  }
+}
+
 async function runDiscoveryRegistryHaRegistryRecovery(nestjs, framework) {
   DRHandler.requests = [];
   const reg1Pub = await reserveTcpEndpoint();
@@ -1756,6 +1836,78 @@ async function startDiscoveryRegistry(nestjs, moduleName, options) {
   );
 }
 
+async function registryChildMain(options) {
+  const nestjs = loadNest();
+  let started;
+  let keepAlive;
+  try {
+    started = await startDiscoveryRegistry(nestjs, options.moduleName, options.registryOptions);
+    keepAlive = setInterval(() => {}, 1000);
+    if (typeof process.send === 'function') {
+      process.send({ type: 'ready' });
+    }
+    await new Promise((resolve) => {
+      const close = async () => {
+        if (started !== undefined) {
+          await started.app.close();
+          started = undefined;
+        }
+        clearInterval(keepAlive);
+        resolve();
+      };
+      process.once('SIGTERM', close);
+      process.once('SIGINT', close);
+    });
+  } catch (error) {
+    if (typeof process.send === 'function') {
+      process.send({ type: 'error', message: error instanceof Error ? error.stack ?? error.message : String(error) });
+    }
+    process.exitCode = 1;
+  }
+}
+
+async function startDiscoveryRegistryChild(moduleName, registryOptions) {
+  const child = fork(__filename, [
+    '__registry_child',
+    JSON.stringify({ moduleName, registryOptions })
+  ], {
+    cwd: nodeRoot,
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc']
+  });
+  child.stdout?.pipe(process.stdout);
+  child.stderr?.pipe(process.stderr);
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(`Registry child ${moduleName} did not become ready.`));
+    }, 5000);
+    child.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      reject(new Error(`Registry child ${moduleName} exited before ready: code=${code} signal=${signal}`));
+    });
+    child.once('message', (message) => {
+      clearTimeout(timeout);
+      child.removeAllListeners('exit');
+      if (message?.type === 'ready') {
+        resolve();
+        return;
+      }
+      reject(new Error(`Registry child ${moduleName} failed: ${message?.message ?? stringifyDiagnostic(message)}`));
+    });
+  });
+  return child;
+}
+
+async function stopDiscoveryRegistryChild(child, signal = 'SIGTERM') {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  await new Promise((resolve) => {
+    child.once('exit', resolve);
+    child.kill(signal);
+  });
+}
+
 async function startDiscoveryProvider(nestjs, registryRouterEndpoint, channelName, providerEndpoint, routingId, apps) {
   return startDiscoveryProviderWithRegistries(nestjs, [registryRouterEndpoint], channelName, providerEndpoint, routingId, apps);
 }
@@ -1785,6 +1937,16 @@ async function startDiscoveryProviderWithRegistries(nestjs, registryRouterEndpoi
 
 async function startDiscoveryConsumer(nestjs, moduleName, registryRouterEndpoint, channelName) {
   return startDiscoveryConsumerWithRegistries(nestjs, moduleName, [registryRouterEndpoint], channelName);
+}
+
+async function startDiscoveryQueryClient(nestjs, moduleName, endpoint) {
+  return startApp(
+    nestModule(moduleName, {
+      imports: [
+        nestjs.ZLinkRegistryQueryClientModule.forRoot({ endpoint })
+      ]
+    })
+  );
 }
 
 async function startDiscoveryConsumerWithRegistries(nestjs, moduleName, registryRouterEndpoints, channelName) {
@@ -3734,6 +3896,20 @@ async function waitFor(predicate, timeoutMs = 3000) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error('Timed out waiting for Node e2e condition.');
+}
+
+async function withTimeout(operation, timeoutMs, message) {
+  let timeout;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function submitUntilReachable(submit, timeoutMs = 5000) {

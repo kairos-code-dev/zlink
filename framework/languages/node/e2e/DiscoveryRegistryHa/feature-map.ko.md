@@ -27,6 +27,10 @@
 - `DR-C3`: provider와 consumer가 `reg-1`·`reg-2`를 모두 configured로 둔 상태에서 registry를 모두
   정상 종료한다. 전체 registry down 중 이미 연결된 channel request가 성공하고, 두 registry 복구 뒤
   양쪽 topology와 각 registry만 보는 consumer messaging이 다시 수렴하는지 확인한다.
+- `DR-C1`: `reg-1`은 public registry module로 띄우고 peer `reg-2`를 child process로 띄운 뒤
+  `reg-2`를 `SIGKILL`한다. 살아 있는 `reg-1`의 public `memberPeers(...)`와 consumer discovery
+  messaging이 계속 성공하고, 죽은 `reg-2` endpoint 원격 topology query가 bounded error로 끝나는지
+  확인한다.
 - `DR-D2`: registry만 별도 context로 띄운 standalone 배포에서 discovery와 messaging이 동작하는지
   확인한다.
 - `DR-D4`: 같은 registry router endpoint를 in-process `ZLinkRegistryQuery`와 remote
@@ -37,7 +41,6 @@
 - `DR-A4`: 같은 rid 충돌은 public `memberPeers(...)`로 합산 view를 고정해야 한다. 현재 Node runner
   시도에서는 같은 rid를 서로 다른 registry에 광고했을 때 peer 쪽 `memberPeers(...)`가 안정적인
   두-endpoint view를 제공하지 않아 완료 marker로 올리지 않는다.
-- `DR-C1`: registry 1대 다운 중 지속 Node runner와 marker가 아직 없다.
 - `DR-D1`: registry와 service를 한 embedded application으로 띄우는 Node marker가 아직 없다. 같은
   Nest application에 public `ZLinkRegistryModule.forRoot(...)`와 `ZLinkModule.forRoot(...)`를 함께
   import하는 구성은 spec에 있지만, 현재 E2E runner에서는 provider 광고·topology·consumer messaging

@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Injectable, Module } from '@nestjs/common';
+import { Inject, Injectable, Module, Optional } from '@nestjs/common';
 import type { DynamicModule, InjectionToken, ModuleMetadata, OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
@@ -83,11 +83,15 @@ interface RegistryRuntime {
   stop(signal?: AbortSignal): Promise<void>;
 }
 
+interface DisposableRegistryQueryClient {
+  dispose(): Promise<void>;
+}
+
 interface FrameworkModule {
   readonly ZLinkConfigurationException: new (message: string) => Error;
   readonly ZLinkRegistryRuntime: RuntimeConstructor<RegistryRuntime>;
   readonly DefaultZLinkRegistryQuery: new (runtime: RegistryRuntime) => unknown;
-  readonly DefaultZLinkRegistryQueryClient: new (options: { readonly registration: ZLinkRegistryQueryClientOptions }) => unknown;
+  readonly DefaultZLinkRegistryQueryClient: new (options: { readonly registration: ZLinkRegistryQueryClientOptions }) => DisposableRegistryQueryClient;
   readonly ZLinkFrameworkRuntimeHost: new (options: {
     readonly registration: ZLinkFrameworkRegistration;
     readonly providerResolver?: ZLinkProviderResolver;
@@ -1219,7 +1223,17 @@ export class ZLinkRegistryModule {
 }
 
 @Module({})
-export class ZLinkRegistryQueryClientModule {
+export class ZLinkRegistryQueryClientModule implements OnModuleDestroy {
+  constructor(
+    @Optional()
+    @Inject(ZLINK_REGISTRY_QUERY_CLIENT)
+    private readonly queryClient?: DisposableRegistryQueryClient
+  ) {}
+
+  async onModuleDestroy(): Promise<void> {
+    await this.queryClient?.dispose();
+  }
+
   static forRoot(options: ZLinkRegistryQueryClientOptions): DynamicModule {
     return {
       module: ZLinkRegistryQueryClientModule,

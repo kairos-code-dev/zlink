@@ -200,7 +200,7 @@ test('registry query client module supports NestJS async imports and inject', as
   const QUERY_CONFIG = Symbol('query-config');
   class ConfigModule {}
   Module({
-    providers: [{ provide: QUERY_CONFIG, useValue: { endpoint: 'tcp://registry:5551' } }],
+    providers: [{ provide: QUERY_CONFIG, useValue: { endpoint: 'tcp://127.0.0.1:1' } }],
     exports: [QUERY_CONFIG]
   })(ConfigModule);
 
@@ -221,6 +221,27 @@ test('registry query client module supports NestJS async imports and inject', as
   assert.equal(client instanceof framework.DefaultZLinkRegistryQueryClient, true);
 
   await app.close();
+});
+
+test('registry query client module disposes remote client on NestJS shutdown', async () => {
+  class QueryClientModule {}
+  Module({
+    imports: [
+      nestjs.ZLinkRegistryQueryClientModule.forRoot({
+        endpoint: 'tcp://127.0.0.1:1'
+      })
+    ]
+  })(QueryClientModule);
+
+  const app = await NestFactory.createApplicationContext(QueryClientModule, { logger: false, abortOnError: false });
+  const client = app.get(nestjs.ZLINK_REGISTRY_QUERY_CLIENT, { strict: false });
+
+  await app.close();
+
+  await assert.rejects(
+    () => client.topology(),
+    /Registry query client is disposed/
+  );
 });
 
 test('codec registry builder tracks dotnet named codecs and custom serializers', () => {

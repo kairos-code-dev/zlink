@@ -5,7 +5,7 @@
 ## 구현됨
 
 - `RM-A2`: public NestJS channel client/server가 수동 endpoint로 연결하고 send handler까지 도달한다.
-- `RM-C1`: public NestJS channel client가 request/reply happy path를 수행한다.
+- `RM-C1`: public NestJS channel client가 request/reply와 one-way send happy path를 수행한다.
 
 ## public API/harness 대기
 

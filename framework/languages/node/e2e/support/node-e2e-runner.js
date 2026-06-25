@@ -53,13 +53,13 @@ async function registryMessaging() {
       .timeout(3000)
       .submit();
     assert.deepEqual(reply, { id: 7, text: 'hello', handledBy: 'rm-provider-a' });
-    marker('RM-C1');
 
     await client
       .sendToChannel('rm.api', { id: 8, text: 'audit' })
       .packetName('rm.audit')
       .submit();
     await waitFor(() => AuditHandler.messages.some((message) => message.id === 8));
+    marker('RM-C1');
     marker('RM-A2');
   } finally {
     await app.close();
@@ -90,8 +90,7 @@ async function pubSub() {
       .packetName('ps.event')
       .submit();
     await waitFor(() => EventHandler.events.some((event) => event.seq === 1));
-    marker('PS-A1');
-    marker('PS-A2');
+    selfCheck('PS-SINGLE-TOPIC-PUBLISH');
   } finally {
     await app.close();
   }
@@ -122,8 +121,7 @@ async function registrationCodec() {
       .packetName('rc.echo')
       .submit();
     assert.deepEqual(reply, { codec: 'json', ok: true, handledBy: 'rm-provider-a' });
-    marker('RC-A3');
-    marker('RC-B1');
+    selfCheck('RC-JSON-REQUEST');
   } finally {
     await app.close();
   }
@@ -179,8 +177,7 @@ async function discoveryRegistryHa() {
     const query = app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
     const status = await query.status();
     assert.equal(status.registryId, 61);
-    marker('DR-A1');
-    marker('DR-D2');
+    selfCheck('DR-STANDALONE-STATUS');
   } finally {
     await app.close();
   }
@@ -225,8 +222,7 @@ async function resilienceLifecycle() {
   try {
     const secondClient = first.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
     assert.equal((await secondClient.requestToChannel('rl.api', { step: 2 }).packetName('rl.echo').submit()).step, 2);
-    marker('RL-A1');
-    marker('RL-C1');
+    selfCheck('RL-RUNTIME-RESTART-SMOKE');
   } finally {
     await first.app.close();
   }
@@ -252,10 +248,8 @@ async function spotService() {
     const spotManager = app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false });
     const created = await spotManager.create(UserSpot, { owner: 'u1' });
     assert.equal(created.state, 'created');
-    marker('SM-A1');
-    marker('SM-A2');
     assert.equal(await spotManager.close(created.spotRid), true);
-    marker('SM-A6');
+    selfCheck('SM-SPOT-MANAGER-CREATE-CLOSE');
   } finally {
     await app.close();
   }

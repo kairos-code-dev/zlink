@@ -4,15 +4,16 @@
 
 ## 구현됨
 
-- `SM-A1`: public NestJS spot mesh 등록 뒤 spot manager가 user spot을 생성한다.
-- `SM-A2`: user spot create request payload가 spot state mutation에 사용된다.
-- `SM-A6`: public app lifecycle 안에서 spot manager create/close 경로를 검증한다.
+- 없음.
 
 ## public API/harness 대기
 
+- `SM-A1`: entry spot dispatch/request evidence Node runner와 marker가 아직 없다.
+- `SM-A2`: 반복 state mutation과 concurrency consistency Node runner와 marker가 아직 없다.
 - `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
 - `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.
 - `SM-A5`: Stage wrapper Node runner와 marker가 아직 없다.
+- `SM-A6`: initialize/closing callback과 actor 잔류 close rejection Node runner와 marker가 아직 없다.
 - `SM-A7`: spot type mismatch Node runner와 marker가 아직 없다.
 - `SM-A8`: worker offload Node runner와 marker가 아직 없다.
 - `SM-B1`: local actor join Node runner와 marker가 아직 없다.

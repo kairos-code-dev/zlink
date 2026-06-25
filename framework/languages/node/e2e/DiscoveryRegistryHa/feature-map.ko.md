@@ -4,11 +4,11 @@
 
 ## 구현됨
 
-- `DR-A1`: public NestJS registry module을 단일 registry로 기동하고 status를 조회한다.
-- `DR-D2`: public NestJS registry module을 standalone registry 배포 대조군으로 기동한다.
+- 없음.
 
 ## public API/harness 대기
 
+- `DR-A1`: registry와 provider/consumer messaging을 함께 검증하는 Node runner와 marker가 아직 없다.
 - `DR-A2`: 2 registry peer 합산 Node runner와 marker가 아직 없다.
 - `DR-A3`: 3 registry peer 합산 Node runner와 marker가 아직 없다.
 - `DR-A4`: 같은 rid 충돌 Node harness가 아직 없다.
@@ -19,5 +19,6 @@
 - `DR-C2`: registry 장애 중 fallback Node harness가 아직 없다.
 - `DR-C3`: 전체 registry 장애와 복구 Node harness가 아직 없다.
 - `DR-D1`: remote registry 배포 Node harness가 아직 없다.
+- `DR-D2`: standalone registry와 discovery/messaging을 함께 검증하는 Node runner와 marker가 아직 없다.
 - `DR-D3`: remote/in-process 혼합 cluster Node harness가 아직 없다.
 - `DR-D4`: topology query와 messaging view 일관성 Node harness가 아직 없다.

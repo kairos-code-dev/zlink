@@ -4,11 +4,11 @@
 
 ## 구현됨
 
-- `RL-A1`: public NestJS channel provider를 재시작하고 새 endpoint에서 request/reply를 확인한다.
-- `RL-C1`: public NestJS runtime app close 이후 새 runtime을 띄워 resource 재사용이 가능함을 확인한다.
+- 없음.
 
 ## public API/harness 대기
 
+- `RL-A1`: consumer 지속 상태에서 같은 endpoint provider restart Node runner와 marker가 아직 없다.
 - `RL-A2`: provider scale-out/in 반복 Node harness가 아직 없다.
 - `RL-A3`: provider crash/replace Node harness가 아직 없다.
 - `RL-A4`: rolling restart Node harness가 아직 없다.
@@ -19,6 +19,7 @@
 - `RL-B4`: runtime drain/restore Node marker가 아직 없다.
 - `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.
 - `RL-B6`: gray failure Node harness가 아직 없다.
+- `RL-C1`: 다수 연결/요청 resource cleanup evidence Node harness가 아직 없다.
 - `RL-C2`: shutdown ordering Node harness가 아직 없다.
 - `RL-C3`: timer lifecycle Node harness가 아직 없다.
 - `RL-C4`: stale registry entry TTL Node harness가 아직 없다.

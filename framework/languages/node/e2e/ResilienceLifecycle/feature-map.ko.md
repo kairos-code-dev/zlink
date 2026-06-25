@@ -30,5 +30,7 @@
 - `RL-C2`: registry stale data cleanup Node harness가 아직 없다.
 - `RL-C3`: node disconnect/recovery Node harness가 아직 없다.
 - `RL-C4`: registry restart/outage recovery Node harness가 아직 없다.
-- `RL-D4`: error reply serialization Node harness가 아직 없다.
+- `RL-D4`: normal public client는 error reply의 message 기반 예외만 노출하고, 공통 시나리오가 요구하는
+  `errorCode` raw header evidence를 Node E2E runner가 아직 수집하지 않는다. 내부 codec/helper를
+  직접 호출해 완료 처리하지 않고, raw envelope evidence를 public e2e harness로 남길 수 있을 때 닫는다.
 - `RL-D5`: 지속 혼합 workload Node soak runner가 아직 없다.

@@ -28,6 +28,29 @@ public final class Contracts {
     public record SlowRequest(String value) {
     }
 
+    public record OutboundRequest(String value) {
+    }
+
+    public record OutboundReply(
+        String spotRid,
+        String nodeRid,
+        String channelReply) {
+    }
+
+    public record OutboundCommand(String value) {
+    }
+
+    public record MeshEvent(String value) {
+    }
+
+    public record TimerActivity(String value) {
+    }
+
+    public record TimerStatus(
+        String spotRid,
+        String value) {
+    }
+
     public record RoutePing(String value) {
     }
 
@@ -35,6 +58,67 @@ public final class Contracts {
         String value,
         String nodeRid,
         String routeRid) {
+    }
+
+    public record ActorProfile(
+        String displayName,
+        int level,
+        List<String> tags) {
+    }
+
+    public record ActorAuthRequest(
+        String actorId,
+        ActorProfile profile) {
+    }
+
+    public record ActorAuthReply(
+        String actorId,
+        String nodeRid,
+        int boundCount,
+        String displayName,
+        int level,
+        List<String> tags) {
+    }
+
+    public record ActorJoinRequest(
+        String spotRid,
+        ActorProfile profile,
+        List<String> tags) {
+    }
+
+    public record ActorJoinReply(
+        String actorId,
+        String spotRid,
+        String nodeRid,
+        String displayName,
+        int level,
+        List<String> tags) {
+    }
+
+    public record ActorEchoRequest(
+        String value,
+        int seq,
+        ActorProfile profile) {
+    }
+
+    public record ActorEchoReply(
+        String actorId,
+        String spotRid,
+        String nodeRid,
+        String value,
+        int requestSeq,
+        int handlerSeq,
+        String displayName,
+        int level,
+        List<String> tags) {
+    }
+
+    public record ActorPush(
+        String actorId,
+        String spotRid,
+        String value,
+        int requestSeq,
+        int handlerSeq) {
     }
 
     public record EvidenceEntry(

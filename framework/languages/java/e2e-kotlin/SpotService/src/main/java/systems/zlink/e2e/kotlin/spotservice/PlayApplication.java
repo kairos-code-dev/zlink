@@ -7,6 +7,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -82,15 +83,34 @@ public final class PlayApplication {
                     Contracts.RoutePing.class,
                     Contracts.RoutePong.class,
                     Contracts.ROUTE_PACKET);
-            options.addClientServerChannel(Contracts.INGRESS_CHANNEL)
+            String peerIngress = "play-a".equals(nodeRid)
+                ? Env.get("ZLINK_KOTLIN_E2E_INGRESS_B_ENDPOINT")
+                : Env.get("ZLINK_KOTLIN_E2E_INGRESS_A_ENDPOINT");
+            ClientServerChannelBuilder ingress = options.addClientServerChannel(Contracts.INGRESS_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_INGRESS_ENDPOINT"))
-                .setRoutingId(RoutingId.from(nodeRid))
-                .addRequestHandler(NoopIngressHandler.class, String.class, String.class, "Noop");
+                .enableClient(peerIngress)
+                .setRoutingId(RoutingId.from(nodeRid));
+            ingress.addSendHandler(
+                IngressCommandHandler.class,
+                Contracts.OutboundCommand.class,
+                "OutboundCommand");
+            ingress.addRequestHandler(NoopIngressHandler.class, String.class, String.class, "Noop");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
+                .enablePubSub(Env.get("ZLINK_KOTLIN_E2E_SPOT_PUB_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid));
+            node.addEntrySpot(ScenarioEntrySpot.class);
             node.addSpotFactory(UserSpot.class);
             node.addSpotFactory(MismatchedSpot.class);
+            node.addSpotFactory(TimerScenarioSpot.class);
+            node.addActorFactory("scenario", ScenarioActorFactory.class);
+            String streamEndpoint = Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT");
+            if (!streamEndpoint.isBlank()) {
+                options.addStreamNode("gateway")
+                    .bind(streamEndpoint)
+                    .registerSession(ScenarioSession.class)
+                    .addSessionPacketHandler(ActorAuthHandler.class);
+            }
         };
     }
 

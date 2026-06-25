@@ -69,6 +69,25 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 }
                 write(exchange, 200, "{\"closed\":" + closed + "}\n");
             });
+            server.createContext("/admin/create-timer", exchange -> {
+                String rid = queryValue(exchange.getRequestURI(), "rid");
+                if (rid == null || rid.isBlank()) {
+                    write(exchange, 400, "missing rid\n");
+                    return;
+                }
+                try {
+                    spots.getOrCreate(TimerScenarioSpot.class, RoutingId.from(rid), "e2e")
+                        .toCompletableFuture()
+                        .get(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("timer spot create interrupted", error);
+                } catch (java.util.concurrent.ExecutionException
+                         | java.util.concurrent.TimeoutException error) {
+                    throw new IllegalStateException("timer spot create failed", error);
+                }
+                write(exchange, 200, "{\"created\":true}\n");
+            });
             server.createContext("/admin/type-mismatch", exchange -> {
                 String rid = queryValue(exchange.getRequestURI(), "rid");
                 if (rid == null || rid.isBlank()) {

@@ -63,13 +63,13 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(12):
+    for _ in range(17):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
         ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:10]), end=" ")
-    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[10:]))
+    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:15]), end=" ")
+    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[15:]))
 finally:
     for sock in sockets:
         sock.close()
@@ -114,7 +114,7 @@ wait_port() {
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
+  ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
 
 app_bin() {
@@ -137,13 +137,19 @@ start_play() {
   local spot="$3"
   local ingress="$4"
   local http="$5"
+  local spot_pub="$6"
+  local stream="$7"
   ZLINK_KOTLIN_E2E_ROLE=play \
   ZLINK_KOTLIN_E2E_NODE_RID="${rid}" \
   ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT="${route}" \
   ZLINK_KOTLIN_E2E_INGRESS_ENDPOINT="${ingress}" \
+  ZLINK_KOTLIN_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
+  ZLINK_KOTLIN_E2E_INGRESS_B_ENDPOINT="${INGRESS_B}" \
   ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
   ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
   ZLINK_KOTLIN_E2E_SPOT_ENDPOINT="${spot}" \
+  ZLINK_KOTLIN_E2E_SPOT_PUB_ENDPOINT="${spot_pub}" \
+  ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${stream}" \
   ZLINK_KOTLIN_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
   ZLINK_KOTLIN_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
   ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${http}" \
@@ -153,7 +159,17 @@ start_play() {
   pids+=("$!")
   wait_port "${rid}-route" "${route}"
   wait_port "${rid}-spot" "${spot}"
+  wait_port "${rid}-spot-pub" "${spot_pub}"
+  wait_port "${rid}-stream" "${stream}"
   wait_port "${rid}-http" "${http}"
+}
+
+run_publisher() {
+  ZLINK_KOTLIN_E2E_ROLE=publisher \
+  ZLINK_KOTLIN_E2E_SPOT_PUBLISHER_ENDPOINT="${SPOT_PUBLISHER}" \
+  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+    timeout -k 5s 30s "$(app_bin)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
 }
 
 fetch_evidence() {
@@ -181,6 +197,20 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
+create_timer_spot() {
+  local endpoint="$1"
+  local rid="$2"
+  python3 - "${endpoint}/admin/create-timer?rid=${rid}" <<'PY'
+import sys
+import urllib.request
+request = urllib.request.Request(sys.argv[1], method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    body = response.read().decode("utf-8")
+    if '"created":true' not in body:
+        raise SystemExit("timer spot create did not report created=true: " + body)
+PY
+}
+
 assert_type_mismatch() {
   local endpoint="$1"
   local rid="$2"
@@ -195,13 +225,13 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B HTTP_A HTTP_B <<<"$(reserve_ports)"
+read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B HTTP_A HTTP_B <<<"$(reserve_ports)"
 
 gradle_run installDist
 
 start_registry
-start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}"
-start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}"
+start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" "${STREAM_A}"
+start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}"
 sleep 2
 
 run_client_mode() {
@@ -222,23 +252,18 @@ run_client_mode() {
       ZLINK_KOTLIN_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
       ZLINK_KOTLIN_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
       ZLINK_KOTLIN_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
+      ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
+      ZLINK_KOTLIN_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
       ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
         timeout -k 5s 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
     set -e
-    if [[ "${status}" == "0" ]] || grep -q "spot-service kotlin e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then
+    if [[ "${status}" == "0" ]] && grep -q "spot-service kotlin e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then
       cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
       cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
       return 0
     fi
-    if ! grep -q "ZlinkBindException" "${log_dir}/client-${mode}.stdout.log" "${log_dir}/client-${mode}.stderr.log"; then
-      cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
-      cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
-      return 1
-    fi
-    cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
-    cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
     sleep 1
   done
   return 1
@@ -246,27 +271,74 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal worker missing timeout owner route-mesh; do
+for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh actor-session idle-timer timer-overrun; do
+  if [[ "${mode}" == "idle-timer" ]]; then
+    create_timer_spot "${HTTP_A}" idle-close
+    create_timer_spot "${HTTP_A}" idle-active
+    sleep 2
+  fi
+  if [[ "${mode}" == "timer-overrun" ]]; then
+    create_timer_spot "${HTTP_A}" timer-overrun-skip
+    create_timer_spot "${HTTP_A}" timer-overrun-catchup
+    create_timer_spot "${HTTP_A}" timer-overrun-delay
+    sleep 2
+  fi
   run_client_mode "${mode}"
+  if [[ "${mode}" == "idle-timer" ]]; then
+    close_spot "${HTTP_A}" idle-active
+  fi
   sleep 2
 done
+run_publisher
+cat "${log_dir}/publisher.stdout.log" >>"${log_dir}/client.stdout.log"
+cat "${log_dir}/publisher.stderr.log" >>"${log_dir}/client.stderr.log"
 sleep 2
 assert_type_mismatch "${HTTP_A}" room-a
 echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
 echo "scenario SM-E2 passed" >>"${log_dir}/client.stdout.log"
-close_spot "${HTTP_A}" room-a
+close_spot "${HTTP_B}" room-b
 echo "scenario SM-A6 passed" >>"${log_dir}/client.stdout.log"
 
 cat "${log_dir}/client.stdout.log"
 fetch_evidence play-a "${HTTP_A}"
 fetch_evidence play-b "${HTTP_B}"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
+grep -q "packet=RoutePing" "${log_dir}/client-flow.log"
+grep -q '"marker":"RoutePing"' "${log_dir}/play-a-evidence.json"
+grep -q '"value":"route-mesh-normal"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorCreated"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorCreatedPayload"' "${log_dir}/play-a-evidence.json"
+grep -q '"value":"Player One/7/alpha,beta"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorUserJoined"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorUserRequest"' "${log_dir}/play-a-evidence.json"
+grep -q 'ActorCreated.*ActorUserJoined.*ActorUserRequest' "${log_dir}/play-a-evidence.json"
+grep -q 'user-echo-1.*user-echo-2.*user-echo-3' "${log_dir}/play-a-evidence.json"
+if grep -q '"marker":"ActorCreated"' "${log_dir}/play-b-evidence.json"; then
+  echo "unexpected play-b actor creation evidence" >&2
+  exit 1
+fi
+if grep -q '"marker":"ActorUserJoined"' "${log_dir}/play-b-evidence.json"; then
+  echo "unexpected play-b actor join evidence" >&2
+  exit 1
+fi
+grep -q '"marker":"StreamInbound"' "${log_dir}/play-a-evidence.json"
 grep -q "DispatchError" "${log_dir}/play-a-evidence.json"
 grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"
-grep -q "SpotClosing" "${log_dir}/play-a-evidence.json"
+grep -q "SpotClosing" "${log_dir}/play-a-evidence.json" "${log_dir}/play-b-evidence.json"
 grep -q "SpotTypeMismatch" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTypeMismatchStateOk" "${log_dir}/play-a-evidence.json"
 grep -q "SpotTimer" "${log_dir}/play-a-evidence.json"
 grep -q "WorkerStarted" "${log_dir}/play-a-evidence.json"
 grep -q "WorkerFollowUpBeforeComplete" "${log_dir}/play-a-evidence.json"
 grep -q "WorkerCompleted" "${log_dir}/play-a-evidence.json"
+grep -q "IngressRequest" "${log_dir}/play-a-evidence.json" "${log_dir}/play-b-evidence.json"
+grep -q "IngressCommand" "${log_dir}/play-a-evidence.json" "${log_dir}/play-b-evidence.json"
+grep -q "SpotOutbound" "${log_dir}/play-a-evidence.json"
+grep -q "SpotToSpotSend" "${log_dir}/play-b-evidence.json"
+grep -q "SpotMeshEvent" "${log_dir}/play-a-evidence.json"
+grep -q "SpotMeshEvent" "${log_dir}/play-b-evidence.json"
+grep -q "IdleCloseRequested" "${log_dir}/play-a-evidence.json"
+grep -q "IdleClosed" "${log_dir}/play-a-evidence.json"
+grep -q "IdleKeptOpen" "${log_dir}/play-a-evidence.json"
+grep -q "TimerOverrunConfigured" "${log_dir}/play-a-evidence.json"
+grep -q "TimerOverrunTick" "${log_dir}/play-a-evidence.json"

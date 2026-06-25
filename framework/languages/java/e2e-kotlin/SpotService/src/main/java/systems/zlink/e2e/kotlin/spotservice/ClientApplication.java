@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.spotservice;
 
+import java.util.UUID;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -28,7 +29,8 @@ public final class ClientApplication {
                 context.getBean(systems.zlink.framework.spots.ZLinkSpotManager.class);
             String mode = Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "state1");
             ClientDriverSpot.configure(mode);
-            spots.create(ClientDriverSpot.class, RoutingId.from("client-driver-" + mode))
+            spots.create(ClientDriverSpot.class, RoutingId.from(
+                    "client-driver-" + mode + "-" + UUID.randomUUID().toString().replace("-", "")))
                 .toCompletableFuture()
                 .join();
             ClientDriverSpot.awaitResult();
@@ -40,13 +42,14 @@ public final class ClientApplication {
 
     @Bean
     ScenarioState scenarioState() {
-        return new ScenarioState(clientNodeRid());
+        return new ScenarioState("client");
     }
 
     @Bean
     systems.zlink.framework.spring.ZLinkFrameworkConfigurer clientFramework() {
         return options -> {
             String logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs");
+            String clientRid = "client-" + Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "state1");
             options.codecs().addJson();
             options.addSpotRemoteAddressResolver(SpotRouteResolver.class);
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_KOTLIN_E2E_REGISTRY_ROUTER"));
@@ -58,17 +61,13 @@ public final class ClientApplication {
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT"))
-                .setRoutingId(RoutingId.from(clientNodeRid()));
+                .setRoutingId(RoutingId.from(clientRid));
             options.addClientServerChannel(Contracts.EGRESS_CHANNEL)
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_INGRESS_A_ENDPOINT"));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
-                .setRoutingId(RoutingId.from(clientNodeRid()));
+                .setRoutingId(RoutingId.from(clientRid));
             node.addSpotFactory(ClientDriverSpot.class);
         };
-    }
-
-    private static String clientNodeRid() {
-        return "client-" + Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "state1");
     }
 }

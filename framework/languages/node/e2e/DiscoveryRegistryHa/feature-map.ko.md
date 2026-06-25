@@ -30,6 +30,7 @@
 - `DR-C1`: registry 1대 다운 중 지속 Node runner와 marker가 아직 없다.
 - `DR-C2`: registry 장애 중 fallback Node harness가 아직 없다.
 - `DR-C3`: 전체 registry 장애와 복구 Node harness가 아직 없다.
-- `DR-D1`: registry와 service를 한 embedded application으로 띄우는 Node marker가 아직 없다. registry
-  context와 service context를 같은 Node process에 따로 띄우는 검증은 embedded 배포 완료로 보지 않는다.
+- `DR-D1`: registry와 service를 한 embedded application으로 띄우는 Node marker가 아직 없다. 같은
+  Nest application에 `ZLinkRegistryModule`과 `ZLinkModule`을 함께 import하는 public 구성은 현재
+  runner에서 registry query/discovery 완료 증거를 만들지 못해 완료 marker로 올리지 않는다.
 - `DR-D3`: embedded registry/service node와 standalone registry를 섞은 cluster marker가 아직 없다.

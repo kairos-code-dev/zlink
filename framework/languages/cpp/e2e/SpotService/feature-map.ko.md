@@ -26,6 +26,8 @@
   `HandlerMissing` dispatch error marker가 play 노드 로그에 남는지 검증한다.
 - `SM-B6`: 명시적 leave는 actor leave reply와 evidence로 검증하고, 비정상 disconnect 통지는
   `SM-D5` stream disconnect 시나리오에서 선택한 actor에만 callback이 실행되는지 함께 검증한다.
+- `SM-B7`: HTTP evidence snapshot에서 `ActorCreated`, entry spot packet handler, user spot join,
+  join callback, 후속 actor packet handler의 순서를 검증한다.
 - `SM-B8`: entry spot의 public `destroyActor`로 actor를 명시 파괴하고, mailbox 제거와
   post-destroy request 실패를 검증한다.
 - `SM-C1`: 외부 route client가 특정 target node와 spot id로 request/send를 보내면 해당 spot이
@@ -50,6 +52,8 @@
   끝나며, auth 성공 후 request dispatch가 정상 동작하는지 검증한다.
 - `SM-D9`: stream inbound observer가 auth/join/state response의 kind/name/request-seq를
   관측하는지 검증한다.
+- `SM-D11`: 같은 client process에서 stream actor request와 일반 channel request를 동시에 보내도
+  각각 stream dispatcher와 channel dispatcher에서 reply를 받는지 검증한다.
 - `SM-D12`: `session-a`에서 join/state/push를 수행한 actor가 연결을 끊은 뒤 `session-b`로
   다시 auth/rebind해 play 노드의 기존 state snapshot과 후속 push를 이어받는지 검증한다.
 - `SM-E1`: handler 없는 spot route request가 client-visible error로 끝나고, 이후 정상 spot route
@@ -73,21 +77,21 @@
 ## 남은 시나리오
 
 - `SM-A5`: C++ framework에는 Stage wrapper 공개 계층이 아직 없다.
-- `SM-B7`: actor lifecycle callback과 packet handler 순서를 독립적으로 단언하는 scenario marker가
-  아직 없다. local/remote join 자체는 `SM-B1`/`SM-B2`가 검증한다.
 - `SM-D3`: entry spot에 actor를 bind하는 공개 예제/runner 경로가 아직 없다. user spot actor bind는
   `SM-D1`/`SM-D2`가 검증한다.
 - `SM-D8`: stream reconnect 중 pending request 실패와 재auth/rebind를 분리해 고정하는 stream
   client harness 단계가 필요하다. 다른 gateway 재접속은 `SM-D12`가 검증한다.
 - `SM-D10`: stream backpressure 정책을 public contract로 고정하고 부하를 주입하는 harness가
   필요하다.
-- `SM-D11`: 같은 consumer에서 stream request와 channel request를 동시에 섞는 dedicated runner가
-  아직 없다.
 - `SM-D13`: stream heartbeat 중단을 제어하는 public harness knob이 아직 없다.
 - `SM-D14`: C++ stream E2E runner에 TLS endpoint/certificate 구성이 아직 없다.
-- `SM-E2`: spot timer handler 등록과 발화 evidence를 검증하는 C++ E2E scenario가 아직 없다.
-- `SM-E3`: idle timer가 public `close_spot`을 호출하는 흐름을 고정하는 scenario가 아직 없다.
-- `SM-E4`: timer overrun policy별 tick 패턴을 public evidence로 확인하는 scenario가 아직 없다.
+- `SM-E2`: C++ framework에는 public `add_timer` 등록 표면이 있지만, E2E 앱에서 timer tick을
+  자동 발화해 handler evidence로 관측하는 public runner 연결이 아직 없다. 현재 timer 발화와
+  overrun 정책은 unit test가 내부 timer runtime으로 검증한다.
+- `SM-E3`: idle timer가 public `close_spot`을 호출하는 흐름은 timer tick을 E2E 앱에서 관측하는
+  public runner 연결이 필요하다.
+- `SM-E4`: timer overrun policy별 tick 패턴은 현재 unit test 범위이며, E2E 앱에서 tick 지연과
+  catch-up을 public evidence로 만드는 runner 연결이 아직 없다.
 - `SM-G2`: owner 재배치는 framework 자동 기능이 아니라 앱의 key-to-routing-id remap이므로,
   scale-out 중 remap을 안정적으로 고정하는 harness가 필요하다.
 - `SM-G3`: 다수 client의 동시 join/leave/request 경합을 재현하는 부하 harness가 아직 없다.
@@ -95,4 +99,4 @@
 
 ## 남은 구현 후보
 
-- `SM-B7`, `SM-E2`, `SM-E3`, `SM-E4`, `SM-G2`, `SM-G3`, `SM-G4`
+- `SM-G2`, `SM-G3`, `SM-G4`

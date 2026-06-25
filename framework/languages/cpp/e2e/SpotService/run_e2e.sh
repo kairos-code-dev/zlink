@@ -269,6 +269,16 @@ def has_marker_value(snapshot, marker, value):
             return True
     return False
 
+def marker_index(snapshot, marker, actor):
+    for index, entry in enumerate(snapshot["entries"]):
+        if entry["marker"] == marker and entry["actor_id"] == actor:
+            return index
+    raise AssertionError(f"missing marker {marker} for {actor}")
+
+def assert_order(snapshot, actor, markers):
+    indices = [marker_index(snapshot, marker, actor) for marker in markers]
+    assert indices == sorted(indices), (actor, markers, indices)
+
 def count(snapshot, marker, actor=None):
     total = 0
     for entry in snapshot["entries"]:
@@ -313,6 +323,12 @@ assert has(play_b, "EntryJoin", "bob")
 assert has(play_b, "StateMutated", "bob")
 assert has_value(play_b, "ActorPushedSession", "stream-remote", "stream-remote-push")
 assert has_value(play_b, "ActorPushedSession", "stream-multi-b", "stream-multi-b-push")
+assert_order(play_a, "alice",
+             ["ActorCreated", "EntryJoin", "ActorJoined", "ActorJoinedCallback",
+              "StateMutated"])
+assert_order(play_b, "bob",
+             ["ActorCreated", "EntryJoin", "ActorJoined", "ActorJoinedCallback",
+              "StateMutated"])
 assert has(session_a, "StreamBound", "stream-local")
 assert has(session_a, "StreamBound", "stream-remote")
 assert has(session_a, "StreamBound", "stream-multi-a")
@@ -325,6 +341,7 @@ assert has(session_a, "StreamBound", "stream-disconnect-d5-muted")
 assert has(session_a, "StreamDisconnectNotified", "stream-disconnect-d5-notified")
 assert has(session_a, "StreamBound", "stream-reconnect-d12")
 assert has(session_b, "StreamBound", "stream-reconnect-d12")
+print("scenario SM-B7 passed")
 print("spot-service evidence result=passed")
 PY
 

@@ -146,11 +146,11 @@ ZLINK_EXPORT bool zlink_has (const char *capability_);
 
 /** @brief Create a new atomic counter, initialized to zero. */
 ZLINK_EXPORT void *zlink_atomic_counter_new (void);
-void zlink_atomic_counter_set (void *counter_, int value_);
-int zlink_atomic_counter_inc (void *counter_);
-int zlink_atomic_counter_dec (void *counter_);
-int zlink_atomic_counter_value (void *counter_);
-void zlink_atomic_counter_destroy (void **counter_p_);
+ZLINK_EXPORT void zlink_atomic_counter_set (void *counter_, int value_);
+ZLINK_EXPORT int zlink_atomic_counter_inc (void *counter_);
+ZLINK_EXPORT int zlink_atomic_counter_dec (void *counter_);
+ZLINK_EXPORT int zlink_atomic_counter_value (void *counter_);
+ZLINK_EXPORT void zlink_atomic_counter_destroy (void **counter_p_);
 
 /** @brief Start a high-resolution stopwatch. Returns an opaque handle. */
 ZLINK_EXPORT void *zlink_stopwatch_start (void);

@@ -8,17 +8,18 @@
 
 # Spec -- ZLink Framework C++ Monitoring
 
-> 이 문서는 **구현 완료된 설계 계약**이다.
-> `C++` runtime에서 socket, discovery, registry, spot
-> runtime event를 어떤 표면으로 올릴지 정리한다.
+> 이 문서는 현재 구현된 `C++` monitoring 공개 표면을 정리한다.
+> handler 등록, source 등록 검증, 직접 publish 경로는 공개 계약이다.
+> channel, registry, spot runtime에서 monitoring source event를 자동으로 발행하는 연결부는
+> 아직 E2E로 관측 가능한 공개 계약이 아니다.
 
 ## 인터페이스 경계
 
 monitoring public contract는 `contracts/eventing/*`와 필요한 기능별 event model이
 소유한다. 사용자는 logical source name, event kind, typed payload, handler 등록 표면만
-본다. socket monitor binding, registry snapshot diff cache, spot snapshot provider,
-timer failure event factory, telemetry backend는 `src/runtime/diagnostics/*`와 각 기능별
-runtime에 둔다.
+본다. source 등록 API는 source 이름과 filter 설정을 검증하고 monitoring runtime에 보관한다.
+실제 channel, registry, spot runtime에서 source event payload를 자동으로 만드는 연결부는
+현재 공개 계약으로 보장하지 않는다.
 
 `.NET`의 `IZLinkRuntimeEventPublisher`에 대응하는 C++ 표면은
 `runtime_event_publisher_t`다. 사용자는 `app.monitoring().publisher().publish(event)`로
@@ -48,10 +49,12 @@ extension에서 연결한다.
 
 - event kind는 enum으로 둔다.
 - 실제 callback payload는 struct로 둔다.
-- socket/discovery는 하부 monitor를 감싼다.
-- registry/spot는 snapshot diff 기반으로 다시 올린다.
-- SPOT timer handler failure는 snapshot diff를 기다리지 않는 point-in-time event로
-  올린다.
+- socket, discovery, registry, spot source 이름은 public builder에서 등록한다.
+- 등록된 source의 event payload는 monitoring runtime의 handler와 trace hook을 통과한다.
+- application이 `monitoring().publisher().publish(...)`로 직접 올린 event도 같은 handler와
+  trace hook 경로를 지난다.
+- framework runtime이 channel, registry, spot 상태 변화를 자동 event로 발행하는 동작은
+  아직 C++ E2E 완료 조건으로 보장하지 않는다.
 
 ## 2. 등록 예시
 
@@ -82,9 +85,9 @@ app.monitoring().on<socket_event_payload_t>(
 ```
 
 source 이름은 logical name을 쓰는 편이 자연스럽다. 모든 monitoring source 이름은 비어 있으면
-안 되고, 같은 종류 안에서 같은 이름을 두 번 등록할 수 없다. framework runtime이 올리는 event
-(`add_socket_events` 등)는 등록된 source만 handler로 전달된다. (`monitoring().publisher().publish(...)`
-직접 호출 경로는 source 검증을 거치지 않는다.)
+안 되고, 같은 종류 안에서 같은 이름을 두 번 등록할 수 없다. 등록된 source 이름과 kind filter는
+monitoring runtime이 event 전달 여부를 판단할 때 사용한다. `monitoring().publisher().publish(...)`
+직접 호출 경로는 source 검증을 거치지 않는다.
 
 - socket: `profile.server`, `profile.client`
 - discovery: `profile.client.discovery`
@@ -92,13 +95,12 @@ source 이름은 logical name을 쓰는 편이 자연스럽다. 모든 monitorin
 - spot: `stage-node`
 - spot timer: `spot-timer`
 
-registry와 spot snapshot monitoring은 주기적으로 상태를 읽어 event로 바꾸므로 interval이 0보다
-커야 한다. 0 이하 interval은 polling이 실제로 일어나지 않는 설정이므로 builder가 설정 오류로
-처리한다.
+registry와 spot source 등록은 polling interval을 받는다. interval은 0보다 커야 한다. 0 이하
+interval은 실제 polling source를 구성할 수 없는 설정이므로 builder가 설정 오류로 처리한다.
 
-timer handler 예외 event는 interval 설정을 기다리지 않고 즉시 전달한다. payload에는
-exception 객체 자체가 아니라 timer 이름, handler 타입 이름, delivery index,
-scheduled index, exception type, message 같은 직렬화 가능한 요약 정보를 넣는다.
+timer handler 예외 payload 모델은 exception 객체 자체가 아니라 timer 이름, handler 타입 이름,
+delivery index, scheduled index, exception type, message 같은 직렬화 가능한 요약 정보를 담는다.
+이 payload를 framework runtime에서 자동 발행하는 경로는 아직 E2E 관측 계약이 아니다.
 
 ## 4. Publisher 예시
 

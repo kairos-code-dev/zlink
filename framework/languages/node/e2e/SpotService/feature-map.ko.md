@@ -78,11 +78,24 @@
 - `SM-D12`: 다른 gateway 재접속 Node runner와 marker가 아직 없다.
 - `SM-D13`: stream heartbeat Node runner와 marker가 아직 없다.
 - `SM-D14`: TLS stream Node runner와 marker가 아직 없다.
-- `SM-E1`: spot route 미등록 request Node runner와 marker가 아직 없다.
-- `SM-F1`: client/server channel to target spot Node runner와 marker가 아직 없다.
-- `SM-F2`: route mesh channel to target spot Node runner와 marker가 아직 없다.
-- `SM-F3`: 일반 packet과 spot route packet 공존 Node runner와 marker가 아직 없다.
-- `SM-F4`: spot route negative 계약 Node runner와 marker가 아직 없다.
+- `SM-E1`: handler 없는 spot route packet request는 Node spec상 current Spot callback의
+  `context.outbound.requestToSpot(...)` 경로로 검증해야 한다. 현재 runner에는 routed Spot
+  outbound를 실제 route mesh와 함께 안정적으로 구성하는 harness가 없어 완료 marker로 올리지 않는다.
+- `SM-F1`: common E2E 문서는 외부 코드가 route client로 target spot RoutingId를 직접 지정하는
+  public API를 전제로 한다. Node public spec은 `ZLinkRouteClient`를 target node route용으로만 두고,
+  Spot으로 가는 routed transport를 외부 egress client로 노출하지 않는다. Node에서는 current Spot
+  callback 안의 `context.outbound.sendToSpot(...)` / `requestToSpot(...)`만 public spot-routed
+  egress이므로, 공통 scenario와 Node public contract 차이가 정리될 때까지 완료 marker로 올리지
+  않는다.
+- `SM-F2`: target node와 target spot을 외부 route client에서 함께 지정하는 public Node API가 없다.
+  Node spec은 RouteMesh target node 호출과 Spot outbound 호출을 분리하므로, 현재 public contract만으로
+  common scenario의 cross-node target spot egress를 완료 처리하지 않는다.
+- `SM-F3`: 일반 route packet과 spot route packet 공존은 runtime 계약 테스트에는 있으나, Node public
+  application 표면에는 외부 spot route egress client가 없다. public E2E harness가 current Spot
+  outbound와 route mesh를 함께 띄워 양쪽 packet을 검증할 수 있을 때 완료 처리한다.
+- `SM-F4`: route 없음·malformed spot route negative는 runtime 내부 계약 테스트에는 있으나, Node public
+  표면에서 malformed spot route packet을 직접 만들거나 외부 spot route request를 보내는 API는 없다.
+  내부 relay packet을 조립하지 않고 public harness로 error evidence를 남길 수 있을 때 닫는다.
 - `SM-F5`: channel socket ownership 독립성 Node runner와 marker가 아직 없다.
 - `SM-G1`: play node crash와 복구 Node harness가 아직 없다.
 - `SM-G2`: owner 이동 Node harness가 아직 없다.

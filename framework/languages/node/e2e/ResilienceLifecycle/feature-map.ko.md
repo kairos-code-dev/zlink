@@ -13,6 +13,9 @@
   안정 provider로만 처리되며 up 후에는 다시 두 provider가 routing 대상이 되는지 확인한다.
 - `RL-B1`: 처리 중인 request가 timeout으로 실패한 뒤, 같은 client의 후속 request가 정상 reply를
   받고 늦은 server 완료가 다음 request를 오염시키지 않는지 확인한다.
+- `RL-B2`: public channel request가 child provider의 handler에 진입했다는 IPC evidence를 받은 뒤
+  해당 provider 프로세스를 `SIGKILL`로 강제 종료하고, in-flight request가 public error/timeout으로
+  끝나며 같은 channel의 안정 provider로 보내는 후속 request가 정상 reply를 받는지 확인한다.
 - `RL-B3`: provider 두 대를 registry discovery로 붙인 뒤 provider 하나를 public `app.close()` 정상
   종료 경로로 내리고, topology에서 빠진 뒤 consumer 재시작 없이 후속 request가 남은 provider로만
   가는지 확인한다.
@@ -30,7 +33,6 @@
 - `RL-A4`: public client request를 계속 보내는 동안 provider를 한 대씩 정상 종료하는 방식만으로는
   timeout 없이 rolling update를 증명할 수 없다. Node channel public API에는 provider를 종료 전에
   신규 request 대상에서 빼는 drain/weight runtime 계약이 아직 없어 완료 처리하지 않는다.
-- `RL-B2`: in-flight request 중 provider crash Node runner와 marker가 아직 없다.
 - `RL-B4`: runtime drain/restore Node marker가 아직 없다.
 - `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.
 - `RL-B6`: gray failure Node harness가 아직 없다.

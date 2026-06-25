@@ -26,6 +26,10 @@ async function main() {
     await registryChildMain(JSON.parse(process.argv[3]));
     return;
   }
+  if (suiteName === '__rl_provider_child') {
+    await resilienceProviderChildMain(JSON.parse(process.argv[3]));
+    return;
+  }
   const suite = suites.get(suiteName);
   if (suite === undefined) {
     throw new Error(`Unknown Node e2e suite: ${suiteName}`);
@@ -1868,6 +1872,51 @@ async function registryChildMain(options) {
   }
 }
 
+async function resilienceProviderChildMain(options) {
+  const nestjs = loadNest();
+  let started;
+  let keepAlive;
+  try {
+    RLInFlightCrashHandler.started = [];
+    started = await startApp(
+      nestModule('ResilienceInFlightCrashProviderChildModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(options.registryRouterEndpoint)
+            .addClientServerChannel('rl.inflight')
+              .enableServer(options.providerEndpoint)
+              .routingId('provider-b')
+              .addRequestHandler('rl.inflight.probe', RLInFlightCrashHandler)
+            .build())
+        ],
+        providers: [RLInFlightCrashHandler]
+      })
+    );
+    keepAlive = setInterval(() => {}, 1000);
+    if (typeof process.send === 'function') {
+      process.send({ type: 'ready' });
+    }
+    await new Promise((resolve) => {
+      const close = async () => {
+        if (started !== undefined) {
+          await started.app.close();
+          started = undefined;
+        }
+        clearInterval(keepAlive);
+        resolve();
+      };
+      process.once('SIGTERM', close);
+      process.once('SIGINT', close);
+    });
+  } catch (error) {
+    if (typeof process.send === 'function') {
+      process.send({ type: 'error', message: error instanceof Error ? error.stack ?? error.message : String(error) });
+    }
+    process.exitCode = 1;
+  }
+}
+
 async function startDiscoveryRegistryChild(moduleName, registryOptions) {
   const child = fork(__filename, [
     '__registry_child',
@@ -1900,7 +1949,69 @@ async function startDiscoveryRegistryChild(moduleName, registryOptions) {
   return child;
 }
 
+async function startResilienceInFlightProviderChild(options) {
+  const child = fork(__filename, [
+    '__rl_provider_child',
+    JSON.stringify(options)
+  ], {
+    cwd: nodeRoot,
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc']
+  });
+  child.stdout?.pipe(process.stdout);
+  child.stderr?.pipe(process.stderr);
+
+  const handling = new Map();
+  const handledRequestIds = new Set();
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('RL-B2 provider child did not become ready.'));
+    }, 5000);
+    child.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      reject(new Error(`RL-B2 provider child exited before ready: code=${code} signal=${signal}`));
+    });
+    child.on('message', (message) => {
+      if (message?.type === 'handling' && typeof message.requestId === 'string') {
+        handledRequestIds.add(message.requestId);
+        const pending = handling.get(message.requestId);
+        if (pending !== undefined) {
+          handling.delete(message.requestId);
+          pending.resolve(message);
+        }
+        return;
+      }
+      if (message?.type === 'ready') {
+        clearTimeout(timeout);
+        child.removeAllListeners('exit');
+        resolve();
+        return;
+      }
+      if (message?.type === 'error') {
+        clearTimeout(timeout);
+        reject(new Error(`RL-B2 provider child failed: ${message.message ?? stringifyDiagnostic(message)}`));
+      }
+    });
+  });
+
+  return {
+    child,
+    waitForHandling(requestId) {
+      if (handledRequestIds.has(requestId)) {
+        return Promise.resolve();
+      }
+      return withTimeout(() => new Promise((resolve) => {
+        handling.set(requestId, { resolve });
+      }), 3000, `RL-B2 provider child did not start handling ${requestId}.`);
+    }
+  };
+}
+
 async function stopDiscoveryRegistryChild(child, signal = 'SIGTERM') {
+  await stopChildProcess(child, signal);
+}
+
+async function stopChildProcess(child, signal = 'SIGTERM') {
   if (child.exitCode !== null || child.signalCode !== null) {
     return;
   }
@@ -2123,6 +2234,7 @@ function normalizeDiscoveryTopology(entries) {
 
 async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
+  await runResilienceLifecycleInFlightProviderCrash();
   await runResilienceLifecycleServerRestart();
   await runResilienceLifecycleClientReconnectStorm();
   await runResilienceLifecycleProviderFlapping();
@@ -2177,6 +2289,117 @@ async function runResilienceLifecyclePendingCleanup() {
   } finally {
     await app.close();
   }
+}
+
+async function runResilienceLifecycleInFlightProviderCrash() {
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const apps = [];
+  const children = [];
+
+  try {
+    const registry = await startApp(
+      nestModule('ResilienceInFlightCrashRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 93
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    await startResilienceInFlightStableProvider(nestjs, registryRouterEndpoint, providerAEndpoint, apps);
+    const crashProvider = await startResilienceInFlightProviderChild({
+      registryRouterEndpoint,
+      providerEndpoint: providerBEndpoint
+    });
+    children.push(crashProvider.child);
+
+    const crashConsumer = await startApp(
+      nestModule('ResilienceInFlightCrashConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addClientServerChannel('rl.inflight')
+              .enableClient(providerBEndpoint)
+            .build())
+        ]
+      })
+    );
+    apps.push(crashConsumer.app);
+    const stableConsumer = await startApp(
+      nestModule('ResilienceInFlightStableConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addClientServerChannel('rl.inflight')
+              .enableClient(providerAEndpoint)
+            .build())
+        ]
+      })
+    );
+    apps.push(stableConsumer.app);
+
+    const crashClient = crashConsumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const stableClient = stableConsumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const beforeStable = await stableClient
+      .requestToChannel('rl.inflight', { requestId: 'rl-b2-before-stable' })
+      .packetName('rl.inflight.probe')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(beforeStable, { requestId: 'rl-b2-before-stable', handledBy: 'provider-a' });
+
+    const inFlight = crashClient
+      .requestToChannel('rl.inflight', { requestId: 'rl-b2-slow-crash' })
+      .packetName('rl.inflight.probe')
+      .timeout(1000)
+      .submit();
+    await crashProvider.waitForHandling('rl-b2-slow-crash');
+    await stopChildProcess(crashProvider.child, 'SIGKILL');
+    children.splice(children.indexOf(crashProvider.child), 1);
+    await assert.rejects(
+      () => inFlight,
+      isPublicInFlightCrashError
+    );
+
+    const afterStable = await stableClient
+      .requestToChannel('rl.inflight', { requestId: 'rl-b2-after-stable' })
+      .packetName('rl.inflight.probe')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(afterStable, { requestId: 'rl-b2-after-stable', handledBy: 'provider-a' });
+    marker('RL-B2');
+  } finally {
+    for (const child of children.reverse()) {
+      await stopChildProcess(child, 'SIGKILL');
+    }
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startResilienceInFlightStableProvider(nestjs, registryRouterEndpoint, endpoint, apps) {
+  const started = await startApp(
+    nestModule('ResilienceInFlightStableProviderModule', {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rl.inflight')
+            .enableServer(endpoint)
+            .routingId('provider-a')
+            .addRequestHandler('rl.inflight.probe', RLInFlightStableHandler)
+          .build())
+      ],
+      providers: [RLInFlightStableHandler]
+    })
+  );
+  apps.push(started.app);
+  return started;
 }
 
 async function runResilienceLifecycleServerRestart() {
@@ -3065,6 +3288,27 @@ class RLReconnectHandler {
     const observed = { ...payload, handledBy: 'rl-reconnect-server' };
     RLReconnectHandler.requests.push(observed);
     return observed;
+  }
+}
+
+class RLInFlightStableHandler {
+  handle(payload) {
+    return { ...payload, handledBy: 'provider-a' };
+  }
+}
+
+class RLInFlightCrashHandler {
+  static started = [];
+
+  async handle(payload) {
+    RLInFlightCrashHandler.started.push(payload);
+    if (typeof process.send === 'function') {
+      process.send({ type: 'handling', requestId: payload.requestId, handledBy: 'provider-b' });
+    }
+    if (payload.requestId === 'rl-b2-slow-crash') {
+      await new Promise(() => {});
+    }
+    return { ...payload, handledBy: 'provider-b' };
   }
 }
 
@@ -3996,6 +4240,19 @@ function isTransientMessagingConnectError(error) {
   return error instanceof Error &&
     (((error.code === 2 || error.code === 12) && /Host unreachable/.test(error.message)) ||
       (error.code === 5 && /Connection refused/.test(error.message)));
+}
+
+function isPublicInFlightCrashError(error) {
+  const framework = loadFramework();
+  if (error instanceof framework.ZLinkFrameworkException) {
+    return [
+      framework.ZLinkFrameworkErrorKind.RouteNotConnected,
+      framework.ZLinkFrameworkErrorKind.RequestTargetNotFound,
+      framework.ZLinkFrameworkErrorKind.RequestRejected,
+      framework.ZLinkFrameworkErrorKind.RequestFailed
+    ].includes(error.kind);
+  }
+  return error instanceof Error && /ZLink async submit timed out/i.test(error.message);
 }
 
 function countBy(values) {

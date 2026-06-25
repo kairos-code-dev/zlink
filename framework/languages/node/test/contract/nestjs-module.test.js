@@ -1122,9 +1122,18 @@ test('framework options builder maps dotnet-shaped registration flow into option
   }
   class LocalStageSpot {}
   class StageEntrySpot {}
+  const streamCompressionCodec = {
+    compress(payload) {
+      return payload;
+    },
+    decompress(payload) {
+      return payload;
+    }
+  };
 
   const options = framework.createFrameworkOptions((builder) => {
     builder.useDiscovery().addRegistryEndpoint('tcp://127.0.0.1:9400');
+    builder.configureStreamCompression().use(streamCompressionCodec);
     builder.addClientServerChannel('api').enableServer('tcp://0.0.0.0:9401');
     builder.addClientServerChannel('api').enableClient('tcp://127.0.0.1:9401');
     builder.addFanoutChannel('events').enablePublisher('tcp://0.0.0.0:9402');
@@ -1157,6 +1166,8 @@ test('framework options builder maps dotnet-shaped registration flow into option
   assert.deepEqual(route.manualConnections, ['tcp://127.0.0.1:9403']);
   assert.equal(streamNode.bind, 'tcp://0.0.0.0:9404');
   assert.equal(streamNode.session, GatewaySession);
+  assert.equal(registration.streamCompression.codec, streamCompressionCodec);
+  assert.equal(registration.streamCompression.disabled, false);
   assert.equal(registration.spotFactories.has(StageSpot), true);
   assert.equal(registration.spotFactories.has(LocalStageSpot), true);
   assert.equal(spotNode.entrySpotType, StageEntrySpot);

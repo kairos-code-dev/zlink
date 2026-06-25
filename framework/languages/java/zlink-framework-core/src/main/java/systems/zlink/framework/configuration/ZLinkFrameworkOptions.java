@@ -43,6 +43,8 @@ public interface ZLinkFrameworkOptions {
 
     ZLinkDispatchOptions configureDispatch();
 
+    ZLinkStreamCompressionBuilder configureStreamCompression();
+
     ZLinkWorkerOptions configureWorkers();
 
     void useVirtualThreadHandlers();

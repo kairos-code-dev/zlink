@@ -33,6 +33,7 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
@@ -357,6 +358,39 @@ final class StreamSessionTest {
             awaitCondition(() -> GameSession.dispatches.size() == 1);
             assertEquals(List.of("Compressed:compressed"), GameSession.dispatches);
         }
+    }
+
+    @Test
+    void customStreamCompressionCodecIsUsedForSessionSendReplyAndDispatch() {
+        CustomCompressionSession.reset();
+        PrefixCompressionCodec codec = new PrefixCompressionCodec("fw");
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.configureStreamCompression().use(codec);
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(CustomCompressionSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            backendFactory.dispatchStreamRequest(
+                "CustomCompressed",
+                Message.from(codec.compress("inbound".getBytes(java.nio.charset.StandardCharsets.UTF_8))),
+                93,
+                0x04);
+
+            awaitCondition(() -> CustomCompressionSession.dispatches.size() == 1);
+            assertEquals(List.of("CustomCompressed:inbound"), CustomCompressionSession.dispatches);
+        }
+
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.send.fake-session.Notify.")
+                && call.contains("PAYLOAD_COMPRESSED")
+                && call.endsWith(".fw:notify")));
+        assertTrue(backendFactory.calls().stream()
+            .anyMatch(call -> call.startsWith("stream.reply.fake-session.93.String.")
+                && call.contains("PAYLOAD_COMPRESSED")
+                && call.endsWith(".fw:reply")));
     }
 
     @Test
@@ -764,6 +798,72 @@ final class StreamSessionTest {
                 .toCompletableFuture()
                 .join();
                     }
+    }
+
+    public static final class CustomCompressionSession implements ZLinkSession {
+        static final List<String> dispatches = new CopyOnWriteArrayList<>();
+        private final ZLinkSessionContext context;
+
+        public CustomCompressionSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
+
+        static void reset() {
+            dispatches.clear();
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public void onConnected() {
+        }
+
+        @Override
+        public void onDisconnected() {
+        }
+
+        @Override
+        public void onError(ZLinkStreamError error) {
+        }
+
+        @Override
+        public void onDispatch(
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload) {
+            dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
+            context.client()
+                .send("notify")
+                .packetName("Notify")
+                .compress()
+                .submit()
+                .thenCompose(ignored -> context.client()
+                    .reply("reply")
+                    .compress()
+                    .submit())
+                .toCompletableFuture()
+                .join();
+        }
+    }
+
+    private record PrefixCompressionCodec(String prefix) implements ZLinkStreamCompressionCodec {
+        @Override
+        public byte[] compress(byte[] payload) {
+            return (prefix + ":" + new String(payload, java.nio.charset.StandardCharsets.UTF_8))
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
+
+        @Override
+        public byte[] decompress(byte[] payload, int maxDecompressedSize) {
+            String value = new String(payload, java.nio.charset.StandardCharsets.UTF_8);
+            String marker = prefix + ":";
+            if (!value.startsWith(marker)) {
+                throw new IllegalArgumentException("unexpected compression marker");
+            }
+            return value.substring(marker.length()).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
     }
 
     public static final class SessionCustomSerializer implements ZLinkMessageSerializer {

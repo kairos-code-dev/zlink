@@ -18,6 +18,9 @@ import type {
   ZLinkSpot,
   ZLinkSpotMeshBuilder,
   ZLinkSpotNodeBuilder,
+  ZLinkStreamCompressionBuilder,
+  ZLinkStreamCompressionCodec,
+  ZLinkStreamCompressionOptions,
   ZLinkStreamNodeBuilder,
   ZLinkSession,
   ZLinkSessionFactory,
@@ -46,6 +49,7 @@ export interface ZLinkFrameworkRegistration {
   readonly routeChannels: ReadonlySet<string>;
   readonly routeChannelOptions: ReadonlyMap<string, ZLinkRouteChannelOptions>;
   readonly streamNodes: ReadonlyMap<string, ZLinkStreamNodeOptions>;
+  readonly streamCompression?: ZLinkStreamCompressionOptions;
   readonly spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>;
   readonly discovery?: ZLinkDiscoveryOptions;
   readonly spotPublisherClients: ReadonlySet<string>;
@@ -111,6 +115,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly discovery?: ZLinkDiscoveryOptions;
   readonly routeChannels?: readonly (string | ZLinkRouteChannelOptions)[];
   readonly streamNodes?: Readonly<Record<string, ZLinkStreamNodeOptions>>;
+  readonly streamCompression?: ZLinkStreamCompressionOptions;
   readonly spotNodes?: readonly (string | ZLinkSpotNodeRegistrationOptions)[] |
     Readonly<Record<string, ZLinkSpotNodeOptions>>;
   readonly spotPublisherClients?: readonly string[];
@@ -328,6 +333,7 @@ export function createFrameworkRegistration(
     routeChannels: new Set(routeChannelOptions.keys()),
     routeChannelOptions,
     streamNodes: toStreamNodeMap(options.streamNodes),
+    streamCompression: normalizeStreamCompression(options.streamCompression),
     spotNodes,
     discovery: options.discovery,
     spotPublisherClients: toSpotPublisherClientSet(options.spotPublisherClients, spotNodes),
@@ -386,6 +392,11 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return new DefaultDispatchOptionsBuilder(this.options.dispatch);
   }
 
+  configureStreamCompression(): ZLinkStreamCompressionBuilder {
+    this.options.streamCompression ??= {};
+    return new DefaultStreamCompressionBuilder(this.options.streamCompression);
+  }
+
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
     this.options.spotFactories.push(spotType);
     return this;
@@ -440,6 +451,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       requestTimeoutMs: this.options.requestTimeoutMs,
       routeChannels: this.options.routeChannels,
       streamNodes: this.options.streamNodes,
+      streamCompression: this.options.streamCompression,
       spotNodes: this.options.spotNodes,
       spotFactories: this.options.spotFactories,
       dispatch: this.options.dispatch,
@@ -610,6 +622,35 @@ class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
       throw new ZLinkConfigurationException('STREAM node cannot register more than one header stream session.');
     }
     this.streamNode.session = sessionType;
+    return this;
+  }
+}
+
+class DefaultStreamCompressionBuilder implements ZLinkStreamCompressionBuilder {
+  constructor(private readonly options: MutableStreamCompressionOptions) {}
+
+  useDefault(): this {
+    this.options.disabled = false;
+    this.options.codec = undefined;
+    return this;
+  }
+
+  useLz4(): this {
+    return this.useDefault();
+  }
+
+  use(codec: ZLinkStreamCompressionCodec): this {
+    if (!isStreamCompressionCodec(codec)) {
+      throw new ZLinkConfigurationException('STREAM compression codec must provide compress and decompress functions.');
+    }
+    this.options.disabled = false;
+    this.options.codec = codec;
+    return this;
+  }
+
+  disable(): this {
+    this.options.disabled = true;
+    this.options.codec = undefined;
     return this;
   }
 }
@@ -791,6 +832,7 @@ interface MutableFrameworkRegistrationOptions {
   discovery: MutableDiscoveryOptions;
   routeChannels: MutableRouteChannelOptions[];
   streamNodes: Record<string, MutableStreamNodeOptions>;
+  streamCompression?: MutableStreamCompressionOptions;
   spotNodes: Record<string, MutableSpotNodeOptions>;
   spotFactories: Type<ZLinkSpot>[];
   worker?: ZLinkWorkerOptions;
@@ -932,6 +974,11 @@ interface MutableRouteChannelOptions extends MutableRouteMeshChannelOptions {
 interface MutableStreamNodeOptions {
   bind?: string;
   session?: Type;
+}
+
+interface MutableStreamCompressionOptions {
+  disabled?: boolean;
+  codec?: ZLinkStreamCompressionCodec;
 }
 
 interface MutableSpotNodeOptions {
@@ -1138,6 +1185,30 @@ function channelNamesWith(
   return names;
 }
 
+function normalizeStreamCompression(
+  value: ZLinkFrameworkRegistrationOptions['streamCompression']
+): ZLinkStreamCompressionOptions | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value.disabled === true && value.codec !== undefined) {
+    throw new ZLinkConfigurationException('STREAM compression codec cannot be set when compression is disabled.');
+  }
+  if (value.codec !== undefined && !isStreamCompressionCodec(value.codec)) {
+    throw new ZLinkConfigurationException('STREAM compression codec must provide compress and decompress functions.');
+  }
+  return {
+    disabled: value.disabled,
+    codec: value.codec
+  };
+}
+
+function isStreamCompressionCodec(value: unknown): value is ZLinkStreamCompressionCodec {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { compress?: unknown }).compress === 'function'
+    && typeof (value as { decompress?: unknown }).decompress === 'function';
+}
 
 function normalizeRegistrySpotRemoteAddresses(
   value: ZLinkFrameworkRegistrationOptions['registrySpotRemoteAddresses'],

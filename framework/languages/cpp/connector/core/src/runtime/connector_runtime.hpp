@@ -94,6 +94,7 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     bool connect_started = false;
     codec_t default_codec = codec_t::json;
     std::set<codec_t> enabled_codecs{codec_t::json};
+    std::shared_ptr<const compression_codec_t> compression_codec;
     bool lz4_enabled = false;
     std::atomic_bool close_requested{false};
     bool send_in_progress = false;

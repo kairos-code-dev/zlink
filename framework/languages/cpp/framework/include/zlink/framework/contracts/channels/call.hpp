@@ -20,6 +20,8 @@ class message_t;
 namespace zlink::framework
 {
 
+class stream_compression_codec_t;
+
 namespace detail
 {
 class stream_write_call_state_t;
@@ -236,7 +238,10 @@ class stream_write_call_t
     friend class stream_t;
     friend class detail::stream_write_call_state_t;
 
-    stream_write_call_t (detail::stream_header_t header, zlink::message_t payload, submit_fn_t submit);
+    stream_write_call_t (detail::stream_header_t header,
+                         zlink::message_t payload,
+                         std::shared_ptr<const stream_compression_codec_t> compression_codec,
+                         submit_fn_t submit);
 
     std::shared_ptr<detail::stream_write_call_state_t> _state;
 };

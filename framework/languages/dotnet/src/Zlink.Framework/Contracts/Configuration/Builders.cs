@@ -24,6 +24,17 @@ public interface IZLinkDiscoveryBuilder
     IZLinkDiscoveryBuilder AddRegistryEndpoint(string endpoint);
 }
 
+public interface IZLinkStreamCompressionBuilder
+{
+    IZLinkStreamCompressionBuilder UseDefault();
+
+    IZLinkStreamCompressionBuilder UseLz4();
+
+    IZLinkStreamCompressionBuilder Use(IZlinkStreamCompressionCodec codec);
+
+    IZLinkStreamCompressionBuilder Disable();
+}
+
 public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteMeshChannelOptions
 {
     // route mesh 는 ROUTER ↔ ROUTER 대칭이라 server·client 가 같은 ROUTER 소켓을 공유한다.
@@ -194,6 +205,8 @@ public interface IZLinkFrameworkOptions
         where TFilter : class, IZLinkHandlerFilter;
 
     IZLinkDispatchOptions ConfigureDispatch();
+
+    IZLinkStreamCompressionBuilder ConfigureStreamCompression();
 
     IZLinkStreamNodeBuilder AddStreamNode(string streamNodeName);
 

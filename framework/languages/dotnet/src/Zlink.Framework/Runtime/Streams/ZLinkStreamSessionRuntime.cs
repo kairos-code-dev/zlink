@@ -161,7 +161,11 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             {
                 await _handler.OnDispatchAsync(
                     dispatch,
-                    ZLinkStreamPacketPayloadCodec.DecodeMessage(decoded, payload, _runtime.Registration.Codecs),
+                    ZLinkStreamPacketPayloadCodec.DecodeMessage(
+                        decoded,
+                        payload,
+                        _runtime.Registration.Codecs,
+                        _runtime.Registration.StreamCompressionCodec),
                     CancellationToken.None);
 
                 if (_flow.Enabled(ZLinkMessageFlowPhase.Dispatched))

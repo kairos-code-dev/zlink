@@ -55,11 +55,23 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
     maxInboundObserverPayloadPreviewBytes: options.maxInboundObserverPayloadPreviewBytes ?? 0,
     skipServerCertificateValidation: options.skipServerCertificateValidation ?? false,
     dispatchMode: options.dispatchMode ?? ZlinkStreamDispatchMode.Manual,
-    compression: options.compression ?? ZlinkStreamCompression.None,
+    compression: options.compression ?? ZlinkStreamCompression.Lz4,
+    compressionCodec: resolveCompressionCodec(options),
     nameResolver: options.nameResolver ?? { resolve: (type) => type.name },
     transportFactory: options.transportFactory ?? new NodeStreamTransportFactory(),
     codec: options.codec
   };
+}
+
+function resolveCompressionCodec(options: ZlinkStreamConnectorOptions) {
+  const compression = options.compression ?? ZlinkStreamCompression.Lz4;
+  if (compression === ZlinkStreamCompression.None) {
+    if (options.compressionCodec !== undefined) {
+      throw connectorError(ZlinkStreamErrorCode.ConfigurationError, 'compressionCodec cannot be set when compression is none.');
+    }
+    return undefined;
+  }
+  return options.compressionCodec;
 }
 
 

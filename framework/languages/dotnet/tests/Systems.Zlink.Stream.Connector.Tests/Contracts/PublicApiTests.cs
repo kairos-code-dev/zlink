@@ -117,7 +117,7 @@ public sealed partial class StreamConnectorTests
 
         Assert.DoesNotContain("ZlinkStreamDefaultCodecs", exportedTypeNames);
         Assert.DoesNotContain("ZlinkStreamDefaultCodecFactory", exportedTypeNames);
-        Assert.DoesNotContain("IZlinkStreamCompressionCodec", exportedTypeNames);
+        Assert.Contains("IZlinkStreamCompressionCodec", exportedTypeNames);
     }
 
     private static string GetConnectorSourceRoot()

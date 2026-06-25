@@ -32,7 +32,15 @@ public sealed class ZlinkStreamConnectorOptions
 
     public ZlinkStreamDispatchMode DispatchMode { get; init; } = ZlinkStreamDispatchMode.Manual;
 
-    public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
+    public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.Lz4;
+
+    /// <summary>
+    /// Optional compression codec for frames marked with <see cref="ZlinkStreamHeaderFlags.PayloadCompressed"/>.
+    /// When this value is set, it replaces the built-in compression selected by <see cref="Compression"/>.
+    /// Set <see cref="Compression"/> to <see cref="ZlinkStreamCompression.None"/> only when this connector must
+    /// reject compressed frames and fail calls that opt into compression.
+    /// </summary>
+    public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
 
     public IZlinkStreamPacketNameResolver NameResolver { get; init; } = ZlinkStreamDefaultCodecFactory.PacketNameResolver();
 

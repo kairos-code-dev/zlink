@@ -311,7 +311,11 @@ public sealed class CustomSerializerEnvelopeTests
             "orders.created",
             ZlinkStreamMetadata.Empty);
 
-        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(header, payload, codecs);
+        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(
+            header,
+            payload,
+            codecs,
+            ZLinkStreamProtocolDefaults.CreateLz4CompressionCodec());
 
         Assert.Equal("application/avro", message.ContentType);
         Assert.Equal(ZlinkStreamCodec.Protobuf, message.StreamCodec);
@@ -331,7 +335,11 @@ public sealed class CustomSerializerEnvelopeTests
             ZlinkStreamMetadata.Empty);
 
         using var payload = Message.From("AVRO:hello");
-        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(header, payload, codecs);
+        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(
+            header,
+            payload,
+            codecs,
+            ZLinkStreamProtocolDefaults.CreateLz4CompressionCodec());
 
         var error = Assert.Throws<InvalidOperationException>(() => message.Decode<Probe>());
         Assert.Contains("no matching codec extension is registered", error.Message, StringComparison.Ordinal);
@@ -410,7 +418,11 @@ public sealed class CustomSerializerEnvelopeTests
             "orders.created",
             ZlinkStreamMetadata.Empty);
 
-        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(header, payload, codecs);
+        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(
+            header,
+            payload,
+            codecs,
+            ZLinkStreamProtocolDefaults.CreateLz4CompressionCodec());
 
         Assert.Equal(expectedContentType, message.ContentType);
         Assert.Equal(expectedCodec, message.StreamCodec);

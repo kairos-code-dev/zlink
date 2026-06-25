@@ -21,6 +21,8 @@ import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodecs;
 
 public final class ZLinkFrameworkRegistration {
     private final ZLinkCodecRegistration codecs = new ZLinkCodecRegistration();
@@ -39,6 +41,7 @@ public final class ZLinkFrameworkRegistration {
     private final Set<Class<?>> handlerPackageMarkers = new LinkedHashSet<>();
     private final List<Class<? extends ZLinkHandlerFilter>> filters = new ArrayList<>();
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers = new ArrayList<>();
+    private ZLinkStreamCompressionCodec streamCompressionCodec = ZLinkStreamCompressionCodecs.lz4();
     private Executor handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private boolean closeHandlerExecutor = true;
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
@@ -99,6 +102,14 @@ public final class ZLinkFrameworkRegistration {
 
     public List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers() {
         return List.copyOf(suspendHandlerInvokers);
+    }
+
+    public ZLinkStreamCompressionCodec streamCompressionCodec() {
+        return streamCompressionCodec;
+    }
+
+    public void useStreamCompression(ZLinkStreamCompressionCodec codec) {
+        streamCompressionCodec = codec;
     }
 
     public Executor handlerExecutor() {

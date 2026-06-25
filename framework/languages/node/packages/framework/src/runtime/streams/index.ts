@@ -17,7 +17,9 @@ import type {
   ZLinkSessionReplyCall,
   ZLinkSessionSendCall,
   ZLinkStream,
-  ZLinkMessageSerializer
+  ZLinkMessageSerializer,
+  ZLinkStreamCompressionCodec,
+  ZLinkStreamCompressionOptions
 } from '../../contracts';
 import { Message as ZLinkBindingMessage, SubmitError, SubmitResult } from '@zlink-systems/zlink';
 import {
@@ -67,6 +69,7 @@ import {
 const ZLINK_SEND_DONT_WAIT = 1 as ZLinkBackendSendFlags;
 const ZLINK_NATIVE_BOUND_SESSION_RETRY_DELAY_MS = 10;
 const REMOTE_BOUND_SESSION_BIND_PACKET = 'zlink.framework.actor.bound_session.bind';
+const DEFAULT_MAX_DECOMPRESSED_STREAM_PAYLOAD_SIZE = 64 * 1024;
 
 function createDispatchContext(header: ZLinkStreamFrameHeader): ZLinkSessionDispatchContext {
   return {
@@ -80,6 +83,7 @@ export interface ZLinkStreamBindingRuntimeOptions {
   readonly transport?: ZLinkBoundSessionTransport;
   readonly messageFactory?: ZLinkStreamMessageFactory;
   readonly streamPayloadCodec?: ZLinkStreamPayloadCodec;
+  readonly streamCompression?: ZLinkStreamCompressionOptions;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
@@ -578,9 +582,11 @@ async function runNow(work: () => Promise<void>): Promise<void> {
 export class ZLinkStreamBindingRuntime {
   private readonly routes: ZLinkActorSessionBindingRegistry;
   private readonly frameMessages: ZLinkStreamFrameMessageFactory;
+  private readonly compressionCodec: ZLinkStreamCompressionCodec | undefined;
 
   constructor(private readonly options: ZLinkStreamBindingRuntimeOptions = {}) {
     this.routes = new ZLinkActorSessionBindingRegistry();
+    this.compressionCodec = resolveStreamCompressionCodec(options.streamCompression);
     this.frameMessages = new ZLinkStreamFrameMessageFactory(options);
   }
 
@@ -909,6 +915,10 @@ export class ZLinkStreamBindingRuntime {
     return this.frameMessages.createBinaryMessage(payload);
   }
 
+  decompressPayload(payload: Message): Message {
+    return simpleMessage(decompressStreamPayload(messageToBytes(payload), this.compressionCodec)) as Message;
+  }
+
   createJsonFrameMessage(
     kind: ZLinkStreamMessageKind,
     packetName: string,
@@ -1093,7 +1103,11 @@ class ZLinkActorSessionBindingRegistry {
 }
 
 class ZLinkStreamFrameMessageFactory {
-  constructor(private readonly options: ZLinkStreamBindingRuntimeOptions) {}
+  private readonly compressionCodec: ZLinkStreamCompressionCodec | undefined;
+
+  constructor(private readonly options: ZLinkStreamBindingRuntimeOptions) {
+    this.compressionCodec = resolveStreamCompressionCodec(options.streamCompression);
+  }
 
   createTextMessage(payload: string): Message {
     return this.requireMessageFactory().createTextMessage(payload);
@@ -1119,7 +1133,7 @@ class ZLinkStreamFrameMessageFactory {
     const encoded = this.encodePayload(payload);
     let body = encoded.payload;
     if (compressed) {
-      body = lz4Pickle(body);
+      body = compressStreamPayload(body, this.compressionCodec);
     }
     const flags = compressed ? ZLinkStreamHeaderFlags.PayloadCompressed : ZLinkStreamHeaderFlags.None;
     const frame = encodeStreamFrame(
@@ -1151,6 +1165,58 @@ class ZLinkStreamFrameMessageFactory {
   private requireMessageFactory(): ZLinkStreamMessageFactory {
     return this.options.messageFactory ?? defaultStreamMessageFactory;
   }
+}
+
+export const zlinkStreamLz4CompressionCodec: ZLinkStreamCompressionCodec = {
+  compress(payload: Uint8Array): Uint8Array {
+    return lz4Pickle(payload);
+  },
+  decompress(payload: Uint8Array, maxDecompressedSize: number): Uint8Array {
+    return lz4Unpickle(payload, maxDecompressedSize);
+  }
+};
+
+function resolveStreamCompressionCodec(
+  options: ZLinkStreamCompressionOptions | undefined
+): ZLinkStreamCompressionCodec | undefined {
+  if (options?.disabled === true) {
+    return undefined;
+  }
+  return options?.codec ?? zlinkStreamLz4CompressionCodec;
+}
+
+function compressStreamPayload(
+  payload: Uint8Array,
+  codec: ZLinkStreamCompressionCodec | undefined
+): Uint8Array {
+  if (codec === undefined) {
+    throw new Error('Compression codec is not configured.');
+  }
+  try {
+    return codec.compress(payload);
+  } catch (error) {
+    throw new Error(`Compression failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function decompressStreamPayload(
+  payload: Uint8Array,
+  codec: ZLinkStreamCompressionCodec | undefined,
+  maxDecompressedSize = DEFAULT_MAX_DECOMPRESSED_STREAM_PAYLOAD_SIZE
+): Uint8Array {
+  if (codec === undefined) {
+    throw new Error('Compression codec is not configured.');
+  }
+  let decompressed: Uint8Array;
+  try {
+    decompressed = codec.decompress(payload, maxDecompressedSize);
+  } catch (error) {
+    throw new Error(`Decompression failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (decompressed.length > maxDecompressedSize) {
+    throw new Error('Decompressed stream payload exceeds maximum stream payload size.');
+  }
+  return decompressed;
 }
 
 const defaultStreamMessageFactory: ZLinkStreamMessageFactory = {
@@ -1264,7 +1330,7 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
     if ((header.flags & ZLinkStreamHeaderFlags.PayloadCompressed) === 0) {
       return payload;
     }
-    return simpleMessage(lz4Unpickle(messageToBytes(payload))) as Message;
+    return this.runtime.decompressPayload(payload);
   }
 
   get boundActors(): readonly DefaultZLinkSessionActor[] {

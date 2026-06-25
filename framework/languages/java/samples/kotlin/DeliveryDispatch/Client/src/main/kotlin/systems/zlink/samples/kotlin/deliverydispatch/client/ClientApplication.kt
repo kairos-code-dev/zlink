@@ -10,6 +10,7 @@ import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.kotlin
+import systems.zlink.framework.kotlin.withLz4StreamCompression
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.client.configuration.SampleNames
@@ -66,7 +67,7 @@ class ClientApplication {
                     Duration.ofMillis(250),
                     Duration.ofSeconds(5),
                     2.0,
-                ),
+                ).withLz4StreamCompression(),
             ).kotlin()
     }
 }

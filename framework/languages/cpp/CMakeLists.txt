@@ -14,6 +14,7 @@ option(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT "Build Stream Connector e2e clien
 option(ZLINK_STREAM_CONNECTOR_BUILD_UNREAL "Build Unreal Stream Connector source adapter" ON)
 option(ZLINK_STREAM_CONNECTOR_BUILD_GODOT "Build Godot Stream Connector source adapter" ON)
 option(ZLINK_STREAM_CONNECTOR_BUILD_AXMOL "Build Axmol Stream Connector source adapter" ON)
+option(ZLINK_FRAMEWORK_CPP_STREAM_WITH_LZ4 "Enable C++ framework STREAM LZ4 compression" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 "Enable Stream Connector LZ4 compression" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_TLS "Enable Stream Connector TLS transport" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET "Enable Stream Connector WebSocket transport" ON)
@@ -107,6 +108,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/spots/spot_route_internal_dispatcher.cpp
   framework/src/runtime/spots/spot_route_packets.cpp
   framework/src/runtime/spots/spot_runtime.cpp
+  framework/src/runtime/streams/stream_compression.cpp
   framework/src/runtime/streams/stream_runtime.cpp
   framework/src/runtime/streams/stream_host_service.cpp
   framework/src/runtime/timers/timer_runtime.cpp
@@ -260,25 +262,42 @@ if(ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET)
   target_compile_definitions(zlink_stream_connector PRIVATE
     ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET)
 endif()
-if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
+if(ZLINK_STREAM_CONNECTOR_WITH_LZ4 OR ZLINK_FRAMEWORK_CPP_STREAM_WITH_LZ4)
   find_path(ZLINK_LZ4_INCLUDE_DIR lz4.h)
   find_library(ZLINK_LZ4_LIBRARY NAMES lz4 liblz4)
   if(ZLINK_LZ4_INCLUDE_DIR AND ZLINK_LZ4_LIBRARY)
-    target_include_directories(zlink_stream_connector PRIVATE
-      ${ZLINK_LZ4_INCLUDE_DIR})
-    target_link_libraries(zlink_stream_connector PRIVATE ${ZLINK_LZ4_LIBRARY})
+    if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
+      target_include_directories(zlink_stream_connector PRIVATE
+        ${ZLINK_LZ4_INCLUDE_DIR})
+      target_link_libraries(zlink_stream_connector PRIVATE ${ZLINK_LZ4_LIBRARY})
+    endif()
+    if(ZLINK_FRAMEWORK_CPP_STREAM_WITH_LZ4)
+      target_include_directories(zlink_framework PRIVATE
+        ${ZLINK_LZ4_INCLUDE_DIR})
+      target_link_libraries(zlink_framework PRIVATE ${ZLINK_LZ4_LIBRARY})
+    endif()
   else()
     FetchContent_Declare(
       zlink_lz4
       URL https://github.com/lz4/lz4/archive/refs/tags/v1.10.0.tar.gz
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(zlink_lz4)
-    target_sources(zlink_stream_connector PRIVATE
-      ${zlink_lz4_SOURCE_DIR}/lib/lz4.c)
-    target_include_directories(zlink_stream_connector PRIVATE
-      ${zlink_lz4_SOURCE_DIR}/lib)
+    if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
+      target_sources(zlink_stream_connector PRIVATE
+        ${zlink_lz4_SOURCE_DIR}/lib/lz4.c)
+      target_include_directories(zlink_stream_connector PRIVATE
+        ${zlink_lz4_SOURCE_DIR}/lib)
+    endif()
+    if(ZLINK_FRAMEWORK_CPP_STREAM_WITH_LZ4)
+      target_sources(zlink_framework PRIVATE
+        ${zlink_lz4_SOURCE_DIR}/lib/lz4.c)
+      target_include_directories(zlink_framework PRIVATE
+        ${zlink_lz4_SOURCE_DIR}/lib)
+    endif()
   endif()
 endif()
+target_compile_definitions(zlink_framework PRIVATE
+  $<$<BOOL:${ZLINK_FRAMEWORK_CPP_STREAM_WITH_LZ4}>:ZLINK_FRAMEWORK_STREAM_WITH_LZ4>)
 target_compile_definitions(zlink_stream_connector PRIVATE
   $<$<BOOL:${ZLINK_STREAM_CONNECTOR_WITH_LZ4}>:ZLINK_STREAM_CONNECTOR_WITH_LZ4>)
 

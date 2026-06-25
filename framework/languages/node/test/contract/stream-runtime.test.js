@@ -1190,6 +1190,49 @@ test('session client send compress writes dotnet LZ4-pickled stream payload', as
   assert.deepEqual(JSON.parse(new TextDecoder().decode(unpickleLz4(frame.payload))), { ok: true });
 });
 
+test('session client send compress uses configured stream compression codec', async () => {
+  const written = [];
+  const compression = prefixCompressionCodec('fw');
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory(),
+    streamCompression: { codec: compression }
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-custom-compress-send', 'rid-custom-compress-send'),
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
+    }
+  });
+
+  await context.client.send({ ok: true }).packetName('Ready').compress().submit();
+
+  const frame = decodeFrame(written[0]);
+  assert.equal((frame.header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
+  assert.equal(new TextDecoder().decode(frame.payload), 'fw:{"ok":true}');
+});
+
+test('session client send compress fails when stream compression is disabled', async () => {
+  const written = [];
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory(),
+    streamCompression: { disabled: true }
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-disabled-compress-send', 'rid-disabled-compress-send'),
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
+    }
+  });
+
+  await assert.rejects(
+    () => context.client.send({ ok: true }).packetName('Ready').compress().submit(),
+    /compression codec/i
+  );
+  assert.deepEqual(written, []);
+});
+
 test('session client reply writes response frame only while dispatching request packet', async () => {
   const written = [];
   const runtime = new framework.ZLinkStreamBindingRuntime({
@@ -1321,6 +1364,96 @@ test('session client reply compress writes dotnet LZ4-pickled response payload',
   assert.deepEqual(JSON.parse(new TextDecoder().decode(unpickleLz4(frame.payload))), { accepted: true });
 });
 
+test('session client reply compress uses configured stream compression codec', async () => {
+  const written = [];
+  const compression = prefixCompressionCodec('reply');
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory(),
+    streamCompression: { codec: compression }
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-custom-compress-reply', 'rid-custom-compress-reply'),
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
+    }
+  });
+
+  context.enterDispatch({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: 43n,
+    name: 'Move',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  try {
+    await context.client.reply({ accepted: true }).compress().submit();
+  } finally {
+    context.exitDispatch();
+  }
+
+  const frame = decodeFrame(written[0]);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.requestSeq, 43n);
+  assert.equal((frame.header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
+  assert.equal(new TextDecoder().decode(frame.payload), 'reply:{"accepted":true}');
+});
+
+test('session context payloadForHeader uses configured stream compression codec and runtime limit', () => {
+  const compression = prefixCompressionCodec('in');
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    streamCompression: { codec: compression }
+  });
+  const context = runtime.createSessionContext(fakeStream('session-custom-inbound', 'rid-custom-inbound'));
+  const header = {
+    kind: connector.ZlinkStreamMessageKind.Send,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+    name: 'Move',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  };
+
+  const payload = context.payloadForHeader(header, bindingMessage('in:{"ok":true}'));
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(bytesOf(payload))), { ok: true });
+
+  const oversizedRuntime = new framework.ZLinkStreamBindingRuntime({
+    streamCompression: {
+      codec: {
+        compress(value) {
+          return value;
+        },
+        decompress() {
+          return new Uint8Array(64 * 1024 + 1);
+        }
+      }
+    }
+  });
+  const oversizedContext = oversizedRuntime.createSessionContext(fakeStream('session-custom-too-large', 'rid-custom-too-large'));
+  assert.throws(
+    () => oversizedContext.payloadForHeader(header, bindingMessage('compressed')),
+    /maximum stream payload size/
+  );
+});
+
+test('session context payloadForHeader fails compressed frames when stream compression is disabled', () => {
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    streamCompression: { disabled: true }
+  });
+  const context = runtime.createSessionContext(fakeStream('session-disabled-inbound', 'rid-disabled-inbound'));
+
+  assert.throws(
+    () => context.payloadForHeader({
+      kind: connector.ZlinkStreamMessageKind.Send,
+      codec: connector.ZlinkStreamCodec.Json,
+      flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+      name: 'Move',
+      metadata: connector.ZlinkStreamMetadataMap.empty
+    }, bindingMessage('compressed')),
+    /compression codec/i
+  );
+});
+
 test('session client send uses default binding message factory when one is not supplied', async () => {
   class ReadyPacket {}
   const runtime = new framework.ZLinkStreamBindingRuntime();
@@ -1429,6 +1562,23 @@ function bindingMessage(payload) {
       return bytes;
     },
     close() {}
+  };
+}
+
+function prefixCompressionCodec(prefix) {
+  return {
+    compress(payload) {
+      const body = new TextDecoder().decode(payload);
+      return new TextEncoder().encode(`${prefix}:${body}`);
+    },
+    decompress(payload) {
+      const body = new TextDecoder().decode(payload);
+      const marker = `${prefix}:`;
+      if (!body.startsWith(marker)) {
+        throw new Error('Unexpected compression marker.');
+      }
+      return new TextEncoder().encode(body.slice(marker.length));
+    }
   };
 }
 

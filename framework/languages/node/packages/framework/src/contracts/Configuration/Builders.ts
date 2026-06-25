@@ -1,5 +1,5 @@
 import type { ZLinkSpot, ZLinkSpotMeshBuilder } from '../Spots';
-import type { ZLinkSession, ZLinkSessionFactory } from '../Streams';
+import type { ZLinkSession, ZLinkSessionFactory, ZLinkStreamCompressionCodec } from '../Streams';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
 import type { Type } from '../Common';
@@ -15,6 +15,7 @@ export interface ZLinkFrameworkOptions {
    */
   configureWorker(options: ZLinkWorkerOptions): this;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
+  configureStreamCompression(): ZLinkStreamCompressionBuilder;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
@@ -30,6 +31,13 @@ export interface ZLinkDiscoveryBuilder {
 
 export interface ZLinkMetadataPolicyBuilder {
   forward(enabled?: boolean): this;
+}
+
+export interface ZLinkStreamCompressionBuilder {
+  useDefault(): this;
+  useLz4(): this;
+  use(codec: ZLinkStreamCompressionCodec): this;
+  disable(): this;
 }
 
 export interface ZLinkClientServerChannelBuilder {

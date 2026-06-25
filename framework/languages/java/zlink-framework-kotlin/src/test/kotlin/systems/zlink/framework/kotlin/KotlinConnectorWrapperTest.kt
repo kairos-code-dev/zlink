@@ -19,9 +19,14 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodec as FrameworkStreamCompressionCodec
+import systems.zlink.stream.connector.ZLinkStreamCompression
+import systems.zlink.stream.connector.ZLinkStreamCompressionCodec
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
@@ -30,6 +35,26 @@ import systems.zlink.stream.connector.ZLinkStreamError
 import systems.zlink.stream.connector.ZLinkStreamErrorCode
 
 final class KotlinConnectorWrapperTest {
+    @Test
+    fun kotlinCompressionDslConfiguresFrameworkAndConnectorOptions() {
+        val codec = PrefixCompressionCodec("kotlin:")
+        val frameworkOptions = DefaultZLinkFrameworkOptions()
+
+        frameworkOptions.configureStreamCompression {
+            use(codec)
+        }
+
+        assertSame(codec, frameworkOptions.registration().streamCompressionCodec())
+
+        val connectorOptions = options().withStreamCompression(codec)
+        assertEquals(ZLinkStreamCompression.LZ4, connectorOptions.compression())
+        assertSame(codec, connectorOptions.compressionCodec())
+
+        val disabled = connectorOptions.withoutStreamCompression()
+        assertEquals(ZLinkStreamCompression.NONE, disabled.compression())
+        assertEquals(null, disabled.compressionCodec())
+    }
+
     @Test
     fun suspendWrapperPreservesConnectorSemantics() = runBlocking {
         TcpServer().use { server ->
@@ -145,6 +170,21 @@ final class KotlinConnectorWrapperTest {
 
     private fun payload(packetName: String, body: String) =
         ZLinkStreamEncodedPayload(packetName, Message.from(body), mapOf())
+
+    private class PrefixCompressionCodec(private val prefix: String) :
+        ZLinkStreamCompressionCodec,
+        FrameworkStreamCompressionCodec {
+        override fun compress(payload: ByteArray): ByteArray =
+            (prefix + payload.toString(StandardCharsets.UTF_8)).toByteArray(StandardCharsets.UTF_8)
+
+        override fun decompress(payload: ByteArray, maxDecompressedSize: Int): ByteArray {
+            val text = payload.toString(StandardCharsets.UTF_8)
+            require(text.startsWith(prefix)) { "unexpected compression marker" }
+            val decoded = text.removePrefix(prefix).toByteArray(StandardCharsets.UTF_8)
+            require(decoded.size <= maxDecompressedSize) { "decompressed payload is too large" }
+            return decoded
+        }
+    }
 
     private suspend fun sendAndDispatchUntilReceived(
         server: TcpServer,

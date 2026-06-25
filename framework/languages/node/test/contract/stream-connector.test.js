@@ -138,11 +138,32 @@ test('stream connector send and request enforce payload limit before transport w
   assert.equal(requestInstance.pendingDispatchCount, 0);
 });
 
-test('stream connector compression requires configured LZ4 codec before transport write', async () => {
+test('stream connector default compression uses LZ4 before transport write', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
     transportFactory
+  });
+  const body = new TextEncoder().encode('body');
+  await instance.connect();
+
+  await instance.send({
+    codec: connector.ZlinkStreamCodec.Raw,
+    payload: body
+  }).packetName('Compressed').compress().submit();
+
+  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal((header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
+  assert.deepEqual([...unpickleLz4(frame.payload)], [...body]);
+});
+
+test('stream connector disabled compression rejects compressed sends before transport write', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    compression: connector.ZlinkStreamCompression.None
   });
   await instance.connect();
 
@@ -175,6 +196,99 @@ test('stream connector compressed sends write dotnet LZ4-pickled payloads', asyn
   const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal((header.flags & connector.ZlinkStreamHeaderFlags.PayloadCompressed) !== 0, true);
   assert.deepEqual([...unpickleLz4(frame.payload)], [...body]);
+});
+
+test('stream connector custom compression codec handles outbound and inbound payloads', async () => {
+  const marker = 0x7a;
+  const compressionCodec = {
+    compress(payload) {
+      const compressed = new Uint8Array(payload.length + 1);
+      compressed[0] = marker;
+      compressed.set(payload, 1);
+      return compressed;
+    },
+    decompress(payload, maxDecompressedSize) {
+      assert.equal(payload[0], marker);
+      const restored = payload.slice(1);
+      if (restored.length > maxDecompressedSize) {
+        throw new Error('too large');
+      }
+      return restored;
+    }
+  };
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    compressionCodec
+  });
+  const body = new TextEncoder().encode('custom-body');
+  const received = [];
+  instance.on('CustomNotice', (message) => {
+    received.push(new TextDecoder().decode(message.payload.payload));
+  });
+  await instance.connect();
+
+  await instance.send({
+    codec: connector.ZlinkStreamCodec.Raw,
+    payload: body
+  }).packetName('CustomSend').compress().submit();
+
+  const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  assert.equal(frame.payload[0], marker);
+
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Send,
+        codec: connector.ZlinkStreamCodec.Raw,
+        flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+        name: 'CustomNotice',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      compressionCodec.compress(new TextEncoder().encode('custom-inbound'))
+    )
+  );
+
+  await instance.dispatch();
+  assert.deepEqual(received, ['custom-inbound']);
+});
+
+test('stream connector custom decompression result is checked against receive limit', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    maxReceivePayloadSize: 4,
+    compressionCodec: {
+      compress(payload) {
+        return payload;
+      },
+      decompress(_payload, maxDecompressedSize) {
+        return new Uint8Array(maxDecompressedSize + 1);
+      }
+    }
+  });
+  const errors = [];
+  instance.onErrorReceived((error) => {
+    errors.push(error.code);
+  });
+  await instance.connect();
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Send,
+        codec: connector.ZlinkStreamCodec.Raw,
+        flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+        name: 'TooLarge',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      new Uint8Array([1])
+    )
+  );
+
+  await instance.dispatch();
+  assert.deepEqual(errors, [connector.ZlinkStreamErrorCode.DecompressionFailed]);
 });
 
 test('stream connector request resolves when dispatch reads matching response frame', async () => {
@@ -628,11 +742,12 @@ test('stream connector dispatch decompresses send frames for handlers', async ()
   assert.deepEqual(received, ['A'.repeat(96)]);
 });
 
-test('stream connector publishes decode error for compressed frames without codec', async () => {
+test('stream connector publishes decompression error for compressed frames when compression is disabled', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
-    transportFactory
+    transportFactory,
+    compression: connector.ZlinkStreamCompression.None
   });
   const errors = [];
   instance.onErrorReceived((error) => {
@@ -656,7 +771,8 @@ test('stream connector publishes decode error for compressed frames without code
 
   await instance.dispatch();
   assert.equal(errors.length, 1);
-  assert.equal(errors[0].code, connector.ZlinkStreamErrorCode.FrameDecodeFailed);
+  assert.equal(errors[0].code, connector.ZlinkStreamErrorCode.DecompressionFailed);
+  assert.match(errors[0].message, /compression codec/i);
 });
 
 test('stream connector dispatch publishes decode errors for invalid header frames', async () => {

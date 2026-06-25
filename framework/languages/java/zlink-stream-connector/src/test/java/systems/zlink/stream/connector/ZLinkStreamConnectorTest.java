@@ -607,6 +607,100 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void customCompressionCodecHandlesOutboundAndInboundPayloads() throws Exception {
+        PrefixCompressionCodec codec = new PrefixCompressionCodec("java");
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector = createConnector(options(
+                server.endpoint(),
+                ZLinkStreamDispatchMode.AUTO,
+                64 * 1024,
+                64 * 1024,
+                false,
+                false,
+                ZLinkStreamCompression.LZ4,
+                codec));
+            List<String> received = new ArrayList<>();
+            connector.on("CustomInbound", message -> {
+                received.add(new String(message.payload().payload().toByteArray(), StandardCharsets.UTF_8));
+                message.payload().payload().close();
+                return CompletableFuture.completedFuture(null);
+            });
+            connector.connect().await();
+
+            var sentFrame = server.readFrameAsync();
+            connector.send(payload("CustomOutbound", "outbound"))
+                .compress()
+                .submit()
+                .toCompletableFuture()
+                .join();
+
+            TcpStreamConnectorTestServer.ReceivedFrame sent = sentFrame.join();
+            assertTrue((sent.header().flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED) != 0);
+            assertEquals("java:outbound", new String(sent.payload(), StandardCharsets.UTF_8));
+
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_SEND,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED,
+                    null,
+                    "CustomInbound",
+                    Map.of(),
+                    null),
+                codec.compress(TcpStreamConnectorTestServer.bytes("inbound"))).join();
+            TcpStreamConnectorTestServer.awaitCondition(() -> received.size() == 1);
+
+            assertEquals(List.of("inbound"), received);
+        }
+    }
+
+    @Test
+    void customDecompressionResultIsCheckedAgainstReceiveLimit() throws Exception {
+        ZLinkStreamCompressionCodec codec = new ZLinkStreamCompressionCodec() {
+            @Override
+            public byte[] compress(byte[] payload) {
+                return payload;
+            }
+
+            @Override
+            public byte[] decompress(byte[] payload, int maxDecompressedSize) {
+                return new byte[maxDecompressedSize + 1];
+            }
+        };
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector = createConnector(options(
+                server.endpoint(),
+                ZLinkStreamDispatchMode.MANUAL,
+                64 * 1024,
+                2,
+                false,
+                false,
+                ZLinkStreamCompression.LZ4,
+                codec));
+            connector.connect().await();
+
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("Echo", "hello"))
+                .timeout(Duration.ofMillis(500))
+                .submit()
+                .toCompletableFuture();
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_RESPONSE,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ
+                        | ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED,
+                    request.header().requestSeq(),
+                    "Echo",
+                    Map.of(),
+                    null),
+                TcpStreamConnectorTestServer.bytes("compressed")).join();
+
+            assertThrows(CompletionException.class, replyFuture::join);
+        }
+    }
+
+    @Test
     void lz4PicklerRejectsDecodedPayloadAboveReceiveLimit() {
         assertThrows(
             IllegalArgumentException.class,
@@ -1105,7 +1199,8 @@ final class ZLinkStreamConnectorTest {
         assertEquals(Duration.ofSeconds(5), options.reconnectMaxDelay());
         assertEquals(2.0, options.reconnectBackoffFactor());
         assertFalse(options.skipServerCertificateValidation());
-        assertEquals(ZLinkStreamCompression.NONE, options.compression());
+        assertEquals(ZLinkStreamCompression.LZ4, options.compression());
+        assertEquals(ZLinkStreamCompressionCodecs.lz4(), options.compressionCodec());
         assertEquals("custom.packet", options.nameResolver().resolve(NamedPayload.class));
     }
 
@@ -1166,10 +1261,31 @@ final class ZLinkStreamConnectorTest {
         boolean reconnectEnabled,
         boolean skipServerCertificateValidation,
         ZLinkStreamCompression compression) {
+        return options(
+            endpoint,
+            dispatchMode,
+            maxSendPayloadSize,
+            maxReceivePayloadSize,
+            reconnectEnabled,
+            skipServerCertificateValidation,
+            compression,
+            null);
+    }
+
+    private static ZLinkStreamConnectorOptions options(
+        URI endpoint,
+        ZLinkStreamDispatchMode dispatchMode,
+        int maxSendPayloadSize,
+        int maxReceivePayloadSize,
+        boolean reconnectEnabled,
+        boolean skipServerCertificateValidation,
+        ZLinkStreamCompression compression,
+        ZLinkStreamCompressionCodec compressionCodec) {
         return new ZLinkStreamConnectorOptions(
             endpoint,
             dispatchMode,
             Duration.ofSeconds(1),
+            Duration.ofSeconds(5),
             1,
             Duration.ofSeconds(1),
             maxSendPayloadSize,
@@ -1183,8 +1299,26 @@ final class ZLinkStreamConnectorTest {
             2.0,
             skipServerCertificateValidation,
             compression,
+            compressionCodec,
             ZLinkStreamPacketNameResolver.defaultResolver(),
             null);
+    }
+
+    private record PrefixCompressionCodec(String prefix) implements ZLinkStreamCompressionCodec {
+        @Override
+        public byte[] compress(byte[] payload) {
+            return (prefix + ":" + new String(payload, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
+        }
+
+        @Override
+        public byte[] decompress(byte[] payload, int maxDecompressedSize) {
+            String value = new String(payload, StandardCharsets.UTF_8);
+            String marker = prefix + ":";
+            if (!value.startsWith(marker)) {
+                throw new IllegalArgumentException("unexpected compression marker");
+            }
+            return value.substring(marker.length()).getBytes(StandardCharsets.UTF_8);
+        }
     }
 
     private static byte[] framePrefix(int headerLength, int payloadLength) {

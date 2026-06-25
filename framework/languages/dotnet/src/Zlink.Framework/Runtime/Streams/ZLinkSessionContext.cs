@@ -48,6 +48,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     internal IReadOnlyCollection<IZLinkSessionActor> BoundActors => _actors.BoundActors;
     internal ZLinkSessionActorCoordinator ActorCoordinator => _actors;
     internal ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
+    internal IZlinkStreamCompressionCodec? CompressionCodec => _runtime.Registration.StreamCompressionCodec;
 
     public ValueTask CloseAsync()
     {

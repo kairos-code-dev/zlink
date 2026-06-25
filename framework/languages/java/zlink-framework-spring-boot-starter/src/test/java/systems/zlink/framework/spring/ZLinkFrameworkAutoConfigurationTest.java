@@ -7,6 +7,7 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,6 +77,7 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class ZLinkFrameworkAutoConfigurationTest {
@@ -122,6 +124,26 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertInstanceOf(
                 ZLinkFrameworkLifecycle.class,
                 context.getBean(ZLinkClient.class));
+        }
+    }
+
+    @Test
+    void frameworkConfigurerPassesStreamCompressionToRuntimeRegistration() {
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                ZLinkBackendAdapterFactory.class,
+                FakeZLinkBackendAdapterFactory::new);
+            context.register(
+                StreamCompressionConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            DefaultZLinkFrameworkOptions options =
+                context.getBean(DefaultZLinkFrameworkOptions.class);
+            assertSame(
+                StreamCompressionConfig.COMPRESSION,
+                options.registration().streamCompressionCodec());
         }
     }
 
@@ -649,6 +671,28 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer profileChannelConfigurer() {
             return options -> { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+        }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
+    static class StreamCompressionConfig {
+        static final ZLinkStreamCompressionCodec COMPRESSION =
+            new ZLinkStreamCompressionCodec() {
+                @Override
+                public byte[] compress(byte[] payload) {
+                    return payload;
+                }
+
+                @Override
+                public byte[] decompress(byte[] payload, int maxDecompressedSize) {
+                    return payload;
+                }
+            };
+
+        @Bean
+        ZLinkFrameworkConfigurer streamCompressionConfigurer() {
+            return options -> options.configureStreamCompression().use(COMPRESSION);
         }
     }
 

@@ -2,7 +2,8 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkStreamSendBuilder<TMessage>(
     TMessage message,
-    ZLinkCodecRegistryBuilder codecs)
+    ZLinkCodecRegistryBuilder codecs,
+    IZlinkStreamCompressionCodec? compressionCodec)
 {
     private static readonly IZlinkStreamPacketNameResolver MessageNameResolver =
         ZLinkStreamProtocolDefaults.PacketNameResolver;
@@ -48,7 +49,7 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(
 
         if (_compress)
         {
-            payload = ZLinkStreamProtocolDefaults.Lz4Compress(payload);
+            payload = ZLinkStreamProtocolDefaults.Compress(compressionCodec, payload);
             flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
         }
 

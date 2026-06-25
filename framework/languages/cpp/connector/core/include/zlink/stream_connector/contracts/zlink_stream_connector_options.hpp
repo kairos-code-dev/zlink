@@ -2,10 +2,12 @@
 #pragma once
 
 #include <zlink/stream_connector/contracts/zlink_stream_enums.hpp>
+#include <zlink/stream_connector/contracts/compression.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <optional>
+#include <memory>
 #include <string>
 
 namespace zlink::stream_connector
@@ -90,7 +92,10 @@ struct connector_options_t
     dispatch_mode_t dispatch_mode = dispatch_mode_t::manual;
 
     /// Default compression preference for connector calls that opt into compression.
-    compression_t compression = compression_t::none;
+    compression_t compression = compression_t::lz4;
+
+    /// Codec used when payload_compressed is set. nullptr disables compression.
+    std::shared_ptr<const compression_codec_t> compression_codec = lz4_compression_codec ();
 };
 
 } // namespace zlink::stream_connector

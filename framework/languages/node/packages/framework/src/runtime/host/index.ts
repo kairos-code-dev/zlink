@@ -111,6 +111,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     this.lifecycleSink = options.lifecycleSink;
     this.streamBindingRuntime = new ZLinkStreamBindingRuntime({
       streamPayloadCodec: resolveStreamPayloadCodec(options.registration),
+      streamCompression: options.registration.streamCompression,
       messageSerializers: options.registration.messageSerializers,
       nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       relay: (actor, header, payload, signal) =>

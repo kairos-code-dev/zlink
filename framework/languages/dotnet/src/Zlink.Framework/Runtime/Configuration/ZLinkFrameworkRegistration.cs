@@ -10,6 +10,9 @@ internal sealed class ZLinkFrameworkRegistration
 
     public ZLinkCodecRegistryBuilder Codecs { get; } = new();
 
+    public IZlinkStreamCompressionCodec? StreamCompressionCodec { get; set; } =
+        ZLinkStreamProtocolDefaults.CreateLz4CompressionCodec();
+
     public ZLinkMetadataPolicyRegistration MetadataPolicy { get; } = new();
 
     public ZLinkDispatchOptionsModel DispatchOptions { get; } = new();

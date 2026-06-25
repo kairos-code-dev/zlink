@@ -131,6 +131,11 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return _registration.DispatchOptions;
     }
 
+    public IZLinkStreamCompressionBuilder ConfigureStreamCompression()
+    {
+        return new ZLinkStreamCompressionBuilder(_registration);
+    }
+
     public IZLinkStreamNodeBuilder AddStreamNode(string streamNodeName)
     {
         var streamNode = ZLinkRegistrationBuilderGuard.AddUnique(

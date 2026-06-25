@@ -47,6 +47,46 @@ static_assert (
 namespace
 {
 
+class prefix_compression_codec_t final : public zlink::stream_connector::compression_codec_t
+{
+  public:
+    explicit prefix_compression_codec_t (std::string prefix) : _prefix (std::move (prefix)) {}
+
+    zlink::message_t compress (const zlink::message_t &payload) const override
+    {
+        return zlink::message_t::from (_prefix + ":" + payload.to_string ());
+    }
+
+    zlink::message_t decompress (const zlink::message_t &payload,
+                                 std::size_t) const override
+    {
+        const auto value = payload.to_string ();
+        const auto marker = _prefix + ":";
+        if (value.rfind (marker, 0) != 0) {
+            throw std::runtime_error ("unexpected compression marker");
+        }
+        return zlink::message_t::from (value.substr (marker.size ()));
+    }
+
+  private:
+    std::string _prefix;
+};
+
+class oversized_compression_codec_t final : public zlink::stream_connector::compression_codec_t
+{
+  public:
+    zlink::message_t compress (const zlink::message_t &payload) const override
+    {
+        return payload;
+    }
+
+    zlink::message_t decompress (const zlink::message_t &, std::size_t max_decompressed_size)
+      const override
+    {
+        return zlink::message_t::from (std::string (max_decompressed_size + 1, 'x'));
+    }
+};
+
 class callback_latch_t
 {
   public:
@@ -276,6 +316,38 @@ std::optional<server_frame_t> try_read_server_frame (std::string &buffer)
     return server_frame_t{decoded.value (), std::move (payload), compressed};
 }
 
+std::optional<server_frame_t> try_read_server_frame_raw (std::string &buffer)
+{
+    if (buffer.size () < 6) {
+        return std::nullopt;
+    }
+    const auto header_size =
+      (static_cast<std::uint8_t> (buffer[0]) << 8) | static_cast<std::uint8_t> (buffer[1]);
+    const auto payload_size =
+      (static_cast<std::size_t> (static_cast<std::uint8_t> (buffer[2])) << 24)
+      | (static_cast<std::size_t> (static_cast<std::uint8_t> (buffer[3])) << 16)
+      | (static_cast<std::size_t> (static_cast<std::uint8_t> (buffer[4])) << 8)
+      | static_cast<std::uint8_t> (buffer[5]);
+    if (buffer.size () < 6 + header_size + payload_size) {
+        return std::nullopt;
+    }
+    std::vector<std::uint8_t> header_bytes (
+      buffer.begin () + 6, buffer.begin () + 6 + static_cast<std::ptrdiff_t> (header_size));
+    auto decoded = zlink::stream_connector::detail::header_codec_t{}.decode (header_bytes);
+    if (!decoded) {
+        return std::nullopt;
+    }
+    std::string payload (buffer.begin () + 6 + static_cast<std::ptrdiff_t> (header_size),
+                         buffer.begin () + 6 + static_cast<std::ptrdiff_t> (header_size)
+                           + static_cast<std::ptrdiff_t> (payload_size));
+    buffer.erase (0, 6 + header_size + payload_size);
+    const bool compressed =
+      (static_cast<std::uint8_t> (decoded.value ().flags)
+       & static_cast<std::uint8_t> (zlink::stream_connector::header_flags_t::payload_compressed))
+      != 0;
+    return server_frame_t{decoded.value (), std::move (payload), compressed};
+}
+
 zlink::message_t make_server_frame (zlink::stream_connector::message_kind_t kind,
                                     std::uint64_t seq,
                                     std::string name,
@@ -492,7 +564,8 @@ int main ()
     server.bind ("tcp://127.0.0.1:0");
     const auto endpoint = server.options ().last_endpoint ();
     zlink::stream_connector::connector_options_t default_options;
-    if (default_options.compression != zlink::stream_connector::compression_t::none) {
+    if (default_options.compression != zlink::stream_connector::compression_t::lz4
+        || !default_options.compression_codec) {
         return 67;
     }
     std::atomic_bool compressed_send_seen{false};
@@ -755,6 +828,70 @@ int main ()
     if (!connector.dispatch () || compressed_dispatch_count != 1
         || connector.pending_dispatch_count () != 0) {
         return 29;
+    }
+
+    {
+        zlink::stream_connector::connector_options_t disabled_options;
+        disabled_options.endpoint = endpoint;
+        disabled_options.compression = zlink::stream_connector::compression_t::none;
+        disabled_options.compression_codec.reset ();
+        auto disabled_connector =
+          zlink::stream_connector::connector_factory_t::create (disabled_options);
+        if (!disabled_connector.connect ()) {
+            return 147;
+        }
+        auto disabled_send = disabled_connector.send (login_request_t{}).compress ().submit ();
+        if (disabled_send
+            || disabled_send.error_code ()
+                 != zlink::stream_connector::error_code_t::compression_failed) {
+            return 142;
+        }
+    }
+
+    {
+        zlink::stream_socket_t custom_server (context);
+        custom_server.options ().notify (false);
+        custom_server.bind ("tcp://127.0.0.1:0");
+        const auto custom_endpoint = custom_server.options ().last_endpoint ();
+        std::atomic_bool custom_payload_seen{false};
+        joining_thread_t custom_server_thread ([&custom_server, &custom_payload_seen] {
+            std::string buffer;
+            while (!custom_payload_seen.load ()) {
+                zlink::received_t inbound;
+                if (custom_server.recv (inbound) != 0) {
+                    return;
+                }
+                buffer += inbound.parts ().empty () ? std::string{} : inbound.parts ()[0].to_string ();
+                while (auto frame = try_read_server_frame_raw (buffer)) {
+                    if (frame->header.kind == zlink::stream_connector::message_kind_t::send
+                        && frame->header.name == "custom.outbound" && frame->compressed
+                        && frame->payload == "custom:{}") {
+                        custom_payload_seen = true;
+                    }
+                }
+                inbound.close ();
+            }
+        });
+        zlink::stream_connector::connector_options_t custom_options;
+        custom_options.endpoint = custom_endpoint;
+        custom_options.compression_codec =
+          std::make_shared<prefix_compression_codec_t> ("custom");
+        auto custom_connector =
+          zlink::stream_connector::connector_factory_t::create (custom_options);
+        if (!custom_connector.connect ()) {
+            return 148;
+        }
+        auto custom_send = custom_connector.send (login_request_t{})
+                             .packet_name ("custom.outbound")
+                             .compress ()
+                             .submit ();
+        if (!custom_send) {
+            return 144;
+        }
+        custom_server_thread.join ();
+        if (!custom_payload_seen) {
+            return 145;
+        }
     }
 
     zlink::stream_socket_t receive_server (context);

@@ -4,6 +4,8 @@
 
 #include "runtime/streams/stream_runtime.hpp"
 
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -77,6 +79,50 @@ class throwing_packet_session_t final : public zlink::framework::packet_stream_s
     }
 
     bool on_error_called = false;
+};
+
+class prefix_stream_compression_codec_t final
+  : public zlink::framework::stream_compression_codec_t
+{
+  public:
+    explicit prefix_stream_compression_codec_t (std::string prefix) :
+        _prefix (std::move (prefix))
+    {
+    }
+
+    zlink::message_t compress (const zlink::message_t &payload) const override
+    {
+        return zlink::message_t::from (_prefix + payload.to_string ());
+    }
+
+    zlink::message_t decompress (const zlink::message_t &payload,
+                                 std::size_t max_decompressed_size) const override
+    {
+        const auto text = payload.to_string ();
+        if (text.rfind (_prefix, 0) != 0) {
+            throw std::runtime_error ("custom stream compression marker is invalid");
+        }
+        auto decoded = text.substr (_prefix.size ());
+        if (decoded.size () > max_decompressed_size) {
+            throw std::runtime_error ("custom stream payload exceeds receive limit");
+        }
+        return zlink::message_t::from (decoded);
+    }
+
+  private:
+    std::string _prefix;
+};
+
+class oversized_stream_compression_codec_t final
+  : public zlink::framework::stream_compression_codec_t
+{
+  public:
+    zlink::message_t compress (const zlink::message_t &payload) const override { return payload; }
+
+    zlink::message_t decompress (const zlink::message_t &, std::size_t) const override
+    {
+        return zlink::message_t::from (std::string (64 * 1024 + 1, 'x'));
+    }
 };
 
 } // namespace
@@ -263,6 +309,10 @@ int main ()
              != stream_header_flags_t::payload_compressed) {
         return 18;
     }
+    if (runtime.written_payloads (fluent_stream).empty ()
+        || runtime.written_payloads (fluent_stream)[0].to_string () == "send-payload") {
+        return 23;
+    }
     const auto close_result = fluent_stream.close ().result ();
     const auto close_write =
       fluent_stream.write_packet (zlink::message_t::from (std::string ("after-close")))
@@ -311,6 +361,100 @@ int main ()
     if (!transport_error || error_session.events.size () != 1
         || error_session.events[0] != "error:transport") {
         return 14;
+    }
+
+    auto custom_codec =
+      std::make_shared<prefix_stream_compression_codec_t> ("custom-stream:");
+    zlink::framework::service_collection_t custom_services;
+    zlink::framework::handler_registry_t custom_handlers;
+    zlink::framework::serializer_registry_t custom_serializers;
+    zlink::framework::zlink_builder_t custom_zlink;
+    zlink::framework::monitoring_builder_t custom_monitoring;
+    zlink::framework::zlink_framework_options_t custom_options (
+      custom_services, custom_handlers, custom_serializers, custom_zlink, custom_monitoring);
+    custom_options.configure_stream_compression ().use (custom_codec);
+    custom_options.add_stream_node ("custom-stream")
+      .bind ("tcp://0.0.0.0:9201")
+      .register_session ("custom-session");
+    custom_options.apply ();
+    auto custom_runtime = zlink::framework::detail::stream_runtime_t::from (custom_zlink);
+    auto custom_stream = custom_runtime.open_session ("custom-stream");
+    const auto custom_send =
+      custom_stream.write_packet (zlink::message_t::from (std::string ("custom-outbound")))
+        .compress ()
+        .async ()
+        .result ();
+    if (!custom_send || custom_runtime.written_payloads (custom_stream).size () != 1
+        || custom_runtime.written_payloads (custom_stream)[0].to_string ()
+             != "custom-stream:custom-outbound") {
+        return 24;
+    }
+    zlink::framework::detail::stream_header_t custom_inbound_header (
+      stream_message_kind_t::request, stream_codec_t::raw,
+      stream_header_flags_t::has_request_seq | stream_header_flags_t::payload_compressed, 88,
+      "custom-inbound");
+    sample_session_t custom_session;
+    const auto custom_dispatch = custom_runtime.dispatch_packet (
+      custom_session, custom_stream, custom_inbound_header,
+      custom_codec->compress (zlink::message_t::from (std::string ("custom-inbound-payload"))));
+    if (!custom_dispatch || custom_session.events.size () != 1
+        || custom_session.events[0] != "packet:custom-inbound:custom-inbound-payload") {
+        return 25;
+    }
+
+    zlink::framework::zlink_builder_t disabled_zlink;
+    zlink::framework::monitoring_builder_t disabled_monitoring;
+    zlink::framework::zlink_framework_options_t disabled_options (
+      custom_services, custom_handlers, custom_serializers, disabled_zlink, disabled_monitoring);
+    disabled_options.configure_stream_compression ().disable ();
+    disabled_options.add_stream_node ("disabled-stream")
+      .bind ("tcp://0.0.0.0:9202")
+      .register_session ("disabled-session");
+    disabled_options.apply ();
+    auto disabled_runtime = zlink::framework::detail::stream_runtime_t::from (disabled_zlink);
+    auto disabled_stream = disabled_runtime.open_session ("disabled-stream");
+    const auto disabled_send =
+      disabled_stream.write_packet (zlink::message_t::from (std::string ("disabled")))
+        .compress ()
+        .async ()
+        .result ();
+    if (disabled_send || disabled_send.error_kind () != framework_error_kind_t::request_failed
+        || std::string (disabled_send.error ()->what ()).find (
+             "compression codec is not configured") == std::string::npos) {
+        return 26;
+    }
+    sample_session_t disabled_session;
+    const auto disabled_receive = disabled_runtime.dispatch_packet (
+      disabled_session, disabled_stream, custom_inbound_header,
+      custom_codec->compress (zlink::message_t::from (std::string ("disabled-inbound"))));
+    if (disabled_receive
+        || disabled_receive.error_kind () != framework_error_kind_t::payload_decode_failed
+        || std::string (disabled_receive.error ()->what ()).find (
+             "compression codec is not configured") == std::string::npos
+        || !disabled_session.events.empty ()) {
+        return 27;
+    }
+
+    zlink::framework::zlink_builder_t oversized_zlink;
+    zlink::framework::monitoring_builder_t oversized_monitoring;
+    zlink::framework::zlink_framework_options_t oversized_options (
+      custom_services, custom_handlers, custom_serializers, oversized_zlink, oversized_monitoring);
+    oversized_options.configure_stream_compression ().use (
+      std::make_shared<oversized_stream_compression_codec_t> ());
+    oversized_options.add_stream_node ("oversized-stream")
+      .bind ("tcp://0.0.0.0:9203")
+      .register_session ("oversized-session");
+    oversized_options.apply ();
+    auto oversized_runtime = zlink::framework::detail::stream_runtime_t::from (oversized_zlink);
+    auto oversized_stream = oversized_runtime.open_session ("oversized-stream");
+    sample_session_t oversized_session;
+    const auto oversized_receive = oversized_runtime.dispatch_packet (
+      oversized_session, oversized_stream, custom_inbound_header,
+      zlink::message_t::from (std::string ("compressed")));
+    if (oversized_receive
+        || oversized_receive.error_kind () != framework_error_kind_t::payload_decode_failed
+        || !oversized_session.events.empty ()) {
+        return 28;
     }
 
     return 0;

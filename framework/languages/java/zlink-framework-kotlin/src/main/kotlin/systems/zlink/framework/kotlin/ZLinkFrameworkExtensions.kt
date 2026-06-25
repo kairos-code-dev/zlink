@@ -7,6 +7,8 @@ import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.configuration.ZLinkFrameworkOptions
+import systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder
 
 suspend fun <TReply> ZLinkRequestCall.awaitReply(replyType: Class<TReply>): TReply =
     submit(replyType).await()
@@ -49,3 +51,10 @@ suspend inline fun <reified TReply> ZLinkRouteClient.request(
     message: Message,
 ): TReply =
     requestTo(channelName, target, message).awaitReply()
+
+fun ZLinkFrameworkOptions.configureStreamCompression(
+    configure: ZLinkStreamCompressionBuilder.() -> Unit,
+): ZLinkFrameworkOptions {
+    configureStreamCompression().configure()
+    return this
+}

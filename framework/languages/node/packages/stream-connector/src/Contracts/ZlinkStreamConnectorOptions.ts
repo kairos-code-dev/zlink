@@ -22,6 +22,7 @@ export interface ZlinkStreamConnectorOptions {
   readonly skipServerCertificateValidation?: boolean;
   readonly dispatchMode?: ZlinkStreamDispatchMode;
   readonly compression?: ZlinkStreamCompression;
+  readonly compressionCodec?: ZlinkStreamCompressionCodec;
   readonly nameResolver?: ZlinkStreamPacketNameResolver;
 }
 
@@ -46,6 +47,11 @@ export interface ZlinkStreamPacketNameResolver {
 export interface ZlinkStreamPayloadCodec {
   encode(payload: unknown, messageType?: Function): ZlinkStreamEncodedPayload;
   decode<T = unknown>(payload: ZlinkStreamEncodedPayload, messageType?: Function): T;
+}
+
+export interface ZlinkStreamCompressionCodec {
+  compress(payload: Uint8Array): Uint8Array;
+  decompress(payload: Uint8Array, maxDecompressedSize: number): Uint8Array;
 }
 
 export interface ZlinkStreamTransportFactory {
@@ -73,6 +79,7 @@ export interface RequiredZlinkStreamConnectorOptions {
   readonly skipServerCertificateValidation: boolean;
   readonly dispatchMode: ZlinkStreamDispatchMode;
   readonly compression: ZlinkStreamCompression;
+  readonly compressionCodec?: ZlinkStreamCompressionCodec;
   readonly nameResolver: ZlinkStreamPacketNameResolver;
   readonly transportFactory: ZlinkStreamTransportFactory;
   readonly codec?: ZlinkStreamPayloadCodec;

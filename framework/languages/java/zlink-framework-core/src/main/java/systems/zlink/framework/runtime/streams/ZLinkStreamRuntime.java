@@ -37,6 +37,7 @@ import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionReplyCall;
 import systems.zlink.framework.streams.ZLinkSessionSendCall;
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
@@ -46,6 +47,7 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.streams.ZLinkStreamSessionError;
 
 public final class ZLinkStreamRuntime implements AutoCloseable {
+    private static final int DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE = 64 * 1024;
     private final ZLinkBackendContext context;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actors;
@@ -54,6 +56,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer flow;
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final ZLinkStreamCodec defaultCodec;
+    private final ZLinkStreamCompressionCodec compressionCodec;
     private final Predicate<RoutingId> sessionRelayRouteReady;
     private final ZLinkSessionActorsRuntime.LocalActorDispatcher localActorDispatcher;
     private final List<ZLinkBackendStreamSocket> streams = new ArrayList<>();
@@ -105,6 +108,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             registration.dispatchOptions(), handlerFactory, this.handlerExecutor);
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.defaultCodec = defaultCodec(registration);
+        this.compressionCodec = registration.streamCompressionCodec();
         this.sessionRelayRouteReady =
             sessionRelayRouteReady == null ? ignored -> true : sessionRelayRouteReady;
         this.localActorDispatcher = spots == null ? null : spots::dispatchLocalSessionActor;
@@ -185,7 +189,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     : systems.zlink.framework.configuration.ZLinkDispatchMessageKind.SEND,
                 streamHeader.packetName(), null, null, corr, null, null, null, null));
         }
-        Message payloadCopy = Message.from(decodePayload(streamHeader, payload));
+        Message payloadCopy = Message.from(decodePayload(streamHeader, payload, compressionCodec));
         ZLinkMessage sessionPayload = ZLinkMessage.fromEncoded(
             ZLinkMessagePayloads.encoded(payloadCopy),
             serializer);
@@ -466,7 +470,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 encoded.packetName(),
                 Map.of(),
                 false,
-                defaultCodec);
+                defaultCodec,
+                compressionCodec);
         }
 
         @Override
@@ -480,7 +485,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 context,
                 encoded.packetName(),
                 Map.of(),
-                false);
+                false,
+                compressionCodec);
         }
     }
 
@@ -491,7 +497,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         String packetName,
         Map<String, String> metadata,
         boolean compressed,
-        ZLinkStreamCodec codec) implements ZLinkSessionSendCall {
+        ZLinkStreamCodec codec,
+        ZLinkStreamCompressionCodec compressionCodec) implements ZLinkSessionSendCall {
         @Override
         public ZLinkSessionSendCall metadata(String key, String value) {
             Map<String, String> next = new HashMap<>(metadata);
@@ -503,7 +510,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 packetName,
                 Map.copyOf(next),
                 compressed,
-                codec);
+                codec,
+                compressionCodec);
         }
 
         @Override
@@ -518,7 +526,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 messageName,
                 metadata,
                 compressed,
-                codec);
+                codec,
+                compressionCodec);
         }
 
         @Override
@@ -530,12 +539,13 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 packetName,
                 metadata,
                 true,
-                codec);
+                codec,
+                compressionCodec);
         }
 
         @Override
         public CompletionStage<Void> submit() {
-            EncodedStreamPayload encoded = encodePayload(payload, compressed);
+            EncodedStreamPayload encoded = encodePayload(payload, compressed, compressionCodec);
             ZLinkStreamHeader header = new ZLinkStreamHeader(
                 ZLinkStreamMessageKind.SEND,
                 codec,
@@ -565,17 +575,26 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         DefaultSessionContext context,
         String packetName,
         Map<String, String> metadata,
-        boolean compressed) implements ZLinkSessionReplyCall {
+        boolean compressed,
+        ZLinkStreamCompressionCodec compressionCodec) implements ZLinkSessionReplyCall {
         @Override
         public ZLinkSessionReplyCall metadata(String key, String value) {
             Map<String, String> next = new HashMap<>(metadata);
             next.put(key, value);
-            return new SessionReplyCall(stream, routingId, payload, context, packetName, Map.copyOf(next), compressed);
+            return new SessionReplyCall(
+                stream,
+                routingId,
+                payload,
+                context,
+                packetName,
+                Map.copyOf(next),
+                compressed,
+                compressionCodec);
         }
 
         @Override
         public ZLinkSessionReplyCall compress() {
-            return new SessionReplyCall(stream, routingId, payload, context, packetName, metadata, true);
+            return new SessionReplyCall(stream, routingId, payload, context, packetName, metadata, true, compressionCodec);
         }
 
         @Override
@@ -586,7 +605,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 return CompletableFuture.failedFuture(new IllegalStateException(
                     "Reply is only available while handling a request packet."));
             }
-            EncodedStreamPayload encoded = encodePayload(payload, compressed);
+            EncodedStreamPayload encoded = encodePayload(payload, compressed, compressionCodec);
             List<Message> parts = List.of(Message.from(encoded.payload()));
             try {
                 ZLinkStreamHeader current = currentHeader.get();
@@ -621,22 +640,38 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             .orElse(ZLinkStreamCodec.JSON);
     }
 
-    private static EncodedStreamPayload encodePayload(Message payload, boolean compress) {
+    private static EncodedStreamPayload encodePayload(
+        Message payload,
+        boolean compress,
+        ZLinkStreamCompressionCodec compressionCodec) {
         byte[] bytes = payload.toByteArray();
         if (!compress) {
             return new EncodedStreamPayload(bytes, EnumSet.noneOf(ZLinkStreamHeaderFlag.class));
         }
+        if (compressionCodec == null) {
+            throw new IllegalStateException("compression codec is not configured");
+        }
         return new EncodedStreamPayload(
-            ZLinkStreamLz4Pickler.pickle(bytes),
+            compressionCodec.compress(bytes),
             EnumSet.of(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
     }
 
-    private static byte[] decodePayload(ZLinkStreamHeader header, Message payload) {
+    private static byte[] decodePayload(
+        ZLinkStreamHeader header,
+        Message payload,
+        ZLinkStreamCompressionCodec compressionCodec) {
         byte[] bytes = payload.toByteArray();
         if (!header.flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED)) {
             return bytes;
         }
-        return ZLinkStreamLz4Pickler.unpickle(bytes);
+        if (compressionCodec == null) {
+            throw new IllegalStateException("compression codec is not configured");
+        }
+        byte[] decoded = compressionCodec.decompress(bytes, DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE);
+        if (decoded.length > DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE) {
+            throw new IllegalStateException("decompressed stream payload exceeds maximum stream payload size");
+        }
+        return decoded;
     }
 
     private record EncodedStreamPayload(

@@ -38,6 +38,7 @@ class stream_state_t
     std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>
       transport_writer;
     serializer_registry_t *serializers = nullptr;
+    std::shared_ptr<const stream_compression_codec_t> compression_codec;
 };
 
 class stream_runtime_state_t
@@ -47,6 +48,8 @@ class stream_runtime_state_t
     std::uint64_t next_session_id = 1;
     dispatch_options_t dispatch;
     serializer_registry_t *serializers = nullptr;
+    std::shared_ptr<const stream_compression_codec_t> compression_codec =
+      lz4_stream_compression_codec ();
 };
 
 class stream_runtime_t

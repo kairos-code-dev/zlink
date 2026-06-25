@@ -26,12 +26,13 @@ internal sealed class ZLinkActorReply(
     public static ZLinkActorReply FromPayload(
         ZlinkStreamCodec codec,
         byte[] payload,
-        ZLinkSpotActorReplyOptionsSnapshot options)
+        ZLinkSpotActorReplyOptionsSnapshot options,
+        IZlinkStreamCompressionCodec? compressionCodec)
     {
         var flags = ZlinkStreamHeaderFlags.None;
         if (options.CompressPayload)
         {
-            payload = ZLinkStreamProtocolDefaults.Lz4Compress(payload).ToArray();
+            payload = ZLinkStreamProtocolDefaults.Compress(compressionCodec, payload).ToArray();
             flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
         }
 

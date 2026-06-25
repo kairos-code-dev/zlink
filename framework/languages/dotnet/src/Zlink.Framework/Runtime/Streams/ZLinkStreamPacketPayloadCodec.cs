@@ -10,7 +10,8 @@ internal static class ZLinkStreamPacketPayloadCodec
         ZlinkStreamHeader header,
         Message payloadMessage,
         Type messageType,
-        ZLinkCodecRegistryBuilder codecs)
+        ZLinkCodecRegistryBuilder codecs,
+        IZlinkStreamCompressionCodec? compressionCodec)
     {
         if (messageType == typeof(Message))
         {
@@ -20,7 +21,7 @@ internal static class ZLinkStreamPacketPayloadCodec
         var payload = payloadMessage.AsReadOnlyMemory();
         if ((header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0)
         {
-            payload = ZLinkStreamProtocolDefaults.Lz4Decompress(payload);
+            payload = ZLinkStreamProtocolDefaults.Decompress(compressionCodec, payload);
         }
 
         if (messageType == typeof(ZlinkStreamEncodedPayload))
@@ -72,12 +73,13 @@ internal static class ZLinkStreamPacketPayloadCodec
     public static ZLinkMessage DecodeMessage(
         ZlinkStreamHeader header,
         Message payloadMessage,
-        ZLinkCodecRegistryBuilder codecs)
+        ZLinkCodecRegistryBuilder codecs,
+        IZlinkStreamCompressionCodec? compressionCodec)
     {
         var payload = payloadMessage.AsReadOnlyMemory();
         if ((header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0)
         {
-            payload = ZLinkStreamProtocolDefaults.Lz4Decompress(payload);
+            payload = ZLinkStreamProtocolDefaults.Decompress(compressionCodec, payload);
         }
 
         return ZLinkMessage.FromStreamPayload(header.Codec, payload.ToArray(), codecs);

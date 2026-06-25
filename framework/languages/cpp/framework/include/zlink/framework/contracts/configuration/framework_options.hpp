@@ -1264,6 +1264,52 @@ class stream_node_options_builder_t
     bool _session_configured = false;
 };
 
+class stream_compression_options_builder_t
+{
+  public:
+    explicit stream_compression_options_builder_t (
+      std::shared_ptr<detail::framework_options_state_t> options) :
+        _options (std::move (options))
+    {
+    }
+
+    stream_compression_options_builder_t &use_default () { return use_lz4 (); }
+
+    stream_compression_options_builder_t &use_lz4 ()
+    {
+        return use (lz4_stream_compression_codec ());
+    }
+
+    stream_compression_options_builder_t &
+    use (std::shared_ptr<const stream_compression_codec_t> codec)
+    {
+        if (!codec) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "STREAM compression codec must not be null");
+        }
+        set (std::move (codec));
+        return *this;
+    }
+
+    stream_compression_options_builder_t &disable ()
+    {
+        set (nullptr);
+        return *this;
+    }
+
+  private:
+    void set (std::shared_ptr<const stream_compression_codec_t> codec)
+    {
+        _options->set_zlink_action (
+          "stream_compression",
+          [codec = std::move (codec)] (zlink_builder_t &zlink) mutable {
+              detail::apply_stream_compression_codec (zlink, std::move (codec));
+          });
+    }
+
+    std::shared_ptr<detail::framework_options_state_t> _options;
+};
+
 class zlink_framework_options_t
 {
   public:
@@ -1386,6 +1432,11 @@ class zlink_framework_options_t
     stream_node_options_builder_t add_stream_node (std::string stream_name)
     {
         return stream_node_options_builder_t (std::move (stream_name), *_services, _options);
+    }
+
+    stream_compression_options_builder_t configure_stream_compression ()
+    {
+        return stream_compression_options_builder_t (_options);
     }
 
     monitoring_builder_t &monitoring () noexcept { return *_monitoring; }

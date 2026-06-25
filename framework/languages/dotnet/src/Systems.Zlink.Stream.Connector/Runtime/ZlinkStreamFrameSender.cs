@@ -150,13 +150,21 @@ internal sealed class ZlinkStreamFrameSender(
         if (options.Compression == ZlinkStreamCompression.None || compressionCodec is null)
         {
             throw ZlinkStreamConnector.Error(
-                ZlinkStreamErrorCode.FrameDecodeFailed,
-                "Compressed payload received without a compression codec.");
+                ZlinkStreamErrorCode.DecompressionFailed,
+                "Compression codec is not configured.");
         }
 
         try
         {
-            return compressionCodec.Decompress(payload);
+            var decompressed = compressionCodec.Decompress(payload, options.MaxReceivePayloadSize);
+            if (decompressed.Length > options.MaxReceivePayloadSize)
+            {
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.FrameTooLarge,
+                    "Decompressed payload exceeds MaxReceivePayloadSize.");
+            }
+
+            return decompressed;
         }
         catch (Exception ex)
         {

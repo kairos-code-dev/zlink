@@ -184,7 +184,7 @@ public sealed partial class StreamConnectorTests
             var compressedPacket = await ReadPacketAsync(stream);
             var compressedHeader = headerCodec.Decode(compressedPacket.Header);
             Assert.True(compressedHeader.Flags.HasFlag(ZlinkStreamHeaderFlags.PayloadCompressed));
-            var payload = compressionCodec.Decompress(compressedPacket.Payload);
+            var payload = compressionCodec.Decompress(compressedPacket.Payload, 64 * 1024);
             var decoded = JsonSerializer.Deserialize<Ping>(payload.Span, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             Assert.Equal("compressed", decoded?.Text);
         });
@@ -192,8 +192,7 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
-            Heartbeat = DisabledHeartbeat(),
-            Compression = ZlinkStreamCompression.Lz4
+            Heartbeat = DisabledHeartbeat()
         });
         await connector.Connect.Async();
 

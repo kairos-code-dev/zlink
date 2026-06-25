@@ -777,9 +777,6 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     private byte[] encodePayload(ZLinkStreamEncodedPayload payload, boolean compress) {
-        if (compress && options.compression() != ZLinkStreamCompression.LZ4) {
-            throw new IllegalStateException("compression codec is not configured");
-        }
         byte[] body = drainPayload(payload);
         if (body.length > options.maxSendPayloadSize()) {
             throw new IllegalArgumentException("payload exceeds max payload size");
@@ -787,17 +784,26 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (!compress) {
             return body;
         }
-        return ZLinkStreamLz4Pickler.pickle(body);
+        ZLinkStreamCompressionCodec codec = options.compressionCodec();
+        if (codec == null) {
+            throw new IllegalStateException("compression codec is not configured");
+        }
+        return codec.compress(body);
     }
 
     private byte[] decodePayload(ZLinkStreamWireProtocol.Header header, byte[] payload) {
         if ((header.flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED) == 0) {
             return payload;
         }
-        if (options.compression() != ZLinkStreamCompression.LZ4) {
+        ZLinkStreamCompressionCodec codec = options.compressionCodec();
+        if (codec == null) {
             throw new IllegalStateException("compression codec is not configured");
         }
-        return ZLinkStreamLz4Pickler.unpickle(payload, options.maxReceivePayloadSize());
+        byte[] decoded = codec.decompress(payload, options.maxReceivePayloadSize());
+        if (decoded.length > options.maxReceivePayloadSize()) {
+            throw new IllegalStateException("decompressed stream payload exceeds maximum stream payload size");
+        }
+        return decoded;
     }
 
     private static ZLinkStreamEncodedPayload copyPayload(

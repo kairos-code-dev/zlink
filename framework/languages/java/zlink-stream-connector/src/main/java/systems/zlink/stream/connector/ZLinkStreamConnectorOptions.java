@@ -21,6 +21,7 @@ public record ZLinkStreamConnectorOptions(
     double reconnectBackoffFactor,
     boolean skipServerCertificateValidation,
     ZLinkStreamCompression compression,
+    ZLinkStreamCompressionCodec compressionCodec,
     ZLinkStreamPacketNameResolver nameResolver,
     ZLinkStreamTypedCodec typedCodec) {
     public static final int UNLIMITED_RECONNECT_ATTEMPTS = -1;
@@ -42,14 +43,20 @@ public record ZLinkStreamConnectorOptions(
             Duration.ofSeconds(5),
             2.0,
             false,
-            ZLinkStreamCompression.NONE,
+            ZLinkStreamCompression.LZ4,
             ZLinkStreamPacketNameResolver.defaultResolver(),
             null);
     }
 
     public ZLinkStreamConnectorOptions {
         if (compression == null) {
-            compression = ZLinkStreamCompression.NONE;
+            compression = ZLinkStreamCompression.LZ4;
+        }
+        if (compression == ZLinkStreamCompression.NONE && compressionCodec != null) {
+            throw new IllegalArgumentException("compressionCodec cannot be set when compression is none");
+        }
+        if (compression == ZLinkStreamCompression.LZ4 && compressionCodec == null) {
+            compressionCodec = ZLinkStreamCompressionCodecs.lz4();
         }
         if (nameResolver == null) {
             nameResolver = ZLinkStreamPacketNameResolver.defaultResolver();
@@ -96,6 +103,7 @@ public record ZLinkStreamConnectorOptions(
             reconnectBackoffFactor,
             skipServerCertificateValidation,
             compression,
+            null,
             nameResolver,
             typedCodec);
     }
@@ -169,7 +177,7 @@ public record ZLinkStreamConnectorOptions(
             reconnectMaxDelay,
             reconnectBackoffFactor,
             skipServerCertificateValidation,
-            ZLinkStreamCompression.NONE,
+            ZLinkStreamCompression.LZ4,
             ZLinkStreamPacketNameResolver.defaultResolver(),
             null);
     }
@@ -243,7 +251,7 @@ public record ZLinkStreamConnectorOptions(
             reconnectMaxDelay,
             reconnectBackoffFactor,
             skipServerCertificateValidation,
-            ZLinkStreamCompression.NONE,
+            ZLinkStreamCompression.LZ4,
             nameResolver,
             null);
     }
@@ -279,7 +287,7 @@ public record ZLinkStreamConnectorOptions(
             reconnectMaxDelay,
             reconnectBackoffFactor,
             false,
-            ZLinkStreamCompression.NONE,
+            ZLinkStreamCompression.LZ4,
             ZLinkStreamPacketNameResolver.defaultResolver(),
             typedCodec);
     }
@@ -314,7 +322,7 @@ public record ZLinkStreamConnectorOptions(
             reconnectMaxDelay,
             reconnectBackoffFactor,
             false,
-            ZLinkStreamCompression.NONE,
+            ZLinkStreamCompression.LZ4,
             ZLinkStreamPacketNameResolver.defaultResolver(),
             null);
     }

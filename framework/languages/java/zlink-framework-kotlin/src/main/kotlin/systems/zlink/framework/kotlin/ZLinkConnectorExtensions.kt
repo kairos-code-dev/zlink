@@ -11,12 +11,57 @@ import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 import systems.zlink.stream.connector.ZLinkStreamError
 import systems.zlink.stream.connector.ZLinkStreamLifecycleCall
 import systems.zlink.stream.connector.ZLinkStreamMessage
+import systems.zlink.stream.connector.ZLinkStreamCompression
+import systems.zlink.stream.connector.ZLinkStreamCompressionCodec
+import systems.zlink.stream.connector.ZLinkStreamCompressionCodecs
 import systems.zlink.stream.connector.ZLinkStreamRequestCall
 import systems.zlink.stream.connector.ZLinkStreamSendCall
+import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamWaitCall
 
 fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector =
     ZLinkKotlinStreamConnector(this)
+
+fun ZLinkStreamConnectorOptions.withDefaultStreamCompression(): ZLinkStreamConnectorOptions =
+    withStreamCompression(ZLinkStreamCompressionCodecs.lz4())
+
+fun ZLinkStreamConnectorOptions.withLz4StreamCompression(): ZLinkStreamConnectorOptions =
+    withDefaultStreamCompression()
+
+fun ZLinkStreamConnectorOptions.withStreamCompression(
+    codec: ZLinkStreamCompressionCodec,
+): ZLinkStreamConnectorOptions =
+    copyStreamCompression(ZLinkStreamCompression.LZ4, codec)
+
+fun ZLinkStreamConnectorOptions.withoutStreamCompression(): ZLinkStreamConnectorOptions =
+    copyStreamCompression(ZLinkStreamCompression.NONE, null)
+
+private fun ZLinkStreamConnectorOptions.copyStreamCompression(
+    compression: ZLinkStreamCompression,
+    codec: ZLinkStreamCompressionCodec?,
+): ZLinkStreamConnectorOptions =
+    ZLinkStreamConnectorOptions(
+        endpoint(),
+        dispatchMode(),
+        requestTimeout(),
+        waitTimeout(),
+        maxReconnectAttempts(),
+        connectTimeout(),
+        maxSendPayloadSize(),
+        maxReceivePayloadSize(),
+        heartbeatEnabled(),
+        heartbeatInterval(),
+        heartbeatTimeout(),
+        reconnectEnabled(),
+        reconnectInitialDelay(),
+        reconnectMaxDelay(),
+        reconnectBackoffFactor(),
+        skipServerCertificateValidation(),
+        compression,
+        codec,
+        nameResolver(),
+        typedCodec(),
+    )
 
 class ZLinkKotlinStreamConnector(
     @PublishedApi

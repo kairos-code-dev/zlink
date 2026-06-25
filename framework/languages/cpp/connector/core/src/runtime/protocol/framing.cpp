@@ -139,14 +139,18 @@ std::optional<packet_t> read_stream_packet (connector_state_t &state)
     const bool compressed = has_flag (header.flags, header_flags_t::payload_compressed);
     auto payload = message_from_bytes (payload_bytes);
     if (compressed) {
-        if (state.options.compression != compression_t::lz4) {
-            throw std::runtime_error ("stream connector compression is not configured");
+        if (!state.compression_codec) {
+            throw std::runtime_error ("stream connector compression codec is not configured");
         }
-        if (!state.lz4_enabled) {
+        if (state.options.compression == compression_t::lz4 && !state.lz4_enabled) {
             throw std::runtime_error ("LZ4 compression is not enabled");
         }
-        payload =
-          lz4_compression_codec_t{}.decompress (payload, state.options.max_receive_payload_size);
+        payload = state.compression_codec->decompress (payload,
+                                                       state.options.max_receive_payload_size);
+        if (payload.size () > state.options.max_receive_payload_size) {
+            throw std::runtime_error (
+              "decompressed stream payload exceeds maximum stream payload size");
+        }
     }
     packet_t packet;
     packet.name = std::move (header.name);

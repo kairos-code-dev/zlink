@@ -70,8 +70,16 @@ internal sealed partial class ZLinkEntrySpotActivation :
                 $"Entry SPOT '{entrySpotType.FullName}' must expose the context provided by the runtime.");
         }
 
-        _invoker = new ZLinkSpotHandlerInvoker(_scope.ServiceProvider, EntrySpot, _runtime.Registration.Codecs);
-        _handlerExecutor = new ZLinkEntrySpotHandlerExecutor(services, EntrySpot, _runtime.Registration.Codecs);
+        _invoker = new ZLinkSpotHandlerInvoker(
+            _scope.ServiceProvider,
+            EntrySpot,
+            _runtime.Registration.Codecs,
+            _runtime.Registration.StreamCompressionCodec);
+        _handlerExecutor = new ZLinkEntrySpotHandlerExecutor(
+            services,
+            EntrySpot,
+            _runtime.Registration.Codecs,
+            _runtime.Registration.StreamCompressionCodec);
         _actorHandlers = new ZLinkSpotActorHandlerRegistry(
             ZLinkSpotActorHandlerSurface.EntrySpot,
             EntrySpot.GetType());

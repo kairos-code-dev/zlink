@@ -1,6 +1,9 @@
+using System.Buffers.Binary;
 using System.Text;
 using K4os.Compression.LZ4;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore.Monitoring;
+using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.UnitTests.Runtime;
@@ -14,6 +17,76 @@ public sealed class CoverageCriticalRuntimeTests
 
         Assert.Throws<InvalidOperationException>(() =>
             ZLinkStreamProtocolDefaults.Lz4Decompress(compressed));
+    }
+
+    [Fact]
+    public void StreamSendBuilderUsesConfiguredCompressionCodec()
+    {
+        var compression = new PrefixCompressionCodec();
+        var builder = new ZLinkStreamSendBuilder<CompressionProbe>(
+            new CompressionProbe("hello"),
+            new ZLinkCodecRegistryBuilder(),
+            compression);
+        ZlinkStreamHeader? capturedHeader = null;
+        byte[]? capturedFrame = null;
+
+        builder.EnableCompression();
+        builder.Write(
+            (codec, flags, name, metadata) =>
+            {
+                capturedHeader = new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    codec,
+                    flags,
+                    null,
+                    name,
+                    metadata);
+                return capturedHeader;
+            },
+            message =>
+            {
+                capturedFrame = message.ToArray();
+                return true;
+            },
+            "send failed");
+
+        Assert.NotNull(capturedHeader);
+        Assert.True(capturedHeader.Flags.HasFlag(ZlinkStreamHeaderFlags.PayloadCompressed));
+        Assert.NotNull(capturedFrame);
+        var headerLength = BinaryPrimitives.ReadUInt16BigEndian(capturedFrame.AsSpan(0, 2));
+        Assert.Equal(PrefixCompressionCodec.Marker, capturedFrame[6 + headerLength]);
+    }
+
+    [Fact]
+    public void StreamPayloadDecodeUsesConfiguredCompressionCodecAndRuntimeLimit()
+    {
+        var compression = new PrefixCompressionCodec();
+        var payload = compression.Compress(
+            ZLinkStreamPacketPayloadCodec.EncodeJson(new CompressionProbe("hello"), typeof(CompressionProbe)));
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.PayloadCompressed,
+            null,
+            nameof(CompressionProbe),
+            ZlinkStreamMetadata.Empty);
+
+        using var message = Message.From(payload.Span);
+        var decoded = ZLinkStreamPacketPayloadCodec.DecodeMessage(
+            header,
+            message,
+            new ZLinkCodecRegistryBuilder(),
+            compression);
+
+        Assert.Equal(new CompressionProbe("hello"), decoded.Decode<CompressionProbe>());
+
+        using var oversized = Message.From([0x01]);
+        Assert.Throws<InvalidOperationException>(() =>
+            ZLinkStreamPacketPayloadCodec.DecodeMessage(
+                header,
+                oversized,
+                new ZLinkCodecRegistryBuilder(),
+                new OversizedCompressionCodec()));
     }
 
     [Fact]
@@ -171,5 +244,39 @@ public sealed class CoverageCriticalRuntimeTests
         Assert.Equal(2UL, continuing.TimerDiagnostic!.Value.DeliveryIndex);
         Assert.Contains("InvalidOperationException", continuing.TimerDiagnostic!.Value.ExceptionType);
         Assert.Equal("stop", stopped.TimerDiagnostic!.Value.ExceptionMessage);
+    }
+
+    private sealed record CompressionProbe(string Text);
+
+    private sealed class PrefixCompressionCodec : IZlinkStreamCompressionCodec
+    {
+        public const byte Marker = 0x5A;
+
+        public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
+        {
+            var compressed = new byte[payload.Length + 1];
+            compressed[0] = Marker;
+            payload.CopyTo(compressed.AsMemory(1));
+            return compressed;
+        }
+
+        public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
+        {
+            if (payload.Length == 0 || payload.Span[0] != Marker)
+            {
+                throw new InvalidOperationException("Unexpected custom compression marker.");
+            }
+
+            return payload[1..].ToArray();
+        }
+    }
+
+    private sealed class OversizedCompressionCodec : IZlinkStreamCompressionCodec
+    {
+        public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
+            => payload;
+
+        public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
+            => new byte[maxDecompressedPayloadSize + 1];
     }
 }

@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace zlink::stream_connector::detail
 {
@@ -108,3 +109,14 @@ lz4_compression_codec_t::decompress (const zlink::message_t &payload,
 }
 
 } // namespace zlink::stream_connector::detail
+
+namespace zlink::stream_connector
+{
+
+std::shared_ptr<const compression_codec_t> lz4_compression_codec ()
+{
+    static const auto codec = std::make_shared<const detail::lz4_compression_codec_t> ();
+    return codec;
+}
+
+} // namespace zlink::stream_connector

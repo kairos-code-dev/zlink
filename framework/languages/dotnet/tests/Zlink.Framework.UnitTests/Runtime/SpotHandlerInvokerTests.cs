@@ -22,7 +22,8 @@ public sealed class SpotHandlerInvokerTests
         var invoker = new ZLinkSpotHandlerInvoker(
             new ServiceCollection().BuildServiceProvider(),
             spot,
-            new ZLinkCodecRegistryBuilder());
+            new ZLinkCodecRegistryBuilder(),
+            ZLinkStreamProtocolDefaults.CreateLz4CompressionCodec());
 
         await invoker.InvokeActorLifecycleAsync(
             descriptor,
@@ -58,7 +59,8 @@ public sealed class SpotHandlerInvokerTests
         var invoker = new ZLinkSpotHandlerInvoker(
             new ServiceCollection().BuildServiceProvider(),
             spot,
-            new ZLinkCodecRegistryBuilder());
+            new ZLinkCodecRegistryBuilder(),
+            ZLinkStreamProtocolDefaults.CreateLz4CompressionCodec());
 
         var reply = await invoker.InvokeActorJoinAsync(
             descriptor,

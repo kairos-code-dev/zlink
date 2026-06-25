@@ -24,12 +24,19 @@ stream node 하나에 session 하나를 붙인다. 한 stream node에 session을
 ZLinkFrameworkConfigurer { options ->
     options.useCoroutineHandlers(Dispatchers.Default)
     options.codecs().use(ZLinkProtobufCodec.defaultCodec())
+    options.configureStreamCompression {
+        useLz4() // 이 stream server가 compressed frame을 보낼 때와 받을 때 사용할 codec
+    }
 
     val stream = options.addStreamNode("client.stream")
     stream.bind("tcp://0.0.0.0:9100")
     stream.registerSession(GameSession::class.java)
 }
 ```
+
+압축 설정을 생략하면 LZ4가 기본값이다. 이 기본값은 모든 frame을 자동으로 압축한다는 뜻이 아니다.
+응용이 send/reply call에서 compression을 요청한 frame만 압축된다. compressed frame을 주고받는
+connector와 server는 같은 compression codec을 설정해야 한다.
 
 ### session 작성
 
@@ -107,6 +114,33 @@ connector.connect().await()           // suspend, non-blocking
 connector.send(payload).await()
 ```
 
+connector 쪽도 같은 codec을 설정한다. Kotlin 확장은 기존 Java options를 복사해 compression 설정만
+바꾼다.
+
+```kotlin
+val connector = ZLinkStreamConnectorFactory.create(
+    ZLinkStreamConnectorOptions.createDefault(URI.create("tcp://127.0.0.1:9100"))
+        .withLz4StreamCompression(), // server의 configureStreamCompression 설정과 맞춘다
+).kotlin()
+```
+
+custom compression을 쓸 때도 server와 connector에 같은 구현을 넣는다.
+
+```kotlin
+val codec = MyStreamCompressionCodec()
+
+ZLinkFrameworkConfigurer { options ->
+    options.configureStreamCompression {
+        use(codec) // 이 server runtime의 활성 compression codec
+    }
+}
+
+val connector = ZLinkStreamConnectorFactory.create(
+    ZLinkStreamConnectorOptions.createDefault(URI.create("tcp://127.0.0.1:9100"))
+        .withStreamCompression(codec), // 같은 codec으로 압축된 frame만 복원할 수 있다
+).kotlin()
+```
+
 요청-응답형은 `waitFor`/`request`의 suspend `await()`를 쓴다.
 
 ```kotlin
@@ -135,6 +169,9 @@ connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZLinkStream
 주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽 등록(`codecs().addSerializer(...)`)과
 대칭이며, 두 표면의 전체 목록은
 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
+
+payload codec과 compression codec은 서로 다른 설정이다. payload codec은 DTO와 bytes 사이를 바꾸고,
+compression codec은 이미 만들어진 bytes를 전송 전에 압축하거나 수신 후 복원한다.
 
 ## 3. 자주 막히는 곳
 

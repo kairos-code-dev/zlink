@@ -12,7 +12,6 @@ using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
-using Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
 using Zlink.Framework.Codecs.MessagePack;
@@ -90,7 +89,6 @@ public sealed partial class StreamConnectorTests
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             Heartbeat = DisabledHeartbeat(),
-            Compression = ZlinkStreamCompression.Lz4,
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         using var subscription = connector.On<Pong>("pong", (message, _) =>
@@ -111,11 +109,239 @@ public sealed partial class StreamConnectorTests
     {
         var source = Encoding.UTF8.GetBytes(new string('A', 1024));
         var compressed = ZlinkStreamDefaultCodecFactory.Lz4Compression().Compress(source);
-        var codec = new ZlinkStreamLz4CompressionCodec(maxDecompressedPayloadSize: 64);
+        var codec = ZlinkStreamDefaultCodecFactory.Lz4Compression();
 
-        var exception = Assert.Throws<ZlinkStreamException>(() => codec.Decompress(compressed));
+        var exception = Assert.Throws<ZlinkStreamException>(() => codec.Decompress(compressed, 64));
 
         Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
+    }
+
+    [Fact]
+    public async Task ConnectorUsesCustomCompressionCodecForOutboundFrame()
+    {
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var compressionCodec = new PrefixCompressionCodec();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var packet = await ReadPacketAsync(stream);
+            var header = headerCodec.Decode(packet.Header);
+            Assert.True(header.Flags.HasFlag(ZlinkStreamHeaderFlags.PayloadCompressed));
+            Assert.Equal(PrefixCompressionCodec.Marker, packet.Payload[0]);
+            var restored = compressionCodec.Decompress(packet.Payload, 64 * 1024);
+            var decoded = JsonSerializer.Deserialize<Ping>(
+                restored.Span,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Assert.Equal("custom", decoded?.Text);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            CompressionCodec = compressionCodec
+        });
+        await connector.Connect.Async();
+
+        await connector.Send(new Ping("custom"))
+            .PacketName("custom")
+            .Compress()
+            .Async();
+        await server;
+    }
+
+    [Fact]
+    public async Task ConnectorUsesCustomCompressionCodecForInboundFrame()
+    {
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var compressionCodec = new PrefixCompressionCodec();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var received = new TaskCompletionSource<Pong>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var header = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.PayloadCompressed,
+                null,
+                "custom-pong",
+                ZlinkStreamMetadata.Empty);
+            var payload = compressionCodec.Compress(JsonSerializer.SerializeToUtf8Bytes(new Pong("custom")));
+            await WritePacketAsync(stream, headerCodec.Encode(header).ToArray(), payload.ToArray());
+            await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            CompressionCodec = compressionCodec,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
+        });
+        using var subscription = connector.On<Pong>("custom-pong", (message, _) =>
+        {
+            received.SetResult(message.Payload);
+            return ValueTask.CompletedTask;
+        });
+
+        await connector.Connect.Async();
+
+        var reply = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("custom", reply.Text);
+        await server;
+    }
+
+    [Fact]
+    public async Task ConnectorRejectsCompressedInboundFrameWhenCompressionDisabled()
+    {
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var compressionCodec = ZlinkStreamDefaultCodecFactory.Lz4Compression();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var error = new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var header = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.PayloadCompressed,
+                null,
+                "disabled-pong",
+                ZlinkStreamMetadata.Empty);
+            var payload = compressionCodec.Compress(JsonSerializer.SerializeToUtf8Bytes(new Pong("disabled")));
+            await WritePacketAsync(stream, headerCodec.Encode(header).ToArray(), payload.ToArray());
+            await error.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            Compression = ZlinkStreamCompression.None,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
+        });
+        connector.ErrorReceived += (receivedError, _) =>
+        {
+            error.TrySetResult(receivedError);
+            return ValueTask.CompletedTask;
+        };
+        using var subscription = connector.On<Pong>("disabled-pong", (_, _) =>
+            throw new InvalidOperationException("Handler must not receive compressed payload when compression is disabled."));
+
+        await connector.Connect.Async();
+
+        var receivedError = await error.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ZlinkStreamErrorCode.DecompressionFailed, receivedError.Code);
+        Assert.Contains("compression codec", receivedError.Message, StringComparison.OrdinalIgnoreCase);
+        await server;
+    }
+
+    [Fact]
+    public void ConnectorRejectsCustomCompressionCodecWhenCompressionIsDisabled()
+    {
+        var exception = Assert.Throws<ZlinkStreamException>(() =>
+            ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:12345"),
+                Compression = ZlinkStreamCompression.None,
+                CompressionCodec = new PrefixCompressionCodec()
+            }));
+
+        Assert.Equal(ZlinkStreamErrorCode.ConfigurationError, exception.Error.Code);
+    }
+
+    [Fact]
+    public async Task ConnectorAppliesRuntimeReceiveLimitAfterCustomDecompression()
+    {
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var compressionCodec = new OversizedCompressionCodec();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var error = new TaskCompletionSource<ZlinkStreamError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            var header = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.PayloadCompressed,
+                null,
+                "oversized",
+                ZlinkStreamMetadata.Empty);
+            await WritePacketAsync(stream, headerCodec.Encode(header).ToArray(), [1]);
+            await error.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            CompressionCodec = compressionCodec,
+            MaxReceivePayloadSize = 8,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
+        });
+        connector.ErrorReceived += (receivedError, _) =>
+        {
+            error.TrySetResult(receivedError);
+            return ValueTask.CompletedTask;
+        };
+
+        await connector.Connect.Async();
+
+        var receivedError = await error.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ZlinkStreamErrorCode.DecompressionFailed, receivedError.Code);
+        await server;
+    }
+
+    private sealed class PrefixCompressionCodec : IZlinkStreamCompressionCodec
+    {
+        public const byte Marker = 0x7A;
+
+        public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
+        {
+            var compressed = new byte[payload.Length + 1];
+            compressed[0] = Marker;
+            payload.CopyTo(compressed.AsMemory(1));
+            return compressed;
+        }
+
+        public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
+        {
+            if (payload.Length == 0 || payload.Span[0] != Marker)
+            {
+                throw new InvalidOperationException("Unexpected custom compression marker.");
+            }
+
+            var restored = payload[1..].ToArray();
+            if (restored.Length > maxDecompressedPayloadSize)
+            {
+                throw new InvalidOperationException("Custom decoded payload exceeds limit.");
+            }
+
+            return restored;
+        }
+    }
+
+    private sealed class OversizedCompressionCodec : IZlinkStreamCompressionCodec
+    {
+        public ReadOnlyMemory<byte> Compress(ReadOnlyMemory<byte> payload)
+            => payload;
+
+        public ReadOnlyMemory<byte> Decompress(ReadOnlyMemory<byte> payload, int maxDecompressedPayloadSize)
+            => new byte[maxDecompressedPayloadSize + 1];
     }
 
 }

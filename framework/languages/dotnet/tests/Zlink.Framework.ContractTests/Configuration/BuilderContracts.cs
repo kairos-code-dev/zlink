@@ -1,3 +1,4 @@
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.ContractTests.Support;
 using Zlink.Framework.Contracts.Workers;
 
@@ -10,6 +11,7 @@ public sealed class BuilderContracts
         typeof(IZLinkFrameworkOptions),
         typeof(IZLinkDiscoveryBuilder),
         typeof(IZLinkMetadataPolicyBuilder),
+        typeof(IZLinkStreamCompressionBuilder),
         typeof(IZLinkRegistrySpotRemoteAddressesOptions))]
     public void Framework_options_register_the_top_level_runtime_surface()
     {
@@ -257,6 +259,11 @@ public sealed class BuilderContracts
             return new ConnectionAndConfigContracts.DispatchOptions();
         }
 
+        public IZLinkStreamCompressionBuilder ConfigureStreamCompression()
+        {
+            return new StreamCompressionBuilder();
+        }
+
         public IZLinkStreamNodeBuilder AddStreamNode(string streamNodeName)
         {
             StreamNodes.Add(streamNodeName);
@@ -309,6 +316,17 @@ public sealed class BuilderContracts
         public TimeSpan IdleTimeout { get; set; }
 
         public int MaxQueueLength { get; set; }
+    }
+
+    private sealed class StreamCompressionBuilder : IZLinkStreamCompressionBuilder
+    {
+        public IZLinkStreamCompressionBuilder UseDefault() => this;
+
+        public IZLinkStreamCompressionBuilder UseLz4() => this;
+
+        public IZLinkStreamCompressionBuilder Use(IZlinkStreamCompressionCodec codec) => this;
+
+        public IZLinkStreamCompressionBuilder Disable() => this;
     }
 
     private sealed class MetadataPolicyBuilder : IZLinkMetadataPolicyBuilder

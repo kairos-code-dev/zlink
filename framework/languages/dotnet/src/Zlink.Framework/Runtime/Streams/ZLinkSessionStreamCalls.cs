@@ -4,7 +4,10 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
     ZLinkSessionContext context,
     TMessage message)
 {
-    private readonly ZLinkStreamSendBuilder<TMessage> _builder = new(message, context.Codecs);
+    private readonly ZLinkStreamSendBuilder<TMessage> _builder = new(
+        message,
+        context.Codecs,
+        context.CompressionCodec);
 
     public ZLinkSessionStreamCallBase<TMessage> Metadata(string key, string value)
     {

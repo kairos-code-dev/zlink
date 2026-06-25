@@ -283,7 +283,9 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     correlationId?: string
   ): Promise<void> {
     throwIfAborted(signal);
-    const payloadBytes = compress ? compressPayload(payload.payload, this.options.compression) : payload.payload;
+    const payloadBytes = compress
+      ? compressPayload(payload.payload, this.options.compression, this.options.compressionCodec)
+      : payload.payload;
     const header = buildHeader(kind, name, payload.codec, metadata, compress, requestSeq, correlationId);
     await this.sendFrame(header, payloadBytes, signal);
   }
@@ -392,7 +394,13 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   }
 
   private payloadForHeader(header: ZlinkStreamHeader, payload: Uint8Array): Uint8Array {
-    return decompressIfNeeded(header, payload, this.options.compression, this.options.maxReceivePayloadSize);
+    return decompressIfNeeded(
+      header,
+      payload,
+      this.options.compression,
+      this.options.compressionCodec,
+      this.options.maxReceivePayloadSize
+    );
   }
 
   private async connectWithReconnect(signal?: AbortSignal): Promise<ZlinkStreamConnection> {

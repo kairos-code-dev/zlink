@@ -1,4 +1,5 @@
 import {
+  type ZlinkStreamCompressionCodec,
   ZlinkStreamCompression,
   ZlinkStreamErrorCode
 } from '../../../Contracts';
@@ -6,32 +7,62 @@ import { ZlinkStreamHeaderFlags } from '../../../Contracts/ZlinkStreamEnums';
 import type { ZlinkStreamHeader } from '../../../Contracts/ZlinkStreamModels';
 import { connectorError } from '../../ZlinkStreamSupport';
 
-export function compressPayload(payload: Uint8Array, compression: ZlinkStreamCompression): Uint8Array {
-  if (compression === ZlinkStreamCompression.None) {
+export const zlinkStreamLz4CompressionCodec: ZlinkStreamCompressionCodec = {
+  compress(payload) {
+    return pickleUncompressed(payload);
+  },
+  decompress(payload, maxDecompressedSize) {
+    return unpickle(payload, maxDecompressedSize);
+  }
+};
+
+export function compressPayload(
+  payload: Uint8Array,
+  compression: ZlinkStreamCompression,
+  compressionCodec: ZlinkStreamCompressionCodec | undefined
+): Uint8Array {
+  const codec = resolveCompressionCodec(compression, compressionCodec);
+  if (codec === undefined) {
     throw connectorError(ZlinkStreamErrorCode.CompressionFailed, 'Compression codec is not configured.');
   }
 
-  return pickleUncompressed(payload);
+  return codec.compress(payload);
 }
 
 export function decompressIfNeeded(
   header: ZlinkStreamHeader,
   payload: Uint8Array,
   compression: ZlinkStreamCompression,
+  compressionCodec: ZlinkStreamCompressionCodec | undefined,
   maxDecompressedSize: number
 ): Uint8Array {
   if ((header.flags & ZlinkStreamHeaderFlags.PayloadCompressed) === 0) {
     return payload;
   }
-  if (compression === ZlinkStreamCompression.None) {
-    throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Compressed payload received without a compression codec.');
+  const codec = resolveCompressionCodec(compression, compressionCodec);
+  if (codec === undefined) {
+    throw connectorError(ZlinkStreamErrorCode.DecompressionFailed, 'Compression codec is not configured.');
   }
 
   try {
-    return unpickle(payload, maxDecompressedSize);
+    const decompressed = codec.decompress(payload, maxDecompressedSize);
+    if (decompressed.length > maxDecompressedSize) {
+      throw new Error('Decoded payload exceeds MaxReceivePayloadSize.');
+    }
+    return decompressed;
   } catch (cause) {
     throw connectorError(ZlinkStreamErrorCode.DecompressionFailed, 'Decompression failed.', cause);
   }
+}
+
+function resolveCompressionCodec(
+  compression: ZlinkStreamCompression,
+  compressionCodec: ZlinkStreamCompressionCodec | undefined
+): ZlinkStreamCompressionCodec | undefined {
+  if (compression === ZlinkStreamCompression.None) {
+    return undefined;
+  }
+  return compressionCodec ?? zlinkStreamLz4CompressionCodec;
 }
 
 function pickleUncompressed(payload: Uint8Array): Uint8Array {

@@ -365,6 +365,12 @@ connector_t::connector_t (connector_options_t options) :
     _state (std::make_shared<detail::connector_state_t> (std::move (options))), _codecs (_state)
 {
     auto state = detail::state_from (_state);
+    if (state->options.compression == compression_t::none) {
+        state->options.compression_codec.reset ();
+    } else if (!state->options.compression_codec) {
+        state->options.compression_codec = lz4_compression_codec ();
+    }
+    state->compression_codec = state->options.compression_codec;
 #ifndef ZLINK_STREAM_CONNECTOR_WITH_LZ4
     state->lz4_enabled = false;
 #else

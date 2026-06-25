@@ -17,6 +17,7 @@ import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder;
 import systems.zlink.framework.configuration.ZLinkRegistrySpotRemoteAddressesOptions;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
+import systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkWorkerOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -29,6 +30,8 @@ import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamBuilders;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
+import systems.zlink.framework.streams.ZLinkStreamCompressionCodecs;
 
 public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions {
     private final ZLinkFrameworkRegistration registration = new ZLinkFrameworkRegistration();
@@ -153,6 +156,11 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
+    public ZLinkStreamCompressionBuilder configureStreamCompression() {
+        return new DefaultStreamCompressionBuilder(registration);
+    }
+
+    @Override
     public ZLinkWorkerOptions configureWorkers() {
         return registration.workers();
     }
@@ -211,5 +219,31 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
             throw new ZLinkConfigurationException(label + " must be positive");
         }
         return value;
+    }
+
+    private record DefaultStreamCompressionBuilder(ZLinkFrameworkRegistration registration)
+        implements ZLinkStreamCompressionBuilder {
+        @Override
+        public ZLinkStreamCompressionBuilder useDefault() {
+            registration.useStreamCompression(ZLinkStreamCompressionCodecs.lz4());
+            return this;
+        }
+
+        @Override
+        public ZLinkStreamCompressionBuilder useLz4() {
+            return useDefault();
+        }
+
+        @Override
+        public ZLinkStreamCompressionBuilder use(ZLinkStreamCompressionCodec codec) {
+            registration.useStreamCompression(Objects.requireNonNull(codec, "codec"));
+            return this;
+        }
+
+        @Override
+        public ZLinkStreamCompressionBuilder disable() {
+            registration.useStreamCompression(null);
+            return this;
+        }
     }
 }

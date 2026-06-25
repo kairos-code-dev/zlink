@@ -63,11 +63,11 @@ result_t<void> validate_packet_limits (const connector_state_t &state, const pac
                                         "stream connector codec is not enabled");
     }
     if (packet.compressed) {
-        if (state.options.compression != compression_t::lz4) {
+        if (!state.compression_codec) {
             return result_t<void>::failure (error_code_t::compression_failed,
-                                            "stream connector compression is not configured");
+                                            "stream connector compression codec is not configured");
         }
-        if (!state.lz4_enabled) {
+        if (state.options.compression == compression_t::lz4 && !state.lz4_enabled) {
             return result_t<void>::failure (error_code_t::compression_failed,
                                             "LZ4 compression is not enabled");
         }
@@ -127,17 +127,22 @@ result_t<packet_t> decode_packet (connector_state_t &state,
     state.last_inbound_received = steady_clock_t::now ();
     const bool compressed = has_flag (header.flags, header_flags_t::payload_compressed);
     if (compressed) {
-        if (state.options.compression != compression_t::lz4) {
+        if (!state.compression_codec) {
             return result_t<packet_t>::failure (error_code_t::decompression_failed,
-                                                "stream connector compression is not configured");
+                                                "stream connector compression codec is not configured");
         }
-        if (!state.lz4_enabled) {
+        if (state.options.compression == compression_t::lz4 && !state.lz4_enabled) {
             return result_t<packet_t>::failure (error_code_t::decompression_failed,
                                                 "LZ4 compression is not enabled");
         }
         try {
-            payload = lz4_compression_codec_t{}.decompress (payload,
-                                                            state.options.max_receive_payload_size);
+            payload = state.compression_codec->decompress (payload,
+                                                           state.options.max_receive_payload_size);
+            if (payload.size () > state.options.max_receive_payload_size) {
+                return result_t<packet_t>::failure (
+                  error_code_t::decompression_failed,
+                  "decompressed stream payload exceeds maximum stream payload size");
+            }
         }
         catch (const std::exception &ex) {
             return result_t<packet_t>::failure (error_code_t::decompression_failed, ex.what ());
@@ -297,9 +302,14 @@ result_t<std::vector<std::uint8_t>> encode_packet_frame (connector_state_t &stat
     }
     const zlink::message_t *payload_message = &packet.payload;
     std::optional<zlink::message_t> compressed_payload;
-    if (packet.compressed && state.options.compression == compression_t::lz4) {
+    if (packet.compressed) {
+        if (!state.compression_codec) {
+            return result_t<std::vector<std::uint8_t>>::failure (
+              error_code_t::compression_failed,
+              "stream connector compression codec is not configured");
+        }
         try {
-            compressed_payload = lz4_compression_codec_t{}.compress (packet.payload);
+            compressed_payload = state.compression_codec->compress (packet.payload);
             payload_message = &*compressed_payload;
         }
         catch (const std::exception &ex) {

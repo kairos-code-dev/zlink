@@ -10,7 +10,9 @@
 #include "runtime/dispatch/coroutine_executor.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
+#include <stdexcept>
 #include <utility>
 
 namespace zlink::framework
@@ -30,8 +32,10 @@ class stream_write_call_state_t
 
     stream_write_call_state_t (stream_header_t header,
                                zlink::message_t payload,
+                               std::shared_ptr<const stream_compression_codec_t> compression_codec,
                                stream_write_call_t::submit_fn_t submit) :
         _header (std::move (header)), _payload (std::move (payload)), _submit (std::move (submit))
+        , _compression_codec (std::move (compression_codec))
     {
     }
 
@@ -60,7 +64,20 @@ class stream_write_call_state_t
             metadata[key] = value;
         }
         auto flags = _header->flags ();
+        auto payload = *_payload;
         if (_compressed) {
+            if (!_compression_codec) {
+                return task_t<void> (result_t<void>::failure (
+                  framework_error_kind_t::request_failed,
+                  "STREAM compression codec is not configured"));
+            }
+            try {
+                payload = _compression_codec->compress (payload);
+            }
+            catch (const std::exception &error) {
+                return task_t<void> (result_t<void>::failure (
+                  framework_error_kind_t::request_failed, error.what ()));
+            }
             flags = flags | stream_header_flags_t::payload_compressed;
         }
         const auto packet_name =
@@ -68,7 +85,7 @@ class stream_write_call_state_t
         const auto header =
           stream_header_t (_header->kind (), _header->codec (), flags, _header->request_seq (),
                            packet_name, stream_metadata_t (std::move (metadata)));
-        return _submit (header, *_payload);
+        return _submit (header, payload);
     }
 
   private:
@@ -76,6 +93,7 @@ class stream_write_call_state_t
     std::optional<stream_header_t> _header;
     std::optional<zlink::message_t> _payload;
     stream_write_call_t::submit_fn_t _submit;
+    std::shared_ptr<const stream_compression_codec_t> _compression_codec;
     stream_write_call_t::metadata_map_t _metadata;
     std::string _packet_name;
     bool _compressed = false;
@@ -129,9 +147,11 @@ stream_write_call_t::stream_write_call_t (result_t<void> result) :
 
 stream_write_call_t::stream_write_call_t (detail::stream_header_t header,
                                           zlink::message_t payload,
+                                          std::shared_ptr<const stream_compression_codec_t>
+                                            compression_codec,
                                           submit_fn_t submit) :
     _state (std::make_shared<detail::stream_write_call_state_t> (
-      std::move (header), std::move (payload), std::move (submit)))
+      std::move (header), std::move (payload), std::move (compression_codec), std::move (submit)))
 {
 }
 
@@ -344,7 +364,7 @@ stream_write_call_t stream_t::write_packet_with_header (detail::stream_header_t 
 {
     auto state = _state;
     return stream_write_call_t (
-      std::move (header), std::move (payload),
+      std::move (header), std::move (payload), state->compression_codec,
       [state] (const stream_header_t &submitted_header, const zlink::message_t &submitted_payload) {
           if (state->closed.load (std::memory_order_acquire)) {
               return task_t<void> (result_t<void>::failure (
@@ -459,6 +479,13 @@ void bind_stream_serializers (zlink_builder_t &builder, serializer_registry_t &s
     builder._state->stream_runtime->serializers = &serializers;
 }
 
+void apply_stream_compression_codec (
+  zlink_builder_t &builder,
+  std::shared_ptr<const stream_compression_codec_t> codec)
+{
+    builder._state->stream_runtime->compression_codec = std::move (codec);
+}
+
 namespace
 {
 
@@ -466,6 +493,8 @@ bool has_flag (stream_header_flags_t flags, stream_header_flags_t flag)
 {
     return (static_cast<std::uint8_t> (flags) & static_cast<std::uint8_t> (flag)) != 0;
 }
+
+constexpr std::size_t max_stream_decompressed_payload_size = 64 * 1024;
 
 bool known_kind (stream_message_kind_t kind)
 {
@@ -788,6 +817,7 @@ stream_t stream_runtime_t::open_session (std::string stream_name) const
     auto state = std::make_shared<stream_state_t> ();
     state->session_id = std::move (stream_name) + ":" + std::to_string (_state->next_session_id++);
     state->serializers = _state->serializers;
+    state->compression_codec = _state->compression_codec;
     return stream_t (state);
 }
 
@@ -813,6 +843,27 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     if (auto valid = validate_header (header); !valid) {
         return valid;
     }
+    auto handler_payload = payload;
+    if (has_flag (header.flags (), stream_header_flags_t::payload_compressed)) {
+        if (!_state->compression_codec) {
+            return result_t<void>::failure (
+              framework_error_kind_t::payload_decode_failed,
+              "STREAM compression codec is not configured");
+        }
+        try {
+            handler_payload = _state->compression_codec->decompress (
+              payload, max_stream_decompressed_payload_size);
+        }
+        catch (const std::exception &error) {
+            return result_t<void>::failure (framework_error_kind_t::payload_decode_failed,
+                                            error.what ());
+        }
+        if (handler_payload.bytes ().size () > max_stream_decompressed_payload_size) {
+            return result_t<void>::failure (
+              framework_error_kind_t::payload_decode_failed,
+              "STREAM decompressed payload exceeds configured receive limit");
+        }
+    }
     detail::message_flow_tracer_t (_state->dispatch)
       .trace (message_flow_phase_t::received, [&] {
           std::optional<std::string> correlation;
@@ -834,7 +885,7 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()), [&] {
         stream._state->current_dispatch_header = header;
         detail::enter_stream_relay_dispatch (header);
-        auto task = session.on_packet (stream, stream_dispatch_context_t (header), payload);
+        auto task = session.on_packet (stream, stream_dispatch_context_t (header), handler_payload);
         ::zlink::framework::observe_task_completion (task, [&stream] (const result_t<void> &) {
             detail::exit_stream_relay_dispatch ();
             stream._state->current_dispatch_header.reset ();

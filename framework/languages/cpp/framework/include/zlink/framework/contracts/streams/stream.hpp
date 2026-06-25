@@ -7,6 +7,7 @@
 #include <zlink/framework/contracts/messaging/message.hpp>
 
 #include <cstdint>
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
@@ -74,6 +75,17 @@ enum class stream_session_error_t
     transport_error,
     handshake_failed
 };
+
+class stream_compression_codec_t
+{
+  public:
+    virtual ~stream_compression_codec_t () = default;
+    virtual zlink::message_t compress (const zlink::message_t &payload) const = 0;
+    virtual zlink::message_t decompress (const zlink::message_t &payload,
+                                         std::size_t max_decompressed_size) const = 0;
+};
+
+std::shared_ptr<const stream_compression_codec_t> lz4_stream_compression_codec ();
 
 class stream_error_t
 {

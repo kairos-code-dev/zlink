@@ -207,16 +207,20 @@ static async Task RunRlA2Async(IZLinkChannelClient client, HttpClient http, Clie
 
 static async Task RunRlA3Async(ClientOptions options)
 {
-    var tasks = Enumerable.Range(0, 24).Select(async index =>
+    foreach (var batch in Enumerable.Range(0, 24).Chunk(4))
     {
-        using var clientHost = CreateClientHost(options, $"storm-{index}");
-        await clientHost.StartAsync();
-        var channelClient = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
-        var reply = await RequestWithRetryAsync(channelClient, "fast", $"rl-a3-{index}", TimeSpan.FromSeconds(5));
-        Ensure(reply.Value == "profile:fast", "RL-A3 storm client request failed.");
-        await clientHost.StopAsync();
-    });
-    await Task.WhenAll(tasks);
+        var tasks = batch.Select(async index =>
+        {
+            using var clientHost = CreateClientHost(options, $"storm-{index}");
+            await clientHost.StartAsync();
+            var channelClient = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
+            var reply = await RequestWithRetryAsync(channelClient, "fast", $"rl-a3-{index}", TimeSpan.FromSeconds(5));
+            Ensure(reply.Value == "profile:fast", "RL-A3 storm client request failed.");
+            await clientHost.StopAsync();
+        });
+        await Task.WhenAll(tasks);
+    }
+
     Console.WriteLine("scenario RL-A3 passed");
 }
 
@@ -367,16 +371,19 @@ static async Task RunRlB6Async(IZLinkChannelClient client, HttpClient http, Clie
 
 static async Task RunRlC1Async(ClientOptions options)
 {
-    var tasks = Enumerable.Range(0, 12).Select(async index =>
+    foreach (var batch in Enumerable.Range(0, 12).Chunk(4))
     {
-        using var clientHost = CreateClientHost(options, $"rl-c1-client-{index}");
-        await clientHost.StartAsync();
-        var channelClient = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
-        var reply = await RequestWithRetryAsync(channelClient, "fast", $"rl-c1-{index}", TimeSpan.FromSeconds(5));
-        Ensure(reply.Value == "profile:fast", "RL-C1 request failed before cleanup.");
-        await clientHost.StopAsync();
-    });
-    await Task.WhenAll(tasks);
+        var tasks = batch.Select(async index =>
+        {
+            using var clientHost = CreateClientHost(options, $"rl-c1-client-{index}");
+            await clientHost.StartAsync();
+            var channelClient = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
+            var reply = await RequestWithRetryAsync(channelClient, "fast", $"rl-c1-{index}", TimeSpan.FromSeconds(5));
+            Ensure(reply.Value == "profile:fast", "RL-C1 request failed before cleanup.");
+            await clientHost.StopAsync();
+        });
+        await Task.WhenAll(tasks);
+    }
 
     using var followUpHost = CreateClientHost(options, "rl-c1-follow-up");
     await followUpHost.StartAsync();

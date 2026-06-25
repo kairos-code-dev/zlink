@@ -4,7 +4,8 @@
 
 ## 구현됨
 
-- 없음.
+- `RL-B1`: 처리 중인 request가 timeout으로 실패한 뒤, 같은 client의 후속 request가 정상 reply를
+  받고 늦은 server 완료가 다음 request를 오염시키지 않는지 확인한다.
 
 ## public API/harness 대기
 
@@ -13,7 +14,6 @@
 - `RL-A3`: client reconnect storm Node harness가 아직 없다.
 - `RL-A4`: rolling restart Node harness가 아직 없다.
 - `RL-A5`: provider flapping Node harness가 아직 없다.
-- `RL-B1`: timeout 뒤 late reply 비오염 Node marker가 아직 없다.
 - `RL-B2`: in-flight request 중 provider crash Node runner와 marker가 아직 없다.
 - `RL-B3`: graceful shutdown routing Node marker가 아직 없다.
 - `RL-B4`: runtime drain/restore Node marker가 아직 없다.

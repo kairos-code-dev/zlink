@@ -1514,34 +1514,20 @@ function normalizeDiscoveryTopology(entries) {
 }
 
 async function resilienceLifecycle() {
-  const endpointA = uniqueEndpoint('rl-api-a');
-  const endpointB = uniqueEndpoint('rl-api-b');
+  await runResilienceLifecyclePendingCleanup();
+}
 
-  let first = await startApp(
-    nestModule('ResilienceFirstModule', {
-      imports: [
-        loadNest().ZLinkModule.forRoot(loadNest().zlinkFramework()
-          .addClientServerChannel('rl.api')
-            .enableServer(endpointA)
-            .enableClient(endpointA)
-            .addRequestHandler('rl.echo', EchoHandler)
-          .build())
-      ],
-      providers: [EchoHandler]
-    })
-  );
+async function runResilienceLifecyclePendingCleanup() {
+  EchoHandler.completed = [];
+  const endpoint = uniqueEndpoint('rl-pending');
   const nestjs = loadNest();
-  const firstClient = first.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
-  assert.equal((await firstClient.requestToChannel('rl.api', { step: 1 }).packetName('rl.echo').submit()).step, 1);
-  await first.app.close();
-
-  first = await startApp(
-    nestModule('ResilienceSecondModule', {
+  const { app } = await startApp(
+    nestModule('ResiliencePendingCleanupModule', {
       imports: [
-        loadNest().ZLinkModule.forRoot(loadNest().zlinkFramework()
-          .addClientServerChannel('rl.api')
-            .enableServer(endpointB)
-            .enableClient(endpointB)
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .addClientServerChannel('rl.pending')
+            .enableServer(endpoint)
+            .enableClient(endpoint)
             .addRequestHandler('rl.echo', EchoHandler)
           .build())
       ],
@@ -1550,11 +1536,31 @@ async function resilienceLifecycle() {
   );
 
   try {
-    const secondClient = first.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
-    assert.equal((await secondClient.requestToChannel('rl.api', { step: 2 }).packetName('rl.echo').submit()).step, 2);
-    selfCheck('RL-RUNTIME-RESTART-SMOKE');
+    const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    await assert.rejects(
+      () => client
+        .requestToChannel('rl.pending', { id: 1, text: 'slow' })
+        .packetName('rl.echo')
+        .timeout(50)
+        .submit(),
+      /timed out|timeout|result 101/i
+    );
+    const afterTimeout = await client
+      .requestToChannel('rl.pending', { id: 2, text: 'after-timeout' })
+      .packetName('rl.echo')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(afterTimeout, { id: 2, text: 'after-timeout', handledBy: 'rm-provider-a' });
+    await waitFor(() => EchoHandler.completed.some((message) => message.id === 1), 3000);
+    const afterLateReply = await client
+      .requestToChannel('rl.pending', { id: 3, text: 'after-late-reply' })
+      .packetName('rl.echo')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(afterLateReply, { id: 3, text: 'after-late-reply', handledBy: 'rm-provider-a' });
+    marker('RL-B1');
   } finally {
-    await first.app.close();
+    await app.close();
   }
 }
 

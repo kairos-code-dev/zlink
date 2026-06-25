@@ -33,7 +33,11 @@
   경로를 실제 SpotMesh router로 검증하려면 두 SpotNode 사이 route가 필요하다. 단일 self-route와
   수동 두 노드 연결 모두 Node E2E에서 route-ready evidence를 만들지 못했으므로, registry/discovery
   기반 Spot route harness가 준비될 때까지 완료 marker로 올리지 않는다.
-- `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
+- `SM-A3`: Node public resolver는 `ZLinkSpotRemoteAddressResolver.resolveSpotRemoteAddress(...)`가
+  spot rid를 RouteMesh channel, target node rid, spot kind로 해석하는 표면이다. resolver 자체는
+  연결을 만들지 않으므로, 정확성 marker는 두 SpotNode가 실제 route-ready 상태일 때 특정 spot id가
+  해당 owner node에서만 처리되는지까지 봐야 한다. 현재 runner에는 registry/discovery 기반 Spot route
+  harness가 없어 resolver 결과와 처리 노드 evidence를 함께 고정하지 못하므로 완료 marker로 올리지 않는다.
 - `SM-A4`: 앱이 같은 key를 같은 `spotRid`로, 다른 key를 다른 `spotRid`로 결정적으로 매핑하고
   public `ZLINK_SPOT_MANAGER`가 같은 key의 user Spot을 재사용하는 self-check
   `SM-A4-KEY-ROUTING-MAPPING`은 runner에 있다. 다만 공통 시나리오가 요구하는 cross-node
@@ -44,7 +48,11 @@
   `onActorJoin(...)`, `onJoinedActor(...)`, actor context `isJoined`/`spotRid`를 확인하는
   self-check는 있으나, 공통 시나리오가 요구하는 두 play 노드 배포, `play-a` local mailbox
   dispatch, 후속 actor request, `play-b` callback 없음 evidence가 아직 없다.
-- `SM-B2`: remote actor join Node runner와 marker가 아직 없다.
+- `SM-B2`: remote actor join은 `joinSpot(...)` / `joinEntrySpot(...)` 결과가 node 경계를 넘어
+  `play-b` actor mailbox와 lifecycle callback으로 이어지는지 봐야 한다. Node spec은 cross-node join에
+  spot remote address resolver와 route-ready SpotMesh가 필요하다고 설명한다. 현재 runner에는 `play-a`
+  consumer에서 `play-b` 소유 actor를 join하고 후속 actor request까지 검증하는 cross-node actor harness가
+  없어 완료 marker로 올리지 않는다.
 - `SM-B3`: public `actorManager.getOrCreate(...)`와 actor `context.joinSpot(...)` 경로로
   복합 객체 join payload가 `onActorJoin(...)`과 join reply까지 그대로 왕복하는 self-check
   `SM-B3-JOIN-PAYLOAD-FIDELITY`는 runner에 있다. 다만 공통 시나리오가 요구하는 후속 actor
@@ -156,7 +164,19 @@
   channel request가 계속 동작하는지 본다. Node public application 표면에는 외부 spot route egress
   client가 없고, 현재 runner도 route mesh와 current Spot outbound를 함께 띄운 ownership harness가
   없어 완료 marker로 올리지 않는다.
-- `SM-G1`: play node crash와 복구 Node harness가 아직 없다.
-- `SM-G2`: owner 이동 Node harness가 아직 없다.
-- `SM-G3`: 동시 join/leave 경합 Node harness가 아직 없다.
-- `SM-G4`: 다수 bound session push 부하 Node harness가 아직 없다.
+- `SM-G1`: 공통 시나리오는 actor와 bound session을 가진 `play-a` 프로세스를 실제로 kill/restart하고,
+  다른 play node 영향 없음, public error/`Disconnected`, 재join·rebind 복구를 함께 본다. 현재 runner에는
+  process-isolated play/session node와 restart 제어, stream rebind evidence가 없어 완료 marker로
+  올리지 않는다.
+- `SM-G2`: owner 이동은 framework 자동 rebalance가 아니라 앱이 key→RoutingId 매핑을 바꾸는 경로다.
+  완료하려면 scale-out 뒤 같은 key가 새 owner node로 가고 이전 owner에는 가지 않는 route evidence가
+  필요하다. 현재 runner에는 노드 추가와 앱 주도 remap을 함께 검증하는 Spot route harness가 없어 완료
+  marker로 올리지 않는다.
+- `SM-G3`: 동시 join/leave 경합은 같은 spot/actor에 다수 client가 public join, leave, actor request를
+  섞어 보낸 뒤 lifecycle callback 중복·누락 없음과 spot 직렬 순서를 검증해야 한다. 현재 runner에는
+  여러 stream/channel client를 동시에 구동하는 actor lifecycle stress harness가 없어 완료 marker로
+  올리지 않는다.
+- `SM-G4`: 다수 bound session push 부하는 많은 stream session을 actor에 bind하고
+  `context.boundSession.send(...)` push가 해당 session에만 가는지 봐야 한다. 현재 runner에는 다중
+  stream session bind와 push 오배달 없음 evidence를 수집하는 load harness가 없어 완료 marker로
+  올리지 않는다.

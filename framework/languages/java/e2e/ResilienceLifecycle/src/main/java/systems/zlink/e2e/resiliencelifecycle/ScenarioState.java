@@ -11,6 +11,7 @@ public final class ScenarioState {
     private final CountDownLatch slowRelease = new CountDownLatch(1);
     private final String providerRid;
     private int weight = 100;
+    private boolean grayFailure;
 
     public ScenarioState(String providerRid) {
         this.providerRid = providerRid;
@@ -26,6 +27,14 @@ public final class ScenarioState {
 
     public synchronized int weight() {
         return weight;
+    }
+
+    public synchronized void grayFailure(boolean value) {
+        grayFailure = value;
+    }
+
+    public synchronized boolean grayFailure() {
+        return grayFailure;
     }
 
     public void releaseSlow() {

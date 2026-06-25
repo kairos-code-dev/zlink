@@ -57,6 +57,8 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 state.releaseSlow();
                 write(exchange, 200, "{\"status\":\"released\"}\n");
             });
+            server.createContext("/admin/fault-on", exchange -> setGrayFailure(exchange, true));
+            server.createContext("/admin/fault-off", exchange -> setGrayFailure(exchange, false));
             server.createContext("/admin/shutdown", exchange -> {
                 state.record("AdminShutdown", state.providerRid());
                 write(exchange, 200, "{\"status\":\"shutting-down\"}\n");
@@ -69,6 +71,14 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         } catch (Exception error) {
             throw new IllegalStateException("failed to start evidence endpoint " + endpoint, error);
         }
+    }
+
+    private void setGrayFailure(
+        com.sun.net.httpserver.HttpExchange exchange,
+        boolean enabled) throws java.io.IOException {
+        state.grayFailure(enabled);
+        state.record("GrayFailureMode", String.valueOf(enabled));
+        write(exchange, 200, "{\"grayFailure\":" + enabled + "}\n");
     }
 
     private void setWeight(

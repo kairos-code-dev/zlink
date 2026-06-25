@@ -19,7 +19,10 @@ public final class WorkRequestHandler
     public Contracts.WorkReply handle(
         Contracts.WorkRequest request,
         ZLinkRequestContext context) {
-        if ("slow".equals(request.value())) {
+        if (state.grayFailure() && request.value().startsWith("b6-gray-")) {
+            state.record("GrayFailureInjected", request.value());
+            throw new IllegalStateException("gray failure");
+        } else if ("slow".equals(request.value())) {
             state.record("SlowStarted", request.value());
             state.awaitSlowRelease();
             state.record("SlowCompleted", request.value());

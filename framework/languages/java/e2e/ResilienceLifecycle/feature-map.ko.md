@@ -22,6 +22,8 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
   호출해 runtime drain/restore를 검증한다.
 - `RL-B5`: 느린 handler가 이미 받은 request는 drain 뒤에도 정상 reply하고, drain 이후 새 request는
   다른 provider로 가는지 검증한다.
+- `RL-B6`: provider-a에 public admin fault를 주입해 일부 request가 public 실패로 끝나는 동안,
+  provider-b의 정상 reply가 계속 유지되고 follow-up request가 성공하는지 확인한다.
 - `RL-D3`: 명시 `ZLinkMessageDispatchErrorObserver`가 미등록 request의
   reason/action/packetName marker를 evidence에 남기고, 이후 request가 정상 동작하는지 확인한다.
 
@@ -30,7 +32,6 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
 - `RL-A3`: process crash/replace 중 in-flight 결과를 고정하는 kill/restart harness가 필요하다.
 - `RL-A4`: rolling restart를 provider 그룹 단위로 수행하는 orchestration이 아직 없다.
 - `RL-B2`: retry 정책 facade가 Java framework public client에 아직 없다.
-- `RL-B6`: packet loss/half-open transport를 만드는 network partition harness가 아직 없다.
 - `RL-C1`: resource cleanup을 process 종료 뒤 파일 descriptor/thread 관측으로 고정하는 harness가
   아직 없다.
 - `RL-C2`: shutdown ordering을 단계별 evidence로 고정하는 harness가 아직 없다.

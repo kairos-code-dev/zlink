@@ -50,6 +50,7 @@ public final class ClientScenario {
         runDrainRestore();
         runDrainInFlight();
         runDispatchErrorMarker();
+        runGrayFailure();
         runGracefulShutdown();
     }
 
@@ -235,6 +236,41 @@ public final class ClientScenario {
             .await(Contracts.WorkReply.class);
         ensure("work:d3-follow-up".equals(followUp.value()), "RL-D3 follow-up payload mismatch");
         System.out.println("scenario RL-D3 passed");
+    }
+
+    private void runGrayFailure() {
+        post(adminA() + "/admin/fault-on");
+        waitForEvidence(adminA(), "GrayFailureMode");
+        int successes = 0;
+        int failures = 0;
+        Set<String> providers = new HashSet<>();
+        for (int index = 0; index < 80 && successes < 10; index++) {
+            try {
+                Contracts.WorkReply reply = client.requestToChannel(
+                        Contracts.CHANNEL,
+                        new Contracts.WorkRequest("b6-gray-" + index))
+                    .timeout(Duration.ofSeconds(3))
+                    .await(Contracts.WorkReply.class);
+                ensure(reply.value().equals("work:b6-gray-" + index),
+                    "RL-B6 reply payload mismatch");
+                providers.add(reply.providerRid());
+                successes++;
+            } catch (RuntimeException expected) {
+                failures++;
+            }
+        }
+        post(adminA() + "/admin/fault-off");
+        waitForEvidence(adminA(), "GrayFailureInjected");
+        ensure(failures > 0, "RL-B6 did not observe public failures from degraded provider");
+        ensure(successes >= 10, "RL-B6 healthy provider did not maintain enough successful traffic");
+        ensure(providers.contains("api-b"), "RL-B6 did not receive successful replies from api-b");
+        Contracts.WorkReply followUp = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.WorkRequest("b6-follow-up"))
+            .timeout(Duration.ofSeconds(3))
+            .await(Contracts.WorkReply.class);
+        ensure("work:b6-follow-up".equals(followUp.value()), "RL-B6 follow-up payload mismatch");
+        System.out.println("scenario RL-B6 passed");
     }
 
     private void waitForDispatchErrorAny(String packetName, String... baseUrls) {

@@ -3944,11 +3944,18 @@ async function runResilienceLifecycleMixedWorkloadSoak() {
 }
 
 async function spotService() {
+  const channelEndpoint = uniqueEndpoint('sm-c2-channel');
   const nestjs = loadNest();
   const { app } = await startApp(
     nestModule('SpotServiceModule', {
       imports: [
         nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .addClientServerChannel('sm.c2.channel')
+            .enableServer(channelEndpoint)
+            .enableClient(channelEndpoint)
+            .addRequestHandler('sm.c2.channel.request', SMChannelRequestHandler)
+            .addRequestHandler('sm.c2.channel.slow', SMChannelSlowRequestHandler)
+            .addSendHandler('sm.c2.channel.send', SMChannelSendHandler)
           .addSpotMesh('sm.play')
             .routingId('sm-node-a')
             .addEntrySpot(EntrySpot)
@@ -3961,10 +3968,16 @@ async function spotService() {
             .addSpotFactory(IdleCloseSpot)
             .addSpotFactory(OverrunPolicySpot)
             .addSpotFactory(WorkerSpot)
+            .addSpotFactory(OutboundSpot)
             .actorFactory('sm-a6-player', LifecycleActorFactory)
           .build())
       ],
-      providers: []
+      providers: [
+        SMChannelRequestHandler,
+        SMChannelSlowRequestHandler,
+        SMChannelSendHandler,
+        OutboundSpotRequestHandler
+      ]
     })
   );
 
@@ -4126,6 +4139,27 @@ async function spotService() {
     ]);
     assert.equal(stageWrapperEvents.filter((event) => event === 'stage:closing:stage-17:12:2').length, 1);
     marker('SM-A5');
+
+    smC2ChannelEvidence.length = 0;
+    const outbound = await spotManager.getOrCreate(OutboundSpot, 'sm-c2-spot', { owner: 'sm-c2' });
+    assert.equal(outbound.state, 'created');
+    const smC2Reply = await spotManager.executeOnSpot(OutboundSpot, 'sm-c2-spot', (spot) =>
+      spot.runOutboundMatrix());
+    assert.deepEqual(smC2Reply, {
+      requestReply: { id: 'sm-c2-request', handledBy: 'channel' },
+      missingRequestFailed: true,
+      timeoutFailed: true
+    });
+    await waitFor(() => smC2ChannelEvidence.some((event) =>
+      event.kind === 'send' && event.payload.id === 'sm-c2-send'));
+    assert.deepEqual(smC2ChannelEvidence.filter((event) => event.kind === 'request'), [
+      { kind: 'request', payload: { id: 'sm-c2-request' }, packetName: 'sm.c2.channel.request' }
+    ]);
+    assert.deepEqual(smC2ChannelEvidence.filter((event) => event.kind === 'send'), [
+      { kind: 'send', payload: { id: 'sm-c2-send' }, packetName: 'sm.c2.channel.send' }
+    ]);
+    assert.equal(await spotManager.close('sm-c2-spot'), true);
+    selfCheck('SM-C2-CHANNEL-OUTBOUND');
 
     const first = await spotManager.getOrCreate(UserSpot, 'sm-a7-spot', { owner: 'u1' });
     assert.equal(first.state, 'created');
@@ -4867,6 +4901,35 @@ async function assertInvalidRegistration(nestjs) {
 
 const entrySpotEvents = [];
 let entrySpotInstance;
+const smC2ChannelEvidence = [];
+
+class SMChannelRequestHandler {
+  async handle(payload, context) {
+    smC2ChannelEvidence.push({
+      kind: 'request',
+      payload,
+      packetName: context.packetName
+    });
+    return { id: payload.id, handledBy: 'channel' };
+  }
+}
+
+class SMChannelSlowRequestHandler {
+  async handle() {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return { handledBy: 'slow-channel' };
+  }
+}
+
+class SMChannelSendHandler {
+  async handle(payload, context) {
+    smC2ChannelEvidence.push({
+      kind: 'send',
+      payload,
+      packetName: context.packetName
+    });
+  }
+}
 
 class EntrySpot {
   constructor(spots) {
@@ -4916,6 +4979,70 @@ class UserSpot {
 }
 
 class OtherUserSpot {}
+
+class OutboundSpot {
+  constructor(context) {
+    this.context = context;
+  }
+
+  configure() {
+    this.context.handlers.addPacket(OutboundSpotRequestHandler, 'sm.c2.spot.run');
+  }
+
+  async onCreate() {
+    return { accepted: true };
+  }
+
+  async runOutboundMatrix() {
+    const requestReply = await this.context.outbound
+      .requestToChannel('sm.c2.channel', { id: 'sm-c2-request' })
+      .packetName('sm.c2.channel.request')
+      .timeout(1000)
+      .submit();
+
+    await this.context.outbound
+      .sendToChannel('sm.c2.channel', { id: 'sm-c2-send' })
+      .packetName('sm.c2.channel.send')
+      .submit();
+
+    let missingRequestFailed = false;
+    await assert.rejects(
+      () => this.context.outbound
+        .requestToChannel('sm.c2.channel', { id: 'sm-c2-missing' })
+        .packetName('sm.c2.channel.missing')
+        .timeout(500)
+        .submit(),
+      /handler|missing|failed|request/i
+    ).then(() => {
+      missingRequestFailed = true;
+    });
+
+    await this.context.outbound
+      .sendToChannel('sm.c2.channel', { id: 'sm-c2-missing-send' })
+      .packetName('sm.c2.channel.missing.send')
+      .submit();
+
+    let timeoutFailed = false;
+    await assert.rejects(
+      () => this.context.outbound
+        .requestToChannel('sm.c2.channel', { id: 'sm-c2-timeout' })
+        .packetName('sm.c2.channel.slow')
+        .timeout(20)
+        .submit(),
+      /timeout|timed out|result|failed/i
+    ).then(() => {
+      timeoutFailed = true;
+    });
+
+    return { requestReply, missingRequestFailed, timeoutFailed };
+  }
+}
+
+class OutboundSpotRequestHandler {
+  async handle(spot) {
+    return spot.runOutboundMatrix();
+  }
+}
 
 const lifecycleEvents = [];
 let smA1Actor;

@@ -87,11 +87,12 @@
   가는 일반 egress client를 application 표면에 노출하지 않는다. 현재 Node에서 Spot route egress는 current
   Spot callback 안의 `context.outbound.sendToSpot(...)` / `requestToSpot(...)` 경로이므로, 공통
   channel→spot ingress contract가 정리되기 전까지 완료 marker로 올리지 않는다.
-- `SM-C2`: spot→channel send/request는 current Spot callback의
-  `context.outbound.sendToChannel(...)` / `requestToChannel(...)` public 표면으로 표현된다. 하지만
-  공통 시나리오는 reply 반영, timeout, 미등록 negative, SPOT mesh publish delivery까지 한 marker에서
-  요구한다. 현재 runner에는 route bridge channel socket과 SpotMesh publish readiness를 함께 안정적으로
-  띄우는 harness가 없어 완료 marker로 올리지 않는다.
+- `SM-C2`: spot→channel request/send, channel request reply 반영, 느린 channel timeout, 미등록
+  channel request error는 current Spot callback의 public `context.outbound.requestToChannel(...)` /
+  `sendToChannel(...)` 경로로 self-check `SM-C2-CHANNEL-OUTBOUND`에서 검증한다. 다만 공통 시나리오는
+  같은 marker에서 미등록 send의 drop + observer marker와 SPOT mesh publish delivery까지 요구한다.
+  현재 runner는 미등록 send를 제출하지만 observer marker를 assertion으로 고정하지 않고, SpotMesh
+  pub/sub self-connect도 startup이 안정적으로 끝나지 않아 완료 marker로 올리지 않는다.
 - `SM-C3`: spot→spot request/send는 current Spot callback의 `context.outbound.sendToSpot(...)` /
   `requestToSpot(...)` public 표면으로 표현된다. 현재 runner에는 두 user Spot을 실제 SpotMesh route로
   연결하고 request/send/publish/timeout/미등록 negative를 모두 검증하는 routed Spot harness가 없어

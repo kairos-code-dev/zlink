@@ -37,7 +37,9 @@
 - `SM-C1`: channel to spot messaging Node runner와 marker가 아직 없다.
 - `SM-C2`: spot to channel messaging Node runner와 marker가 아직 없다.
 - `SM-C3`: spot to spot messaging Node runner와 marker가 아직 없다.
-- `SM-C4`: spot publisher client Node runner와 marker가 아직 없다.
+- `SM-C4`: Node spec과 public DI에는 `ZLINK_SPOT_PUBLISHER_CLIENT`가 있지만, 현재 E2E
+  runner에서는 publish-only 앱의 `publishSpot(...).submit()` delivery를 완료 marker로 증명하지
+  못했다. runtime/transport 검증을 분리한 뒤 marker를 추가해야 한다.
 - `SM-D1`: local stream session bind/relay Node runner와 marker가 아직 없다.
 - `SM-D2`: remote stream session bind/relay Node runner와 marker가 아직 없다.
 - `SM-D3`: entry/user spot actor bind 비교 Node runner와 marker가 아직 없다.

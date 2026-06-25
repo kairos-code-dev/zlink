@@ -96,7 +96,10 @@
 - `SM-F4`: route 없음·malformed spot route negative는 runtime 내부 계약 테스트에는 있으나, Node public
   표면에서 malformed spot route packet을 직접 만들거나 외부 spot route request를 보내는 API는 없다.
   내부 relay packet을 조립하지 않고 public harness로 error evidence를 남길 수 있을 때 닫는다.
-- `SM-F5`: channel socket ownership 독립성 Node runner와 marker가 아직 없다.
+- `SM-F5`: common scenario는 외부 spot route ingress를 얹은 channel에서 SpotNode 종료 뒤 일반
+  channel request가 계속 동작하는지 본다. Node public application 표면에는 외부 spot route egress
+  client가 없고, 현재 runner도 route mesh와 current Spot outbound를 함께 띄운 ownership harness가
+  없어 완료 marker로 올리지 않는다.
 - `SM-G1`: play node crash와 복구 Node harness가 아직 없다.
 - `SM-G2`: owner 이동 Node harness가 아직 없다.
 - `SM-G3`: 동시 join/leave 경합 Node harness가 아직 없다.

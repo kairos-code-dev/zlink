@@ -1,20 +1,18 @@
 # Node SpotService E2E feature map
 
-이 문서는 Config 2 SpotService 공통 시나리오 중 Node framework E2E 상태를 정리한다. 현재 추적된
-Node SpotService E2E runner/source가 없으므로 Node 전용 stdout marker로 구현 완료를 주장하지 않는다.
+이 문서는 Config 2 SpotService 공통 시나리오 중 Node framework E2E 상태를 정리한다.
 
 ## 구현됨
 
-- 없음.
+- `SM-A1`: public NestJS spot mesh 등록 뒤 spot manager가 user spot을 생성한다.
+- `SM-A2`: user spot create request payload가 spot state mutation에 사용된다.
+- `SM-A6`: public app lifecycle 안에서 spot manager create/close 경로를 검증한다.
 
 ## public API/harness 대기
 
-- `SM-A1`: entry/user spot 생성 Node runner와 marker가 아직 없다.
-- `SM-A2`: user spot request와 state mutation Node runner와 marker가 아직 없다.
 - `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
 - `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.
 - `SM-A5`: Stage wrapper Node runner와 marker가 아직 없다.
-- `SM-A6`: spot lifecycle Node runner와 marker가 아직 없다.
 - `SM-A7`: spot type mismatch Node runner와 marker가 아직 없다.
 - `SM-A8`: worker offload Node runner와 marker가 아직 없다.
 - `SM-B1`: local actor join Node runner와 marker가 아직 없다.

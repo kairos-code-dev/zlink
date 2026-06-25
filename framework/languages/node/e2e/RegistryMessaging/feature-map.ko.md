@@ -1,17 +1,15 @@
 # Node RegistryMessaging E2E feature map
 
-이 문서는 Config 1 Registry Messaging 공통 시나리오 중 Node framework E2E 상태를 정리한다. 현재
-추적된 Node framework E2E runner/source가 없으므로 Node 전용 stdout marker로 구현 완료를 주장하지
-않는다.
+이 문서는 Config 1 Registry Messaging 공통 시나리오 중 Node framework E2E 상태를 정리한다.
 
 ## 구현됨
 
-- 없음.
+- `RM-A2`: public NestJS channel client/server가 수동 endpoint로 연결하고 send handler까지 도달한다.
+- `RM-C1`: public NestJS channel client가 request/reply happy path를 수행한다.
 
 ## public API/harness 대기
 
 - `RM-A1`: registry discovery Node runner와 marker가 아직 없다.
-- `RM-A2`: 수동 endpoint 연결 Node runner와 marker가 아직 없다.
 - `RM-A4`: 같은 rid endpoint 교체 Node runner와 marker가 아직 없다.
 - `RM-A6`: cross-channel discovery Node runner와 marker가 아직 없다.
 - `RM-B1`: provider scale-out Node runner와 marker가 아직 없다.

@@ -1,16 +1,14 @@
 # Node DiscoveryRegistryHa E2E feature map
 
-이 문서는 Config 6 Discovery/Registry HA 공통 시나리오 중 Node framework E2E 상태를 정리한다. 현재
-추적된 Node DiscoveryRegistryHa E2E runner/source가 없으므로 Node 전용 stdout marker로 구현 완료를
-주장하지 않는다.
+이 문서는 Config 6 Discovery/Registry HA 공통 시나리오 중 Node framework E2E 상태를 정리한다.
 
 ## 구현됨
 
-- 없음.
+- `DR-A1`: public NestJS registry module을 단일 registry로 기동하고 status를 조회한다.
+- `DR-D2`: public NestJS registry module을 standalone registry 배포 대조군으로 기동한다.
 
 ## public API/harness 대기
 
-- `DR-A1`: 단일 registry baseline Node runner와 marker가 아직 없다.
 - `DR-A2`: 2 registry peer 합산 Node runner와 marker가 아직 없다.
 - `DR-A3`: 3 registry peer 합산 Node runner와 marker가 아직 없다.
 - `DR-A4`: 같은 rid 충돌 Node harness가 아직 없다.
@@ -21,6 +19,5 @@
 - `DR-C2`: registry 장애 중 fallback Node harness가 아직 없다.
 - `DR-C3`: 전체 registry 장애와 복구 Node harness가 아직 없다.
 - `DR-D1`: remote registry 배포 Node harness가 아직 없다.
-- `DR-D2`: in-process registry 배포 Node harness가 아직 없다.
 - `DR-D3`: remote/in-process 혼합 cluster Node harness가 아직 없다.
 - `DR-D4`: topology query와 messaging view 일관성 Node harness가 아직 없다.

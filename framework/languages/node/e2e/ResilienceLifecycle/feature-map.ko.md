@@ -6,6 +6,9 @@
 
 - `RL-B1`: 처리 중인 request가 timeout으로 실패한 뒤, 같은 client의 후속 request가 정상 reply를
   받고 늦은 server 완료가 다음 request를 오염시키지 않는지 확인한다.
+- `RL-D2`: public message-flow observer가 dispatch error event에서 예외를 던져도 request 실패는
+  원래 error reply로 끝나고, observer 예외가 runtime error sink의 `dispatch-error-observer` task로
+  보고되며 후속 정상 request가 계속 성공하는지 확인한다.
 
 ## public API/harness 대기
 
@@ -24,7 +27,6 @@
 - `RL-C3`: node disconnect/recovery Node harness가 아직 없다.
 - `RL-C4`: registry restart/outage recovery Node harness가 아직 없다.
 - `RL-D1`: 고fanout 부하 Node harness가 아직 없다.
-- `RL-D2`: observer 실패 격리 Node runner와 marker가 아직 없다.
 - `RL-D3`: logging sink marker Node runner와 marker가 아직 없다.
 - `RL-D4`: error reply serialization Node harness가 아직 없다.
 - `RL-D5`: 지속 혼합 workload Node soak runner가 아직 없다.

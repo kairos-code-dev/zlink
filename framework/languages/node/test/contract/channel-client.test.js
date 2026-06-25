@@ -2721,7 +2721,7 @@ test('ZLinkDispatchErrorReporter isolates observer failures', async () => {
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(sinkFailures.length, 1);
-  assert.equal(sinkFailures[0].source, 'message-flow-observer');
+  assert.equal(sinkFailures[0].source, 'dispatch-error-observer');
   assert.equal(reporter.observerFailureCount, 1);
 
   class FactoryObserver {
@@ -2752,7 +2752,7 @@ test('ZLinkDispatchErrorReporter isolates observer failures', async () => {
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(factoryFailures.length, 1);
-  assert.equal(factoryFailures[0].source, 'message-flow-observer');
+  assert.equal(factoryFailures[0].source, 'dispatch-error-observer');
   assert.equal(factoryReporter.observerFailureCount, 1);
 
   const noObserverReporter = noDispatchErrorReporter();

@@ -1515,6 +1515,7 @@ function normalizeDiscoveryTopology(entries) {
 
 async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
+  await runResilienceLifecycleObserverIsolation();
 }
 
 async function runResilienceLifecyclePendingCleanup() {
@@ -1559,6 +1560,65 @@ async function runResilienceLifecyclePendingCleanup() {
       .submit();
     assert.deepEqual(afterLateReply, { id: 3, text: 'after-late-reply', handledBy: 'rm-provider-a' });
     marker('RL-B1');
+  } finally {
+    await app.close();
+  }
+}
+
+async function runResilienceLifecycleObserverIsolation() {
+  EchoHandler.completed = [];
+  RLObserverFailures.events = [];
+  const endpoint = uniqueEndpoint('rl-observer');
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const builder = nestjs.zlinkFramework();
+  builder.configureDispatch()
+    .setMessageFlowObserver(RLThrowingFlowObserver)
+    .messageFlow(framework.ZLinkMessageFlowLogMode.ErrorsOnly);
+  builder.addClientServerChannel('rl.observer')
+    .enableServer(endpoint)
+    .enableClient(endpoint)
+    .addRequestHandler('rl.echo', EchoHandler);
+  const { app } = await startApp(
+    nestModule('ResilienceObserverIsolationModule', {
+      imports: [
+        nestjs.ZLinkModule.forRoot(builder.build())
+      ],
+      providers: [EchoHandler, RLThrowingFlowObserver]
+    })
+  );
+
+  try {
+    const runtime = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME, { strict: false });
+    const unsubscribe = runtime.errorSink.onRuntimeTaskException((failure) => {
+      RLObserverFailures.events.push({
+        taskName: failure.taskName,
+        message: failure.error instanceof Error ? failure.error.message : String(failure.error)
+      });
+    });
+    try {
+      const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+      await assert.rejects(
+        () => client
+          .requestToChannel('rl.observer', { id: 10, text: 'missing' })
+          .packetName('rl.missing')
+          .timeout(1000)
+          .submit(),
+        /No channel request handler is registered for 'rl\.observer:rl\.missing'/
+      );
+      await waitFor(() => RLObserverFailures.events.some((event) =>
+        event.taskName === 'dispatch-error-observer' &&
+        event.message === 'rl observer failure'));
+      const reply = await client
+        .requestToChannel('rl.observer', { id: 11, text: 'after-observer-failure' })
+        .packetName('rl.echo')
+        .timeout(1000)
+        .submit();
+      assert.deepEqual(reply, { id: 11, text: 'after-observer-failure', handledBy: 'rm-provider-a' });
+      marker('RL-D2');
+    } finally {
+      unsubscribe();
+    }
   } finally {
     await app.close();
   }
@@ -1695,6 +1755,18 @@ class EchoHandler {
     }
     EchoHandler.completed.push(payload);
     return { ...payload, handledBy: context.routingId ?? 'rm-provider-a' };
+  }
+}
+
+class RLObserverFailures {
+  static events = [];
+}
+
+class RLThrowingFlowObserver {
+  onMessageFlow(flow) {
+    if (flow.packetName === 'rl.missing') {
+      throw new Error('rl observer failure');
+    }
   }
 }
 

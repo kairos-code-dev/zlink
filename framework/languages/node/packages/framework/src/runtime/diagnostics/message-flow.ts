@@ -69,6 +69,13 @@ function requiredMode(outcome: ZLinkMessageFlowOutcome): ZLinkMessageFlowLogMode
     : ZLinkMessageFlowLogMode.KeyTransitions;
 }
 
+function observerFailureTaskName(outcome: ZLinkMessageFlowOutcome): string {
+  return outcome === ZLinkMessageFlowOutcome.Dropped
+    || outcome === ZLinkMessageFlowOutcome.Error
+    ? 'dispatch-error-observer'
+    : 'message-flow-observer';
+}
+
 /**
  * Returns the tracer only when this outcome is enabled, so call sites read as
  * `flowIfEnabled(reporter?.flow, outcome)?.trace({ ...event })`. Optional chaining
@@ -129,7 +136,7 @@ export class ZLinkMessageFlowTracer {
         .then((observer) => observer.onMessageFlow(flow))
         .catch((error) => {
           this.observerFailures += 1;
-          this.errorSink.reportRuntimeTaskException('message-flow-observer', error);
+          this.errorSink.reportRuntimeTaskException(observerFailureTaskName(flow.outcome), error);
         });
     });
   }

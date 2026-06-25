@@ -114,6 +114,34 @@ test('MFLOW-004 observer offload delivers the event asynchronously', async () =>
   void tracer;
 });
 
+test('MFLOW-004b success-path observer failures use message-flow-observer task', async () => {
+  const failures = [];
+  class ThrowingObserver {
+    onMessageFlow() {
+      throw new Error('success observer failed');
+    }
+  }
+  const dispatch = {
+    diagnostics: { messageFlowLogMode: ZLinkMessageFlowLogMode.KeyTransitions },
+    messageFlowObserverType: ThrowingObserver
+  };
+  const cell = createMessageFlowModeCell(dispatch);
+  const ctx = createDiagnosticsContext(dispatch, undefined, cell);
+  const tracer = new ZLinkMessageFlowTracer(ctx, {
+    reportRuntimeTaskException(taskName, error) {
+      failures.push({ taskName, error });
+    }
+  });
+
+  tracer.trace(receivedEvent());
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].taskName, 'message-flow-observer');
+  assert.equal(failures[0].error.message, 'success observer failed');
+  assert.equal(tracer.observerFailureCount, 1);
+});
+
 test('MFLOW-009 live-mode cell toggles every reader without rebuilding the tracer', () => {
   const { tracer, cell } = makeTracer({ messageFlowLogMode: ZLinkMessageFlowLogMode.Off });
   assert.equal(tracer.enabled(ZLinkMessageFlowOutcome.Received), false);

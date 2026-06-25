@@ -12,6 +12,9 @@ public final class Contracts {
     public record WorkRequest(String value) {
     }
 
+    public record WorkCommand(String value) {
+    }
+
     public record UnhandledRequest(String value) {
     }
 

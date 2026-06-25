@@ -170,6 +170,7 @@ read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B API_A_REPLACEMENT HTTP_A HTTP_B
 gradle_run installDist
 
 start_registry
+REGISTRY_PID="${pids[-1]}"
 start_provider api-a "${API_A}" "${HTTP_A}"
 PROVIDER_A_PID="${pids[-1]}"
 start_provider api-b "${API_B}" "${HTTP_B}"
@@ -252,19 +253,62 @@ ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+  "$(app_bin)" >"${log_dir}/client-default.stdout.log" 2>"${log_dir}/client-default.stderr.log"
+
+wait_port_down api-b "${API_B}"
+start_provider api-b "${API_B}" "${HTTP_B}"
+PROVIDER_B_PID="${pids[-1]}"
+sleep 3
+
+for wave in 1 2; do
+  storm_pids=()
+  for index in $(seq 1 6); do
+    storm_log_dir="${log_dir}/storm-${wave}-${index}"
+    mkdir -p "${storm_log_dir}"
+    ZLINK_JAVA_E2E_ROLE=client \
+    ZLINK_JAVA_E2E_CLIENT_MODE=storm \
+    ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
+    ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+    ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
+    ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
+    ZLINK_JAVA_E2E_STORM_EXIT_DELAY_MS="$((index * 250))" \
+    ZLINK_JAVA_E2E_LOG_DIR="${storm_log_dir}" \
+      "$(app_bin)" >"${log_dir}/client-storm-${wave}-${index}.stdout.log" 2>"${log_dir}/client-storm-${wave}-${index}.stderr.log" &
+    storm_pids+=("$!")
+    pids+=("$!")
+  done
+  for pid in "${storm_pids[@]}"; do
+    wait "${pid}"
+  done
+done
+
+ZLINK_JAVA_E2E_ROLE=client \
+ZLINK_JAVA_E2E_CLIENT_MODE=cleanup \
+ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
+ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
+ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
+ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  "$(app_bin)" >"${log_dir}/client-cleanup.stdout.log" 2>"${log_dir}/client-cleanup.stderr.log"
 
 cat "${log_dir}/client-restart.stdout.log"
 cat "${log_dir}/client-reschedule.stdout.log"
 cat "${log_dir}/client-flapping.stdout.log"
-cat "${log_dir}/client.stdout.log"
+cat "${log_dir}"/client-storm-*.stdout.log
+cat "${log_dir}/client-cleanup.stdout.log"
+cat "${log_dir}/client-default.stdout.log"
 grep -q "scenario RL-A1 passed" "${log_dir}/client-restart.stdout.log"
 grep -q "scenario RL-A2 passed" "${log_dir}/client-reschedule.stdout.log"
+grep -q "scenario RL-A3 passed" "${log_dir}"/client-storm-*.stdout.log
 grep -q "scenario RL-A5 passed" "${log_dir}/client-flapping.stdout.log"
-grep -q "scenario RL-B1 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RL-B3 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RL-B4 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RL-B5 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RL-B6 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RL-D3 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario RL-B1 passed" "${log_dir}/client-default.stdout.log"
+grep -q "scenario RL-B3 passed" "${log_dir}/client-default.stdout.log"
+grep -q "scenario RL-B4 passed" "${log_dir}/client-default.stdout.log"
+grep -q "scenario RL-B5 passed" "${log_dir}/client-default.stdout.log"
+grep -q "scenario RL-B6 passed" "${log_dir}/client-default.stdout.log"
+grep -q "scenario RL-C1 passed" "${log_dir}/client-cleanup.stdout.log"
+grep -q "scenario RL-C3 passed" "${log_dir}/client-restart.stdout.log"
+grep -q "scenario RL-D1 passed" "${log_dir}"/client-storm-*.stdout.log
+grep -q "scenario RL-D3 passed" "${log_dir}/client-default.stdout.log"
+grep -q "scenario RL-D5 passed" "${log_dir}/client-cleanup.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log

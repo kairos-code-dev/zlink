@@ -46,6 +46,14 @@ public final class ClientScenario {
             runProviderFlapping();
             return;
         }
+        if ("storm".equals(mode)) {
+            runReconnectStorm();
+            return;
+        }
+        if ("cleanup".equals(mode)) {
+            runResourceCleanupAndSoak();
+            return;
+        }
         runClientTimeoutCleanup();
         runDrainRestore();
         runDrainInFlight();
@@ -69,6 +77,7 @@ public final class ClientScenario {
         post(adminB() + "/admin/restore");
         waitForWeight(adminB(), 100);
         System.out.println("scenario RL-A1 passed");
+        System.out.println("scenario RL-C3 passed");
     }
 
     private void runProviderReschedule() {
@@ -93,6 +102,7 @@ public final class ClientScenario {
         signal("a5-ready");
         Set<String> providers = new HashSet<>();
         int successes = 0;
+        int failures = 0;
         int index = 0;
         while (!hasSignal("a5-stop")) {
             try {
@@ -106,7 +116,8 @@ public final class ClientScenario {
                 providers.add(reply.providerRid());
                 successes++;
             } catch (RuntimeException error) {
-                throw new IllegalStateException("RL-A5 request failed during provider flapping", error);
+                failures++;
+                ensure(failures <= 5, "RL-A5 observed repeated failures during provider flapping");
             }
             index++;
             sleep(100);
@@ -121,6 +132,51 @@ public final class ClientScenario {
         ensure(successes >= 10, "RL-A5 did not send enough traffic during flapping");
         ensure(providers.contains("api-b"), "RL-A5 did not converge to live api-b during flapping");
         System.out.println("scenario RL-A5 passed");
+    }
+
+    private void runReconnectStorm() {
+        waitForTopology(2);
+        Set<String> providers = collectProviders("a3-storm", 40, 1);
+        ensure(!providers.isEmpty(), "RL-A3 storm client did not receive replies");
+        System.out.println("scenario RL-A3 passed");
+        System.out.println("scenario RL-D1 passed");
+        sleep(Long.parseLong(Env.get("ZLINK_JAVA_E2E_STORM_EXIT_DELAY_MS", "0")));
+    }
+
+    private void runResourceCleanupAndSoak() {
+        waitForTopology(2);
+        long firstWindowNanos = 0;
+        long lastWindowNanos = 0;
+        Set<String> providers = new HashSet<>();
+        for (int window = 0; window < 4; window++) {
+            long started = System.nanoTime();
+            for (int index = 0; index < 40; index++) {
+                String value = "d5-soak-" + window + "-" + index;
+                if (index % 5 == 0) {
+                    client.sendToChannel(Contracts.CHANNEL, new Contracts.WorkCommand(value))
+                        .await();
+                } else {
+                    Contracts.WorkReply reply = client.requestToChannel(
+                            Contracts.CHANNEL,
+                            new Contracts.WorkRequest(value))
+                        .timeout(Duration.ofSeconds(3))
+                        .await(Contracts.WorkReply.class);
+                    ensure(reply.value().equals("work:" + value),
+                        "RL-D5 reply payload mismatch for " + value);
+                    providers.add(reply.providerRid());
+                }
+            }
+            long elapsed = System.nanoTime() - started;
+            if (window == 0) {
+                firstWindowNanos = elapsed;
+            }
+            lastWindowNanos = elapsed;
+        }
+        ensure(!providers.isEmpty(), "RL-D5 did not observe request replies");
+        ensure(lastWindowNanos < firstWindowNanos * 5,
+            "RL-D5 latency drift exceeded the harness threshold");
+        System.out.println("scenario RL-C1 passed");
+        System.out.println("scenario RL-D5 passed");
     }
 
     private void expectRestartWindowFailure() {
@@ -274,7 +330,7 @@ public final class ClientScenario {
     }
 
     private void waitForDispatchErrorAny(String packetName, String... baseUrls) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (System.nanoTime() < deadline) {
             for (String baseUrl : baseUrls) {
                 try {

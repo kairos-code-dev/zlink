@@ -13,6 +13,7 @@ import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.e2e.resiliencelifecycle.handlers.WorkCommandHandler;
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -80,5 +81,10 @@ public final class ProviderApplication {
     @Bean
     WorkRequestHandler workRequestHandler(ScenarioState state) {
         return new WorkRequestHandler(state);
+    }
+
+    @Bean
+    WorkCommandHandler workCommandHandler(ScenarioState state) {
+        return new WorkCommandHandler(state);
     }
 }

@@ -47,23 +47,24 @@ public final class ClientApplication {
     systems.zlink.framework.spring.ZLinkFrameworkConfigurer clientFramework() {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String clientRid = "client-" + Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", "state1");
             options.codecs().addJson();
             options.addSpotRemoteAddressResolver(SpotRouteResolver.class);
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/client-flow.log")
-                .traceNodeId("java-sm-client");
+                .traceLabel("java-sm-client");
             options.addRouteMesh(Contracts.ROUTE_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
-                .setRoutingId(RoutingId.from("client"));
+                .setRoutingId(RoutingId.from(clientRid));
             options.addClientServerChannel(Contracts.EGRESS_CHANNEL)
                 .enableClient(Env.get("ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT"));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
-                .setRouterRoutingId(RoutingId.from("client"));
+                .setRoutingId(RoutingId.from(clientRid));
             node.addSpotFactory(ClientDriverSpot.class);
         };
     }

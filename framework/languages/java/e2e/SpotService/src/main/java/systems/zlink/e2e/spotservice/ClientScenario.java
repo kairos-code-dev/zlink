@@ -30,6 +30,8 @@ public final class ClientScenario {
             case "owner" -> runOwnerRouting();
             case "route-mesh" -> runRouteMesh();
             case "worker" -> runWorkerOffload();
+            case "spot-outbound" -> runSpotOutbound();
+            case "spot-to-spot" -> runSpotToSpot();
             default -> throw new IllegalArgumentException("unknown client mode " + mode);
         }
     }
@@ -158,6 +160,38 @@ public final class ClientScenario {
         ensure(followUp.value().contains("worker-follow-up"),
             "SM-A8 follow-up state was not applied");
         System.out.println("scenario SM-A8 passed");
+    }
+
+    private void runSpotOutbound() {
+        Contracts.OutboundReply reply = eventually(() -> outbound.requestToSpot(
+                RoutingId.from("room-a"),
+                new Contracts.OutboundRequest("c2"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.OutboundReply.class));
+        ensure("room-a".equals(reply.spotRid()), "SM-C2 wrong source spot");
+        ensure("play-a".equals(reply.nodeRid()), "SM-C2 wrong source node");
+        ensure("c2".equals(reply.channelReply()), "SM-C2 channel request reply mismatch");
+        System.out.println("scenario SM-C2 passed");
+    }
+
+    private void runSpotToSpot() {
+        Contracts.StateReply requestReply = eventually(() -> outbound.requestToSpot(
+                RoutingId.from("room-a"),
+                new Contracts.StateRequest("c3-source"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.StateReply.class));
+        ensure("play-a".equals(requestReply.nodeRid()), "SM-C3 source spot owner mismatch");
+        outbound.sendToSpot(RoutingId.from("room-b"), new Contracts.OutboundCommand("c3-send"))
+            .packetName("OutboundCommand")
+            .await();
+        Contracts.OutboundReply reply = eventually(() -> outbound.requestToSpot(
+                RoutingId.from("room-b"),
+                new Contracts.OutboundRequest("c3-request"))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.OutboundReply.class));
+        ensure("room-b".equals(reply.spotRid()), "SM-C3 wrong target spot");
+        ensure("play-b".equals(reply.nodeRid()), "SM-C3 wrong target node");
+        System.out.println("scenario SM-C3 passed");
     }
 
     private static void expectFailure(Runnable action) {

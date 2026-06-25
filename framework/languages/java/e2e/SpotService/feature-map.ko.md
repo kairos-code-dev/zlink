@@ -3,12 +3,13 @@
 이 문서는 Config 2 SpotService 공통 시나리오 중 Java framework E2E가 현재 검증하는 항목과,
 public API 또는 harness 제어가 더 필요한 항목을 구분한다. 실행 코드는 public Spring starter,
 `ZLinkSpotManager`, `ZLinkSpotOutbound`, client/server channel builder, route mesh channel builder,
-SpotNode builder만 사용한다.
+SpotNode builder, `ZLinkSpotPublisherClient`만 사용한다.
 
 공통 E2E 문서와 다른 언어의 구현에 존재하는 public 기능이 Java에 없으면 단순 미구현으로 완료
 처리하지 않는다. 다만 다른 언어 구현만으로 Java public contract를 새로 추가하지 않는다. spec 또는
-공통 계약 문서에 근거가 있는 항목은 parity gap으로 관리하고, 근거가 부족한 항목은 draft/spec 검토
-대상으로 분리한다.
+공통 framework spec/guide에 근거가 있는 항목은 parity gap으로 관리하고, 근거가 부족한 항목은
+draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾는 기준이지만, 새 public API를 추가할
+근거로만 쓰지 않는다.
 
 ## 구현됨
 
@@ -24,6 +25,13 @@ SpotNode builder만 사용한다.
   후속 request가 막히지 않고, 완료 callback이 spot state/evidence를 안전하게 갱신하는지 확인한다.
 - `SM-C1`: 외부 consumer의 public `ZLinkSpotOutbound`로 request, send, timeout, 미등록 packet
   negative path를 검증한다.
+- `SM-C2`: spot handler 안에서 public `ZLinkSpotOutbound.requestToChannel` /
+  `sendToChannel`로 외부 channel에 request/send를 내보내고, 같은 handler에서 SPOT mesh publish를
+  수행해 구독 spot의 evidence를 확인한다.
+- `SM-C3`: public `ZLinkSpotOutbound.requestToSpot` / `sendToSpot`으로 user spot 사이
+  request/send가 노드 경계를 넘어 처리되는지 확인하고, SPOT mesh publish evidence를 함께 확인한다.
+- `SM-C4`: local spot factory가 없는 publisher 역할이 public `ZLinkSpotPublisherClient.publishSpot`으로
+  SPOT mesh에 publish하고, 구독 spot들이 event evidence를 남기는지 확인한다.
 - `SM-E1`: handler 없는 spot route request/send가 error/drop 경로를 타고 dispatch observer evidence를
   남기는지 확인한다.
 - `SM-E2`: user spot이 public `context.addTimer`로 등록한 timer를 주기적으로 실행하고 tick evidence를
@@ -51,10 +59,6 @@ SpotNode builder만 사용한다.
 - `SM-B7`: actor lifecycle callback과 packet handler 실행 순서를 검증하는 scenario가 아직 없다.
 - `SM-B8`: Java public API는 `ZLinkEntrySpotContext.destroyActor(ZLinkActor)` 형태다. 공통 문서의
   id 기반 절차와 같은 의미를 고정하는 Java scenario가 아직 없다.
-- `SM-C2`: spot이 외부 channel로 request/send를 내보내고 SPOT mesh publish를 수행하는 scenario가
-  아직 없다.
-- `SM-C3`: spot-to-spot request/send/publish와 timeout/negative를 묶은 scenario가 아직 없다.
-- `SM-C4`: local spot 없는 노드의 attached publisher client publish scenario가 아직 없다.
 - `SM-D1`: local stream session bind와 actor relay/push scenario가 아직 없다.
 - `SM-D2`: remote stream session bind와 cross-node actor relay/push scenario가 아직 없다.
 - `SM-D3`: entry spot actor bind와 user spot actor bind를 비교하는 scenario가 아직 없다.

@@ -28,6 +28,21 @@ public final class Contracts {
     public record SlowRequest(String value) {
     }
 
+    public record OutboundRequest(String value) {
+    }
+
+    public record OutboundReply(
+        String spotRid,
+        String nodeRid,
+        String channelReply) {
+    }
+
+    public record OutboundCommand(String value) {
+    }
+
+    public record MeshEvent(String value) {
+    }
+
     public record RoutePing(String value) {
     }
 

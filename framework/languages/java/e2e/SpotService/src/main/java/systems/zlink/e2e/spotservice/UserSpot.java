@@ -31,6 +31,9 @@ public final class UserSpot implements ZLinkSpot<ZLinkActor> {
         context.handlers().addPacket(StateRequestHandler.class);
         context.handlers().addPacket(StateCommandHandler.class);
         context.handlers().addPacket(SlowRequestHandler.class);
+        context.handlers().addPacket(OutboundRequestHandler.class);
+        context.handlers().addPacket(OutboundCommandHandler.class);
+        context.handlers().addSubscribe("spot.events", SpotEventHandler.class);
     }
 
     @Override
@@ -81,6 +84,10 @@ public final class UserSpot implements ZLinkSpot<ZLinkActor> {
 
     public void command(String value) {
         evidence.record("StateCommand", context.spotRid().toString(), value);
+    }
+
+    public void record(String marker, String value) {
+        evidence.record(marker, context.spotRid().toString(), value);
     }
 
     public void timerTick(long deliveryIndex) {

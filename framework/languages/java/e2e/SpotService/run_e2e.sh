@@ -63,13 +63,13 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(12):
+    for _ in range(15):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
         ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:10]), end=" ")
-    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[10:]))
+    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:13]), end=" ")
+    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[13:]))
 finally:
     for sock in sockets:
         sock.close()
@@ -137,13 +137,17 @@ start_play() {
   local spot="$3"
   local ingress="$4"
   local http="$5"
+  local spot_pub="$6"
   ZLINK_JAVA_E2E_ROLE=play \
   ZLINK_JAVA_E2E_NODE_RID="${rid}" \
   ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route}" \
   ZLINK_JAVA_E2E_INGRESS_ENDPOINT="${ingress}" \
+  ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
+  ZLINK_JAVA_E2E_INGRESS_B_ENDPOINT="${INGRESS_B}" \
   ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
   ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
   ZLINK_JAVA_E2E_SPOT_ENDPOINT="${spot}" \
+  ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT="${spot_pub}" \
   ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
   ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
@@ -153,7 +157,16 @@ start_play() {
   pids+=("$!")
   wait_port "${rid}-route" "${route}"
   wait_port "${rid}-spot" "${spot}"
+  wait_port "${rid}-spot-pub" "${spot_pub}"
   wait_port "${rid}-http" "${http}"
+}
+
+run_publisher() {
+  ZLINK_JAVA_E2E_ROLE=publisher \
+  ZLINK_JAVA_E2E_SPOT_PUBLISHER_ENDPOINT="${SPOT_PUBLISHER}" \
+  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    timeout -k 5s 30s "$(app_bin)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
 }
 
 fetch_evidence() {
@@ -195,13 +208,13 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B HTTP_A HTTP_B <<<"$(reserve_ports)"
+read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER HTTP_A HTTP_B <<<"$(reserve_ports)"
 
 gradle_run installDist
 
 start_registry
-start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}"
-start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}"
+start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}"
+start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}"
 sleep 2
 
 run_client_mode() {
@@ -224,21 +237,14 @@ run_client_mode() {
       ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
       ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        timeout 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
+        timeout -k 5s 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
     set -e
-    if [[ "${status}" == "0" ]] || grep -q "spot-service e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then
+    if [[ "${status}" == "0" ]] && grep -q "spot-service e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then
       cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
       cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
       return 0
     fi
-    if ! grep -q "ZlinkBindException" "${log_dir}/client-${mode}.stdout.log" "${log_dir}/client-${mode}.stderr.log"; then
-      cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
-      cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
-      return 1
-    fi
-    cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
-    cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
     sleep 1
   done
   return 1
@@ -246,10 +252,13 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal worker missing timeout owner route-mesh; do
+for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh; do
   run_client_mode "${mode}"
   sleep 2
 done
+run_publisher
+cat "${log_dir}/publisher.stdout.log" >>"${log_dir}/client.stdout.log"
+cat "${log_dir}/publisher.stderr.log" >>"${log_dir}/client.stderr.log"
 sleep 2
 assert_type_mismatch "${HTTP_A}" room-a
 echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
@@ -270,3 +279,9 @@ grep -q "SpotTimer" "${log_dir}/play-a-evidence.json"
 grep -q "WorkerStarted" "${log_dir}/play-a-evidence.json"
 grep -q "WorkerFollowUpBeforeComplete" "${log_dir}/play-a-evidence.json"
 grep -q "WorkerCompleted" "${log_dir}/play-a-evidence.json"
+grep -q "IngressRequest" "${log_dir}/play-a-evidence.json" "${log_dir}/play-b-evidence.json"
+grep -q "IngressCommand" "${log_dir}/play-a-evidence.json" "${log_dir}/play-b-evidence.json"
+grep -q "SpotOutbound" "${log_dir}/play-a-evidence.json"
+grep -q "SpotToSpotSend" "${log_dir}/play-b-evidence.json"
+grep -q "SpotMeshEvent" "${log_dir}/play-a-evidence.json"
+grep -q "SpotMeshEvent" "${log_dir}/play-b-evidence.json"

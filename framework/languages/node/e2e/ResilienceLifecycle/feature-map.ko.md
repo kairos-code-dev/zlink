@@ -6,6 +6,9 @@
 
 - `RL-B1`: 처리 중인 request가 timeout으로 실패한 뒤, 같은 client의 후속 request가 정상 reply를
   받고 늦은 server 완료가 다음 request를 오염시키지 않는지 확인한다.
+- `RL-B3`: provider 두 대를 registry discovery로 붙인 뒤 provider 하나를 public `app.close()` 정상
+  종료 경로로 내리고, topology에서 빠진 뒤 consumer 재시작 없이 후속 request가 남은 provider로만
+  가는지 확인한다.
 - `RL-D1`: 여러 subscriber application이 같은 public fanout channel에 붙어 연속 publish를 받아도
   모든 subscriber evidence가 누락 없이 수집되는지 확인한다.
 - `RL-D2`: public message-flow observer가 dispatch error event에서 예외를 던져도 request 실패는
@@ -22,7 +25,6 @@
 - `RL-A4`: rolling restart Node harness가 아직 없다.
 - `RL-A5`: provider flapping Node harness가 아직 없다.
 - `RL-B2`: in-flight request 중 provider crash Node runner와 marker가 아직 없다.
-- `RL-B3`: graceful shutdown routing Node marker가 아직 없다.
 - `RL-B4`: runtime drain/restore Node marker가 아직 없다.
 - `RL-B5`: drain 중 in-flight request Node marker가 아직 없다.
 - `RL-B6`: gray failure Node harness가 아직 없다.

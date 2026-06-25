@@ -1515,6 +1515,7 @@ function normalizeDiscoveryTopology(entries) {
 
 async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
+  await runResilienceLifecycleGracefulShutdown();
   await runResilienceLifecycleHighFanout();
   await runResilienceLifecycleObserverIsolation();
   await runResilienceLifecycleLoggingMarker();
@@ -1565,6 +1566,146 @@ async function runResilienceLifecyclePendingCleanup() {
   } finally {
     await app.close();
   }
+}
+
+async function runResilienceLifecycleGracefulShutdown() {
+  RLGracefulHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const apps = [];
+  let providerB;
+
+  try {
+    const registry = await startApp(
+      nestModule('ResilienceGracefulRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 91
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    await startResilienceGracefulProvider(nestjs, registryRouterEndpoint, providerAEndpoint, 'provider-a', apps);
+    providerB = await startResilienceGracefulProvider(nestjs, registryRouterEndpoint, providerBEndpoint, 'provider-b', apps);
+    const consumer = await startApp(
+      nestModule('ResilienceGracefulConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rl.graceful')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.graceful', [providerAEndpoint, providerBEndpoint]);
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    await waitForResilienceGracefulProviders(client, ['provider-a', 'provider-b'], 'rl-b3-before');
+
+    const beforeShutdown = await waitForResilienceGracefulProviderReply(client, 'provider-b', 'rl-b3-before-shutdown');
+    assert.deepEqual(beforeShutdown, { requestId: 'rl-b3-before-shutdown', handledBy: 'provider-b' });
+    const providerBCount = RLGracefulHandler.requests.filter((request) => request.handledBy === 'provider-b').length;
+
+    await providerB.app.close();
+    apps.splice(apps.indexOf(providerB.app), 1);
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rl.graceful', [providerAEndpoint]);
+    await waitForResilienceGracefulProviderRemoved(query, providerAEndpoint, providerBEndpoint);
+
+    for (let i = 0; i < 20; i += 1) {
+      const requestId = `rl-b3-after-shutdown-${i}`;
+      const reply = await client
+        .requestToChannel('rl.graceful', { requestId })
+        .packetName('rl.graceful.probe')
+        .timeout(1000)
+        .submit();
+      assert.deepEqual(reply, { requestId, handledBy: 'provider-a' });
+    }
+    assert.equal(RLGracefulHandler.requests.filter((request) => request.handledBy === 'provider-b').length, providerBCount);
+    marker('RL-B3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startResilienceGracefulProvider(nestjs, registryRouterEndpoint, endpoint, providerId, apps) {
+  const handler = createRLGracefulHandler(providerId);
+  const started = await startApp(
+    nestModule(`ResilienceGraceful${providerId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rl.graceful')
+            .enableServer(endpoint)
+            .routingId(providerId)
+            .addRequestHandler('rl.graceful.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+  return started;
+}
+
+async function waitForResilienceGracefulProviders(client, providerIds, prefix) {
+  const expected = new Set(providerIds);
+  const observed = new Set();
+  for (let i = 0; i < 80 && observed.size < expected.size; i += 1) {
+    const requestId = `${prefix}-${i}`;
+    const reply = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rl.graceful', { requestId })
+        .packetName('rl.graceful.probe')
+        .timeout(1000)
+        .submit());
+    assert.equal(reply.requestId, requestId);
+    assert.ok(expected.has(reply.handledBy), `unexpected graceful provider: ${reply.handledBy}`);
+    observed.add(reply.handledBy);
+  }
+  assert.deepEqual([...observed].sort(), [...expected].sort());
+}
+
+async function waitForResilienceGracefulProviderReply(client, providerId, requestId) {
+  for (let i = 0; i < 80; i += 1) {
+    const reply = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rl.graceful', { requestId: i === 0 ? requestId : `${requestId}-${i}` })
+        .packetName('rl.graceful.probe')
+        .timeout(1000)
+        .submit());
+    if (reply.handledBy === providerId) {
+      return { requestId, handledBy: reply.handledBy };
+    }
+  }
+  assert.fail(`RL-B3 did not observe ${providerId} before shutdown.`);
+}
+
+async function waitForResilienceGracefulProviderRemoved(query, providerAEndpoint, providerBEndpoint) {
+  const deadline = Date.now() + 5000;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({ channelName: 'rl.graceful' });
+    if (lastTopology.some((entry) => entry.endpoint === providerAEndpoint) &&
+      !lastTopology.some((entry) => entry.endpoint === providerBEndpoint)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`RL-B3 provider-b remained in topology: ${stringifyDiagnostic(lastTopology)}`);
 }
 
 async function runResilienceLifecycleHighFanout() {
@@ -1895,6 +2036,24 @@ class EchoHandler {
 
 class RLObserverFailures {
   static events = [];
+}
+
+class RLGracefulHandler {
+  static requests = [];
+
+  static record(payload, handledBy) {
+    const observed = { ...payload, handledBy };
+    RLGracefulHandler.requests.push(observed);
+    return observed;
+  }
+}
+
+function createRLGracefulHandler(providerId) {
+  return class {
+    handle(payload) {
+      return RLGracefulHandler.record(payload, providerId);
+    }
+  };
 }
 
 class RLThrowingFlowObserver {

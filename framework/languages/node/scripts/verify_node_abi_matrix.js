@@ -38,8 +38,16 @@ for (const version of requiredNodeVersions) {
   requireWorkflowNodeVersion(workflow, version);
 }
 
-requireText(workflow, 'npm --prefix framework/languages/node run verify:ci', 'framework-node workflow must run verify:ci');
-requireText(workflow, 'npm --prefix framework/languages/node run verify:cross-language', 'framework-node workflow must run verify:cross-language');
+requireWorkflowCommand(
+  'npm --prefix framework/languages/node run verify:ci',
+  'framework/languages/node',
+  'npm run verify:ci',
+  'framework-node workflow must run verify:ci');
+requireWorkflowCommand(
+  'npm --prefix framework/languages/node run verify:cross-language',
+  'framework/languages/node',
+  'npm run verify:cross-language',
+  'framework-node workflow must run verify:cross-language');
 requireScript('verify:ci');
 requireScript('verify:p0');
 requireScript('verify:samples');
@@ -71,6 +79,17 @@ function requireText(text, needle, message) {
   if (!text.includes(needle)) {
     errors.push(message);
   }
+}
+
+function requireWorkflowCommand(legacyCommand, workingDirectory, runCommand, message) {
+  if (workflow.includes(legacyCommand)) {
+    return;
+  }
+  if (workflow.includes(`working-directory: ${workingDirectory}`) &&
+      workflow.includes(`run: ${runCommand}`)) {
+    return;
+  }
+  errors.push(message);
 }
 
 function requireWorkflowNodeVersion(workflowText, version) {

@@ -713,6 +713,11 @@ static_assert (
                  zlink::framework::dispatch_options_t>);
 
 static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
+                             .add_registry_peer ("tcp://127.0.0.1:5501")),
+                 zlink::framework::zlink_framework_options_t &>);
+
+static_assert (
   std::is_same_v<
     decltype (std::declval<const zlink::framework::registry_query_t &> ().service_summary (
       std::declval<zlink::framework::service_summary_filter_t> ())),

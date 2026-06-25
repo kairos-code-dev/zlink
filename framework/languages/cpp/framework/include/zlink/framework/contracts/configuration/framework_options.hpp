@@ -1382,6 +1382,16 @@ class zlink_framework_options_t
         return *this;
     }
 
+    zlink_framework_options_t &add_registry_peer (std::string peer_pub_endpoint)
+    {
+        detail::require_non_blank (peer_pub_endpoint, "registry peer pub endpoint is required");
+        _options->add_zlink_action (
+          [peer_pub_endpoint = std::move (peer_pub_endpoint)] (zlink_builder_t &zlink) mutable {
+              zlink.enable_registry ().add_peer (std::move (peer_pub_endpoint));
+          });
+        return *this;
+    }
+
     client_server_channel_builder_t add_client_server_channel (std::string channel_name)
     {
         return client_server_channel_builder_t (std::move (channel_name), _options,

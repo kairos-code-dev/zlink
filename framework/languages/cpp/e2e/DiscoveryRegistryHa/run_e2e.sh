@@ -138,6 +138,7 @@ start_embedded_provider() {
   local registry_pub="$3"
   local registry_router="$4"
   local http="$5"
+  local peers="${6:-}"
   ZLINK_CPP_E2E_ROLE=provider \
   ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
   ZLINK_CPP_E2E_PROVIDER_INSTANCE="$rid" \
@@ -145,6 +146,7 @@ start_embedded_provider() {
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
   ZLINK_CPP_E2E_EMBEDDED_REGISTRY_PUB="$registry_pub" \
   ZLINK_CPP_E2E_EMBEDDED_REGISTRY_ROUTER="$registry_router" \
+  ZLINK_CPP_E2E_EMBEDDED_REGISTRY_PEERS="$peers" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$registry_router" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR/$rid" \
     "$PROVIDER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
@@ -381,6 +383,34 @@ kill "${PIDS[@]}" >/dev/null 2>&1 || true
 wait >/dev/null 2>&1 || true
 PIDS=()
 
+read -r R1_PUB R1_ROUTER R1_HTTP R2_PUB R2_ROUTER R2_HTTP A_ENDPOINT <<<"$(ports 7)"
+R1_PUB="tcp://127.0.0.1:$R1_PUB"; R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"; R1_HTTP="http://127.0.0.1:$R1_HTTP"
+R2_PUB="tcp://127.0.0.1:$R2_PUB"; R2_ROUTER="tcp://127.0.0.1:$R2_ROUTER"; R2_HTTP="http://127.0.0.1:$R2_HTTP"
+A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"
+start_registry dr-c3-reg1-a "$R1_PUB" "$R1_ROUTER" "$R1_HTTP" "$R2_PUB"
+REG1_PID="$LAST_PID"
+start_registry dr-c3-reg2-a "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+REG2_PID="$LAST_PID"
+start_provider api-a "$A_ENDPOINT" "$R1_ROUTER,$R2_ROUTER"
+PROVIDER_PID="$LAST_PID"
+wait_member_peers "$R1_HTTP" 1
+wait_member_peers "$R2_HTTP" 1
+run_client dr-c3-client-before "$R1_ROUTER" "api-a"
+stop_pid "$REG1_PID"
+stop_pid "$REG2_PID"
+stop_pid "$PROVIDER_PID"
+start_registry dr-c3-reg1-b "$R1_PUB" "$R1_ROUTER" "$R1_HTTP" "$R2_PUB"
+start_registry dr-c3-reg2-b "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+start_provider api-a "$A_ENDPOINT" "$R1_ROUTER,$R2_ROUTER"
+wait_member_peers "$R1_HTTP" 1
+wait_member_peers "$R2_HTTP" 1
+run_client dr-c3-client-r1-after "$R1_ROUTER" "api-a"
+run_client dr-c3-client-r2-after "$R2_ROUTER" "api-a"
+echo "scenario DR-C3 passed"
+kill "${PIDS[@]}" >/dev/null 2>&1 || true
+wait >/dev/null 2>&1 || true
+PIDS=()
+
 read -r R1_PUB R1_ROUTER HTTP A_ENDPOINT <<<"$(ports 4)"
 R1_PUB="tcp://127.0.0.1:$R1_PUB"
 R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"
@@ -389,3 +419,16 @@ A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"
 start_embedded_provider api-a "$A_ENDPOINT" "$R1_PUB" "$R1_ROUTER" "$HTTP"
 run_client dr-d1-client "$R1_ROUTER" "api-a"
 echo "scenario DR-D1 passed"
+kill "${PIDS[@]}" >/dev/null 2>&1 || true
+wait >/dev/null 2>&1 || true
+PIDS=()
+
+read -r R1_PUB R1_ROUTER R1_HTTP R2_PUB R2_ROUTER R2_HTTP A_ENDPOINT <<<"$(ports 7)"
+R1_PUB="tcp://127.0.0.1:$R1_PUB"; R1_ROUTER="tcp://127.0.0.1:$R1_ROUTER"; R1_HTTP="http://127.0.0.1:$R1_HTTP"
+R2_PUB="tcp://127.0.0.1:$R2_PUB"; R2_ROUTER="tcp://127.0.0.1:$R2_ROUTER"; R2_HTTP="http://127.0.0.1:$R2_HTTP"
+A_ENDPOINT="tcp://127.0.0.1:$A_ENDPOINT"
+start_embedded_provider api-a "$A_ENDPOINT" "$R1_PUB" "$R1_ROUTER" "$R1_HTTP" "$R2_PUB"
+start_registry dr-d3-reg2 "$R2_PUB" "$R2_ROUTER" "$R2_HTTP" "$R1_PUB"
+wait_member_peers "$R2_HTTP" 1
+run_client dr-d3-client "$R2_ROUTER" "api-a"
+echo "scenario DR-D3 passed"

@@ -10,6 +10,10 @@
 - `RC-A5`: public `options({ filters: [...] })` 등록이 NestJS DI에서 filter를 resolve하고, request handler
   호출 전후 순서를 보존하는지 확인한다.
 - `RC-A6`: duplicate handler와 invalid handler group이 registration/startup 단계에서 실패하는지 확인한다.
+- `RC-B2`: public Protobuf codec extension을 단일 codec registry에 등록하고, request/send handler context
+  content-type과 typed reply round-trip을 확인한다.
+- `RC-B3`: public MessagePack codec extension을 단일 codec registry에 등록하고, request/send handler context
+  content-type과 typed reply round-trip을 확인한다.
 
 ## public API/harness 대기
 
@@ -17,7 +21,5 @@
   가져온다. 현재 public contract에는 dispatch마다 scoped 의존성을 새로 만들고 dispose하는 보장이
   없으므로, 공통 lifecycle 시나리오는 Node에서 완료로 표시하지 않는다.
 - `RC-B1`: public reply content-type evidence가 없어 JSON codec 전체 marker는 아직 두지 않는다.
-- `RC-B2`: Protobuf codec Node runner와 marker가 아직 없다.
-- `RC-B3`: MessagePack codec Node runner와 marker가 아직 없다.
 - `RC-B4`: codec 공존 Node runner와 marker가 아직 없다.
 - `RC-B5`: peer codec mismatch Node runner와 marker가 아직 없다.

@@ -225,6 +225,8 @@ async function registrationCodec() {
   const apiEndpoint = uniqueEndpoint('rc-api');
   const nestjs = loadNest();
   await runRegistrationCodecAutoDiscovery(nestjs);
+  await runRegistrationCodecProtobuf(nestjs);
+  await runRegistrationCodecMessagePack(nestjs);
   const { app } = await startApp(
     nestModule('RegistrationCodecModule', {
       imports: [
@@ -294,6 +296,100 @@ async function registrationCodec() {
     await assertInvalidRegistration(nestjs);
     marker('RC-A6');
     selfCheck('RC-JSON-REQUEST');
+  } finally {
+    await app.close();
+  }
+}
+
+async function runRegistrationCodecProtobuf(nestjs) {
+  RcCodecHandler.calls = [];
+  RcCodecSendHandler.messages = [];
+  const endpoint = uniqueEndpoint('rc-protobuf');
+  const protobuf = loadFrameworkProtobuf();
+  const { app } = await startApp(
+    nestModule('RegistrationCodecProtobufModule', {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .codecs().use(protobuf.zlinkProtobufCodec())
+          .addClientServerChannel('rc.protobuf')
+            .enableServer(endpoint)
+            .enableClient(endpoint)
+            .addRequestHandler('rc.codec.protobuf', RcCodecHandler)
+            .addSendHandler('rc.codec.protobuf.audit', RcCodecSendHandler)
+          .build())
+      ],
+      providers: [RcCodecHandler, RcCodecSendHandler]
+    })
+  );
+
+  try {
+    const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const reply = await client
+      .requestToChannel('rc.protobuf', { id: 31, codec: 'protobuf', ok: true })
+      .packetName('rc.codec.protobuf')
+      .submit();
+    assert.deepEqual(reply, { id: 31, codec: 'protobuf', ok: true, contentType: protobuf.ZLINK_PROTOBUF_CONTENT_TYPE });
+    assert.deepEqual(RcCodecHandler.calls, [{
+      id: 31,
+      codec: 'protobuf',
+      contentType: protobuf.ZLINK_PROTOBUF_CONTENT_TYPE
+    }]);
+    await client
+      .sendToChannel('rc.protobuf', { id: 33, codec: 'protobuf', ok: true })
+      .packetName('rc.codec.protobuf.audit')
+      .submit();
+    await waitFor(() => RcCodecSendHandler.messages.some((message) =>
+      message.id === 33 &&
+      message.codec === 'protobuf' &&
+      message.contentType === protobuf.ZLINK_PROTOBUF_CONTENT_TYPE));
+    marker('RC-B2');
+  } finally {
+    await app.close();
+  }
+}
+
+async function runRegistrationCodecMessagePack(nestjs) {
+  RcCodecHandler.calls = [];
+  RcCodecSendHandler.messages = [];
+  const endpoint = uniqueEndpoint('rc-msgpack');
+  const msgpack = loadFrameworkMessagePack();
+  const { app } = await startApp(
+    nestModule('RegistrationCodecMessagePackModule', {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .codecs().use(msgpack.zlinkMessagePackCodec())
+          .addClientServerChannel('rc.msgpack')
+            .enableServer(endpoint)
+            .enableClient(endpoint)
+            .addRequestHandler('rc.codec.msgpack', RcCodecHandler)
+            .addSendHandler('rc.codec.msgpack.audit', RcCodecSendHandler)
+          .build())
+      ],
+      providers: [RcCodecHandler, RcCodecSendHandler]
+    })
+  );
+
+  try {
+    const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const reply = await client
+      .requestToChannel('rc.msgpack', { id: 32, codec: 'messagepack', ok: true })
+      .packetName('rc.codec.msgpack')
+      .submit();
+    assert.deepEqual(reply, { id: 32, codec: 'messagepack', ok: true, contentType: msgpack.ZLINK_MESSAGEPACK_CONTENT_TYPE });
+    assert.deepEqual(RcCodecHandler.calls, [{
+      id: 32,
+      codec: 'messagepack',
+      contentType: msgpack.ZLINK_MESSAGEPACK_CONTENT_TYPE
+    }]);
+    await client
+      .sendToChannel('rc.msgpack', { id: 34, codec: 'messagepack', ok: true })
+      .packetName('rc.codec.msgpack.audit')
+      .submit();
+    await waitFor(() => RcCodecSendHandler.messages.some((message) =>
+      message.id === 34 &&
+      message.codec === 'messagepack' &&
+      message.contentType === msgpack.ZLINK_MESSAGEPACK_CONTENT_TYPE));
+    marker('RC-B3');
   } finally {
     await app.close();
   }
@@ -529,6 +625,29 @@ class RcManualSendHandler {
   }
 }
 
+class RcCodecHandler {
+  static calls = [];
+  handle(payload, context) {
+    RcCodecHandler.calls.push({
+      id: payload.id,
+      codec: payload.codec,
+      contentType: context.contentType
+    });
+    return { ...payload, contentType: context.contentType };
+  }
+}
+
+class RcCodecSendHandler {
+  static messages = [];
+  handle(payload, context) {
+    RcCodecSendHandler.messages.push({
+      id: payload.id,
+      codec: payload.codec,
+      contentType: context.contentType
+    });
+  }
+}
+
 class RcFilterOrder {
   static events = [];
 }
@@ -706,6 +825,14 @@ function loadNest() {
 
 function loadFramework() {
   return require(path.join(nodeRoot, 'packages/framework/dist'));
+}
+
+function loadFrameworkProtobuf() {
+  return require(path.join(nodeRoot, 'packages/framework-codec-protobuf/dist'));
+}
+
+function loadFrameworkMessagePack() {
+  return require(path.join(nodeRoot, 'packages/framework-codec-msgpack/dist'));
 }
 
 function nestModule(name, metadata) {

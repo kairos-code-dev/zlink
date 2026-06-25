@@ -489,7 +489,12 @@ function isRouteRecvRetryable(error: unknown): boolean {
   return isNonBlockingRecvEmpty(error) ||
     (error instanceof zlink.RecvError &&
       (error.result === zlink.RecvResult.InternalError || error.result === zlink.RecvResult.InvalidHandle) &&
-      error.nativeErrno === 14);
+      isNativeBadAddress(error));
+}
+
+function isNativeBadAddress(error: { nativeErrno?: unknown; message?: unknown }): boolean {
+  return error.nativeErrno === 14 ||
+    /Bad address/i.test(String(error.message ?? ''));
 }
 
 function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBackendObject {

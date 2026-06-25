@@ -77,7 +77,7 @@ async function pubSub() {
   PubSubFlowObserver.events = [];
   const eventsEndpoint = await reserveTcpEndpoint();
   const nestjs = loadNest();
-  const publisher = await startApp(
+  let publisher = await startApp(
     nestModule('PubSubPublisherModule', {
       imports: [
         nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
@@ -95,7 +95,7 @@ async function pubSub() {
     const gammaSubscriber = await startPubSubSubscriber('PubSubGammaModule', PubSubGammaHandler, eventsEndpoint);
     subscribers.push(alphaSubscriber, betaSubscriber, gammaSubscriber);
 
-    const fanout = publisher.app.get(nestjs.ZLINK_FANOUT_CLIENT, { strict: false });
+    let fanout = publisher.app.get(nestjs.ZLINK_FANOUT_CLIENT, { strict: false });
     await publishUntil(fanout, 'all', -1, () =>
       PubSubAlphaHandler.events.some((event) => event.topic === 'all')
       && PubSubBetaHandler.events.some((event) => event.topic === 'all')
@@ -168,6 +168,27 @@ async function pubSub() {
       && !PubSubSlowHandler.events.some((event) => event.seq === 50),
       400);
     marker('PS-B1');
+
+    PubSubAlphaHandler.events = [];
+    PubSubBetaHandler.events = [];
+    PubSubGammaHandler.events = [];
+    await publisher.app.close();
+    publisher = await startApp(
+      nestModule('PubSubPublisherRestartedModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addFanoutChannel('ps.events')
+              .enablePublisher(eventsEndpoint)
+            .build())
+        ]
+      })
+    );
+    fanout = publisher.app.get(nestjs.ZLINK_FANOUT_CLIENT, { strict: false });
+    await publishUntil(fanout, 'all', 60, () =>
+      PubSubAlphaHandler.events.some((event) => event.seq === 60)
+      && PubSubBetaHandler.events.some((event) => event.seq === 60)
+      && PubSubGammaHandler.events.some((event) => event.seq === 60));
+    marker('PS-B2');
 
     PubSubAlphaHandler.events = [];
     PubSubBetaHandler.events = [];

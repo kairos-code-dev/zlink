@@ -9,8 +9,9 @@
 - `PS-A3`: 발행 시작 후 합류한 late subscriber가 합류 이후 publish만 받고 이전 sequence를 받지 않는다.
 - `PS-A4`: subscriber 재기동 뒤 재구독 이후 publish를 다시 받고 끊긴 동안 sequence는 replay 받지 않는다.
 - `PS-B1`: 느린 subscriber handler가 처리 중이어도 다른 subscriber들은 다음 publish를 계속 받는다.
+- `PS-B2`: publisher 재기동 뒤 기존 subscriber들이 새 publish를 다시 받는다.
 - `PS-C1`: 미등록 message name publish가 subscriber observer에 handlerMissing/drop evidence를 남기고 정상 publish는 계속 동작한다.
 
 ## public API/harness 대기
 
-- `PS-B2`: publisher 재시작 Node harness가 아직 없다.
+- 없음.

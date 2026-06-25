@@ -1215,6 +1215,7 @@ async function discoveryRegistryHa() {
   await runDiscoveryRegistryHaRegistryStop(nestjs, framework);
   await runDiscoveryRegistryHaPeerFlapping(nestjs, framework);
   await runDiscoveryRegistryHaRegistryRecovery(nestjs, framework);
+  await runDiscoveryRegistryHaFullOutageRecovery(nestjs, framework);
 }
 
 async function runDiscoveryRegistryHaSingle(nestjs, framework) {
@@ -1635,6 +1636,116 @@ async function runDiscoveryRegistryHaRegistryRecovery(nestjs, framework) {
   }
 }
 
+async function runDiscoveryRegistryHaFullOutageRecovery(nestjs, framework) {
+  DRHandler.requests = [];
+  const reg1Pub = await reserveTcpEndpoint();
+  const reg1Router = await reserveTcpEndpoint();
+  const reg2Pub = await reserveTcpEndpoint();
+  const reg2Router = await reserveTcpEndpoint();
+  const providerEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+  let reg1;
+  let reg2;
+  let provider;
+
+  try {
+    reg1 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaFullOutageReg1Module', {
+      pubEndpoint: reg1Pub,
+      routerEndpoint: reg1Router,
+      registryId: 76,
+      broadcastIntervalMs: 100,
+      peers: [reg2Pub]
+    });
+    reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaFullOutageReg2Module', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 77,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    apps.push(reg1.app, reg2.app);
+    provider = await startDiscoveryProviderWithRegistries(
+      nestjs,
+      [reg1Router, reg2Router],
+      'dr.full',
+      providerEndpoint,
+      'dr-full-provider',
+      apps
+    );
+    const consumer = await startDiscoveryConsumerWithRegistries(
+      nestjs,
+      'DiscoveryRegistryHaFullOutageConsumerModule',
+      [reg1Router, reg2Router],
+      'dr.full'
+    );
+    apps.push(consumer.app);
+
+    let reg1Query = reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    let reg2Query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryPeerConnectionExact(reg1Query, 1);
+    await waitForRegistryPeerConnectionExact(reg2Query, 1);
+    await waitForDiscoveryTopologySnapshot(reg1Query, framework, 'dr.full', [providerEndpoint]);
+    await waitForDiscoveryTopologySnapshot(reg2Query, framework, 'dr.full', [providerEndpoint]);
+    await assertDiscoveryMessaging(consumer.app, nestjs, 'dr.full', 'dr-c3-before-outage', ['dr-full-provider']);
+
+    await reg2.app.close();
+    apps.splice(apps.indexOf(reg2.app), 1);
+    await reg1.app.close();
+    apps.splice(apps.indexOf(reg1.app), 1);
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const duringOutage = await client
+      .requestToChannel('dr.full', { requestId: 'dr-c3-during-outage' })
+      .packetName('dr.probe')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(duringOutage, { requestId: 'dr-c3-during-outage', handledBy: 'dr-full-provider' });
+
+    await provider.app.close();
+    apps.splice(apps.indexOf(provider.app), 1);
+    reg1 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaFullOutageReg1RecoveredModule', {
+      pubEndpoint: reg1Pub,
+      routerEndpoint: reg1Router,
+      registryId: 76,
+      broadcastIntervalMs: 100,
+      peers: [reg2Pub]
+    });
+    reg2 = await startDiscoveryRegistry(nestjs, 'DiscoveryRegistryHaFullOutageReg2RecoveredModule', {
+      pubEndpoint: reg2Pub,
+      routerEndpoint: reg2Router,
+      registryId: 77,
+      broadcastIntervalMs: 100,
+      peers: [reg1Pub]
+    });
+    apps.push(reg1.app, reg2.app);
+    reg1Query = reg1.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    reg2Query = reg2.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryPeerConnectionExact(reg1Query, 1);
+    await waitForRegistryPeerConnectionExact(reg2Query, 1);
+    provider = await startDiscoveryProviderWithRegistries(
+      nestjs,
+      [reg1Router, reg2Router],
+      'dr.full',
+      providerEndpoint,
+      'dr-full-provider',
+      apps
+    );
+    const reg1Ready = await waitForDiscoveryExactReadyTopology(reg1Query, framework, 'dr.full', [providerEndpoint]);
+    const reg2Ready = await waitForDiscoveryExactReadyTopology(reg2Query, framework, 'dr.full', [providerEndpoint]);
+    assert.deepEqual(reg2Ready, reg1Ready);
+    const reg1Consumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaFullOutageReg1ConsumerModule', reg1Router, 'dr.full');
+    apps.push(reg1Consumer.app);
+    await assertDiscoveryMessaging(reg1Consumer.app, nestjs, 'dr.full', 'dr-c3-after-reg1-recovery', ['dr-full-provider']);
+    const reg2Consumer = await startDiscoveryConsumer(nestjs, 'DiscoveryRegistryHaFullOutageReg2ConsumerModule', reg2Router, 'dr.full');
+    apps.push(reg2Consumer.app);
+    await assertDiscoveryMessaging(reg2Consumer.app, nestjs, 'dr.full', 'dr-c3-after-reg2-recovery', ['dr-full-provider']);
+    marker('DR-C3');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
 async function startDiscoveryRegistry(nestjs, moduleName, options) {
   return startApp(
     nestModule(moduleName, {
@@ -1712,6 +1823,32 @@ async function waitForDiscoveryTopologySnapshot(query, framework, channelName, e
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`Discovery topology snapshot for ${channelName} did not converge: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function waitForDiscoveryExactReadyTopology(query, framework, channelName, endpoints, timeoutMs = 7000) {
+  const expected = new Set(endpoints);
+  const deadline = Date.now() + timeoutMs;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({
+      autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
+      serviceKind: framework.ZLinkServiceKind.Socket,
+      serviceRole: framework.ZLinkServiceRole.Router,
+      channelName
+    });
+    const readyEntries = lastTopology.filter((entry) =>
+      entry.autoConnectType === framework.ZLinkAutoConnectType.ClientServer &&
+      entry.serviceKind === framework.ZLinkServiceKind.Socket &&
+      entry.serviceRole === framework.ZLinkServiceRole.Router &&
+      entry.channelName === channelName &&
+      entry.state === framework.ZLinkTopologyState.Ready);
+    if (readyEntries.length === expected.size &&
+      [...expected].every((endpoint) => readyEntries.some((entry) => entry.endpoint === endpoint))) {
+      return normalizeDiscoveryTopology(readyEntries);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`Discovery exact ready topology for ${channelName} did not converge: ${stringifyDiagnostic(lastTopology)}`);
 }
 
 async function waitForDiscoveryEndpoints(query, framework, channelName, endpoints, timeoutMs = 7000) {

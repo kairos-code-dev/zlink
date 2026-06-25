@@ -16,6 +16,9 @@
 - `SM-E3`: idle timer handler가 actor join 전에는 닫지 않고, actor가 남아 있으면 public
   `close(...)`가 거부되며, actor leave 뒤 다음 timer tick에서 close와 `onClosing`이 완료되는지
   확인한다.
+- `SM-E4`: public `context.addTimer(...)` overrun policy 세 가지(`SkipLateTicks`,
+  `CatchUpBounded`, `DelayNextTick`)를 실제 Spot timer로 등록하고, 느린 첫 tick 이후의
+  `scheduledIndex`/`skippedTicks` 패턴이 정책별 의미와 맞는지 확인한다.
 
 ## public API/harness 대기
 
@@ -55,7 +58,6 @@
 - `SM-D13`: stream heartbeat Node runner와 marker가 아직 없다.
 - `SM-D14`: TLS stream Node runner와 marker가 아직 없다.
 - `SM-E1`: spot route 미등록 request Node runner와 marker가 아직 없다.
-- `SM-E4`: timer overrun policy Node runner와 marker가 아직 없다.
 - `SM-F1`: client/server channel to target spot Node runner와 marker가 아직 없다.
 - `SM-F2`: route mesh channel to target spot Node runner와 marker가 아직 없다.
 - `SM-F3`: 일반 packet과 spot route packet 공존 Node runner와 marker가 아직 없다.

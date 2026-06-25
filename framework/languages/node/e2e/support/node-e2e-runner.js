@@ -1739,6 +1739,7 @@ async function spotService() {
             .addSpotFactory(LifecycleSpot)
             .addSpotFactory(TimerSpot)
             .addSpotFactory(IdleCloseSpot)
+            .addSpotFactory(OverrunPolicySpot)
             .addSpotFactory(WorkerSpot)
             .actorFactory('sm-a6-player', LifecycleActorFactory)
           .build())
@@ -1843,6 +1844,39 @@ async function spotService() {
       'closing'
     ]);
     marker('SM-E3');
+
+    overrunEvents.clear();
+    await spotManager.getOrCreate(OverrunPolicySpot, 'sm-e4-skip', { policy: 'skipLateTicks' });
+    await spotManager.getOrCreate(OverrunPolicySpot, 'sm-e4-catch', { policy: 'catchUpBounded' });
+    await spotManager.getOrCreate(OverrunPolicySpot, 'sm-e4-delay', { policy: 'delayNextTick' });
+    await waitFor(() =>
+      overrunEvents.get('skipLateTicks')?.length >= 2 &&
+      overrunEvents.get('catchUpBounded')?.length >= 3 &&
+      overrunEvents.get('delayNextTick')?.length >= 2,
+    3000);
+    const skipLateTicks = overrunEvents.get('skipLateTicks');
+    const catchUpTicks = overrunEvents.get('catchUpBounded');
+    const delayNextTicks = overrunEvents.get('delayNextTick');
+    const skipLateDueIndex = BigInt(Math.max(1, Math.floor(skipLateTicks[1].startedElapsedMs / skipLateTicks[1].periodMs)));
+    const catchUpDueIndex = BigInt(Math.max(1, Math.floor(catchUpTicks[1].startedElapsedMs / catchUpTicks[1].periodMs)));
+    assert.ok(skipLateTicks[1].scheduledIndex > skipLateTicks[0].scheduledIndex + 1n);
+    assert.equal(skipLateTicks[1].scheduledIndex, skipLateDueIndex);
+    assert.ok(skipLateTicks[1].skippedTicks > 0n);
+    assert.ok(catchUpDueIndex - catchUpTicks[0].scheduledIndex > 2n);
+    assert.equal(catchUpTicks[1].scheduledIndex, catchUpDueIndex - 1n);
+    assert.equal(catchUpTicks[1].skippedTicks, catchUpTicks[1].scheduledIndex - catchUpTicks[0].scheduledIndex - 1n);
+    assert.ok(catchUpTicks[2].scheduledIndex === catchUpTicks[1].scheduledIndex + 1n);
+    assert.equal(catchUpTicks[2].skippedTicks, 0n);
+    assert.equal(delayNextTicks[1].scheduledIndex, delayNextTicks[0].scheduledIndex + 1n);
+    assert.equal(delayNextTicks[1].skippedTicks, 0n);
+    assert.ok(
+      delayNextTicks[1].startedElapsedMs - delayNextTicks[0].startedElapsedMs
+      >= overrunFirstTickDelayMs + delayNextTicks[1].periodMs
+    );
+    await spotManager.close('sm-e4-skip');
+    await spotManager.close('sm-e4-catch');
+    await spotManager.close('sm-e4-delay');
+    marker('SM-E4');
   } finally {
     await app.close();
   }
@@ -2462,6 +2496,49 @@ class IdleCloseTimerHandler {
     }
     const closed = await spot.context.close();
     idleEvents.push(`close-after-leave:${closed}`);
+  }
+}
+
+const overrunEvents = new Map();
+const overrunFirstTickDelayMs = 35;
+
+class OverrunPolicySpot {
+  constructor(context) {
+    this.context = context;
+  }
+
+  onCreate(request) {
+    this.policy = request.decode().policy;
+    overrunEvents.set(this.policy, []);
+    return { accepted: true };
+  }
+
+  async onInitialize() {
+    const framework = loadFramework();
+    const timerOptions = {
+      overrunPolicy: framework.ZLinkTimerOverrunPolicy[this.policy === 'skipLateTicks'
+        ? 'SkipLateTicks'
+        : this.policy === 'catchUpBounded'
+          ? 'CatchUpBounded'
+          : 'DelayNextTick'],
+      maxCatchUpTicks: 2
+    };
+    await this.context.addTimer(`sm-e4-${this.policy}`, 10, OverrunPolicyTimerHandler, timerOptions);
+  }
+}
+
+class OverrunPolicyTimerHandler {
+  async handle(spot, tick) {
+    const events = overrunEvents.get(spot.policy);
+    events.push({
+      scheduledIndex: tick.scheduledIndex,
+      startedElapsedMs: tick.startedElapsedMs,
+      periodMs: tick.periodMs,
+      skippedTicks: tick.skippedTicks
+    });
+    if (events.length === 1) {
+      await new Promise((resolve) => setTimeout(resolve, overrunFirstTickDelayMs));
+    }
   }
 }
 

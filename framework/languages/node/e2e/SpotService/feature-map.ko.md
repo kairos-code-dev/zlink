@@ -34,7 +34,10 @@
   수동 두 노드 연결 모두 Node E2E에서 route-ready evidence를 만들지 못했으므로, registry/discovery
   기반 Spot route harness가 준비될 때까지 완료 marker로 올리지 않는다.
 - `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
-- `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.
+- `SM-A4`: 앱이 같은 key를 같은 `spotRid`로, 다른 key를 다른 `spotRid`로 결정적으로 매핑하고
+  public `ZLINK_SPOT_MANAGER`가 같은 key의 user Spot을 재사용하는 self-check
+  `SM-A4-KEY-ROUTING-MAPPING`은 runner에 있다. 다만 공통 시나리오가 요구하는 cross-node
+  spot lookup과 owner 노드 evidence는 아직 없어 완료 marker로 올리지 않는다.
 - `SM-A8`: public `context.runWorker(...).onCompleted(...)` self-check는 runner에 있으나, 공통
   시나리오가 요구하는 "worker 실행 중 같은 Spot/노드로 들어오는 다른 request" marker는 아직 없다.
 - `SM-B1`: 단일 Node SpotService 앱에서 public actor manager와 actor `context.joinSpot(...)`,

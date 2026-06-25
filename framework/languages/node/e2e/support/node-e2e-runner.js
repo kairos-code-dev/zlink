@@ -3869,6 +3869,22 @@ async function spotService() {
     assert.equal(afterMismatch.state, 'existing');
     marker('SM-A7');
 
+    const ownerRoutingKeyToSpotRid = (key) => `sm-a4-owner-${Buffer.from(key).toString('hex')}`;
+    const ownerAlphaRid = ownerRoutingKeyToSpotRid('order:alpha');
+    const ownerAlphaAgainRid = ownerRoutingKeyToSpotRid('order:alpha');
+    const ownerBetaRid = ownerRoutingKeyToSpotRid('order:beta');
+    assert.equal(ownerAlphaAgainRid, ownerAlphaRid);
+    assert.notEqual(ownerBetaRid, ownerAlphaRid);
+    const ownerAlpha = await spotManager.getOrCreate(UserSpot, ownerAlphaRid, { owner: 'alpha-owner' });
+    const ownerAlphaAgain = await spotManager.getOrCreate(UserSpot, ownerAlphaAgainRid, { owner: 'ignored-owner' });
+    const ownerBeta = await spotManager.getOrCreate(UserSpot, ownerBetaRid, { owner: 'beta-owner' });
+    assert.deepEqual(ownerAlpha, { spotRid: ownerAlphaRid, state: 'created', reply: { owner: 'alpha-owner' } });
+    assert.deepEqual(ownerAlphaAgain, { spotRid: ownerAlphaRid, state: 'existing' });
+    assert.deepEqual(ownerBeta, { spotRid: ownerBetaRid, state: 'created', reply: { owner: 'beta-owner' } });
+    assert.equal(await spotManager.close(ownerAlphaRid), true);
+    assert.equal(await spotManager.close(ownerBetaRid), true);
+    selfCheck('SM-A4-KEY-ROUTING-MAPPING');
+
     workerEvents.length = 0;
     releaseWorker = undefined;
     await spotManager.getOrCreate(WorkerSpot, 'sm-a8-spot', { owner: 'u1' });

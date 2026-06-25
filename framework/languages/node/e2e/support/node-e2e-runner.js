@@ -475,6 +475,24 @@ async function assertInvalidRegistration(nestjs) {
     () => nestjs.zlinkRequestHandler('', 'rc.invalid.group')(class InvalidGroupHandler {}),
     /handler group|empty/i
   );
+  await assert.rejects(
+    async () => {
+      const { app } = await startApp(
+        nestModule('RegistrationCodecInvalidChannelKindModule', {
+          imports: [
+            nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+              .addFanoutChannel('rc.invalid.kind')
+                .enablePublisher(uniqueEndpoint('rc-invalid-kind'))
+                .addPublishHandler('rc.invalid.publish', PubSubAlphaHandler)
+              .build())
+          ],
+          providers: [PubSubAlphaHandler]
+        })
+      );
+      await app.close();
+    },
+    /publish handlers require a subscriber|subscriber capability|rc\.invalid\.kind/i
+  );
 }
 
 class EntrySpot {}

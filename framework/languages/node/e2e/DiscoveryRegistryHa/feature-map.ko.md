@@ -18,7 +18,7 @@
 - `DR-C1`: registry 1대 다운 중 지속 Node runner와 marker가 아직 없다.
 - `DR-C2`: registry 장애 중 fallback Node harness가 아직 없다.
 - `DR-C3`: 전체 registry 장애와 복구 Node harness가 아직 없다.
-- `DR-D1`: remote registry 배포 Node harness가 아직 없다.
+- `DR-D1`: embedded registry와 service 한 프로세스 배포 Node harness가 아직 없다.
 - `DR-D2`: standalone registry와 discovery/messaging을 함께 검증하는 Node runner와 marker가 아직 없다.
 - `DR-D3`: remote/in-process 혼합 cluster Node harness가 아직 없다.
 - `DR-D4`: topology query와 messaging view 일관성 Node harness가 아직 없다.

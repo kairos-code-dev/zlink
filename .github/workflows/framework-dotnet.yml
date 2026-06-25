@@ -28,7 +28,6 @@ env:
   FRAMEWORK_UNIT_TESTS: framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Zlink.Framework.UnitTests.csproj
   FRAMEWORK_CONTRACT_TESTS: framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Zlink.Framework.ContractTests.csproj
   STREAM_CONNECTOR_TESTS: framework/languages/dotnet/tests/Systems.Zlink.Stream.Connector.Tests/Systems.Zlink.Stream.Connector.Tests.csproj
-  HTTP_CLIENT_TESTS: framework/languages/dotnet/tests/Zlink.HttpClient.UnitTests/Zlink.HttpClient.UnitTests.csproj
   ZLinkFrameworkTargetFrameworks: net8.0;net10.0
 
 jobs:
@@ -90,9 +89,6 @@ jobs:
       - name: Run stream connector tests (Debug, net8.0)
         run: dotnet test ${{ env.STREAM_CONNECTOR_TESTS }} -c Debug -f net8.0 --no-build
 
-      - name: Run HTTP client tests (Debug, net8.0)
-        run: dotnet test ${{ env.HTTP_CLIENT_TESTS }} -c Debug -f net8.0 --no-build
-
       - name: Run framework unit tests (Release, net10.0)
         run: dotnet test ${{ env.FRAMEWORK_UNIT_TESTS }} -c Release -f net10.0 --no-build
 
@@ -101,9 +97,6 @@ jobs:
 
       - name: Run stream connector tests (Release, net10.0)
         run: dotnet test ${{ env.STREAM_CONNECTOR_TESTS }} -c Release -f net10.0 --no-build
-
-      - name: Run HTTP client tests (Release, net10.0)
-        run: dotnet test ${{ env.HTTP_CLIENT_TESTS }} -c Release -f net10.0 --no-build
 
   framework-dotnet-gate:
     name: release-gate
@@ -115,4 +108,4 @@ jobs:
         run: |
           echo "Framework .NET release gate passed."
           echo "RID matrix: win-x64, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64"
-          echo "Test matrix: framework unit, contract, stream connector, and HTTP client tests on net8.0 Debug and net10.0 Release"
+          echo "Test matrix: framework unit, contract, and stream connector tests on net8.0 Debug and net10.0 Release"

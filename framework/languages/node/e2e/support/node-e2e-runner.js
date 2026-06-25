@@ -31,6 +31,7 @@ async function registryMessaging() {
   const apiEndpoint = uniqueEndpoint('rm-api');
   const nestjs = loadNest();
   const framework = loadFramework();
+  await runRegistryMessagingDiscovery(nestjs, framework);
   RMFlowObserver.events = [];
   EchoHandler.completed = [];
   const builder = nestjs.zlinkFramework();
@@ -128,6 +129,129 @@ async function registryMessaging() {
   } finally {
     await app.close();
   }
+}
+
+async function runRegistryMessagingDiscovery(nestjs, framework) {
+  RMDiscoveryHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+
+  try {
+    const registry = await startApp(
+      nestModule('RegistryMessagingRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 71
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    await startRegistryMessagingDiscoveryProvider(
+      nestjs,
+      registryRouterEndpoint,
+      providerAEndpoint,
+      'api-a',
+      apps
+    );
+    await startRegistryMessagingDiscoveryProvider(
+      nestjs,
+      registryRouterEndpoint,
+      providerBEndpoint,
+      'api-b',
+      apps
+    );
+    const consumer = await startApp(
+      nestModule('RegistryMessagingConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rm.discovery')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    const readyProviders = await waitForRegistryMessagingReadyProviders(query, framework, [providerAEndpoint, providerBEndpoint]);
+
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const reply = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rm.discovery', { id: 1, text: 'registry-discovery' })
+        .packetName('rm.discovery.echo')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(reply, {
+      id: 1,
+      text: 'registry-discovery',
+      handledBy: RMDiscoveryHandler.requests[0]?.handledBy
+    });
+    assert.ok(readyProviders.some((provider) => provider.routingId === reply.handledBy));
+    assert.deepEqual(RMDiscoveryHandler.requests, [{
+      id: 1,
+      text: 'registry-discovery',
+      handledBy: reply.handledBy
+    }]);
+    marker('RM-A1');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function waitForRegistryMessagingReadyProviders(query, framework, endpoints) {
+  const expected = new Set(endpoints);
+  const deadline = Date.now() + 5000;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({ channelName: 'rm.discovery' });
+    const readyEntries = lastTopology.filter((entry) =>
+      entry.autoConnectType === framework.ZLinkAutoConnectType.ClientServer &&
+      entry.serviceKind === framework.ZLinkServiceKind.Socket &&
+      entry.serviceRole === framework.ZLinkServiceRole.Router &&
+      entry.state === framework.ZLinkTopologyState.Ready);
+    if ([...expected].every((endpoint) => readyEntries.some((entry) => entry.endpoint === endpoint))) {
+      return [...expected].map((endpoint) => {
+        const entry = readyEntries.find((candidate) => candidate.endpoint === endpoint);
+        return {
+          endpoint,
+          routingId: entry.routingId
+        };
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`RM-A1 providers were not ready in registry topology: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function startRegistryMessagingDiscoveryProvider(nestjs, registryRouterEndpoint, providerEndpoint, routingId, apps) {
+  const handler = createRMDiscoveryHandler(routingId);
+  const started = await startApp(
+    nestModule(`RegistryMessagingProvider${routingId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel('rm.discovery')
+            .enableServer(providerEndpoint)
+            .routingId(routingId)
+            .addRequestHandler('rm.discovery.echo', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
 }
 
 async function pubSub() {
@@ -616,6 +740,22 @@ class RMFlowObserver {
   }
 }
 
+class RMDiscoveryHandler {
+  static requests = [];
+  static record(payload, handledBy) {
+    RMDiscoveryHandler.requests.push({ ...payload, handledBy });
+    return { ...payload, handledBy };
+  }
+}
+
+function createRMDiscoveryHandler(routingId) {
+  return class {
+    handle(payload) {
+      return RMDiscoveryHandler.record(payload, routingId);
+    }
+  };
+}
+
 class PubSubAlphaHandler {
   static events = [];
   handle(payload, context) {
@@ -1013,12 +1153,40 @@ async function reserveTcpEndpoint() {
 async function waitFor(predicate, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) {
+    if (await predicate()) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error('Timed out waiting for Node e2e condition.');
+}
+
+async function submitUntilReachable(submit, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      return await submit();
+    } catch (error) {
+      if (!isTransientMessagingConnectError(error)) {
+        throw error;
+      }
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  throw lastError;
+}
+
+function isTransientMessagingConnectError(error) {
+  return error instanceof Error &&
+    (((error.code === 2 || error.code === 12) && /Host unreachable/.test(error.message)) ||
+      (error.code === 5 && /Connection refused/.test(error.message)));
+}
+
+function stringifyDiagnostic(value) {
+  return JSON.stringify(value, (_key, item) =>
+    typeof item === 'bigint' ? item.toString() : item);
 }
 
 main().catch((error) => {

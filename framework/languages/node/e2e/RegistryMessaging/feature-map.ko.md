@@ -4,13 +4,15 @@
 
 ## 구현됨
 
+- `RM-A1`: embedded registry와 provider 2개, consumer를 public NestJS 모듈로 띄운다. 두 provider가
+  topology에서 `Ready`로 보인 뒤, consumer가 endpoint 없이 discovery만으로 provider를 찾아 request를
+  처리한다.
 - `RM-A2`: public NestJS channel client/server가 수동 endpoint로 연결하고 send handler까지 도달한다.
 - `RM-C5`: handler 없는 request는 error reply와 observer `HandlerMissing/ReplyError`로 실패하고,
   handler 없는 send는 observer `HandlerMissing/Drop`으로 기록되며 이후 정상 request가 오염되지 않는다.
 
 ## public API/harness 대기
 
-- `RM-A1`: registry discovery Node runner와 marker가 아직 없다.
 - `RM-A4`: 같은 rid endpoint 교체 Node runner와 marker가 아직 없다.
 - `RM-A6`: cross-channel discovery Node runner와 marker가 아직 없다.
 - `RM-B1`: provider scale-out Node runner와 marker가 아직 없다.

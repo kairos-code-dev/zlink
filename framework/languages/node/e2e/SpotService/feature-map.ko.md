@@ -58,7 +58,9 @@
 - `SM-B3`: public `actorManager.getOrCreate(...)`와 actor `context.joinSpot(...)` 경로로
   복합 객체 join payload가 `onActorJoin(...)`과 join reply까지 그대로 왕복하는 self-check
   `SM-B3-JOIN-PAYLOAD-FIDELITY`는 runner에 있다. 다만 공통 시나리오가 요구하는 후속 actor
-  request payload fidelity marker는 아직 없어 완료 marker로 올리지 않는다.
+  request payload fidelity는 public stream session `context.actors.bind(...)`와
+  `ZLinkSessionActor.relay(...)` 경로가 필요하다. router를 켠 SpotMesh와 stream connector를 함께
+  구성한 public harness에서도 actor request reply가 timeout으로 끝나 아직 완료 marker로 올리지 않는다.
 - `SM-B4`: 공통 시나리오는 다른 노드 actor로 request를 보내고 reply가 돌아오는지 본다. Node spec에서
   public actor packet ingress는 stream session bind 결과인 `ZLinkSessionActor.relay(...)` 경로다.
   현재 SpotService runner에는 cross-node stream session bind/relay harness가 없어 remote actor request를
@@ -103,9 +105,11 @@
   분리해 무한 대기 없이 검증할 수 있어야 완료 처리한다.
 - `SM-D1`: Node public surface에는 stream node `registerSession(...)`, session
   `context.actors.bind(...)`, `ZLinkSessionActor.relay(...)`, actor
-  `context.boundSession.send(...)`가 있다. 하지만 SpotService runner에는 실제
-  `@zlink-systems/stream-connector` client를 띄워 local actor bind, client→actor relay,
-  actor→client push, 미bind client 미수신을 함께 검증하는 harness가 없어 완료 marker로 올리지 않는다.
+  `context.boundSession.send(...)`가 있다. 하지만 SpotService runner에서 router를 켠 SpotMesh와 실제
+  `@zlink-systems/stream-connector` client를 함께 띄운 public harness가 actor request 단계에서
+  timeout으로 끝나, local actor bind, client→actor relay, actor→client push, 미bind client 미수신을
+  한 marker로 안정적으로 고정하지 못한다. 내부 actor dispatch나 raw frame 조립으로 우회하지 않고
+  stream relay readiness가 해결될 때 완료 marker로 올린다.
 - `SM-D2`: remote bind/relay는 `SM-D1`의 stream harness에 더해 gateway와 다른 play node로 actor
   packet이 넘어가는 route evidence가 필요하다. 현재 runner에는 cross-node stream session
   bind/relay harness가 없어 완료 marker로 올리지 않는다.

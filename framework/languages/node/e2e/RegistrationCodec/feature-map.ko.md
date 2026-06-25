@@ -24,5 +24,7 @@
 - `RC-B4`: 현재 Node channel payload 선택은 등록 serializer가 하나일 때만 기본 serializer로 고른다.
   여러 serializer를 한 host에 함께 등록했을 때 payload 타입별로 codec을 자동 선택하는 public contract가
   구현되어 있지 않아 완료로 표시하지 않는다.
-- `RC-B5`: codec registry 불일치 시 public하게 고정된 fallback/error 규칙을 별도 scenario로 아직
-  검증하지 않았다.
+- `RC-B5`: peer 간 codec registry 불일치에 대해 Node public spec/guide가 fallback 또는 error
+  규칙을 공개 계약으로 고정하지 않는다. runtime 내부에는 decode failure 처리 경로가 있지만, 현재
+  공통 정책상 다른 언어 구현이나 내부 동작만 근거로 public contract를 추가하지 않는다. 계약이
+  확정되기 전까지는 완료로 표시하지 않고 public contract gap으로 남긴다.

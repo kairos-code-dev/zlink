@@ -11,6 +11,9 @@
 - `SM-A7`: 같은 `spotRid`를 `UserSpot`으로 만든 뒤 다른 Spot 타입으로 다시 `getOrCreate(...)`하면
   public `ZLinkFrameworkException.kind == SpotTypeMismatch`로 실패하고, 기존 Spot은 같은 타입으로
   계속 조회되는지 확인한다.
+- `SM-A5`: 앱 레벨 Stage wrapper 객체를 Spot 위에 얹고, public `ZLINK_SPOT_MANAGER`로 생성한
+  뒤 wrapper 초기값, Spot lifecycle, wrapper request 처리, Spot timer tick, close callback이 같은
+  Spot 실행 계약 안에서 순서대로 동작하는지 확인한다.
 - `SM-E2`: user Spot이 public `context.addTimer(...)`로 timer를 등록하고, timer handler tick이
   spot 상태를 주기적으로 바꾸며 close 시 마지막 상태가 관측되는지 확인한다.
 - `SM-E3`: idle timer handler가 actor join 전에는 닫지 않고, actor가 남아 있으면 public
@@ -29,7 +32,6 @@
 - `SM-A2`: 반복 state mutation과 concurrency consistency Node runner와 marker가 아직 없다.
 - `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
 - `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.
-- `SM-A5`: Stage wrapper Node runner와 marker가 아직 없다.
 - `SM-A8`: public `context.runWorker(...).onCompleted(...)` self-check는 runner에 있으나, 공통
   시나리오가 요구하는 "worker 실행 중 같은 Spot/노드로 들어오는 다른 request" marker는 아직 없다.
 - `SM-B1`: 단일 Node SpotService 앱에서 public actor manager와 actor `context.joinSpot(...)`,

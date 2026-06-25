@@ -3505,6 +3505,7 @@ async function spotService() {
             .addSpotFactory(UserSpot)
             .addSpotFactory(OtherUserSpot)
             .addSpotFactory(LifecycleSpot)
+            .addSpotFactory(StageWrapperSpot)
             .addSpotFactory(TimerSpot)
             .addSpotFactory(IdleCloseSpot)
             .addSpotFactory(OverrunPolicySpot)
@@ -3600,6 +3601,28 @@ async function spotService() {
     await smB1Actor.context.getSpot(LifecycleSpot).leave(smB1Actor);
     assert.equal(await spotManager.close('sm-b1-spot'), true);
     selfCheck('SM-B1-LOCAL-JOIN-CALLBACK');
+
+    stageWrapperEvents.length = 0;
+    await spotManager.getOrCreate(StageWrapperSpot, 'sm-a5-stage', { stageId: 'stage-17', initialScore: 3 });
+    assert.deepEqual(stageWrapperEvents, [
+      'stage:create:stage-17:3',
+      'spot:initialize',
+      'stage:initialize:stage-17'
+    ]);
+    const firstStageReply = await spotManager.executeOnSpot(StageWrapperSpot, 'sm-a5-stage', (spot) =>
+      spot.handleStageRequest({ op: 'add', value: 4 }));
+    assert.deepEqual(firstStageReply, { stageId: 'stage-17', score: 7, version: 1 });
+    const secondStageReply = await spotManager.executeOnSpot(StageWrapperSpot, 'sm-a5-stage', (spot) =>
+      spot.handleStageRequest({ op: 'add', value: 5 }));
+    assert.deepEqual(secondStageReply, { stageId: 'stage-17', score: 12, version: 2 });
+    await waitFor(() => stageWrapperEvents.some((event) => event.startsWith('stage:tick:stage-17:')));
+    assert.equal(await spotManager.close('sm-a5-stage'), true);
+    assert.deepEqual(stageWrapperEvents.filter((event) => event.startsWith('stage:request:')), [
+      'stage:request:stage-17:add:4:7:1',
+      'stage:request:stage-17:add:5:12:2'
+    ]);
+    assert.equal(stageWrapperEvents.filter((event) => event === 'stage:closing:stage-17:12:2').length, 1);
+    marker('SM-A5');
 
     const first = await spotManager.getOrCreate(UserSpot, 'sm-a7-spot', { owner: 'u1' });
     assert.equal(first.state, 'created');
@@ -4410,6 +4433,75 @@ class LifecycleActorFactory {
       smE3Actor = actor;
     }
     return actor;
+  }
+}
+
+const stageWrapperEvents = [];
+
+class StageModel {
+  constructor(stageId, score) {
+    this.stageId = stageId;
+    this.score = score;
+    this.version = 0;
+    stageWrapperEvents.push(`stage:create:${this.stageId}:${this.score}`);
+  }
+
+  initialize() {
+    stageWrapperEvents.push(`stage:initialize:${this.stageId}`);
+  }
+
+  apply(command) {
+    if (command.op !== 'add') {
+      throw new Error(`unsupported stage op: ${command.op}`);
+    }
+    this.score += command.value;
+    this.version += 1;
+    stageWrapperEvents.push(`stage:request:${this.stageId}:${command.op}:${command.value}:${this.score}:${this.version}`);
+    return {
+      stageId: this.stageId,
+      score: this.score,
+      version: this.version
+    };
+  }
+
+  tick(tick) {
+    stageWrapperEvents.push(`stage:tick:${this.stageId}:${tick.deliveryIndex}:${this.score}:${this.version}`);
+  }
+
+  closing() {
+    stageWrapperEvents.push(`stage:closing:${this.stageId}:${this.score}:${this.version}`);
+  }
+}
+
+class StageWrapperSpot {
+  constructor(context) {
+    this.context = context;
+  }
+
+  onCreate(request) {
+    const payload = request.decode();
+    this.stage = new StageModel(payload.stageId, payload.initialScore);
+    return { accepted: true };
+  }
+
+  async onInitialize() {
+    stageWrapperEvents.push('spot:initialize');
+    this.stage.initialize();
+    await this.context.addTimer('sm-a5-stage-tick', 10, StageWrapperTimerHandler);
+  }
+
+  handleStageRequest(command) {
+    return this.stage.apply(command);
+  }
+
+  async onClosing() {
+    this.stage.closing();
+  }
+}
+
+class StageWrapperTimerHandler {
+  async handle(spot, tick) {
+    spot.stage.tick(tick);
   }
 }
 

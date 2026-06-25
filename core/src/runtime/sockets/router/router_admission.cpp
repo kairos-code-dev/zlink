@@ -84,11 +84,11 @@ bool router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
                 blob_t new_routing_id (buf, sizeof buf);
 
                 pipe_t *const old_pipe = existing_outpipe->pipe;
+                const bool old_locally_initiated = existing_outpipe->locally_initiated;
 
                 erase_out_pipe (old_pipe);
                 old_pipe->set_router_socket_routing_id (new_routing_id);
-                add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe,
-                              existing_outpipe->locally_initiated);
+                add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe, old_locally_initiated);
 
                 if (old_pipe == _current_in)
                     _terminate_current_in = true;
@@ -114,10 +114,11 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool lo
         blob_t new_routing_id (buf, sizeof buf);
 
         pipe_t *const old_pipe = existing_outpipe->pipe;
+        const bool old_locally_initiated = existing_outpipe->locally_initiated;
 
         erase_out_pipe (old_pipe);
         old_pipe->set_router_socket_routing_id (new_routing_id);
-        add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe, existing_outpipe->locally_initiated);
+        add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe, old_locally_initiated);
 
         if (old_pipe == _current_in)
             _terminate_current_in = true;

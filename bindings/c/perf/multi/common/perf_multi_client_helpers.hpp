@@ -73,7 +73,7 @@ inline send_status_t classify_send_result (zlink_submit_result_t rc)
 }
 
 inline send_status_t send_echo_message_flags (void *socket,
-                                              const std::string &server_id,
+                                              const zlink_routing_id_t *target_rid,
                                               std::vector<char> &payload,
                                               size_t payload_size,
                                               bool router_send,
@@ -91,23 +91,13 @@ inline send_status_t send_echo_message_flags (void *socket,
     }
 
     if (router_send) {
-        if (server_id.empty ()) {
+        if (!target_rid || target_rid->size == 0) {
             zlink_msg_close (&part);
             return send_error;
         }
 
-        if (server_id.size () > sizeof (zlink_routing_id_t ().data)) {
-            zlink_msg_close (&part);
-            return send_error;
-        }
-
-        zlink_routing_id_t target_rid;
-        target_rid.size = static_cast<uint8_t> (server_id.size ());
-        if (target_rid.size > 0) {
-            std::memcpy (target_rid.data, server_id.data (), static_cast<size_t> (target_rid.size));
-        }
         const zlink_submit_result_t rc =
-          ::perf_zlink_send_rid_parts (socket, &target_rid, &part, 1, base_flags);
+          ::perf_zlink_send_rid_parts (socket, target_rid, &part, 1, base_flags);
         if (rc != ZLINK_SUBMIT_OK)
             zlink_msg_close (&part);
         return classify_send_result (rc);
@@ -120,13 +110,13 @@ inline send_status_t send_echo_message_flags (void *socket,
 }
 
 inline send_status_t send_echo_message (void *socket,
-                                        const std::string &server_id,
+                                        const zlink_routing_id_t *target_rid,
                                         std::vector<char> &payload,
                                         size_t payload_size,
                                         bool router_send,
                                         bool per_socket_payload)
 {
-    return send_echo_message_flags (socket, server_id, payload, payload_size, router_send,
+    return send_echo_message_flags (socket, target_rid, payload, payload_size, router_send,
                                     ZLINK_DONTWAIT, per_socket_payload);
 }
 
@@ -814,6 +804,17 @@ inline bool run_echo_window_round_robin (const std::vector<void *> &sockets,
     const size_t scratch_size =
       std::max<size_t> (scratch_capacity, perf_multi_metric::header_size ());
 
+    zlink_routing_id_t target_rid;
+    const zlink_routing_id_t *target_rid_ptr = NULL;
+    if (client_router_send) {
+        // Keep routing-id construction outside the echo hot path. ROUTER_ROUTER
+        // measures routed send/recv cost; rebuilding this stable target id on
+        // every message hides small-message regressions in benchmark overhead.
+        if (!make_routing_id (server_id.c_str (), &target_rid))
+            return false;
+        target_rid_ptr = &target_rid;
+    }
+
     std::vector<char> scratch (scratch_size, '\0');
     std::vector<std::vector<char>> socket_payloads;
     if (allow_send && per_socket_payload)
@@ -839,7 +840,7 @@ inline bool run_echo_window_round_robin (const std::vector<void *> &sockets,
                 }
 
                 const send_status_t send_rc =
-                  send_echo_message (sockets[idx], server_id, send_payload, payload_size,
+                  send_echo_message (sockets[idx], target_rid_ptr, send_payload, payload_size,
                                      client_router_send, per_socket_payload);
                 if (send_rc == send_ok) {
                     awaiting_reply[idx] = 1;

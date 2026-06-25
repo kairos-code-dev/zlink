@@ -33,6 +33,7 @@ async function registryMessaging() {
   const framework = loadFramework();
   await runRegistryMessagingDiscovery(nestjs, framework);
   await runRegistryMessagingSameRidFailover(nestjs, framework);
+  await runRegistryMessagingCrossChannelDiscovery(nestjs, framework);
   await runRegistryMessagingManualDistribution(nestjs);
   RMFlowObserver.events = [];
   EchoHandler.completed = [];
@@ -426,6 +427,139 @@ async function waitForRegistryMessagingSingleReadyProvider(query, framework, cha
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.fail(`RM-A4 provider did not converge: ${stringifyDiagnostic(lastTopology)}`);
+}
+
+async function runRegistryMessagingCrossChannelDiscovery(nestjs, framework) {
+  RMCrossChannelHandler.requests = [];
+  const registryPubEndpoint = await reserveTcpEndpoint();
+  const registryRouterEndpoint = await reserveTcpEndpoint();
+  const apiEndpoint = await reserveTcpEndpoint();
+  const workflowEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+
+  try {
+    const registry = await startApp(
+      nestModule('RegistryMessagingCrossChannelRegistryModule', {
+        imports: [
+          nestjs.ZLinkRegistryModule.forRoot({
+            pubEndpoint: registryPubEndpoint,
+            routerEndpoint: registryRouterEndpoint,
+            registryId: 73
+          })
+        ]
+      })
+    );
+    apps.push(registry.app);
+    await startRegistryMessagingCrossChannelProvider(
+      nestjs,
+      registryRouterEndpoint,
+      'rm.cross.api',
+      apiEndpoint,
+      'api-provider',
+      apps
+    );
+    await startRegistryMessagingCrossChannelProvider(
+      nestjs,
+      registryRouterEndpoint,
+      'rm.cross.workflow',
+      workflowEndpoint,
+      'workflow-provider',
+      apps
+    );
+    const consumer = await startApp(
+      nestModule('RegistryMessagingCrossChannelConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .useDiscovery()
+              .addRegistryEndpoint(registryRouterEndpoint)
+            .addClientServerChannel('rm.cross.api')
+              .enableClient()
+            .addClientServerChannel('rm.cross.workflow')
+              .enableClient()
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const query = registry.app.get(nestjs.ZLINK_REGISTRY_QUERY, { strict: false });
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rm.cross.api', [apiEndpoint]);
+    await waitForRegistryMessagingChannelEndpoints(query, framework, 'rm.cross.workflow', [workflowEndpoint]);
+
+    const client = consumer.app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const apiReply = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rm.cross.api', { requestId: 'rm-a6-api' })
+        .packetName('rm.cross.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(apiReply, {
+      requestId: 'rm-a6-api',
+      handledBy: 'api-provider',
+      channelName: 'rm.cross.api'
+    });
+    const workflowReply = await submitUntilReachable(() =>
+      client
+        .requestToChannel('rm.cross.workflow', { requestId: 'rm-a6-workflow' })
+        .packetName('rm.cross.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(workflowReply, {
+      requestId: 'rm-a6-workflow',
+      handledBy: 'workflow-provider',
+      channelName: 'rm.cross.workflow'
+    });
+    assert.deepEqual(RMCrossChannelHandler.requests, [
+      { requestId: 'rm-a6-api', handledBy: 'api-provider', channelName: 'rm.cross.api' },
+      { requestId: 'rm-a6-workflow', handledBy: 'workflow-provider', channelName: 'rm.cross.workflow' }
+    ]);
+    marker('RM-A6');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startRegistryMessagingCrossChannelProvider(nestjs, registryRouterEndpoint, channelName, endpoint, providerId, apps) {
+  const handler = createRMCrossChannelHandler(providerId);
+  const started = await startApp(
+    nestModule(`RegistryMessagingCrossChannel${providerId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .useDiscovery()
+            .addRegistryEndpoint(registryRouterEndpoint)
+          .addClientServerChannel(channelName)
+            .enableServer(endpoint)
+            .routingId(providerId)
+            .addRequestHandler('rm.cross.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
+}
+
+async function waitForRegistryMessagingChannelEndpoints(query, framework, channelName, endpoints) {
+  const expected = new Set(endpoints);
+  const deadline = Date.now() + 5000;
+  let lastTopology = [];
+  while (Date.now() < deadline) {
+    lastTopology = await query.topology({
+      autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
+      serviceKind: framework.ZLinkServiceKind.Socket,
+      serviceRole: framework.ZLinkServiceRole.Router,
+      channelName,
+      state: framework.ZLinkTopologyState.Ready
+    });
+    if (lastTopology.length === expected.size && [...expected].every((endpoint) =>
+      lastTopology.some((entry) => entry.endpoint === endpoint && entry.channelName === channelName))) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`RM-A6 channel ${channelName} did not converge independently: ${stringifyDiagnostic(lastTopology)}`);
 }
 
 async function runRegistryMessagingManualDistribution(nestjs) {
@@ -1039,6 +1173,23 @@ function createRMFailoverHandler(providerId) {
   return class {
     handle(payload) {
       return RMFailoverHandler.record(payload, providerId);
+    }
+  };
+}
+
+class RMCrossChannelHandler {
+  static requests = [];
+  static record(payload, handledBy, channelName) {
+    const observed = { ...payload, handledBy, channelName };
+    RMCrossChannelHandler.requests.push(observed);
+    return observed;
+  }
+}
+
+function createRMCrossChannelHandler(providerId) {
+  return class {
+    handle(payload, context) {
+      return RMCrossChannelHandler.record(payload, providerId, context.channelName);
     }
   };
 }

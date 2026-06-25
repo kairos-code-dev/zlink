@@ -142,7 +142,9 @@ public sealed class ZlinkStreamConnectorOptions
     public ZlinkStreamDispatchMode DispatchMode { get; init; } =
         ZlinkStreamDispatchMode.Manual;
 
-    public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
+    public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.Lz4;
+
+    public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
 
     public IZlinkStreamPacketNameResolver NameResolver { get; init; }
 }
@@ -740,13 +742,13 @@ custom codec도 같은 규칙을 따른다. 사용자가 만든 package는 `IZLi
 framework serializer와 stream codec 매핑을 등록하고, connector가 사용할 payload codec 구현도
 같이 제공한다.
 
-## 13. Compression 초안
+## 13. Compression
 
 이 절에서는 압축 설정과, 어느 시점에 어떤 오류를 던지는지 정리한다.
 
-connector public option 은 `ZlinkStreamCompression` enum 만 노출한다. 압축 코덱 구현은
-framework 가 제공하는 것만 사용한다. 사용자가 임의 compression codec 을 connector
-option 으로 끼우는 경로는 제공하지 않는다.
+connector public option 은 `ZlinkStreamCompression` 과 `CompressionCodec` 을 노출한다.
+기본 활성 codec은 LZ4다. 기본값은 모든 payload 를 자동 압축한다는 뜻이 아니라,
+send/request call 에서 `.Compress()` 를 호출한 frame만 압축한다는 뜻이다.
 
 ```csharp
 public enum ZlinkStreamCompression
@@ -756,15 +758,31 @@ public enum ZlinkStreamCompression
 }
 ```
 
-현재 계약이 지원하는 압축 알고리즘은 LZ4 하나다. 서버와 클라이언트가 같은 알고리즘을
-쓰도록 설정을 맞추는 책임은, 사용자에게 있다.
+서버와 클라이언트가 같은 compression codec 을 쓰도록 설정을 맞추는 책임은 사용자에게
+있다. built-in LZ4 대신 custom codec 을 쓰려면 connector option 과 framework
+builder 양쪽에 같은 구현을 설정한다.
+
+```csharp
+var codec = new MyStreamCompressionCodec();
+
+frameworkOptions.ConfigureStreamCompression()
+    .Use(codec); // 이 framework runtime 의 활성 compression codec
+
+var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+{
+    Endpoint = new Uri("tcp://127.0.0.1:9000"),
+    Compression = ZlinkStreamCompression.Lz4,
+    CompressionCodec = codec, // server 와 같은 codec 으로 compressed frame 을 복원한다.
+});
+```
 
 기본 동작은 다음과 같다.
 
-- `ZlinkStreamCompression.None` 은 payload 를 그대로 둔다.
 - `ZlinkStreamCompression.Lz4` 는 framework 가 제공하는 LZ4 codec 을 사용한다.
+- `.Compress()` 를 호출하지 않은 frame 은 payload 를 그대로 보낸다.
+- `ZlinkStreamCompression.None` 은 compressed frame 을 보내거나 받지 않는다는 뜻이다.
 - `PayloadCompressed` flag 가 켜져 있는데도 `Compression` 이 `None` 이라면, 이는 decode
-  error 로 처리한다.
+  error 로 처리한다. 오류 메시지는 compression codec 이 설정되지 않았다는 뜻을 드러낸다.
 - 압축이 풀린 payload 가 `MaxReceivePayloadSize` 를 넘으면 `FrameTooLarge` 로 처리한다.
 
 ## 14. Request Helper

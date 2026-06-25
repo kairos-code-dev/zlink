@@ -269,6 +269,7 @@ internal sealed class StreamClientStartupRequestHostedService(
                 ZlinkStreamCodec.Json,
                 Encoding.UTF8.GetBytes($"\"{value}\"")))
             .PacketName("RawPing")
+            .Compress()
             .Timeout(TimeSpan.FromSeconds(5))
             .Async(cancellationToken);
         await _connector.Dispatch.Async(cancellationToken);
@@ -315,14 +316,15 @@ internal sealed class TestHostRawStreamSession(
     }
 
     public ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        _ = header;
+        _ = dispatch;
         recorder.RecordPayload(payload.Decode<string>());
         return Context.Client.Reply("pong")
+            .Compress()
             .Async();
     }
 }

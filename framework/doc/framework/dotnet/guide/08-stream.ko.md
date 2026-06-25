@@ -33,16 +33,18 @@ stream node 하나에 session 하나를 붙인다.
 builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.Use(ZLinkProtobufCodec.Default);  // client connector 측 payload codec 과 대칭으로 등록해야 한다
+    options.ConfigureStreamCompression()
+        .UseLz4(); // compressed frame 을 보낼 때와 받을 때 사용할 server codec
 
-    {
-        var stream =     options.AddStreamNode("client.stream");
-        stream.Bind("tcp://0.0.0.0:9100");
-        stream.RegisterSession<ClientHeaderSession>();  // node 당 session 1개 — 둘 이상 등록하면 startup 예외
-
-    }
+    var stream = options.AddStreamNode("client.stream");
+    stream.Bind("tcp://0.0.0.0:9100");
+    stream.RegisterSession<ClientHeaderSession>();  // node 당 session 1개 — 둘 이상 등록하면 startup 예외
 });
 ```
 
+- 압축 설정을 생략하면 LZ4가 기본값이다. 이 기본값은 모든 frame 을 자동 압축한다는
+  뜻이 아니다. send/reply call 에서 `.Compress()` 를 호출한 frame 만 압축된다.
+- compressed frame 을 주고받는 connector 와 server 는 같은 compression codec 을 설정해야 한다.
 - packet 의 header binary 포맷은 framework 와 connector 가 공유하는 **고정 내부
   프로토콜**이다. 응용이 framing 을 바꿀 설정은 없다.
 - 한 stream node 에 header session 을 둘 이상 등록하면 시작 단계 예외다.
@@ -204,7 +206,7 @@ var reply = await connector
     .Request(new GetProfileRequest(accountId))
     .Async<GetProfileReply>(cancellationToken);
 
-// 큰 payload 명시 압축 (LZ4) — client→server 압축은 .Compress() 로 명시해야 적용된다(server→client 는 자동 해제)
+// 큰 payload 명시 압축 — client→server 압축은 .Compress() 로 명시해야 적용된다(server→client 는 자동 해제)
 await connector
     .Send(new UploadReplayChunk(bytes))
     .Compress()
@@ -265,9 +267,10 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
   주기적으로 안 부르고 있다.
 - **`FrameTooLarge`** → 송신은 `MaxSendPayloadSize`(기본 64KB), 수신은
   `MaxReceivePayloadSize`(기본 64KB)를 넘었다. 송신 한도는 압축 전 원본 크기로 검사하고,
-  수신 한도는 frame payload 크기와 LZ4 압축 해제 결과 크기에 적용한다.
+  수신 한도는 frame payload 크기와 압축 해제 결과 크기에 적용한다.
 - **압축이 한쪽만** → server→client 는 typed API 가 자동 해제하지만, client→server
-  는 `.Compress()` 를 명시해야 한다. LZ4 만 지원.
+  는 `.Compress()` 를 명시해야 한다. built-in LZ4 또는 custom compression codec 중
+  connector 와 server 에 같은 codec 을 설정해야 한다.
 - **session 콜백에서 actor 상태 직접 접근** → 하지 않는다. session 은 actor
   dispatch/spot 호출만 제출한다([06-actor-spot](06-actor-spot.ko.md)).
 

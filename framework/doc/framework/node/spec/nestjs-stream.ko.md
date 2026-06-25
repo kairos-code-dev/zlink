@@ -338,6 +338,11 @@ context 타입에 맞는 handler 구현을 provider 로 자동 등록한다.
   함께 들고 있는 편이 자연스럽다.
 - server-to-client 압축은 `ZLinkSessionSendCall.compress()` 또는
   `ZLinkSessionReplyCall.compress()` builder 호출로 활성화한다.
+- stream compression codec은 `configureStreamCompression()`으로 설정한다. 기본값은
+  LZ4이며, 기본값이 모든 frame을 자동 압축한다는 뜻은 아니다. `.compress()`를
+  호출한 frame만 압축된다.
+- custom compression codec은 `use(codec)`으로 설정한다. connector와 server가 같은
+  codec을 사용해야 compressed frame을 복원할 수 있다.
 
 ## 4. 등록 모델 기준
 
@@ -368,6 +373,29 @@ builder 로 옮긴다. dotnet builder 메서드 한 개 = node builder 메서드
 })
 export class AppModule {}
 ```
+
+STREAM compression 설정은 stream node 등록과 별도로 framework option에 둔다. payload
+codec registry와 compression codec은 서로 다른 설정이며, runtime당 활성 compression
+codec은 하나다.
+
+```ts
+const compressionCodec: ZLinkStreamCompressionCodec = new MyStreamCompressionCodec();
+const framework = zlinkFramework();
+
+framework.configureStreamCompression()
+  .use(compressionCodec); // 이 server runtime의 활성 compression codec
+
+framework.addStreamNode('client.stream')
+  .bind('tcp://0.0.0.0:9100')
+  .registerSession(ClientHeaderSession);
+
+framework.build();
+```
+
+`disable()`을 호출한 상태에서 `compress()`로 송신을 요청하면 송신 단계 오류가 난다.
+같은 상태에서 compressed frame을 받으면 복원 오류가 나며, 오류 메시지는 compression
+codec이 설정되지 않았다는 뜻을 드러낸다. 복원된 payload가 runtime 수신 한도를 넘으면
+framework가 최종 길이를 다시 검사해 거부한다.
 
 `session` 으로 등록하는 클래스는 `ZLinkSession` 을 구현하거나
 `ZLinkSessionFactory` 로 session 을 만들어야 한다. session 이 연결별 context 만

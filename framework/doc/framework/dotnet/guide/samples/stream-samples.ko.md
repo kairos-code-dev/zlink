@@ -211,12 +211,9 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.Use(ZLinkProtobufCodec.Default);
 
-    {
-        var stream =     options.AddStreamNode("client.stream");
-        stream.Bind("tcp://0.0.0.0:9100");
-        stream.RegisterSession<ClientHeaderSession>();
-
-    }
+    var stream = options.AddStreamNode("client.stream");
+    stream.Bind("tcp://0.0.0.0:9100");
+    stream.RegisterSession<ClientHeaderSession>();
 });
 
 public sealed class ClientHeaderSession(
@@ -342,12 +339,9 @@ JSON, Protobuf, MessagePack, custom codec 은 같은 handler 코드를 통과하
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    {
-        var stream =     options.AddStreamNode("client.stream");
-        stream.Bind("tcp://0.0.0.0:9200");
-        stream.RegisterSession<ClientHeaderSession>();
-
-    }
+    var stream = options.AddStreamNode("client.stream");
+    stream.Bind("tcp://0.0.0.0:9200");
+    stream.RegisterSession<ClientHeaderSession>();
 });
 
 public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSession

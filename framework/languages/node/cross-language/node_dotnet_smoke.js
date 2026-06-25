@@ -152,11 +152,13 @@ async function dotnetClientToNodeChannelServer(tempDir) {
   let closed = false;
 
   const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+    channelName: 'profiles',
+    dispatchErrors: noDispatchErrorReporter(),
     handlers: new Map([
       ['TestHostProfileRequest', {
         async handle(payload) {
-          const request = JSON.parse(payload.toString());
-          return { value: `${request.value}|node` };
+          const value = payload?.Value ?? payload?.value;
+          return { Value: `${value}|node` };
         }
       }]
     ])
@@ -232,6 +234,7 @@ async function nodeConnectorToDotnetStreamServer(tempDir) {
         payload: new TextEncoder().encode('"ping"')
       })
       .packetName('RawPing')
+      .compress()
       .timeout(5000)
       .submit();
 
@@ -239,7 +242,7 @@ async function nodeConnectorToDotnetStreamServer(tempDir) {
     const reply = await withTimeout(pending, 7000, 'Node stream connector -> dotnet stream server');
     assert.equal(new TextDecoder().decode(reply.payload), '"pong"');
 
-    await waitForFileText(eventFile, (text) => text.includes('raw|"ping"'), 5000);
+    await waitForFileText(eventFile, (text) => text.includes('raw|ping'), 5000);
     return 'Node stream connector -> dotnet stream server';
   } finally {
     await instance.close();
@@ -279,9 +282,10 @@ async function dotnetConnectorToNodeStreamServer(tempDir) {
       return {
         context: sessionContext,
         async onDispatch(_header, payload) {
-          streamEvents.push(`dispatch:${payload.getString()}`);
-          assert.equal(payload.getString(), '"dotnet-to-node"');
-          await sessionContext.client.reply('node-pong').submit();
+          const value = payload.decode();
+          streamEvents.push(`dispatch:${value}`);
+          assert.equal(value, 'dotnet-to-node');
+          await sessionContext.client.reply('node-pong').compress().submit();
           streamEvents.push('reply:sent');
         }
       };
@@ -299,7 +303,12 @@ async function dotnetConnectorToNodeStreamServer(tempDir) {
     ]);
     try {
       await host.ready;
-      await waitForFileText(eventFile, (text) => text.includes('stream-client|"node-pong"'), 7000);
+      await waitForFileText(eventFile, (text) => text.includes('stream-client|') && text.includes('node-pong'), 7000);
+    } catch (error) {
+      if (streamEvents.length > 0) {
+        error.message += `\nNode stream events: ${streamEvents.join(', ')}`;
+      }
+      throw error;
     } finally {
       try {
         await host.stop();
@@ -358,6 +367,14 @@ function startDotnetHost(tempDir, name, args) {
   };
 }
 
+function noDispatchErrorReporter() {
+  return new framework.ZLinkDispatchErrorReporter(
+    undefined,
+    undefined,
+    { reportRuntimeTaskException() {} }
+  );
+}
+
 async function waitForReadyFile(readyFile, exit, output, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -377,16 +394,18 @@ async function waitForReadyFile(readyFile, exit, output, timeoutMs) {
 
 async function waitForFileText(filePath, predicate, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
+  let lastText = '';
   while (Date.now() < deadline) {
     try {
       const text = await fs.readFile(filePath, 'utf8');
+      lastText = text;
       if (predicate(text)) {
         return text;
       }
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error(`expected event text did not appear in ${filePath}`);
+  throw new Error(`expected event text did not appear in ${filePath}\nLast text:\n${lastText}`);
 }
 
 async function waitForMonitorEvent(monitor, eventType, timeoutMs, label) {

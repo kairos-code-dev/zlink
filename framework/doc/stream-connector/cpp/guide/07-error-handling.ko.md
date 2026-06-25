@@ -41,9 +41,9 @@ auto value = reply.value(); // T&&
 | `frame_too_large` | send payload 또는 metadata가 설정 한도를 넘음 | send, request |
 | `send_failed` | 연결은 열려 있지만 packet write가 실패함 | send, request |
 | `unsupported_codec` | build에 없는 codec을 사용함 | send, request |
-| `compression_failed` | LZ4 compress에 실패함 | send, request |
+| `compression_failed` | 설정된 compression codec으로 payload를 압축할 수 없음 | send, request |
 | `tls_validation_failed` | TLS 서버 인증서 검증 실패 | connect (TLS/WSS) |
-| `decompression_failed` | LZ4 decompress에 실패함 | receive loop |
+| `decompression_failed` | 설정된 compression codec으로 compressed payload를 복원할 수 없음 | receive loop |
 | `user_callback_failed` | `on<T>()` callback 안에서 예외가 발생함 | dispatch |
 | `remote_error` | 서버가 error frame을 응답함 | request |
 | `closed` | `close()`를 호출해 pending operation이 종료됨 | 모든 pending operation |
@@ -100,6 +100,11 @@ connector
 options.max_send_payload_size = 512 * 1024;
 options.max_receive_payload_size = 512 * 1024;
 ```
+
+compression을 명시적으로 끈 상태에서 `.compress()`를 호출하면 `compression_failed`가
+난다. 같은 상태에서 compressed frame을 받으면 `decompression_failed`가 나며, 오류 메시지는
+compression codec이 설정되지 않았다는 뜻을 드러낸다. 압축을 풀어 나온 payload도
+`max_receive_payload_size`를 다시 넘으면 `frame_too_large`로 처리된다.
 
 ## throwing adapter
 

@@ -47,6 +47,37 @@ public class StreamConfig {
 한 stream node에는 session type을 하나만 등록한다. 여러 session type을 같은 node에
 나란히 붙이는 방식은 기본 표면으로 두지 않는다.
 
+## 2.1 STREAM compression 설정
+
+framework runtime은 stream compression codec을 하나만 활성화한다. 기본값은 LZ4다.
+이 기본값은 모든 frame을 자동 압축한다는 뜻이 아니다. session send/reply call에서
+`compress()`를 호출한 frame만 압축한다.
+
+```java
+@Bean
+ZLinkFrameworkConfigurer compressionOptions() {
+    return options -> {
+        options.configureStreamCompression()
+            .useLz4(); // compressed frame을 보낼 때와 받을 때 사용할 codec
+    };
+}
+```
+
+custom compression codec도 같은 builder 경로로 설정한다. server와 connector가 같은
+codec을 사용해야 compressed frame을 복원할 수 있다.
+
+```java
+ZLinkStreamCompressionCodec codec = new MyStreamCompressionCodec();
+
+options.configureStreamCompression()
+    .use(codec); // 이 framework runtime의 활성 compression codec
+```
+
+`disable()`을 호출한 상태에서 `compress()`로 송신을 요청하면 송신 단계 오류가 난다.
+같은 상태에서 compressed frame을 받으면 복원 오류가 나며, 오류 메시지는 compression
+codec이 설정되지 않았다는 뜻을 드러낸다. 복원된 payload가 runtime 수신 한도를 넘는
+경우에도 framework가 최종 길이를 다시 검사해 거부한다.
+
 ## 3. Session 계약
 
 ```java

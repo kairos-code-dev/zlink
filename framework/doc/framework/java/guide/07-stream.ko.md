@@ -23,12 +23,18 @@ stream node 하나에 session 하나를 붙인다. 한 stream node에 session을
 @Override
 public void configure(ZLinkFrameworkOptions framework) {
     framework.codecs().use(ZLinkProtobufCodec.defaultCodec());
+    framework.configureStreamCompression()
+        .useLz4(); // compressed frame을 보낼 때와 받을 때 사용할 server codec
 
     ZLinkStreamNodeBuilder stream = framework.addStreamNode("client.stream");
     stream.bind("tcp://0.0.0.0:9100");
     stream.registerSession(GameSession.class);
 }
 ```
+
+압축 설정을 생략하면 LZ4가 기본값이다. 이 기본값은 모든 frame을 자동 압축한다는
+뜻이 아니다. 응용이 send/reply call에서 `compress()`를 호출한 frame만 압축된다.
+compressed frame을 주고받는 connector와 server는 같은 compression codec을 설정해야 한다.
 
 ### session 작성
 
@@ -143,11 +149,28 @@ while (running) {
 connector는 server framework와 별도 모듈이며 TCP/TLS/WS/WSS, manual dispatch,
 reconnect, codec helper를 제공한다.
 
+connector 쪽도 같은 compression codec을 설정한다. 기본 options는 LZ4를 사용한다.
+custom compression을 쓰는 경우에는 server framework와 connector 양쪽에 같은 구현을
+넣어야 한다.
+
+```java
+ZLinkStreamConnectorOptions options = new ZLinkStreamConnectorOptions(
+    URI.create("tcp://127.0.0.1:9100")); // 기본 LZ4 compression codec 사용
+```
+
+custom compression codec은 `ZLinkStreamConnectorOptions` record 값의 `compressionCodec`에 넣는다. 이때
+`compression`은 `LZ4`로 두고 codec 객체만 교체한다. 이 값은 알고리즘 id를 전송한다는
+뜻이 아니라, 이 connector runtime이 compressed frame을 처리할 때 사용할 구현을 정한다는
+뜻이다.
+
 connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZLinkStreamConnectorOptions`의
 `typedCodec`에 `ZLinkStreamCodec`(`encode(packetName, value)`/`decode(payload, type)`) 구현을
 주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽 등록(`codecs().addSerializer(...)`)과
 대칭이며, 두 표면의 전체 목록은
 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
+
+payload codec과 compression codec은 서로 다른 설정이다. payload codec은 DTO와 bytes 사이를
+바꾸고, compression codec은 이미 만들어진 bytes를 전송 전에 압축하거나 수신 후 복원한다.
 
 ## 3. 자주 막히는 곳
 

@@ -84,11 +84,29 @@ options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 ## compression
 
 ```cpp
-options.compression = zlink::stream_connector::compression_t::none; // 기본값
-options.compression = zlink::stream_connector::compression_t::lz4;
+options.compression = zlink::stream_connector::compression_t::lz4; // 기본값
+options.compression_codec = zlink::stream_connector::lz4_compression_codec();
 ```
 
-connector 기본 압축 설정이다. 호출마다 `.compress()`로 패킷 단위 압축을 요청할 수 있다.
+connector가 compressed frame을 보낼 때와 받을 때 사용할 codec 설정이다. 기본값은 LZ4다.
+이 기본값은 모든 frame을 자동으로 압축한다는 뜻이 아니다. 호출마다 `.compress()`로
+패킷 단위 압축을 요청한 frame만 압축된다.
+
+server framework와 connector는 같은 compression codec을 사용해야 한다. custom codec을
+쓰는 경우에도 built-in LZ4와 같은 option 경로로 설정한다.
+
+```cpp
+options.compression = zlink::stream_connector::compression_t::lz4;
+options.compression_codec = std::make_shared<my_compression_codec_t>();
+```
+
+압축을 명시적으로 끄면 `.compress()`를 호출한 send/request는 송신 단계에서 실패하고,
+compressed frame을 받으면 수신 단계에서 복원 오류로 처리된다.
+
+```cpp
+options.compression = zlink::stream_connector::compression_t::none;
+options.compression_codec.reset();
+```
 
 ## payload/metadata 크기 제한
 

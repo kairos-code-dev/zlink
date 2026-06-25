@@ -2487,12 +2487,15 @@ function providerToken(provider: Provider): InjectionToken {
   return typeof provider === 'function' ? provider : provider.provide;
 }
 
-function createSpotManager(
+async function createSpotManager(
   registration: ZLinkFrameworkRegistration,
   runtime: FrameworkRuntimeHost,
   moduleRef: ModuleRef | undefined,
   discovery: DiscoveryService | undefined
-): unknown {
+): Promise<unknown> {
+  const resolver = framework.hasSpotRemoteAddressResolver(registration)
+    ? createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime)
+    : undefined;
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [...registration.spotFactories],
     spotTimerHandlers: [...registration.spotNodes.values()]
@@ -2502,6 +2505,8 @@ function createSpotManager(
     spotActorRequestHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotActorRequestHandlers ?? [])]),
     ...runtime.createSpotManagerOptions?.(),
+    remoteAddressResolver: await resolver,
+    routedTransport: runtime.routeTransport,
     providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery),
     workerRuntime: new framework.ZLinkSpotWorkerRuntime(registration.worker)
   });
@@ -2520,6 +2525,7 @@ async function createSpotOutbound(
     : undefined;
   return new framework.DefaultZLinkSpotOutbound(
     new framework.ZLinkSpotSerialExecutor(),
+    undefined,
     undefined,
     undefined,
     resolver,

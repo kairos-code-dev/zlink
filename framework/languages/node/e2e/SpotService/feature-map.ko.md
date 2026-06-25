@@ -29,7 +29,10 @@
   `onActorJoin(...)`, public `ZLINK_SPOT_MANAGER` 기반 user Spot 생성 self-check는 runner에 있다.
   그러나 공통 시나리오가 요구하는 consumer의 registry-resolved entry spot join/request 경로 evidence는
   아직 없어 완료 marker로 올리지 않는다.
-- `SM-A2`: 반복 state mutation과 concurrency consistency Node runner와 marker가 아직 없다.
+- `SM-A2`: public `ZLinkSpotRemoteAddressResolver`와 Spot context `outbound.requestToSpot(...)`
+  경로를 실제 SpotMesh router로 검증하려면 두 SpotNode 사이 route가 필요하다. 단일 self-route와
+  수동 두 노드 연결 모두 Node E2E에서 route-ready evidence를 만들지 못했으므로, registry/discovery
+  기반 Spot route harness가 준비될 때까지 완료 marker로 올리지 않는다.
 - `SM-A3`: route resolver 정확성 Node runner와 marker가 아직 없다.
 - `SM-A4`: owner routing key mapping Node runner와 marker가 아직 없다.
 - `SM-A8`: public `context.runWorker(...).onCompleted(...)` self-check는 runner에 있으나, 공통

@@ -28,9 +28,11 @@ import type {
   ZLinkSpotInfo,
   ZLinkSpotManager,
   ZLinkSpotOutbound,
+  ZLinkSpotPacketHandler,
   ZLinkSpotPublisherClient,
   ZLinkSpotRemoteAddress,
   ZLinkSpotRemoteAddressResolver,
+  ZLinkSpotRequestHandler,
   ZLinkSpotSubscriptionHandler,
   ZLinkSpotTimerHandler,
   ZLinkTimer,
@@ -834,6 +836,7 @@ class ZLinkSpotActorJoinDispatch {
   private draining = false;
   private routeDraining = false;
   private readonly subscriptions: ZLinkSpotSubscriptionDispatcher;
+  private readonly packetHandlers = new Map<string, ZLinkSpotHandlerRegistration[]>();
 
   constructor(
     private readonly nativeSpot: ZLinkBackendSpot,
@@ -879,6 +882,15 @@ class ZLinkSpotActorJoinDispatch {
 
   configureSubscriptions(registrations: readonly ZLinkSpotHandlerRegistration[]): void {
     this.subscriptions.configure(registrations);
+    for (const registration of registrations) {
+      if (registration.kind !== 'packet') {
+        continue;
+      }
+      const packetName = registration.packetName ?? registration.handlerType.name;
+      const existing = this.packetHandlers.get(packetName) ?? [];
+      existing.push(registration);
+      this.packetHandlers.set(packetName, existing);
+    }
   }
 
   attach(): void {
@@ -1244,6 +1256,9 @@ class ZLinkSpotActorJoinDispatch {
         header.close();
         payload.close();
       }
+      return;
+    }
+    if (await this.dispatchRoutedSpotPacket(received)) {
       return;
     }
     if (received.requestSeq === null) {
@@ -1669,6 +1684,122 @@ class ZLinkSpotActorJoinDispatch {
       } catch {
         return undefined;
       }
+    }
+  }
+
+  private async dispatchRoutedSpotPacket(received: BindingReceived): Promise<boolean> {
+    let envelope: ReturnType<typeof decodeChannelEnvelope>;
+    try {
+      envelope = decodeChannelEnvelope(received.parts);
+    } catch {
+      return false;
+    }
+    if (
+      envelope.header.kind !== ZLinkChannelMessageKind.Request &&
+      envelope.header.kind !== ZLinkChannelMessageKind.Command
+    ) {
+      return false;
+    }
+    if (
+      envelope.packetName === REMOTE_ACTOR_JOIN_PACKET ||
+      envelope.packetName === ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET ||
+      envelope.packetName === ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
+    ) {
+      return false;
+    }
+    const registrations = this.packetHandlers.get(envelope.packetName ?? '');
+    const replyable = isReplyableRequestSeq(received.requestSeq);
+    const action = replyable
+      ? ZLinkDispatchErrorAction.ReplyError
+      : ZLinkDispatchErrorAction.Drop;
+    if (registrations === undefined || registrations.length === 0) {
+      this.dispatchErrors?.report({
+        surface: ZLinkDispatchErrorSurface.SpotRoute,
+        messageKind: replyable ? ZLinkDispatchMessageKind.Request : ZLinkDispatchMessageKind.Send,
+        reason: ZLinkDispatchErrorReason.HandlerMissing,
+        action,
+        packetName: envelope.packetName,
+        channelName: envelope.header.channelName,
+        spotRid: String(this.nativeSpot.routingId),
+        sourceRid: received.routingId === null ? undefined : String(received.routingId),
+        correlationId: envelope.header.correlationId ?? received.requestSeq?.toString()
+      });
+      if (replyable) {
+        appendRouteReplyParts(
+          received.reply(),
+          encodeChannelErrorReplyParts(envelope.header, `SPOT route handler not found: ${envelope.packetName}`)
+        ).submit();
+      }
+      return true;
+    }
+    let payload: unknown;
+    try {
+      payload = decodeChannelPayload(envelope, this.channelCodecs());
+    } catch (error) {
+      this.dispatchErrors?.report({
+        surface: ZLinkDispatchErrorSurface.SpotRoute,
+        messageKind: replyable ? ZLinkDispatchMessageKind.Request : ZLinkDispatchMessageKind.Send,
+        reason: ZLinkDispatchErrorReason.PayloadDecodeFailed,
+        action,
+        packetName: envelope.packetName,
+        channelName: envelope.header.channelName,
+        spotRid: String(this.nativeSpot.routingId),
+        sourceRid: received.routingId === null ? undefined : String(received.routingId),
+        correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
+        error
+      });
+      if (replyable) {
+        appendRouteReplyParts(
+          received.reply(),
+          encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
+        ).submit();
+      }
+      return true;
+    }
+    const context = {
+      channelName: envelope.header.channelName,
+      contentType: envelope.header.contentType,
+      packetName: envelope.packetName
+    };
+    try {
+      let response: unknown;
+      await this.serial.execute(async () => {
+        const spot = this.getTarget() as ZLinkSpot;
+        for (const registration of registrations) {
+          const handler = await createProviderInstance(
+            registration.handlerType as Type<ZLinkSpotPacketHandler<ZLinkSpot, unknown> | ZLinkSpotRequestHandler<ZLinkSpot, unknown, unknown>>,
+            this.providerResolver
+          );
+          response = await handler.handle(spot, payload, context);
+        }
+      });
+      if (replyable) {
+        appendRouteReplyParts(
+          received.reply(),
+          encodeChannelReplyParts(envelope.header, response)
+        ).submit();
+      }
+      return true;
+    } catch (error) {
+      this.dispatchErrors?.report({
+        surface: ZLinkDispatchErrorSurface.SpotRoute,
+        messageKind: replyable ? ZLinkDispatchMessageKind.Request : ZLinkDispatchMessageKind.Send,
+        reason: ZLinkDispatchErrorReason.HandlerException,
+        action,
+        packetName: envelope.packetName,
+        channelName: envelope.header.channelName,
+        spotRid: String(this.nativeSpot.routingId),
+        sourceRid: received.routingId === null ? undefined : String(received.routingId),
+        correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
+        error
+      });
+      if (replyable) {
+        appendRouteReplyParts(
+          received.reply(),
+          encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
+        ).submit();
+      }
+      return true;
     }
   }
 }

@@ -9,6 +9,8 @@
 - `RL-D2`: public message-flow observer가 dispatch error event에서 예외를 던져도 request 실패는
   원래 error reply로 끝나고, observer 예외가 runtime error sink의 `dispatch-error-observer` task로
   보고되며 후속 정상 request가 계속 성공하는지 확인한다.
+- `RL-D3`: public message-flow observer를 명시적 logging sink로 등록하고, dispatch error event의
+  `reason`·`action`·`packetName` marker가 파일 evidence에 남는지 확인한다.
 
 ## public API/harness 대기
 
@@ -27,6 +29,5 @@
 - `RL-C3`: node disconnect/recovery Node harness가 아직 없다.
 - `RL-C4`: registry restart/outage recovery Node harness가 아직 없다.
 - `RL-D1`: 고fanout 부하 Node harness가 아직 없다.
-- `RL-D3`: logging sink marker Node runner와 marker가 아직 없다.
 - `RL-D4`: error reply serialization Node harness가 아직 없다.
 - `RL-D5`: 지속 혼합 workload Node soak runner가 아직 없다.

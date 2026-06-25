@@ -1516,6 +1516,7 @@ function normalizeDiscoveryTopology(entries) {
 async function resilienceLifecycle() {
   await runResilienceLifecyclePendingCleanup();
   await runResilienceLifecycleObserverIsolation();
+  await runResilienceLifecycleLoggingMarker();
 }
 
 async function runResilienceLifecyclePendingCleanup() {
@@ -1621,6 +1622,54 @@ async function runResilienceLifecycleObserverIsolation() {
     }
   } finally {
     await app.close();
+  }
+}
+
+async function runResilienceLifecycleLoggingMarker() {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-node-rl-log-'));
+  const logFile = path.join(logDir, 'dispatch-errors.log');
+  RLLoggingObserver.logFile = logFile;
+  const endpoint = uniqueEndpoint('rl-log');
+  const nestjs = loadNest();
+  const framework = loadFramework();
+  const builder = nestjs.zlinkFramework();
+  builder.configureDispatch()
+    .setMessageFlowObserver(RLLoggingObserver)
+    .messageFlow(framework.ZLinkMessageFlowLogMode.ErrorsOnly);
+  builder.addClientServerChannel('rl.log')
+    .enableServer(endpoint)
+    .enableClient(endpoint)
+    .addRequestHandler('rl.echo', EchoHandler);
+  const { app } = await startApp(
+    nestModule('ResilienceLoggingMarkerModule', {
+      imports: [
+        nestjs.ZLinkModule.forRoot(builder.build())
+      ],
+      providers: [EchoHandler, RLLoggingObserver]
+    })
+  );
+
+  try {
+    const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    await assert.rejects(
+      () => client
+        .requestToChannel('rl.log', { id: 20, text: 'missing' })
+        .packetName('rl.missing')
+        .timeout(1000)
+        .submit(),
+      /No channel request handler is registered for 'rl\.log:rl\.missing'/
+    );
+    await waitFor(() => fs.existsSync(logFile) && fs.readFileSync(logFile, 'utf8').includes('packetName=rl.missing'));
+    const text = fs.readFileSync(logFile, 'utf8');
+    assert.match(text, /reason=handlerMissing/);
+    assert.match(text, /action=replyError/);
+    assert.match(text, /packetName=rl\.missing/);
+    assert.match(text, /channelName=rl\.log/);
+    marker('RL-D3');
+  } finally {
+    await app.close();
+    fs.rmSync(logDir, { recursive: true, force: true });
+    RLLoggingObserver.logFile = undefined;
   }
 }
 
@@ -1767,6 +1816,26 @@ class RLThrowingFlowObserver {
     if (flow.packetName === 'rl.missing') {
       throw new Error('rl observer failure');
     }
+  }
+}
+
+class RLLoggingObserver {
+  static logFile;
+
+  onMessageFlow(flow) {
+    if (flow.outcome !== 'error') {
+      return;
+    }
+    fs.appendFileSync(
+      RLLoggingObserver.logFile,
+      [
+        'message-flow-error',
+        `reason=${flow.errorReason}`,
+        `action=${flow.errorAction}`,
+        `packetName=${flow.packetName}`,
+        `channelName=${flow.channelName}`
+      ].join(' ') + '\n'
+    );
   }
 }
 

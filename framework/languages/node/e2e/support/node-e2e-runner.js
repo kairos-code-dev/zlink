@@ -71,6 +71,7 @@ async function pubSub() {
   PubSubAlphaHandler.events = [];
   PubSubBetaHandler.events = [];
   PubSubGammaHandler.events = [];
+  PubSubFlowObserver.events = [];
   const eventsEndpoint = await reserveTcpEndpoint();
   const nestjs = loadNest();
   const publisher = await startApp(
@@ -121,6 +122,24 @@ async function pubSub() {
       && PubSubBetaHandler.events.length === 1
       && PubSubGammaHandler.events.length === 2);
     marker('PS-A2');
+
+    PubSubAlphaHandler.events = [];
+    PubSubBetaHandler.events = [];
+    PubSubGammaHandler.events = [];
+    PubSubFlowObserver.events = [];
+    await fanout
+      .publishToChannel('ps.events', 'all', { seq: 98 })
+      .packetName('ps.missing')
+      .submit();
+    await waitFor(() => PubSubFlowObserver.events.some((event) =>
+      event.packetName === 'ps.missing'
+      && event.topic === 'all'
+      && event.outcome === 'error'
+      && event.errorReason === 'handlerMissing'
+      && event.errorAction === 'drop'));
+    await publishEvent(fanout, 'all', 99);
+    await waitFor(() => commonSequence([PubSubAlphaHandler.events, PubSubBetaHandler.events, PubSubGammaHandler.events], 'all', [99]));
+    marker('PS-C1');
   } finally {
     for (const subscriber of subscribers.reverse()) {
       await subscriber.app.close();
@@ -366,6 +385,13 @@ class PubSubGammaHandler {
   }
 }
 
+class PubSubFlowObserver {
+  static events = [];
+  onMessageFlow(flow) {
+    PubSubFlowObserver.events.push(flow);
+  }
+}
+
 class RcDecoratedRequestHandler {
   static requests = [];
   handle(payload, context) {
@@ -476,16 +502,21 @@ function selfCheck(id) {
 
 async function startPubSubSubscriber(moduleName, handlerType, endpoint) {
   const nestjs = loadNest();
+  const framework = loadFramework();
+  const builder = nestjs.zlinkFramework();
+  builder.configureDispatch()
+    .setMessageFlowObserver(PubSubFlowObserver)
+    .messageFlow(framework.ZLinkMessageFlowLogMode.ErrorsOnly)
+    .traceLogFile(path.join(os.tmpdir(), `zlink-node-ps-flow-${process.pid}.log`));
+  builder.addFanoutChannel('ps.events')
+    .enableSubscriber(endpoint)
+    .addPublishHandler('ps.event', handlerType);
   return await startApp(
     nestModule(moduleName, {
       imports: [
-        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-          .addFanoutChannel('ps.events')
-            .enableSubscriber(endpoint)
-            .addPublishHandler('ps.event', handlerType)
-          .build())
+        nestjs.ZLinkModule.forRoot(builder.build())
       ],
-      providers: [handlerType]
+      providers: [handlerType, PubSubFlowObserver]
     })
   );
 }

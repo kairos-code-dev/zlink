@@ -223,6 +223,7 @@ async function registrationCodec() {
   RcManualSendHandler.messages = [];
   const apiEndpoint = uniqueEndpoint('rc-api');
   const nestjs = loadNest();
+  await runRegistrationCodecAutoDiscovery(nestjs);
   const { app } = await startApp(
     nestModule('RegistrationCodecModule', {
       imports: [
@@ -519,6 +520,68 @@ function applyRcDecorators() {
   nestjs.zlinkRequestHandler('rc-decorated', 'rc.echo.decorated')(RcDecoratedRequestHandler);
   nestjs.zlinkSendHandler('rc-decorated', 'rc.audit.decorated')(RcDecoratedSendHandler);
   applyRcDecorators.applied = true;
+}
+
+async function runRegistrationCodecAutoDiscovery(nestjs) {
+  const discoveryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-node-rc-auto-'));
+  const fixturePath = path.join(discoveryRoot, 'auto-handlers.js');
+  fs.writeFileSync(fixturePath, `
+const nestjs = require(${JSON.stringify(path.join(nodeRoot, 'packages/nestjs/dist'))});
+
+const events = { requests: [], messages: [] };
+
+class AutoRequestHandler {
+  handle(payload, context) {
+    events.requests.push({ ...payload, contentType: context.contentType });
+    return { ...payload, source: 'auto' };
+  }
+}
+
+class AutoSendHandler {
+  handle(payload, context) {
+    events.messages.push({ ...payload, contentType: context.contentType });
+  }
+}
+
+nestjs.zlinkRequestHandler('rc-auto', 'rc.echo.auto')(AutoRequestHandler);
+nestjs.zlinkSendHandler('rc-auto', 'rc.audit.auto')(AutoSendHandler);
+
+module.exports = { AutoRequestHandler, AutoSendHandler, events };
+`);
+  const endpoint = uniqueEndpoint('rc-auto');
+  class RegistrationCodecAutoModule {}
+  nestjs.zlinkModule({
+    imports: [
+      nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+        .codecs().addJson()
+        .addClientServerChannel('rc.auto')
+          .enableServer(endpoint)
+          .enableClient(endpoint)
+          .addHandlerGroup('rc-auto')
+        .build())
+    ],
+    providerDiscovery: [discoveryRoot]
+  })(RegistrationCodecAutoModule);
+
+  const { app } = await startApp(RegistrationCodecAutoModule);
+  try {
+    const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const reply = await client
+      .requestToChannel('rc.auto', { id: 11, codec: 'json' })
+      .packetName('rc.echo.auto')
+      .submit();
+    assert.deepEqual(reply, { id: 11, codec: 'json', source: 'auto' });
+    await client
+      .sendToChannel('rc.auto', { id: 12, codec: 'json' })
+      .packetName('rc.audit.auto')
+      .submit();
+    const fixture = require(fixturePath);
+    await waitFor(() => fixture.events.messages.some((message) => message.id === 12));
+    assert.equal(fixture.events.requests.length, 1);
+    marker('RC-A1');
+  } finally {
+    await app.close();
+  }
 }
 
 async function assertInvalidRegistration(nestjs) {

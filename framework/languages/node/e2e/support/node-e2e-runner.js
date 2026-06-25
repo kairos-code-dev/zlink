@@ -35,6 +35,7 @@ async function registryMessaging() {
   await runRegistryMessagingSameRidFailover(nestjs, framework);
   await runRegistryMessagingCrossChannelDiscovery(nestjs, framework);
   await runRegistryMessagingScale(nestjs, framework);
+  await runRegistryMessagingTargetRidRoute(nestjs);
   await runRegistryMessagingManualDistribution(nestjs);
   RMFlowObserver.events = [];
   EchoHandler.completed = [];
@@ -675,6 +676,82 @@ async function waitForRegistryMessagingScaleProviders(client, providerIds, prefi
     observed.add(reply.handledBy);
   }
   assert.deepEqual([...observed].sort(), [...expected].sort());
+}
+
+async function runRegistryMessagingTargetRidRoute(nestjs) {
+  RMRouteHandler.requests = [];
+  const providerAEndpoint = await reserveTcpEndpoint();
+  const providerBEndpoint = await reserveTcpEndpoint();
+  const consumerEndpoint = await reserveTcpEndpoint();
+  const apps = [];
+
+  try {
+    await startRegistryMessagingRouteProvider(nestjs, providerAEndpoint, 'api-a', apps);
+    await startRegistryMessagingRouteProvider(nestjs, providerBEndpoint, 'api-b', apps);
+    const consumer = await startApp(
+      nestModule('RegistryMessagingRouteConsumerModule', {
+        imports: [
+          nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+            .addRouteMesh('rm.route')
+              .enableRouter(consumerEndpoint)
+              .routingId('consumer')
+              .connect([providerAEndpoint, providerBEndpoint])
+            .build())
+        ]
+      })
+    );
+    apps.push(consumer.app);
+
+    const routeClient = consumer.app.get(nestjs.ZLINK_ROUTE_CLIENT, { strict: false });
+    const reply = await submitUntilReachable(() =>
+      routeClient
+        .request('rm.route', 'api-b', { requestId: 'rm-c2-api-b' })
+        .packetName('rm.route.probe')
+        .timeout(1000)
+        .submit());
+    assert.deepEqual(reply, {
+      requestId: 'rm-c2-api-b',
+      handledBy: 'api-b',
+      sourceNodeRid: 'consumer'
+    });
+    assert.deepEqual(RMRouteHandler.requests, [{
+      requestId: 'rm-c2-api-b',
+      handledBy: 'api-b',
+      sourceNodeRid: 'consumer'
+    }]);
+    await assert.rejects(
+      () => routeClient
+        .request('rm.route', 'missing-rid', { requestId: 'rm-c2-missing' })
+        .packetName('rm.route.probe')
+        .timeout(100)
+        .submit(),
+      /Host unreachable|timed out|timeout|result 101/i
+    );
+    assert.equal(RMRouteHandler.requests.some((request) => request.requestId === 'rm-c2-missing'), false);
+    marker('RM-C2');
+  } finally {
+    for (const app of apps.reverse()) {
+      await app.close();
+    }
+  }
+}
+
+async function startRegistryMessagingRouteProvider(nestjs, endpoint, routingId, apps) {
+  const handler = createRMRouteHandler(routingId);
+  const started = await startApp(
+    nestModule(`RegistryMessagingRoute${routingId}Module`, {
+      imports: [
+        nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+          .addRouteMesh('rm.route')
+            .enableRouter(endpoint)
+            .routingId(routingId)
+            .addRequestHandler('rm.route.probe', handler)
+          .build())
+      ],
+      providers: [handler]
+    })
+  );
+  apps.push(started.app);
 }
 
 async function runRegistryMessagingManualDistribution(nestjs) {
@@ -1322,6 +1399,23 @@ function createRMScaleHandler(providerId) {
   return class {
     handle(payload) {
       return RMScaleHandler.record(payload, providerId);
+    }
+  };
+}
+
+class RMRouteHandler {
+  static requests = [];
+  static record(payload, handledBy, sourceNodeRid) {
+    const observed = { ...payload, handledBy, sourceNodeRid };
+    RMRouteHandler.requests.push(observed);
+    return observed;
+  }
+}
+
+function createRMRouteHandler(providerId) {
+  return class {
+    handle(payload, context) {
+      return RMRouteHandler.record(payload, providerId, context.sourceNodeRid);
     }
   };
 }

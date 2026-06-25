@@ -23,10 +23,11 @@
   routing 대상이 되는지 확인한다.
 - `RM-B2`: provider B를 정상 종료한 뒤 topology에서 빠진 것을 확인하고, 이후 request가 provider A로만
   처리되는지 확인한다.
+- `RM-C2`: route mesh public client가 target rid `api-b`로 보낸 request는 `api-b`에만 도달하고,
+  없는 rid request는 public error로 실패하는지 확인한다.
 
 ## public API/harness 대기
 
-- `RM-C2`: target rid route request Node runner와 marker가 아직 없다.
 - `RM-C7`: weighted 분산 Node runner와 marker가 아직 없다.
 - `RM-C8`: payload size policy Node runner와 marker가 아직 없다.
 - `RM-C9`: HWM/backpressure Node harness가 아직 없다.

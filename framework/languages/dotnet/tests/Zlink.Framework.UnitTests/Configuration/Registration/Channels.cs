@@ -168,6 +168,71 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_AllowsRouteChannelClientOnly_WhenDiscoveryIsConfigured()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+            options.AddRouteMesh("backend")
+                .EnableClient();
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        var route = Assert.Single(registration.RouteChannels.Values);
+        Assert.Null(route.BindEndpoint);
+        Assert.True(route.ClientEnabled);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_AllowsRouteChannelClientOnly_WithManualConnection()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddRouteMesh("backend")
+                .EnableClient("tcp://127.0.0.1:7202");
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        var route = Assert.Single(registration.RouteChannels.Values);
+        Assert.Null(route.BindEndpoint);
+        Assert.True(route.ClientEnabled);
+        Assert.Equal(["tcp://127.0.0.1:7202"], route.ManualConnections);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenRouteChannelHasNoCapability()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMesh("backend");
+            }));
+
+        Assert.Contains("must enable server or client capability", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenRouteChannelClientHasNoPeerAcquisitionPath()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddRouteMesh("backend")
+                    .EnableClient();
+            }));
+
+        Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_AllowsImplicitRouteMeshBridge_WhenDiscoveryIsConfigured()
     {
         var services = new ServiceCollection();

@@ -7,6 +7,7 @@ import {
   type ZLinkFrameworkRegistration,
   type ZLinkFrameworkRegistrationOptions,
   type ZLinkRouteChannelOptions,
+  type ZLinkRouteMeshChannelOptions,
   type ZLinkSpotNodeOptions,
   type ZLinkSpotPubSubCapabilityOptions,
   type ZLinkSpotRouterCapabilityOptions,
@@ -39,7 +40,7 @@ export function validateFrameworkRegistration(
   validateRegistryRouteChannel(registration);
   validateChannelCapabilities(options.channels, hasDiscovery(options.discovery));
   validateSpotNodes(registration);
-  validateRouteChannels(registration.routeChannelOptions);
+  validateRouteChannels(registration, hasDiscovery(options.discovery));
   validateStreamNodes(registration);
   validateWorkerOptions(registration.worker);
 }
@@ -117,8 +118,10 @@ function validateChannelCapabilities(
       channel.publishHandlers?.map((handler) => handler.packetName)
     );
     if (channel.routeMesh !== undefined) {
-      requireEndpoint(`channel '${channelName}' route mesh`, channel.routeMesh.bind);
-      validateManualConnections(`channel '${channelName}' route mesh`, channel.routeMesh.manualConnections);
+      validateRouteMeshCapability(
+        `channel '${channelName}' route mesh`,
+        channel.routeMesh,
+        discoveryConfigured);
     }
   }
 }
@@ -271,11 +274,64 @@ function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
   }
 }
 
-function validateRouteChannels(routeChannels: ReadonlyMap<string, ZLinkRouteChannelOptions>): void {
-  for (const routeChannel of routeChannels.values()) {
-    if (routeChannelHandlerCount(routeChannel) > 0) {
+function validateRouteChannels(registration: ZLinkFrameworkRegistration, discoveryConfigured: boolean): void {
+  for (const routeChannel of registration.routeChannelOptions.values()) {
+    if (!isRouteTransportDeclared(routeChannel) && !isRouteTransportConfigured(routeChannel)) {
+      continue;
+    }
+    if (
+      !isRoutePacketCapabilityConfigured(routeChannel) &&
+      isAcceptedSpotRouteChannel(registration, routeChannel)
+    ) {
+      continue;
+    }
+    validateRouteMeshCapability(`route channel '${routeChannel.routerChannelId}'`, routeChannel, discoveryConfigured);
+    if (routeChannelHandlerCount(routeChannel) > 0 && !hasBind(routeChannel.bind)) {
       requireEndpoint(`route channel '${routeChannel.routerChannelId}' router`, routeChannel.bind);
     }
+  }
+}
+
+function isRouteTransportConfigured(routeChannel: ZLinkRouteChannelOptions): boolean {
+  return isRoutePacketCapabilityConfigured(routeChannel);
+}
+
+function isRoutePacketCapabilityConfigured(routeChannel: ZLinkRouteChannelOptions): boolean {
+  return hasBind(routeChannel.bind)
+    || isRouteClientEnabled(routeChannel)
+    || (routeChannel.manualConnections ?? []).length > 0
+    || routeChannelHandlerCount(routeChannel) > 0;
+}
+
+function isAcceptedSpotRouteChannel(
+  registration: ZLinkFrameworkRegistration,
+  routeChannel: ZLinkRouteChannelOptions
+): boolean {
+  if (!isRouteTransportDeclared(routeChannel)) {
+    return false;
+  }
+  if (registration.spotNodes.get(routeChannel.routerChannelId)?.router !== undefined) {
+    return true;
+  }
+  if (routeChannel.routingId !== undefined) {
+    return [...registration.spotNodes.values()].some((spotNode) =>
+      spotNode.router?.routingId === routeChannel.routingId);
+  }
+  return [...registration.spotNodes.values()].filter((spotNode) => spotNode.router !== undefined).length === 1;
+}
+
+function validateRouteMeshCapability(
+  capabilityName: string,
+  routeChannel: ZLinkRouteChannelOptions | ZLinkRouteMeshChannelOptions,
+  discoveryConfigured = false
+): void {
+  const clientEnabled = isRouteClientEnabled(routeChannel)
+    || (routeChannel.manualConnections ?? []).length > 0;
+  if (!hasBind(routeChannel.bind) && !clientEnabled) {
+    throw new ZLinkConfigurationException(`${capabilityName} must enable server or client capability.`);
+  }
+  if (clientEnabled) {
+    requirePeerSource(capabilityName, routeChannel.manualConnections, discoveryConfigured);
   }
 }
 
@@ -283,4 +339,29 @@ function routeChannelHandlerCount(routeChannel: ZLinkRouteChannelOptions): numbe
   return (routeChannel.handlers ?? []).length +
     (routeChannel.sendHandlers ?? []).length +
     (routeChannel.requestHandlers ?? []).length;
+}
+
+function hasBind(endpoint: string | undefined): boolean {
+  return endpoint !== undefined && endpoint.trim().length > 0;
+}
+
+interface RouteMeshInternalState {
+  readonly transportDeclared?: boolean;
+  readonly clientEnabled?: boolean;
+}
+
+function routeMeshInternalState(
+  routeChannel: ZLinkRouteChannelOptions | ZLinkRouteMeshChannelOptions
+): RouteMeshInternalState {
+  return routeChannel as RouteMeshInternalState;
+}
+
+function isRouteTransportDeclared(routeChannel: ZLinkRouteChannelOptions): boolean {
+  return routeMeshInternalState(routeChannel).transportDeclared === true;
+}
+
+function isRouteClientEnabled(
+  routeChannel: ZLinkRouteChannelOptions | ZLinkRouteMeshChannelOptions
+): boolean {
+  return routeMeshInternalState(routeChannel).clientEnabled === true;
 }

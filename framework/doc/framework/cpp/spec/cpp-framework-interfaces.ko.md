@@ -1673,9 +1673,12 @@ native packet session 이름으로 사용하고, 없으면 타입 이름 기반 
 하나의 stream node에는 packet session을 하나만 선언한다. `register_session<T>()`과
 `register_session(...)`을 중복 호출하면 마지막 값으로 덮어쓰지 않고 설정 오류로 처리한다.
 
-route mesh는 local route endpoint를 열어야 하므로 `enable_server(...)`가 필수다.
-`add_route_mesh(...)`만 선언하거나 routing id/client endpoint만 설정하면 options 적용
-시점에 설정 오류로 실패한다.
+route mesh는 server 역할 또는 client 역할 중 하나 이상을 선언해야 한다.
+route handler 수신이나 SPOT route ingress가 필요한 runtime은 `enable_server(...)`로
+local route endpoint를 연다. 다른 node로만 보내는 runtime은 bind endpoint 없이
+`enable_client()`로 Discovery 기반 peer를 사용하거나 `enable_client(endpoint)`로
+수동 peer에 연결한다. 역할 없이 `add_route_mesh(...)`만 선언하면 options 적용 시점에
+설정 오류로 실패한다.
 RouteMesh와 SpotMesh가 같은 프로세스에 함께 등록되면 framework가 SPOT route packet을 자동으로
 local SpotNode로 분기한다.
 fluent options에서 channel 이름, handler group 이름, endpoint, SPOT node 이름, stream node

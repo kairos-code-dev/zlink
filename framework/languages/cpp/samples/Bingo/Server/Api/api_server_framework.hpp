@@ -40,7 +40,6 @@ inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &a
           .use_handler_group ("api");
 
         options.add_route_mesh (sample_names_t::play_channel)
-          .enable_server (topology.selected_api_play_route_endpoint ())
           .set_routing_id (zlink::routing_id_t::from (topology.selected_api_route_rid ()))
           .enable_client ();
     });

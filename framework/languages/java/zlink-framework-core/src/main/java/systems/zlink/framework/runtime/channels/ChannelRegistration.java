@@ -343,11 +343,11 @@ public final class ChannelRegistration {
     private void validateRouteMesh(
         boolean discoveryEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        if (routeBinds.isEmpty() && routeManualEndpoints.isEmpty() && !discoveryEnabled) {
+        if (routeBinds.isEmpty() && !clientEnabled) {
             throw new ZLinkConfigurationException(
-                "route mesh channel requires bind endpoints, discovery, or manual connections: " + name);
+                "route mesh channel must enable server or client capability: " + name);
         }
-        if (!discoveryEnabled && routeManualEndpoints.isEmpty()) {
+        if (clientEnabled && !discoveryEnabled && routeManualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "route mesh channel requires discovery or manual connections: " + name);
         }

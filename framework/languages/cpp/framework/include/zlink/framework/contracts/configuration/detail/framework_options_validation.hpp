@@ -57,10 +57,11 @@ inline void validate_framework_options (const framework_options_state_t &options
         }
     }
     for (const auto &channel_name : options.route_mesh_channels) {
-        if (!options.route_mesh_channels_with_bind.contains (channel_name)) {
+        if (!options.route_mesh_channels_with_bind.contains (channel_name)
+            && !options.route_mesh_channels_with_client.contains (channel_name)) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "route mesh channel '" + channel_name
-                                           + "' requires a bind endpoint");
+                                           + "' must enable server or client capability");
         }
     }
     for (const auto &spot_node_name : options.spot_nodes) {

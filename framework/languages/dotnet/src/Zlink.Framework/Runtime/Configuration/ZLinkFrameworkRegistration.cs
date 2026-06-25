@@ -162,6 +162,8 @@ internal sealed class ZLinkRouteChannelRegistration
 
     public string? BindEndpoint { get; set; }
 
+    public bool ClientEnabled { get; set; }
+
     public ZLinkSocketConfig SocketConfig { get; } = new();
 
     public ZLinkRouteConfig RoutingConfig { get; } = new();

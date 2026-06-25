@@ -140,8 +140,9 @@ handler 안에서 blocking wait를 쓰지 않는다.
   descriptor를 수집하지만, C++는 typed handler installer를 registration에 저장한 뒤
   initializer가 `route_handler_registry_t`로 변환한다. 프레임워크 사용자는
   `options.add_route_mesh(name)`으로 server endpoint, routing id, client endpoint,
-  handler group을 설정한다. route mesh channel은 local route endpoint를 열기 위해
-  `enable_server(endpoint)`가 필요하다.
+  handler group을 설정한다. route handler 수신이나 SPOT route ingress가 필요한
+  runtime은 `enable_server(endpoint)`로 local ROUTER endpoint를 열고, 다른 node로만
+  보내는 runtime은 `enable_client()` 또는 `enable_client(endpoint)`만 선언할 수 있다.
   SPOT route ingress는 같은 프로세스에 RouteMesh와 SpotMesh가 함께 있을 때 자동으로
   연결된다. 외부에서 Spot으로 들어오는 routed 호출은 RouteMesh만 사용한다.
   `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework

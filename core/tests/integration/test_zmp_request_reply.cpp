@@ -943,6 +943,73 @@ void test_router_to_router_request_reply_basic ()
     test_context_socket_close_zero_linger (server_router);
 }
 
+void test_connect_only_router_requester_receives_reply ()
+{
+    void *server_router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client_router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (server_router);
+    TEST_ASSERT_NOT_NULL (client_router);
+
+    const char server_rid[] = "connect-only-srv";
+    const char client_rid[] = "connect-only-cli";
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (server_router, server_rid, strlen (server_rid)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (client_router, client_rid, strlen (client_rid)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client_router, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, server_rid, strlen (server_rid)));
+
+    request_handler_probe_t handler_probe;
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (server_router, "inproc://zmp-router-connect-only-requester"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (client_router, "inproc://zmp-router-connect-only-requester"));
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "connect-only-request");
+
+    zlink_routing_id_t peer_rid;
+    memset (&peer_rid, 0, sizeof (peer_rid));
+    memcpy (peer_rid.data, server_rid, strlen (server_rid));
+    peer_rid.size = strlen (server_rid);
+
+    reply_probe_t reply_probe;
+    reply_probe.progress_handle = client_router;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request (client_router, &peer_rid, &request_part, 1,
+                                                     &capture_reply, &reply_probe, 0, 5000));
+
+    recv_router_request_into_probe (server_router, &handler_probe);
+    msleep (SETTLE_TIME);
+    send_captured_reply (server_router, &handler_probe, "connect-only-reply");
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+
+    {
+        std::lock_guard<std::mutex> lock (handler_probe.mutex);
+        TEST_ASSERT_TRUE (handler_probe.invoked);
+        TEST_ASSERT_TRUE (handler_probe.request_seq != 0);
+        TEST_ASSERT_EQUAL_STRING_LEN (client_rid, handler_probe.peer_rid.c_str (),
+                                      handler_probe.peer_rid.size ());
+        TEST_ASSERT_EQUAL_STRING_LEN ("connect-only-request", handler_probe.request_payload.c_str (),
+                                      handler_probe.request_payload.size ());
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (reply_probe.mutex);
+        TEST_ASSERT_TRUE (reply_probe.done);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.part_count);
+        TEST_ASSERT_EQUAL_STRING_LEN ("connect-only-reply", reply_probe.payload.c_str (),
+                                      reply_probe.payload.size ());
+    }
+
+    test_context_socket_close_zero_linger (client_router);
+    test_context_socket_close_zero_linger (server_router);
+}
+
 void test_multiple_in_flight_requests_complete_independently ()
 {
     void *server_router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -1781,6 +1848,7 @@ int main ()
     RUN_TEST (test_dealer_to_router_request_reply_basic);
     RUN_TEST (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
     RUN_TEST (test_router_to_router_request_reply_basic);
+    RUN_TEST (test_connect_only_router_requester_receives_reply);
     RUN_TEST (test_multiple_in_flight_requests_complete_independently);
     RUN_TEST (test_out_of_order_replies_match_original_request);
     RUN_TEST (test_extra_reply_is_dropped_after_first_completion);

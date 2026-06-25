@@ -150,8 +150,11 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
 
 test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://127.0.0.1:5551')
     .options({ spotPublisherClients: ['spot-events'] })
     .addRouteMesh('mesh')
+      .connect(undefined)
     .build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
@@ -1075,6 +1078,25 @@ test('ZLinkModule.forRoot validates channel capability endpoints and peer acquis
     .addFanoutChannel('events')
       .enableSubscriber('tcp://127.0.0.1:7002')
     .build()));
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addRouteMesh('route')
+      .build()),
+    /must enable server or client capability/
+  );
+  assert.throws(
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addRouteMesh('route')
+        .connect(undefined)
+      .build()),
+    /requires discovery or manual connections/
+  );
+  assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://127.0.0.1:5551')
+    .addRouteMesh('route')
+      .connect(undefined)
+    .build()));
 });
 
 test('ZLinkModule.forRoot maps route mesh channel options into runtime registration', async () => {
@@ -1328,6 +1350,7 @@ test('ZLinkModule.forRoot registers registry spot remote address resolver by def
     .useDiscovery()
       .addRegistryEndpoint('tcp://127.0.0.1:5551')
     .addRouteMesh('play')
+      .connect(undefined)
     .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
     .build());
   const resolverProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
@@ -1749,6 +1772,7 @@ test('framework runtime host attaches stream SessionRelay to registered SpotNode
               onFramedPacket() {},
               send() { return true; },
               disconnectPeer() {},
+              attachSessionRelay(node) {
                 assert.equal(node, spotNode);
               },
               async bindActor() {},

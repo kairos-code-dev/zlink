@@ -159,9 +159,15 @@ binding은 framework 내부 dispatch를 사용하고, remote actor binding은 st
 
 ```java
 RouteMeshChannelBuilder route = framework.addRouteMesh("play-route")
-    .enableServer("tcp://0.0.0.0:7300");
+    .enableClient();
 route.setRoutingId(RoutingId.from("play-node"));
 ```
+
+route mesh는 server 역할과 client 역할을 따로 선언한다. 들어오는 route handler나
+SPOT route ingress를 받아야 하는 runtime은 `enableServer(endpoint)`로 local ROUTER
+endpoint를 연다. 다른 node로만 request/send를 보내는 runtime은 bind endpoint 없이
+`enableClient()`를 선언하고 Discovery로 peer를 찾거나, `enableClient(endpoint)`로
+수동 peer에 연결한다.
 
 Registry-backed Spot remote address 기본 구현을 쓰려면 route mesh channel이 필요하다.
 route mesh channel이 둘 이상이면 `useRegistrySpotRemoteAddresses(...)`에서 router

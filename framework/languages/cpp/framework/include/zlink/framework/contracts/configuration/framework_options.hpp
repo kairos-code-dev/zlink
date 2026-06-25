@@ -708,6 +708,9 @@ class route_mesh_channel_builder_t
 
     route_mesh_channel_builder_t &enable_client ()
     {
+        _options->route_mesh_channels_with_client.insert (_channel_name);
+        _options->discovery_backed_capabilities.insert ("route mesh channel '" + _channel_name + "'");
+        _manual_connections.clear ();
         apply ();
         return *this;
     }
@@ -715,6 +718,8 @@ class route_mesh_channel_builder_t
     route_mesh_channel_builder_t &enable_client (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "route mesh client endpoint is required");
+        _options->route_mesh_channels_with_client.insert (_channel_name);
+        _options->discovery_backed_capabilities.erase ("route mesh channel '" + _channel_name + "'");
         _manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;

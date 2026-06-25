@@ -832,9 +832,10 @@ session actor dispatch[^session-actor-dispatch] 같은 framework 기능이 trans
 실패한다.
 
 현재 Node builder 표면에서는 host-owned route runtime 을 다음과 같이 선언한다.
-`addRouteMesh(name)` 의 `name` 은 route channel 이름이고, `.enableServer(endpoint)` 는
-local ROUTER endpoint 다.
-`.enableClient(endpoint)` 가 있으면 startup 시 같은 ROUTER socket 에 수동 peer 연결을 추가한다.
+`addRouteMesh(name)` 의 `name` 은 route channel 이름이고, `.enableRouter(endpoint)` 는
+local ROUTER endpoint 다. `.connect(undefined)` 는 Discovery로 peer를 찾는 client
+역할을 켜고, `.connect(endpoint)` 는 bind 없이 수동 peer에 연결하는 client-only
+route runtime을 만든다.
 framework public 표면은
 `RoutingId` 를 문자열로 받지만, backend adapter 가 binding public `RoutingId.from(...)`
 변환을 내부에서 처리하므로 사용자는 binding 객체를 만들 필요가 없다.

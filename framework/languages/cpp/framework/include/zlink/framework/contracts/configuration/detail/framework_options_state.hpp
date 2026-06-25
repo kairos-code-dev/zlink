@@ -343,6 +343,7 @@ struct framework_options_state_t
     manual_connection_map_t accepted_spot_route_manual_connections_by_node;
     std::set<std::string> route_mesh_channels;
     std::set<std::string> route_mesh_channels_with_bind;
+    std::set<std::string> route_mesh_channels_with_client;
     std::map<std::string, stream_session_factory_t> stream_session_factories;
     http_options_builder_t http;
     message_metadata_policy_t metadata_policy;

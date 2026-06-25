@@ -6,6 +6,7 @@ const test = require('node:test');
 const zlink = require('../../../../../bindings/node/dist');
 const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist/internal');
+const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const backend = require('../../packages/framework/dist/runtime/backend');
 
 test('stream session node runtime dispatches framed packets through one session context', async () => {
@@ -26,7 +27,7 @@ test('stream session node runtime dispatches framed packets through one session 
           events.push(['connected', ctx.sessionId, ctx.localAddr, ctx.remoteAddr]);
         },
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.decode()]);
+          events.push(['dispatch', header.packetName, payload.decode()]);
           dispatchCount += 1;
           if (dispatchCount === 2) {
             dispatchesDone();
@@ -41,8 +42,8 @@ test('stream session node runtime dispatches framed packets through one session 
 
   runtime.start();
   runtime.markConnected('session-a', 'tcp://local', 'tcp://remote');
-  socket.emitPacket('session-a', fakeMessage('Ready'), fakeMessage('one'));
-  socket.emitPacket('session-a', fakeMessage('Move'), fakeMessage('two'));
+  socket.emitPacket('session-a', fakeHeader({ name: 'Ready' }), fakeMessage('one'));
+  socket.emitPacket('session-a', fakeHeader({ name: 'Move' }), fakeMessage('two'));
   await dispatchesDonePromise;
   await runtime.dispose();
 
@@ -72,12 +73,12 @@ test('stream session node runtime serializes dispatch and disconnect callbacks p
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch:start', header.name, payload.decode()]);
-          if (header.name === 'First') {
+          events.push(['dispatch:start', header.packetName, payload.decode()]);
+          if (header.packetName === 'First') {
             firstStarted();
             await firstCanFinish;
           }
-          events.push(['dispatch:end', header.name]);
+          events.push(['dispatch:end', header.packetName]);
         },
         async onDisconnected(ctx) {
           events.push(['disconnected', ctx.sessionId]);
@@ -87,9 +88,9 @@ test('stream session node runtime serializes dispatch and disconnect callbacks p
   });
 
   runtime.start();
-  socket.emitPacket('session-serial', fakeMessage('First'), fakeMessage('one'));
+  socket.emitPacket('session-serial', fakeHeader({ name: 'First' }), fakeMessage('one'));
   await firstStartedPromise;
-  socket.emitPacket('session-serial', fakeMessage('Second'), fakeMessage('two'));
+  socket.emitPacket('session-serial', fakeHeader({ name: 'Second' }), fakeMessage('two'));
   runtime.markDisconnected('session-serial');
   assert.deepEqual(events, [['dispatch:start', 'First', 'one']]);
 
@@ -115,14 +116,14 @@ test('stream session node runtime does not invoke user callbacks inside transpor
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.decode()]);
+          events.push(['dispatch', header.packetName, payload.decode()]);
         }
       };
     }
   });
 
   runtime.start();
-  socket.emitPacket('session-deferred', fakeMessage('Deferred'), fakeMessage('body'));
+  socket.emitPacket('session-deferred', fakeHeader({ name: 'Deferred' }), fakeMessage('body'));
   assert.deepEqual(events, []);
 
   await runtime.dispose();
@@ -209,11 +210,11 @@ test('stream session runtime replies to dispatch errors without session onError 
   });
 
   runtime.start();
-  socket.emitPacket('session-e', fakeMessage(JSON.stringify(streamHeaderJson({
+  socket.emitPacket('session-e', fakeHeader({
     kind: connector.ZlinkStreamMessageKind.Request,
     requestSeq: 7n,
     name: 'Move'
-  }))), fakeMessage('p'));
+  }), fakeMessage('p'));
   await runtime.dispose();
 
   assert.deepEqual(errors, [['sink', 'dispatch failed']]);
@@ -241,18 +242,18 @@ test('stream session runtime completes pending responses before session dispatch
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.decode()]);
+          events.push(['dispatch', header.packetName, payload.decode()]);
         }
       };
     }
   });
 
   runtime.start();
-  socket.emitPacket('session-f', fakeMessage(JSON.stringify(streamHeaderJson({
+  socket.emitPacket('session-f', fakeHeader({
     kind: connector.ZlinkStreamMessageKind.Response,
     requestSeq: 1n,
     name: 'Move'
-  }))), fakeMessage('response-body'));
+  }), fakeMessage('response-body'));
 
   const response = await pending.promise;
   await runtime.dispose();
@@ -274,12 +275,12 @@ test('stream session runtime decompresses response frames before completing pend
   });
 
   runtime.start();
-  socket.emitPacket('session-compressed-response', fakeMessage(JSON.stringify(streamHeaderJson({
+  socket.emitPacket('session-compressed-response', fakeHeader({
     kind: connector.ZlinkStreamMessageKind.Response,
     flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
     requestSeq: 1n,
     name: 'Move'
-  }))), fakeMessageBytes(Buffer.from('40551F41010047504141414141', 'hex')));
+  }), fakeMessageBytes(Buffer.from('40551F41010047504141414141', 'hex')));
 
   const response = await pending.promise;
   await runtime.dispose();
@@ -297,18 +298,18 @@ test('stream session runtime decompresses dispatch payloads before session handl
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.decode()]);
+          events.push(['dispatch', header.packetName, payload.decode()]);
         }
       };
     }
   });
 
   runtime.start();
-  socket.emitPacket('session-compressed-dispatch', fakeMessage(JSON.stringify(streamHeaderJson({
+  socket.emitPacket('session-compressed-dispatch', fakeHeader({
     kind: connector.ZlinkStreamMessageKind.Send,
     flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
     name: 'Move'
-  }))), fakeMessageBytes(Buffer.from('40551F41010047504141414141', 'hex')));
+  }), fakeMessageBytes(Buffer.from('40551F41010047504141414141', 'hex')));
   await runtime.dispose();
 
   assert.deepEqual(events, [['dispatch', 'Move', 'A'.repeat(96)]]);
@@ -328,18 +329,18 @@ test('stream session runtime rejects compressed dispatch payloads above receive 
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.decode()]);
+          events.push(['dispatch', header.packetName, payload.decode()]);
         }
       };
     }
   });
 
   runtime.start();
-  socket.emitPacket('session-compressed-too-large', fakeMessage(JSON.stringify(streamHeaderJson({
+  socket.emitPacket('session-compressed-too-large', fakeHeader({
     kind: connector.ZlinkStreamMessageKind.Send,
     flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
     name: 'Move'
-  }))), fakeMessageBytes(Uint8Array.from([0x40, 0x01, ...Buffer.from('A'.repeat(64 * 1024), 'utf8')])));
+  }), fakeMessageBytes(Uint8Array.from([0x40, 0x01, ...Buffer.from('A'.repeat(64 * 1024), 'utf8')])));
   await runtime.dispose();
 
   assert.deepEqual(events, []);
@@ -384,18 +385,18 @@ test('stream session runtime dispatches unmatched response frames to the session
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.decode()]);
+          events.push(['dispatch', header.packetName, payload.decode()]);
         }
       };
     }
   });
 
   runtime.start();
-  socket.emitPacket('session-g', fakeMessage(JSON.stringify(streamHeaderJson({
+  socket.emitPacket('session-g', fakeHeader({
     kind: connector.ZlinkStreamMessageKind.Response,
     requestSeq: 99n,
     name: 'Move'
-  }))), fakeMessage('unmatched'));
+  }), fakeMessage('unmatched'));
   await runtime.dispose();
 
   assert.deepEqual(events, [['dispatch', 'Move', 'unmatched']]);
@@ -432,7 +433,7 @@ test('stream session node runtime receives framed packets from public binding st
             resolve({
               sessionId: sessionContext.sessionId,
               routingId: sessionContext.routingId,
-              header: header.name,
+              header: header.packetName,
               payload: payload.decode()
             });
             await sessionContext.client.reply('NativeReply').submit();
@@ -580,7 +581,11 @@ function withTimeout(promise, timeoutMs, label) {
   return Promise.race([promise, guard]).finally(() => clearTimeout(timeout));
 }
 
-function streamHeaderJson(overrides) {
+function fakeHeader(overrides) {
+  return fakeMessageBytes(streamProtocol.encodeStreamHeader(streamHeader(overrides)));
+}
+
+function streamHeader(overrides) {
   return {
     kind: connector.ZlinkStreamMessageKind.Send,
     codec: connector.ZlinkStreamCodec.Json,
@@ -588,9 +593,8 @@ function streamHeaderJson(overrides) {
       ? connector.ZlinkStreamHeaderFlags.None
       : connector.ZlinkStreamHeaderFlags.HasRequestSeq,
     name: 'Packet',
-    metadata: { values: [] },
-    ...overrides,
-    requestSeq: overrides.requestSeq?.toString()
+    metadata: new Map(),
+    ...overrides
   };
 }
 

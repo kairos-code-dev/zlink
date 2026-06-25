@@ -1030,7 +1030,7 @@ int main ()
         return 33;
     }
 
-    bool missing_route_bind_failed = false;
+    bool missing_route_capability_failed = false;
     try {
         zlink::framework::service_collection_t invalid_services;
         zlink::framework::handler_registry_t invalid_handlers;
@@ -1045,15 +1045,16 @@ int main ()
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        missing_route_bind_failed =
+        missing_route_capability_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("requires a bind endpoint") != std::string::npos;
+          && std::string (error.what ()).find ("must enable server or client capability")
+               != std::string::npos;
     }
-    if (!missing_route_bind_failed) {
+    if (!missing_route_capability_failed) {
         return 34;
     }
 
-    bool route_no_arg_client_without_discovery_succeeded = true;
+    bool route_no_arg_client_without_discovery_failed = false;
     try {
         zlink::framework::service_collection_t valid_services;
         zlink::framework::handler_registry_t valid_handlers;
@@ -1066,15 +1067,38 @@ int main ()
           .enable_server ("tcp://127.0.0.1:9322")
           .enable_client ();
         valid_options.apply ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        route_no_arg_client_without_discovery_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
+          && std::string (error.what ()).find ("requires registry discovery")
+               != std::string::npos;
+    }
+    if (!route_no_arg_client_without_discovery_failed) {
+        return 65;
+    }
+
+    bool route_manual_client_without_bind_succeeded = true;
+    try {
+        zlink::framework::service_collection_t valid_services;
+        zlink::framework::handler_registry_t valid_handlers;
+        zlink::framework::serializer_registry_t valid_serializers;
+        zlink::framework::zlink_builder_t valid_zlink;
+        zlink::framework::monitoring_builder_t valid_monitoring;
+        zlink::framework::zlink_framework_options_t valid_options (
+          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
+        valid_options.add_route_mesh ("route-manual-client")
+          .enable_client ("tcp://127.0.0.1:9323");
+        valid_options.apply ();
         const auto routes = valid_zlink.route_channels ();
-        route_no_arg_client_without_discovery_succeeded =
-          routes.size () == 1 && routes.front () == "route-no-discovery";
+        route_manual_client_without_bind_succeeded =
+          routes.size () == 1 && routes.front () == "route-manual-client";
     }
     catch (const zlink::framework::framework_exception_t &) {
-        route_no_arg_client_without_discovery_succeeded = false;
+        route_manual_client_without_bind_succeeded = false;
     }
-    if (!route_no_arg_client_without_discovery_succeeded) {
-        return 65;
+    if (!route_manual_client_without_bind_succeeded) {
+        return 66;
     }
 
     bool missing_spot_capability_failed = false;

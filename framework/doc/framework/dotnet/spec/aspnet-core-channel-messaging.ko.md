@@ -211,10 +211,11 @@ channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는�
 수동 `connect`, `disconnect`, `unbind`, `close` 를 받지 않는다. 따라서 framework 역시
 같은 channel runtime 안에서 두 방식을 섞는 모델로 설명할 수 없다.
 
-> route channel (`AddRouteMesh`) 은 일반 channel 과 정책이 다르다. 같은 routed
-> channel 안에서 전역 Discovery 와 수동 연결이 동시에 있으면, startup validation
-> 단계에서 차단된다. 일반 client / subscriber 는 "수동이 있으면 수동 우선" 정책으로
-> 둘이 공존해도 받아들인다.
+route channel(`AddRouteMesh`)도 역할 단위로 읽는다. `EnableServer(endpoint)`는
+local `ROUTER` endpoint를 열고, `EnableClient()`는 discovery로 찾은 peer로
+outbound request/send를 보낸다. `EnableClient(endpoint)`는 bind 없이 수동 peer에
+연결하는 client-only channel을 만든다. 전역 Discovery가 있더라도 수동 peer를 함께
+명시할 수 있으며, 이때 수동 peer는 실제 transport 연결로 쓰인다.
 
 #### SPOT route 수신과 router-capable channel
 

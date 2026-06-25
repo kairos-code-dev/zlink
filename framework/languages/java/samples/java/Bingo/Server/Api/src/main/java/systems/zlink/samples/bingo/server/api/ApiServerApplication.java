@@ -46,7 +46,6 @@ public final class ApiServerApplication {
                 .addHandlerGroup("api");
             RouteMeshChannelBuilder route = options.addRouteMesh(SampleNames.PlayChannel);
             route.enableClient();
-            route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()));
         };
     }

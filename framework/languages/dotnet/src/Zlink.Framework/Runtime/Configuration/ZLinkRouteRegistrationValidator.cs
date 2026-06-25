@@ -9,10 +9,11 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
         IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> scannedEndpoints)
     {
-        if (string.IsNullOrWhiteSpace(routed.BindEndpoint))
+        var serverEnabled = !string.IsNullOrWhiteSpace(routed.BindEndpoint);
+        if (!serverEnabled && !routed.ClientEnabled)
         {
             throw new ZLinkConfigurationException(
-                $"Route channel '{routed.RouterChannelId}' must define a bind endpoint.");
+                $"Route channel '{routed.RouterChannelId}' must enable server or client capability.");
         }
 
         var manualAcceptedSpotRouteWithDiscoveryMetadata =
@@ -20,10 +21,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             && routed.ManualConnections.Count > 0
             && discoveryConfigured;
 
-        if (!manualAcceptedSpotRouteWithDiscoveryMetadata
-            && (!acceptedBySpotRouteChannel
-                || discoveryConfigured
-                || routed.ManualConnections.Count > 0))
+        if (routed.ClientEnabled
+            && !manualAcceptedSpotRouteWithDiscoveryMetadata)
         {
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"Route channel '{routed.RouterChannelId}'",

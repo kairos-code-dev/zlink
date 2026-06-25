@@ -282,7 +282,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
-        { var channel = options.addRouteMesh("play");  };
+        { var channel = options.addRouteMesh("play"); channel.enableClient(); };
         options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
         options.useRegistrySpotRemoteAddresses("game");
 
@@ -304,7 +304,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void registrySpotRemoteAddressesRequiresDiscoveryEndpoint() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMesh("play");  };
+        { var channel = options.addRouteMesh("play"); channel.enableClient("inproc://play"); };
         options.useRegistrySpotRemoteAddresses("game");
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -325,8 +325,8 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
-        { var channel = options.addRouteMesh("play-a");  };
-        { var channel = options.addRouteMesh("play-b");  };
+        { var channel = options.addRouteMesh("play-a"); channel.enableClient(); };
+        { var channel = options.addRouteMesh("play-b"); channel.enableClient(); };
         options.useRegistrySpotRemoteAddresses("game");
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -581,9 +581,19 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelWithoutPeerAcquisitionPathIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMesh("route"); channel.enableServer("inproc://route"); };
+        { var channel = options.addRouteMesh("route"); channel.enableClient(); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void routeMeshClientWithDiscoveryDoesNotRequireBindEndpoint() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
+        { var channel = options.addRouteMesh("route"); channel.enableClient(); };
+
+        assertDoesNotThrow(options::validate);
     }
 
     @Test

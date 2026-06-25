@@ -100,10 +100,10 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `.addRouteMesh(name)` + 전역 `.useDiscovery()` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
-| `.addRouteMesh(name).enableRouter(...).connect(endpoint)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
-| `routeMesh` channel + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
-| routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
+| `.addRouteMesh(name).connect(undefined)` + 전역 `.useDiscovery()` 있음 | 허용 | bind 없이 discovery 기반 routed client node를 만든다 |
+| `.addRouteMesh(name).connect(endpoint)` 있음 | 허용 | bind 없이 manual 기반 routed client node를 만든다 |
+| `routeMesh` channel + server/client 역할 둘 다 없음 | 비허용 | startup validation 오류 |
+| routed handler 수신 channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점에 오류 |
 | session actor attach 중 application resolver fallback 사용 | 비허용 | session relay 는 logical actor handle 을 저장하고, 실제 위치 해석은 core SessionRelay 로 일원화한다 |
@@ -155,7 +155,7 @@
 - monitoring 등록 시 존재하지 않는 source를 지정한 경우
 - 같은 stream node에 session을 중복 등록한 경우
 - bind endpoint가 없는 stream node
-- routed channel bind endpoint가 없는 경우
+- routed handler 수신 channel에 bind endpoint가 없는 경우
 - 같은 channel server에서 `kind + packetName`이 같은 handler 중복
 - 같은 routed channel에서 `kind + packetName`이 같은 handler 중복
 

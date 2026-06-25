@@ -246,16 +246,17 @@ test('runtime host bound session uses routed Session target before native Sessio
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
+  host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
+    const message = JSON.parse(request.getString('utf8'));
     routeCalls.push({
       routerChannelId: remoteAddress.routerChannelId,
       targetNodeRid: remoteAddress.targetNodeRid,
       spotRid: remoteAddress.spotRid,
-      packetName: options.packetName,
+      packetName: message.packetName,
       message,
       signal: options.signal
     });
-    return Promise.resolve();
+    return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   host.spotNodeRuntime = {
     primaryNode: {
@@ -302,15 +303,16 @@ test('runtime host bound session uses routed Session target before stale local r
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
+  host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
+    const message = JSON.parse(request.getString('utf8'));
     routeCalls.push({
       routerChannelId: remoteAddress.routerChannelId,
       targetNodeRid: remoteAddress.targetNodeRid,
       spotRid: remoteAddress.spotRid,
-      packetName: options.packetName,
+      packetName: message.packetName,
       message
     });
-    return Promise.resolve();
+    return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   const stream = recordingStream('session-stale', 'rid-stale');
   const context = host.streamBindingRuntime.createSessionContext(stream);
@@ -356,9 +358,13 @@ test('runtime host bound session uses Spot route target even when route channel 
     routeSends.push({ routerChannelId, targetNodeRid, packetName, message, signal });
     return Promise.resolve();
   };
-  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
-    spotSends.push({ remoteAddress, message, options });
-    return Promise.resolve();
+  host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
+    spotSends.push({
+      remoteAddress,
+      message: JSON.parse(request.getString('utf8')),
+      options: { ...options, packetName: '__zlink.actor.bound_session.send' }
+    });
+    return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   host.setActorManager({
     getState(actorId) {
@@ -485,16 +491,17 @@ test('runtime host remote bound session send submits a routed Session command', 
     registration: framework.createFrameworkRegistration()
   });
   const routeCalls = [];
-  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
+  host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
+    const message = JSON.parse(request.getString('utf8'));
     routeCalls.push({
       routerChannelId: remoteAddress.routerChannelId,
       targetNodeRid: remoteAddress.targetNodeRid,
       spotRid: remoteAddress.spotRid,
-      packetName: options.packetName,
+      packetName: message.packetName,
       packet: message,
       signal: options.signal
     });
-    return Promise.resolve();
+    return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   host.setActorManager({
     getState(actorId) {
@@ -530,16 +537,17 @@ test('runtime host remote bound session receiver forwards through actor remote t
     registration: framework.createFrameworkRegistration()
   });
   const routeCalls = [];
-  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
+  host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
+    const message = JSON.parse(request.getString('utf8'));
     routeCalls.push({
       routerChannelId: remoteAddress.routerChannelId,
       targetNodeRid: remoteAddress.targetNodeRid,
       spotRid: remoteAddress.spotRid,
-      packetName: options.packetName,
+      packetName: message.packetName,
       packet: message,
       signal: options.signal
     });
-    return Promise.resolve();
+    return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   host.setActorManager({
     getState(actorId) {
@@ -579,9 +587,13 @@ test('runtime host remote bound session receiver delivers to local stream before
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
-    routeCalls.push({ remoteAddress, message, options });
-    return Promise.resolve();
+  host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
+    routeCalls.push({
+      remoteAddress,
+      message: JSON.parse(request.getString('utf8')),
+      options
+    });
+    return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   const stream = recordingStream('session-local-hop', 'rid-local-hop');
   const context = host.streamBindingRuntime.createSessionContext(stream);
@@ -621,16 +633,17 @@ test('runtime host routed bound session receiver forwards through actor remote t
     registration: framework.createFrameworkRegistration()
   });
   const routeCalls = [];
-  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
+  host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
+    const message = JSON.parse(request.getString('utf8'));
     routeCalls.push({
       routerChannelId: remoteAddress.routerChannelId,
       targetNodeRid: remoteAddress.targetNodeRid,
       spotRid: remoteAddress.spotRid,
-      packetName: options.packetName,
+      packetName: message.packetName,
       packet: message,
       signal: options.signal
     });
-    return Promise.resolve();
+    return [bindingMessage(JSON.stringify({ ok: true }))];
   };
   host.setActorManager({
     getState(actorId) {
@@ -845,19 +858,20 @@ test('session actor relay sends header and payload through managed stream Sessio
   const context = runtime.createSessionContext(new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session'));
   const actor = await context.actors.bind({ nodeRid: 'node-a', actorId: 'actor-a', generation: 1n });
 
-  await actor.relay({
+  context.enterDispatch({
     kind: connector.ZlinkStreamMessageKind.Send,
     codec: connector.ZlinkStreamCodec.Json,
     flags: connector.ZlinkStreamHeaderFlags.None,
     name: 'Move',
     metadata: connector.ZlinkStreamMetadataMap.empty
-  }, {
-    bytes: new TextEncoder().encode('{"x":1}'),
-    toBytes() {
-      return this.bytes;
-    },
-    close() {}
   });
+  try {
+    await actor.relay(framework.ZLinkMessage.fromEncoded(
+      framework.ZLinkEncodedPayload.from(new TextEncoder().encode('{"x":1}'))
+    ));
+  } finally {
+    context.exitDispatch();
+  }
 
   assert.equal(socket.boundActorSends.length, 1);
   assert.equal(socket.boundActorSends[0].sessionRid, 'backend-rid');
@@ -888,6 +902,19 @@ test('runtime host relays bound remote actor request through route channel and c
       routingId: 'session-node'
     }
   };
+  host.setActorManager({
+    getState(actorId) {
+      assert.equal(actorId, 'actor-remote');
+      return {
+        remoteActorPacketTarget: {
+          routerChannelId: 'room.route',
+          targetNodeRid: 'play-node',
+          spotRid: 'play-node',
+          spotKind: framework.ZLinkSpotKind.Entry
+        }
+      };
+    }
+  });
   host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
     const payload = JSON.parse(request.data().toString());
     routeRequests.push({
@@ -907,14 +934,21 @@ test('runtime host relays bound remote actor request through route channel and c
 
   const context = host.streamBindingRuntime.createSessionContext(stream);
   const actor = await context.actors.bind(actorRef);
-  await actor.relay({
+  context.enterDispatch({
     kind: connector.ZlinkStreamMessageKind.Request,
     codec: connector.ZlinkStreamCodec.Json,
     flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
     requestSeq: 2n,
     name: 'MatchBingoReq',
     metadata: connector.ZlinkStreamMetadataMap.empty
-  }, bindingMessage(JSON.stringify({ mode: 'classic' })));
+  });
+  try {
+    await actor.relay(framework.ZLinkMessage.fromEncoded(
+      framework.ZLinkEncodedPayload.from(Buffer.from(JSON.stringify({ mode: 'classic' })))
+    ));
+  } finally {
+    context.exitDispatch();
+  }
 
   assert.equal(routeRequests.length, 1);
   assert.equal(routeRequests[0].routerChannelId, 'room.route');
@@ -1045,6 +1079,10 @@ test('stream session and bound session require packetName for structural payload
     write(message) {
       written.push(message.bytes);
       return true;
+    },
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
     }
   });
   await context.actors.bind({ nodeRid: 'node-a', actorId: 'actor-structural', generation: 1 });
@@ -1109,6 +1147,10 @@ test('session client send writes dotnet-compatible JSON stream frame through inj
     write(message) {
       written.push(message.bytes);
       return true;
+    },
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
     }
   });
 
@@ -1134,6 +1176,10 @@ test('session client send compress writes dotnet LZ4-pickled stream payload', as
     write(message) {
       written.push(message.bytes);
       return true;
+    },
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
     }
   });
 
@@ -1153,6 +1199,10 @@ test('session client reply writes response frame only while dispatching request 
     ...fakeStream('session-6', 'rid-6'),
     write(message) {
       written.push(message.bytes);
+      return true;
+    },
+    writeRaw(message) {
+      written.push(bytesOf(message));
       return true;
     }
   });
@@ -1203,6 +1253,10 @@ test('session client reply uses configured stream payload codec', async () => {
     write(message) {
       written.push(message.bytes);
       return true;
+    },
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
     }
   });
 
@@ -1239,6 +1293,10 @@ test('session client reply compress writes dotnet LZ4-pickled response payload',
     write(message) {
       written.push(message.bytes);
       return true;
+    },
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
     }
   });
 
@@ -1272,6 +1330,10 @@ test('session client send uses default binding message factory when one is not s
     write(message) {
       written.push(message.data());
       return true;
+    },
+    writeRaw(message) {
+      written.push(bytesOf(message));
+      return true;
     }
   });
 
@@ -1292,6 +1354,9 @@ function fakeStream(sessionId, routingId) {
     write() {
       return true;
     },
+    writeRaw() {
+      return true;
+    },
     async close() {}
   };
 }
@@ -1305,6 +1370,10 @@ function recordingStream(sessionId, routingId) {
     remoteAddr: undefined,
     writes,
     write(message) {
+      writes.push(message);
+      return true;
+    },
+    writeRaw(message) {
       writes.push(message);
       return true;
     },

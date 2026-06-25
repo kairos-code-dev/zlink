@@ -186,11 +186,13 @@ public final class ChannelBuilders {
 
         @Override
         public RouteMeshChannelBuilder enableClient() {
+            registration.enableClient();
             return this;
         }
 
         @Override
         public RouteMeshChannelBuilder enableClient(String endpoint) {
+            registration.enableClient();
             registration.addRouteManualEndpoint(endpoint);
             return this;
         }

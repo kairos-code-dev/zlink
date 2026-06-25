@@ -420,6 +420,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   addRouteMesh(name: string): ZLinkRouteMeshChannelBuilder {
     const channel = this.channel(name);
     channel.routeMesh ??= {};
+    markRouteTransportDeclared(channel.routeMesh);
     return new DefaultRouteMeshChannelBuilder(channel.routeMesh);
   }
 
@@ -559,6 +560,7 @@ class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
   }
 
   enableClient(endpoint?: string): this {
+    markRouteClientEnabled(this.routeChannel);
     this.routeChannel.manualConnections ??= [];
     if (endpoint !== undefined) {
       this.routeChannel.manualConnections.push(endpoint);
@@ -581,6 +583,7 @@ class DefaultRouteMeshChannelBuilder implements ZLinkRouteMeshChannelBuilder {
   }
 
   enableClient(endpoint?: string): this {
+    markRouteClientEnabled(this.routeMesh);
     this.routeMesh.manualConnections ??= [];
     if (endpoint !== undefined) {
       this.routeMesh.manualConnections.push(endpoint);
@@ -911,8 +914,10 @@ interface MutablePublisherCapabilityOptions {
 }
 
 interface MutableRouteMeshChannelOptions {
+  transportDeclared?: boolean;
   requestTimeoutMs?: number;
   bind?: string;
+  clientEnabled?: boolean;
   manualConnections?: string[];
   routingId?: string;
   sendHandlers?: ZLinkRouteChannelSendHandlerRegistration[];
@@ -970,13 +975,15 @@ function toRouteChannelOptions(
       routeOptions.set(routeChannel, { routerChannelId: routeChannel });
       continue;
     }
-    routeOptions.set(routeChannel.routerChannelId, {
+    const normalized = {
       ...routeChannel,
       requestTimeoutMs: normalizeOptionalPositiveInteger(
         routeChannel.requestTimeoutMs,
         `${routeChannel.routerChannelId}.requestTimeoutMs`
       )
-    });
+    } as ZLinkRouteChannelOptions;
+    copyRouteInternalState(routeChannel, normalized);
+    routeOptions.set(routeChannel.routerChannelId, normalized);
   }
   for (const [channelName, channel] of Object.entries(options.channels ?? {})) {
     if (channel.routeMesh === undefined) {
@@ -985,16 +992,54 @@ function toRouteChannelOptions(
     if (routeOptions.has(channelName)) {
       throw new ZLinkConfigurationException(`Route mesh channel '${channelName}' is already registered.`);
     }
-    routeOptions.set(channelName, {
+    const routeChannel = {
       routerChannelId: channelName,
       ...channel.routeMesh,
       requestTimeoutMs: normalizeOptionalPositiveInteger(
         channel.routeMesh.requestTimeoutMs,
         `${channelName}.routeMesh.requestTimeoutMs`
       )
-    });
+    } as ZLinkRouteChannelOptions;
+    markRouteTransportDeclared(routeChannel);
+    copyRouteInternalState(channel.routeMesh, routeChannel);
+    routeOptions.set(channelName, routeChannel);
   }
   return routeOptions;
+}
+
+interface RouteMeshInternalState {
+  transportDeclared?: boolean;
+  clientEnabled?: boolean;
+}
+
+function markRouteTransportDeclared(routeChannel: object): void {
+  defineRouteInternalFlag(routeChannel, 'transportDeclared');
+}
+
+function markRouteClientEnabled(routeChannel: object): void {
+  defineRouteInternalFlag(routeChannel, 'clientEnabled');
+}
+
+function copyRouteInternalState(source: object, target: object): void {
+  const state = source as RouteMeshInternalState;
+  if (state.transportDeclared === true) {
+    markRouteTransportDeclared(target);
+  }
+  if (state.clientEnabled === true) {
+    markRouteClientEnabled(target);
+  }
+}
+
+function defineRouteInternalFlag(
+  routeChannel: object,
+  key: keyof RouteMeshInternalState
+): void {
+  Object.defineProperty(routeChannel, key, {
+    value: true,
+    configurable: true,
+    enumerable: false,
+    writable: true
+  });
 }
 
 

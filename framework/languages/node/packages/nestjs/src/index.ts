@@ -167,6 +167,8 @@ interface ZLinkNestFanoutChannelOptions extends ZLinkNestHandlerDiscoveryOptions
 
 interface ZLinkNestRouterMeshOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly bind?: string;
+  readonly clientEnabled?: boolean;
+  readonly transportDeclared?: boolean;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
   readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
@@ -599,6 +601,7 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
 
   addRouteMesh(name: string): ZLinkNestRouterMeshBuilder {
     this.routerMeshes[name] ??= {};
+    markRouteTransportDeclared(this.routerMeshes[name]);
     return new DefaultZLinkNestRouterMeshBuilder(this, this.routerMeshes[name]);
   }
 
@@ -846,6 +849,7 @@ class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestChildBuilder implements
   }
 
   connect(endpoint: string | readonly string[] | undefined): this {
+    markRouteClientEnabled(this.routeOptions);
     this.routeOptions.manualConnections = endpoint === undefined ? [] : endpointList(endpoint);
     return this;
   }
@@ -960,6 +964,33 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
 
 function endpointList(endpoint: string | readonly string[]): string[] {
   return typeof endpoint === 'string' ? [endpoint] : [...endpoint];
+}
+
+function markRouteClientEnabled(routeOptions: object): void {
+  defineRouteInternalFlag(routeOptions, 'clientEnabled');
+}
+
+function markRouteTransportDeclared(routeOptions: object): void {
+  defineRouteInternalFlag(routeOptions, 'transportDeclared');
+}
+
+function copyRouteInternalState(source: object, target: object): void {
+  const state = source as ZLinkNestRouterMeshOptions;
+  if (state.clientEnabled === true) {
+    markRouteClientEnabled(target);
+  }
+  if (state.transportDeclared === true) {
+    markRouteTransportDeclared(target);
+  }
+}
+
+function defineRouteInternalFlag(routeOptions: object, key: 'clientEnabled' | 'transportDeclared'): void {
+  Object.defineProperty(routeOptions, key, {
+    value: true,
+    configurable: true,
+    enumerable: false,
+    writable: true
+  });
 }
 
 function validateHandlerGroupName(groupName: string): void {
@@ -1387,6 +1418,9 @@ function createDiscoveredOptions(
     const normalized = typeof routeChannel === 'string'
       ? { routerChannelId: routeChannel }
       : { ...routeChannel };
+    if (typeof routeChannel !== 'string') {
+      copyRouteInternalState(routeChannel, normalized);
+    }
     routerMeshes.set(normalized.routerChannelId, normalized);
   }
   for (const [routerMeshName, routerMesh] of Object.entries(options.routerMeshes ?? {})) {
@@ -1403,7 +1437,7 @@ function createDiscoveredOptions(
     );
     const manualRequestHandlers = createManualRouteRequestHandlers(routerMesh.requestHandlerTypes, moduleRef);
     const manualSendHandlers = createManualRouteSendHandlers(routerMesh.sendHandlerTypes, moduleRef);
-    routerMeshes.set(routerMeshName, {
+    const normalized = {
       ...existing,
       requestHandlers: [
         ...(existing.requestHandlers ?? []),
@@ -1415,7 +1449,10 @@ function createDiscoveredOptions(
         ...manualSendHandlers,
         ...sendHandlers
       ]
-    });
+    };
+    copyRouteInternalState(existing, normalized);
+    copyRouteInternalState(routerMesh, normalized);
+    routerMeshes.set(routerMeshName, normalized);
   }
 
   return {
@@ -1641,10 +1678,12 @@ function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions):
 
   for (const [name, routerMesh] of Object.entries(options.routerMeshes ?? {})) {
     const { handlerGroups: _handlerGroups, ...routeChannel } = routerMesh;
-    routeChannels.push({
+    const normalized = {
       routerChannelId: name,
       ...routeChannel
-    });
+    };
+    copyRouteInternalState(routerMesh, normalized);
+    routeChannels.push(normalized);
   }
 
   return {

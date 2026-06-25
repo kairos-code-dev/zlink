@@ -65,7 +65,8 @@ Behavior Matrix의 판정은 Java framework의 JUnit 테스트로 고정한다. 
 |-----------|--------------------------------|
 | duplicate channel name | `ChannelsTest.addZLinkFramework_throws_whenChannelNameIsDuplicated` |
 | client 역할에 discovery/manual 경로 없음 | `ChannelsTest.addZLinkFramework_throws_whenClientHasNoPeerAcquisitionPath` |
-| 같은 route 역할에서 discovery + manual 혼용 | `ChannelsTest.addZLinkFramework_throws_whenRouteChannelMixesDiscoveryAndManualConnections` |
+| route mesh client 역할에 discovery/manual 경로 없음 | `DefaultZLinkFrameworkOptionsTest.routeMeshChannelWithoutPeerAcquisitionPathIsRejected` |
+| route mesh client-only + discovery | `DefaultZLinkFrameworkOptionsTest.routeMeshClientWithDiscoveryDoesNotRequireBindEndpoint` |
 | server endpoint 누락 | `HandlerExposureTest.addZLinkFramework_throws_whenServerHasNoBindEndpoint` |
 | publisher endpoint 누락 | `RegistryAndMonitoringTest.addZLinkFramework_throws_whenPublisherHasNoBindEndpoint` |
 | handler group exposure 없음 | `HandlerExposureTest.addZLinkFramework_throws_whenServerHasNoHandlerExposure` |

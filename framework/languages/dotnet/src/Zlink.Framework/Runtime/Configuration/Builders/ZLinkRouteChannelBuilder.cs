@@ -11,11 +11,13 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
 
     public IZLinkRouteMeshChannelBuilder EnableClient()
     {
+        registration.ClientEnabled = true;
         return this;
     }
 
     public IZLinkRouteMeshChannelBuilder EnableClient(string endpoint)
     {
+        registration.ClientEnabled = true;
         ZLinkChannelEndpointBuilderSupport.AddManualConnection(
             registration.ManualConnections,
             endpoint,

@@ -40,21 +40,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "zlink-framework-java-samples"
 
-includeBuild("..") {
-    name = "zlink-framework-java-build"
-}
-
-val localBindingsDir = settingsDir.resolve("../../../../bindings/java").normalize()
-val useLocalBindings = providers.gradleProperty("zlink.useLocalBindings")
-    .map(String::toBoolean)
-    .getOrElse(true)
-
-if (useLocalBindings) {
-    includeBuild(localBindingsDir) {
-        name = "zlink-bindings-java"
-        dependencySubstitution {
-            substitute(module("systems.zlink:zlink")).using(project(":"))
-        }
+if (gradle.parent == null) {
+    includeBuild("..") {
+        name = "zlink-framework-java-build"
     }
 }
 

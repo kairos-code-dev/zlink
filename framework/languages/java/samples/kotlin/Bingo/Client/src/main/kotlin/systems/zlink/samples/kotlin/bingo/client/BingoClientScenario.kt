@@ -81,49 +81,41 @@ class BingoClientScenario {
         val client1Ended = async { client1.waitFor<BingoGameEndedNotify>().await() }
         val client2Ended = async { client2.waitFor<BingoGameEndedNotify>().await() }
 
-        val drawnNumbers = mutableListOf<BingoNumberDrawnNotify>()
-        var drawSeq = 1
-        var nextClient1Draw = async {
-            client1.waitFor<BingoNumberDrawnNotify>()
-                .where { message -> message.payload().drawSeq == drawSeq }
-                .await()
+        val client1Draws = (1..15).map { expectedDrawSeq ->
+            async {
+                client1.waitFor<BingoNumberDrawnNotify>()
+                    .where { message -> message.payload().drawSeq == expectedDrawSeq }
+                    .await()
+            }
         }
-        var nextClient2Draw = async {
-            client2.waitFor<BingoNumberDrawnNotify>()
-                .where { message -> message.payload().drawSeq == drawSeq }
-                .await()
+        val client2Draws = (1..15).map { expectedDrawSeq ->
+            async {
+                client2.waitFor<BingoNumberDrawnNotify>()
+                    .where { message -> message.payload().drawSeq == expectedDrawSeq }
+                    .await()
+            }
         }
 
         val client1Card = client1.request(SubmitBingoCardReq(client1Match.roomId, BingoClientCards.Player1)).await<SubmitBingoCardRes>()
         ensure(client1Card.state.status == "Running")
 
-        while (true) {
-            val expectedDrawSeq = drawSeq
-            val client1Drawn = nextClient1Draw.await().payload()
-            val client2Drawn = nextClient2Draw.await().payload()
+        val drawnNumbers = mutableListOf<BingoNumberDrawnNotify>()
+        for (drawSeq in 1..15) {
+            val client1Drawn = client1Draws[drawSeq - 1].await().payload()
+            val client2Drawn = client2Draws[drawSeq - 1].await().payload()
             drawnNumbers += client1Drawn
-            ensure(client1Drawn.drawSeq == expectedDrawSeq)
-            ensure(client2Drawn.drawSeq == expectedDrawSeq)
+            ensure(client1Drawn.drawSeq == drawSeq)
+            ensure(client2Drawn.drawSeq == drawSeq)
             ensure(client2Drawn.number == client1Drawn.number)
 
             if (client1Drawn.state.status == "Finished") {
                 break
             }
-            drawSeq += 1
-            val nextDrawSeq = drawSeq
-            nextClient1Draw = async {
-                client1.waitFor<BingoNumberDrawnNotify>()
-                    .where { message -> message.payload().drawSeq == nextDrawSeq }
-                    .await()
-            }
-            nextClient2Draw = async {
-                client2.waitFor<BingoNumberDrawnNotify>()
-                    .where { message -> message.payload().drawSeq == nextDrawSeq }
-                    .await()
-            }
         }
         ensure(drawnNumbers.isNotEmpty())
         ensure(drawnNumbers.last().state.status == "Finished")
+        client1Draws.drop(drawnNumbers.size).forEach { wait -> wait.cancel() }
+        client2Draws.drop(drawnNumbers.size).forEach { wait -> wait.cancel() }
 
         val client1Result = client1Ended.await().payload().state
         val client2Result = client2Ended.await().payload().state

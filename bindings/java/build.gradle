@@ -70,7 +70,6 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     inputs.dir(jniIncludeDir)
     inputs.dir(jniOsIncludeDir)
     outputs.file(output)
-    outputs.upToDateWhen { false }
     doFirst {
         outputDir.mkdirs()
     }

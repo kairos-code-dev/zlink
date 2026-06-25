@@ -36,8 +36,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "zlink-framework-java"
 
-includeBuild("samples") {
-    name = "zlink-framework-java-samples"
+if (gradle.parent == null) {
+    includeBuild("samples") {
+        name = "zlink-framework-java-samples"
+    }
 }
 
 val localBindingsDir = settingsDir.resolve("../../../bindings/java").normalize()

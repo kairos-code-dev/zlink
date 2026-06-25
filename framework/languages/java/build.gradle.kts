@@ -30,6 +30,13 @@ subprojects {
     }
 
     plugins.withType<JavaPlugin> {
+        val localBindingsBuild = gradle.includedBuilds.find { it.name == "zlink-bindings-java" }
+        if (localBindingsBuild != null) {
+            tasks.withType<JavaCompile>().configureEach {
+                dependsOn(localBindingsBuild.task(":jar"))
+            }
+        }
+
         extensions.configure<JavaPluginExtension> {
             toolchain {
                 languageVersion.set(JavaLanguageVersion.of(22))

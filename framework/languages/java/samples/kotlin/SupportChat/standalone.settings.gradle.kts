@@ -45,13 +45,6 @@ if (gradle.parent == null) {
         name = "zlink-framework-java-build"
     }
 }
-includeBuild("../../../../../../bindings/java") {
-    name = "zlink-bindings-java"
-    dependencySubstitution {
-        substitute(module("systems.zlink:zlink")).using(project(":"))
-    }
-}
-
 include("Client")
 include("Probe")
 include("Server:Api")

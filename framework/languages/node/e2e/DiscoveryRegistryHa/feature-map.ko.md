@@ -39,6 +39,7 @@
   두-endpoint view를 제공하지 않아 완료 marker로 올리지 않는다.
 - `DR-C1`: registry 1대 다운 중 지속 Node runner와 marker가 아직 없다.
 - `DR-D1`: registry와 service를 한 embedded application으로 띄우는 Node marker가 아직 없다. 같은
-  Nest application에 `ZLinkRegistryModule`과 `ZLinkModule`을 함께 import하는 public 구성은 현재
-  runner에서 registry query/discovery 완료 증거를 만들지 못해 완료 marker로 올리지 않는다.
+  Nest application에 public `ZLinkRegistryModule.forRoot(...)`와 `ZLinkModule.forRoot(...)`를 함께
+  import하는 구성은 spec에 있지만, 현재 E2E runner에서는 provider 광고·topology·consumer messaging
+  완료 증거가 안정적으로 나오지 않고 실행이 멈춰 완료 marker로 올리지 않는다.
 - `DR-D3`: embedded registry/service node와 standalone registry를 섞은 cluster marker가 아직 없다.

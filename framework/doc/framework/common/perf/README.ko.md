@@ -1,0 +1,1159 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../../README.ko.md) | [공통 스펙](../README.ko.md) | [Scenario E2E](../e2e/README.ko.md)
+<!-- framework-adapter-nav:end -->
+
+# Framework Performance 테스트 공통 규격
+
+이 문서는 ZLink Framework의 언어별 성능 테스트를 같은 기준으로 만들기 위한 공통 규격이다.
+여기서 말하는 성능 테스트는 공개 API 계약을 새로 정의하는 문서가 아니다. 각 언어가 이미 제공하는
+framework public API와 stream connector public API를 사용해서, 같은 서버 구성과 같은 메시지 흐름에서
+성능을 측정하는 실행 기준이다.
+
+성능 테스트는 기능 검증을 대신하지 않는다. 기능이 맞는지는 contract, sample, e2e가 먼저 확인한다.
+성능 테스트는 그 위에서 처리량, 지연 시간, 자원 사용량, 실패율을 안정적으로 측정한다. 따라서 테스트
+코드는 기능을 우회하거나 내부 runtime API를 직접 호출하지 않는다.
+
+## 1. 목표
+
+성능 테스트의 목표는 숫자를 하나 얻는 것이 아니라, 어느 계층이 병목인지 설명할 수 있는 결과를 얻는
+것이다. 모든 언어는 아래 질문에 답할 수 있어야 한다.
+
+- stream connector가 많은 client 연결을 처리할 때 처리량과 지연 시간이 어떻게 변하는가.
+- session과 actor가 같은 서버에 있을 때와 다른 서버에 있을 때 비용 차이가 얼마나 나는가.
+- server 간 channel과 Spot messaging에서 request/reply 방식과 send/send 방식의 차이가 무엇인가.
+- Spot handler 안에서 remote request를 `Async`로 기다리는 경우와 `Yield`로 대기 coroutine을 양보하는
+  경우의 head-of-line blocking 차이가 얼마나 나는가.
+- payload 크기가 1 KiB에서 4 KiB로 커졌을 때 처리량과 지연 시간이 어떻게 변하는가.
+- client runner, server process, framework dispatch, codec, transport 중 병목 후보가 어디인지
+  evidence로 분리할 수 있는가.
+
+## 2. 범위
+
+공통 성능 테스트는 `.NET`, Java, Kotlin, Node.js, C++ framework에서 같은 의미로 구현한다. 언어별
+문법과 runner 도구는 달라도 시나리오 이름, payload 크기, 측정 구간, 메트릭 이름, 성공 조건은 맞춘다.
+
+초기 범위는 아래 다섯 가지 축이다. 모든 표준 시나리오는 `1 KiB`와 `4 KiB` 두 payload 크기로 실행한다.
+다만 결과를 해석할 때 CS(session/actor) 계열과 Spot execution 계열은 `1 KiB`, S2S(channel/Spot)
+계열은 `4 KiB`를 대표 수치로 본다.
+
+| 축 | 목적 | 대표 payload | 함께 실행할 payload |
+|----|------|---------------|--------------------|
+| connector → session → actor local echo | client/server 경계와 같은 서버 actor dispatch 비용 측정 | 1 KiB | 4 KiB |
+| connector → session → remote actor echo | session 서버와 actor 서버가 분리된 구조의 비용 측정 | 1 KiB | 4 KiB |
+| channel → remote Spot echo | server 간 channel에서 remote Spot으로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
+| remote Spot → channel echo | remote Spot에서 channel server로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
+| Spot execution Async/Yield echo | Spot handler의 `Async` 대기와 `Yield` 대기 비용 및 queue 진행성 측정 | 1 KiB | 4 KiB |
+
+payload 크기는 message payload 본문 크기를 뜻한다. framework header, connector frame, codec metadata는
+포함하지 않는다. 각 언어는 같은 byte pattern을 만들어야 한다. 압축이나 문자열 interning 효과가 결과를
+왜곡하지 않도록 payload는 반복 문자 하나로 채우지 않고 고정 seed 또는 index pattern으로 채운다.
+공통 표준 실행은 `1 KiB`와 `4 KiB`만 요구한다. 더 작은 메시지나 더 큰 메시지는 ad-hoc 분석으로
+추가할 수 있지만, 모든 언어가 반드시 구현해야 하는 공통 perf 범위에는 넣지 않는다.
+
+## 3. 성능 테스트와 다른 테스트의 관계
+
+| 테스트 종류 | 주 목적 | 프로세스 경계 | 결과 해석 |
+|-------------|---------|---------------|-----------|
+| unit/contract | API와 작은 동작의 정확성 | 대부분 in-process | 빠른 회귀 검출 |
+| sample | 사용자가 따라 할 수 있는 정상 흐름 | 실제 서버와 client | public 사용법 검증 |
+| e2e | 배포 형태와 실패 경로 검증 | 실제 multi-process | 기능 조합 검증 |
+| perf | 처리량, 지연 시간, 자원 사용량 측정 | 실제 multi-process | 병목 후보와 회귀 추적 |
+
+perf는 sample 또는 e2e 서버를 재사용하지 않는다. 성능 테스트 서버는 측정 대상이 명확해야 하므로,
+도메인 규칙을 최소화한 echo 서버로 둔다. 다만 서버 구성은 sample에서 검증한 실제 framework 구조를
+따른다. 예를 들어 local session/actor 구조는 TicTacToe형이고, remote session/actor 구조는 Bingo형이다.
+
+## 4. 공통 실행 모델
+
+모든 perf runner는 아래 phase를 같은 순서로 실행한다.
+
+| Phase | 이름 | 설명 | 메트릭 포함 여부 |
+|-------|------|------|------------------|
+| 1 | build/preflight | release build, 포트 예약, OS limit 확인, 로그 디렉토리 준비 | 제외 |
+| 2 | server start | 필요한 서버 process를 시작하고 readiness를 확인 | 제외 |
+| 3 | connect | client connector를 만들고 인증 또는 세션 준비를 끝낸다 | 별도 기록, throughput 계산 제외 |
+| 4 | warmup | JIT, codec cache, connection path, pool을 예열한다 | 제외 |
+| 5 | reset | client/server 메트릭을 동시에 리셋한다 | 제외 |
+| 6 | measured | duration 동안 실제 부하를 넣는다 | 포함 |
+| 7 | settle | 마지막 응답과 server metric 반영을 기다린다 | throughput 계산 제외 |
+| 8 | report | client/server 메트릭을 수집하고 결과 파일을 쓴다 | 제외 |
+| 9 | cleanup | 서버와 client process를 종료한다 | 제외 |
+
+벤치마크는 기본적으로 duration 기반이다. message count 기반 테스트는 짧은 smoke와 디버깅용으로만 둔다.
+duration 기반으로 해야 언어별 runtime warmup 차이와 client 분산 실행을 비교하기 쉽다.
+
+## 5. 공통 CLI
+
+각 언어 runner는 같은 의미의 옵션을 제공한다. 옵션 이름은 언어별 관례에 맞게 바꿀 수 있지만,
+shell runner에서는 아래 long option을 지원해야 한다.
+
+| 옵션 | 기본값 | 의미 |
+|------|--------|------|
+| `--scenario` | 필수 | 실행할 시나리오 이름 |
+| `--connections` | `10000` | 전체 connector client 수 |
+| `--client-index` | `0` | 여러 load generator 중 현재 runner의 index |
+| `--client-count` | `1` | 전체 load generator 수 |
+| `--duration-seconds` | `30` | measured phase 시간 |
+| `--warmup-seconds` | `5` | warmup phase 시간 |
+| `--payload-size` | 시나리오 대표값 | 단일 payload byte 크기 |
+| `--payload-sizes` | `1024,4096` | 여러 payload 크기를 순서대로 실행 |
+| `--inflight` | `1` | client당 동시 요청 또는 미완료 echo 수 |
+| `--connect-concurrency` | `256` | 동시에 연결을 시도하는 connector 수 |
+| `--mode` | 시나리오 기본값 | `request`, `send-send`, `async-request`, `yield-request`, `no-await` 중 하나 |
+| `--codec` | `json` | payload codec. 시나리오가 고정하면 override하지 않는다 |
+| `--output` | `perf-results/<run-id>` | 결과 파일 디렉토리 |
+| `--run-id` | timestamp | 로그와 결과를 묶는 실행 id |
+| `--endpoint-config` | script가 생성 | server role별 app endpoint와 metrics endpoint를 담은 JSON 파일 |
+
+`--client-index`와 `--client-count`는 10,000 connector가 한 process에 몰려 client runner가 병목이 되는
+상황을 피하기 위한 필수 옵션이다. 예를 들어 `--connections 10000 --client-count 4`이면 각 runner는
+2,500개 connector를 맡는다. 나누어 떨어지지 않으면 낮은 index부터 하나씩 더 맡는다.
+
+`run_perf.sh`는 `--payload-sizes 1024,4096`을 기본으로 사용한다. `run_single.sh`는 디버깅 편의를 위해
+`--payload-size` 단일 값 실행을 지원한다. 표준 결과 비교는 payload 크기별로 분리해서 기록하고,
+서로 다른 payload 크기의 KOPS를 한 줄로 평균 내지 않는다.
+
+`--endpoint-config`는 runner script가 server process를 띄운 뒤 생성한다. client runner와 server
+trigger runner는 이 파일만 보고 role별 endpoint를 찾는다. multi-role scenario에서 command line에
+endpoint option을 여러 개 늘어놓으면 언어별로 이름이 달라지기 쉬우므로, 공통 입력은 JSON 파일 하나로
+고정한다.
+
+```json
+{
+  "runId": "20260626-123000",
+  "roles": {
+    "sessionActorLocal": {
+      "appEndpoint": "tcp://127.0.0.1:21001",
+      "metricsUrl": "http://127.0.0.1:31001"
+    },
+    "session": {
+      "appEndpoint": "tcp://127.0.0.1:21002",
+      "metricsUrl": "http://127.0.0.1:31002"
+    },
+    "actor": {
+      "appEndpoint": "tcp://127.0.0.1:21003",
+      "metricsUrl": "http://127.0.0.1:31003"
+    },
+    "channel": {
+      "appEndpoint": "tcp://127.0.0.1:21004",
+      "metricsUrl": "http://127.0.0.1:31004"
+    },
+    "spot": {
+      "appEndpoint": "tcp://127.0.0.1:21005",
+      "metricsUrl": "http://127.0.0.1:31005",
+      "spotRid": "perf-spot-0"
+    },
+    "remoteEcho": {
+      "appEndpoint": "tcp://127.0.0.1:21006",
+      "metricsUrl": "http://127.0.0.1:31006"
+    },
+    "registry": {
+      "appEndpoint": "tcp://127.0.0.1:21007",
+      "metricsUrl": "http://127.0.0.1:31007"
+    }
+  }
+}
+```
+
+필요 없는 role은 생략한다. `appEndpoint`는 해당 role의 framework 통신 endpoint이고, `metricsUrl`은
+성능 테스트 전용 HTTP endpoint다. scenario가 benchmark 시작을 server에 알려야 하면 해당 role의
+`appEndpoint`로 `PerfTriggerRequest`를 보낸다. HTTP metrics endpoint를 trigger 경로로 사용하지 않는다.
+
+## 6. 표준 프로젝트 구조
+
+perf 프로젝트는 sample이나 e2e와 분리한다. 성능 테스트는 측정 경로가 단순해야 하므로, sample의
+도메인 코드나 e2e의 장애 시나리오 코드를 재사용하지 않는다. 대신 PlayHouse benchmark처럼 server,
+client, shared, metrics를 별도 실행 프로젝트로 나누고, runner script가 프로세스를 띄우고 정리한다.
+
+언어별 실제 build 파일 이름은 달라도, 논리 구조는 아래를 따른다.
+
+```text
+framework/languages/<lang>/perf/
+|-- README.ko.md
+|-- Shared/
+|   |-- Contracts/          echo request/reply, trigger, metrics DTO
+|   `-- Payload/            payload 생성 규칙과 검증 helper
+|-- Client/
+|   |-- Program.*           CLI parsing과 scenario 선택만 담당
+|   |-- Scenarios/
+|   |   |-- CsLocalSessionActorEchoScenario.*
+|   |   |-- CsRemoteSessionActorEchoScenario.*
+|   |   |-- S2sChannelToSpotRequestEchoScenario.*
+|   |   |-- S2sChannelToSpotSendSendEchoScenario.*
+|   |   |-- S2sSpotToChannelRequestEchoScenario.*
+|   |   |-- S2sSpotToChannelSendSendEchoScenario.*
+|   |   |-- SpotAsyncRequestEchoScenario.*
+|   |   |-- SpotYieldRequestEchoScenario.*
+|   |   |-- SpotYieldContentionScenario.*
+|   |   `-- SpotNoAwaitEchoScenario.*
+|   |-- Support/
+|   |   |-- PerfClientOptions.*
+|   |   |-- PerfRunPlan.*
+|   |   |-- ConnectionPool.*
+|   |   |-- CorrelationTable.*
+|   |   |-- InFlightLimiter.*
+|   |   |-- MetricsClient.*
+|   |   |-- ClientMetricsCollector.*
+|   |   |-- ResultWriter.*
+|   |   `-- ScenarioRunner.*
+|   `-- README.ko.md
+|-- Servers/
+|   |-- SessionActorLocal/
+|   |-- Session/
+|   |-- Actor/
+|   |-- Channel/
+|   |-- Spot/
+|   |-- RemoteEcho/
+|   `-- Registry/           registry가 필요한 언어/시나리오에서만 둔다
+|-- ServerSupport/
+|   |-- Metrics/
+|   |-- Readiness/
+|   |-- Logging/
+|   |-- Payload/
+|   `-- ProcessMetrics/
+|-- scripts/
+|   |-- run_perf.sh
+|   |-- run_single.sh
+|   `-- collect_env.sh
+`-- perf-results/           gitignore 대상
+```
+
+언어별 naming convention 때문에 `Shared`, `Client`, `Servers` 대신 `shared`, `client`,
+`servers`를 써도 된다. 다만 한 언어 안에서는 하나의 규칙을 유지하고, 공통 문서나 결과 파일에서는
+위 논리 이름을 사용한다.
+
+### 6.1 top-level 책임
+
+| 위치 | 책임 | 금지 사항 |
+|------|------|-----------|
+| `Shared/` | client/server가 함께 쓰는 message 계약, payload 생성 규칙, result DTO | server host 구성, framework handler, client runner 로직 |
+| `Client/` | CLI, scenario 실행, connector 생성, warmup/measured phase, 결과 저장 | server process 직접 구현, framework 내부 API 호출 |
+| `Client/Scenarios/` | 시나리오별 connector public call 흐름과 검증 기준 | 공통 옵션 parsing, metrics endpoint 세부 구현 |
+| `Client/Support/` | option, run plan, connection pool, metrics client, result writer | connector 호출을 감싸서 scenario 의미를 숨기는 helper |
+| `Servers/<Role>/` | role별 실행 서버와 benchmark handler | `--role` 하나로 여러 서버 역할 바꾸기 |
+| `ServerSupport/` | role들이 공유하는 metrics, readiness, logging, payload 검증 | 업무 echo 흐름, role-specific handler |
+| `scripts/` | build, preflight, server start, client start, cleanup | 성능 측정 hot path 로직 |
+
+`Program.*`은 얇게 유지한다. CLI parsing, logging 초기화, DI/host factory 호출, scenario 선택만 둔다.
+PlayHouse benchmark의 `Program.cs`처럼 옵션을 읽고 runner를 호출하는 진입점은 괜찮지만, measured phase
+loop나 echo completion 집계가 `Program.*`에 들어가면 안 된다.
+
+### 6.2 10,000 client 구동 모델
+
+10,000 connector client는 하나의 큰 helper가 아니라 client runner의 표준 실행 모델로 다룬다.
+PlayHouse benchmark처럼 runner는 connector 배열 또는 connection pool을 만들고, 제한된 동시성으로
+connect/auth를 끝낸 뒤, 같은 pool을 warmup과 measured phase에 넘긴다.
+
+기본 구조는 아래와 같다.
+
+```text
+Client Program
+  -> parse options
+  -> build PerfRunPlan
+  -> create ScenarioRunner
+  -> run selected Scenario
+
+ScenarioRunner
+  -> reserve client id range
+  -> create ConnectionPool
+  -> connect/auth with max connect concurrency
+  -> run warmup on a bounded subset or all connections
+  -> reset client/server metrics
+  -> run measured operation on every connected connector
+  -> collect metrics and write result
+  -> disconnect all connectors
+```
+
+`ConnectionPool`은 `connections`, `clientIndex`, `clientCount`를 기준으로 현재 process가 맡을 client id
+범위를 계산한다. 예를 들어 전체 10,000개 connector를 4개 load generator로 나누면 각 process는
+대략 2,500개 connector만 만든다. `clientId`는 전역 id로 유지해야 한다. 그래야 여러 load generator의
+결과를 합쳐도 correlation id와 오류 로그가 충돌하지 않는다.
+
+연결은 한 번에 10,000개를 동시에 시도하지 않는다. 기본 `--connect-concurrency 256`으로 제한하고,
+각 connector는 최대 3회 정도 재시도한다. 연결 실패는 숨기지 않고 `connections.failed`에 기록한다.
+measured phase는 연결에 성공한 connector만 사용한다. 단, 연결 성공률이 너무 낮아 결과가 의미 없으면
+runner가 실패해야 한다. 기본 실패 기준은 연결 성공률 99% 미만이다.
+
+warmup은 measured 결과에 섞지 않는다. warmup connection 수는 구현 언어가 감당 가능한 범위로 제한할 수
+있지만, 제한했다면 결과 config에 `warmupConnections`를 기록한다. request callback, push wait,
+send/send처럼 warmup 후 callback state가 남을 수 있는 구현은 PlayHouse benchmark처럼 warmup 후
+connection을 재생성하거나 pending state를 완전히 비워야 한다.
+
+measured phase에서는 connector마다 같은 operation loop를 실행한다. request 계열은 client당 `inflight`
+개까지 미완료 request를 유지하고, send/send 계열은 correlation table의 미완료 항목 수를 `inflight`로
+제한한다. connector 구현이 명시적인 dispatch pump를 요구하는 언어는 operation loop 안에서 주기적으로
+public dispatch/poll API를 호출한다. 이 호출도 connector public API여야 하며, runtime 내부 pump를 직접
+부르면 안 된다.
+
+client runner가 병목인지 확인하기 위해 각 client process는 자기 CPU 사용률, event loop delay 또는
+thread pool queue 같은 언어별 runner 상태를 기록한다. client process CPU가 포화된 실행은 server 성능
+한계로 해석하지 않는다.
+
+### 6.3 server 역할 분리
+
+서버 역할이 다르면 별도 실행 프로젝트로 둔다. 하나의 binary에 `--role session`, `--role actor`,
+`--role spot`처럼 역할을 바꾸는 옵션을 넣으면 실행 편의는 좋아지지만, 실제 배포 프로세스 경계와
+성능 결과가 흐려진다.
+
+| 서버 | 포함하는 것 | 측정 경로 |
+|------|-------------|-----------|
+| `SessionActorLocal` | stream session, local actor, actor factory, local echo handler | connector → session → actor |
+| `Session` | stream session, remote actor relay, request reply 처리 | connector → session → remote actor |
+| `Actor` | actor/Entry Spot 또는 actor owner Spot, echo actor handler | remote actor echo |
+| `Channel` | channel request/send handler, trigger endpoint | channel ↔ Spot |
+| `Spot` | Spot factory, Spot handler, timer가 필요하면 perf 전용 timer | Spot ↔ channel, Async/Yield |
+| `RemoteEcho` | Spot execution 시나리오에서 Spot handler가 호출하는 단순 channel echo server | Async/Yield remote request |
+| `Registry` | discovery가 필요한 구성의 registry | measured path 아님 |
+
+server process는 각각 자기 metrics endpoint를 가진다. 여러 server가 하나의 metrics endpoint를 공유하면
+어느 role이 병목인지 분리할 수 없다.
+
+### 6.4 support 코드 분리
+
+support 코드는 측정 장치의 복잡성을 낮추기 위한 곳이다. scenario의 핵심 흐름을 숨기는 곳이 아니다.
+client scenario는 가능하면 connector public API 호출만으로 본문을 구성한다. connector 표면이 이미
+충분히 의도를 드러내므로, request/send/wait 호출을 다시 감싸는 helper는 기본적으로 만들지 않는다.
+
+좋은 분리:
+
+- `ConnectionPool`은 10,000 connector 생성, 연결 재시도, connect concurrency 제한을 맡는다.
+- `ScenarioRunner`는 phase 순서와 cancellation을 맡는다.
+- `ClientMetricsCollector`는 latency와 counter를 기록한다.
+- `MetricsClient`는 `/perf/reset`, `/perf/stats`, `/perf/ready` 호출을 맡는다.
+- `ResultWriter`는 `result.json`, `summary.txt`, per-role metric 파일을 쓴다.
+
+나쁜 분리:
+
+- `RunAllBenchmarkLogic(...)`처럼 scenario 흐름 전체를 숨기는 helper.
+- `SendMagicEcho(...)`, `RequestEchoAsync(...)`, `WaitEchoReply(...)`처럼 connector public call을
+  다시 감싸 request/send/send-send 차이를 호출 지점에서 보이지 않게 만드는 helper.
+- server 역할별 framework 호출을 client support에 넣는 helper.
+- public API가 아니라 runtime 내부 객체를 받아서 빠른 경로를 만드는 helper.
+
+## 7. 폴더 구성 규칙
+
+폴더는 책임이 반복될 때만 만든다. 파일 하나를 넣기 위한 `Utils/`, `Common/`, `Infrastructure/` 폴더는
+만들지 않는다. 성능 테스트는 읽는 사람이 측정 경로를 빠르게 찾아야 하므로, 폴더 이름은 역할과 책임을
+직접 드러내야 한다.
+
+### 7.1 client 폴더
+
+`Client/Scenarios/` 아래 파일은 시나리오 이름과 1:1로 대응한다. 예를 들어
+`s2s-channel-to-spot-send-send-echo`는 `S2sChannelToSpotSendSendEchoScenario.*` 파일에 둔다.
+한 파일에 여러 시나리오를 합치지 않는다.
+
+`Client/Support/`에는 아래 성격만 둔다.
+
+| 파일 | 역할 |
+|------|------|
+| `PerfClientOptions.*` | CLI 옵션을 typed 설정으로 변환 |
+| `PerfRunPlan.*` | 전체 connections를 client-index/client-count 기준으로 분할 |
+| `ConnectionPool.*` | connector 생성, 인증, 재시도, 정리 |
+| `CorrelationTable.*` | send/send completion을 correlation id로 집계 |
+| `InFlightLimiter.*` | request와 send/send의 client당 미완료 작업 수 제한 |
+| `ScenarioRunner.*` | phase 순서 실행 |
+| `ClientMetricsCollector.*` | client latency/counter 수집 |
+| `MetricsClient.*` | server metrics endpoint 호출 |
+| `ResultWriter.*` | 결과 파일 작성 |
+| `PayloadFactory.*` | payload pattern 생성과 검증. connector 호출은 넣지 않음 |
+
+### 7.2 server 폴더
+
+각 `Servers/<Role>/`은 독립 실행 프로젝트다. role 내부 구조는 작게 시작한다.
+
+```text
+Servers/Spot/
+|-- Program.*
+|-- SpotServerHostFactory.*
+|-- SpotPerfOptions.*
+|-- EchoSpot.*
+|-- Handlers/
+|   |-- SpotEchoRequestHandler.*
+|   `-- SpotEchoSendHandler.*
+`-- README.ko.md
+```
+
+handler가 한두 개면 `Handlers/` 폴더 없이 server root에 둘 수 있다. handler가 많아져서 request,
+send, trigger, metrics가 섞일 때만 폴더를 만든다. metrics endpoint는 공통 `ServerSupport/Metrics`를
+사용하되, role별 endpoint 등록은 role server가 직접 한다.
+
+### 7.3 result와 log 폴더
+
+`perf-results/`, `logs/`, `tmp/`는 gitignore 대상이다. runner는 실행마다 고유 `run-id` 하위 폴더를
+만든다. 같은 폴더에 이전 실행 결과를 덮어쓰면 비교가 어려워지므로 금지한다.
+
+## 8. client scenario 작성 스타일
+
+client scenario는 sample의 `ClientScenario`처럼 실제 사용자 흐름이 보이게 작성한다. PlayHouse
+benchmark의 runner처럼 connect, warmup, measured phase는 공통 runner가 맡되, "무엇을 보낼지"와
+"무엇을 완료로 볼지"는 scenario 파일에 드러나야 한다. 특히 connector가 이미 public API로
+request, send, wait, dispatch 흐름을 잘 표현한다면 그 호출을 그대로 사용한다.
+
+### 8.1 scenario 파일 첫머리
+
+각 scenario 파일 첫머리에는 아래 내용을 짧게 적는다.
+
+- 이 시나리오가 측정하는 서버 구성.
+- measured operation 하나가 무엇을 뜻하는지.
+- request 방식인지 send/send 방식인지.
+- payload 크기 기본값.
+- 실패를 어떤 metric으로 기록하는지.
+
+주석은 코드의 반복 설명이 아니라 측정 의미를 설명한다. 예를 들어 "request를 보낸다"가 아니라
+"client-visible echo completion 하나를 KOPS 1 operation으로 센다"처럼 적는다.
+
+### 8.2 scenario 본문
+
+scenario 본문은 아래 흐름을 유지한다.
+
+1. `ScenarioContext` 또는 같은 의미의 객체에서 connector pool, payload factory, metrics collector를
+   받는다.
+2. warmup에서 사용할 operation을 정의한다.
+3. measured phase에서 사용할 operation을 정의한다.
+4. 완료 기준을 metrics에 기록한다.
+5. payload 크기와 byte pattern을 검증한다.
+
+request 시나리오는 요청과 응답이 한 함수 안에서 보이게 둔다. 아래 흐름의 각 줄은 실제 언어별
+connector public call 또는 그에 가까운 호출로 보여야 한다.
+
+```text
+send PerfEchoRequest
+await PerfEchoReply
+verify payload
+record completion latency
+```
+
+send/send 시나리오는 correlation 등록, send, reply 수신, timeout 처리가 보이게 둔다.
+
+```text
+register correlation
+send PerfEchoRequest
+on PerfEchoReply:
+  complete correlation
+  verify payload
+  record completion latency
+expire old correlations:
+  record timeout
+```
+
+이 흐름을 `EchoAsync(...)` 같은 이름 하나로 감추면 request와 send/send의 차이를 리뷰하기 어렵다.
+반복을 줄이고 싶으면 "payload 생성", "latency 기록", "correlation table"처럼 좁은 책임만 helper로
+뺀다.
+
+### 8.3 helper 사용 기준
+
+helper는 connector 호출을 짧게 만들기 위해 쓰지 않는다. scenario 본문에서 아래가 직접 보여야 한다.
+
+- 어떤 connector가 어떤 packet/message를 보내는지.
+- request인지 send인지.
+- reply를 await하는지, push/wait callback으로 받는지.
+- correlation id를 언제 등록하고 언제 완료하는지.
+- timeout을 어떤 단위로 실패 처리하는지.
+
+허용되는 helper는 측정 흐름을 숨기지 않는 것뿐이다.
+
+| 허용 | 이유 |
+|------|------|
+| payload byte pattern 생성 | payload 생성 규칙은 모든 scenario가 공유한다 |
+| latency recorder 호출 | 측정 저장 방식은 scenario 의미가 아니다 |
+| percentile 계산 | 결과 집계 로직이다 |
+| connection pool 준비 | 10,000 connector 생성은 측정 전 phase다 |
+| server metrics HTTP client | measured path가 아니라 reset/snapshot 도구다 |
+
+금지되는 helper는 아래와 같다.
+
+| 금지 | 이유 |
+|------|------|
+| `EchoAsync(connector, payload)` | request/send/wait 차이를 숨긴다 |
+| `SendAndWait(...)` | send/send correlation과 timeout 정책이 보이지 않는다 |
+| `RunScenario(...)` 안에 connector 호출 전체 넣기 | scenario 파일이 이름만 남고 측정 흐름이 사라진다 |
+| server trigger와 completion 집계를 한 helper에 합치기 | client-visible operation 정의가 불명확해진다 |
+
+connector 호출이 반복되어 길어질 때는 먼저 connector API가 충분히 깊은지 확인한다. public connector
+표면으로 읽기 어렵다면 perf helper로 숨기지 말고, framework/connector public API 개선이 필요한지
+별도 설계 이슈로 분리한다.
+
+### 8.4 naming
+
+scenario class 또는 file 이름은 아래 canonical 이름을 따른다.
+
+| Scenario | File/Class 이름 |
+|----------|-----------------|
+| `cs-local-session-actor-echo` | `CsLocalSessionActorEchoScenario` |
+| `cs-remote-session-actor-echo` | `CsRemoteSessionActorEchoScenario` |
+| `s2s-channel-to-spot-request-echo` | `S2sChannelToSpotRequestEchoScenario` |
+| `s2s-channel-to-spot-send-send-echo` | `S2sChannelToSpotSendSendEchoScenario` |
+| `s2s-spot-to-channel-request-echo` | `S2sSpotToChannelRequestEchoScenario` |
+| `s2s-spot-to-channel-send-send-echo` | `S2sSpotToChannelSendSendEchoScenario` |
+| `spot-async-request-echo` | `SpotAsyncRequestEchoScenario` |
+| `spot-yield-request-echo` | `SpotYieldRequestEchoScenario` |
+| `spot-yield-contention` | `SpotYieldContentionScenario` |
+| `spot-no-await-echo` | `SpotNoAwaitEchoScenario` |
+
+언어별 casing은 바꿀 수 있지만 단어는 바꾸지 않는다. 예를 들어 C++ 파일명은
+`s2s_channel_to_spot_request_echo_scenario.cpp`처럼 쓸 수 있다.
+
+### 8.5 client가 직접 하지 말아야 할 일
+
+- server framework host를 같은 process에서 만들지 않는다.
+- server handler를 직접 호출하지 않는다.
+- server 내부 metric collector 객체를 직접 참조하지 않는다.
+- channel/spot client를 사용해서 server app endpoint를 우회하지 않는다. server 간 성능 시나리오에서도
+  client는 trigger 요청만 보내고, 측정 대상 server 간 호출은 server 내부 handler가 실행한다.
+- 성공을 console text parsing으로 판단하지 않는다. echo reply, correlation completion, metrics endpoint
+  결과로 판단한다.
+
+## 9. runner script 작성 스타일
+
+각 언어는 최소 두 개의 script를 둔다.
+
+| Script | 목적 |
+|--------|------|
+| `run_single.sh` | 개발 중 한 scenario와 한 mode를 빠르게 실행 |
+| `run_perf.sh` | 표준 scenario 전체를 순서대로 실행하고 결과를 한 run-id 아래에 모음 |
+
+script는 PlayHouse benchmark처럼 아래 일을 명확한 단계로 출력한다.
+
+1. release build.
+2. 기존 perf server process 정리.
+3. free port 예약과 OS preflight.
+4. server process 시작.
+5. `/perf/ready`로 readiness 확인.
+6. client runner 실행.
+7. 결과 파일 위치 출력.
+8. server process 종료와 로그 정리.
+
+script는 measured path를 구현하지 않는다. measured loop는 client scenario와 runner 코드에 있어야 한다.
+
+여러 client runner를 동시에 띄우는 경우 script는 각 process에 서로 다른 `--client-index`를 넘기고,
+모든 process가 같은 `--run-id`와 같은 server endpoint 목록을 사용하게 한다. port는 실행 시작 시점에
+예약하고 `config.json`에 기록한다. client process가 끝난 뒤에는 `client-<index>.json`을 모두 읽어
+합산 result를 만든다. 합산은 count와 byte 수처럼 더할 수 있는 값만 더하고, latency percentile은
+histogram bucket을 합쳐 다시 계산한다. histogram이 없거나 bucket 상한이 서로 다르면 runner가 실패해야
+한다.
+
+## 10. 공통 시나리오
+
+### 10.1 `cs-local-session-actor-echo`
+
+client connector가 server의 stream session에 `request`를 보내고, session은 같은 process 안의 actor에게
+echo 요청을 전달한다. actor는 받은 payload를 그대로 session으로 돌려주고, session은 같은 request의
+reply로 client에게 응답한다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SessionActorLocalServer` 1개 |
+| client 수 | 기본 10,000 |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `request` |
+| 측정 단위 | client-visible echo completion |
+| 비교 목적 | connector + session dispatch + local actor dispatch 비용 |
+
+이 시나리오는 TicTacToe형 구조를 단순화한 것이다. 별도 session gateway가 없고, session과 actor가
+같은 server process에 있다.
+
+### 10.2 `cs-remote-session-actor-echo`
+
+client connector는 session server에 `request`를 보낸다. session server는 actor server에 있는 actor로
+메시지를 relay하고, actor server는 session server를 통해 같은 request의 reply를 client에게 돌려준다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SessionServer`, `ActorServer`, 필요하면 `Registry` |
+| client 수 | 기본 10,000 |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `request` |
+| 측정 단위 | client-visible echo completion |
+| 비교 목적 | remote actor routing, server 간 hop, reply relay 비용 |
+
+이 시나리오는 Bingo형 구조를 단순화한 것이다. session과 actor가 다른 server process에 있어야 한다.
+같은 process로 접히면 local 시나리오와 구분할 수 없으므로 실패로 본다.
+
+### 10.3 `s2s-channel-to-spot-request-echo`
+
+channel server가 remote Spot server의 Spot에 request를 보내고 reply를 받는다. client는 benchmark
+trigger만 보내며, 측정 대상은 server 간 channel → Spot request/reply이다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `ChannelServer`, `SpotServer`, 필요하면 `Registry` |
+| payload | 대표 4 KiB, 함께 1 KiB |
+| mode | `request` |
+| 측정 단위 | server 간 echo completion |
+| 비교 목적 | channel에서 remote Spot request/reply 비용 |
+
+### 10.4 `s2s-channel-to-spot-send-send-echo`
+
+channel server가 remote Spot server에 send로 echo 요청을 보내고, Spot server가 channel server로 send
+응답을 보낸다. request/reply correlation을 framework가 제공하지 않는 언어에서는 payload에
+`correlationId`를 넣고, benchmark harness가 완료 수를 집계한다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `ChannelServer`, `SpotServer`, 필요하면 `Registry` |
+| payload | 대표 4 KiB, 함께 1 KiB |
+| mode | `send-send` |
+| 측정 단위 | correlation 완료 수 |
+| 비교 목적 | request/reply 없이 양방향 send를 사용할 때 최대 처리량과 누락률 |
+
+### 10.5 `s2s-spot-to-channel-request-echo`
+
+Spot server가 channel server에 request를 보내고 reply를 받는다. trigger는 Spot server에 들어가지만,
+측정 대상은 Spot → channel request/reply이다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SpotServer`, `ChannelServer`, 필요하면 `Registry` |
+| payload | 대표 4 KiB, 함께 1 KiB |
+| mode | `request` |
+| 측정 단위 | server 간 echo completion |
+| 비교 목적 | Spot handler 내부 outbound channel request 비용 |
+
+### 10.6 `s2s-spot-to-channel-send-send-echo`
+
+Spot server가 channel server에 send로 echo 요청을 보내고, channel server가 Spot server로 send 응답을
+보낸다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SpotServer`, `ChannelServer`, 필요하면 `Registry` |
+| payload | 대표 4 KiB, 함께 1 KiB |
+| mode | `send-send` |
+| 측정 단위 | correlation 완료 수 |
+| 비교 목적 | Spot에서 channel로 양방향 send를 사용할 때 최대 처리량과 누락률 |
+
+### 10.7 `spot-async-request-echo`
+
+client는 Spot server에 trigger 요청을 보낸다. Spot handler는 remote echo channel server에 request를
+보내고 `Async` 방식으로 reply를 기다린 뒤 client-visible completion을 기록한다. 이 시나리오는
+Spot handler가 remote I/O를 기다리는 동안 Spot job 흐름을 얼마나 점유하는지 측정한다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SpotServer`, `RemoteEchoServer`, 필요하면 `Registry` |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `async-request` |
+| 측정 단위 | Spot handler echo completion |
+| 비교 목적 | Spot handler 내부 `Async` remote request 대기 비용 |
+
+### 10.8 `spot-yield-request-echo`
+
+`spot-async-request-echo`와 같은 remote echo channel server를 사용한다. 차이는 Spot handler가 remote
+request reply를 기다릴 때 `Yield` 계열 terminator를 사용한다는 점이다. `Yield`는 대기 중인 coroutine을
+멈춘 채 Spot queue의 다음 job을 진행할 수 있게 하는 기능이므로, 이 시나리오는 처리량뿐 아니라 queue
+진행성과 resume latency를 함께 본다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SpotServer`, `RemoteEchoServer`, 필요하면 `Registry` |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `yield-request` |
+| 측정 단위 | Spot handler echo completion |
+| 비교 목적 | Spot handler 내부 `Yield` remote request 대기 비용과 queue 진행성 |
+
+### 10.9 `spot-yield-contention`
+
+하나의 Spot RID에 많은 요청을 집중시킨다. handler는 remote echo channel server에 request를 보내고
+`Yield`로 대기한다. 같은 조건의 `spot-async-request-echo` 결과와 비교해서 head-of-line blocking이
+줄었는지 확인한다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SpotServer`, `RemoteEchoServer`, 필요하면 `Registry` |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `yield-request` |
+| 측정 단위 | 단일 Spot RID echo completion |
+| 비교 목적 | 단일 Spot에 요청이 몰릴 때 `Yield`가 queue 진행을 풀어 주는지 측정 |
+
+이 시나리오는 여러 Spot RID로 부하를 분산하지 않는다. 여러 Spot으로 분산하면 `Yield`의 queue 진행성
+효과와 owner 분산 효과가 섞이기 때문이다.
+
+### 10.10 `spot-no-await-echo`
+
+Spot handler가 remote request를 호출하지 않고 payload를 바로 echo한다. 이 baseline은 Spot dispatch와
+payload 검증 비용만 보기 위한 기준이다.
+
+| 항목 | 값 |
+|------|----|
+| 서버 구성 | `SpotServer` |
+| payload | 대표 1 KiB, 함께 4 KiB |
+| mode | `no-await` |
+| 측정 단위 | Spot handler echo completion |
+| 비교 목적 | `Async`/`Yield` 비교를 위한 Spot dispatch baseline |
+
+Spot execution 시나리오의 handler는 공유 mutable state를 request 전후에 이어서 판단하지 않는다.
+`Yield`는 대기 중 Spot의 다른 job이 진행될 수 있으므로, admission I/O나 단순 echo처럼 request 전후
+상태 동기화 위험이 없는 흐름만 측정한다.
+
+## 11. Baseline 시나리오
+
+통합 시나리오만 있으면 결과를 해석하기 어렵다. 각 언어는 아래 baseline을 가능하면 함께 둔다.
+baseline은 release gate의 필수 항목은 아니지만, 병목 분석 때 먼저 실행한다.
+
+| Baseline | 목적 |
+|----------|------|
+| `connector-echo-only` | session/actor 없이 connector dispatch와 codec 비용만 측정 |
+| `session-echo-only` | actor 없이 session handler가 바로 echo할 때 비용 측정 |
+| `channel-echo-only` | Spot 없이 channel request/send 비용 측정 |
+| `spot-local-echo` | remote hop 없이 Spot dispatch 비용 측정 |
+| `spot-no-await-echo` | remote request 없이 Spot handler dispatch 비용 측정 |
+
+baseline이 아직 없는 언어는 통합 시나리오 결과를 해석할 때 "병목 위치 미확정"으로 기록한다.
+
+## 12. 메시지 계약
+
+언어별 구현은 같은 의미의 메시지 계약을 사용한다. 이름은 언어별 casing을 따르되, 필드 의미는
+바꾸지 않는다.
+
+| 메시지 | 필드 | 의미 |
+|--------|------|------|
+| `PerfEchoRequest` | `runId`, `clientId`, `sequence`, `correlationId`, `sentTicks`, `payload` | echo 요청 |
+| `PerfEchoReply` | `runId`, `clientId`, `sequence`, `correlationId`, `receivedTicks`, `payload` | echo 응답 |
+| `PerfTriggerRequest` | `runId`, `batchSize`, `mode`, `payloadSize`, `payload` | server 간 echo batch 시작 |
+| `PerfTriggerReply` | `accepted`, `completed`, `failed`, `message` | trigger 처리 결과 |
+| `PerfMetricsSnapshot` | 아래 §14 메트릭 필드 | client/server metric 조회 결과 |
+
+`payload`는 수신 측에서 크기와 일부 byte pattern을 확인한다. echo 테스트에서는 payload를 그대로
+돌려보내야 한다. payload를 새로 만들거나 압축하거나 일부만 돌려보내면 측정 의미가 달라지므로 실패로
+본다.
+
+## 13. Request 방식과 Send/Send 방식의 공정성
+
+`request`와 `send-send`는 의미가 다르므로 같은 숫자만 비교하면 안 된다.
+
+- `request`는 호출자가 reply를 기다린다. framework request timeout과 cancellation 정책이 적용된다.
+- `send-send`는 두 개의 단방향 메시지로 echo를 만든다. benchmark harness가 `correlationId`로 완료를
+  세고 timeout을 따로 관리한다.
+- 두 방식 모두 전체 in-flight 상한을 둔다. `send-send`가 무제한으로 밀어 넣으면 request와 비교할 수
+  없다.
+- `send-send` 결과에는 `sent`, `completed`, `expired`, `duplicateReply`, `unknownCorrelation`을
+  반드시 기록한다.
+
+`send-send` latency는 `correlationId`를 등록한 시각부터 reply가 도착한 시각까지로 계산한다. reply가
+없는 메시지는 latency percentile 계산에 넣지 않고, timeout/error count에 넣는다.
+
+## 14. 메트릭
+
+모든 언어는 결과 파일에 같은 metric key를 쓴다.
+
+| Metric | 단위 | 설명 |
+|--------|------|------|
+| `connections.requested` | count | 요청한 전체 connector 수 |
+| `connections.connected` | count | measured phase 전 준비된 connector 수 |
+| `connections.failed` | count | 연결 또는 인증 실패 수 |
+| `messages.sent` | count | measured phase 동안 보낸 요청 또는 send 수 |
+| `messages.completed` | count | echo 완료 수 |
+| `messages.failed` | count | 실패 응답 또는 handler 오류 수 |
+| `messages.timeout` | count | request timeout 또는 send/send correlation timeout |
+| `throughput.kops` | ops/sec / 1000 | echo completion 기준 KOPS |
+| `throughput.messagesPerSec` | msg/sec | 실제 전송 message 기준 처리량 |
+| `throughput.megabytesPerSec` | MiB/sec | payload byte 기준 처리량 |
+| `latency.meanMs` | ms | 평균 latency |
+| `latency.p50Ms` | ms | p50 latency |
+| `latency.p95Ms` | ms | p95 latency |
+| `latency.p99Ms` | ms | p99 latency |
+| `latency.maxMs` | ms | 최대 latency |
+| `process.cpuPercent` | percent | process CPU 사용률 |
+| `process.rssMb` | MiB | resident memory |
+| `process.allocatedMb` | MiB | runtime이 제공할 수 있으면 allocated bytes |
+| `gc.gen0`, `gc.gen1`, `gc.gen2` | count | GC 횟수. GC가 없는 언어는 `null` |
+| `errors.byKind` | object | timeout, decode, route, connection, handler 등 오류 분류 |
+| `spot.mailboxDepth.max` | count | 측정 중 관측된 Spot mailbox 최대 depth |
+| `spot.mailboxDepth.mean` | count | 측정 중 관측된 Spot mailbox 평균 depth |
+| `spot.yieldedCoroutines` | count | `Yield`로 대기한 coroutine 수 |
+| `spot.resumedCoroutines` | count | reply 수신 후 재개된 coroutine 수 |
+| `spot.resumeLatency.p95Ms` | ms | reply 수신 가능 시점부터 coroutine 재개까지 p95 |
+| `spot.resumeLatency.p99Ms` | ms | reply 수신 가능 시점부터 coroutine 재개까지 p99 |
+| `spot.remoteRequestRtt.p95Ms` | ms | Spot handler가 호출한 remote request RTT p95 |
+| `spot.remoteRequestRtt.p99Ms` | ms | Spot handler가 호출한 remote request RTT p99 |
+
+KOPS는 `messages.completed / measuredSeconds / 1000`으로 계산한다. request/reply echo는 내부적으로
+여러 message를 만들 수 있으므로, KOPS와 `messagesPerSec`를 구분해서 기록한다.
+Spot 관련 metric은 해당 시나리오가 지원하지 않으면 `null`로 둔다. 값을 임의로 `0`으로 채우면
+지원하지 않는 것과 실제 0을 구분할 수 없다.
+
+latency percentile을 여러 client process에서 합산하려면 histogram bucket이 필요하다. 모든 client와
+server snapshot은 아래 형식의 histogram을 함께 기록한다.
+
+```json
+{
+  "latencyMs": {
+    "unit": "ms",
+    "bounds": [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024],
+    "counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "overflow": 0
+  }
+}
+```
+
+`bounds`는 bucket의 상한이고 `counts`는 같은 index의 bucket count다. `counts` 길이는 `bounds` 길이와
+같아야 한다. 상한보다 큰 값은 `overflow`에 넣는다. 여러 client process 결과를 합칠 때는 같은
+`bounds`를 사용하는 histogram만 합산한다. bounds가 다르면 runner가 실패해야 한다.
+
+## 15. 결과 파일 형식
+
+각 실행은 `perf-results/<run-id>/` 아래에 결과를 남긴다.
+
+```text
+perf-results/<run-id>/
+|-- config.json
+|-- result.json
+|-- summary.txt
+|-- client-<index>.json
+|-- server-<role>.json
+`-- logs/
+    |-- client-<index>.log
+    |-- server-<role>.log
+    `-- message-flow-<role>.log
+```
+
+`result.json`은 machine-readable 결과다. 최소 필드는 아래와 같다.
+
+```json
+{
+  "runId": "20260626-123000",
+  "language": "dotnet",
+  "scenario": "cs-local-session-actor-echo",
+  "mode": "request",
+  "payloadSize": 1024,
+  "connections": 10000,
+  "clientCount": 1,
+  "durationSeconds": 30,
+  "warmupSeconds": 5,
+  "measuredSeconds": 30.002,
+  "metrics": {
+    "connections.requested": 10000,
+    "connections.connected": 10000,
+    "messages.sent": 120000,
+    "messages.completed": 120000,
+    "throughput.kops": 0.0,
+    "latency.p99Ms": 0.0
+  },
+  "histograms": {
+    "latencyMs": {
+      "unit": "ms",
+      "bounds": [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024],
+      "counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "overflow": 0
+    }
+  },
+  "clients": [
+    {
+      "clientIndex": 0,
+      "clientIdStart": 0,
+      "clientIdEndExclusive": 10000,
+      "metricsFile": "client-0.json"
+    }
+  ],
+  "servers": {
+    "sessionActorLocal": "server-sessionActorLocal.json"
+  }
+}
+```
+
+`client-<index>.json`은 한 client process의 원본 결과다. 최소 필드는 아래와 같다.
+
+```json
+{
+  "runId": "20260626-123000",
+  "clientIndex": 0,
+  "clientCount": 4,
+  "clientIdStart": 0,
+  "clientIdEndExclusive": 2500,
+  "warmupConnections": 2500,
+  "metrics": {
+    "connections.requested": 2500,
+    "connections.connected": 2500,
+    "messages.sent": 30000,
+    "messages.completed": 30000
+  },
+  "histograms": {
+    "latencyMs": {
+      "unit": "ms",
+      "bounds": [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024],
+      "counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "overflow": 0
+    }
+  }
+}
+```
+
+`result.json`은 `client-<index>.json`의 count, byte, error metric을 합산하고, histogram을 합산한 뒤
+percentile을 다시 계산한 값이다. `latency.p95Ms` 같은 percentile 값을 process별 percentile의 평균으로
+계산하면 안 된다.
+
+`summary.txt`는 사람이 읽는 결과다. 이 파일에는 설정, throughput, latency percentile, 실패 수,
+client/server CPU와 memory를 한 화면에 보이게 적는다.
+
+## 16. Server metrics endpoint
+
+각 server role은 성능 테스트 전용 metrics endpoint를 제공한다. transport는 HTTP를 기본으로 한다.
+HTTP server를 붙이기 어려운 언어는 별도 admin channel을 둘 수 있지만, runner가 같은 의미로
+`reset`과 `snapshot`을 호출할 수 있어야 한다.
+
+| Endpoint | 의미 |
+|----------|------|
+| `POST /perf/reset` | server metric을 리셋한다 |
+| `GET /perf/stats` | 현재 server metric snapshot을 반환한다 |
+| `GET /perf/ready` | server가 benchmark 요청을 받을 준비가 되었는지 반환한다 |
+
+`POST /perf/reset` request와 response는 아래 형식을 따른다.
+
+```json
+{
+  "runId": "20260626-123000",
+  "scenario": "cs-local-session-actor-echo",
+  "mode": "request",
+  "payloadSize": 1024,
+  "resetSeq": 1,
+  "resetAtUnixMs": 1782466200000
+}
+```
+
+```json
+{
+  "ok": true,
+  "role": "sessionActorLocal",
+  "runId": "20260626-123000",
+  "resetSeq": 1,
+  "resetAtUnixMs": 1782466200000
+}
+```
+
+`GET /perf/ready` response는 아래 형식을 따른다.
+
+```json
+{
+  "ready": true,
+  "role": "sessionActorLocal",
+  "runId": "20260626-123000",
+  "endpoints": {
+    "appEndpoint": "tcp://127.0.0.1:21001",
+    "metricsUrl": "http://127.0.0.1:31001"
+  },
+  "message": ""
+}
+```
+
+`GET /perf/stats` response는 아래 형식을 따른다.
+
+```json
+{
+  "role": "sessionActorLocal",
+  "runId": "20260626-123000",
+  "scenario": "cs-local-session-actor-echo",
+  "mode": "request",
+  "window": {
+    "startedAtUnixMs": 1782466205000,
+    "endedAtUnixMs": 1782466235002,
+    "measuredSeconds": 30.002
+  },
+  "metrics": {
+    "messages.completed": 120000,
+    "process.cpuPercent": 240.5
+  },
+  "histograms": {
+    "latencyMs": {
+      "unit": "ms",
+      "bounds": [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024],
+      "counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "overflow": 0
+    }
+  }
+}
+```
+
+metrics endpoint는 measured path에 끼면 안 된다. echo handler가 매 메시지마다 HTTP metric endpoint를
+호출하거나 lock 경쟁을 크게 만들면 측정이 왜곡된다. hot path에서는 atomic counter와 저비용 latency
+recorder만 사용한다.
+
+## 17. 언어별 표준 위치
+
+언어별 perf 코드는 기본적으로 `framework/languages/<lang>/perf/` 아래에 둔다. Kotlin은 Java runtime과
+build root를 공유하므로 이 장의 Kotlin 위치를 따른다.
+
+### 17.1 .NET
+
+```text
+framework/languages/dotnet/perf/
+|-- ZLink.Framework.Perf.Shared/
+|-- ZLink.Framework.Perf.Client/
+|-- ZLink.Framework.Perf.SessionActorLocalServer/
+|-- ZLink.Framework.Perf.SessionServer/
+|-- ZLink.Framework.Perf.ActorServer/
+|-- ZLink.Framework.Perf.ChannelServer/
+|-- ZLink.Framework.Perf.SpotServer/
+|-- ZLink.Framework.Perf.RemoteEchoServer/
+`-- scripts/
+    |-- run_perf.sh
+    |-- run_single.sh
+    `-- collect_env.sh
+```
+
+.NET 구현은 Release build를 기본으로 하고, server metrics에는 `GC.CollectionCount`,
+`GC.GetTotalAllocatedBytes`, process RSS, process CPU를 포함한다.
+
+### 17.2 Java
+
+```text
+framework/languages/java/perf/
+|-- shared/
+|-- client/
+|-- session-actor-local-server/
+|-- session-server/
+|-- actor-server/
+|-- channel-server/
+|-- spot-server/
+|-- remote-echo-server/
+`-- scripts/
+    |-- run_perf.sh
+    |-- run_single.sh
+    `-- collect_env.sh
+```
+
+Java 구현은 Gradle standalone runner를 제공한다. server metrics에는 JVM GC count, heap/non-heap 사용량,
+process CPU를 포함한다.
+
+### 17.3 Kotlin
+
+Kotlin은 Java framework와 같은 build root를 공유하므로 표준 위치를
+`framework/languages/java/perf/kotlin/`으로 고정한다. Java와 같은 scenario 이름과 result schema를
+써야 한다.
+
+```text
+framework/languages/java/perf/kotlin/
+|-- shared/
+|-- client/
+|-- session-actor-local-server/
+|-- session-server/
+|-- actor-server/
+|-- channel-server/
+|-- spot-server/
+|-- remote-echo-server/
+`-- scripts/
+    |-- run_perf.sh
+    |-- run_single.sh
+    `-- collect_env.sh
+```
+
+### 17.4 Node.js
+
+```text
+framework/languages/node/perf/
+|-- shared/
+|-- client/
+|-- session-actor-local-server/
+|-- session-server/
+|-- actor-server/
+|-- channel-server/
+|-- spot-server/
+|-- remote-echo-server/
+`-- scripts/
+    |-- run_perf.sh
+    |-- run_single.sh
+    `-- collect_env.sh
+```
+
+Node.js 구현은 TypeScript source와 build output을 분리한다. metrics에는 event loop delay, RSS, heap used,
+process CPU를 포함한다.
+
+### 17.5 C++
+
+```text
+framework/languages/cpp/perf/
+|-- shared/
+|-- client/
+|-- session_actor_local_server/
+|-- session_server/
+|-- actor_server/
+|-- channel_server/
+|-- spot_server/
+|-- remote_echo_server/
+`-- scripts/
+    |-- run_perf.sh
+    |-- run_single.sh
+    `-- collect_env.sh
+```
+
+C++ 구현은 release build 산출물을 사용한다. core runtime 또는 bindings runtime 경로가 source보다
+오래되면 runner가 실패해야 한다. 성능 수치를 오래된 runtime으로 해석하면 안 된다.
+
+## 18. 구현 순서
+
+모든 언어는 한 번에 최종 시나리오까지 구현하되, 작업 순서는 아래를 따른다. 순서는 디버깅 비용을
+줄이기 위한 것이며, 기능을 나누어 릴리스하라는 뜻이 아니다.
+
+1. 공통 message 계약과 result schema를 만든다.
+2. metrics collector와 `POST /perf/reset`, `GET /perf/stats`, `GET /perf/ready`를 만든다.
+3. client runner의 connect, warmup, measured, report phase를 만든다.
+4. `connector-echo-only` baseline으로 runner와 metric이 맞는지 확인한다.
+5. `cs-local-session-actor-echo`를 구현한다.
+6. `cs-remote-session-actor-echo`를 구현한다.
+7. `channel-echo-only`와 `spot-local-echo` baseline을 구현한다.
+8. channel → Spot request, channel → Spot send/send를 구현한다.
+9. Spot → channel request, Spot → channel send/send를 구현한다.
+10. `spot-no-await-echo`, `spot-async-request-echo`, `spot-yield-request-echo`를 구현한다.
+11. `spot-yield-contention`으로 단일 Spot RID 집중 부하를 구현한다.
+12. `run_perf.sh`가 모든 표준 시나리오를 실행하고 결과를 한 디렉토리에 모으게 한다.
+13. Codex 에이전트로 문서, scenario 이름, result schema, public API 사용 여부를 리뷰한다.
+14. 남은 이슈가 없을 때까지 수정과 리뷰를 반복하고, 마지막 리뷰가 `LOOP CLEAN`이면 완료로 본다.
+
+## 19. 회귀와 비교 기준
+
+성능 수치는 환경 영향을 크게 받으므로, 처음부터 고정 threshold로 실패시키지 않는다. 대신 아래 기준을
+결과에 기록한다.
+
+- git commit hash
+- core/bindings/framework build mode와 runtime path
+- CPU model, core 수, memory
+- OS, kernel, container 여부
+- `ulimit -n`
+- client process 수와 client별 connector 수
+- payload size(`1024` 또는 `4096`), duration, warmup, in-flight
+- server role별 process id와 endpoint
+
+회귀 판단은 같은 장비, 같은 설정, 같은 scenario의 baseline과 비교한다. release gate에 넣을 때는
+처리량 하락률, p99 증가율, timeout/error 증가율을 함께 본다. 한 지표만으로 실패시키지 않는다.
+
+## 20. 운영체제와 실행 환경
+
+10,000 connector 테스트는 OS 설정에 민감하다. runner는 실행 전에 아래 항목을 확인하고, 부족하면
+명확한 오류를 출력한다.
+
+- file descriptor limit
+- ephemeral port range
+- listen backlog
+- TCP TIME_WAIT 재사용 정책
+- client runner CPU 포화 여부
+- server와 client가 같은 host인지 다른 host인지
+
+같은 host에서 client와 server를 함께 실행하면 loopback 성능과 CPU 경쟁이 섞인다. 이 모드는 개발과
+회귀 추적에는 유용하지만, 네트워크 성능 수치로 일반화하지 않는다. 실제 한계치를 볼 때는 client
+runner를 다른 host 또는 여러 host에 분산한다.
+
+## 21. 금지 사항
+
+- framework 내부 runtime API, private API, reflection 우회로 측정 경로를 만들지 않는다.
+- sample 또는 e2e 코드를 복사해서 도메인 규칙이 많은 benchmark server를 만들지 않는다.
+- measured phase 안에서 로그를 매 메시지마다 남기지 않는다. 오류와 집계 metric만 남긴다.
+- readiness를 고정 sleep으로만 판단하지 않는다.
+- request 방식과 send/send 방식을 in-flight 제한 없이 비교하지 않는다.
+- `Async`와 `Yield`를 서로 다른 remote echo server, payload, in-flight 조건에서 비교하지 않는다.
+- `Yield` 성능 시나리오에서 request 전후 공유 mutable state를 이어서 판단하는 업무 로직을 넣지 않는다.
+- payload 검증을 생략하지 않는다. 잘못된 echo가 빠르게 성공한 것처럼 보이면 결과가 무의미하다.
+- 실패한 메시지를 latency percentile에 섞지 않는다. 실패는 별도 error metric으로 기록한다.
+- 오래된 build 산출물이나 debug build 결과를 release 성능 수치로 기록하지 않는다.
+
+## 22. 완료 기준
+
+언어별 perf 구현은 아래 조건을 만족해야 완료로 본다.
+
+- 표준 scenario 이름을 모두 지원한다.
+- 각 scenario가 `1 KiB`와 `4 KiB` payload, 기본 connection 수를 따른다.
+- client/server metrics가 공통 result schema로 저장된다.
+- `request`와 `send-send`가 같은 in-flight 기준으로 실행된다.
+- Spot `Async`와 `Yield` 시나리오가 같은 remote echo server, payload, in-flight 기준으로 실행된다.
+- server metrics endpoint가 warmup 후 reset되고 measured phase 후 snapshot된다.
+- 실패와 timeout이 0이 아니면 summary에 원인별 count가 나온다.
+- `run_perf.sh`가 모든 표준 시나리오를 실행할 수 있다.
+- Codex 에이전트 리뷰를 반복해서 남은 이슈가 없음을 확인한다.

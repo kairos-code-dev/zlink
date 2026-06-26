@@ -7,7 +7,7 @@ public interface IZLinkRouteClient
         RoutingId targetNodeRid,
         TMessage message);
 
-    IZLinkRequestCall Request<TRequest>(
+    IZLinkRouteRequestCall Request<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request);

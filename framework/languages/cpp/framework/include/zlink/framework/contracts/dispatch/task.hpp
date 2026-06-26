@@ -23,6 +23,40 @@ namespace detail
 
 using task_scheduler_t = std::function<void (std::function<void ()>)>;
 
+class serial_yield_turn_t
+{
+  public:
+    virtual ~serial_yield_turn_t () = default;
+    virtual bool release () = 0;
+    virtual bool released () const = 0;
+    virtual task_scheduler_t resume_scheduler () = 0;
+};
+
+inline thread_local std::shared_ptr<serial_yield_turn_t> current_serial_yield_turn;
+
+inline std::shared_ptr<serial_yield_turn_t> capture_current_serial_yield_turn ()
+{
+    return current_serial_yield_turn;
+}
+
+class serial_yield_turn_scope_t
+{
+  public:
+    explicit serial_yield_turn_scope_t (std::shared_ptr<serial_yield_turn_t> turn) :
+        _previous (std::move (current_serial_yield_turn))
+    {
+        current_serial_yield_turn = std::move (turn);
+    }
+
+    ~serial_yield_turn_scope_t () { current_serial_yield_turn = std::move (_previous); }
+
+    serial_yield_turn_scope_t (const serial_yield_turn_scope_t &) = delete;
+    serial_yield_turn_scope_t &operator= (const serial_yield_turn_scope_t &) = delete;
+
+  private:
+    std::shared_ptr<serial_yield_turn_t> _previous;
+};
+
 template <typename T>
 class task_shared_state_t : public std::enable_shared_from_this<task_shared_state_t<T>>
 {
@@ -142,6 +176,8 @@ template <typename T> class task_completion_source_t
 
 template <typename T, typename TCallback>
 void observe_task_completion (task_t<T> &task, TCallback &&callback);
+
+template <typename T> task_t<T> reschedule_task (task_t<T> task, task_scheduler_t scheduler);
 
 } // namespace detail
 
@@ -288,6 +324,18 @@ void observe_task_completion (task_t<T> &task, TCallback &&callback)
 {
     task._state->on_completed (
       std::function<void (const result_t<T> &)> (std::forward<TCallback> (callback)));
+}
+
+template <typename T> task_t<T> reschedule_task (task_t<T> task, task_scheduler_t scheduler)
+{
+    auto source = std::make_shared<task_completion_source_t<T>> (std::move (scheduler));
+    auto output = source->task ();
+    auto observed = std::make_shared<task_t<T>> (std::move (task));
+    detail::observe_task_completion (
+      *observed, [source, observed] (const result_t<T> &result) mutable {
+          source->complete (result);
+      });
+    return output;
 }
 
 } // namespace detail

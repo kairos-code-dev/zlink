@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Execution;
+
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkBoundSessionService(
@@ -165,6 +167,7 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
     string actorId,
     TMessage message) : IZLinkBoundSessionSendCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
 
@@ -191,5 +194,17 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
                 message,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public ValueTask YieldAsync(CancellationToken cancellationToken = default)
+    {
+        return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
+    }
+
+    private ZLinkSerialTurn RequireTurn()
+    {
+        return _turn
+            ?? throw new InvalidOperationException(
+                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
     }
 }

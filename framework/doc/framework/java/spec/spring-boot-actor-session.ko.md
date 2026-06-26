@@ -145,12 +145,20 @@ public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(
+        Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> yieldAwait(Class<TReply> replyType);
 }
 
 public interface ZLinkActorJoinSpotCall {
     ZLinkActorJoinSpotCall timeout(Duration timeout);
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(
+        Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> yieldAwait(Class<TReply> replyType);
 }
 
 public record ZLinkActorJoinResult<TReply>(
@@ -164,6 +172,12 @@ public interface ZLinkBoundSession {
     CompletionStage<Void> disconnect();
 }
 ```
+
+`submit(...)` 과 `await(...)` 는 actor handler의 기본 serial 의미를 유지한다.
+`yieldAsync(...)` 와 `yieldAwait(...)` 는 framework가 만든 actor join call object에서만
+사용한다. `yieldAwait(...)` 는 `CompletionStage.join()`을 직접 노출하는 helper가 아니라
+현재 Spot/Entry Spot turn을 반납하고, join completion 뒤 원래 mailbox에서 handler를
+재개하는 terminator다.
 
 `joinSpot(...)`은 actor가 Entry Spot 이후 실제 user Spot으로 들어가는 요청이다. 호출은
 `CompletionStage`로 완료되며 framework는 backend `SpotNode.joinActor(...)` 결과를

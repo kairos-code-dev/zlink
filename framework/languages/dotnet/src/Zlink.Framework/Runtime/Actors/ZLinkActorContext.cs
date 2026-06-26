@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Execution;
+
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorContext(
@@ -74,6 +76,7 @@ internal sealed class ZLinkActorJoinSpotCall(
     RoutingId spotRid,
     ZLinkMessage request) : IZLinkActorJoinSpotCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
     public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout)
@@ -102,6 +105,18 @@ internal sealed class ZLinkActorJoinSpotCall(
             throw new TimeoutException($"SPOT actor join timed out after {timeout}.");
         }
     }
+
+    public ValueTask<ZLinkActorJoinResult> YieldAsync(CancellationToken cancellationToken = default)
+    {
+        return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
+    }
+
+    private ZLinkSerialTurn RequireTurn()
+    {
+        return _turn
+            ?? throw new InvalidOperationException(
+                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
+    }
 }
 
 internal sealed class ZLinkActorJoinEntrySpotCall(
@@ -110,6 +125,7 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
     RoutingId spotNodeRid,
     ZLinkMessage request) : IZLinkActorJoinEntrySpotCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
     public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout)
@@ -136,5 +152,17 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
         {
             throw new TimeoutException($"Entry SPOT actor join timed out after {timeout}.");
         }
+    }
+
+    public ValueTask<ZLinkActorJoinResult> YieldAsync(CancellationToken cancellationToken = default)
+    {
+        return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
+    }
+
+    private ZLinkSerialTurn RequireTurn()
+    {
+        return _turn
+            ?? throw new InvalidOperationException(
+                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
     }
 }

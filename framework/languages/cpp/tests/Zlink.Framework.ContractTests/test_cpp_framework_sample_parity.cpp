@@ -6,21 +6,21 @@
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor_factory.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp"
 #include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
-#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp"
-#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp"
+#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp"
+#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp"
 #include "../../samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Configuration/sample_names.hpp"
 #include "../../samples/TicTacToe/Server/Configuration/sample_topology.hpp"
 #include "../../samples/TicTacToe/Shared/Contracts/messages.hpp"
-#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Notifications/game_notification_publisher.hpp"
-#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_contract_mapper.hpp"
-#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Notifications/game_notification_publisher.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_contract_mapper.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/create_game_http_handler.hpp"
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp"
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
-#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_entry_spot.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp"
 #include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
 #include "../../samples/SupportChat/Server/Configuration/sample_names.hpp"
@@ -33,9 +33,9 @@
 #include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/allocate_conversation_handler.hpp"
 #include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/assign_agent_handler.hpp"
 #include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/ensure_support_user_actor_handler.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/conversation_spot.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/support_entry_spot.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/Handlers/conversation_idle_timer_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation_idle_timer_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation_spot.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/EntrySpot/support_entry_spot.hpp"
 #include "../../samples/SupportChat/Server/Api/Handlers/authenticate_user_handler.hpp"
 #include "../../samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp"
 #include "../../samples/DeliveryDispatch/Server/delivery_dispatch_server_role.hpp"
@@ -130,7 +130,8 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     ASSERT_TRUE (authenticated.accepted);
 
     sample_topology_t topology;
-    const allocate_bingo_room_res_t allocated{"two-player-room-1", topology.selected_play_node_rid ()};
+    const allocate_bingo_room_res_t allocated{"two-player-room-1",
+                                              topology.selected_play_node_rid ()};
 
     ensure_player_actor_handler_t actors (topology);
     const auto actor = actors.handle ({authenticated.actor_id, authenticated.display_name});
@@ -142,9 +143,8 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     bingo_room_spot_t room_spot (allocated.room_id);
     const auto joined = room_spot.on_actor_join (
-      player_actor,
-      zlink::framework::message_t::from (bingo_room_join_req_t{
-        allocated.room_id, authenticated.actor_id, authenticated.display_name}));
+      player_actor, zlink::framework::message_t::from (bingo_room_join_req_t{
+                      allocated.room_id, authenticated.actor_id, authenticated.display_name}));
     ASSERT_TRUE (joined.accepted);
     ASSERT_TRUE (joined.reply);
     const auto join_reply = joined.reply->decode<bingo_room_join_res_t> ();
@@ -210,14 +210,16 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (created.owner_play_endpoint, topology.stream_endpoint);
     EXPECT_EQ (created.game_name, "tictactoe-game");
     tictactoe_match_t room (created.room_id);
-    EXPECT_EQ (room.join (sample_names_t::x_actor_id,
-                          {created.room_id, authenticated.player}).state.x_actor_id,
+    EXPECT_EQ (room.join (sample_names_t::x_actor_id, {created.room_id, authenticated.player})
+                 .state.x_actor_id,
                sample_names_t::x_actor_id);
-    EXPECT_EQ (room.join (sample_names_t::o_actor_id,
-                          {created.room_id,
-                           {sample_names_t::o_actor_id, sample_names_t::o_actor_id,
-                            sample_names_t::required_level, 0}}).state.status,
-               "InProgress");
+    EXPECT_EQ (
+      room
+        .join (sample_names_t::o_actor_id, {created.room_id,
+                                            {sample_names_t::o_actor_id, sample_names_t::o_actor_id,
+                                             sample_names_t::required_level, 0}})
+        .state.status,
+      "InProgress");
 
     entry_spot_t entry_spot;
     tictactoe_game_spot_t game_spot;
@@ -288,8 +290,7 @@ TEST (CppFrameworkSampleParity, SupportChatUsesDotNetSamplePacketSurface)
     EXPECT_FALSE (rejected.accepted);
 
     ensure_support_user_actor_handler_t actors;
-    const auto ensured =
-      actors.handle ({customer.actor_id, customer.display_name, customer.role});
+    const auto ensured = actors.handle ({customer.actor_id, customer.display_name, customer.role});
     EXPECT_EQ (ensured.actor_type, std::string (sample_names_t::support_actor_type));
     EXPECT_EQ (ensured.actor.actor_id, customer.actor_id);
     const auto ensured_again =
@@ -323,7 +324,8 @@ TEST (CppFrameworkSampleParity, SupportChatUsesDotNetSamplePacketSurface)
     agent_availability_directory_t empty_availability;
     agent_assignment_service_t empty_assignment (empty_availability);
     assign_agent_handler_t assign_handler (empty_assignment);
-    const auto unassigned = assign_handler.handle ({allocated.conversation_id, ""}).result ().value ();
+    const auto unassigned =
+      assign_handler.handle ({allocated.conversation_id, ""}).result ().value ();
     EXPECT_EQ (unassigned.status, std::string (conversation_statuses_t::waiting_for_agent))
       << "no available agent must stay in WaitingForAgent, not error";
     EXPECT_TRUE (unassigned.agent_actor_id.empty ());
@@ -400,12 +402,12 @@ TEST (CppFrameworkSampleParity, SupportChatUsesDotNetSamplePacketSurface)
 
 TEST (CppFrameworkSampleParity, SupportChatEntrySpotUsesApiChannelOrchestration)
 {
-    const auto support_entry = read_file (
-      cpp_language_root ()
-      / "samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/support_entry_spot.hpp");
-    const auto api_handler = read_file (
-      cpp_language_root ()
-      / "samples/SupportChat/Server/Api/Handlers/open_conversation_handler.hpp");
+    const auto support_entry = read_file (cpp_language_root ()
+                                          / "samples/SupportChat/Server/Support/Infrastructure/"
+                                            "ZLink/Spots/EntrySpot/support_entry_spot.hpp");
+    const auto api_handler =
+      read_file (cpp_language_root ()
+                 / "samples/SupportChat/Server/Api/Handlers/open_conversation_handler.hpp");
 
     EXPECT_NE (support_entry.find ("_context.outbound ()"), std::string::npos);
     EXPECT_NE (support_entry.find ("request_to_channel"), std::string::npos);
@@ -546,9 +548,8 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    const std::vector<std::string> expected_samples{"Bingo", "DeliveryDispatch",
-                                                    "GameQuest", "ShoppingMall",
-                                                    "SupportChat", "TicTacToe"};
+    const std::vector<std::string> expected_samples{
+      "Bingo", "DeliveryDispatch", "GameQuest", "ShoppingMall", "SupportChat", "TicTacToe"};
 
     for (const auto &sample : expected_samples) {
         EXPECT_TRUE (std::filesystem::is_directory (samples_root / sample))
@@ -572,8 +573,8 @@ TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 TEST (CppFrameworkSampleParity, SharedSampleDirectoryContainsOnlyContracts)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    for (const auto &sample : {"Bingo", "DeliveryDispatch", "GameQuest", "ShoppingMall",
-                               "SupportChat", "TicTacToe"}) {
+    for (const auto &sample :
+         {"Bingo", "DeliveryDispatch", "GameQuest", "ShoppingMall", "SupportChat", "TicTacToe"}) {
         const auto shared_root = samples_root / sample / "Shared";
         ASSERT_TRUE (std::filesystem::is_directory (shared_root)) << shared_root;
         for (const auto &entry : std::filesystem::recursive_directory_iterator (shared_root)) {
@@ -684,8 +685,7 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
       << "C++ sample overview must name the Bingo full self-check";
 
     const auto tictactoe_runner = read_file (cpp_root / "samples/TicTacToe/run_sample.sh");
-    EXPECT_NE (tictactoe_runner.find ("full client/server self-check completed"),
-               std::string::npos)
+    EXPECT_NE (tictactoe_runner.find ("full client/server self-check completed"), std::string::npos)
       << "TicTacToe runner must report the public client/server self-check";
     EXPECT_NE (tictactoe_runner.find ("observer-win-milestone=verified"), std::string::npos)
       << "TicTacToe runner must verify observer milestone delivery";
@@ -706,8 +706,9 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
 TEST (CppFrameworkSampleParity, CommonSampleSpecsDocumentActorDestroyLifecycle)
 {
     const auto root = repository_root ();
-    const std::vector<std::string> common_specs{"framework/doc/framework/common/sample/bingo/README.ko.md",
-                                                "framework/doc/framework/common/sample/tictactoe/README.ko.md"};
+    const std::vector<std::string> common_specs{
+      "framework/doc/framework/common/sample/bingo/README.ko.md",
+      "framework/doc/framework/common/sample/tictactoe/README.ko.md"};
 
     for (const auto &spec_path : common_specs) {
         const auto spec = read_file (root / spec_path);
@@ -742,13 +743,15 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
         std::string runner_path;
     };
     const std::vector<sample_lifecycle_case_t> cases{
-      {"samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp",
-       "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp",
+      {"samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp",
+       "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp",
        "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp",
        "samples/Bingo/Server/Session/Sessions/bingo_session.hpp", "samples/Bingo/README.ko.md",
        "samples/Bingo/run_sample.sh"},
-      {"samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_entry_spot.hpp",
-       "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp",
+      {"samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/"
+       "tictactoe_entry_spot.hpp",
+       "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/"
+       "tictactoe_game_spot.hpp",
        "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp",
        "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp",
        "samples/TicTacToe/README.ko.md", "samples/TicTacToe/run_sample.sh"}};
@@ -944,12 +947,8 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
 TEST (CppFrameworkSampleParity, CodecHelpersStayConfinedToRawLifecycleBoundaries)
 {
     const std::vector<std::string> helper_patterns{
-      "to_stream_payload",
-      "from_stream_payload",
-      "json_to_protobuf_payload",
-      "json_from_protobuf_payload",
-      "append_protobuf_varint",
-      "read_protobuf_varint",
+      "to_stream_payload",          "from_stream_payload",    "json_to_protobuf_payload",
+      "json_from_protobuf_payload", "append_protobuf_varint", "read_protobuf_varint",
     };
     std::vector<std::string> violations;
 
@@ -971,7 +970,7 @@ TEST (CppFrameworkSampleParity, CodecHelpersStayConfinedToRawLifecycleBoundaries
     }
 
     EXPECT_TRUE (violations.empty ()) << "codec helper leakage:\n"
-                                     << testing::PrintToString (violations);
+                                      << testing::PrintToString (violations);
 }
 
 int main (int argc, char **argv)

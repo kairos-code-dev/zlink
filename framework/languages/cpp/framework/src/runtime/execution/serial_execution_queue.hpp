@@ -3,6 +3,8 @@
 
 #include "runtime/dispatch/offload_executor.hpp"
 
+#include <zlink/framework/contracts/dispatch/task.hpp>
+
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -30,6 +32,7 @@ class serial_execution_queue_t
 
     bool try_post (std::string name, std::function<void ()> work);
     bool try_post_async (std::string name, async_work_t work);
+    bool try_post_async_front (std::string name, async_work_t work);
     void post (std::string name, std::function<void ()> work);
     void post_async (std::string name, async_work_t work);
     void run (std::string name, std::function<void ()> work);

@@ -157,6 +157,19 @@ test('entry spot public surface exposes create lifecycle and actor join admissio
   assert.equal(entryContext.includes('close('), false);
 });
 
+test('actor join and bound session call objects expose yieldSubmit terminators', () => {
+  const actorContracts = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Actors', 'ZLinkActorFactory.ts'),
+    'utf8');
+  const boundSessionContracts = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Streams', 'BoundSessionContracts.ts'),
+    'utf8');
+
+  assert.match(actorContracts, /interface ZLinkActorJoinSpotCall[\s\S]*yieldSubmit<TReply/);
+  assert.match(actorContracts, /interface ZLinkActorJoinEntrySpotCall[\s\S]*yieldSubmit<TReply/);
+  assert.match(boundSessionContracts, /interface ZLinkBoundSessionSendCall[\s\S]*yieldSubmit\(signal\?: AbortSignal\): Promise<void>/);
+});
+
 function exportedCatalogNames(spec) {
   return uniqueMatches(spec, /^export\s+(?:interface|type|enum|function)\s+([A-Za-z][A-Za-z0-9_]*)/gm);
 }

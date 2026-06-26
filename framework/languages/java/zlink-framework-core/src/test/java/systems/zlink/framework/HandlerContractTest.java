@@ -3,14 +3,17 @@ package systems.zlink.framework;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.annotation.Repeatable;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.channels.ZLinkRouteRequestCall;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkHandlerGroups;
 import systems.zlink.framework.handlers.ZLinkPublish;
@@ -27,6 +30,8 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall;
 import systems.zlink.framework.actors.ZLinkActorJoinSpotCall;
+import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
+import systems.zlink.framework.execution.ZLinkFrameworkTurns;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
@@ -79,6 +84,12 @@ final class HandlerContractTest {
             ZLinkNext.class);
 
         assertEquals(1, method.getTypeParameters().length);
+    }
+
+    @Test
+    void routeRequestCallDoesNotExposeYieldTerminator() {
+        assertFalse(hasMethod(ZLinkRouteRequestCall.class, "yieldAsync"));
+        assertFalse(hasMethod(ZLinkRouteRequestCall.class, "yieldAwait"));
     }
 
     @Test
@@ -196,12 +207,35 @@ final class HandlerContractTest {
         ZLinkActorContext.class.getMethod("joinEntrySpot", RoutingId.class, Object.class);
         ZLinkActorJoinSpotCall.class.getMethod("submit");
         ZLinkActorJoinSpotCall.class.getMethod("await");
+        ZLinkActorJoinSpotCall.class.getMethod("yieldAsync");
+        ZLinkActorJoinSpotCall.class.getMethod("yieldAwait");
         ZLinkActorJoinSpotCall.class.getMethod("submit", Class.class);
         ZLinkActorJoinSpotCall.class.getMethod("await", Class.class);
+        ZLinkActorJoinSpotCall.class.getMethod("yieldAsync", Class.class);
+        ZLinkActorJoinSpotCall.class.getMethod("yieldAwait", Class.class);
         ZLinkActorJoinEntrySpotCall.class.getMethod("submit");
         ZLinkActorJoinEntrySpotCall.class.getMethod("await");
+        ZLinkActorJoinEntrySpotCall.class.getMethod("yieldAsync");
+        ZLinkActorJoinEntrySpotCall.class.getMethod("yieldAwait");
         ZLinkActorJoinEntrySpotCall.class.getMethod("submit", Class.class);
         ZLinkActorJoinEntrySpotCall.class.getMethod("await", Class.class);
+        ZLinkActorJoinEntrySpotCall.class.getMethod("yieldAsync", Class.class);
+        ZLinkActorJoinEntrySpotCall.class.getMethod("yieldAwait", Class.class);
+        ZLinkBoundSessionSendCall.class.getMethod("yieldAsync");
+        ZLinkBoundSessionSendCall.class.getMethod("yieldAwait");
+    }
+
+    @Test
+    void frameworkTurnBridgeRejectsUserCreatedCompletionStage() {
+        assertThrows(
+            IllegalStateException.class,
+            () -> ZLinkFrameworkTurns.captureCurrent());
+
+        assertThrows(
+            IllegalStateException.class,
+            () -> ZLinkFrameworkTurns.awaitManagedCompletion(
+                null,
+                CompletableFuture.completedFuture("user-stage")));
     }
 
     @Test

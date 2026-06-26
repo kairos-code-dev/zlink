@@ -165,10 +165,24 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         {
             while (_queue.Reader.TryRead(out var item))
             {
-                await item.InvokeAsync(
+                var turn = new ZLinkSerialTurn(PostResume);
+                var result = await item.InvokeAsync(
                     ReportHandlerException,
-                    _executionToken).ConfigureAwait(false);
-                CompletePendingItem();
+                    _executionToken,
+                    turn).ConfigureAwait(false);
+                if (result == ZLinkSerialWorkItemResult.Completed)
+                {
+                    CompletePendingItem();
+                }
+                else
+                {
+                    _ = item.Completion.ContinueWith(
+                        static (task, state) => ((ZLinkSerialExecutionQueue)state!).CompletePendingItem(),
+                        this,
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+                }
             }
         }
         finally
@@ -204,5 +218,39 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         {
             _drained.TrySetResult();
         }
+    }
+
+    private bool PostResume(ZLinkSerialTurn turn, Action resume)
+    {
+        if (Volatile.Read(ref _completed) != 0)
+        {
+            return false;
+        }
+
+        Interlocked.Increment(ref _pendingCount);
+        var item = new ZLinkSerialWorkItem(async _ =>
+        {
+            turn.ResetSuspension();
+            resume();
+            var ownerTask = turn.OwnerTask;
+            if (ownerTask is null || ownerTask.IsCompleted)
+            {
+                return;
+            }
+
+            var completed = await Task.WhenAny(ownerTask, turn.Suspended).ConfigureAwait(false);
+            if (ReferenceEquals(completed, turn.Suspended))
+            {
+                return;
+            }
+        });
+        if (!_queue.Writer.TryWrite(item))
+        {
+            CompletePendingItem();
+            return false;
+        }
+
+        ScheduleDrain();
+        return true;
     }
 }

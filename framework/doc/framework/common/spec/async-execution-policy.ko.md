@@ -36,6 +36,24 @@ Spot과 Entry Spot application callback은 Spot 단위 직렬 실행 줄에서 �
 완료 값이 끝날 때까지 같은 Spot의 다음 callback을 시작하지 않는다. callback 안에서
 blocking wait로 완료 값을 기다리는 것은 금지한다.
 
+기본 terminator는 이 직렬 의미를 유지한다. `.NET`의 `Async(...)`, Java의
+`submit(...)`/`await(...)`, Kotlin의 `submit(...).await()`, Node.js의 `submit(...)`,
+C++의 `async()`는 handler가 기다리는 동안 같은 Spot 또는 Entry Spot의 다음 작업을
+시작하지 않는다. 이 기본값은 handler가 await 전후에 Spot 공용 상태를 이어서 읽거나
+바꾸는 일반 코드를 안전하게 유지하기 위한 것이다.
+
+Spot/Entry Spot handler가 player 한 명의 admission/preflight처럼 await 전후에 공용
+mutable state를 이어 쓰지 않는 I/O를 기다릴 때는 yield 계열 terminator를 명시적으로
+사용할 수 있다. yield terminator는 현재 mailbox turn을 반납하고, completion 뒤 원래
+mailbox에서 handler continuation을 재개한다. 같은 actor나 같은 timer의 다음 작업은
+continuation 뒤에 실행되지만, 다른 actor나 다른 timer 작업은 그 사이에 실행될 수 있다.
+
+지원 대상은 framework가 reply, timeout, cancellation, cleanup을 관리하는 call object로
+제한한다. channel request, Spot outbound request, actor `JoinSpot`/`JoinEntrySpot`,
+bound session send completion, `RunWorker` completion이 대상이다. channel send/publish,
+route mesh send/request, 사용자 코드가 만든 임의 `Task`/`Promise`/`CompletionStage`,
+외부 HTTP client async 호출에는 yield surface를 제공하지 않는다.
+
 짧고 빠른 local 작업을 callback 밖으로 넘겨야 할 때는 언어별 `RunWorker(...)`,
 `runWorker(...)`, `run_worker(...)` 표면을 사용한다. worker 함수는 Spot 상태를 직접
 만지지 않는다. 완료 callback이나 awaitable continuation은 원래 Spot의 직렬 실행 줄로

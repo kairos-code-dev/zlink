@@ -482,49 +482,72 @@ class spot_context_t
     {
         using result_type = std::invoke_result_t<TWork>;
         auto scheduler = _worker_scheduler;
+        auto yield_turn = detail::capture_current_serial_yield_turn ();
         return worker_call_t<result_type> (
-          [scheduler, work = std::move (work)] (
-            std::optional<std::chrono::milliseconds> timeout) mutable -> task_t<result_type> {
+          [scheduler, yield_turn, work = std::move (work)] (
+            std::optional<std::chrono::milliseconds> timeout,
+            detail::worker_completion_mode_t completion_mode) mutable -> task_t<result_type> {
               (void) timeout;
               if (!scheduler) {
                   return task_t<result_type> (result_t<result_type>::failure (
                     framework_error_kind_t::request_failed, "worker runtime is not configured"));
               }
 
-              detail::task_completion_source_t<result_type> completion;
+              const auto complete_on_current_turn =
+                completion_mode == detail::worker_completion_mode_t::current_turn && yield_turn;
+              detail::task_completion_source_t<result_type> completion (
+                complete_on_current_turn ? yield_turn->resume_scheduler () : detail::task_scheduler_t{});
               auto task = completion.task ();
               auto shared_work = std::make_shared<TWork> (std::move (work));
               auto completed = std::make_shared<std::atomic_bool> (false);
               if (timeout && *timeout > std::chrono::milliseconds::zero ()) {
                   auto timeout_scheduler = scheduler;
+                  auto timeout_direct = complete_on_current_turn;
                   auto timeout_completion = completion;
                   auto timeout_completed = completed;
                   std::thread ([timeout_scheduler, timeout_completion, timeout_completed,
-                                timeout = *timeout] () mutable {
+                                timeout_direct, timeout = *timeout] () mutable {
                       std::this_thread::sleep_for (timeout);
                       if (!timeout_completed->exchange (true)) {
-                          timeout_scheduler->post_owner ([timeout_completion] () mutable {
+                          auto complete_timeout = [timeout_completion] () mutable {
                               timeout_completion.complete (result_t<result_type>::failure (
                                 framework_error_kind_t::worker_timeout, "worker task timed out"));
-                          });
+                          };
+                          if (timeout_direct) {
+                              complete_timeout ();
+                          } else {
+                              timeout_scheduler->post_owner (std::move (complete_timeout));
+                          }
                       }
                   }).detach ();
               }
               const auto scheduled = scheduler->try_schedule ([scheduler, shared_work, completion,
-                                                               completed] () mutable {
+                                                               completed,
+                                                               complete_on_current_turn] () mutable {
                   auto result = detail::run_worker_body<result_type> (*shared_work);
                   if (!completed->exchange (true)) {
-                      scheduler->post_owner ([completion, result = std::move (result)] () mutable {
+                      auto complete_result =
+                        [completion, result = std::move (result)] () mutable {
                           completion.complete (std::move (result));
-                      });
+                        };
+                      if (complete_on_current_turn) {
+                          complete_result ();
+                      } else {
+                          scheduler->post_owner (std::move (complete_result));
+                      }
                   }
               });
               if (!scheduled) {
                   completed->store (true);
-                  scheduler->post_owner ([completion] () mutable {
+                  auto complete_full = [completion] () mutable {
                       completion.complete (result_t<result_type>::failure (
                         framework_error_kind_t::worker_queue_full, "worker queue is full"));
-                  });
+                  };
+                  if (complete_on_current_turn) {
+                      complete_full ();
+                  } else {
+                      scheduler->post_owner (std::move (complete_full));
+                  }
               }
               return task;
           });

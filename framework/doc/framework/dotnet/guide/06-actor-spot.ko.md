@@ -86,8 +86,8 @@ actor 안에서의 spot join 과 현재 상태 조회는 주입된 `IZLinkActorC
 |---------------------------|------|
 | `SpotRid?`, `IsJoined` | 현재 Spot join 상태 조회 |
 | `BoundSession` | 자기 client 로 push ([07-actor-session §3](07-actor-session.ko.md)) |
-| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. `.Async(ct)` 로 종결하며 `Accepted`와 reply `ZLinkMessage`를 받는다 |
-| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 빈 `ZLinkMessage`로 명시하며 `.Async(ct)` 로 종결한다 |
+| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. 기본은 `.Async(ct)` 로 종결하고, admission I/O 동안 현재 turn을 반납해야 하는 제한된 흐름에서는 `.YieldAsync(ct)` 또는 `.YieldAsync<TReply>(ct)` 를 쓴다 |
+| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 기본은 `.Async(ct)` 이며, `YieldAsync(...)` 의 의미는 `JoinSpot(...)` 과 같다 |
 
 `JoinSpot`/`JoinEntrySpot` 도 `Request` 처럼 reply 대기 `Timeout(...)` override 를 받는다. 생략하면
 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
@@ -109,7 +109,7 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 | `OnCreateActorAsync(actor, createReq, ct)` | factory 가 actor 를 **최초 생성**할 때(`IZLinkActorManager.GetOrCreateAsync`) | ✅ 전용 | — |
 | `OnActorJoinAsync(actor, req, ct) → ZLinkSpotActorJoinResult` | actor 의 `Context.JoinSpot(spotRid, req)` / `JoinEntrySpot(...)` — **admission 결정 지점**(Accept/Reject) | ✅ | ✅ |
 | `OnJoinedActorAsync(actor, ct)` | 위 join 이 **Accept 된 직후** | ✅ | ✅ |
-| `OnLeaveActorAsync(actor, ct)` | user Spot 의 `Context.leaveActor(actor)` 또는 framework leave | ✅ | ✅ |
+| `OnLeaveActorAsync(actor, ct)` | actor 가 **그 Spot 을 떠날 때** — 다른 Spot 으로 join(Entry→room 포함) 또는 `leaveActor`/framework leave | ✅ | ✅ |
 | `OnDisconnectActorAsync(actor, ct)` | 응용이 그 actor 에 `NotifyDisconnectedAsync(...)` | ✅ | ✅ |
 | actor packet handler | session 이 bound actor 로 `actorRef.RelayAsync(payload)`(→ [07 §1](07-actor-session.ko.md)) | ✅ | ✅ |
 
@@ -118,6 +118,72 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 
 > **`OnCreateActorAsync` 는 Entry Spot 전용**이다(actor 가 처음 머무는 곳). user Spot 은 이미 만들어진
 > actor 가 join 으로 들어오므로 create 콜백이 없다.
+
+### actor 이동 — 무슨 일이 일어나나 (로컬 vs 크로스노드)
+
+`JoinSpot` 으로 actor 가 한 Spot 에서 다른 Spot 으로 옮길 때, 대상 Spot 이 **같은 노드**냐 **다른
+노드**냐로 동작이 갈린다.
+
+**① 같은 노드 — route 이동(단일 인스턴스).** 인스턴스는 그대로 두고 위치(route)만 바꾼다.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as actor (호출)
+  participant FW as framework / core
+  participant E as Entry Spot
+  participant R as BingoRoom (user Spot)
+  A->>FW: JoinSpot(roomRid, req)
+  FW->>R: OnActorJoinAsync — admission
+  R-->>FW: Accept(reply)
+  Note over FW: 같은 인스턴스 유지<br/>entry route 제거 → room route 기록
+  FW->>E: OnLeaveActorAsync
+  FW->>R: OnJoinedActorAsync
+  FW-->>A: joined(Accepted, reply)
+```
+
+> admission 이 **Reject** 면 이동·leave 없이 actor 는 Entry Spot 에 그대로 남는다.
+
+**② 다른 노드 — actor migration(인스턴스 이주).** A 의 인스턴스를 제거하고 B 에 새 인스턴스를 만든다.
+콜백이 두 노드에 나뉘어 돈다.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant CA as core @노드 A
+  participant E as Entry Spot @A
+  participant CB as core @노드 B
+  participant R as BingoRoom @B
+  Note over CA: JoinSpot(roomRid@B) — 대상이 원격
+  CA->>CB: remote join 요청 (actor gateway route)
+  Note over CB: actor 인스턴스 신규 생성 (B)
+  CB->>R: OnActorJoinAsync — admission
+  R-->>CB: Accept(reply)
+  CB->>R: OnJoinedActorAsync
+  CB-->>CA: join OK (reply)
+  CA->>E: OnLeaveActorAsync
+  Note over CA: A 인스턴스 retire<br/>bound session A→B transfer<br/>route→B · generation+1
+```
+
+> **B 의 인스턴스는 factory 로 새로 생성**되므로 A 의 in-memory 상태는 자동으로 넘어가지 않는다. room
+> 상태는 `BingoRoom`(B)이 들고, actor 가 가져갈 값은 join req payload(또는 DB)로 전달한다. **bound
+> session(STREAM)은 A→B 로 transfer** 되어 client push 는 끊기지 않는다(이주 후 B 의 actor 가
+> `BoundSession.Send` → 같은 client).
+
+| | 같은 노드 | 다른 노드(migration) |
+|---|---|---|
+| actor 인스턴스 | 그대로(route 만 갱신) | A retire + B 신규 생성 |
+| in-memory 상태 | 유지 | **전송 안 됨**(payload/DB 로) |
+| OnLeave / OnJoined | 같은 노드에서 둘 다 | A 에서 OnLeave / B 에서 OnActorJoin·OnJoined |
+| bound session | 그대로 | A→B transfer |
+| 식별 | 같은 `actorId` | 같은 `actorId`, `generation+1` |
+
+> **규칙 — join 이 성공(Accept)하면 그 `actor` 객체를 더 접근하지 않는다.** join 이 끝나면 actor 는 이
+> Spot 을 떠났고, **크로스노드면 이 노드의 인스턴스는 retire** 된다(접근하면 stale). 호출한 handler 는
+> `joined.Accepted`/`joined.Reply` 로 결과만 처리하고 **반환**한다. join 직후의 client push 같은 후처리는
+> actor 가 실제로 사는 **대상 Spot 의 `OnJoinedActorAsync`**(또는 그 Spot handler)에서 한다 — 거기서
+> 받는 actor 가 옳은(이동 후) 인스턴스다. 참고로 `OnLeaveActorAsync` 는 actor 객체가 아니라 actor 가
+> 떠난 **Spot** 에게 알리는 콜백이다(객체 destroy 가 아니라 membership 통지).
 
 ### actor packet handler 등록과 시그니처
 
@@ -215,19 +281,21 @@ internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> log
         // Entry Spot handler 는 spot context 로 일반 channel 호출 가능 (room 배정 API)
         var matched = await entrySpot.Context.Outbound
             .RequestToChannel(SampleNames.ApiChannel, new MatchBingoApiReq { ActorId = actor.ActorId, Mode = message.Mode })
-            .Async<MatchBingoApiRes>(ct);
+            .YieldAsync<MatchBingoApiRes>(ct); // admission I/O 동안 Entry Spot turn을 반납한다.
 
         // 배정된 room 의 user Spot 으로 join → BingoRoom.OnActorJoinAsync 가 admission 판정
         var joined = await actor.Context
             .JoinSpot(RoutingId.From(matched.RoomId), new BingoRoomJoinReq { RoomId = matched.RoomId, ActorId = actor.ActorId })
-            .Async(ct);
+            .YieldAsync<BingoRoomJoinRes>(ct); // join 완료 뒤 같은 handler 줄에서 재개한다.
         // joined.Accepted / joined.Reply 로 결과 처리 …
         return new MatchBingoRes { RoomId = matched.RoomId };
     }
 }
 ```
 
-### ③ user Spot — admission·leave·disconnect (`BingoRoom : IZLinkSpot<PlayerActor>`)
+> **join 후 `actor` 를 다시 만지지 않는다.** join 이 끝나면 actor 는 이 Entry Spot 을 떠났으므로
+> (크로스노드면 이 노드 인스턴스는 retire), `joined` 결과만 쓰고 반환한다. join 직후 client 에 push 할
+> 게 있으면 room(`BingoRoom`)의 `OnJoinedActorAsync` 에서 한다(§3 "actor 이동" 규칙). — admission·leave·disconnect (`BingoRoom : IZLinkSpot<PlayerActor>`)
 
 ```csharp
 internal sealed class BingoRoom(IZLinkSpotContext context, /* … */) : IZLinkSpot<PlayerActor>

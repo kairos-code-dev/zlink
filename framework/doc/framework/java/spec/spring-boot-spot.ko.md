@@ -120,6 +120,13 @@ handler, actor lifecycle member callback, timer callback은 같은 Entry Spot �
 user Spot이 room, stage, zone 같은 도메인 상태를 보관한다는 실행 모델을 유지하기 위한
 것이다.
 
+기본 `submit(...)`/`await(...)` 경로는 이 serial 의미를 유지한다. `yieldAwait(...)`는
+request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`, bound session send
+completion, worker completion에서만 현재 mailbox turn을 반납하고 completion 뒤 원래
+mailbox에서 재개한다. `yieldAwait(...)` 중에도 같은 actor와 같은 timer는 재진입하지 않는다.
+다른 actor나 다른 timer 작업은 interleave될 수 있으므로, await 전후에 공용 mutable state를
+이어 판단하는 handler는 기본 `await(...)`를 사용해야 한다.
+
 SPOT route request 에 handler 가 없거나 payload decode, handler 예외, invalid frame 이 발생하면 reply
 path 가 있는 경우 error reply 를 반환한다. actor request 도 같은 원칙을 따른다. 같은 process 안의
 local actor call 처럼 reply frame 이 없는 경로는 `CompletionStage` 를 framework error 로 완료한다.

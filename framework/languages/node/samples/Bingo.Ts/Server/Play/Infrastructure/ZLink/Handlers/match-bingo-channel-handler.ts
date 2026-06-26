@@ -2,7 +2,7 @@ import { Inject } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
 import { PlayerActorFactory } from '../Actors/player-actor-factory';
-import { BingoEntrySpot } from '../Spots/bingo-entry-spot';
+import { BingoEntrySpot } from '../Spots/EntrySpot/bingo-entry-spot';
 import { SampleNames } from '../../../../Configuration/sample-names';
 import {
   MatchBingoReq,

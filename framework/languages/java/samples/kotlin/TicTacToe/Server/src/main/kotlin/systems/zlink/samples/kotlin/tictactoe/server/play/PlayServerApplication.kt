@@ -14,7 +14,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.RedisRoomRouteStore
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator
-import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.handlers.TicTacToeGameCreatedHandler
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler
 
 
 

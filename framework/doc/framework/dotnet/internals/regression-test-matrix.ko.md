@@ -242,7 +242,18 @@ runtime failure 의미까지 테스트로 같이 고정되어 있어야 한다.
 registration, lifecycle, DI, monitoring 계층을 더 쌓는다. 그래서 플랫폼 gate 는
 backend gate 와 별도로 유지한다.
 
-## 9. 문서별 회귀 테스트 단락
+## 9. Spot yield dispatch regression
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `SerialExecutorTests` yield 관련 항목 | 기본 `Async(...)` serial gate를 유지하고, `YieldAsync(...)`가 completion 전 다른 mailbox 작업을 실행하게 한다. |
+| `WorkerPoolTests` yield 관련 항목 | `RunWorker(...).YieldAsync(...)`가 captured turn이 있을 때만 동작하고, completion 뒤 원래 실행 줄로 돌아온다. |
+| `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id` | actor `JoinSpot`/`JoinEntrySpot` call object가 `YieldAsync(...)`와 typed reply overload를 public contract로 제공한다. |
+| `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport` | bound session send call object가 `YieldAsync(...)`를 public contract로 제공한다. |
+| `ChannelContracts` yield surface 항목 | channel send/publish와 route request에는 `YieldAsync` surface가 노출되지 않는다. |
+| `Bingo.Server.Play.csproj` build | Bingo `MatchBingoActorHandler` sample이 API request와 room `JoinSpot`에 `YieldAsync(...)`를 사용해도 compile된다. |
+
+## 10. 문서별 회귀 테스트 단락
 
 이 디렉토리의 각 draft 문서는, 자기 항목이 어떤 테스트로 고정되어 있는지 짧은
 `회귀 테스트` 단락을 갖고 있어야 한다. 중앙 matrix 만 갱신해서는 곤란하다.

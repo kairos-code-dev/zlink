@@ -26,6 +26,20 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [ShoppingMall](event/shoppingmall.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `OrderWorkflow`, `Registry` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
 | [GameQuest](event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
 
+## Spot yield dispatch 샘플 기준
+
+Bingo의 Entry Spot match handler는 player actor 한 명의 입장 준비를 보여 주는 기준
+샘플이다. 이 흐름은 player actor의 방 배정과 room Spot join처럼 입장 준비에 필요한
+I/O를 기다린다. 언어별 sample의 방 배정 경로는 channel request일 수도 있고 Entry
+Spot 내부 allocator일 수도 있지만, await 전후에 Entry Spot의 room list나 match queue
+같은 공용 mutable state를 이어서 판단하지 않는 admission I/O라는 조건은 같다. 이 조건을
+만족하는 Bingo match 흐름에는 yield 계열 terminator를 사용한다.
+
+언어별 이름은 각 framework public API를 따른다. `.NET`은 `YieldAsync(...)`, Java는
+`yieldAwait(...)`, Kotlin은 `yieldAwait(call, ...)`, Node.js는 `yieldSubmit(...)`,
+C++은 `yield_async()`를 사용한다. TicTacToe의 game join처럼 handler가 게임 상태 흐름의
+일부로 바로 이어지는 코드는 기본 terminator를 유지한다.
+
 ## 샘플 포팅 기준
 
 Bingo와 TicTacToe는 각자 맡은 기능을 보여 주는 예외 샘플이다. Bingo는 Protobuf

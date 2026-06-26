@@ -89,6 +89,7 @@ builder.Services.AddZLinkFramework(options =>
     node.EnablePubSub("tcp://0.0.0.0:9000");   // 이 노드의 pub/sub 소켓을 이 endpoint 에 bind (같은 channel 의 sub 가 여기로 붙는다)
     node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
 
+    // ↓ spot 이 호출할 외부 channel — 노드 설정이 아니라 options 에 따로 등록(spot 은 이름으로 이용, §5)
     options.AddClientServerChannel("orders").EnableClient();
 });
 ```
@@ -112,51 +113,60 @@ node 역할은 서로 독립이다.
 |-----------|------|
 | `EnableRouter(endpoint)` | 이 노드의 router 소켓을 열어 **같은 channel 의 다른 SpotNode 와 spot↔spot routed send/request**(mesh) |
 | `EnablePubSub(endpoint)` | 이 노드의 pub/sub 소켓을 열어 **같은 channel topic publish/subscribe**(mesh). local spot 의 `Publish`/구독에 필요(없으면 불가) |
-| `AddClientServerChannel(name).EnableClient()` | 이 노드가 일반 channel server 로 send/request 하는 client 역할 활성화 |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
-SpotNode 함수는 두 부류다 — 🟦 **자기 SPOT channel mesh 에 참여하는 소켓**(`EnableRouter`·
-`EnablePubSub`)과, 🟧 **다른 channel 로 나가는 client**(`AddClientServerChannel`). 외부→spot 의 route·
-publish 는 명시 함수 없이 **자동 연결**된다(같은 프로세스에 RouteMesh channel·SpotNode 가 함께 있으면
-런타임이 알아서 잇는다). 각 함수가 무엇을 켜고 메시지가 어디로 흐르는지 보면 이렇다(점선 = 함수가 켠다).
+위 표는 **SpotNode 자체 설정**이다 — 자기 소켓(`EnableRouter`·`EnablePubSub`)과 만들 spot 타입
+(`AddSpotFactory`·`AddEntrySpot`). 채널은 노드 소속이 아니다. 같은 channel 안의 spot↔spot 은 §1 처럼
+자동이고(위 router 소켓), **노드 밖(다른 channel·외부)** 과 주고받는 방향은 둘이다 — 위 소켓과
+(따로 등록한) 채널이 이렇게 받쳐 준다.
+
+- **spot → 외부 channel (보낼 때).** 쓰려는 channel 은 노드와 **따로** 등록한다
+  (`options.AddClientServerChannel("orders").EnableClient()`). spot 안에서는
+  `Context.Outbound.SendToChannel("orders", …)` / `RequestToChannel("orders", …)` 처럼 **channel 이름만**
+  부르면 framework 가 그 채널 client 로 내보낸다. 즉 spot 은 채널을 *이름으로 빌려 쓸* 뿐이다(§5).
+- **외부 → spot (받을 때).** 외부 코드가 spotRid 로 보낸 route 는 **이 노드의 router 소켓**(route
+  bridge)을 타고 spot 으로 들어오고, 외부 publish 는 **이 노드의 pub 소켓**으로 들어온다. 둘 다 위에서
+  켠 `EnableRouter`/`EnablePubSub` 소켓을 그대로 재사용한다(외부→spot 연결은 자동 — RouteMesh channel 과
+  SpotNode 가 같은 프로세스면 런타임이 잇는다).
+
+각 소켓이 무엇을 켜고 메시지가 어디로 흐르는지 그림으로 보면 이렇다(점선 = 함수가 켠다).
 
 ```mermaid
 flowchart LR
-  subgraph node["SpotNode · game.stage (안에 Spot 들)"]
+  subgraph node["SpotNode · game.stage — 자체 소켓 + spot 들"]
     rsock(["router 소켓"])
     psock(["pub/sub 소켓"])
     spot["Spot"]
-    csock(["channel client"])
   end
 
   %% 🟦 자기 channel mesh — 같은 channel 의 다른 SpotNode 와
-  peer["같은 channel 의 다른 SpotNode"]
+  peer["같은 channel 의<br/>다른 SpotNode"]
   rsock <==>|"spot↔spot send/request"| peer
   psock <==>|"spot 간 topic"| peer
 
-  %% 🟧 다른 channel·외부 client 와 잇기
-  api["외부 channel(api) 의 client"] ==>|"send/request<br/>(route bridge)"| rsock ==> spot
-  publess["spot 없는 노드·코드<br/>(IZLinkSpotPublisherClient)"] ==>|"topic publish"| psock ==> spot
-  spot ==> csock ==>|"send/request"| svc["일반 channel server"]
+  %% 외부 → spot : 이 노드의 router/pub 소켓으로 들어온다
+  ext["외부 코드<br/>routeClient / publisherClient"]
+  ext ==>|"route(spotRid) → bridge"| rsock ==> spot
+  ext ==>|"publish(topic)"| psock ==> spot
 
-  %% 어떤 함수가 무엇을 켜나
+  %% spot → 외부 channel : 노드 밖에 따로 등록한 channel 을 이름으로 호출
+  spot ==>|"Outbound.SendToChannel(name, …)"| chan{{"노드 밖 별도 등록 channel<br/>AddClientServerChannel(name).EnableClient()"}} ==>|"send/request"| svc["일반 channel server"]
+
   fRouter["EnableRouter(ep)"] -. 켠다 .-> rsock
   fPubSub["EnablePubSub(ep)"] -. 켠다 .-> psock
-  fClient{{"AddClientServerChannel(name).EnableClient()"}} -. 켠다 .-> csock
 
   classDef ownMesh fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
-  classDef bridge fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
+  classDef ext fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
   class fRouter,fPubSub,rsock,psock ownMesh;
-  class fClient,csock bridge;
+  class chan,ext ext;
   style node stroke:#1565c0,stroke-width:3px
 ```
 
-> 🟦 **파란(사각)** = 이 노드가 **자기 SPOT channel mesh** 에 참여하는 소켓 —
-> `EnableRouter`(같은 channel 의 다른 SpotNode 와 spot↔spot send/request),
-> `EnablePubSub`(같은 channel 의 topic). local spot 의 `Outbound.Send/Publish` 가 이 소켓을 쓴다.
-> 🟧 **주황(육각)** = **다른 channel·외부 client 와 잇는 bridge/client** —
-> `AddClientServerChannel().EnableClient()`(일반 channel server 로 send/request).
+> 🟦 **파란** = 이 노드의 **자체 소켓**(`EnableRouter`·`EnablePubSub`). 같은 channel mesh 에 참여하고,
+> **외부→spot inbound**(route bridge·publish)도 바로 이 소켓으로 들어온다.
+> 🟧 **주황** = **노드 밖에 따로 등록한 channel**. `AddClientServerChannel(name).EnableClient()` 로
+> 별도 등록하고, spot 은 `Outbound` 에서 그 **이름을 불러 빌려 쓴다**(노드 설정이 아니다).
 
 ### 함수 하나씩 — 글 설명과 그림
 
@@ -215,7 +225,7 @@ node.EnableRouter("tcp://0.0.0.0:9001")                            // 내 router
     .ConnectPeerPub("tcp://node-b:9000");                         // 상대 pub 을 직접 구독
 ```
 
-**🟧 외부→spot route·publish 는 자동(명시 함수 없음).** 외부 코드가 `IZLinkRouteClient` 로 spotRid 에
+**🟦 외부→spot inbound 은 자동(명시 함수 없음) — 위 router/pub 소켓을 그대로 쓴다.** 외부 코드가 `IZLinkRouteClient` 로 spotRid 에
 send/request 하거나(route), `IZLinkSpotPublisherClient.PublishSpot(...)` 로 topic 을 보내면(publish),
 같은 프로세스에 함께 등록된 **RouteMesh channel**(route) / **SpotMesh pub**(publish)에 런타임이 route
 bridge / publisher 를 **자동으로** 붙여 spot 에 전달한다. 예전의 `AcceptSpotRoutesFromChannel`·
@@ -231,14 +241,16 @@ flowchart LR
   class ext b;
 ```
 
-**🟧 `AddClientServerChannel(name).EnableClient()`** — 이 노드가 **일반 channel server** 를
-호출하는 client 를 켠다. spot 이 바깥 서비스로 send(단방향)/request(요청→응답 왕복) 할 때 쓴다.
-request 면 server 의 reply 가 spot 으로 되돌아온다.
+**🟧 spot 이 외부 channel 호출 (`AddClientServerChannel(name).EnableClient()`)** — 이건 **노드 설정이
+아니라 따로 등록하는 channel** 이다. spot 이 바깥 서비스로 send(단방향)/request(요청→응답 왕복) 할 때,
+spot 안에서 `Context.Outbound.SendToChannel(name, …)` / `RequestToChannel(name, …)` 로 그 **channel
+이름을 부르면** framework 가 등록된 이 client 로 내보낸다. request 면 server 의 reply 가 spot 으로
+되돌아온다. (자세한 사용은 §5)
 
 ```mermaid
 flowchart LR
-  f["AddClientServerChannel(name)<br/>.EnableClient()"] -. 켠다 .-> c(["channel client"])
-  spot["내 Spot"] ==>|"① send / request"| c ==> svc["일반 channel server"]
+  f{{"options.AddClientServerChannel(name)<br/>.EnableClient()  · 노드 밖 별도 등록"}} -. 등록 .-> c(["channel client"])
+  spot["내 Spot"] ==>|"① Outbound.SendToChannel/RequestToChannel(name, …)"| c ==> svc["일반 channel server"]
   svc -.->|"② request 면 reply 돌아옴"| spot
   classDef b fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
   class f,c b;
@@ -336,6 +348,22 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 > 실행 큐**에서 직렬로 돈다. 그래서 room board 같은 가변 상태를 lock 없이 만질 수
 > 있다. 단 이 보장은 그 Spot 내부 callback 한정이다. 외부에서 `SpotRid` 로 직접
 > 접근하는 코드는 별도 동기화가 필요하다.
+
+### yield dispatch
+
+Spot/Entry Spot handler 안에서 기본 terminator인 `Async(...)`를 기다리면 handler가
+끝날 때까지 같은 Spot 실행 큐의 다음 작업은 시작되지 않는다. 공용 상태를 await 전후로
+이어 쓰는 일반 handler는 이 기본 동작을 사용한다.
+
+player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
+흐름에서는 `YieldAsync(...)`를 사용할 수 있다. `YieldAsync(...)`는 현재 actor 또는 timer
+mailbox turn을 반납하고, completion 뒤 같은 mailbox continuation으로 돌아온다. 같은 actor의
+다음 packet은 continuation 뒤에 실행되지만, 다른 actor나 timer 작업은 그 사이에 실행될 수
+있다.
+
+Bingo sample의 `MatchBingoActorHandler`는 API channel request와 room `JoinSpot`에
+`YieldAsync(...)`를 사용한다. room list, match queue, lobby state 같은 공용 mutable state를
+await 전후로 이어서 판단하는 handler에는 `YieldAsync(...)`를 쓰지 않는다.
 
 ### timer 사용법
 

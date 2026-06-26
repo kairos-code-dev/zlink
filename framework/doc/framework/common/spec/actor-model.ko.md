@@ -99,8 +99,8 @@ surface에 native actor ref를 그대로 드러내지 않는다. application은 
 commit epoch를 얻을 수 있는 binding은 그 값을 함께 전달하고, framework membership
 변경만으로 만든 알림은 epoch를 `0`으로 둔다.
 
-actor 객체 생성이 끝나면 framework는 `onCreateActor` callback을 한 번 호출하고,
-actor 생성 요청에 실린 create payload를 함께 전달한다. payload 없는 create 편의
+actor 객체 생성이 끝나면 framework는 `onCreateActor` callback을 한 번 호출한다.
+이때 actor 생성 요청에 실린 create payload를 함께 전달한다. payload 없는 create 편의
 API는 빈 `ZLinkMessage`를 전달한 것과 같다. 이미 존재하는 actor를
 `getOrCreate`로 재사용할 때는 새 payload로 lifecycle을 다시 호출하지 않는다.
 Spot membership에 들어오면 `onJoinedActor`, 다른 Spot으로 나가면 `onLeaveActor`를

@@ -7,7 +7,7 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.gamequest.server.questmission.application.QuestEventProcessor
-import systems.zlink.samples.kotlin.gamequest.server.questmission.spots.PlayerQuestSpot
+import systems.zlink.samples.kotlin.gamequest.server.questmission.spots.playerquestspot.PlayerQuestSpot
 
 @Component
 class ZLinkPlayerQuestOwnerProvisioner(

@@ -9,7 +9,7 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
-import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.DeliveryTrackingSpot
+import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliveryTrackingSpot
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CustomerDeliverySubscribed
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreate
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeCustomerToDelivery

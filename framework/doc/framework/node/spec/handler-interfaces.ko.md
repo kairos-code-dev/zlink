@@ -916,11 +916,13 @@ export interface ZLinkActorJoinResult<TReply> {
 export interface ZLinkActorJoinSpotCall {
   timeout(timeoutMs: number): ZLinkActorJoinSpotCall;
   submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
+  yieldSubmit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorJoinEntrySpotCall {
   timeout(timeoutMs: number): ZLinkActorJoinEntrySpotCall;
   submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
+  yieldSubmit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorFactory {
@@ -933,6 +935,10 @@ export interface ZLinkActorManager {
   getOrCreate(actorId: string, actorType: string, request?: ZLinkMessage): Promise<ActorRef>;
 }
 ```
+
+`submit(...)` 은 기본 serial terminator다. `yieldSubmit(...)` 은 framework가 만든 actor
+join call object에서만 사용할 수 있으며, join completion을 기다리는 동안 현재 turn을
+반납하고 completion 뒤 같은 handler continuation을 재개한다.
 
 > 코드 기준(중요): dotnet `IZLinkActorJoinSpotCall.Async<TReply>` 는 bare `TReply`
 > 가 아니라 `ZLinkActorJoinResult<TReply>`(resultCode + ActorRef + reply)를 반환한다.
@@ -1326,8 +1332,13 @@ export interface ZLinkBoundSessionSendCall {
   packetName(packetName: string): ZLinkBoundSessionSendCall;
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
   submit(signal?: AbortSignal): Promise<void>;
+  yieldSubmit(signal?: AbortSignal): Promise<void>;
 }
 ```
+
+`submit(...)` 은 기본 serial terminator다. `yieldSubmit(...)` 은 framework가 만든 bound
+session send call object에서만 사용할 수 있으며, send completion을 기다리는 동안 현재
+turn을 반납하고 completion 뒤 같은 handler continuation을 재개한다.
 
 `disconnect()` 도 현재 actor 의 binding 상태를 쓴다. actor 가 client 연결을 끊기로 결정한
 경우 호출하며, session callback 으로 `onDisconnected(...)` 를 다시 올리지 않는다.

@@ -32,7 +32,12 @@ import {
   ZLinkRuntimeChannelTransport,
   ZLinkRuntimeRouteTransport
 } from '../channels';
-import { ZLinkFrameworkRuntimeState, ZLinkRuntimeErrorSink } from '../execution';
+import {
+  captureZLinkSpotSerialTurn,
+  ZLinkFrameworkRuntimeState,
+  ZLinkRuntimeErrorSink,
+  type ZLinkSpotSerialTurn
+} from '../execution';
 import {
   createDiagnosticsContext,
   type ZLinkMessageFlowModeCell
@@ -1104,6 +1109,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
   private selectedPacketName: string | undefined;
   private readonly selectedMetadata = new Map<string, string>();
   private executed = false;
+  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
 
   constructor(
     private readonly runtime: ZLinkStreamBindingRuntime,
@@ -1114,7 +1120,9 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     private readonly requestTimeoutMs: number | undefined,
     private readonly actorId: string,
     private readonly message: unknown
-  ) {}
+  ) {
+    this.yieldTurn = captureZLinkSpotSerialTurn();
+  }
 
   metadata(key: string, value: string): this {
     this.selectedMetadata.set(key, value);
@@ -1204,6 +1212,15 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       this.selectedMetadata,
       signal
     );
+  }
+
+  yieldSubmit(signal?: AbortSignal): Promise<void> {
+    if (this.yieldTurn === undefined) {
+      return Promise.reject(new Error(
+        'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+      ));
+    }
+    return this.yieldTurn.yieldPromise(this.submit(signal));
   }
 }
 

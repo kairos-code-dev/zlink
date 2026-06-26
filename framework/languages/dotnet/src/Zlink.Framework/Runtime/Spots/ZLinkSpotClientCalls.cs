@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Execution;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLinkSpotOutbound
@@ -87,6 +89,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     ZLinkSpotRemoteAddressTarget target,
     TRequest request) : IZLinkRequestCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
@@ -126,9 +129,21 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             activation.Codecs);
     }
 
+    public ValueTask<TReply> YieldAsync<TReply>(CancellationToken cancellationToken = default)
+    {
+        return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
+    }
+
     private ValueTask<ZLinkSpotRemoteAddress> ResolveRemoteAddressAsync(CancellationToken cancellationToken)
     {
         return target.ResolveAsync(resolver, cancellationToken);
+    }
+
+    private ZLinkSerialTurn RequireTurn()
+    {
+        return _turn
+            ?? throw new InvalidOperationException(
+                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
     }
 }
 
@@ -178,6 +193,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     string channelName,
     TMessage request) : IZLinkRequestCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
@@ -208,5 +224,17 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
             "SPOT channel request reply is empty.",
             "SPOT channel request failed.",
             activation.Codecs);
+    }
+
+    public ValueTask<TReply> YieldAsync<TReply>(CancellationToken cancellationToken = default)
+    {
+        return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
+    }
+
+    private ZLinkSerialTurn RequireTurn()
+    {
+        return _turn
+            ?? throw new InvalidOperationException(
+                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
     }
 }

@@ -25,15 +25,20 @@ public sealed class ActorContracts
         var joinReply = await actor.Context
             .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
             .Async();
+        var typedJoinReply = await actor.Context
+            .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
+            .YieldAsync<JoinedRoom>();
         var entryJoin = await actor.Context
             .JoinEntrySpot(RoutingId.From("play-node"), ZLinkMessage.Empty)
             .Timeout(TimeSpan.FromSeconds(1))
-            .Async();
+            .YieldAsync();
 
         Assert.Equal("player-1", actorRef.ActorId);
         Assert.Equal("player-1", actor.ActorId);
         Assert.True(joinReply.Accepted);
         Assert.Equal("room-1", joinReply.Reply.Decode<JoinedRoom>().RoomId);
+        Assert.True(typedJoinReply.Accepted);
+        Assert.Equal("room-1", typedJoinReply.Reply.RoomId);
         Assert.True(entryJoin.Accepted);
         Assert.Equal("player-1", entryJoin.Actor.ActorId);
         Assert.Equal(RoutingId.From("play-node"), entryJoin.Actor.NodeRid);
@@ -141,6 +146,10 @@ public sealed class ActorContracts
                 true,
                 new ActorRef(RoutingId.From("room-node"), "player-1", 1),
                 reply));
+
+        public ValueTask<ZLinkActorJoinResult> YieldAsync(
+            CancellationToken cancellationToken = default) =>
+            Async(cancellationToken);
     }
 
     private sealed class JoinEntrySpotCall(ActorRef result, ZLinkMessage reply) : IZLinkActorJoinEntrySpotCall
@@ -150,6 +159,10 @@ public sealed class ActorContracts
         public ValueTask<ZLinkActorJoinResult> Async(
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new ZLinkActorJoinResult(true, result, reply));
+
+        public ValueTask<ZLinkActorJoinResult> YieldAsync(
+            CancellationToken cancellationToken = default) =>
+            Async(cancellationToken);
     }
 
     private sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZLinkActor

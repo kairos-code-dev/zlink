@@ -16,6 +16,8 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkWorkerFailedException;
 import systems.zlink.framework.errors.ZLinkWorkerQueueFullException;
 import systems.zlink.framework.errors.ZLinkWorkerTimeoutException;
+import systems.zlink.framework.execution.ZLinkFrameworkTurns;
+import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
@@ -31,6 +33,7 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     private final ZLinkWorkerPool pool;
     private final ZLinkWorkerTask<T> work;
     private final Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>> postToSpotQueue;
+    private final ZLinkYieldTurn turn = ZLinkFrameworkTurns.captureCurrent();
     private final AtomicBoolean terminated = new AtomicBoolean();
     private Duration timeout;
 
@@ -58,6 +61,17 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
         CompletableFuture<T> result = new CompletableFuture<>();
         start(result::complete, result::completeExceptionally);
         return result;
+    }
+
+    @Override
+    public CompletionStage<T> yieldAsync() {
+        ZLinkYieldTurn capturedTurn = requireTurn();
+        return ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, submit());
+    }
+
+    @Override
+    public T yieldAwait() {
+        return yieldAsync().toCompletableFuture().join();
     }
 
     @Override
@@ -121,6 +135,14 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
             throw new IllegalStateException(
                 "runWorker call already has a terminator; call submit once");
         }
+    }
+
+    private ZLinkYieldTurn requireTurn() {
+        if (turn == null) {
+            throw new IllegalStateException(
+                "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+        }
+        return turn;
     }
 
     private static void cancelTimeout(ScheduledFuture<?> timeoutFuture) {

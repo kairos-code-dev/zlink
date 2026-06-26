@@ -24,6 +24,7 @@
 | route mesh (주소 라우팅) | 높음 | routing id로 특정 노드 고정 라우팅(SPOT 백본) | [7 §7](07-channel-messaging.ko.md#7-route-mesh-고급) |
 | SPOT(room/stage/zone) | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | [8](08-spot.ko.md) |
 | channel handler에서 target Spot 호출 | 중간 | HTTP/session gateway가 current Spot 없이 특정 Spot 호출 | [8 §6](08-spot.ko.md#6-spot에서-바깥으로-보내기) |
+| Spot yield dispatch | 높음 | player admission처럼 공용 상태 의존 없는 I/O 대기 중 다른 actor/timer를 막지 않을 때 | [8](08-spot.ko.md) |
 | Spot timer (게임 루프 등) | 중간 | 주기 tick, heartbeat, 정리 작업 | [8 §5](08-spot.ko.md#5-timer) |
 | Stage wrapper | 중간 | `playhouse` Stage 류를 SPOT 위에 직접 얹을 때(전용 타입 없음) | [8 §7](08-spot.ko.md#7-stage-wrapper-playhouse-stage-류) |
 | actor / Entry Spot | 높음 | session과 묶인 actor로 packet 자동 dispatch | [9](09-actor-session.ko.md) |

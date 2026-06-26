@@ -30,6 +30,8 @@ import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
+import systems.zlink.framework.execution.ZLinkFrameworkTurns;
+import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
@@ -947,16 +949,27 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         private final RoutingId spotNodeRid;
         private final Message request;
         private final Duration timeout;
+        private final ZLinkYieldTurn turn;
 
         JoinEntrySpotCall(
             DefaultActorContext context,
             RoutingId spotNodeRid,
             Message request,
             Duration timeout) {
+            this(context, spotNodeRid, request, timeout, ZLinkFrameworkTurns.captureCurrent());
+        }
+
+        JoinEntrySpotCall(
+            DefaultActorContext context,
+            RoutingId spotNodeRid,
+            Message request,
+            Duration timeout,
+            ZLinkYieldTurn turn) {
             this.context = context;
             this.spotNodeRid = spotNodeRid;
             this.request = request;
             this.timeout = timeout;
+            this.turn = turn;
         }
 
         @Override
@@ -964,7 +977,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             if (timeout == null || timeout.isNegative() || timeout.isZero()) {
                 throw new ZLinkConfigurationException("timeout must be positive");
             }
-            return new JoinEntrySpotCall(context, spotNodeRid, request, timeout);
+            return new JoinEntrySpotCall(context, spotNodeRid, request, timeout, turn);
         }
 
         @Override
@@ -1056,6 +1069,24 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 requestPart.close();
             }
         }
+
+        @Override
+        public CompletionStage<ZLinkActorJoinResult<Void>> yieldAsync() {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit());
+        }
+
+        @Override
+        public <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(Class<TReply> replyType) {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        }
+
+        private ZLinkYieldTurn requireTurn() {
+            if (turn == null) {
+                throw new IllegalStateException(
+                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+            }
+            return turn;
+        }
     }
 
     private final class JoinSpotCall implements ZLinkActorJoinSpotCall {
@@ -1063,16 +1094,27 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         private final RoutingId spotRid;
         private final Message request;
         private final Duration timeout;
+        private final ZLinkYieldTurn turn;
 
         JoinSpotCall(
             DefaultActorContext context,
             RoutingId spotRid,
             Message request,
             Duration timeout) {
+            this(context, spotRid, request, timeout, ZLinkFrameworkTurns.captureCurrent());
+        }
+
+        JoinSpotCall(
+            DefaultActorContext context,
+            RoutingId spotRid,
+            Message request,
+            Duration timeout,
+            ZLinkYieldTurn turn) {
             this.context = context;
             this.spotRid = spotRid;
             this.request = request;
             this.timeout = timeout;
+            this.turn = turn;
         }
 
         @Override
@@ -1080,7 +1122,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             if (timeout == null || timeout.isNegative() || timeout.isZero()) {
                 throw new ZLinkConfigurationException("timeout must be positive");
             }
-            return new JoinSpotCall(context, spotRid, request, timeout);
+            return new JoinSpotCall(context, spotRid, request, timeout, turn);
         }
 
         @Override
@@ -1337,6 +1379,24 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                     }
                     return address.targetNodeRid();
             });
+        }
+
+        @Override
+        public CompletionStage<ZLinkActorJoinResult<Void>> yieldAsync() {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit());
+        }
+
+        @Override
+        public <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(Class<TReply> replyType) {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        }
+
+        private ZLinkYieldTurn requireTurn() {
+            if (turn == null) {
+                throw new IllegalStateException(
+                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+            }
+            return turn;
         }
     }
 }

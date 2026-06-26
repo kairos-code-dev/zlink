@@ -33,7 +33,7 @@ public sealed class ChannelContracts
     [ContractExample(
         typeof(IZLinkRouteClient),
         typeof(IZLinkSendCall),
-        typeof(IZLinkRequestCall),
+        typeof(IZLinkRouteRequestCall),
         typeof(IZLinkRouteSendHandler<>),
         typeof(IZLinkRouteRequestHandler<,>))]
     public async Task Route_client_addresses_a_target_node_through_a_router_channel()
@@ -55,6 +55,16 @@ public sealed class ChannelContracts
         Assert.Equal("play-router", client.RouterChannelId);
         Assert.Equal(target, client.TargetNodeRid);
         Assert.Equal("room-1", room.RoomId);
+    }
+
+    [Fact]
+    public void Route_request_call_does_not_expose_yield_terminator()
+    {
+        var methodNames = typeof(IZLinkRouteRequestCall)
+            .GetMethods()
+            .Select(method => method.Name);
+
+        Assert.DoesNotContain("YieldAsync", methodNames);
     }
 
     [Fact]
@@ -172,7 +182,7 @@ public sealed class ChannelContracts
             return new ExampleRouteSendCall();
         }
 
-        public IZLinkRequestCall Request<TRequest>(
+        public IZLinkRouteRequestCall Request<TRequest>(
             string routerChannelId,
             RoutingId targetNodeRid,
             TRequest request)
@@ -241,7 +251,15 @@ public sealed class ChannelContracts
         }
     }
 
-    private sealed class ExampleRouteRequestCall(object reply) : ExampleRequestCall(_ => { }, reply);
+    private sealed class ExampleRouteRequestCall(object reply) : IZLinkRouteRequestCall
+    {
+        public IZLinkRouteRequestCall PacketName(string messageName) => this;
+
+        public IZLinkRouteRequestCall Timeout(TimeSpan timeout) => this;
+
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult((TReply)reply);
+    }
 
     private sealed class RoomEventRouteSendHandler : IZLinkRouteSendHandler<RoomEvent>
     {

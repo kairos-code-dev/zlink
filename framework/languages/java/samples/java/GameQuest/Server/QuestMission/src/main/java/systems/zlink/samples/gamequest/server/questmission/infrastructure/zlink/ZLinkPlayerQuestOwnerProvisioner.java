@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.gamequest.server.questmission.application.QuestEventProcessor;
-import systems.zlink.samples.gamequest.server.questmission.spots.PlayerQuestSpot;
+import systems.zlink.samples.gamequest.server.questmission.spots.playerquestspot.PlayerQuestSpot;
 
 @Component
 public final class ZLinkPlayerQuestOwnerProvisioner implements QuestEventProcessor.PlayerQuestOwnerProvisioner {

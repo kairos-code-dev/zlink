@@ -1,6 +1,7 @@
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
-using SupportChat.Server.Support.Infrastructure.ZLink.Notifications;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot;
 using SupportChat.Server.Support.Infrastructure.ZLink;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Configuration;

@@ -28,7 +28,7 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         return new ZLinkRouteSendCall<TMessage>(runtime, routerChannelId, targetNodeRid, message);
     }
 
-    public IZLinkRequestCall Request<TRequest>(
+    public IZLinkRouteRequestCall Request<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request)
@@ -103,18 +103,18 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
     ZLinkFrameworkRuntime runtime,
     string routerChannelId,
     RoutingId targetNodeRid,
-    TRequest request) : IZLinkRequestCall
+    TRequest request) : IZLinkRouteRequestCall
 {
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRequestCall PacketName(string packetName)
+    public IZLinkRouteRequestCall PacketName(string packetName)
     {
         _packetName = packetName;
         return this;
     }
 
-    public IZLinkRequestCall Timeout(TimeSpan timeout)
+    public IZLinkRouteRequestCall Timeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;

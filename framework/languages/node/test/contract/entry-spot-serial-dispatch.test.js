@@ -307,6 +307,45 @@ test('gated request await inside an entry turn completes without overlapping the
   assert.deepEqual(events, ['handler:start', 'request:ping', 'handler:reply:ping', 'next']);
 });
 
+test('yield request await inside an entry turn releases the serial line until reply resumes it', async () => {
+  const events = [];
+  let resolveReply;
+  const channelClient = {
+    requestToChannel(_channelName, request) {
+      return {
+        packetName() { return this; },
+        timeout() { return this; },
+        submit() {
+          events.push(`request:${request}`);
+          return new Promise((resolve) => {
+            resolveReply = resolve;
+          });
+        }
+      };
+    },
+    sendToChannel() { throw new Error('not used'); }
+  };
+  class YieldEntrySpot {}
+  const fixture = await createEntryFixture(YieldEntrySpot);
+  const serial = fixture.activation.serialExecutor;
+  const outbound = new framework.DefaultZLinkSpotOutbound(serial, channelClient);
+
+  const yielded = serial.execute(async () => {
+    events.push('handler:start');
+    const reply = await outbound.requestToChannel('api', 'ping').yieldSubmit();
+    events.push(`handler:${reply}`);
+  });
+  const next = serial.execute(() => {
+    events.push('next');
+  });
+
+  await delay(10);
+  assert.deepEqual(events, ['handler:start', 'request:ping', 'next']);
+  resolveReply('reply:ping');
+  await Promise.all([yielded, next]);
+  assert.deepEqual(events, ['handler:start', 'request:ping', 'next', 'handler:reply:ping']);
+});
+
 test('runWorker onCompleted callback re-enters the owning spot serial executor', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
@@ -365,6 +404,49 @@ test('runWorker submit supports the gated awaitable path inside a handler turn',
   await Promise.all([gated, next]);
 
   assert.deepEqual(events, ['handler:start', 'handler:done', 'next']);
+});
+
+test('runWorker yieldSubmit releases the current Spot turn until worker completion resumes it', async () => {
+  class WorkerEntrySpot {}
+  const fixture = await createEntryFixture(WorkerEntrySpot);
+  const serial = fixture.activation.serialExecutor;
+  const context = fixture.activation.context;
+  const events = [];
+  let releaseWork;
+  const workGate = new Promise((resolve) => {
+    releaseWork = resolve;
+  });
+
+  const yielded = serial.execute(async () => {
+    events.push('handler:start');
+    const result = await context.runWorker(async () => {
+      await workGate;
+      return 'done';
+    }).yieldSubmit();
+    events.push(`handler:${result}`);
+  });
+  const next = serial.execute(() => {
+    events.push('next');
+  });
+
+  await delay(10);
+  assert.deepEqual(events, ['handler:start', 'next']);
+  releaseWork();
+  await Promise.all([yielded, next]);
+  assert.deepEqual(events, ['handler:start', 'next', 'handler:done']);
+});
+
+test('runWorker yieldSubmit requires a Spot turn captured when the call is created', async () => {
+  const worker = new framework.ZLinkSpotWorkerRuntime();
+  const serial = new framework.ZLinkSpotSerialExecutor();
+  const call = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'done');
+
+  await assert.rejects(
+    () => call.yieldSubmit(),
+    (error) =>
+      error instanceof framework.ZLinkConfigurationException
+      && /captured when the call object was created/.test(error.message)
+  );
 });
 
 test('runWorker queue full fails fast with WorkerQueueFull and does not block the dispatcher', async () => {

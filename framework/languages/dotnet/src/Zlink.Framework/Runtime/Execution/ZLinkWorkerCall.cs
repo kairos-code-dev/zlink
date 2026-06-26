@@ -12,6 +12,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
     Func<CancellationToken, TResult> work,
     Action<Func<CancellationToken, ValueTask>> postToDispatcher) : IZLinkWorkerCall<TResult>
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
     private int _terminated;
 
@@ -36,6 +37,11 @@ internal sealed class ZLinkWorkerCall<TResult>(
             error => completion.TrySetException(error),
             cancellationToken);
         return new ValueTask<TResult>(completion.Task);
+    }
+
+    public ValueTask<TResult> YieldAsync(CancellationToken cancellationToken = default)
+    {
+        return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
     }
 
     public void Submit(
@@ -84,6 +90,13 @@ internal sealed class ZLinkWorkerCall<TResult>(
             throw new InvalidOperationException(
                 "RunWorker call already has a terminator. Call Async or Submit once.");
         }
+    }
+
+    private ZLinkSerialTurn RequireTurn()
+    {
+        return _turn
+            ?? throw new InvalidOperationException(
+                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
     }
 
     private sealed class Execution(

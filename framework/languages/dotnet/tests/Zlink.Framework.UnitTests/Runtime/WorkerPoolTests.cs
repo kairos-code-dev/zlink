@@ -179,6 +179,83 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
+    public async Task RunWorker_YieldAsync_Allows_Dispatcher_Work_While_Worker_Runs()
+    {
+        using var pool = CreatePool(maxThreads: 2);
+        await using var queue = CreateQueue();
+        using var releaseWork = new ManualResetEventSlim(false);
+        var workerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstResumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstResume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thirdRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new ConcurrentQueue<string>();
+
+        var first = queue.RunAsync(
+            async ct =>
+            {
+                order.Enqueue("first-start");
+                var call = CreateCall(
+                    pool,
+                    _ =>
+                    {
+                        workerStarted.SetResult();
+                        releaseWork.Wait();
+                        return 42;
+                    },
+                    queue);
+                var result = await call.YieldAsync(ct).ConfigureAwait(false);
+                order.Enqueue($"first-resumed:{result}");
+                firstResumed.SetResult();
+                await releaseFirstResume.Task.ConfigureAwait(false);
+            },
+            CancellationToken.None).AsTask();
+
+        await workerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await queue.RunAsync(
+            _ =>
+            {
+                order.Enqueue("second");
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new[] { "first-start", "second" }, order.ToArray());
+
+        releaseWork.Set();
+        await firstResumed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var third = queue.RunAsync(
+            _ =>
+            {
+                order.Enqueue("third");
+                thirdRan.SetResult();
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+
+        await Task.Delay(100);
+        Assert.False(thirdRan.Task.IsCompleted);
+
+        releaseFirstResume.SetResult();
+        await Task.WhenAll(first, third).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new[] { "first-start", "second", "first-resumed:42", "third" }, order.ToArray());
+    }
+
+    [Fact]
+    public async Task RunWorker_YieldAsync_Requires_Captured_Turn()
+    {
+        using var pool = CreatePool(maxThreads: 2);
+        await using var queue = CreateQueue();
+        var call = CreateCall(pool, _ => 1, queue);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => call.YieldAsync().AsTask());
+
+        Assert.Contains("captured", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RunWorker_Worker_Exception_Maps_To_WorkerFailed()
     {
         using var pool = CreatePool(maxThreads: 2);

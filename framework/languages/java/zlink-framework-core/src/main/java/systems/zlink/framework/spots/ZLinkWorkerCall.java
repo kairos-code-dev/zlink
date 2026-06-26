@@ -30,6 +30,10 @@ public interface ZLinkWorkerCall<T> {
 
     CompletionStage<T> submit();
 
+    CompletionStage<T> yieldAsync();
+
+    T yieldAwait();
+
     void submit(
         BiConsumer<T, CancellationToken> onCompleted,
         BiConsumer<Throwable, CancellationToken> onError);

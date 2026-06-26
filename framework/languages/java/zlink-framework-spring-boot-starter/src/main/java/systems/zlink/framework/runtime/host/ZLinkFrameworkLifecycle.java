@@ -10,6 +10,7 @@ import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.channels.ZLinkRouteRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -146,7 +147,7 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public ZLinkRequestCall requestTo(
+    public ZLinkRouteRequestCall requestTo(
         String channelName,
         RoutingId target,
         Object message) {

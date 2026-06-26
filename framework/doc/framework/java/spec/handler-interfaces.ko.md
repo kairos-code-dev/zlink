@@ -457,14 +457,20 @@ public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(
+        Class<TReply> replyType);
     <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> yieldAwait(Class<TReply> replyType);
 }
 
 public interface ZLinkActorJoinSpotCall {
     ZLinkActorJoinSpotCall timeout(Duration timeout);
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(
+        Class<TReply> replyType);
     <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> yieldAwait(Class<TReply> replyType);
 }
 
 public record ZLinkActorJoinResult<TReply>(
@@ -482,9 +488,16 @@ public interface ZLinkBoundSessionSendCall {
     ZLinkBoundSessionSendCall packetName(String packetName);
     ZLinkBoundSessionSendCall metadata(String key, String value);
     CompletionStage<Void> submit();
+    CompletionStage<Void> yieldAsync();
     void await();
+    void yieldAwait();
 }
 ```
+
+`submit(...)` 과 `await(...)` 는 기본 serial terminator다. `yieldAsync(...)` 와
+`yieldAwait(...)` 는 framework가 만든 actor join 또는 bound session send call object에서만
+사용한다. 이 terminator들은 completion을 기다리는 동안 현재 Spot/Entry Spot turn을
+반납하고, completion 뒤 같은 handler continuation을 재개한다.
 
 `ZLinkSessionClient.reply(...)`는 현재 session dispatch가 request packet을 처리하는
 동안에만 사용할 수 있다. framework runtime은 inbound header의 request sequence를

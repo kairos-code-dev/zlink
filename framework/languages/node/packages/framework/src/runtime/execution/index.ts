@@ -1,6 +1,115 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 export interface ZLinkRuntimeTaskFailure {
   readonly taskName: string;
   readonly error: unknown;
+}
+
+interface ZLinkSpotSerialTurnContext {
+  readonly executor: ZLinkSpotSerialExecutorLike;
+  readonly turnId: number;
+  readonly turn: ZLinkSpotSerialTurn;
+}
+
+interface ZLinkSpotSerialExecutorLike {
+  readonly activeTurnId: number;
+}
+
+const spotSerialTurnStorage = new AsyncLocalStorage<ZLinkSpotSerialTurnContext>();
+
+export class ZLinkSpotSerialTurn {
+  private suspendedResolve: (() => void) | undefined;
+  private suspendedPromise: Promise<void> | undefined;
+  private suspendSignaled = false;
+  private owner: Promise<unknown> | undefined;
+
+  constructor(private readonly postResume: (turn: ZLinkSpotSerialTurn, resume: () => void) => boolean) {}
+
+  get suspended(): Promise<void> {
+    if (this.suspendSignaled) {
+      return Promise.resolve();
+    }
+    this.suspendedPromise ??= new Promise((resolve) => {
+      this.suspendedResolve = resolve;
+    });
+    return this.suspendedPromise;
+  }
+
+  bindOwner(owner: Promise<unknown>): void {
+    this.owner = owner;
+  }
+
+  resetSuspension(): void {
+    this.suspendSignaled = false;
+    this.suspendedResolve = undefined;
+    this.suspendedPromise = undefined;
+  }
+
+  async yieldPromise<T>(pending: Promise<T>): Promise<T> {
+    this.signalSuspended();
+    const result = await pending;
+    await this.awaitResumePermit();
+    return result;
+  }
+
+  async resumeOwnerUntilNextYield(): Promise<void> {
+    const owner = this.owner;
+    if (owner === undefined) {
+      return;
+    }
+    await Promise.race([
+      owner.then(() => undefined, () => undefined),
+      this.suspended
+    ]);
+  }
+
+  private signalSuspended(): void {
+    if (this.suspendSignaled) {
+      return;
+    }
+    this.suspendSignaled = true;
+    this.suspendedResolve?.();
+  }
+
+  private awaitResumePermit(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.postResume(this, resolve)) {
+        reject(new Error('ZLink Spot serial executor is closed.'));
+      }
+    });
+  }
+}
+
+export function runZLinkSpotSerialTurn<T>(
+  executor: ZLinkSpotSerialExecutorLike,
+  turnId: number,
+  turn: ZLinkSpotSerialTurn,
+  operation: () => Promise<T> | T
+): Promise<T> {
+  return spotSerialTurnStorage.run(
+    { executor, turnId, turn },
+    async () => operation()
+  );
+}
+
+export function captureZLinkSpotSerialTurn(
+  executor?: ZLinkSpotSerialExecutorLike
+): ZLinkSpotSerialTurn | undefined {
+  const current = spotSerialTurnStorage.getStore();
+  if (current === undefined) {
+    return undefined;
+  }
+  if (executor !== undefined && current.executor !== executor) {
+    return undefined;
+  }
+  return current.turn;
+}
+
+export function isCurrentZLinkSpotSerialTurn(executor: ZLinkSpotSerialExecutorLike): boolean {
+  const current = spotSerialTurnStorage.getStore();
+  return current !== undefined
+    && current.executor === executor
+    && current.turnId === executor.activeTurnId;
 }
 
 export type ZLinkRuntimeTaskFailureHandler = (failure: ZLinkRuntimeTaskFailure) => void;

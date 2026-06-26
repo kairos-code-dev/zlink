@@ -40,6 +40,11 @@ export interface ZLinkWorkerCall<T> {
    */
   submit(signal?: AbortSignal): Promise<T>;
   /**
+   * Yield terminator. Only use when the handler can safely let unrelated
+   * Spot/Entry Spot work run while the worker result is pending.
+   */
+  yieldSubmit(signal?: AbortSignal): Promise<T>;
+  /**
    * Callback terminator (detached path, explicit interleaving opt-in).
    * `callback`/`onError` always re-enter the owning Spot serial executor,
    * so they must re-validate Spot state captured before submission.

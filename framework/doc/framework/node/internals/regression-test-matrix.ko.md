@@ -327,6 +327,15 @@ backend gate 와 별도로 유지한다.
 | Node stream connector -> dotnet stream server | `integration-multi-process` | header session request/reply와 notification dispatch가 동작한다 |
 | dotnet connector -> Node stream server | `integration-multi-process` | dotnet connector가 Node `onDispatch`와 `reply` 경로를 통과한다 |
 
+## 8.2 Spot yield dispatch regression
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `entry-spot-serial-dispatch.test.js` yieldSubmit 항목 | request와 `runWorker`의 `yieldSubmit(...)`이 captured turn을 반납하고 completion 뒤 원래 실행 줄에서 재개된다. |
+| `contract-surface.test.js` actor/bound session declaration 항목 | actor `joinSpot`/`joinEntrySpot` call object와 bound session send call object가 `yieldSubmit(...)`를 public contract로 제공한다. |
+| `channel-client.test.js` route request 항목 | route request에는 `yieldSubmit(...)` surface가 노출되지 않는다. |
+| `npm run build --prefix framework/languages/node/samples/Bingo.Ts` | Bingo.Ts Entry Spot sample이 `joinSpot(...).yieldSubmit(...)`으로 compile된다. |
+
 ## 9. 문서별 회귀 테스트 단락
 
 이 디렉토리(및 `spec/`)의 각 구현 기준 문서는, 자기 항목이 어떤 테스트로

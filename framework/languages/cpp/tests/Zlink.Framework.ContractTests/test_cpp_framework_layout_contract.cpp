@@ -183,7 +183,8 @@ std::size_t count_occurrences (const std::string &text, const std::string &needl
 
 bool draft_tracking_table_matches_files (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -200,8 +201,8 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
 
     bool ok = true;
     std::size_t file_count = 0;
-    const std::pair<const char *, const char *> scopes[] = {{"../../doc/framework/cpp/spec", "(../spec/"},
-                                                            {"../../doc/framework/cpp/internals", "("}};
+    const std::pair<const char *, const char *> scopes[] = {
+      {"../../doc/framework/cpp/spec", "(../spec/"}, {"../../doc/framework/cpp/internals", "("}};
     for (const auto &[scope_dir, link_prefix] : scopes) {
         for (const auto &entry : std::filesystem::directory_iterator (root / scope_dir)) {
             if (!entry.is_regular_file () || entry.path ().extension () != ".md") {
@@ -223,9 +224,8 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
     }
 
     // 별도 산출물의 계약 문서도 추적표에 정확히 한 번 올린다.
-    const std::string artifact_links[] = {
-      "(../../../stream-connector/cpp/guide/INDEX.ko.md)",
-      "(../../../http-client/cpp/spec/cpp-http-client.ko.md)"};
+    const std::string artifact_links[] = {"(../../../stream-connector/cpp/guide/INDEX.ko.md)",
+                                          "(../../../http-client/cpp/spec/cpp-http-client.ko.md)"};
     for (const auto &link : artifact_links) {
         if (count_occurrences (table, link) != 1) {
             std::cerr << "reference document tracking table must reference exactly once: " << link
@@ -301,8 +301,8 @@ bool framework_overview_role_tables_cover_files (const std::filesystem::path &ro
     const auto tables = text.substr (start, end - start);
 
     bool ok = true;
-    const std::pair<const char *, const char *> scopes[] = {{"../../doc/framework/cpp/spec", "(../spec/"},
-                                                            {"../../doc/framework/cpp/internals", "("}};
+    const std::pair<const char *, const char *> scopes[] = {
+      {"../../doc/framework/cpp/spec", "(../spec/"}, {"../../doc/framework/cpp/internals", "("}};
     for (const auto &[scope_dir, link_prefix] : scopes) {
         for (const auto &entry : std::filesystem::directory_iterator (root / scope_dir)) {
             if (!entry.is_regular_file () || entry.path ().extension () != ".md") {
@@ -315,8 +315,7 @@ bool framework_overview_role_tables_cover_files (const std::filesystem::path &ro
             }
             const auto link = std::string (link_prefix) + filename + ")";
             if (tables.find (link) == std::string::npos) {
-                std::cerr << "framework overview role tables do not describe: " << filename
-                          << '\n';
+                std::cerr << "framework overview role tables do not describe: " << filename << '\n';
                 ok = false;
             }
         }
@@ -326,7 +325,8 @@ bool framework_overview_role_tables_cover_files (const std::filesystem::path &ro
 
 bool implementation_plan_expands_label_wildcards (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -366,7 +366,8 @@ bool implementation_plan_expands_label_wildcards (const std::filesystem::path &r
 
 bool implementation_plan_goal20_covers_connector_labels (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -404,7 +405,8 @@ bool implementation_plan_goal20_covers_connector_labels (const std::filesystem::
 
 bool implementation_plan_goal6_covers_parity_model (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -454,7 +456,8 @@ bool implementation_plan_goal6_covers_parity_model (const std::filesystem::path 
 
 bool implementation_plan_goal7_covers_runtime_integration (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -509,7 +512,8 @@ bool implementation_plan_goal7_covers_runtime_integration (const std::filesystem
 
 bool implementation_plan_goal8_covers_handler_serializer_model (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -562,7 +566,8 @@ bool implementation_plan_goal8_covers_handler_serializer_model (const std::files
 
 bool implementation_plan_goal9_covers_channel_messaging (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -618,7 +623,8 @@ bool implementation_plan_goal9_covers_channel_messaging (const std::filesystem::
 
 bool implementation_plan_goal10_covers_backpressure_reliability (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -673,7 +679,8 @@ bool implementation_plan_goal10_covers_backpressure_reliability (const std::file
 
 bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -742,32 +749,31 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
 
 bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path &root)
 {
-    const auto path = root.parent_path ().parent_path () / "doc/framework/common/spec/actor-model.ko.md";
+    const auto path =
+      root.parent_path ().parent_path () / "doc/framework/common/spec/actor-model.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
     const auto text = buffer.str ();
 
     bool ok = true;
-    const std::string required[] = {
-      "`leaveActor`와 `destroyActor`는 서로 다른 책임이다",
-      "`leaveActor`는 actor 위치를 user",
-      "Entry Spot에 돌아온 actor의 수명을 끝내는 작업",
-      "actor registry, actor-session",
-      "native actor ref",
-      "`onCreateActor` callback을 한 번 호출한다",
-      "`destroyActor`는 위치 이동이 아니라 actor 수명 종료",
-      "다른 lifecycle callback을 호출하지 않고",
-      "stream disconnect는",
-      "`onDisconnectActor`만 의미하며",
-      "disconnect cleanup만으로 actor destroy가 실행되지 않는다",
-      "| leaveActor | user Spot",
-      "| destroyActor | Entry Spot actor 정리",
-      "| disconnect | current stream binding 해제"};
+    const std::string required[] = {"`leaveActor`와 `destroyActor`는 서로 다른 책임이다",
+                                    "`leaveActor`는 actor 위치를 user",
+                                    "Entry Spot에 돌아온 actor의 수명을 끝내는 작업",
+                                    "actor registry, actor-session",
+                                    "native actor ref",
+                                    "`onCreateActor` callback을 한 번 호출한다",
+                                    "`destroyActor`는 위치 이동이 아니라 actor 수명 종료",
+                                    "다른 lifecycle callback을 호출하지 않고",
+                                    "stream disconnect는",
+                                    "`onDisconnectActor`만 의미하며",
+                                    "disconnect cleanup만으로 actor destroy가 실행되지 않는다",
+                                    "| leaveActor | user Spot",
+                                    "| destroyActor | Entry Spot actor 정리",
+                                    "| disconnect | current stream binding 해제"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
-            std::cerr << "actor model lacks actor destroy lifecycle contract: " << needle
-                      << '\n';
+            std::cerr << "actor model lacks actor destroy lifecycle contract: " << needle << '\n';
             ok = false;
         }
     }
@@ -776,7 +782,8 @@ bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path 
 
 bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::path &root)
 {
-    const auto path = root.parent_path ().parent_path () / "doc/framework/common/spec/framework-api.ko.md";
+    const auto path =
+      root.parent_path ().parent_path () / "doc/framework/common/spec/framework-api.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -795,8 +802,8 @@ bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::pat
       "disconnect cleanup만으로 actor destroy가 실행되지 않는다"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
-            std::cerr << "framework API spec lacks actor destroy lifecycle contract: "
-                      << needle << '\n';
+            std::cerr << "framework API spec lacks actor destroy lifecycle contract: " << needle
+                      << '\n';
             ok = false;
         }
     }
@@ -825,9 +832,8 @@ bool session_actor_dispatch_documents_disconnect_destroy_boundary (
       "room leave나 Entry Spot destroy를 자동으로 실행하지 않는다"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
-            std::cerr
-              << "session actor dispatch spec lacks disconnect/destroy boundary contract: "
-              << needle << '\n';
+            std::cerr << "session actor dispatch spec lacks disconnect/destroy boundary contract: "
+                      << needle << '\n';
             ok = false;
         }
     }
@@ -836,7 +842,8 @@ bool session_actor_dispatch_documents_disconnect_destroy_boundary (
 
 bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -896,7 +903,8 @@ bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &
 
 bool implementation_plan_goal13_covers_stream_framework (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -955,7 +963,8 @@ bool implementation_plan_goal13_covers_stream_framework (const std::filesystem::
 
 bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1014,7 +1023,8 @@ bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::pat
 
 bool implementation_plan_goal15_covers_registry_topology (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1067,7 +1077,8 @@ bool implementation_plan_goal15_covers_registry_topology (const std::filesystem:
 
 bool implementation_plan_goal16_covers_observability (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1119,7 +1130,8 @@ bool implementation_plan_goal16_covers_observability (const std::filesystem::pat
 
 bool implementation_plan_goal17_covers_module_hosting (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1176,7 +1188,8 @@ bool implementation_plan_goal17_covers_module_hosting (const std::filesystem::pa
 
 bool implementation_plan_goal18_covers_http_client (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1249,7 +1262,8 @@ bool implementation_plan_goal18_covers_http_client (const std::filesystem::path 
 
 bool implementation_plan_goal19_covers_http_hosting (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1358,7 +1372,8 @@ bool registry_draft_matches_monitoring_contract (const std::filesystem::path &ro
 
 bool implementation_plan_goal21_covers_sample_labels (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1393,7 +1408,8 @@ bool implementation_plan_goal21_covers_sample_labels (const std::filesystem::pat
 
 bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::path &root)
 {
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path =
+      root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1600,7 +1616,7 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
                           << entry.path () << ':' << line_no << '\n';
                 ok = false;
             }
-            if (!dto_contract_file && line.find ("zlink::message_t::from") != std::string::npos) {
+            if (!dto_contract_file && line.find ("zlink::message_t::from (") != std::string::npos) {
                 std::cerr << "sample application code must not construct raw zlink::message_t "
                              "payloads outside DTO serializer hooks: "
                           << entry.path () << ':' << line_no << '\n';
@@ -1668,8 +1684,8 @@ bool client_sample_uses_e2e_connector (const std::filesystem::path &root,
     ok &= file_contains (path, "connector_factory_t::create");
     ok &= file_contains (path, "dispatch_mode_t::immediate");
     if (!ok) {
-        std::cerr << "client sample does not wrap the stream connector with e2e client: "
-                  << path << '\n';
+        std::cerr << "client sample does not wrap the stream connector with e2e client: " << path
+                  << '\n';
     }
     return ok;
 }
@@ -1725,8 +1741,7 @@ bool sample_client_targets_do_not_link_framework (const std::filesystem::path &r
 {
     const auto path = root / "CMakeLists.txt";
     std::ifstream input (path);
-    std::string text ((std::istreambuf_iterator<char> (input)),
-                      std::istreambuf_iterator<char> ());
+    std::string text ((std::istreambuf_iterator<char> (input)), std::istreambuf_iterator<char> ());
 
     bool ok = true;
     const std::string targets[] = {"sample_cpp_framework_bingo_client",
@@ -1743,7 +1758,9 @@ bool sample_client_targets_do_not_link_framework (const std::filesystem::path &r
             found = true;
             block += line;
             block += '\n';
-            if (line.find (')') != std::string::npos) { break; }
+            if (line.find (')') != std::string::npos) {
+                break;
+            }
         }
         if (!found) {
             std::cerr << "missing client target link declaration: " << target << '\n';
@@ -1775,21 +1792,21 @@ bool file_does_not_contain (const std::filesystem::path &path,
     return false;
 }
 
-bool http_client_public_surface_declares_general_client_features (
-  const std::filesystem::path &root)
+bool http_client_public_surface_declares_general_client_features (const std::filesystem::path &root)
 {
     bool ok = true;
-    const auto contract_header = root / "http-client/include/zlink/http_client/contracts/client.hpp";
+    const auto contract_header =
+      root / "http-client/include/zlink/http_client/contracts/client.hpp";
 
     std::ifstream input (contract_header);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
     const auto text = buffer.str ();
 
-    const std::string required[] = {
-      "follow_redirects", "retry (",         "cookies ()", "proxy (",  "compression ()",
-      "query (",          "form (",          "multipart (", "multipart_file (",
-      "patch (",          "head (",          "options (",   "download ("};
+    const std::string required[] = {"follow_redirects", "retry (", "cookies ()", "proxy (",
+                                    "compression ()",   "query (", "form (",     "multipart (",
+                                    "multipart_file (", "patch (", "head (",     "options (",
+                                    "download ("};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
             std::cerr << "HTTP client public surface lacks general client feature: "
@@ -1970,10 +1987,11 @@ int main ()
     ok &= require_exists (root / "connector/core/include/zlink/stream_connector/contracts");
     ok &= require_exists (root / "connector/core/include/zlink/stream_connector/contracts/calls");
     ok &= require_exists (
-      root / "connector/core/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp");
-    ok &= require_exists (
       root
-      / "connector/core/include/zlink/stream_connector/contracts/zlink_stream_connector_options.hpp");
+      / "connector/core/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp");
+    ok &= require_exists (root
+                          / "connector/core/include/zlink/stream_connector/contracts/"
+                            "zlink_stream_connector_options.hpp");
     ok &= require_exists (
       root / "connector/core/include/zlink/stream_connector/contracts/zlink_stream_models.hpp");
     ok &= require_exists (root / "connector/core/src/runtime");
@@ -1985,15 +2003,16 @@ int main ()
     ok &= require_exists (root / "connector/core/src/runtime/connector_lifecycle.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/heartbeat_monitor.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/calls/zlink_stream_calls.cpp");
-    ok &= require_exists (root
-                          / "connector/core/src/runtime/protocol/compression/lz4_compression_codec.cpp");
+    ok &= require_exists (
+      root / "connector/core/src/runtime/protocol/compression/lz4_compression_codec.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/protocol/framing/frame_codec.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/protocol/framing.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/protocol/header_codec.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/protocol/metadata_codec.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/protocol/packet_name_resolver.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/transport/stream_connection.cpp");
-    ok &= require_exists (root / "connector/core/src/runtime/transport/stream_transport_factory.cpp");
+    ok &=
+      require_exists (root / "connector/core/src/runtime/transport/stream_transport_factory.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/transport/websocket_connection.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/backend/contracts");
     ok &= require_exists (root / "http-client/include/zlink/http_client.hpp");
@@ -2023,10 +2042,9 @@ int main ()
     ok &= require_exists (root
                           / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/Private/"
                             "ZLinkStreamConnectorAutomationTests.cpp");
-    ok &= require_exists (
-      root
-      / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/"
-        "ZLinkStreamConnectorTests.Build.cs");
+    ok &= require_exists (root
+                          / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/"
+                            "ZLinkStreamConnectorTests.Build.cs");
     ok &= require_exists (root / "samples/Bingo/Server/Configuration/sample_names.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Configuration/sample_topology.hpp");
     ok &= require_exists (root / "samples/Bingo/Client/Configuration/sample_topology.hpp");
@@ -2061,30 +2079,34 @@ int main ()
     ok &= require_exists (root / "samples/Bingo/Server/Play/Domain/Bingo/bingo_room_game.hpp");
     ok &= require_exists (
       root / "samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp");
-    ok &=
-      require_exists (root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp");
+    ok &= require_exists (
+      root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp");
     ok &= require_exists (
       root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor_factory.hpp");
     ok &= require_absent (root
                             / "samples/Bingo/Server/Play/Infrastructure/ZLink/Notifications/"
                               "bingo_notification_publisher.hpp",
                           "BingoRoom publishes reward events and PlayerActor owns session push");
+    ok &= require_exists (
+      root
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp");
     ok &=
-      require_exists (root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp");
-    ok &= require_absent (root
-                            / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
-                              "bingo_room_timer_handler.hpp",
-                          "BingoRoom owns draw progression instead of delegating to a shallow handler");
-    ok &=
-      require_exists (root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp");
+      require_absent (root
+                        / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
+                          "bingo_room_timer_handler.hpp",
+                      "BingoRoom owns draw progression instead of delegating to a shallow handler");
+    ok &= require_exists (
+      root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp");
     ok &= require_absent (root
                             / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
                               "match_bingo_actor_handler.hpp",
                           "SPOT actor packets must be registered as spot member functions");
     ok &= require_exists (
-      root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp");
+      root
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp");
     ok &= require_exists (
-      root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp");
+      root
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/play_server_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Registry/registry_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Session/main.cpp");
@@ -2133,34 +2155,39 @@ int main ()
     ok &= require_absent (root / "samples/TicTacToe/Server/Api/api_server_framework.hpp",
                           "TicTacToe API framework setup belongs in api_server_host_factory.hpp");
     ok &= require_absent (
-      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/join_game_handler.hpp",
+      root
+        / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/join_game_handler.hpp",
       "SPOT actor packets must be registered as spot member functions");
     ok &=
       require_exists (root / "samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp");
     ok &= require_exists (
       root / "samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp");
-    ok &= require_exists (root
-                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp");
-    ok &= require_exists (root
-                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Notifications/"
-                            "game_notification_publisher.hpp");
+    ok &= require_exists (
+      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp");
     ok &= require_exists (
       root
-      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_contract_mapper.hpp");
-    ok &= require_exists (
-      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_models.hpp");
-    ok &= require_exists (
-      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp");
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/"
+        "Notifications/game_notification_publisher.hpp");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
+                            "TicTacToeGameSpot/tictactoe_game_contract_mapper.hpp");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
+                            "TicTacToeGameSpot/tictactoe_game_models.hpp");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/"
+                            "TicTacToeGameSpot/tictactoe_game_spot.hpp");
     ok &= require_absent (root
                             / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
                               "tictactoe_game_join_handler.hpp",
                           "SPOT actor joins must be registered as spot member functions");
-    ok &= require_absent (
-      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/place_mark_handler.hpp",
-      "SPOT actor packets must be registered as spot member functions");
-    ok &= require_exists (
-      root
-      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp");
+    ok &= require_absent (root
+                            / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
+                              "place_mark_handler.hpp",
+                          "SPOT actor packets must be registered as spot member functions");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/"
+                            "ensure_player_actor_handler.hpp");
     ok &= require_exists (
       root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp");
     ok &= require_exists (root
@@ -2181,13 +2208,13 @@ int main ()
                           "TicTacToe client scenario is kept in tictactoe_client_scenario.hpp");
 
     ok &= client_sample_uses_e2e_connector (root, "samples/Bingo/Client/main.cpp");
-    ok &=
-      client_sample_uses_e2e_connector (root, "samples/TicTacToe/Client/tictactoe_client_scenario.hpp");
+    ok &= client_sample_uses_e2e_connector (
+      root, "samples/TicTacToe/Client/tictactoe_client_scenario.hpp");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/Bingo/Client");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/TicTacToe/Client");
     ok &= sample_client_targets_do_not_link_framework (root);
-    ok &= file_does_not_contain (root / "connector/core/src/runtime/connector_runtime.hpp", "socket_fd",
-                                 "C++ connector runtime must not use raw fd state");
+    ok &= file_does_not_contain (root / "connector/core/src/runtime/connector_runtime.hpp",
+                                 "socket_fd", "C++ connector runtime must not use raw fd state");
     ok &= file_does_not_contain (root / "connector/core/src/runtime/connector_runtime.hpp", "recv(",
                                  "C++ connector runtime must not expose raw recv state");
     ok &= file_contains (root / "framework/src/runtime/handlers/handler_registry.cpp",
@@ -2219,38 +2246,33 @@ int main ()
       root / "connector/core/include/zlink/stream_connector/codecs/auto_codec.hpp", ".result",
       "connector auto codec callback submit must observe task completion instead of blocking");
     ok &= file_does_not_contain (
-      root / "connector/core/include/zlink/stream_connector/codecs/auto_codec.hpp", "on_completed ([&",
-      "connector auto codec must not depend on immediate callback completion");
+      root / "connector/core/include/zlink/stream_connector/codecs/auto_codec.hpp",
+      "on_completed ([&", "connector auto codec must not depend on immediate callback completion");
     ok &= file_does_not_contain (
       root / "connector/core/include/zlink/stream_connector/codecs/auto_codec.hpp",
       "std::optional<result_t", "connector auto codec must let task_t own result storage details");
-    ok &= file_does_not_contain (
-      root / "connector/core/include/zlink/stream_connector.hpp", "stream_e2e_client",
-      "core connector umbrella must not include the e2e client surface");
-    ok &= file_does_not_contain (
-      root / "connector/core/include/zlink/stream_connector.hpp", "<coroutine>",
-      "core connector umbrella must not include coroutine support");
-    ok &= file_does_not_contain (
-      root / "connector/core/include/zlink/stream_connector.hpp", "task_t",
-      "core connector umbrella must not expose e2e task_t");
+    ok &= file_does_not_contain (root / "connector/core/include/zlink/stream_connector.hpp",
+                                 "stream_e2e_client",
+                                 "core connector umbrella must not include the e2e client surface");
+    ok &= file_does_not_contain (root / "connector/core/include/zlink/stream_connector.hpp",
+                                 "<coroutine>",
+                                 "core connector umbrella must not include coroutine support");
+    ok &= file_does_not_contain (root / "connector/core/include/zlink/stream_connector.hpp",
+                                 "task_t", "core connector umbrella must not expose e2e task_t");
     ok &= file_contains (root / "CMakeLists.txt", "add_library(zlink_stream_e2e_client INTERFACE)");
-    ok &= file_contains (root / "CMakeLists.txt", "add_library(zlink::stream_e2e_client ALIAS zlink_stream_e2e_client)");
     ok &= file_contains (root / "CMakeLists.txt",
-                         "option(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT");
+                         "add_library(zlink::stream_e2e_client ALIAS zlink_stream_e2e_client)");
+    ok &= file_contains (root / "CMakeLists.txt", "option(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT");
+    ok &= file_contains (root / "CMakeLists.txt", "option(ZLINK_STREAM_CONNECTOR_BUILD_UNREAL");
+    ok &= file_contains (root / "CMakeLists.txt", "option(ZLINK_STREAM_CONNECTOR_BUILD_GODOT");
+    ok &= file_contains (root / "CMakeLists.txt", "option(ZLINK_STREAM_CONNECTOR_BUILD_AXMOL");
+    ok &= file_contains (root / "CMakeLists.txt", "if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)");
     ok &= file_contains (root / "CMakeLists.txt",
-                         "option(ZLINK_STREAM_CONNECTOR_BUILD_UNREAL");
-    ok &= file_contains (root / "CMakeLists.txt",
-                         "option(ZLINK_STREAM_CONNECTOR_BUILD_GODOT");
-    ok &= file_contains (root / "CMakeLists.txt",
-                         "option(ZLINK_STREAM_CONNECTOR_BUILD_AXMOL");
-    ok &= file_contains (root / "CMakeLists.txt",
-                         "if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)");
-    ok &= file_contains (root / "CMakeLists.txt", "add_library(zlink_stream_connector_throwing INTERFACE)");
+                         "add_library(zlink_stream_connector_throwing INTERFACE)");
     ok &= require_exists (
       root / "connector/throwing-adapter/include/zlink/stream_connector_throwing.hpp");
     ok &= file_does_not_contain (
-      root / "connector/core/include/zlink/stream_connector.hpp",
-      "stream_connector_throwing",
+      root / "connector/core/include/zlink/stream_connector.hpp", "stream_connector_throwing",
       "core connector umbrella must not include the throwing adapter surface");
     ok &= file_does_not_contain (
       root / "connector/core/src/runtime/connector_runtime.cpp", ".result",
@@ -2260,8 +2282,8 @@ int main ()
       "zlink/stream_connector",
       "Unreal public API must not include the general C++ connector surface");
     ok &= file_does_not_contain (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h", "task_t",
-      "Unreal public API must not expose connector coroutine task_t");
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+      "task_t", "Unreal public API must not expose connector coroutine task_t");
     ok &= file_does_not_contain (
       root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
       "<coroutine>", "Unreal public API must not include coroutine support");
@@ -2269,8 +2291,8 @@ int main ()
       root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
       "co_await", "Unreal public API must not expose coroutine await syntax");
     ok &= file_does_not_contain (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h", "submit",
-      "Unreal public API must use delegates instead of connector submit calls");
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+      "submit", "Unreal public API must use delegates instead of connector submit calls");
     ok &= file_does_not_contain (
       root / "CMakeLists.txt",
       "target_link_libraries(zlink_unreal_stream_connector PUBLIC zlink::stream_connector)",
@@ -2285,22 +2307,24 @@ int main ()
       "${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/src)",
       "Unreal connector target must not include general connector runtime internals");
     ok &= file_contains (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
       "#include <zlink/stream_connector.hpp>");
     ok &= file_does_not_contain (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
-      "enum class frame_",
-      "Unreal adapter must not define its own STREAM frame enums");
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "enum class frame_", "Unreal adapter must not define its own STREAM frame enums");
     ok &= file_does_not_contain (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
-      "encode_frame",
-      "Unreal adapter must delegate frame encoding to the core connector");
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "encode_frame", "Unreal adapter must delegate frame encoding to the core connector");
     ok &= file_does_not_contain (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
-      "decode_frame",
-      "Unreal adapter must delegate frame decoding to the core connector");
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "decode_frame", "Unreal adapter must delegate frame decoding to the core connector");
     ok &= file_does_not_contain (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
       "connector/core/src/runtime",
       "Unreal adapter must not include core connector runtime internals");
     ok &= file_does_not_contain (
@@ -2318,17 +2342,14 @@ int main ()
       root / "CMakePresets.json", "ZLINK_STREAM_CONNECTOR_WITH_JSON",
       "CMake presets must not set the removed Stream Connector JSON helper option");
     ok &= file_does_not_contain (
-      root / "CMakeLists.txt",
-      "ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK",
+      root / "CMakeLists.txt", "ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK",
       "MessagePack is provided by framework codec extension packages, not connector options");
     ok &= file_does_not_contain (
-      root / "CMakeLists.txt",
-      "ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF",
+      root / "CMakeLists.txt", "ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF",
       "Protobuf is provided by framework codec extension packages, not connector options");
-    ok &= file_does_not_contain (
-      root / "CMakeLists.txt",
-      "zlink::cpp_codec_",
-      "bindings codec targets must not be restored by C++ framework build");
+    ok &=
+      file_does_not_contain (root / "CMakeLists.txt", "zlink::cpp_codec_",
+                             "bindings codec targets must not be restored by C++ framework build");
     ok &= file_does_not_contain (
       root / "cmake/zlink_framework_cppConfig.cmake.in",
       "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@",
@@ -2340,17 +2361,14 @@ int main ()
     ok &= file_contains (root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
                          "@ZLINK_STREAM_CONNECTOR_EXPORT_OPENSSL_DEPENDENCY@");
     ok &= file_does_not_contain (
-      root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
-      "MESSAGEPACK",
+      root / "cmake/zlink_stream_connector_cppConfig.cmake.in", "MESSAGEPACK",
       "Stream connector package config must not export MessagePack codec dependencies");
     ok &= file_does_not_contain (
-      root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
-      "PROTOBUF",
+      root / "cmake/zlink_stream_connector_cppConfig.cmake.in", "PROTOBUF",
       "Stream connector package config must not export Protobuf codec dependencies");
-    ok &= file_contains (root / "../../../bindings/cpp/CMakeLists.txt",
-                         "install(TARGETS zlink_cpp");
-    ok &= file_contains (root / "../../../bindings/cpp/CMakeLists.txt",
-                         "EXPORT zlink_cppTargets");
+    ok &=
+      file_contains (root / "../../../bindings/cpp/CMakeLists.txt", "install(TARGETS zlink_cpp");
+    ok &= file_contains (root / "../../../bindings/cpp/CMakeLists.txt", "EXPORT zlink_cppTargets");
     ok &= file_contains (
       root / "CMakeLists.txt",
       "option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 \"Enable Stream Connector LZ4 compression\" ON)");
@@ -2363,88 +2381,76 @@ int main ()
       "\"Networking\"",
       "Unreal plugin must not depend on Unreal networking APIs when core owns transport");
     ok &= file_contains (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
       "TWeakObjectPtr<UZLinkStreamConnector>");
     ok &= file_contains (
-      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
-      "DetachOwner");
-    ok &= require_absent (
       root
-        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/"
-          "ZLinkStreamConnectorAutomationTests.cpp",
-      "Unreal Automation Tests must live in the Rider/Editor-visible test module");
+        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "DetachOwner");
+    ok &=
+      require_absent (root
+                        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/"
+                          "ZLinkStreamConnectorAutomationTests.cpp",
+                      "Unreal Automation Tests must live in the Rider/Editor-visible test module");
     ok &= file_contains (root / "connector/engines/unreal/ZLinkStreamConnector.uplugin",
                          "\"Name\": \"ZLinkStreamConnectorTests\"");
     ok &= file_contains (root / "connector/engines/unreal/ZLinkStreamConnector.uplugin",
                          "\"Type\": \"DeveloperTool\"");
-    ok &= file_contains (
-      root
-        / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/"
-          "ZLinkStreamConnectorTests.Build.cs",
-      "\"ZLinkStreamConnector\"");
+    ok &= file_contains (root
+                           / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/"
+                             "ZLinkStreamConnectorTests.Build.cs",
+                         "\"ZLinkStreamConnector\"");
     ok &= file_contains (root
                            / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/Private/"
                              "ZLinkStreamConnectorAutomationTests.cpp",
                          "IMPLEMENT_SIMPLE_AUTOMATION_TEST");
-    ok &= file_does_not_contain (root
-                                   / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/Private/"
-                                     "ZLinkStreamConnectorAutomationTests.cpp",
-                                 "FSocket",
-                                 "Unreal Automation Test must not reimplement STREAM loopback protocol");
+    ok &= file_does_not_contain (
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/Private/"
+          "ZLinkStreamConnectorAutomationTests.cpp",
+      "FSocket", "Unreal Automation Test must not reimplement STREAM loopback protocol");
     ok &= require_exists (root / "connector/engines/godot/CMakeLists.txt");
-    ok &= require_exists (
-      root / "connector/engines/godot/include/zlink_godot_stream_connector.hpp");
-    ok &= require_exists (
-      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp");
+    ok &=
+      require_exists (root / "connector/engines/godot/include/zlink_godot_stream_connector.hpp");
+    ok &= require_exists (root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp");
     ok &= file_does_not_contain (
       root / "connector/engines/godot/include/zlink_godot_stream_connector.hpp",
       "zlink/stream_connector",
       "Godot public API must not expose the general C++ connector surface");
-    ok &= file_contains (
-      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
-      "#include <zlink/stream_connector.hpp>");
+    ok &= file_contains (root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
+                         "#include <zlink/stream_connector.hpp>");
     ok &= file_does_not_contain (
-      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
-      "enum class frame_",
+      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp", "enum class frame_",
       "Godot adapter must not define its own STREAM frame enums");
-    ok &= file_contains (
-      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
-      "main_thread_dispatcher");
-    ok &= file_contains (
-      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
-      "emit_request");
-    ok &= require_exists (
-      root / "connector/engines/godot/extension/zlink_stream_connector.gdextension");
-    ok &= require_exists (
-      root / "connector/engines/godot/tests/zlink_stream_connector_tests.gd");
-    ok &= file_contains (
-      root / "connector/engines/godot/tests/zlink_stream_connector_tests.gd",
-      "engine-required");
+    ok &= file_contains (root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
+                         "main_thread_dispatcher");
+    ok &= file_contains (root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
+                         "emit_request");
+    ok &= require_exists (root
+                          / "connector/engines/godot/extension/zlink_stream_connector.gdextension");
+    ok &= require_exists (root / "connector/engines/godot/tests/zlink_stream_connector_tests.gd");
+    ok &= file_contains (root / "connector/engines/godot/tests/zlink_stream_connector_tests.gd",
+                         "engine-required");
     ok &= require_exists (root / "connector/engines/axmol/CMakeLists.txt");
-    ok &= require_exists (
-      root / "connector/engines/axmol/include/zlink_axmol_stream_connector.hpp");
-    ok &= require_exists (
-      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp");
+    ok &=
+      require_exists (root / "connector/engines/axmol/include/zlink_axmol_stream_connector.hpp");
+    ok &= require_exists (root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp");
     ok &= file_does_not_contain (
       root / "connector/engines/axmol/include/zlink_axmol_stream_connector.hpp",
       "zlink/stream_connector",
       "Axmol public API must not expose the general C++ connector surface");
-    ok &= file_contains (
-      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
-      "#include <zlink/stream_connector.hpp>");
+    ok &= file_contains (root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
+                         "#include <zlink/stream_connector.hpp>");
     ok &= file_does_not_contain (
-      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
-      "enum class frame_",
+      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp", "enum class frame_",
       "Axmol adapter must not define its own STREAM frame enums");
-    ok &= file_contains (
-      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
-      "axmol_thread_dispatcher");
-    ok &= file_contains (
-      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
-      "emit_request");
+    ok &= file_contains (root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
+                         "axmol_thread_dispatcher");
+    ok &= file_contains (root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
+                         "emit_request");
     ok &= require_exists (root / "connector/engines/axmol/tests/test_app.cpp");
-    ok &= file_contains (root / "connector/engines/axmol/tests/test_app.cpp",
-                         "engine-required");
+    ok &= file_contains (root / "connector/engines/axmol/tests/test_app.cpp", "engine-required");
     ok &= require_exists (root / "connector/core/packaging/vcpkg/vcpkg.json");
     ok &= require_exists (root / "connector/core/packaging/vcpkg/portfile.cmake");
     ok &= require_exists (root / "connector/core/packaging/conan/conanfile.py");
@@ -2453,30 +2459,24 @@ int main ()
     ok &= require_exists (root / "connector/e2e-client/packaging/conan/conanfile.py");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
                          "\"name\": \"zlink-stream-connector\"");
-    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
-                         "\"boost-beast\"");
-    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
-                         "\"vcpkg-cmake\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json", "\"boost-beast\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json", "\"vcpkg-cmake\"");
     ok &= file_does_not_contain (
-      root / "connector/core/packaging/vcpkg/vcpkg.json",
-      "\"msgpack-cxx\"",
+      root / "connector/core/packaging/vcpkg/vcpkg.json", "\"msgpack-cxx\"",
       "MessagePack dependency belongs to the framework codec extension package");
     ok &= file_does_not_contain (
-      root / "connector/core/packaging/vcpkg/vcpkg.json",
-      "\"protobuf\"",
+      root / "connector/core/packaging/vcpkg/vcpkg.json", "\"protobuf\"",
       "Protobuf dependency belongs to the framework codec extension package");
-    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
-                         "\"openssl\"");
-    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
-                         "\"lz4\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json", "\"openssl\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json", "\"lz4\"");
     ok &= file_contains (root / "connector/e2e-client/packaging/vcpkg/vcpkg.json",
                          "\"name\": \"zlink-stream-e2e-client\"");
     ok &= file_contains (root / "connector/core/packaging/conan/conanfile.py",
                          "name = \"zlink-stream-connector\"");
     ok &= file_contains (root / "connector/e2e-client/packaging/conan/conanfile.py",
                          "name = \"zlink-stream-e2e-client\"");
-    ok &= file_contains (root / "connector/core/packaging/conan/conanfile.py",
-                         "version = \"0.1.0\"");
+    ok &=
+      file_contains (root / "connector/core/packaging/conan/conanfile.py", "version = \"0.1.0\"");
     ok &= file_contains (root / "connector/e2e-client/packaging/conan/conanfile.py",
                          "version = \"0.1.0\"");
     ok &= file_contains (root / "connector/core/packaging/conan/conanfile.py",
@@ -2488,8 +2488,7 @@ int main ()
     ok &= file_does_not_contain (root / "connector/e2e-client/packaging/conan/conanfile.py",
                                  "CMake(self).install()",
                                  "e2e Conan package must not reinstall the core connector package");
-    ok &= file_contains (root / "CMakeLists.txt",
-                         "option(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK");
+    ok &= file_contains (root / "CMakeLists.txt", "option(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK");
     ok &= file_contains (root / "connector/core/packaging/conan/conanfile.py",
                          "ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
@@ -2501,11 +2500,9 @@ int main ()
     ok &= file_does_not_contain (root / "connector/e2e-client/packaging/vcpkg/portfile.cmake",
                                  "vcpkg_cmake_install",
                                  "e2e vcpkg package must not reinstall the core connector package");
-    ok &= file_does_not_contain (root / "connector/core/packaging/vcpkg/vcpkg.json",
-                                 "unreal",
+    ok &= file_does_not_contain (root / "connector/core/packaging/vcpkg/vcpkg.json", "unreal",
                                  "engine adapters must not be part of the core vcpkg package");
-    ok &= file_does_not_contain (root / "connector/e2e-client/packaging/vcpkg/vcpkg.json",
-                                 "unreal",
+    ok &= file_does_not_contain (root / "connector/e2e-client/packaging/vcpkg/vcpkg.json", "unreal",
                                  "engine adapters must not be part of the e2e vcpkg package");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
                          "-DZLINK_STREAM_CONNECTOR_BUILD_UNREAL=OFF");
@@ -2515,12 +2512,12 @@ int main ()
                          "-DZLINK_STREAM_CONNECTOR_BUILD_AXMOL=OFF");
     ok &= file_contains (root / "../../doc/stream-connector/cpp/guide/01-overview.ko.md",
                          "TypeScript connector 사용");
-    ok &= file_does_not_contain (root / "CMakeLists.txt",
-                                 "cocos-connector",
-                                 "C++ connector package names must not use ambiguous cocos-connector");
-    ok &= file_does_not_contain (root / "connector/core/packaging/vcpkg/vcpkg.json",
-                                 "cocos-connector",
-                                 "core vcpkg package must not use ambiguous cocos-connector");
+    ok &=
+      file_does_not_contain (root / "CMakeLists.txt", "cocos-connector",
+                             "C++ connector package names must not use ambiguous cocos-connector");
+    ok &=
+      file_does_not_contain (root / "connector/core/packaging/vcpkg/vcpkg.json", "cocos-connector",
+                             "core vcpkg package must not use ambiguous cocos-connector");
     ok &= file_does_not_contain (root / "connector/e2e-client/packaging/vcpkg/vcpkg.json",
                                  "cocos-connector",
                                  "e2e vcpkg package must not use ambiguous cocos-connector");
@@ -2561,10 +2558,10 @@ int main ()
     ok &= public_headers_do_not_expose_runtime_dependencies (root / "extensions/include");
     ok &= public_headers_do_not_expose_runtime_dependencies (
       root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public");
-    ok &= public_headers_do_not_expose_runtime_dependencies (
-      root / "connector/engines/godot/include");
-    ok &= public_headers_do_not_expose_runtime_dependencies (
-      root / "connector/engines/axmol/include");
+    ok &=
+      public_headers_do_not_expose_runtime_dependencies (root / "connector/engines/godot/include");
+    ok &=
+      public_headers_do_not_expose_runtime_dependencies (root / "connector/engines/axmol/include");
     ok &= sample_application_code_uses_message_codec (root);
     ok &= sample_server_code_does_not_block_on_task_result (root);
     ok &= contract_headers_have_compile_coverage (root, "framework/include", "");

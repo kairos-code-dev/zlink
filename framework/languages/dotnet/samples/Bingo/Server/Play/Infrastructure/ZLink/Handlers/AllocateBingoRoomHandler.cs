@@ -3,7 +3,7 @@ using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Application.RoomAllocation;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink;

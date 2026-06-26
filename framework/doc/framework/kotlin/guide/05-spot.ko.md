@@ -88,6 +88,21 @@ Spot timer는 일반 scheduler helper가 아니라 Spot lifecycle에 묶인다. 
 안에서 Spot 상태를 직접 만질 수 있다(같은 실행 큐). timer handler exception은
 monitoring event로 관찰된다([09-monitoring](09-monitoring.ko.md)).
 
+## 6. yield dispatch
+
+기본 `submit(...).await()`는 Java core의 기본 serial 의미를 따른다. handler가 기다리는
+동안 같은 Spot 또는 Entry Spot 실행 큐의 다음 작업은 시작되지 않는다. 공용 상태를 await
+전후로 이어 쓰는 handler는 이 기본 동작을 사용한다.
+
+player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
+흐름에서는 `yieldAwait(call, ReplyType::class.java)` helper를 사용한다. 이 helper는
+Java core의 yield 동작을 coroutine suspension으로 기다린다. coroutine context를 turn,
+mailbox, actor 상태의 소유권 저장소로 쓰지 않는다.
+
+Bingo Kotlin sample의 `MatchBingoActorHandler`는 API channel request와 room `joinSpot(...)`
+대기에 `yieldAwait(...)`를 사용한다. room list, match queue, lobby state 같은 공용 mutable
+state를 await 전후로 이어서 판단하는 handler에는 `yieldAwait(...)`를 쓰지 않는다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../README.ko.md) | [이전: Channel Messaging](04-channel-messaging.ko.md) | [다음: Actor/Session](06-actor-session.ko.md)

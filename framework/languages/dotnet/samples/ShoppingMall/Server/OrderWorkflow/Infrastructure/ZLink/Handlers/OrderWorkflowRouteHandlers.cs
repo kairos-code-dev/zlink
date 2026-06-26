@@ -1,6 +1,6 @@
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Codecs.Json;
-using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots;
+using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
 using ShoppingMall.Shared.Contracts;
 using Zlink.Framework.Contracts.Channels;

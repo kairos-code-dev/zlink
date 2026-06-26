@@ -1563,12 +1563,43 @@ public interface IZLinkActorJoinSpotCall
 
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkActorJoinResult> YieldAsync(
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkActorJoinResult<TReply>> YieldAsync<TReply>(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorJoinEntrySpotCall
+{
+    IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
+
+    ValueTask<ZLinkActorJoinResult> Async(
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkActorJoinResult> YieldAsync(
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkActorJoinResult<TReply>> YieldAsync<TReply>(
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record ZLinkActorJoinResult(
     bool Accepted,
     ActorRef Actor,
     ZLinkMessage Reply);
+
+public sealed record ZLinkActorJoinResult<TReply>(
+    bool Accepted,
+    ActorRef Actor,
+    TReply Reply);
 
 public interface IZLinkActorFactory
 {
@@ -2363,8 +2394,15 @@ public interface IZLinkBoundSessionSendCall
         string value);
 
     ValueTask Async(CancellationToken cancellationToken = default);
+
+    ValueTask YieldAsync(CancellationToken cancellationToken = default);
 }
 ```
+
+`Async(...)` 는 현재 Spot/Entry Spot handler turn을 끝까지 점유하는 기본 terminator다.
+`YieldAsync(...)` 는 framework가 만든 bound session send call object에서만 사용할 수
+있으며, send completion을 기다리는 동안 현재 turn을 반납하고 completion 뒤 같은 handler
+continuation을 원래 mailbox에서 재개한다.
 
 ### 5.7 actor/spot remote address resolver와 actor-session binding
 

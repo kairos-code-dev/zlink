@@ -1,4 +1,4 @@
-using GameQuest.QuestMission.Infrastructure.ZLink.Spots;
+using GameQuest.QuestMission.Infrastructure.ZLink.Spots.PlayerQuestSpot;
 using GameQuest.QuestMission.Infrastructure.ZLink;
 using GameQuest.QuestMission.Infrastructure.Http;
 using GameQuest.QuestMission.Infrastructure.Store;

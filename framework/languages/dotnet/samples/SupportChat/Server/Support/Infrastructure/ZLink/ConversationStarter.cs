@@ -1,5 +1,6 @@
 using SupportChat.Server.Support.Application.ConversationAssignment;
-using SupportChat.Server.Support.Infrastructure.ZLink.Spots;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Spots;

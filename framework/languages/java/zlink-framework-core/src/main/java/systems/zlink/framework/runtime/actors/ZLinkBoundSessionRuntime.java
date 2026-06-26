@@ -25,6 +25,8 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.execution.ZLinkFrameworkTurns;
+import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -225,7 +227,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             encoded.packetName(),
             Map.of(),
             Optional.empty(),
-            defaultCodec);
+            defaultCodec,
+            ZLinkFrameworkTurns.captureCurrent());
     }
 
     @Override
@@ -246,7 +249,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         String defaultPacketName,
         Map<String, String> metadata,
         Optional<String> packetName,
-        ZLinkStreamCodec codec) implements ZLinkBoundSessionSendCall {
+        ZLinkStreamCodec codec,
+        ZLinkYieldTurn turn) implements ZLinkBoundSessionSendCall {
         @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             if (packetName == null || packetName.isBlank()) {
@@ -260,7 +264,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 defaultPacketName,
                 metadata,
                 Optional.of(packetName),
-                codec);
+                codec,
+                turn);
         }
 
         @Override
@@ -275,7 +280,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 defaultPacketName,
                 Map.copyOf(next),
                 packetName,
-                codec);
+                codec,
+                turn);
         }
 
         @Override
@@ -294,6 +300,19 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 packetName.orElse(defaultPacketName),
                 metadata);
             return sendWithRetry(stream, sessionRid, header, payloadBytes, actorId);
+        }
+
+        @Override
+        public CompletionStage<Void> yieldAsync() {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit());
+        }
+
+        private ZLinkYieldTurn requireTurn() {
+            if (turn == null) {
+                throw new IllegalStateException(
+                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+            }
+            return turn;
         }
     }
 

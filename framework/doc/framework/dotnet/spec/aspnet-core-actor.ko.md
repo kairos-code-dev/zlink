@@ -623,8 +623,8 @@ public interface IZLinkActorContext
 | `SpotRid` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름, routing id, join 상태. Entry Spot에 있을 때는 `IsJoined`가 false이고 `SpotRid`는 없다 |
 | `BoundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
-| `JoinSpot(spotRid, request).Async(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). request는 DTO 또는 `ZLinkMessage`이고 reply는 `ZLinkMessage`로 돌아온다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
-| `JoinEntrySpot(spotNodeRid, request).Async(...)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청은 `ZLinkMessage.Empty` 또는 빈 DTO로 넘기며, 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage`를 담는다 |
+| `JoinSpot(spotRid, request)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). `Async(...)` 는 기본 serial terminator이고, `YieldAsync(...)` 는 admission 대기 동안 현재 turn을 반납한다. request는 DTO 또는 `ZLinkMessage`이고 reply는 `ZLinkMessage` 또는 typed reply로 돌아온다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
+| `JoinEntrySpot(spotNodeRid, request)` | target SpotNode 의 Entry Spot 으로 이동. `Async(...)` 와 `YieldAsync(...)` 의 serial/yield 의미는 `JoinSpot(...)` 과 같다. 빈 요청은 `ZLinkMessage.Empty` 또는 빈 DTO로 넘기며, 결과는 `Accepted`, `ActorRef`, reply를 담는다 |
 
 `JoinSpot`/`JoinEntrySpot` 도 channel `Request` 처럼 reply 대기 `Timeout(...)` override 를
 갖는다. 생략하면 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은

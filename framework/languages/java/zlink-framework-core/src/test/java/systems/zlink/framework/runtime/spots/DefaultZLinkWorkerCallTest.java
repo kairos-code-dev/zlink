@@ -14,6 +14,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -210,6 +211,75 @@ class DefaultZLinkWorkerCallTest {
         release.countDown();
 
         assertEquals("mutated", observed.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void yieldAwaitAllowsOtherSpotQueueWorkWhileWorkerRuns() throws Exception {
+        pool = new ZLinkWorkerPool(0, 2, Duration.ofSeconds(30), 16);
+        CountDownLatch releaseWork = new CountDownLatch(1);
+        CompletableFuture<Void> workerStarted = new CompletableFuture<>();
+        CompletableFuture<Void> firstResumed = new CompletableFuture<>();
+        CompletableFuture<Void> releaseFirstResume = new CompletableFuture<>();
+        ConcurrentLinkedQueue<String> events = new ConcurrentLinkedQueue<>();
+
+        CompletableFuture<Void> first = spotQueue.enqueue(() -> {
+            events.add("first-start");
+            Integer result = new DefaultZLinkWorkerCall<>(
+                pool,
+                token -> {
+                    workerStarted.complete(null);
+                    releaseWork.await();
+                    return 42;
+                },
+                postToQueue())
+                .yieldAwait();
+            events.add("first-resumed:" + result);
+            firstResumed.complete(null);
+            releaseFirstResume.join();
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+
+        workerStarted.get(5, TimeUnit.SECONDS);
+
+        spotQueue.enqueue(() -> {
+            events.add("second-start");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+        assertEquals(List.of("first-start", "second-start"), List.copyOf(events));
+
+        releaseWork.countDown();
+        firstResumed.get(5, TimeUnit.SECONDS);
+
+        CompletableFuture<Void> third = spotQueue.enqueue(() -> {
+            events.add("third-start");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+
+        assertFalse(third.isDone());
+
+        releaseFirstResume.complete(null);
+        third.get(5, TimeUnit.SECONDS);
+        first.get(5, TimeUnit.SECONDS);
+        assertEquals(List.of(
+            "first-start",
+            "second-start",
+            "first-resumed:42",
+            "third-start"), List.copyOf(events));
+    }
+
+    @Test
+    void yieldAwaitRequiresCapturedTurn() {
+        pool = new ZLinkWorkerPool(0, 2, Duration.ofSeconds(30), 16);
+
+        DefaultZLinkWorkerCall<Integer> call =
+            new DefaultZLinkWorkerCall<>(pool, token -> 1, postToQueue());
+
+        IllegalStateException error = assertThrows(
+            IllegalStateException.class,
+            call::yieldAwait);
+
+        assertTrue(error.getMessage().contains("captured"));
     }
 
     @Test

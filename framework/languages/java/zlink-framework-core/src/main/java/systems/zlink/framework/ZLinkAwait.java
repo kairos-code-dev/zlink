@@ -13,4 +13,5 @@ public final class ZLinkAwait {
     public static void awaitVoid(CompletionStage<Void> stage) {
         stage.toCompletableFuture().join();
     }
+
 }

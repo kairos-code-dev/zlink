@@ -8,7 +8,7 @@ import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.supportchat.server.support.application.assignment.SupportConversationAllocator.ConversationStartRequest;
 import systems.zlink.samples.supportchat.server.support.application.assignment.SupportConversationAllocator.ConversationStarter;
 import systems.zlink.samples.supportchat.server.support.domain.conversation.ConversationModels.ConversationCreateRequest;
-import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots.ConversationSpot;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots.conversationspot.ConversationSpot;
 
 public final class ZLinkConversationStarter implements ConversationStarter {
     private final ZLinkSpotManager spots;

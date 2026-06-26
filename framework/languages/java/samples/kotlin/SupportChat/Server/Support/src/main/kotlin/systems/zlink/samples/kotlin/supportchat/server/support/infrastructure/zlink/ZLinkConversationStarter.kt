@@ -7,7 +7,7 @@ import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.supportchat.server.support.application.assignment.SupportConversationAllocator.ConversationStartRequest
 import systems.zlink.samples.kotlin.supportchat.server.support.application.assignment.SupportConversationAllocator.ConversationStarter
 import systems.zlink.samples.kotlin.supportchat.server.support.domain.conversation.ConversationCreateRequest
-import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.ConversationSpot
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.conversationspot.ConversationSpot
 
 class ZLinkConversationStarter(
     private val spots: ZLinkSpotManager,

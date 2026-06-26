@@ -10,7 +10,7 @@ import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator;
-import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.TicTacToeGame;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 

@@ -155,6 +155,7 @@ test('ZLinkRouteClient applies route channel request timeout before registration
       timeoutMs: 3000
     }
   ]);
+  assert.equal('yieldSubmit' in client.request('route', 'target', { id: 8 }), false);
 });
 
 test('ZLinkChannelClient and fanout client reject pre-aborted submit before transport dispatch', async () => {

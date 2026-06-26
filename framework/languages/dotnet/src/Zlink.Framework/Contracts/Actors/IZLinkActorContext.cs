@@ -53,10 +53,27 @@ public interface IZLinkActorJoinSpotCall
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
 
+    ValueTask<ZLinkActorJoinResult> YieldAsync(
+        CancellationToken cancellationToken = default)
+    {
+        _ = cancellationToken;
+        throw new NotSupportedException("YieldAsync is not supported by this actor join call.");
+    }
+
     async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
         CancellationToken cancellationToken = default)
     {
         var result = await Async(cancellationToken).ConfigureAwait(false);
+        return new ZLinkActorJoinResult<TReply>(
+            result.Accepted,
+            result.Actor,
+            result.Reply.Decode<TReply>());
+    }
+
+    async ValueTask<ZLinkActorJoinResult<TReply>> YieldAsync<TReply>(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await YieldAsync(cancellationToken).ConfigureAwait(false);
         return new ZLinkActorJoinResult<TReply>(
             result.Accepted,
             result.Actor,
@@ -71,10 +88,27 @@ public interface IZLinkActorJoinEntrySpotCall
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
 
+    ValueTask<ZLinkActorJoinResult> YieldAsync(
+        CancellationToken cancellationToken = default)
+    {
+        _ = cancellationToken;
+        throw new NotSupportedException("YieldAsync is not supported by this actor join call.");
+    }
+
     async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
         CancellationToken cancellationToken = default)
     {
         var result = await Async(cancellationToken).ConfigureAwait(false);
+        return new ZLinkActorJoinResult<TReply>(
+            result.Accepted,
+            result.Actor,
+            result.Reply.Decode<TReply>());
+    }
+
+    async ValueTask<ZLinkActorJoinResult<TReply>> YieldAsync<TReply>(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await YieldAsync(cancellationToken).ConfigureAwait(false);
         return new ZLinkActorJoinResult<TReply>(
             result.Accepted,
             result.Actor,

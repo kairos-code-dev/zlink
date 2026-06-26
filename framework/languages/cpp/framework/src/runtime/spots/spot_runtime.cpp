@@ -951,12 +951,14 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                owned_message = std::move (owned_message), metadata = std::move (metadata),
                completion] (auto complete) mutable {
                   state->enter_callback ();
+                  auto turn = detail::capture_current_serial_yield_turn ();
                   try {
                       auto handler_task = state->handler_invokers[handler_index](
                         spot, actor, services, serializers, owned_message, metadata);
                       detail::observe_task_completion (
                         handler_task,
-                        [state, completion] (const result_t<zlink::message_t> &result) mutable {
+                        [state, completion, turn,
+                         complete] (const result_t<zlink::message_t> &result) mutable {
                             result_t<zlink::message_t> final_result =
                               result
                                 ? result_t<zlink::message_t>::success (result.value ())
@@ -965,21 +967,17 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                                     result.error () != nullptr ? result.error ()->what ()
                                                                : "spot handler failed",
                                     result.error () != nullptr && result.error ()->is_retriable ());
-                            const auto posted = state->try_post_serial (
-                              "spot-handler-completion",
-                              [state, completion,
-                               final_result = std::move (final_result)] () mutable {
-                                  state->leave_callback ();
-                                  completion.complete (std::move (final_result));
-                              });
-                            if (!posted) {
+                            auto finish = [state, completion,
+                                           final_result = std::move (final_result)] () mutable {
                                 state->leave_callback ();
-                                completion.complete (result_t<zlink::message_t>::failure (
-                                  framework_error_kind_t::request_rejected,
-                                  "spot serial queue is full or closed"));
+                                completion.complete (std::move (final_result));
+                            };
+                            if (turn && turn->released ()) {
+                                finish ();
+                                return;
                             }
+                            complete (std::move (finish));
                         });
-                      complete ([] {});
                   }
                   catch (const framework_exception_t &error) {
                       complete ([state, completion, error] () mutable {

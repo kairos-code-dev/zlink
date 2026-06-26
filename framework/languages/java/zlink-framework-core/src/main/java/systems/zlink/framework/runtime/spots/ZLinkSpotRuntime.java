@@ -53,6 +53,8 @@ import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
+import systems.zlink.framework.execution.ZLinkFrameworkTurns;
+import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
@@ -3091,6 +3093,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 }
             });
         }
+
     }
 
     private final class EgressSpotRequestCall implements ZLinkRequestCall {
@@ -3100,6 +3103,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private final Message payload;
         private final Optional<String> packetName;
         private final Duration timeout;
+        private final ZLinkYieldTurn turn;
 
         EgressSpotRequestCall(
             ZLinkChannelRuntime channels,
@@ -3108,12 +3112,24 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             Message payload,
             Optional<String> packetName,
             Duration timeout) {
+            this(channels, egressChannelName, spotRid, payload, packetName, timeout, ZLinkFrameworkTurns.captureCurrent());
+        }
+
+        EgressSpotRequestCall(
+            ZLinkChannelRuntime channels,
+            String egressChannelName,
+            RoutingId spotRid,
+            Message payload,
+            Optional<String> packetName,
+            Duration timeout,
+            ZLinkYieldTurn turn) {
             this.channels = channels;
             this.egressChannelName = egressChannelName;
             this.spotRid = spotRid;
             this.payload = payload;
             this.packetName = packetName;
             this.timeout = timeout;
+            this.turn = turn;
         }
 
         @Override
@@ -3124,7 +3140,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 spotRid,
                 payload,
                 Optional.of(packetName),
-                timeout);
+                timeout,
+                turn);
         }
 
         @Override
@@ -3140,7 +3157,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 spotRid,
                 payload,
                 packetName,
-                timeout);
+                timeout,
+                turn);
         }
 
         @Override
@@ -3163,7 +3181,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         address.spotRid(),
                         payload,
                         packetName,
-                        timeout)
+                        timeout,
+                        turn)
                         .submit(replyType);
                 }
                 List<Message> spotParts = parts(packetName, payload);
@@ -3200,6 +3219,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     spotParts.forEach(Message::close);
                 }
             });
+        }
+
+        @Override
+        public <TReply> CompletionStage<TReply> yieldAsync(Class<TReply> replyType) {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        }
+
+        private ZLinkYieldTurn requireTurn() {
+            if (turn == null) {
+                throw new IllegalStateException(
+                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+            }
+            return turn;
         }
     }
 
@@ -3404,6 +3436,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private final Message payload;
         private final Optional<String> packetName;
         private final Duration timeout;
+        private final ZLinkYieldTurn turn;
 
         private SpotToSpotRequestCall(
             ZLinkBackendSpot spot,
@@ -3412,12 +3445,24 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             Message payload,
             Optional<String> packetName,
             Duration timeout) {
+            this(spot, targetNodeRid, spotRid, payload, packetName, timeout, ZLinkFrameworkTurns.captureCurrent());
+        }
+
+        private SpotToSpotRequestCall(
+            ZLinkBackendSpot spot,
+            RoutingId targetNodeRid,
+            RoutingId spotRid,
+            Message payload,
+            Optional<String> packetName,
+            Duration timeout,
+            ZLinkYieldTurn turn) {
             this.spot = spot;
             this.targetNodeRid = targetNodeRid;
             this.spotRid = spotRid;
             this.payload = payload;
             this.packetName = packetName;
             this.timeout = timeout;
+            this.turn = turn;
         }
 
         @Override
@@ -3428,7 +3473,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 spotRid,
                 payload,
                 Optional.of(packetName),
-                timeout);
+                timeout,
+                turn);
         }
 
         @Override
@@ -3444,7 +3490,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 spotRid,
                 payload,
                 packetName,
-                timeout);
+                timeout,
+                turn);
         }
 
         @Override
@@ -3493,6 +3540,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             // backend socket thread. Hop to the handler executor so user
             // continuations never run on the backend callback thread.
             return result.thenApplyAsync(reply -> reply, handlerExecutor);
+        }
+
+        @Override
+        public <TReply> CompletionStage<TReply> yieldAsync(Class<TReply> replyType) {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        }
+
+        private ZLinkYieldTurn requireTurn() {
+            if (turn == null) {
+                throw new IllegalStateException(
+                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+            }
+            return turn;
         }
     }
 

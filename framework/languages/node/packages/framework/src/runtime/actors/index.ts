@@ -31,6 +31,7 @@ import {
 import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import { isZLinkMessage, ZLinkMessage, type ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
+import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 import type {
   ZLinkBackendActorJoinEntrySpotResult,
   ZLinkBackendActorJoinResult,
@@ -1398,6 +1399,7 @@ export class ZLinkSpotActorDispatcher {
 
 class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
   private timeoutMs: number | undefined;
+  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -1406,7 +1408,9 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     private readonly spotRid: RoutingId,
     private readonly request: unknown,
     private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
-  ) {}
+  ) {
+    this.yieldTurn = captureZLinkSpotSerialTurn();
+  }
 
   timeout(timeoutMs: number): this {
     this.timeoutMs = timeoutMs;
@@ -1439,10 +1443,20 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
       }
     }
   }
+
+  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    if (this.yieldTurn === undefined) {
+      return Promise.reject(new ZLinkConfigurationException(
+        'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+      ));
+    }
+    return this.yieldTurn.yieldPromise(this.submit<TReply>(signal));
+  }
 }
 
 class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
   private timeoutMs: number | undefined;
+  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -1451,7 +1465,9 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
     private readonly nodeRid: RoutingId,
     private readonly request: unknown,
     private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
-  ) {}
+  ) {
+    this.yieldTurn = captureZLinkSpotSerialTurn();
+  }
 
   timeout(timeoutMs: number): this {
     this.timeoutMs = timeoutMs;
@@ -1481,6 +1497,15 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
         requestMessage.close();
       }
     }
+  }
+
+  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    if (this.yieldTurn === undefined) {
+      return Promise.reject(new ZLinkConfigurationException(
+        'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+      ));
+    }
+    return this.yieldTurn.yieldPromise(this.submit<TReply>(signal));
   }
 }
 

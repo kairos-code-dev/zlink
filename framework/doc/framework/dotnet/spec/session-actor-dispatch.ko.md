@@ -1075,8 +1075,15 @@ public interface IZLinkBoundSessionSendCall
 
     ValueTask Async(
         CancellationToken cancellationToken = default);
+
+    ValueTask YieldAsync(
+        CancellationToken cancellationToken = default);
 }
 ```
+
+`Async(...)` 는 bound session send의 기본 serial terminator다. `YieldAsync(...)` 는
+framework가 만든 send call object에서만 사용할 수 있으며, send completion을 기다리는 동안
+현재 Spot/Entry Spot turn을 반납하고 completion 뒤 원래 handler continuation을 재개한다.
 
 호출 모양은 아래와 같다.
 

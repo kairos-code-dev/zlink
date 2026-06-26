@@ -1,5 +1,7 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Server.Tracking;
+using DeliveryDispatch.Server.Tracking.Spots.DeliveryTrackingSpot;
+using DeliveryDispatch.Server.Tracking.Spots.EntrySpot;
 using DeliveryDispatch.Shared.Contracts;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;

@@ -1,5 +1,5 @@
 using GameQuest.QuestMission.Application;
-using GameQuest.QuestMission.Infrastructure.ZLink.Spots;
+using GameQuest.QuestMission.Infrastructure.ZLink.Spots.PlayerQuestSpot;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Spots;
 

@@ -2,7 +2,7 @@ import { Inject } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import type { ZLinkActorManager, ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
 import { SampleNames } from '../../../../Configuration/sample-names';
-import { BingoRoomSpot } from '../Spots/bingo-room-spot';
+import { BingoRoomSpot } from '../Spots/BingoRoomSpot/bingo-room-spot';
 import {
   PacketNames,
   PlayerIdentity,

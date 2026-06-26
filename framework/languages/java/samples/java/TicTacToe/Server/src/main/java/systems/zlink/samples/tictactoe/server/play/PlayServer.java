@@ -11,8 +11,8 @@ import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.RedisSpotRemoteAddressResolver;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActorFactory;
-import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.PlayEntrySpot;
-import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.TicTacToeGame;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.PlayEntrySpot;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.sessions.PlaySession;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.sessions.handlers.AuthenticatePlaySessionHandler;
 

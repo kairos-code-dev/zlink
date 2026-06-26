@@ -451,7 +451,86 @@ struct async_probe_spot_t : public zlink::framework::spot_t
         _context = context;
         context.handlers ()
           .add_actor_packet<&async_probe_spot_t::slow> ("async.slow")
+          .add_actor_packet<&async_probe_spot_t::slow_yield> ("async.slow-yield")
+          .add_actor_packet<&async_probe_spot_t::request_yield> ("async.request-yield")
+          .add_actor_packet<&async_probe_spot_t::join_yield> ("async.join-yield")
           .add_actor_packet<&async_probe_spot_t::quick> ("async.quick");
+    }
+
+    void set_join_context (zlink::framework::actor_context_t context)
+    {
+        _join_context = std::move (context);
+    }
+
+    zlink::framework::task_t<move_reply_t>
+    slow_yield (player_actor_factory_t &,
+                zlink::framework::spot_actor_request_context_t &context,
+                const move_request_t &request)
+    {
+        {
+            std::lock_guard lock (mutex);
+            slow_started = true;
+            changed.notify_all ();
+        }
+        const auto value = co_await _context.run_worker ([] { return 77; }).yield_async ();
+        {
+            std::lock_guard lock (mutex);
+            slow_completed = true;
+            changed.notify_all ();
+        }
+        co_return move_reply_t{value + request.value
+                               + (context.packet_name == "async.slow-yield" ? 0 : 1000)};
+    }
+
+    zlink::framework::task_t<move_reply_t>
+    request_yield (player_actor_factory_t &,
+                   zlink::framework::spot_actor_request_context_t &,
+                   const move_request_t &request)
+    {
+        auto source =
+          std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
+        {
+            std::lock_guard lock (mutex);
+            request_source = source;
+            slow_started = true;
+            changed.notify_all ();
+        }
+        zlink::framework::request_call_t<int> call (
+          "async.request-yield",
+          [source] (const std::string &, std::chrono::milliseconds,
+                    const zlink::framework::request_call_t<int>::metadata_map_t &) {
+              return source->task ();
+          });
+        const auto value = co_await call.yield_async ();
+        {
+            std::lock_guard lock (mutex);
+            slow_completed = true;
+            changed.notify_all ();
+        }
+        co_return move_reply_t{value + request.value};
+    }
+
+    zlink::framework::task_t<move_reply_t>
+    join_yield (player_actor_factory_t &,
+                zlink::framework::spot_actor_request_context_t &,
+                const move_request_t &request)
+    {
+        {
+            std::lock_guard lock (mutex);
+            slow_started = true;
+            changed.notify_all ();
+        }
+        const auto joined = co_await _join_context
+                              .join_spot (
+                                zlink::framework::spot_rid_t::from_string ("async-join-target"),
+                                zlink::framework::message_t::from (std::string ("join")))
+                              .yield_async ();
+        {
+            std::lock_guard lock (mutex);
+            slow_completed = true;
+            changed.notify_all ();
+        }
+        co_return move_reply_t{static_cast<int> (joined.actor.generation ()) + request.value};
     }
 
     zlink::framework::task_t<move_reply_t>
@@ -497,9 +576,29 @@ struct async_probe_spot_t : public zlink::framework::spot_t
         return quick_count;
     }
 
+    void reset_probe ()
+    {
+        std::lock_guard lock (mutex);
+        slow_started = false;
+        slow_completed = false;
+        quick_count = 0;
+        request_source.reset ();
+    }
+
+    std::shared_ptr<zlink::framework::detail::task_completion_source_t<int>>
+    wait_request_source ()
+    {
+        std::unique_lock lock (mutex);
+        const auto ready = changed.wait_for (lock, std::chrono::milliseconds (500),
+                                             [this] { return request_source != nullptr; });
+        return ready ? request_source : nullptr;
+    }
+
     mutable std::mutex mutex;
     std::condition_variable changed;
     zlink::framework::spot_context_t _context;
+    std::shared_ptr<zlink::framework::detail::task_completion_source_t<int>> request_source;
+    zlink::framework::actor_context_t _join_context;
     bool slow_started = false;
     bool slow_completed = false;
     int quick_count = 0;
@@ -1782,6 +1881,35 @@ int main ()
     async_state->worker_scheduler = async_scheduler;
     auto async_context = test_spot_context_t (async_state);
     async_probe_spot_t async_spot;
+    zlink::framework::detail::actor_gateway_runtime_t async_actor_gateway;
+    async_actor_gateway.bind_serializers (spot_serializers);
+    std::mutex async_join_mutex;
+    std::condition_variable async_join_changed;
+    bool async_join_started = false;
+    bool async_join_release = false;
+    async_actor_gateway.on_join_spot (
+      [&] (const zlink::framework::actor_ref_t &actor_ref,
+           zlink::framework::spot_rid_t spot_rid,
+           const zlink::message_t &) {
+          {
+              std::unique_lock lock (async_join_mutex);
+              async_join_started = actor_ref.actor_id () == "async-join-actor"
+                                   && spot_rid.value () == "async-join-target";
+              async_join_changed.notify_all ();
+              async_join_changed.wait (lock, [&] { return async_join_release; });
+          }
+          return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::success (
+            zlink::framework::detail::actor_join_reply_t{
+              0,
+              zlink::framework::actor_ref_t (
+                zlink::framework::node_rid_t::from_string ("async-spot-node"),
+                "player", "async-join-actor", 31),
+              zlink::message_t{}});
+      });
+    async_spot.set_join_context (async_actor_gateway.actor_context (
+      zlink::framework::actor_ref_t (
+        zlink::framework::node_rid_t::from_string ("async-node"), "player",
+        "async-join-actor", 30)));
     async_spot.configure (async_context);
     player_actor_factory_t async_actor;
     auto invoke_async = [&] (std::string_view packet_name, int value) {
@@ -1796,27 +1924,126 @@ int main ()
     }
     auto quick_future =
       std::async (std::launch::async, [&] { return invoke_async ("async.quick", 9); });
-    if (quick_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+    if (quick_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
         return 53;
+    }
+    if (slow_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
+        return 54;
+    }
+    async_scheduler->run_worker_job ();
+    async_scheduler->run_owner_job ();
+    if (slow_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+        return 55;
+    }
+    const auto slow_result = slow_future.get ();
+    if (!slow_result
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (slow_result.value ())).value != 78) {
+        return 56;
+    }
+    if (quick_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+        return 57;
     }
     const auto quick_result = quick_future.get ();
     if (!quick_result
         || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (quick_result.value ())).value != 10
         || async_spot.quick_seen () != 1) {
-        return 54;
+        return 58;
     }
-    if (slow_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
-        return 55;
+
+    async_spot.reset_probe ();
+    auto yield_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.slow-yield", 2); });
+    if (!async_spot.wait_slow_started () || !async_scheduler->wait_worker_job_count (1)) {
+        return 59;
+    }
+    auto yield_quick_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.quick", 11); });
+    if (yield_quick_future.wait_for (std::chrono::milliseconds (500))
+        != std::future_status::ready) {
+        return 60;
+    }
+    const auto yield_quick_result = yield_quick_future.get ();
+    if (!yield_quick_result
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (yield_quick_result.value ())).value != 12
+        || async_spot.quick_seen () != 1) {
+        return 61;
     }
     async_scheduler->run_worker_job ();
     async_scheduler->run_owner_job ();
-    if (slow_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
-        return 56;
+    if (yield_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+        return 62;
     }
-    const auto slow_result = slow_future.get ();
-    if (!slow_result
-        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (slow_result.value ())).value != 78) {
-        return 57;
+    const auto yield_result = yield_future.get ();
+    if (!yield_result
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (yield_result.value ())).value != 79) {
+        return 63;
+    }
+
+    async_spot.reset_probe ();
+    auto request_yield_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.request-yield", 4); });
+    auto request_source = async_spot.wait_request_source ();
+    if (!request_source) {
+        return 64;
+    }
+    auto request_quick_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.quick", 13); });
+    if (request_quick_future.wait_for (std::chrono::milliseconds (500))
+        != std::future_status::ready) {
+        return 65;
+    }
+    const auto request_quick_result = request_quick_future.get ();
+    if (!request_quick_result
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (request_quick_result.value ())).value != 14
+        || async_spot.quick_seen () != 1) {
+        return 66;
+    }
+    request_source->complete (zlink::framework::result_t<int>::success (90));
+    if (request_yield_future.wait_for (std::chrono::milliseconds (500))
+        != std::future_status::ready) {
+        return 67;
+    }
+    const auto request_yield_result = request_yield_future.get ();
+    if (!request_yield_result
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (request_yield_result.value ())).value != 94) {
+        return 68;
+    }
+
+    async_spot.reset_probe ();
+    auto join_yield_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.join-yield", 5); });
+    {
+        std::unique_lock lock (async_join_mutex);
+        if (!async_join_changed.wait_for (
+              lock, std::chrono::milliseconds (500), [&] { return async_join_started; })) {
+            return 69;
+        }
+    }
+    auto join_quick_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.quick", 15); });
+    if (join_quick_future.wait_for (std::chrono::milliseconds (500))
+        != std::future_status::ready) {
+        return 70;
+    }
+    const auto join_quick_result = join_quick_future.get ();
+    if (!join_quick_result
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (join_quick_result.value ())).value != 16
+        || async_spot.quick_seen () != 1) {
+        return 71;
+    }
+    {
+        std::lock_guard lock (async_join_mutex);
+        async_join_release = true;
+        async_join_changed.notify_all ();
+    }
+    if (join_yield_future.wait_for (std::chrono::milliseconds (500))
+        != std::future_status::ready) {
+        return 72;
+    }
+    const auto join_yield_result = join_yield_future.get ();
+    if (!join_yield_result
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (join_yield_result.value ())).value != 36) {
+        return 73;
     }
 
     stage_spot.onLeaveActor (actor);

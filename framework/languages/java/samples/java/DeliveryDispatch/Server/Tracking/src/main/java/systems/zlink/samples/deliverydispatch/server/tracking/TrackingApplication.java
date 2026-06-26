@@ -17,9 +17,9 @@ import systems.zlink.samples.deliverydispatch.server.configuration.EvidenceStore
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.server.tracking.actors.CustomerActorFactory;
-import systems.zlink.samples.deliverydispatch.server.tracking.spots.CustomerEntrySpot;
-import systems.zlink.samples.deliverydispatch.server.tracking.spots.DeliverySpotDirectory;
-import systems.zlink.samples.deliverydispatch.server.tracking.spots.DeliveryTrackingSpot;
+import systems.zlink.samples.deliverydispatch.server.tracking.spots.entryspot.CustomerEntrySpot;
+import systems.zlink.samples.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliverySpotDirectory;
+import systems.zlink.samples.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliveryTrackingSpot;
 
 @EnableZLinkFramework
 @SpringBootApplication(

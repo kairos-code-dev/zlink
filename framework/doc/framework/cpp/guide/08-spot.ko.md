@@ -89,6 +89,20 @@ sequenceDiagram
 [3장 §6.2](03-concepts.ko.md)의 실행 모델 그대로다 — spot은 거기에 "같은 룸은
 절대 겹치지 않는다"는 직렬성 보장을 더한 것이다.
 
+`async()`는 이 기본 serial 의미를 유지한다. 공용 상태를 await 전후로 이어 쓰는 handler는
+`co_await call.async()`를 사용한다.
+
+player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
+흐름에서는 `yield_async()`를 사용할 수 있다. `yield_async()`는 현재 mailbox turn을
+반납하고, completion 뒤 같은 mailbox continuation으로 돌아온다. 같은 actor의 다음 packet은
+continuation 뒤에 실행되지만, 다른 actor나 timer 작업은 그 사이에 실행될 수 있다.
+
+Bingo C++ sample의 `match_bingo` 흐름은 API channel request와 room `join_spot(...)` 대기에
+`yield_async()`를 사용한다. room list, match queue, lobby state 같은 공용 mutable state를
+await 전후로 이어서 판단하는 handler에는 `yield_async()`를 쓰지 않는다. `thread_local`은
+짧은 runtime lookup이나 logging context 용도로만 사용하고, turn이나 mailbox 소유권 저장소로
+사용하지 않는다.
+
 짧고 빠른 local 계산을 Spot 실행 큐 밖에서 처리해야 하면 `run_worker(...)`를
 사용한다. worker 함수는 Spot 상태를 직접 만지지 않고, 완료 뒤 `co_await` 지점에서
 다시 같은 Spot 실행 큐로 돌아와 상태를 갱신한다.

@@ -4,7 +4,7 @@
 #include "../../../../Configuration/sample_topology.hpp"
 #include "../../../../../Shared/Contracts/messages.hpp"
 #include "../../../Application/GameCreation/tictactoe_game_creator.hpp"
-#include "../Spots/tictactoe_game_spot.hpp"
+#include "../Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp"
 
 #include <zlink/framework.hpp>
 

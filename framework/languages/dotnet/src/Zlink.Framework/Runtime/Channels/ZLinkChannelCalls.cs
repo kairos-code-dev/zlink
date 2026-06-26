@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Messaging;
+using Zlink.Framework.Runtime.Execution;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -70,6 +71,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
     TMessage request)
     : IZLinkRequestCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
@@ -142,6 +144,18 @@ internal sealed class ZLinkRequestCall<TMessage>(
         }
 
         return reply;
+    }
+
+    public ValueTask<TReply> YieldAsync<TReply>(CancellationToken cancellationToken = default)
+    {
+        return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
+    }
+
+    private ZLinkSerialTurn RequireTurn()
+    {
+        return _turn
+            ?? throw new InvalidOperationException(
+                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
     }
 }
 

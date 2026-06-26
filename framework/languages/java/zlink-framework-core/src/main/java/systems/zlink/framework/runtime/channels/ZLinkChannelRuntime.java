@@ -39,6 +39,7 @@ import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.channels.ZLinkRouteRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteSendContext;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -56,6 +57,8 @@ import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
+import systems.zlink.framework.execution.ZLinkFrameworkTurns;
+import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
@@ -451,7 +454,7 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
-    public ZLinkRequestCall requestTo(String channelName, RoutingId target, Object message) {
+    public ZLinkRouteRequestCall requestTo(String channelName, RoutingId target, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteRequestCall(
@@ -2088,21 +2091,32 @@ public final class ZLinkChannelRuntime
         private final Message payload;
         private final Optional<String> packetName;
         private final Duration timeout;
+        private final ZLinkYieldTurn turn;
 
         private RequestCall(
             ZLinkBackendDealerSocket client,
             Message payload,
             Optional<String> packetName,
             Duration timeout) {
+            this(client, payload, packetName, timeout, ZLinkFrameworkTurns.captureCurrent());
+        }
+
+        private RequestCall(
+            ZLinkBackendDealerSocket client,
+            Message payload,
+            Optional<String> packetName,
+            Duration timeout,
+            ZLinkYieldTurn turn) {
             this.client = client;
             this.payload = payload;
             this.packetName = packetName;
             this.timeout = timeout;
+            this.turn = turn;
         }
 
         @Override
         public ZLinkRequestCall packetName(String packetName) {
-            return new RequestCall(client, payload, Optional.of(packetName), timeout);
+            return new RequestCall(client, payload, Optional.of(packetName), timeout, turn);
         }
 
         @Override
@@ -2112,7 +2126,7 @@ public final class ZLinkChannelRuntime
 
         @Override
         public ZLinkRequestCall timeout(Duration timeout) {
-            return new RequestCall(client, payload, packetName, timeout);
+            return new RequestCall(client, payload, packetName, timeout, turn);
         }
 
         @Override
@@ -2151,6 +2165,19 @@ public final class ZLinkChannelRuntime
                 },
                 result);
             return result;
+        }
+
+        @Override
+        public <TReply> CompletionStage<TReply> yieldAsync(Class<TReply> replyType) {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        }
+
+        private ZLinkYieldTurn requireTurn() {
+            if (turn == null) {
+                throw new IllegalStateException(
+                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+            }
+            return turn;
         }
     }
 
@@ -2234,7 +2261,7 @@ public final class ZLinkChannelRuntime
         }
     }
 
-    private final class RouteRequestCall implements ZLinkRequestCall {
+    private final class RouteRequestCall implements ZLinkRouteRequestCall {
         private final String channelName;
         private final ZLinkBackendRouterSocket router;
         private final RoutingId target;
@@ -2258,7 +2285,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public ZLinkRequestCall packetName(String packetName) {
+        public ZLinkRouteRequestCall packetName(String packetName) {
             return new RouteRequestCall(
                 channelName,
                 router,
@@ -2269,12 +2296,12 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public ZLinkRequestCall metadata(String key, String value) {
+        public ZLinkRouteRequestCall metadata(String key, String value) {
             return this;
         }
 
         @Override
-        public ZLinkRequestCall timeout(Duration timeout) {
+        public ZLinkRouteRequestCall timeout(Duration timeout) {
             return new RouteRequestCall(channelName, router, target, payload, packetName, timeout);
         }
 

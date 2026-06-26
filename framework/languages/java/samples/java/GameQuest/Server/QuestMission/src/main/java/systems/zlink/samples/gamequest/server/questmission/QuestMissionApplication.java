@@ -15,7 +15,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.gamequest.server.configuration.QuestMissionInstanceTopology;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
-import systems.zlink.samples.gamequest.server.questmission.spots.PlayerQuestSpot;
+import systems.zlink.samples.gamequest.server.questmission.spots.playerquestspot.PlayerQuestSpot;
 
 /**
  * Stateful QuestMission server. Subscribes to the gameplay event fanout, owns

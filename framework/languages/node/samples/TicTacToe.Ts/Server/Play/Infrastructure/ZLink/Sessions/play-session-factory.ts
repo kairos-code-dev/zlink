@@ -1,6 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER, ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
-import { MilestoneObserverRegistry, PlayEntrySpot } from '../Spots/play-entry-spot';
+import { MilestoneObserverRegistry, PlayEntrySpot } from '../Spots/EntrySpot/play-entry-spot';
 import { PlaySession } from './play-session';
 import type {
   ActorRef,

@@ -1066,6 +1066,13 @@ join 문맥이 함께 검증되어야 한다. 또한 spot 클래스와 id 를 �
 | `entrySpot timer waits for entrySpot callbacks` | Entry Spot timer callback 이 같은 Entry Spot의 다른 callback 과 동시에 실행되지 않는다. |
 | `entrySpot timer does not reenter same timer` | Entry Spot timer 는 같은 timer callback 을 겹쳐 실행하지 않는다. |
 
+기본 `submit(...)` 경로는 Spot/Entry Spot handler completion까지 같은 실행 줄을 유지한다.
+`yieldSubmit(...)`은 request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`,
+bound session send completion, `runWorker` completion에서만 현재 mailbox turn을 반납하고
+completion 뒤 원래 mailbox에서 재개한다. `yieldSubmit(...)` 중에도 같은 actor와 같은 timer는
+재진입하지 않는다. 다른 actor나 다른 timer 작업은 interleave될 수 있으므로, await 전후에 공용
+mutable state를 이어 판단하는 handler는 기본 `submit(...)`을 사용해야 한다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../README.ko.md) | [이전: ZLink Framework NestJS Channel Messaging](nestjs-channel-messaging.ko.md) | [다음: Node.js Stage Wrapper On SPOT](stage-wrapper-on-spot.ko.md)

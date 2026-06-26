@@ -8,7 +8,7 @@ public interface ZLinkRouteClient {
         RoutingId target,
         Object message);
 
-    ZLinkRequestCall requestTo(
+    ZLinkRouteRequestCall requestTo(
         String channelName,
         RoutingId target,
         Object message);

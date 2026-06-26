@@ -819,7 +819,7 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
       throw new ZLinkConfigurationException('Actor factory type must not be empty or padded.');
     }
     const actorFactories = typeMapToRecord(this.spotNode.actorFactories);
-    if (actorFactories[type] !== undefined) {
+    if (Object.hasOwn(actorFactories, type)) {
       throw new ZLinkConfigurationException(`Duplicate actor factory '${type}' on SpotNode.`);
     }
     actorFactories[type] = factoryType;

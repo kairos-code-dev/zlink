@@ -2,10 +2,10 @@ import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs'
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { SupportNotificationDeliveryLog } from './notification-delivery-log';
 import { SupportUserActorFactory } from './Infrastructure/ZLink/Actors/support-user-actor-factory';
-import { ConversationEventMapper } from './Infrastructure/ZLink/Notifications/conversation-event-mapper';
-import { SupportNotificationPublisher } from './Infrastructure/ZLink/Notifications/support-notification-publisher';
-import { SupportEntrySpot } from './Infrastructure/ZLink/Spots/support-entry-spot';
-import { ConversationSpot } from './Infrastructure/ZLink/Spots/conversation-spot';
+import { ConversationEventMapper } from './Infrastructure/ZLink/Spots/ConversationSpot/Notifications/conversation-event-mapper';
+import { SupportNotificationPublisher } from './Infrastructure/ZLink/Spots/ConversationSpot/Notifications/support-notification-publisher';
+import { SupportEntrySpot } from './Infrastructure/ZLink/Spots/EntrySpot/support-entry-spot';
+import { ConversationSpot } from './Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot';
 import { AllocateConversationHandler } from './Infrastructure/ZLink/Handlers/allocate-conversation-handler';
 import { AssignAgentHandler } from './Infrastructure/ZLink/Handlers/assign-agent-handler';
 import { CloseConversationChannelHandler } from './Infrastructure/ZLink/Handlers/close-conversation-channel-handler';
@@ -16,18 +16,18 @@ import { SendChatMessageChannelHandler } from './Infrastructure/ZLink/Handlers/s
 import { SetAgentAvailableChannelHandler } from './Infrastructure/ZLink/Handlers/set-agent-available-channel-handler';
 import { SetTypingChannelHandler } from './Infrastructure/ZLink/Handlers/set-typing-channel-handler';
 import { SupportChatNotificationsHandler } from './Infrastructure/ZLink/Handlers/supportchat-notifications-handler';
-import { CloseConversationHandler } from './Infrastructure/ZLink/Spots/Handlers/close-conversation-handler';
-import { ConversationIdleTimerHandler } from './Infrastructure/ZLink/Spots/Handlers/conversation-idle-timer-handler';
-import { OpenConversationActorHandler } from './Infrastructure/ZLink/Spots/Handlers/open-conversation-actor-handler';
-import { SendChatMessageHandler } from './Infrastructure/ZLink/Spots/Handlers/send-chat-message-handler';
-import { SetAgentAvailableHandler } from './Infrastructure/ZLink/Spots/Handlers/set-agent-available-handler';
-import { SetTypingHandler } from './Infrastructure/ZLink/Spots/Handlers/set-typing-handler';
+import { CloseConversationHandler } from './Infrastructure/ZLink/Spots/ConversationSpot/Handlers/close-conversation-handler';
+import { ConversationIdleTimerHandler } from './Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation-idle-timer-handler';
+import { OpenConversationActorHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/open-conversation-actor-handler';
+import { SendChatMessageHandler } from './Infrastructure/ZLink/Spots/ConversationSpot/Handlers/send-chat-message-handler';
+import { SetAgentAvailableHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/set-agent-available-handler';
+import { SetTypingHandler } from './Infrastructure/ZLink/Spots/ConversationSpot/Handlers/set-typing-handler';
 import {
   CONVERSATION_EXECUTOR,
   CONVERSATION_STARTER,
   SupportConversationAllocator
 } from './Application/ConversationAssignment/support-conversation-allocator';
-import { ZLinkConversationSpotAccess } from './Infrastructure/ZLink/conversation-spot-access';
+import { ZLinkConversationSpotAccess } from './Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot-access';
 import { AgentAvailabilityDirectory } from './Application/ConversationAssignment/agent-availability-directory';
 import { AgentAssignmentService } from './Application/ConversationAssignment/agent-assignment-service';
 import { SampleNames } from '../Configuration/sample-names';

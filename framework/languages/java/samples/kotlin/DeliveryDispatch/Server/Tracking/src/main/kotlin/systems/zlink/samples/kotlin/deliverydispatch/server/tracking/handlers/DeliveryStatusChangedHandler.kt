@@ -10,8 +10,8 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.EvidenceStore
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
-import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.DeliverySpotDirectory
-import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.DeliveryTrackingSpot
+import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliverySpotDirectory
+import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliveryTrackingSpot
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreate
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusAck
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChanged

@@ -11,8 +11,8 @@
 #include "Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "Infrastructure/ZLink/Matchmaking/redis_bingo_match_queue.hpp"
 #include "Infrastructure/ZLink/Actors/player_actor_factory.hpp"
-#include "Infrastructure/ZLink/Spots/bingo_entry_spot.hpp"
-#include "Infrastructure/ZLink/Spots/bingo_room_spot.hpp"
+#include "Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp"
+#include "Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp"
 #include "Application/RoomAllocation/bingo_room_allocator.hpp"
 
 #include <zlink/codecs/protobuf.hpp>

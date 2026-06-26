@@ -111,6 +111,22 @@ Node.js 의 `runWorker(...)` 는 closure 를 `worker_threads` 로 옮겨 실행�
 보장하지 않는다. 오래 걸리는 CPU 작업이나 재시도가 필요한 작업은 별도 ZLink
 service/server 로 요청한다.
 
+## 5. yield dispatch
+
+Spot/Entry Spot handler에서 기본 `submit(...)`을 기다리면 handler가 끝날 때까지 같은
+Spot 실행 큐의 다음 작업은 시작되지 않는다. 공용 상태를 await 전후로 이어 쓰는 handler는
+이 기본 동작을 사용한다.
+
+player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
+흐름에서는 `yieldSubmit(...)`을 사용할 수 있다. `yieldSubmit(...)`은 현재 mailbox turn을
+반납하고, completion 뒤 같은 mailbox continuation으로 돌아온다. 같은 actor의 다음 packet은
+continuation 뒤에 실행되지만, 다른 actor나 timer 작업은 그 사이에 실행될 수 있다.
+
+Bingo.Ts sample의 Entry Spot match 흐름은 room `joinSpot(...)` 대기에 `yieldSubmit(...)`을
+사용한다. room list, match queue, lobby state 같은 공용 mutable state를 await 전후로 이어서
+판단하는 handler에는 `yieldSubmit(...)`을 쓰지 않는다. `AsyncLocalStorage`는 logging이나
+request context 용도로만 사용하고, turn이나 mailbox 소유권 저장소로 사용하지 않는다.
+
 ## 회귀 테스트
 
 Spot lifecycle, serial executor, timer, outbound 는 `test/contract/spot-manager.test.js`

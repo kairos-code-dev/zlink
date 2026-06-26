@@ -9,6 +9,7 @@
 | `IZLinkChannelClient` | `ZLinkChannelClient` |
 | `IZLinkFanoutClient` | `ZLinkFanoutClient` |
 | `IZLinkSpotManager` | `ZLinkSpotManager` |
+| `YieldAsync(...)` | `yieldSubmit(...)` |
 | `IZLinkActorManager` | `ZLinkActorManager` |
 | `IZLinkRegistryQuery` | `ZLinkRegistryQuery` |
 | `IZLinkRegistryQueryClient` | `ZLinkRegistryQueryClient` |

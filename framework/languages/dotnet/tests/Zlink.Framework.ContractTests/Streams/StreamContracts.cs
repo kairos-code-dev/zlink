@@ -96,6 +96,11 @@ public sealed class StreamContracts
             .Metadata("trace-id", "abc")
             .Async();
 
+        await boundSession
+            .Send(new PlayerJoined("player-2"))
+            .PacketName("player.joined")
+            .YieldAsync();
+
         await boundSession.DisconnectAsync();
 
         IZLinkMessageMetadataPolicy policy = new MetadataPolicy(
@@ -321,6 +326,8 @@ public sealed class StreamContracts
         public IZLinkBoundSessionSendCall Metadata(string key, string value) => this;
 
         public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask YieldAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private sealed class MetadataPolicy(IReadOnlySet<string> forwardedKeys) : IZLinkMessageMetadataPolicy

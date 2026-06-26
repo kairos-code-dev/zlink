@@ -9,7 +9,7 @@ import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
-import systems.zlink.samples.deliverydispatch.server.tracking.spots.DeliveryTrackingSpot;
+import systems.zlink.samples.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliveryTrackingSpot;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("tracking")

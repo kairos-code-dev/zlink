@@ -9,7 +9,7 @@ import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator
-import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.TicTacToeGame
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameRes
 

@@ -9,7 +9,7 @@ import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.BingoRoomSpot;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoRoomAllocation;
 import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoRoomAllocator;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;

@@ -186,6 +186,224 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task SerialExecutionQueue_DefaultAwait_Holds_Gate_Until_Work_Completes()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = queue.RunAsync(
+            async _ =>
+            {
+                firstStarted.SetResult();
+                await releaseFirst.Task.ConfigureAwait(false);
+            },
+            CancellationToken.None).AsTask();
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var second = queue.RunAsync(
+            _ =>
+            {
+                secondRan.SetResult();
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+
+        await Task.Delay(100);
+        Assert.False(secondRan.Task.IsCompleted);
+
+        releaseFirst.SetResult();
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+        await secondRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_YieldTurn_Allows_Later_Work_Then_Resumes_On_Line()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var ioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completeIo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstResumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstResume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thirdRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new ConcurrentQueue<string>();
+
+        var first = queue.RunAsync(
+            async ct =>
+            {
+                order.Enqueue("first-start");
+                var turn = ZLinkSerialTurn.Current
+                    ?? throw new InvalidOperationException("serial turn was not available");
+                await turn.YieldFrameworkCallAsync(
+                    async _ =>
+                    {
+                        ioStarted.SetResult();
+                        await completeIo.Task.ConfigureAwait(false);
+                    },
+                    ct).ConfigureAwait(false);
+                order.Enqueue("first-resumed");
+                firstResumed.SetResult();
+                await releaseFirstResume.Task.ConfigureAwait(false);
+            },
+            CancellationToken.None).AsTask();
+
+        await ioStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await queue.RunAsync(
+            _ =>
+            {
+                order.Enqueue("second");
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new[] { "first-start", "second" }, order.ToArray());
+
+        completeIo.SetResult();
+        await firstResumed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var third = queue.RunAsync(
+            _ =>
+            {
+                order.Enqueue("third");
+                thirdRan.SetResult();
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+
+        await Task.Delay(100);
+        Assert.False(thirdRan.Task.IsCompleted);
+
+        releaseFirstResume.SetResult();
+        await Task.WhenAll(first, third).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new[] { "first-start", "second", "first-resumed", "third" }, order.ToArray());
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_YieldTurn_Fault_Cleans_Pending_Turn()
+    {
+        var exceptions = new ConcurrentQueue<Exception>();
+        ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
+        try
+        {
+            await using var queue = CreateQueue(CancellationToken.None);
+            var ioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var failIo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var thirdRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            var first = queue.RunAsync(
+                async ct =>
+                {
+                    var turn = ZLinkSerialTurn.Current
+                        ?? throw new InvalidOperationException("serial turn was not available");
+                    await turn.YieldFrameworkCallAsync(
+                        async _ =>
+                        {
+                            ioStarted.SetResult();
+                            await failIo.Task.ConfigureAwait(false);
+                        },
+                        ct).ConfigureAwait(false);
+                },
+                CancellationToken.None).AsTask();
+
+            await ioStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await queue.RunAsync(
+                _ =>
+                {
+                    secondRan.SetResult();
+                    return ValueTask.CompletedTask;
+                },
+                CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+            failIo.SetException(new InvalidOperationException("yield I/O failed"));
+
+            var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => first.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal("yield I/O failed", thrown.Message);
+
+            await queue.RunAsync(
+                _ =>
+                {
+                    thirdRan.SetResult();
+                    return ValueTask.CompletedTask;
+                },
+                CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+            await secondRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await thirdRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains(exceptions, static ex => ex.Message == "yield I/O failed");
+        }
+        finally
+        {
+            ZLinkRuntimeErrorSink.UnhandledCallbackException -= exceptions.Enqueue;
+        }
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_YieldTurn_Cancellation_Cleans_Pending_Turn()
+    {
+        var exceptions = new ConcurrentQueue<Exception>();
+        ZLinkRuntimeErrorSink.UnhandledCallbackException += exceptions.Enqueue;
+        try
+        {
+            await using var queue = CreateQueue(CancellationToken.None);
+            var ioStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var cancelIo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var thirdRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            var first = queue.RunAsync(
+                async ct =>
+                {
+                    var turn = ZLinkSerialTurn.Current
+                        ?? throw new InvalidOperationException("serial turn was not available");
+                    await turn.YieldFrameworkCallAsync(
+                        async _ =>
+                        {
+                            ioStarted.SetResult();
+                            await cancelIo.Task.ConfigureAwait(false);
+                        },
+                        ct).ConfigureAwait(false);
+                },
+                CancellationToken.None).AsTask();
+
+            await ioStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await queue.RunAsync(
+                _ =>
+                {
+                    secondRan.SetResult();
+                    return ValueTask.CompletedTask;
+                },
+                CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+            cancelIo.SetCanceled();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => first.WaitAsync(TimeSpan.FromSeconds(5)));
+
+            await queue.RunAsync(
+                _ =>
+                {
+                    thirdRan.SetResult();
+                    return ValueTask.CompletedTask;
+                },
+                CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+            await secondRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await thirdRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.DoesNotContain(exceptions, static ex => ex is OperationCanceledException);
+        }
+        finally
+        {
+            ZLinkRuntimeErrorSink.UnhandledCallbackException -= exceptions.Enqueue;
+        }
+    }
+
+    [Fact]
     public async Task ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch()
     {
         var state = new ZLinkActorRuntimeState("test-actor");

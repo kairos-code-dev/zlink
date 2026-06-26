@@ -4,9 +4,86 @@
 
 #include <stdexcept>
 #include <utility>
+#include <memory>
 
 namespace zlink::framework::runtime
 {
+
+class serial_yield_turn_impl_t final :
+    public detail::serial_yield_turn_t,
+    public std::enable_shared_from_this<serial_yield_turn_impl_t>
+{
+  public:
+    serial_yield_turn_impl_t (serial_execution_queue_t &queue,
+                              std::string name,
+                              serial_execution_queue_t::async_completion_t complete) :
+        _queue (queue),
+        _name (std::move (name)),
+        _complete (std::move (complete))
+    {
+    }
+
+    bool release () override { return finish ([] {}); }
+
+    bool released () const override
+    {
+        std::lock_guard lock (_mutex);
+        return _released;
+    }
+
+    detail::task_scheduler_t resume_scheduler () override
+    {
+        return [weak = weak_from_this ()] (std::function<void ()> work) mutable {
+            if (auto self = weak.lock ()) {
+                if (self->_queue.try_post_async_front (
+                      self->_name + "-yield-resume",
+                      [work = std::move (work)] (auto complete) mutable {
+                          try {
+                              work ();
+                          }
+                          catch (...) {
+                          }
+                          complete ([] {});
+                      })) {
+                    return;
+                }
+            }
+            if (work) {
+                work ();
+            }
+        };
+    }
+
+    bool complete (std::function<void ()> completion)
+    {
+        return finish (std::move (completion));
+    }
+
+  private:
+    bool finish (std::function<void ()> completion)
+    {
+        serial_execution_queue_t::async_completion_t complete;
+        {
+            std::lock_guard lock (_mutex);
+            if (_released) {
+                return false;
+            }
+            _released = true;
+            complete = std::move (_complete);
+        }
+        if (!complete) {
+            return false;
+        }
+        complete (std::move (completion));
+        return true;
+    }
+
+    serial_execution_queue_t &_queue;
+    std::string _name;
+    mutable std::mutex _mutex;
+    serial_execution_queue_t::async_completion_t _complete;
+    bool _released = false;
+};
 
 serial_execution_queue_t::serial_execution_queue_t (offload_executor_t &executor,
                                                     std::size_t capacity,
@@ -44,6 +121,20 @@ bool serial_execution_queue_t::try_post_async (std::string name, async_work_t wo
         return false;
     }
     _queue.push_back (work_item_t{std::move (name), std::move (work)});
+    schedule_drain_locked ();
+    return true;
+}
+
+bool serial_execution_queue_t::try_post_async_front (std::string name, async_work_t work)
+{
+    if (!work) {
+        throw std::invalid_argument ("serial execution queue work is empty");
+    }
+    std::lock_guard<std::mutex> lock (_mutex);
+    if (_closed || _queue.size () + _active >= _capacity) {
+        return false;
+    }
+    _queue.push_front (work_item_t{std::move (name), std::move (work)});
     schedule_drain_locked ();
     return true;
 }
@@ -127,12 +218,17 @@ void serial_execution_queue_t::drain_loop ()
 
         auto name = item.name;
         try {
-            item.work ([this, name] (std::function<void ()> completion) mutable {
-                _executor.submit (
-                  [this, name = std::move (name),
-                   completion = std::move (completion)] () mutable {
-                      complete_one (std::move (name), std::move (completion));
-                  });
+            auto turn = std::make_shared<serial_yield_turn_impl_t> (
+              *this, name, [this, name] (std::function<void ()> completion) mutable {
+                  _executor.submit (
+                    [this, name = std::move (name),
+                     completion = std::move (completion)] () mutable {
+                        complete_one (std::move (name), std::move (completion));
+                    });
+              });
+            detail::serial_yield_turn_scope_t scope (turn);
+            item.work ([turn = std::move (turn)] (std::function<void ()> completion) mutable {
+                (void) turn->complete (std::move (completion));
             });
         }
         catch (...) {

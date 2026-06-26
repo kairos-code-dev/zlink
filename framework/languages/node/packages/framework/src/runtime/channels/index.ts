@@ -7,6 +7,7 @@ import type {
   ZLinkPublishContext,
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
+  ZLinkRouteRequestCall,
   ZLinkRequestCall,
   ZLinkSendContext,
   ZLinkRouteClient,
@@ -2504,8 +2505,8 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
     );
   }
 
-  request(routerChannelId: string, targetNodeRid: string, request: unknown): ZLinkRequestCall {
-    return new DefaultZLinkRequestCall(
+  request(routerChannelId: string, targetNodeRid: string, request: unknown): ZLinkRouteRequestCall {
+    return new DefaultZLinkRouteRequestCall(
       () => this.requireRouteChannel(routerChannelId),
       (packetName, timeoutMs, signal) => this.requireTransport().request(routerChannelId, targetNodeRid, packetName, request, timeoutMs, signal),
       this.defaultRequestTimeout(routerChannelId)
@@ -2591,6 +2592,43 @@ class DefaultZLinkSendCall implements ZLinkSendCall {
 }
 
 class DefaultZLinkRequestCall implements ZLinkRequestCall {
+  private packet?: string;
+  private timeoutMs?: number;
+
+  constructor(
+    private readonly validate: () => void,
+    private readonly submitter: <TReply>(
+      packetName: string | undefined,
+      timeoutMs: number | undefined,
+      signal?: AbortSignal
+    ) => Promise<TReply>,
+    private readonly defaultRequestTimeoutMs?: number
+  ) {}
+
+  packetName(packetName: string): this {
+    this.packet = packetName;
+    return this;
+  }
+
+  timeout(timeoutMs: number): this {
+    this.timeoutMs = timeoutMs;
+    return this;
+  }
+
+  async submit<TReply>(signal?: AbortSignal): Promise<TReply> {
+    throwIfAborted(signal);
+    this.validate();
+    return this.submitter<TReply>(this.packet, this.timeoutMs ?? this.defaultRequestTimeoutMs, signal);
+  }
+
+  yieldSubmit<TReply>(_signal?: AbortSignal): Promise<TReply> {
+    return Promise.reject(new ZLinkConfigurationException(
+      'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+    ));
+  }
+}
+
+class DefaultZLinkRouteRequestCall implements ZLinkRouteRequestCall {
   private packet?: string;
   private timeoutMs?: number;
 

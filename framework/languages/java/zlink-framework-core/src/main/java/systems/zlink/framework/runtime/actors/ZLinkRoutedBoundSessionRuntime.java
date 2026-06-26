@@ -16,6 +16,8 @@ import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
+import systems.zlink.framework.execution.ZLinkFrameworkTurns;
+import systems.zlink.framework.execution.ZLinkYieldTurn;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -84,7 +86,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             Map.of(),
             Optional.empty(),
             timeout,
-            defaultCodec);
+            defaultCodec,
+            ZLinkFrameworkTurns.captureCurrent());
     }
 
     CompletionStage<Void> sendFrame(byte[] frameBytes) {
@@ -151,7 +154,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         Map<String, String> metadata,
         Optional<String> packetName,
         Duration timeout,
-        ZLinkStreamCodec codec) implements ZLinkBoundSessionSendCall {
+        ZLinkStreamCodec codec,
+        ZLinkYieldTurn turn) implements ZLinkBoundSessionSendCall {
         @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             if (packetName == null || packetName.isBlank()) {
@@ -169,7 +173,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 metadata,
                 Optional.of(packetName),
                 timeout,
-                codec);
+                codec,
+                turn);
         }
 
         @Override
@@ -188,7 +193,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 Map.copyOf(next),
                 packetName,
                 timeout,
-                codec);
+                codec,
+                turn);
         }
 
         @Override
@@ -216,6 +222,19 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                     actorRef,
                     frame);
             }
+        }
+
+        @Override
+        public CompletionStage<Void> yieldAsync() {
+            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit());
+        }
+
+        private ZLinkYieldTurn requireTurn() {
+            if (turn == null) {
+                throw new IllegalStateException(
+                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+            }
+            return turn;
         }
     }
 

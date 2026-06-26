@@ -1,6 +1,7 @@
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play.Application.GameCreation;
-using TicTacToe.Server.Play.Infrastructure.ZLink.Spots;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Spots;
 

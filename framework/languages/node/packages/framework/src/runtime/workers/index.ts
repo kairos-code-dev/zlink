@@ -3,6 +3,7 @@ import type { ZLinkWorkerCall } from '../../contracts';
 import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contracts';
 import type { ZLinkWorkerOptions } from '../configuration';
 import { ZLinkConfigurationException } from '../configuration';
+import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 
 export type ZLinkWorkerWork<T> = (signal: AbortSignal) => T | Promise<T>;
 
@@ -145,6 +146,8 @@ export interface ZLinkSpotSerialLike {
   execute<T>(operation: () => Promise<T> | T): Promise<T>;
   /** Always enqueues as a new serial turn, never runs inline in a turn. */
   post<T>(operation: () => Promise<T> | T): Promise<T>;
+  /** Suspends the current Spot turn until `pending` completes and resumes it through the serial queue. */
+  yieldPromise<T>(pending: Promise<T>): Promise<T>;
 }
 
 /**
@@ -157,12 +160,15 @@ export interface ZLinkSpotSerialLike {
 export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
   private selectedTimeoutMs: number | undefined;
   private terminatorSelected = false;
+  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
 
   constructor(
     private readonly worker: ZLinkSpotWorkerRuntime,
     private readonly serial: ZLinkSpotSerialLike,
     private readonly work: ZLinkWorkerWork<T>
-  ) {}
+  ) {
+    this.yieldTurn = captureZLinkSpotSerialTurn();
+  }
 
   timeoutMs(durationMs: number): ZLinkWorkerCall<T> {
     this.selectedTimeoutMs = durationMs;
@@ -173,6 +179,17 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     this.claimTerminator();
     const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
     return deliverOnSerial(this.serial, pending);
+  }
+
+  yieldSubmit(signal?: AbortSignal): Promise<T> {
+    this.claimTerminator();
+    if (this.yieldTurn === undefined) {
+      return Promise.reject(new ZLinkConfigurationException(
+        'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+      ));
+    }
+    const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
+    return this.yieldTurn.yieldPromise(pending);
   }
 
   onCompleted(
@@ -198,7 +215,7 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
   private claimTerminator(): void {
     if (this.terminatorSelected) {
       throw new ZLinkConfigurationException(
-        'A runWorker call can use only one terminator: submit() or onCompleted(...).'
+        'A runWorker call can use only one terminator: submit(), yieldSubmit(), or onCompleted(...).'
       );
     }
     this.terminatorSelected = true;

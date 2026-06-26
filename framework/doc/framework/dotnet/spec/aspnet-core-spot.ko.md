@@ -1014,6 +1014,13 @@ SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경
   메서드 override만으로 설명하지 않는다.
 - Entry Spot 과 user Spot 은 packet, subscription, timer, channel outbound,
   actor handler 등록 표면을 맞춘다. 실행 직렬화 정책만 서로 다르다.
+- 기본 `Async(...)` terminator는 Spot/Entry Spot handler completion까지 같은 실행 줄을
+  유지한다. `YieldAsync(...)`는 request, Spot outbound request, actor `JoinSpot` /
+  `JoinEntrySpot`, bound session send completion, `RunWorker` completion에서만 현재
+  mailbox turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다.
+- `YieldAsync(...)` 중에도 같은 actor와 같은 timer는 재진입하지 않는다. 다른 actor나 다른
+  timer 작업은 interleave될 수 있으므로, await 전후에 공용 mutable state를 이어서 판단하는
+  handler는 기본 `Async(...)`를 사용해야 한다.
 - `IZLinkSpotManager`는 생성과 조회를 함께 가진다. `FindAsync(...)`,
   `ListAsync(...)`는 별도 query 서비스로 분리하지 않고 manager에 남긴다.
 - subscriber concurrency와 backpressure[^backpressure]는 per-handler나 per-topic

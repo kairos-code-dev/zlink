@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type {
   ActorRef,
   RoutingId,
@@ -107,6 +106,12 @@ import {
 import { ZLinkAsyncSubmitter } from '../messaging';
 import type { ZLinkWorkerCall } from '../../contracts';
 import { DefaultZLinkWorkerCall, deliverOnSerial, ZLinkSpotWorkerRuntime } from '../workers';
+import {
+  captureZLinkSpotSerialTurn,
+  isCurrentZLinkSpotSerialTurn,
+  runZLinkSpotSerialTurn,
+  ZLinkSpotSerialTurn
+} from '../execution';
 import {
   ZLinkActorPacketKind,
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
@@ -1068,14 +1073,25 @@ class ZLinkSpotActorJoinDispatch {
       accepted = false;
       reply = undefined;
     }
+    if (joinedActor !== undefined) {
+      try {
+        await this.serial.execute(() => this.getTarget().onJoinedActor?.(joinedActor));
+      } catch (error) {
+        this.dispatchErrors?.report({
+          surface: ZLinkDispatchErrorSurface.SpotActor,
+          messageKind: ZLinkDispatchMessageKind.ActorSend,
+          reason: ZLinkDispatchErrorReason.HandlerException,
+          action: ZLinkDispatchErrorAction.Drop,
+          actorId,
+          error
+        });
+      }
+    }
     const operation = this.nativeSpot.replyActorJoin(request, accepted ? 0 : 1);
     if (reply !== undefined) {
       operation.message(reply);
     }
     operation.submit();
-    if (joinedActor !== undefined) {
-      await this.serial.execute(() => this.getTarget().onJoinedActor?.(joinedActor));
-    }
     decoded?.request.close();
   }
 
@@ -3282,29 +3298,22 @@ export interface ZLinkSpotRoutedRequestOptions extends ZLinkSpotRoutedSendOption
   readonly timeoutMs?: number;
 }
 
-interface ZLinkSpotSerialTurnContext {
-  readonly executor: ZLinkSpotSerialExecutor;
-  readonly turnId: number;
-}
-
-const spotSerialTurnStorage = new AsyncLocalStorage<ZLinkSpotSerialTurnContext>();
-
 export class ZLinkSpotSerialExecutor {
   private tail: Promise<unknown> = Promise.resolve();
   private depth = 0;
   private turnSequence = 0;
-  private activeTurnId = 0;
+  activeTurnId = 0;
 
   get isExecuting(): boolean {
     return this.depth > 0;
   }
 
   get isCurrentTurn(): boolean {
-    const current = spotSerialTurnStorage.getStore();
-    return current !== undefined
-      && current.executor === this
-      && current.turnId === this.activeTurnId
-      && this.depth > 0;
+    return this.depth > 0 && isCurrentZLinkSpotSerialTurn(this);
+  }
+
+  get currentTurn(): ZLinkSpotSerialTurn | undefined {
+    return captureZLinkSpotSerialTurn(this);
   }
 
   /**
@@ -3326,24 +3335,58 @@ export class ZLinkSpotSerialExecutor {
    * this so they never run inline inside another callback's turn.
    */
   post<T>(operation: () => Promise<T> | T): Promise<T> {
+    const result = new Promise<T>((resolve, reject) => {
+      const gate = this.tail.then(
+        () => this.runTurn(operation, resolve, reject),
+        () => this.runTurn(operation, resolve, reject)
+      );
+      this.tail = gate.catch(() => undefined);
+    });
+    return result;
+  }
+
+  yieldPromise<T>(pending: Promise<T>): Promise<T> {
+    const turn = this.currentTurn;
+    if (turn === undefined) {
+      throw new Error('yieldSubmit requires a framework Spot handler turn.');
+    }
+    return turn.yieldPromise(pending);
+  }
+
+  private runTurn<T>(
+    operation: () => Promise<T> | T,
+    resolve: (value: T) => void,
+    reject: (reason: unknown) => void
+  ): Promise<void> {
+    const turn = new ZLinkSpotSerialTurn((resumeTurn, resume) => this.postResume(resumeTurn, resume));
     const wrapped = async () => {
       this.depth += 1;
       this.turnSequence += 1;
       const turnId = this.turnSequence;
       this.activeTurnId = turnId;
       try {
-        return await spotSerialTurnStorage.run(
-          { executor: this, turnId },
-          async () => operation()
-        );
+        return await runZLinkSpotSerialTurn(this, turnId, turn, operation);
       } finally {
         this.depth -= 1;
         this.activeTurnId = 0;
       }
     };
-    const next = this.tail.then(wrapped, wrapped);
-    this.tail = next.catch(() => undefined);
-    return next;
+    const owner = wrapped();
+    turn.bindOwner(owner);
+    owner.then(resolve, reject);
+    return Promise.race([
+      owner.then(() => undefined, () => undefined),
+      turn.suspended
+    ]);
+  }
+
+  private postResume(turn: ZLinkSpotSerialTurn, resume: () => void): boolean {
+    void this.post(async () => {
+      turn.resetSuspension();
+      resume();
+      await turn.resumeOwnerUntilNextYield();
+    });
+    return true;
   }
 }
 
@@ -3372,6 +3415,7 @@ function wrapPublishCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkPublishCal
 }
 
 function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCall): ZLinkRequestCall {
+  const yieldTurn = serial.currentTurn;
   return {
     packetName(packetName: string) {
       inner.packetName(packetName);
@@ -3385,6 +3429,15 @@ function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCal
       const insideCurrentTurn = serial.isCurrentTurn;
       const pending = startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
       return insideCurrentTurn ? pending : deliverOnSerial(serial, pending);
+    },
+    yieldSubmit<TReply>(signal?: AbortSignal) {
+      if (yieldTurn === undefined) {
+        return Promise.reject(new ZLinkConfigurationException(
+          'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+        ));
+      }
+      const pending = startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
+      return yieldTurn.yieldPromise(pending);
     }
   };
 }
@@ -3452,6 +3505,7 @@ function wrapRoutedSpotRequestCall(
 ): ZLinkRequestCall {
   let selectedPacketName: string | undefined;
   let selectedTimeoutMs: number | undefined;
+  const yieldTurn = serial.currentTurn;
   return {
     packetName(packetName: string) {
       selectedPacketName = packetName;
@@ -3474,6 +3528,24 @@ function wrapRoutedSpotRequestCall(
         };
       });
       return insideCurrentTurn ? pending : deliverOnSerial(serial, pending);
+    },
+    yieldSubmit<TReply>(signal?: AbortSignal) {
+      if (yieldTurn === undefined) {
+        return Promise.reject(new ZLinkConfigurationException(
+          'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+        ));
+      }
+      const pending = startRequestOnSerial<TReply>(serial, async () => {
+        const remoteAddress = await resolver.resolve(spotRid, signal);
+        return {
+          pending: transport.requestToSpot<TReply>(remoteAddress, request, {
+            packetName: selectedPacketName,
+            timeoutMs: selectedTimeoutMs,
+            signal
+          })
+        };
+      });
+      return yieldTurn.yieldPromise(pending);
     }
   };
 }

@@ -139,7 +139,7 @@ class actor_join_spot_call_t
         }
     }
 
-    task_t<actor_join_result_t> yield_async ()
+    task_t<actor_join_result_t> yield ()
     {
         if (!_submit) {
             return task_t<actor_join_result_t> (submit ());
@@ -147,12 +147,12 @@ class actor_join_spot_call_t
         if (!_yield_turn) {
             return task_t<actor_join_result_t> (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn captured when the call object was created"));
         }
         if (!_yield_turn->release ()) {
             return task_t<actor_join_result_t> (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async could not release the current Spot handler turn"));
+              "yield could not release the current Spot handler turn"));
         }
         auto source = std::make_shared<detail::task_completion_source_t<actor_join_result_t>> (
           _yield_turn->resume_scheduler ());
@@ -174,9 +174,9 @@ class actor_join_spot_call_t
         return task;
     }
 
-    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> yield_async ()
+    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> yield ()
     {
-        auto result = co_await yield_async ();
+        auto result = co_await yield ();
         if (_serializers == nullptr) {
             co_return result_t<typed_actor_join_result_t<TReply>>::failure (
               framework_error_kind_t::request_protocol_error,
@@ -266,7 +266,7 @@ class actor_join_entry_spot_call_t
         }
     }
 
-    task_t<actor_join_result_t> yield_async ()
+    task_t<actor_join_result_t> yield ()
     {
         if (!_submit) {
             return task_t<actor_join_result_t> (submit ());
@@ -274,12 +274,12 @@ class actor_join_entry_spot_call_t
         if (!_yield_turn) {
             return task_t<actor_join_result_t> (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn captured when the call object was created"));
         }
         if (!_yield_turn->release ()) {
             return task_t<actor_join_result_t> (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async could not release the current Spot handler turn"));
+              "yield could not release the current Spot handler turn"));
         }
         auto source = std::make_shared<detail::task_completion_source_t<actor_join_result_t>> (
           _yield_turn->resume_scheduler ());
@@ -301,9 +301,9 @@ class actor_join_entry_spot_call_t
         return task;
     }
 
-    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> yield_async ()
+    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> yield ()
     {
-        auto result = co_await yield_async ();
+        auto result = co_await yield ();
         if (_serializers == nullptr) {
             co_return result_t<typed_actor_join_result_t<TReply>>::failure (
               framework_error_kind_t::request_protocol_error,

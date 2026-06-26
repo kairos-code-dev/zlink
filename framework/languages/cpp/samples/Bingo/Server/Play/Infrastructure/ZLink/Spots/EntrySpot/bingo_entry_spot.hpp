@@ -62,13 +62,13 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
                          .request (sample_names_t::api_channel,
                                    match_bingo_api_req_t{actor.actor.actor_id, display_name,
                                                          request.mode, actor.actor.node_rid})
-                         .yield_async<match_bingo_api_res_t> ();
+                         .yield<match_bingo_api_res_t> ();
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (matched.room_id);
         auto joined =
           co_await actor.context
             .join_spot (spot_rid,
                         bingo_room_join_req_t{matched.room_id, actor.actor.actor_id, display_name})
-            .yield_async<bingo_room_join_res_t> ();
+            .yield<bingo_room_join_res_t> ();
         co_return match_bingo_res_t{matched.room_id, joined.reply.state,
                                     matched.room_owner_node_rid};
     }

@@ -91,7 +91,7 @@ template <typename TResult> class worker_call_t
         return _executor (_timeout, detail::worker_completion_mode_t::owner_queue);
     }
 
-    task_t<TResult> yield_async ()
+    task_t<TResult> yield ()
     {
         if (!try_start ()) {
             return task_t<TResult> (
@@ -105,12 +105,12 @@ template <typename TResult> class worker_call_t
         if (!_yield_turn) {
             return task_t<TResult> (result_t<TResult>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn captured when the call object was created"));
         }
         if (!_yield_turn->release ()) {
             return task_t<TResult> (result_t<TResult>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async could not release the current Spot handler turn"));
+              "yield could not release the current Spot handler turn"));
         }
         return detail::reschedule_task (
           _executor (_timeout, detail::worker_completion_mode_t::owner_queue),

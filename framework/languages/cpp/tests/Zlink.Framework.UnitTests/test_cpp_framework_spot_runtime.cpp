@@ -472,7 +472,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
             slow_started = true;
             changed.notify_all ();
         }
-        const auto value = co_await _context.run_worker ([] { return 77; }).yield_async ();
+        const auto value = co_await _context.run_worker ([] { return 77; }).yield ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;
@@ -501,7 +501,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
                     const zlink::framework::request_call_t<int>::metadata_map_t &) {
               return source->task ();
           });
-        const auto value = co_await call.yield_async ();
+        const auto value = co_await call.yield ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;
@@ -524,7 +524,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
                               .join_spot (
                                 zlink::framework::spot_rid_t::from_string ("async-join-target"),
                                 zlink::framework::message_t::from (std::string ("join")))
-                              .yield_async ();
+                              .yield ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;

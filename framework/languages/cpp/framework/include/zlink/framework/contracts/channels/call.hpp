@@ -75,7 +75,7 @@ template <typename TReply> class request_call_t
         return _submit (_packet_name, _timeout, _metadata);
     }
 
-    task_t<TReply> yield_async ()
+    task_t<TReply> yield ()
     {
         if (_immediate) {
             return task_t<TReply> (*_immediate);
@@ -88,12 +88,12 @@ template <typename TReply> class request_call_t
         if (!_yield_turn) {
             return task_t<TReply> (result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn captured when the call object was created"));
         }
         if (!_yield_turn->release ()) {
             return task_t<TReply> (result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async could not release the current Spot handler turn"));
+              "yield could not release the current Spot handler turn"));
         }
         return detail::reschedule_task (_submit (_packet_name, _timeout, _metadata),
                                         _yield_turn->resume_scheduler ());
@@ -168,7 +168,7 @@ class channel_request_call_t
         }
     }
 
-    template <typename TReply> task_t<TReply> yield_async ()
+    template <typename TReply> task_t<TReply> yield ()
     {
         if (!_submit) {
             co_return result_t<TReply>::failure (
@@ -178,12 +178,12 @@ class channel_request_call_t
         if (!_yield_turn) {
             co_return result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async requires a framework Spot handler turn captured when the call object was created");
+              "yield requires a framework Spot handler turn captured when the call object was created");
         }
         if (!_yield_turn->release ()) {
             co_return result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async could not release the current Spot handler turn");
+              "yield could not release the current Spot handler turn");
         }
         auto reply = co_await detail::reschedule_task (
           _submit (_packet_name, _timeout, _metadata), _yield_turn->resume_scheduler ());
@@ -293,17 +293,17 @@ class bound_session_send_call_t
 
     task_t<void> async () { return _call.async (); }
 
-    task_t<void> yield_async ()
+    task_t<void> yield ()
     {
         if (!_yield_turn) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn captured when the call object was created"));
         }
         if (!_yield_turn->release ()) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield_async could not release the current Spot handler turn"));
+              "yield could not release the current Spot handler turn"));
         }
         return detail::reschedule_task (_call.async (), _yield_turn->resume_scheduler ());
     }

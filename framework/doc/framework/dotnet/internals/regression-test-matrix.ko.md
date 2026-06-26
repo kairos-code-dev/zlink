@@ -246,12 +246,12 @@ backend gate 와 별도로 유지한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `SerialExecutorTests` yield 관련 항목 | 기본 `Async(...)` serial gate를 유지하고, `YieldAsync(...)`가 completion 전 다른 mailbox 작업을 실행하게 한다. |
-| `WorkerPoolTests` yield 관련 항목 | `RunWorker(...).YieldAsync(...)`가 captured turn이 있을 때만 동작하고, completion 뒤 원래 실행 줄로 돌아온다. |
-| `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id` | actor `JoinSpot`/`JoinEntrySpot` call object가 `YieldAsync(...)`와 typed reply overload를 public contract로 제공한다. |
-| `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport` | bound session send call object가 `YieldAsync(...)`를 public contract로 제공한다. |
-| `ChannelContracts` yield surface 항목 | channel send/publish와 route request에는 `YieldAsync` surface가 노출되지 않는다. |
-| `Bingo.Server.Play.csproj` build | Bingo `MatchBingoActorHandler` sample이 API request와 room `JoinSpot`에 `YieldAsync(...)`를 사용해도 compile된다. |
+| `SerialExecutorTests` yield 관련 항목 | 기본 `Async(...)` serial gate를 유지하고, `Yield(...)`가 completion 전 다른 mailbox 작업을 실행하게 한다. |
+| `WorkerPoolTests` yield 관련 항목 | `RunWorker(...).Yield(...)`가 captured turn이 있을 때만 동작하고, completion 뒤 원래 실행 줄로 돌아온다. |
+| `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id` | actor `JoinSpot`/`JoinEntrySpot` call object가 `Yield(...)`와 typed reply overload를 public contract로 제공한다. |
+| `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport` | bound session send call object가 `Yield(...)`를 public contract로 제공한다. |
+| `ChannelContracts` yield surface 항목 | channel send/publish와 route request에는 `Yield` surface가 노출되지 않는다. |
+| `Bingo.Server.Play.csproj` build | Bingo `MatchBingoActorHandler` sample이 API request와 room `JoinSpot`에 `Yield(...)`를 사용해도 compile된다. |
 
 ## 10. 문서별 회귀 테스트 단락
 

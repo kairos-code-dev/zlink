@@ -95,13 +95,13 @@ monitoring event로 관찰된다([09-monitoring](09-monitoring.ko.md)).
 전후로 이어 쓰는 handler는 이 기본 동작을 사용한다.
 
 player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
-흐름에서는 `yieldAwait(call, ReplyType::class.java)` helper를 사용한다. 이 helper는
-Java core의 yield 동작을 coroutine suspension으로 기다린다. coroutine context를 turn,
-mailbox, actor 상태의 소유권 저장소로 쓰지 않는다.
+흐름에서는 `yield(call, ReplyType::class.java)` helper를 사용한다. 이 helper는
+Java call object의 yield terminator를 호출한다. coroutine context를 turn, mailbox,
+actor 상태의 소유권 저장소로 쓰지 않는다.
 
 Bingo Kotlin sample의 `MatchBingoActorHandler`는 API channel request와 room `joinSpot(...)`
-대기에 `yieldAwait(...)`를 사용한다. room list, match queue, lobby state 같은 공용 mutable
-state를 await 전후로 이어서 판단하는 handler에는 `yieldAwait(...)`를 쓰지 않는다.
+대기에 `yield(...)`를 사용한다. room list, match queue, lobby state 같은 공용 mutable
+state를 await 전후로 이어서 판단하는 handler에는 `yield(...)`를 쓰지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

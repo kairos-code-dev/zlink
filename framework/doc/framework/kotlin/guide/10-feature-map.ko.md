@@ -21,7 +21,7 @@
 | event fanout (pub/sub) | 낮음 | domain event를 여러 구독자에게 전파 | `fanout.publishToTopic(...)` / `ZLinkSuspendingPublishHandler` | [04](04-channel-messaging.ko.md) |
 | target node 지정 route | 중간 | application이 target `RoutingId`를 직접 알 때 | `routeClient.request<R>(...)` | [04](04-channel-messaging.ko.md) |
 | room/stage/zone 생성 | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | `spotManager.create(...).await()` / `ZLinkSuspendingSpot` | [05](05-spot.ko.md) |
-| Spot yield dispatch | 높음 | player admission처럼 공용 상태 의존 없는 I/O 대기 중 다른 actor/timer를 막지 않을 때 | `yieldAwait(call, ...)` | [05](05-spot.ko.md) |
+| Spot yield dispatch | 높음 | player admission처럼 공용 상태 의존 없는 I/O 대기 중 다른 actor/timer를 막지 않을 때 | `yield(call, ...)` | [05](05-spot.ko.md) |
 | Spot 내부 timer | 중간 | 주기 tick, heartbeat, 정리 작업 | `ZLinkSuspendingSpotTimerHandler` | [05](05-spot.ko.md) |
 | actor 생성/재사용 | 높음 | session과 묶인 상태 보유 객체로 packet dispatch | `actors.getOrCreate(...).await()` | [06](06-actor-session.ko.md) |
 | client session binding | 높음 | STREAM session을 actor에 묶기 | `context.actors().bind(...).await()` | [06](06-actor-session.ko.md) |

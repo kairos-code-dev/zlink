@@ -61,13 +61,13 @@ Spot/Entry Spot handler에서 기본 `submit(...)`/`await(...)` 경로를 쓰면
 이어 쓰는 handler는 이 기본 동작을 사용한다.
 
 player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
-흐름에서는 `yieldAwait(...)`를 사용한다. `yieldAwait(...)`는 CompletionStage 체인 스타일로
+흐름에서는 `yield(...)`를 사용한다. `yield(...)`는 CompletionStage 체인 스타일로
 handler를 바꾸라는 뜻이 아니다. 기존 동기식 handler 코드 모양을 유지하되, 현재 mailbox
 turn을 반납하고 completion 뒤 같은 mailbox continuation으로 돌아오게 한다.
 
 Bingo sample의 `MatchBingoActorHandler`는 API channel request와 room `joinSpot(...)` 대기에
-`yieldAwait(...)`를 사용한다. room list, match queue, lobby state 같은 공용 mutable state를
-await 전후로 이어서 판단하는 handler에는 `yieldAwait(...)`를 쓰지 않는다.
+`yield(...)`를 사용한다. room list, match queue, lobby state 같은 공용 mutable state를
+await 전후로 이어서 판단하는 handler에는 `yield(...)`를 쓰지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

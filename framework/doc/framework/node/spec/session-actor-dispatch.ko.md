@@ -1025,12 +1025,12 @@ interface ZLinkBoundSessionSendCall {
 
   submit(signal?: AbortSignal): Promise<void>;
 
-  yieldSubmit(signal?: AbortSignal): Promise<void>;
+  yield(signal?: AbortSignal): Promise<void>;
 }
 ```
 
 `submit(...)` 은 현재 actor handler turn을 유지하는 기본 terminator다.
-`yieldSubmit(...)` 은 framework가 만든 bound session send call object에서만 사용할 수
+`yield(...)` 은 framework가 만든 bound session send call object에서만 사용할 수
 있으며, send completion을 기다리는 동안 현재 turn을 반납하고 completion 뒤 원래 mailbox에서
 재개한다.
 

@@ -294,10 +294,10 @@ SPOT 회귀 테스트는 `.NET` framework의 Spot, actor, timer 기대값을 C++
 - Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
   같은 Entry Spot 실행 줄에서 처리하고, 같은 timer instance의 재진입도 막는다.
 - 기본 `async()` terminator는 Spot/Entry Spot handler completion까지 같은 실행 줄을
-  유지한다. `yield_async()`는 request, Spot outbound request, actor `join_spot` /
+  유지한다. `yield()`는 request, Spot outbound request, actor `join_spot` /
   `join_entry_spot`, bound session send completion, `run_worker` completion에서만 현재
   mailbox turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다.
-- `yield_async()` 중에도 같은 actor와 같은 timer는 재진입하지 않는다. 다른 actor나 다른
+- `yield()` 중에도 같은 actor와 같은 timer는 재진입하지 않는다. 다른 actor나 다른
   timer 작업은 interleave될 수 있으므로, await 전후에 공용 mutable state를 이어 판단하는
   handler는 기본 `async()`를 사용해야 한다.
 - `publish(...)`, `request_to(...)`, actor packet handler가 typed DTO와 serializer registry를

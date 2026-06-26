@@ -35,9 +35,9 @@ Spot 내부 allocator일 수도 있지만, await 전후에 Entry Spot의 room li
 같은 공용 mutable state를 이어서 판단하지 않는 admission I/O라는 조건은 같다. 이 조건을
 만족하는 Bingo match 흐름에는 yield 계열 terminator를 사용한다.
 
-언어별 이름은 각 framework public API를 따른다. `.NET`은 `YieldAsync(...)`, Java는
-`yieldAwait(...)`, Kotlin은 `yieldAwait(call, ...)`, Node.js는 `yieldSubmit(...)`,
-C++은 `yield_async()`를 사용한다. TicTacToe의 game join처럼 handler가 게임 상태 흐름의
+언어별 이름은 각 framework public API를 따른다. `.NET`은 `Yield(...)`, Java는
+`yield(...)`, Kotlin은 `yield(call, ...)`, Node.js는 `yield(...)`,
+C++은 `yield()`를 사용한다. TicTacToe의 game join처럼 handler가 게임 상태 흐름의
 일부로 바로 이어지는 코드는 기본 terminator를 유지한다.
 
 ## 샘플 포팅 기준

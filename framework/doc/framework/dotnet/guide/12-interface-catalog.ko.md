@@ -504,8 +504,8 @@ ActorRef actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLink
 |------------|------|
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context` |
 | `IZLinkActorContext` | actor 의 상태/동작 표면. `SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
-| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`/`YieldAsync`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` 또는 typed reply |
-| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`/`YieldAsync`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` 또는 typed reply |
+| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`/`Yield`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` 또는 typed reply |
+| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`/`Yield`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` 또는 typed reply |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor ref 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
 
@@ -621,7 +621,7 @@ var traceId = metadata.Find("trace-id");        // 없으면 null
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkBoundSession` | actor 에 묶인 client 로의 단방향 push. `Send<TMessage>(message)` + `DisconnectAsync`. (요청 표면 없음 — push 는 단방향) |
-| `IZLinkBoundSessionSendCall` | bound session push 종결자(`PacketName`/`Metadata` → `Async(ct)`/`YieldAsync(ct)`) |
+| `IZLinkBoundSessionSendCall` | bound session push 종결자(`PacketName`/`Metadata` → `Async(ct)`/`Yield(ct)`) |
 | `IZLinkMessageMetadataPolicy` | metadata key 전달 허용 여부(`CanForward`) |
 
 검증: `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport`.

@@ -54,11 +54,11 @@ yield 계열 terminator는 “이 I/O await 사이에 다른 mailbox 작업이 �
 
 | 언어 | yield terminator |
 |------|------------------|
-| `.NET` | `YieldAsync(...)` |
-| Java | `yieldAwait(...)`, `yieldAsync(...)` |
-| Kotlin | `yieldAwait(...)` |
-| Node/NestJS | `yieldSubmit(...)` |
-| C++ | `yield_async()` |
+| `.NET` | `Yield(...)` |
+| Java | `yield(...)` |
+| Kotlin | `yield(call, ...)` |
+| Node/NestJS | `yield(...)` |
+| C++ | `yield()` |
 
 이 이름들은 언어별 기존 terminator 관례를 유지하면서 `yield`라는 공통 개념을 드러낸다. 여기서 yield는
 thread scheduler yield가 아니라 **현재 Spot mailbox turn을 반납하고 completion 뒤 원래 mailbox에서
@@ -95,7 +95,7 @@ var count = room.Players.Count;
 var matched = await entrySpot.Context.Outbound
     .RequestToChannel(SampleNames.ApiChannel, request)
     // 여기서는 player actor 단독 admission 흐름이라 interleaving을 명시적으로 허용한다.
-    .YieldAsync<MatchBingoApiRes>(cancellationToken);
+    .Yield<MatchBingoApiRes>(cancellationToken);
 
 // 위험: count는 await 전 snapshot일 뿐 현재 상태가 아니다.
 // await 뒤 shared state로 결정해야 한다면 다시 읽거나 generation을 확인한다.
@@ -149,9 +149,9 @@ object가 생성될 때 필요한 turn handle을 캡처한다.
 |-----------|-----------|
 | `ZLinkSpotActivation` / `ZLinkEntrySpotActivation` | 단일 serial queue 의존을 mailbox와 turn을 가진 scheduler로 바꾼다. |
 | `ZLinkSpotActivationExecution` / `ZLinkEntrySpotActivationExecution` | `ExecuteAsync`, `ExecuteQueuedAsync`, `QueueSerialized`가 mailbox key와 turn을 만들도록 나눈다. |
-| `ZLinkSerialExecutionQueue` / `ZLinkSpotSerialExecutor` | 기존 `Async(...)` 경로는 serial 의미를 유지하고, `YieldAsync(...)` 경로만 turn suspend/resume을 수행한다. |
+| `ZLinkSerialExecutionQueue` / `ZLinkSpotSerialExecutor` | 기존 `Async(...)` 경로는 serial 의미를 유지하고, `Yield(...)` 경로만 turn suspend/resume을 수행한다. |
 | `ZLinkActorRuntimeState` / `ZLinkActorDispatchMailbox` | actor별 순서 보장의 기준으로 재사용한다. Spot scheduler가 같은 actor에 중복 queue를 만들지 않는다. |
-| `ZLinkSpotClientCalls`, `ZLinkChannelCalls`, actor join call 구현체 | `YieldAsync(...)` terminator를 추가하고 submit/completion을 캡처된 turn handle과 연결한다. |
+| `ZLinkSpotClientCalls`, `ZLinkChannelCalls`, actor join call 구현체 | `Yield(...)` terminator를 추가하고 submit/completion을 캡처된 turn handle과 연결한다. |
 | `ZLinkSpotTimerRegistry` / `ZLinkTimer` | timer options가 실행하기로 한 tick만 timer mailbox에 enqueue한다. |
 
 내부 타입 초안:
@@ -181,7 +181,7 @@ internal sealed class ZLinkSpotTurn
 turn 저장소로 쓰지 않고, handler 진입 시 현재 turn 검증용으로만 짧게 사용한다.
 call object는 생성 시점에 `ZLinkSpotTurn?`을 명시적으로 캡처한다.
 
-.NET handler는 일반 `async`/`await`로 작성되므로 `YieldAsync(...)`만 추가해서는 gate가 풀리지 않는다.
+.NET handler는 일반 `async`/`await`로 작성되므로 `Yield(...)`만 추가해서는 gate가 풀리지 않는다.
 serial queue가 handler의 `ValueTask` 전체를 끝까지 await하면 activation은 여전히 막힌다. 따라서 handler
 invocation과 serial queue는 yield terminator가 turn을 `Suspended`로 바꾼 순간을 관찰해야 한다. 그 시점에는
 현재 mailbox turn을 pending으로 남기고 global drain은 다음 mailbox 작업을 실행할 수 있어야 한다. I/O
@@ -207,7 +207,7 @@ public async ValueTask<MatchBingoRes> HandleAsync(
             Mode = message.Mode,
         })
         .Timeout(TimeSpan.FromSeconds(5))
-        .YieldAsync<MatchBingoApiRes>(cancellationToken); // player 단독 admission I/O 동안 actor mailbox turn을 반납한다.
+        .Yield<MatchBingoApiRes>(cancellationToken); // player 단독 admission I/O 동안 actor mailbox turn을 반납한다.
 
     var joined = await actor.Context.JoinSpot(
             RoutingId.From(matched.RoomId),
@@ -218,7 +218,7 @@ public async ValueTask<MatchBingoRes> HandleAsync(
                 DisplayName = actor.DisplayName,
                 ObserveOnly = false,
             })
-        .YieldAsync<BingoRoomJoinRes>(cancellationToken); // 같은 actor mailbox continuation으로 돌아온다.
+        .Yield<BingoRoomJoinRes>(cancellationToken); // 같은 actor mailbox continuation으로 돌아온다.
 
     return new MatchBingoRes
     {
@@ -237,7 +237,7 @@ public interface IZLinkRequestCall
     IZLinkRequestCall PacketName(string messageName);
     IZLinkRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
-    ValueTask<TReply> YieldAsync<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorJoinSpotCall
@@ -246,8 +246,8 @@ public interface IZLinkActorJoinSpotCall
     ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default);
     ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkActorJoinResult> YieldAsync(CancellationToken cancellationToken = default);
-    ValueTask<ZLinkActorJoinResult<TReply>> YieldAsync<TReply>(
+    ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorJoinResult<TReply>> Yield<TReply>(
         CancellationToken cancellationToken = default);
 }
 
@@ -257,8 +257,8 @@ public interface IZLinkActorJoinEntrySpotCall
     ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default);
     ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkActorJoinResult> YieldAsync(CancellationToken cancellationToken = default);
-    ValueTask<ZLinkActorJoinResult<TReply>> YieldAsync<TReply>(
+    ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorJoinResult<TReply>> Yield<TReply>(
         CancellationToken cancellationToken = default);
 }
 
@@ -267,14 +267,14 @@ public interface IZLinkBoundSessionSendCall
     IZLinkBoundSessionSendCall PacketName(string packetName);
     IZLinkBoundSessionSendCall Metadata(string key, string value);
     ValueTask Async(CancellationToken cancellationToken = default);
-    ValueTask YieldAsync(CancellationToken cancellationToken = default);
+    ValueTask Yield(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkWorkerCall<TResult>
 {
     IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout);
     ValueTask<TResult> Async(CancellationToken cancellationToken = default);
-    ValueTask<TResult> YieldAsync(CancellationToken cancellationToken = default);
+    ValueTask<TResult> Yield(CancellationToken cancellationToken = default);
     void Submit(
         Func<TResult, CancellationToken, ValueTask> onCompleted,
         Func<Exception, CancellationToken, ValueTask>? onError = null,
@@ -291,8 +291,8 @@ public interface IZLinkWorkerCall<TResult>
 | `ZLinkSpotRuntime.SpotActivation` / `EntrySpotActivation` | Spot 공통 yield scheduler를 갖도록 바꾼다. |
 | `DefaultSpotContext` / `DefaultEntrySpotContext` | outbound call object 생성 시 현재 turn handle을 주입한다. |
 | `ZLinkSpotDispatchQueue` | yield call이 submit되면 gated 상태를 풀고, completion은 원래 mailbox의 resume permit으로 enqueue한다. |
-| `ZLinkRequestCall`, actor join call, bound session send, worker call 구현체 | 기존 `submit(...)`과 `await(...)`는 유지하고, `yieldAsync(...)`와 `yieldAwait(...)` terminator를 추가한다. |
-| yield-aware await helper | 기존 동기 handler 코드 모양을 유지하기 위해 `yieldAwait(...)`가 turn 반납, completion 대기, scheduler resume permit 대기를 함께 처리한다. |
+| `ZLinkRequestCall`, actor join call, bound session send, worker call 구현체 | 기존 `submit(...)`과 `await(...)`는 유지하고, `yield(...)` terminator를 추가한다. |
+| yield-aware await helper | 기존 동기 handler 코드 모양을 유지하기 위해 `yield(...)`가 turn 반납, completion 대기, scheduler resume permit 대기를 함께 처리한다. |
 | handler execution thread | yield를 쓰는 동기 handler가 platform thread를 오래 붙잡지 않도록 virtual thread 또는 전용 blocking executor에서 실행한다. |
 | `ManagedTimer` | timer options가 선택한 tick만 timer mailbox에 넣는다. |
 
@@ -321,7 +321,7 @@ public Messages.MatchBingoRes handle(
             request.mode(),
             entrySpot.context().nodeRid().toString()))
         .timeout(SampleTimings.RequestTimeout)
-        .yieldAwait(Messages.MatchBingoApiRes.class); // player 단독 admission I/O 동안 actor mailbox turn을 반납한다.
+        .yield(Messages.MatchBingoApiRes.class); // player 단독 admission I/O 동안 actor mailbox turn을 반납한다.
 
     ZLinkActorJoinResult<Messages.BingoRoomJoinRes> joined = actor.context()
         .joinSpot(
@@ -331,7 +331,7 @@ public Messages.MatchBingoRes handle(
                 actor.actorId(),
                 actor.displayName(),
                 false))
-        .yieldAwait(Messages.BingoRoomJoinRes.class); // 같은 actor mailbox continuation으로 돌아온다.
+        .yield(Messages.BingoRoomJoinRes.class); // 같은 actor mailbox continuation으로 돌아온다.
 
     return new Messages.MatchBingoRes(
         matched.roomId(),
@@ -349,8 +349,7 @@ public interface ZLinkRequestCall {
     ZLinkRequestCall timeout(Duration timeout);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
     <TReply> TReply await(Class<TReply> replyType);
-    <TReply> CompletionStage<TReply> yieldAsync(Class<TReply> replyType);
-    <TReply> TReply yieldAwait(Class<TReply> replyType);
+    <TReply> TReply yield(Class<TReply> replyType);
 }
 
 public interface ZLinkActorJoinSpotCall {
@@ -359,10 +358,8 @@ public interface ZLinkActorJoinSpotCall {
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(Class<TReply> replyType);
     ZLinkActorJoinResult<Void> await();
     <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
-    CompletionStage<ZLinkActorJoinResult<Void>> yieldAsync();
-    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(Class<TReply> replyType);
-    ZLinkActorJoinResult<Void> yieldAwait();
-    <TReply> ZLinkActorJoinResult<TReply> yieldAwait(Class<TReply> replyType);
+    ZLinkActorJoinResult<Void> yield();
+    <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType);
 }
 
 public interface ZLinkActorJoinEntrySpotCall {
@@ -371,10 +368,8 @@ public interface ZLinkActorJoinEntrySpotCall {
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(Class<TReply> replyType);
     ZLinkActorJoinResult<Void> await();
     <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
-    CompletionStage<ZLinkActorJoinResult<Void>> yieldAsync();
-    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(Class<TReply> replyType);
-    ZLinkActorJoinResult<Void> yieldAwait();
-    <TReply> ZLinkActorJoinResult<TReply> yieldAwait(Class<TReply> replyType);
+    ZLinkActorJoinResult<Void> yield();
+    <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType);
 }
 
 public interface ZLinkBoundSessionSendCall {
@@ -382,36 +377,33 @@ public interface ZLinkBoundSessionSendCall {
     ZLinkBoundSessionSendCall metadata(String key, String value);
     CompletionStage<Void> submit();
     void await();
-    CompletionStage<Void> yieldAsync();
-    void yieldAwait();
+    void yield();
 }
 
 public interface ZLinkWorkerCall<T> {
     ZLinkWorkerCall<T> timeout(Duration timeout);
     CompletionStage<T> submit();
-    T await();
-    CompletionStage<T> yieldAsync();
-    T yieldAwait();
+    T yield();
     void submit(
         BiConsumer<T, CancellationToken> onCompleted,
         BiConsumer<Throwable, CancellationToken> onError);
 }
 ```
 
-Java의 권장 사용 코드는 기존 동기 handler 모양을 유지한다. `yieldAwait(...)`는 단순히
+Java의 권장 사용 코드는 기존 동기 handler 모양을 유지한다. `yield(...)`는 단순히
 `CompletionStage.join()`을 호출하는 helper가 아니다. 이 helper는 yield call이 캡처한 turn을 먼저
 `Suspended`로 바꾸고, I/O completion이 도착하면 원래 mailbox에 resume permit을 넣은 뒤, scheduler가
 그 permit을 실행할 때까지 기다린다. 그래서 handler의 나머지 코드는 사용자가 보기에는 동기식으로 이어지지만
 Spot scheduler 관점에서는 원래 mailbox에서 재개된 turn으로 처리된다.
 
 이 방식은 대기 중인 Java 실행 흐름을 만든다. 따라서 Java runtime은 yield-aware handler를 virtual thread
-또는 전용 blocking executor에서 실행해야 한다. platform thread serial executor 위에서 `yieldAwait(...)`를
+또는 전용 blocking executor에서 실행해야 한다. platform thread serial executor 위에서 `yield(...)`를
 직접 막으면 player 수가 많을 때 thread 병목이 다시 생긴다.
 
 ### 3. Kotlin
 
 Kotlin은 Java framework core 위의 coroutine adapter다. Kotlin 전용 scheduler나 coroutine-local turn
-저장소를 만들지 않는다. Java call object가 캡처한 turn handle을 사용하고, Kotlin은 `yieldAwait(...)`
+저장소를 만들지 않는다. Java call object가 캡처한 turn handle을 사용하고, Kotlin은 `yield(...)`
 helper로 제한적 interleaving을 명시한다.
 
 #### 실제 사용 코드
@@ -424,7 +416,7 @@ override suspend fun handle(
     request: MatchBingoReq,
     cancellationToken: CancellationToken,
 ): MatchBingoRes {
-    val matched = yieldAwait(
+    val matched = yield(
         entrySpot.context().outbound()
             .requestToChannel(
                 SampleNames.ApiChannel,
@@ -439,7 +431,7 @@ override suspend fun handle(
         MatchBingoApiRes::class.java,
     ) // Java call object가 actor mailbox turn을 반납한다.
 
-    val joined = yieldAwait(
+    val joined = yield(
         actor.context().joinSpot(
             RoutingId.from(matched.roomId),
             BingoRoomJoinReq(matched.roomId, actor.actorId, actor.displayName, false),
@@ -454,38 +446,38 @@ override suspend fun handle(
 #### Kotlin helper 초안
 
 ```kotlin
-suspend inline fun <reified TReply> yieldAwait(call: ZLinkRequestCall): TReply =
-    yieldAwait(call, TReply::class.java)
+suspend inline fun <reified TReply> yield(call: ZLinkRequestCall): TReply =
+    yield(call, TReply::class.java)
 
-suspend fun <TReply> yieldAwait(call: ZLinkRequestCall, replyType: Class<TReply>): TReply =
-    call.yieldAsync(replyType).await()
+suspend fun <TReply> yield(call: ZLinkRequestCall, replyType: Class<TReply>): TReply =
+    call.yield(replyType)
 
-suspend inline fun <reified TReply> yieldAwait(call: ZLinkActorJoinSpotCall):
+suspend inline fun <reified TReply> yield(call: ZLinkActorJoinSpotCall):
     ZLinkActorJoinResult<TReply> =
-    yieldAwait(call, TReply::class.java)
+    yield(call, TReply::class.java)
 
-suspend fun <TReply> yieldAwait(
+suspend fun <TReply> yield(
     call: ZLinkActorJoinSpotCall,
     replyType: Class<TReply>,
 ): ZLinkActorJoinResult<TReply> =
-    call.yieldAsync(replyType).await()
+    call.yield(replyType)
 
-suspend inline fun <reified TReply> yieldAwait(call: ZLinkActorJoinEntrySpotCall):
+suspend inline fun <reified TReply> yield(call: ZLinkActorJoinEntrySpotCall):
     ZLinkActorJoinResult<TReply> =
-    yieldAwait(call, TReply::class.java)
+    yield(call, TReply::class.java)
 
-suspend fun <TReply> yieldAwait(
+suspend fun <TReply> yield(
     call: ZLinkActorJoinEntrySpotCall,
     replyType: Class<TReply>,
 ): ZLinkActorJoinResult<TReply> =
-    call.yieldAsync(replyType).await()
+    call.yield(replyType)
 
-suspend fun yieldAwait(call: ZLinkBoundSessionSendCall) {
-    call.yieldAsync().await()
+suspend fun yield(call: ZLinkBoundSessionSendCall) {
+    call.yield()
 }
 
-suspend fun <T> yieldAwait(call: ZLinkWorkerCall<T>): T =
-    call.yieldAsync().await()
+suspend fun <T> yield(call: ZLinkWorkerCall<T>): T =
+    call.yield()
 ```
 
 `CoroutineContext`는 기본 serial handler의 coroutine context로는 사용할 수 있다. 하지만 yield 경로에서는
@@ -498,9 +490,9 @@ adapter다.
 
 | 현재 코드 | 변경 방향 |
 |-----------|-----------|
-| `SpotActivation` / `ZLinkEntrySpotActivation` | 기존 `submit(...)`은 serial 의미를 유지하고, `yieldSubmit(...)`만 handler `Promise` 전체를 serial tail에 매달지 않는다. |
+| `SpotActivation` / `ZLinkEntrySpotActivation` | 기존 `submit(...)`은 serial 의미를 유지하고, `yield(...)`만 handler `Promise` 전체를 serial tail에 매달지 않는다. |
 | `spotSerialTurnStorage` | turn 저장소가 아니라 현재 실행 중 turn 검증용 보조 수단으로만 사용한다. |
-| `wrapRequestCall`, actor join call, bound session send call | `yieldSubmit(...)`이 call object에 캡처된 turn handle을 사용한다. |
+| `wrapRequestCall`, actor join call, bound session send call | `yield(...)`이 call object에 캡처된 turn handle을 사용한다. |
 | routed Spot request wrapper | resolver 대기와 transport submit도 yield 경로에서 scheduler turn을 올바르게 반납하도록 분리한다. |
 | timer runtime | timer options가 선택한 tick만 timer mailbox에 넣는다. |
 
@@ -525,7 +517,7 @@ async handle(
       mode: request.mode
     })
     .timeout(5000)
-    .yieldSubmit<MatchBingoApiRes>(context.connectionAborted); // player 단독 admission I/O 동안 actor mailbox turn을 반납한다.
+    .yield<MatchBingoApiRes>(context.connectionAborted); // player 단독 admission I/O 동안 actor mailbox turn을 반납한다.
 
   const joined = await actor.context
     .joinSpot(matched.roomId, {
@@ -534,7 +526,7 @@ async handle(
       displayName: actor.displayName,
       observeOnly: false
     })
-    .yieldSubmit<BingoRoomJoinRes>(context.connectionAborted); // 같은 actor mailbox continuation으로 돌아온다.
+    .yield<BingoRoomJoinRes>(context.connectionAborted); // 같은 actor mailbox continuation으로 돌아온다.
 
   if (joined.resultCode !== 0) {
     throw new Error(`Room ${matched.roomId} rejected actor '${actor.actorId}'.`);
@@ -558,32 +550,32 @@ export interface ZLinkRequestCall {
   packetName(packetName: string): this;
   timeout(timeoutMs: number): this;
   submit<TReply = unknown>(signal?: AbortSignal): Promise<TReply>;
-  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<TReply>;
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<TReply>;
 }
 
 export interface ZLinkActorJoinSpotCall {
   timeout(timeoutMs: number): this;
   submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
-  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorJoinEntrySpotCall {
   timeout(timeoutMs: number): this;
   submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
-  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkBoundSessionSendCall {
   metadata(key: string, value: string): this;
   packetName(packetName: string): this;
   submit(signal?: AbortSignal): Promise<void>;
-  yieldSubmit(signal?: AbortSignal): Promise<void>;
+  yield(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkWorkerCall<T> {
   timeoutMs(durationMs: number): this;
   submit(signal?: AbortSignal): Promise<T>;
-  yieldSubmit(signal?: AbortSignal): Promise<T>;
+  yield(signal?: AbortSignal): Promise<T>;
   onCompleted(
     callback: (result: T, signal?: AbortSignal) => void | Promise<void>,
     onError?: (error: unknown, signal?: AbortSignal) => void | Promise<void>,
@@ -599,8 +591,8 @@ export interface ZLinkWorkerCall<T> {
 | 현재 코드 | 변경 방향 |
 |-----------|-----------|
 | `task_t<T>` | coroutine continuation scheduler가 원래 mailbox로 resume할 수 있게 확장한다. |
-| `request_call_t<TReply>` / `channel_request_call_t` | 기존 `async()`는 serial 의미를 유지하고, `yield_async()`가 캡처된 turn handle을 사용한다. |
-| `actor_join_spot_call_t` / `actor_join_entry_spot_call_t` | 현재 즉시 `result_t`를 감싸는 구조라 I/O 대기를 표현할 수 없다. `yield_async()`를 공개 완료로 보려면 call object 생성 시 dispatcher를 실행하지 않고, async submit 기반 call state가 dispatcher submit과 reply completion을 소유하도록 먼저 바꾼다. |
+| `request_call_t<TReply>` / `channel_request_call_t` | 기존 `async()`는 serial 의미를 유지하고, `yield()`가 캡처된 turn handle을 사용한다. |
+| `actor_join_spot_call_t` / `actor_join_entry_spot_call_t` | 현재 즉시 `result_t`를 감싸는 구조라 I/O 대기를 표현할 수 없다. `yield()`를 공개 완료로 보려면 call object 생성 시 dispatcher를 실행하지 않고, async submit 기반 call state가 dispatcher submit과 reply completion을 소유하도록 먼저 바꾼다. |
 | `bound_session_send_call_t` | bound session send completion만 yield 대상으로 분리한다. 일반 channel send/publish와 Spot send에는 yield terminator를 추가하지 않는다. |
 | `spot_context_t` / `entry_spot_context_t` | call object 생성 시 현재 turn handle을 전달한다. |
 | `timer_runtime_t` | timer options가 전달하기로 한 tick만 timer mailbox에 넣는다. |
@@ -627,7 +619,7 @@ match_bingo_actor_handler_t::handle (bingo_entry_spot_t &entry_spot,
                              request.mode,
                              entry_spot.context ().node_rid ().to_string ()})
       .timeout (std::chrono::seconds (5))
-      .yield_async<match_bingo_api_res_t> (); // player 단독 admission I/O 동안 actor mailbox turn을 반납한다.
+      .yield<match_bingo_api_res_t> (); // player 단독 admission I/O 동안 actor mailbox turn을 반납한다.
 
     auto joined = co_await actor.context ()
       .join_spot (spot_rid_t::from (matched.room_id),
@@ -635,7 +627,7 @@ match_bingo_actor_handler_t::handle (bingo_entry_spot_t &entry_spot,
                                         actor.actor_id (),
                                         actor.display_name (),
                                         false})
-      .yield_async<bingo_room_join_res_t> (); // 같은 actor mailbox continuation으로 돌아온다.
+      .yield<bingo_room_join_res_t> (); // 같은 actor mailbox continuation으로 돌아온다.
 
     co_return match_bingo_res_t{
       matched.room_id,
@@ -655,7 +647,7 @@ class request_call_t
     request_call_t &metadata (std::string key, std::string value);
     request_call_t &timeout (std::chrono::milliseconds timeout);
     task_t<TReply> async ();
-    task_t<TReply> yield_async ();
+    task_t<TReply> yield ();
 };
 
 class channel_request_call_t
@@ -669,7 +661,7 @@ class channel_request_call_t
     task_t<TReply> async ();
 
     template <typename TReply>
-    task_t<TReply> yield_async ();
+    task_t<TReply> yield ();
 };
 
 class actor_join_spot_call_t
@@ -681,10 +673,10 @@ class actor_join_spot_call_t
     template <typename TReply>
     task_t<typed_actor_join_result_t<TReply>> async ();
 
-    task_t<actor_join_result_t> yield_async ();
+    task_t<actor_join_result_t> yield ();
 
     template <typename TReply>
-    task_t<typed_actor_join_result_t<TReply>> yield_async ();
+    task_t<typed_actor_join_result_t<TReply>> yield ();
 };
 
 class actor_join_entry_spot_call_t
@@ -696,10 +688,10 @@ class actor_join_entry_spot_call_t
     template <typename TReply>
     task_t<typed_actor_join_result_t<TReply>> async ();
 
-    task_t<actor_join_result_t> yield_async ();
+    task_t<actor_join_result_t> yield ();
 
     template <typename TReply>
-    task_t<typed_actor_join_result_t<TReply>> yield_async ();
+    task_t<typed_actor_join_result_t<TReply>> yield ();
 };
 
 class bound_session_send_call_t
@@ -709,7 +701,7 @@ class bound_session_send_call_t
     bound_session_send_call_t &metadata (std::string key, std::string value);
     bound_session_send_call_t &timeout (std::chrono::milliseconds timeout);
     task_t<void> async ();
-    task_t<void> yield_async ();
+    task_t<void> yield ();
 };
 
 template <typename T>
@@ -720,13 +712,13 @@ class worker_call_t
 
     worker_call_t &timeout (std::chrono::milliseconds timeout);
     task_t<T> async ();
-    task_t<T> yield_async ();
+    task_t<T> yield ();
     void submit (completion_callback_t callback);
 };
 ```
 
 위 C++ actor join 예제와 인터페이스는 async submit 기반 call state 전환이 끝난 뒤에만 정식 문서와 sample에
-반영한다. 현재처럼 join dispatcher가 call object 생성 전에 이미 실행되는 구조에서는 `yield_async()`를 붙여도
+반영한다. 현재처럼 join dispatcher가 call object 생성 전에 이미 실행되는 구조에서는 `yield()`를 붙여도
 대기 중인 I/O 동안 mailbox turn을 반납할 수 없으므로 완료로 보지 않는다.
 
 ## runtime 설계
@@ -813,17 +805,17 @@ handler를 정상 continuation으로 재개하지 않고 cancellation/error path
 아래 순서는 구현을 나누어 출시한다는 뜻이 아니다. 기능은 Spot/Entry Spot 공통 기능으로 한 번에 완성한다.
 
 1. `.NET` runtime에서 activation scheduler, mailbox key, turn state, snapshot validation을 먼저 정리한다.
-2. 기존 `.NET` `Async(...)`는 유지하고 `YieldAsync(...)`를 캡처된 turn handle에 연결한다.
+2. 기존 `.NET` `Async(...)`는 유지하고 `Yield(...)`를 캡처된 turn handle에 연결한다.
 3. actor, timer, route, subscription, lifecycle dispatch 경로를 mailbox scheduler 위로 옮긴다.
-4. `.NET` sample과 E2E 코드를 검색해서 `YieldAsync(...)` 적용 후보가 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
-5. Java core scheduler와 `yieldAsync(...)`/`yieldAwait(...)` 경로를 같은 의미로 구현하고, yield-aware handler 실행을 virtual thread 또는 전용 blocking executor에 연결한다.
-6. Java sample과 E2E 코드를 검색해서 동기식 handler 모양으로 `yieldAwait(...)`를 적용할 곳이 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
-7. Kotlin은 `yieldAwait(...)` helper가 Java core 동작을 따르게 한다.
+4. `.NET` sample과 E2E 코드를 검색해서 `Yield(...)` 적용 후보가 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
+5. Java core scheduler와 `yield(...)` 경로를 구현하고, yield-aware handler 실행을 virtual thread 또는 전용 blocking executor에 연결한다.
+6. Java sample과 E2E 코드를 검색해서 동기식 handler 모양으로 `yield(...)`를 적용할 곳이 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
+7. Kotlin은 `yield(...)` helper가 Java core 동작을 따르게 한다.
 8. Kotlin sample과 E2E 코드를 검색해서 Java core helper 위에서 바꿔야 할 곳이 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
-9. Node는 `yieldSubmit(...)`이 handler `Promise` 전체를 serial tail에 매달지 않게 한다.
-10. Node/NestJS sample과 E2E 코드를 검색해서 `yieldSubmit(...)` 적용 후보가 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
-11. C++은 `task_t` continuation scheduler와 async submit 기반 join call state를 정리한 뒤 `yield_async()`에 연결한다.
-12. C++ sample과 E2E 코드를 검색해서 coroutine handler의 `yield_async()` 적용 후보가 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
+9. Node는 `yield(...)`이 handler `Promise` 전체를 serial tail에 매달지 않게 한다.
+10. Node/NestJS sample과 E2E 코드를 검색해서 `yield(...)` 적용 후보가 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
+11. C++은 `task_t` continuation scheduler와 async submit 기반 join call state를 정리한 뒤 `yield()`에 연결한다.
+12. C++ sample과 E2E 코드를 검색해서 coroutine handler의 `yield()` 적용 후보가 있는지 확인하고, 필요한 곳은 실제 sample/E2E 코드까지 바꾼다.
 13. 모든 언어에서 기본 serial 의미를 검증해야 하는 sample/E2E는 기존 terminator로 남겼는지 다시 확인한다. 적용할 곳이 없으면 어떤 sample/E2E를 확인했고 왜 유지했는지 구현 기록에 남긴다.
 14. 구현이 끝난 뒤 공통 framework spec과 언어별 spec/guide에는 실제 구현된 동작만 반영한다.
 15. 구현, 테스트, 문서 반영이 끝나면 Codex 에이전트로 누락과 남은 이슈를 리뷰한다. 이슈가 나오면 수정한 뒤 다시 리뷰하며, 남은 이슈가 없다는 판정이 나올 때만 최종 완료로 처리한다.
@@ -852,17 +844,17 @@ API와 동작만 `framework/doc/` 아래 문서에 나누어 반영한다.
 
 | 언어 | 수정 문서 | 반영 내용 |
 |------|-----------|-----------|
-| `.NET` | `framework/doc/framework/dotnet/spec/aspnet-core-spot.ko.md` | Spot/Entry Spot handler에서 `YieldAsync(...)`를 호출했을 때의 mailbox turn 반납과 재개 규칙을 적는다. |
+| `.NET` | `framework/doc/framework/dotnet/spec/aspnet-core-spot.ko.md` | Spot/Entry Spot handler에서 `Yield(...)`를 호출했을 때의 mailbox turn 반납과 재개 규칙을 적는다. |
 | `.NET` | `framework/doc/framework/dotnet/spec/aspnet-core-actor.ko.md` | `IZLinkActorJoinSpotCall`, `IZLinkActorJoinEntrySpotCall`, `IZLinkBoundSessionSendCall`의 yield terminator 계약을 적는다. |
 | `.NET` | `framework/doc/framework/dotnet/spec/handler-interfaces.ko.md` | handler가 yield 전후에 같은 actor/timer 재진입을 받지 않는다는 규칙과 exception/cancellation 처리를 적는다. |
-| Java | `framework/doc/framework/java/spec/spring-boot-spot.ko.md` | `yieldAwait(...)`가 동기식 handler 코드 모양을 유지하면서 mailbox turn을 반납하는 계약을 적는다. |
+| Java | `framework/doc/framework/java/spec/spring-boot-spot.ko.md` | `yield(...)`가 동기식 handler 코드 모양을 유지하면서 mailbox turn을 반납하는 계약을 적는다. |
 | Java | `framework/doc/framework/java/spec/spring-boot-actor-session.ko.md` | actor join과 bound session send completion의 yield 계약을 적는다. |
-| Java | `framework/doc/framework/java/spec/handler-interfaces.ko.md` | 기존 동기 handler와 `ZLinkAwait.await(...)`는 기본 serial 의미를 유지하고, `yieldAwait(...)`는 virtual thread 또는 전용 blocking executor 위에서만 사용한다고 적는다. |
-| Kotlin | `framework/doc/framework/kotlin/guide/05-spot.ko.md` | Kotlin은 Java core 위 adapter이며 `yieldAwait(...)` helper로 같은 yield 의미를 사용한다고 설명한다. |
-| Node/NestJS | `framework/doc/framework/node/spec/nestjs-spot.ko.md` | `yieldSubmit(...)`이 handler `Promise` 전체를 serial tail에 매달지 않는 규칙을 적는다. |
-| Node/NestJS | `framework/doc/framework/node/spec/nestjs-actor.ko.md` | actor join과 bound session send completion의 `yieldSubmit(...)` 계약을 적는다. |
+| Java | `framework/doc/framework/java/spec/handler-interfaces.ko.md` | 기존 동기 handler와 `ZLinkAwait.await(...)`는 기본 serial 의미를 유지하고, `yield(...)`는 virtual thread 또는 전용 blocking executor 위에서만 사용한다고 적는다. |
+| Kotlin | `framework/doc/framework/kotlin/guide/05-spot.ko.md` | Kotlin은 Java core 위 adapter이며 `yield(...)` helper로 같은 yield 의미를 사용한다고 설명한다. |
+| Node/NestJS | `framework/doc/framework/node/spec/nestjs-spot.ko.md` | `yield(...)`이 handler `Promise` 전체를 serial tail에 매달지 않는 규칙을 적는다. |
+| Node/NestJS | `framework/doc/framework/node/spec/nestjs-actor.ko.md` | actor join과 bound session send completion의 `yield(...)` 계약을 적는다. |
 | Node/NestJS | `framework/doc/framework/node/spec/handler-interfaces.ko.md` | `AsyncLocalStorage`는 기본 serial handler의 request/logging context로만 보장하고, yield 경로의 turn 저장소가 아니라고 적는다. |
-| C++ | `framework/doc/framework/cpp/spec/cpp-spot.ko.md` | `yield_async()`가 coroutine continuation을 원래 mailbox로 재개하는 규칙을 적는다. |
+| C++ | `framework/doc/framework/cpp/spec/cpp-spot.ko.md` | `yield()`가 coroutine continuation을 원래 mailbox로 재개하는 규칙을 적는다. |
 | C++ | `framework/doc/framework/cpp/spec/actor-gateway-session-relay.ko.md` | actor join과 bound session send completion의 yield 계약을 적는다. |
 | C++ | `framework/doc/framework/cpp/spec/handler-interfaces.ko.md` | `task_t` handler에서 yield 전후 actor/timer 재진입 금지와 exception/error path를 적는다. |
 
@@ -873,11 +865,11 @@ API를 spec에 먼저 쓰지 않는다.
 
 | 언어 | 수정 문서 | 반영 내용 |
 |------|-----------|-----------|
-| `.NET` | `framework/doc/framework/dotnet/guide/05-spot.ko.md`, `framework/doc/framework/dotnet/guide/06-actor-spot.ko.md` | Bingo match처럼 player 단독 admission I/O에서 `YieldAsync(...)`를 쓰는 예제와 사용 금지 패턴을 함께 둔다. |
-| Java | `framework/doc/framework/java/guide/05-spot.ko.md`, `framework/doc/framework/java/guide/06-actor-session.ko.md` | `yieldAwait(...)` 예제와 기존 `await(...)` helper가 serial 의미를 유지한다는 설명을 둔다. |
-| Kotlin | `framework/doc/framework/kotlin/guide/05-spot.ko.md`, `framework/doc/framework/kotlin/guide/06-actor-session.ko.md` | `yieldAwait(...)` 예제와 coroutine context를 turn 저장소로 쓰지 않는 가이드를 둔다. |
-| Node/NestJS | `framework/doc/framework/node/guide/05-spot.ko.md`, `framework/doc/framework/node/guide/06-actor-session.ko.md` | `yieldSubmit(...)` 예제와 `AsyncLocalStorage` 사용 가능 범위, 금지 범위를 함께 적는다. |
-| C++ | `framework/doc/framework/cpp/guide/08-spot.ko.md`, `framework/doc/framework/cpp/guide/09-actor-session.ko.md` | `yield_async()` 예제와 `thread_local`을 turn 저장소로 쓰지 않는 가이드를 둔다. |
+| `.NET` | `framework/doc/framework/dotnet/guide/05-spot.ko.md`, `framework/doc/framework/dotnet/guide/06-actor-spot.ko.md` | Bingo match처럼 player 단독 admission I/O에서 `Yield(...)`를 쓰는 예제와 사용 금지 패턴을 함께 둔다. |
+| Java | `framework/doc/framework/java/guide/05-spot.ko.md`, `framework/doc/framework/java/guide/06-actor-session.ko.md` | `yield(...)` 예제와 기존 `await(...)` helper가 serial 의미를 유지한다는 설명을 둔다. |
+| Kotlin | `framework/doc/framework/kotlin/guide/05-spot.ko.md`, `framework/doc/framework/kotlin/guide/06-actor-session.ko.md` | `yield(...)` 예제와 coroutine context를 turn 저장소로 쓰지 않는 가이드를 둔다. |
+| Node/NestJS | `framework/doc/framework/node/guide/05-spot.ko.md`, `framework/doc/framework/node/guide/06-actor-session.ko.md` | `yield(...)` 예제와 `AsyncLocalStorage` 사용 가능 범위, 금지 범위를 함께 적는다. |
+| C++ | `framework/doc/framework/cpp/guide/08-spot.ko.md`, `framework/doc/framework/cpp/guide/09-actor-session.ko.md` | `yield()` 예제와 `thread_local`을 turn 저장소로 쓰지 않는 가이드를 둔다. |
 
 guide에는 내부 scheduler class 이름을 설명하지 않는다. 사용자가 알아야 하는 것은 언제 yield를 쓰고 언제 쓰지
 말아야 하는지, 그리고 await 뒤 shared state를 다시 확인해야 한다는 점이다.
@@ -887,7 +879,7 @@ guide에는 내부 scheduler class 이름을 설명하지 않는다. 사용자�
 | 언어 | 수정 문서 | 반영 내용 |
 |------|-----------|-----------|
 | `.NET` | `framework/doc/framework/dotnet/internals/behavior-matrix.ko.md`, `framework/doc/framework/dotnet/internals/regression-test-matrix.ko.md` | mailbox scheduler, turn state, snapshot validation, local context 검증 테스트를 적는다. |
-| Java | `framework/doc/framework/java/internals/behavior-matrix.ko.md`, `framework/doc/framework/java/internals/regression-test-matrix.ko.md` | `yieldAwait(...)`가 turn 반납, completion 대기, scheduler resume permit 대기를 어떻게 연결하는지 적는다. |
+| Java | `framework/doc/framework/java/internals/behavior-matrix.ko.md`, `framework/doc/framework/java/internals/regression-test-matrix.ko.md` | `yield(...)`가 turn 반납, completion 대기, scheduler resume permit 대기를 어떻게 연결하는지 적는다. |
 | Node/NestJS | `framework/doc/framework/node/internals/behavior-matrix.ko.md`, `framework/doc/framework/node/internals/regression-test-matrix.ko.md` | `Promise` continuation 재투입, `AsyncLocalStorage` 비의존, fairness 테스트를 적는다. |
 | C++ | `framework/doc/framework/cpp/internals/cpp-framework-overview.ko.md`, `framework/doc/framework/cpp/internals/regression-test-matrix.ko.md` | `task_t` continuation scheduler와 native message lifetime snapshot을 적는다. |
 
@@ -973,10 +965,10 @@ sample과 E2E는 사용자가 직접 따라 하는 공개 사용 패턴이므로
 | 영역 | 확인 내용 |
 |------|-----------|
 | `.NET` sample | Bingo `MatchBingoActorHandler`와 다른 Spot/Entry Spot handler에서 admission/preflight I/O가 있는지 확인한다. |
-| Java sample | 동기식 handler 모양을 유지하면서 `yieldAwait(...)`를 적용할 곳이 있는지 확인한다. |
-| Kotlin sample | Java core helper 위에서 `yieldAwait(...)`를 적용할 곳이 있는지 확인한다. |
-| Node/NestJS sample | `yieldSubmit(...)`로 바꿔야 하는 Spot/Entry Spot handler가 있는지 확인한다. |
-| C++ sample | `yield_async()`로 바꿔야 하는 coroutine handler가 있는지 확인한다. |
+| Java sample | 동기식 handler 모양을 유지하면서 `yield(...)`를 적용할 곳이 있는지 확인한다. |
+| Kotlin sample | Java core helper 위에서 `yield(...)`를 적용할 곳이 있는지 확인한다. |
+| Node/NestJS sample | `yield(...)`로 바꿔야 하는 Spot/Entry Spot handler가 있는지 확인한다. |
+| C++ sample | `yield()`로 바꿔야 하는 coroutine handler가 있는지 확인한다. |
 | 공통 E2E | 공통 E2E 트리가 있으면 actor yield 중 다른 actor 실행, 같은 actor 재진입 금지, timer yield, timeout/cancellation race를 scenario로 추가한다. 공통 E2E 트리가 없으면 runtime 회귀 테스트와 언어별 sample/E2E 확인 기록으로 대체한다. |
 | 언어별 E2E | 각 언어 public API 이름으로 같은 의미가 검증되는지 확인한다. Spot/Entry Spot handler E2E가 없는 언어는 적용할 코드가 없다는 사유와 대신 실행한 runtime/sample 검증을 기록한다. |
 
@@ -984,11 +976,11 @@ sample과 E2E는 사용자가 직접 따라 하는 공개 사용 패턴이므로
 
 | 경로 | 처리 기준 |
 |------|-----------|
-| `framework/languages/dotnet/samples/` | 실제 Bingo admission/preflight handler부터 확인하고, 안전한 후보는 `YieldAsync(...)`로 바꾼다. |
-| `framework/languages/java/samples/` | handler 코드 모양이 동기식으로 유지되는지 보면서 `yieldAwait(...)` 후보를 적용한다. |
-| `framework/languages/java/samples/kotlin/` | Java core helper를 쓰는 Kotlin sample에서 `yieldAwait(...)` 후보가 있는지 확인한다. |
-| `framework/languages/node/samples/` | `submit(...)`을 기다리는 Spot/Entry Spot handler 중 안전한 후보를 `yieldSubmit(...)`으로 바꾼다. |
-| `framework/languages/cpp/samples/` | coroutine handler에서 `co_await ... async()`를 쓰는 후보를 확인하고 안전한 곳만 `yield_async()`로 바꾼다. |
+| `framework/languages/dotnet/samples/` | 실제 Bingo admission/preflight handler부터 확인하고, 안전한 후보는 `Yield(...)`로 바꾼다. |
+| `framework/languages/java/samples/` | handler 코드 모양이 동기식으로 유지되는지 보면서 `yield(...)` 후보를 적용한다. |
+| `framework/languages/java/samples/kotlin/` | Java core helper를 쓰는 Kotlin sample에서 `yield(...)` 후보가 있는지 확인한다. |
+| `framework/languages/node/samples/` | `submit(...)`을 기다리는 Spot/Entry Spot handler 중 안전한 후보를 `yield(...)`으로 바꾼다. |
+| `framework/languages/cpp/samples/` | coroutine handler에서 `co_await ... async()`를 쓰는 후보를 확인하고 안전한 곳만 `yield()`로 바꾼다. |
 | `framework/common/e2e/` | 디렉토리가 있으면 공통 scenario 정의가 yield dispatch를 요구하는지 확인하고, 요구하면 언어별 E2E에 반영할 기준을 적는다. 디렉토리가 없으면 없는 사실을 구현 기록에 남긴다. |
 | `framework/languages/*/e2e/` | 언어별 public API 이름으로 sample pattern E2E와 scheduler semantics E2E를 검증할 수 있는 Spot/Entry Spot scenario가 있는지 확인한다. 없으면 무관한 E2E를 바꾸지 않고 미적용 사유를 남긴다. |
 
@@ -1017,7 +1009,7 @@ sample과 E2E는 사용자가 직접 따라 하는 공개 사용 패턴이므로
 - 공통 spec, 언어별 spec, guide, internals, feature-map 사이의 설명이 서로 충돌하지 않는지 확인한다.
 - 실제 구현된 public API와 문서의 API 이름, 반환 타입, timeout/cancellation 설명이 맞는지 확인한다.
 - 기본 terminator의 serial 의미와 yield 계열 terminator의 interleaving 의미가 문서 전체에서 섞이지 않았는지 확인한다.
-- Java의 `yieldAwait(...)`, Kotlin의 helper, Node의 `yieldSubmit(...)`, C++의 `yield_async()`처럼 언어별 차이가 빠지지 않았는지 확인한다.
+- Java의 `yield(...)`, Kotlin의 helper, Node의 `yield(...)`, C++의 `yield()`처럼 언어별 차이가 빠지지 않았는지 확인한다.
 - local context 사용 가능 범위와 yield 경로의 금지 범위가 문서 전체에서 같은 의미로 쓰였는지 확인한다.
 - sample과 E2E 실제 코드가 필요한 위치에 yield 계열 terminator를 사용하고, 기본 serial 의미를 검증해야 하는 코드는 기존 terminator로 남겨 두었는지 확인한다.
 - sample과 E2E 적용이 누락된 언어가 있으면 문서만 수정하지 말고 해당 sample/E2E 코드 또는 미적용 사유까지 보완했는지 확인한다.
@@ -1113,15 +1105,15 @@ cancellation, actor lifetime, timer overrun, 언어별 async runtime이 함께 �
 
 | 언어 | 테스트 |
 |------|--------|
-| `.NET` | `YieldAsync(...)`가 `AsyncLocal`에 의존하지 않고 캡처된 turn handle로 원래 mailbox에 재개되는지 확인한다. |
+| `.NET` | `Yield(...)`가 `AsyncLocal`에 의존하지 않고 캡처된 turn handle로 원래 mailbox에 재개되는지 확인한다. |
 | `.NET` | `ValueTask`가 두 번 await되거나 terminator가 두 번 호출되는 사용 오류를 기존 정책대로 실패시키는지 확인한다. |
-| Java | 기존 동기 handler와 `ZLinkAwait.await(...)`는 serial 의미를 유지하고, `yieldAwait(...)`를 호출한 handler만 interleaving을 허용하는지 확인한다. |
-| Java | `yieldAwait(...)`를 platform thread serial executor에서 직접 막지 않고 virtual thread 또는 전용 blocking executor에서 실행하는지 확인한다. |
+| Java | 기존 동기 handler와 `ZLinkAwait.await(...)`는 serial 의미를 유지하고, `yield(...)`를 호출한 handler만 interleaving을 허용하는지 확인한다. |
+| Java | `yield(...)`를 platform thread serial executor에서 직접 막지 않고 virtual thread 또는 전용 blocking executor에서 실행하는지 확인한다. |
 | Java | `ThreadLocal`이 completion thread에서 원래 turn을 찾는 데 사용되지 않는지 확인한다. |
-| Kotlin | `yieldAwait(...)` helper가 Java `yieldAsync(...)`를 호출하고 `CoroutineContext`를 turn 저장소로 사용하지 않는지 확인한다. |
-| Node/NestJS | `yieldSubmit(...)`이 handler `Promise` 전체를 serial tail에 매달지 않고, `AsyncLocalStorage` 없이 캡처된 turn handle로 재개되는지 확인한다. |
+| Kotlin | `yield(...)` helper가 Java `yield(...)`를 호출하고 `CoroutineContext`를 turn 저장소로 사용하지 않는지 확인한다. |
+| Node/NestJS | `yield(...)`이 handler `Promise` 전체를 serial tail에 매달지 않고, `AsyncLocalStorage` 없이 캡처된 turn handle로 재개되는지 확인한다. |
 | Node/NestJS | `AbortSignal` cancellation과 late promise resolution이 pending turn을 한 번만 완료하는지 확인한다. |
-| C++ | `yield_async()` continuation이 resume thread와 무관하게 원래 mailbox로 들어오는지 확인한다. |
+| C++ | `yield()` continuation이 resume thread와 무관하게 원래 mailbox로 들어오는지 확인한다. |
 | C++ | `task_t` cancellation/error와 native message lifetime snapshot이 use-after-free 없이 동작하는지 확인한다. |
 
 ### 8. 부하와 성능 회귀

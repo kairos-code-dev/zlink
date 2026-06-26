@@ -1067,9 +1067,9 @@ join 문맥이 함께 검증되어야 한다. 또한 spot 클래스와 id 를 �
 | `entrySpot timer does not reenter same timer` | Entry Spot timer 는 같은 timer callback 을 겹쳐 실행하지 않는다. |
 
 기본 `submit(...)` 경로는 Spot/Entry Spot handler completion까지 같은 실행 줄을 유지한다.
-`yieldSubmit(...)`은 request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`,
+`yield(...)`은 request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`,
 bound session send completion, `runWorker` completion에서만 현재 mailbox turn을 반납하고
-completion 뒤 원래 mailbox에서 재개한다. `yieldSubmit(...)` 중에도 같은 actor와 같은 timer는
+completion 뒤 원래 mailbox에서 재개한다. `yield(...)` 중에도 같은 actor와 같은 timer는
 재진입하지 않는다. 다른 actor나 다른 timer 작업은 interleave될 수 있으므로, await 전후에 공용
 mutable state를 이어 판단하는 handler는 기본 `submit(...)`을 사용해야 한다.
 

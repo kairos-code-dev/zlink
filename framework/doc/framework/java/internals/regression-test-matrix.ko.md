@@ -184,12 +184,12 @@ transport error callback public API가 추가되어야 한다.
 
 | 항목 | 계층 | 테스트 또는 명령 | 통과 기준 |
 |------|------|------------------|-----------|
-| Java serial queue yield | unit | `ZLinkAsyncSerialQueueTest.yieldAwait_releasesGateUntilOperationCompletes` | `yieldAwait(...)`가 current turn을 반납하고 completion 뒤 continuation을 재개한다. |
-| Java worker yield | unit | `DefaultZLinkWorkerCallTest.yieldAwaitAllowsOtherSpotQueueWorkWhileWorkerRuns` | worker completion을 기다리는 동안 다른 Spot 작업이 실행될 수 있다. |
-| actor join yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | actor `JoinSpot`/`JoinEntrySpot` call object가 `yieldAsync(...)`와 `yieldAwait(...)`를 public contract로 제공한다. |
-| bound session yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | bound session send call object가 `yieldAsync()`와 `yieldAwait()`를 public contract로 제공한다. |
-| excluded route request surface | contract | `HandlerContractTest` route request 항목 | route request에는 `yieldAwait(...)`가 노출되지 않는다. |
-| Bingo Java/Kotlin sample compile | sample build | `:java:Bingo:Server:Play:compileJava`, `:kotlin:Bingo:Server:Play:compileKotlin` | Java sample은 member `yieldAwait(...)`, Kotlin sample은 top-level `yieldAwait(call, ...)` helper로 compile된다. |
+| Java serial queue yield | unit | `ZLinkAsyncSerialQueueTest.yield_releasesGateUntilOperationCompletes` | `yield(...)`가 current turn을 반납하고 completion 뒤 continuation을 재개한다. |
+| Java worker yield | unit | `DefaultZLinkWorkerCallTest.yieldAllowsOtherSpotQueueWorkWhileWorkerRuns` | worker completion을 기다리는 동안 다른 Spot 작업이 실행될 수 있다. |
+| actor join yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | actor `JoinSpot`/`JoinEntrySpot` call object가 `yield(...)`를 public contract로 제공한다. |
+| bound session yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | bound session send call object가 `yield()`를 public contract로 제공한다. |
+| excluded route request surface | contract | `HandlerContractTest` route request 항목 | route request에는 `yield(...)`가 노출되지 않는다. |
+| Bingo Java/Kotlin sample compile | sample build | `:java:Bingo:Server:Play:compileJava`, `:kotlin:Bingo:Server:Play:compileKotlin` | Java sample은 member `yield(...)`, Kotlin sample은 top-level `yield(call, ...)` helper로 compile된다. |
 
 ## 7. Sample release gate
 

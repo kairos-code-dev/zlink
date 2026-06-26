@@ -118,13 +118,13 @@ Spot 실행 큐의 다음 작업은 시작되지 않는다. 공용 상태를 awa
 이 기본 동작을 사용한다.
 
 player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
-흐름에서는 `yieldSubmit(...)`을 사용할 수 있다. `yieldSubmit(...)`은 현재 mailbox turn을
+흐름에서는 `yield(...)`을 사용할 수 있다. `yield(...)`은 현재 mailbox turn을
 반납하고, completion 뒤 같은 mailbox continuation으로 돌아온다. 같은 actor의 다음 packet은
 continuation 뒤에 실행되지만, 다른 actor나 timer 작업은 그 사이에 실행될 수 있다.
 
-Bingo.Ts sample의 Entry Spot match 흐름은 room `joinSpot(...)` 대기에 `yieldSubmit(...)`을
+Bingo.Ts sample의 Entry Spot match 흐름은 room `joinSpot(...)` 대기에 `yield(...)`을
 사용한다. room list, match queue, lobby state 같은 공용 mutable state를 await 전후로 이어서
-판단하는 handler에는 `yieldSubmit(...)`을 쓰지 않는다. `AsyncLocalStorage`는 logging이나
+판단하는 handler에는 `yield(...)`을 쓰지 않는다. `AsyncLocalStorage`는 logging이나
 request context 용도로만 사용하고, turn이나 mailbox 소유권 저장소로 사용하지 않는다.
 
 ## 회귀 테스트

@@ -331,10 +331,10 @@ backend gate 와 별도로 유지한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `entry-spot-serial-dispatch.test.js` yieldSubmit 항목 | request와 `runWorker`의 `yieldSubmit(...)`이 captured turn을 반납하고 completion 뒤 원래 실행 줄에서 재개된다. |
-| `contract-surface.test.js` actor/bound session declaration 항목 | actor `joinSpot`/`joinEntrySpot` call object와 bound session send call object가 `yieldSubmit(...)`를 public contract로 제공한다. |
-| `channel-client.test.js` route request 항목 | route request에는 `yieldSubmit(...)` surface가 노출되지 않는다. |
-| `npm run build --prefix framework/languages/node/samples/Bingo.Ts` | Bingo.Ts Entry Spot sample이 `joinSpot(...).yieldSubmit(...)`으로 compile된다. |
+| `entry-spot-serial-dispatch.test.js` yield 항목 | request와 `runWorker`의 `yield(...)`이 captured turn을 반납하고 completion 뒤 원래 실행 줄에서 재개된다. |
+| `contract-surface.test.js` actor/bound session declaration 항목 | actor `joinSpot`/`joinEntrySpot` call object와 bound session send call object가 `yield(...)`를 public contract로 제공한다. |
+| `channel-client.test.js` route request 항목 | route request에는 `yield(...)` surface가 노출되지 않는다. |
+| `npm run build --prefix framework/languages/node/samples/Bingo.Ts` | Bingo.Ts Entry Spot sample이 `joinSpot(...).yield(...)`으로 compile된다. |
 
 ## 9. 문서별 회귀 테스트 단락
 

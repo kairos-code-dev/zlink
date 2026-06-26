@@ -699,17 +699,17 @@ export interface ZLinkActorJoinResult<TReply> {
 export interface ZLinkActorJoinSpotCall {
   timeout(timeoutMs: number): ZLinkActorJoinSpotCall;
   submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
-  yieldSubmit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
+  yield<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorJoinEntrySpotCall {
   timeout(timeoutMs: number): ZLinkActorJoinEntrySpotCall;
   submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
-  yieldSubmit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
+  yield<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
 }
 ```
 
-`submit(...)` 은 actor handler의 기본 serial 의미를 유지한다. `yieldSubmit(...)` 은
+`submit(...)` 은 actor handler의 기본 serial 의미를 유지한다. `yield(...)` 은
 framework가 만든 actor join call object에서만 사용할 수 있으며, join admission을 기다리는
 동안 현재 Spot/Entry Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다.
 
@@ -1015,11 +1015,11 @@ export interface ZLinkBoundSessionSendCall {
   packetName(packetName: string): ZLinkBoundSessionSendCall;
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
   submit(): Promise<void>;
-  yieldSubmit(): Promise<void>;
+  yield(): Promise<void>;
 }
 ```
 
-`submit(...)` 은 bound session send의 기본 serial terminator다. `yieldSubmit(...)` 은
+`submit(...)` 은 bound session send의 기본 serial terminator다. `yield(...)` 은
 framework가 만든 send call object에서만 사용할 수 있으며, send completion을 기다리는 동안
 현재 Spot/Entry Spot turn을 반납하고 completion 뒤 같은 handler continuation을 재개한다.
 

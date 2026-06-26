@@ -29,7 +29,7 @@ observer 변경은 최소한 contract header test 와 channel messaging unit tes
 
 | ID | 계층 | 테스트 위치 | 통과 기준 |
 |----|------|-------------|-----------|
-| SYLD-001 | `contract` | `Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp` | request, actor join, bound session send, worker call에 `yield_async()`가 있고, route request와 일반 send/publish에는 노출되지 않는다. |
-| SYLD-002 | `unit` | `Zlink.Framework.UnitTests/test_cpp_framework_spot_runtime.cpp` | 기본 `async()`는 serial gate를 유지하고, request/worker/actor join `yield_async()`는 다른 mailbox 작업을 실행하게 한 뒤 원래 continuation으로 돌아온다. |
+| SYLD-001 | `contract` | `Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp` | request, actor join, bound session send, worker call에 `yield()`가 있고, route request와 일반 send/publish에는 노출되지 않는다. |
+| SYLD-002 | `unit` | `Zlink.Framework.UnitTests/test_cpp_framework_spot_runtime.cpp` | 기본 `async()`는 serial gate를 유지하고, request/worker/actor join `yield()`는 다른 mailbox 작업을 실행하게 한 뒤 원래 continuation으로 돌아온다. |
 | SYLD-003 | `unit` | `Zlink.Framework.UnitTests/test_cpp_framework_execution.cpp` | serial execution queue가 released turn과 normal completion을 구분한다. |
-| SYLD-004 | `contract`, `sample` | `test_cpp_framework_sample_parity`, `test_cpp_framework_layout_contract` | Bingo C++ Entry Spot sample이 admission request와 room `join_spot(...)`에 `yield_async()`를 사용하고, 현재 sample layout과 public contract 문서가 일치한다. |
+| SYLD-004 | `contract`, `sample` | `test_cpp_framework_sample_parity`, `test_cpp_framework_layout_contract` | Bingo C++ Entry Spot sample이 admission request와 room `join_spot(...)`에 `yield()`를 사용하고, 현재 sample layout과 public contract 문서가 일치한다. |

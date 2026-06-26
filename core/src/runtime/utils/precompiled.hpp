@@ -32,9 +32,18 @@
 #include "core/internal_defs.hpp"
 #include "services/common/service_event_types_internal.hpp"
 
+#ifndef ZLINK_INTERNAL_EXPORT
+#if defined _WIN32 && defined DLL_EXPORT && !defined ZLINK_STATIC
+#define ZLINK_INTERNAL_EXPORT __declspec (dllexport)
+#else
+#define ZLINK_INTERNAL_EXPORT
+#endif
+#endif
+
 extern "C" {
-int zlink_stream_attach_raw (void *s_, int (*on_raw_) (const zlink_routing_id_t *, zlink_msg_t *));
-int zlink_stream_detach (void *s_);
+ZLINK_INTERNAL_EXPORT int zlink_stream_attach_raw (
+  void *s_, int (*on_raw_) (const zlink_routing_id_t *, zlink_msg_t *));
+ZLINK_INTERNAL_EXPORT int zlink_stream_detach (void *s_);
 }
 
 #ifndef ZLINK_SNDMORE

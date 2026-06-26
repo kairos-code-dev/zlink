@@ -20,10 +20,12 @@
 #include "core/recv_internal.hpp"
 #include "utils/debug_log.hpp"
 
+#ifndef ZLINK_INTERNAL_EXPORT
 #if defined _WIN32 && defined DLL_EXPORT && !defined ZLINK_STATIC
 #define ZLINK_INTERNAL_EXPORT __declspec (dllexport)
 #else
 #define ZLINK_INTERNAL_EXPORT
+#endif
 #endif
 
 namespace

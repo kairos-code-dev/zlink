@@ -12,10 +12,12 @@
 #include "sockets/proxy/proxy.hpp"
 #include "services/discovery/discovery_access.hpp"
 
+#ifndef ZLINK_INTERNAL_EXPORT
 #if defined _WIN32 && defined DLL_EXPORT && !defined ZLINK_STATIC
 #define ZLINK_INTERNAL_EXPORT __declspec (dllexport)
 #else
 #define ZLINK_INTERNAL_EXPORT
+#endif
 #endif
 
 zlink_bind_result_t zlink_bind (void *s_, const char *addr_)

@@ -332,7 +332,7 @@ test('yield request await inside an entry turn releases the serial line until re
 
   const yielded = serial.execute(async () => {
     events.push('handler:start');
-    const reply = await outbound.requestToChannel('api', 'ping').yieldSubmit();
+    const reply = await outbound.requestToChannel('api', 'ping').yield();
     events.push(`handler:${reply}`);
   });
   const next = serial.execute(() => {
@@ -406,7 +406,7 @@ test('runWorker submit supports the gated awaitable path inside a handler turn',
   assert.deepEqual(events, ['handler:start', 'handler:done', 'next']);
 });
 
-test('runWorker yieldSubmit releases the current Spot turn until worker completion resumes it', async () => {
+test('runWorker yield releases the current Spot turn until worker completion resumes it', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
@@ -422,7 +422,7 @@ test('runWorker yieldSubmit releases the current Spot turn until worker completi
     const result = await context.runWorker(async () => {
       await workGate;
       return 'done';
-    }).yieldSubmit();
+    }).yield();
     events.push(`handler:${result}`);
   });
   const next = serial.execute(() => {
@@ -436,13 +436,13 @@ test('runWorker yieldSubmit releases the current Spot turn until worker completi
   assert.deepEqual(events, ['handler:start', 'next', 'handler:done']);
 });
 
-test('runWorker yieldSubmit requires a Spot turn captured when the call is created', async () => {
+test('runWorker yield requires a Spot turn captured when the call is created', async () => {
   const worker = new framework.ZLinkSpotWorkerRuntime();
   const serial = new framework.ZLinkSpotSerialExecutor();
   const call = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'done');
 
   await assert.rejects(
-    () => call.yieldSubmit(),
+    () => call.yield(),
     (error) =>
       error instanceof framework.ZLinkConfigurationException
       && /captured when the call object was created/.test(error.message)

@@ -1444,10 +1444,10 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     }
   }
 
-  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     if (this.yieldTurn === undefined) {
       return Promise.reject(new ZLinkConfigurationException(
-        'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+        'yield requires a framework Spot handler turn captured when the call object was created.'
       ));
     }
     return this.yieldTurn.yieldPromise(this.submit<TReply>(signal));
@@ -1499,10 +1499,10 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
     }
   }
 
-  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     if (this.yieldTurn === undefined) {
       return Promise.reject(new ZLinkConfigurationException(
-        'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+        'yield requires a framework Spot handler turn captured when the call object was created.'
       ));
     }
     return this.yieldTurn.yieldPromise(this.submit<TReply>(signal));

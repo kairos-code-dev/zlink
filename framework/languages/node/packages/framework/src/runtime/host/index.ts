@@ -1214,10 +1214,10 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     );
   }
 
-  yieldSubmit(signal?: AbortSignal): Promise<void> {
+  yield(signal?: AbortSignal): Promise<void> {
     if (this.yieldTurn === undefined) {
       return Promise.reject(new Error(
-        'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+        'yield requires a framework Spot handler turn captured when the call object was created.'
       ));
     }
     return this.yieldTurn.yieldPromise(this.submit(signal));

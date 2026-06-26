@@ -59,7 +59,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     }
     const joined = await actor.context
       .joinSpot(roomId, bingoRoomJoinReq(roomId, request.actorId, request.displayName))
-      .yieldSubmit<BingoRoomJoinRes>();
+      .yield<BingoRoomJoinRes>();
     if (process.env.BINGO_DEBUG_FLOW === '1') {
       console.log(`play-entry-match joined actor=${actor.actorId} room=${roomId} result=${joined.resultCode}`);
     }

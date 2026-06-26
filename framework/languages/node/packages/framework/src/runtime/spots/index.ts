@@ -3348,7 +3348,7 @@ export class ZLinkSpotSerialExecutor {
   yieldPromise<T>(pending: Promise<T>): Promise<T> {
     const turn = this.currentTurn;
     if (turn === undefined) {
-      throw new Error('yieldSubmit requires a framework Spot handler turn.');
+      throw new Error('yield requires a framework Spot handler turn.');
     }
     return turn.yieldPromise(pending);
   }
@@ -3430,10 +3430,10 @@ function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCal
       const pending = startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
       return insideCurrentTurn ? pending : deliverOnSerial(serial, pending);
     },
-    yieldSubmit<TReply>(signal?: AbortSignal) {
+    yield<TReply>(signal?: AbortSignal) {
       if (yieldTurn === undefined) {
         return Promise.reject(new ZLinkConfigurationException(
-          'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+          'yield requires a framework Spot handler turn captured when the call object was created.'
         ));
       }
       const pending = startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
@@ -3529,10 +3529,10 @@ function wrapRoutedSpotRequestCall(
       });
       return insideCurrentTurn ? pending : deliverOnSerial(serial, pending);
     },
-    yieldSubmit<TReply>(signal?: AbortSignal) {
+    yield<TReply>(signal?: AbortSignal) {
       if (yieldTurn === undefined) {
         return Promise.reject(new ZLinkConfigurationException(
-          'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+          'yield requires a framework Spot handler turn captured when the call object was created.'
         ));
       }
       const pending = startRequestOnSerial<TReply>(serial, async () => {

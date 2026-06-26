@@ -11,13 +11,13 @@ export interface ZLinkActorJoinResult<TReply = unknown> {
 export interface ZLinkActorJoinSpotCall {
   timeout(timeoutMs: number): this;
   submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
-  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorJoinEntrySpotCall {
   timeout(timeoutMs: number): this;
   submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
-  yieldSubmit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
+  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorFactory {

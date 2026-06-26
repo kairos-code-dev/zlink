@@ -11,5 +11,5 @@ export interface ZLinkBoundSessionSendCall {
   metadata(key: string, value: string): this;
   packetName(packetName: string): this;
   submit(signal?: AbortSignal): Promise<void>;
-  yieldSubmit(signal?: AbortSignal): Promise<void>;
+  yield(signal?: AbortSignal): Promise<void>;
 }

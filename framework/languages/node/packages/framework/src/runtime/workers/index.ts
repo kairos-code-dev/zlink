@@ -181,11 +181,11 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     return deliverOnSerial(this.serial, pending);
   }
 
-  yieldSubmit(signal?: AbortSignal): Promise<T> {
+  yield(signal?: AbortSignal): Promise<T> {
     this.claimTerminator();
     if (this.yieldTurn === undefined) {
       return Promise.reject(new ZLinkConfigurationException(
-        'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+        'yield requires a framework Spot handler turn captured when the call object was created.'
       ));
     }
     const pending = this.worker.schedule(this.work, this.selectedTimeoutMs, signal);
@@ -215,7 +215,7 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
   private claimTerminator(): void {
     if (this.terminatorSelected) {
       throw new ZLinkConfigurationException(
-        'A runWorker call can use only one terminator: submit(), yieldSubmit(), or onCompleted(...).'
+        'A runWorker call can use only one terminator: submit(), yield(), or onCompleted(...).'
       );
     }
     this.terminatorSelected = true;

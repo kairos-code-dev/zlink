@@ -2621,9 +2621,9 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
     return this.submitter<TReply>(this.packet, this.timeoutMs ?? this.defaultRequestTimeoutMs, signal);
   }
 
-  yieldSubmit<TReply>(_signal?: AbortSignal): Promise<TReply> {
+  yield<TReply>(_signal?: AbortSignal): Promise<TReply> {
     return Promise.reject(new ZLinkConfigurationException(
-      'yieldSubmit requires a framework Spot handler turn captured when the call object was created.'
+      'yield requires a framework Spot handler turn captured when the call object was created.'
     ));
   }
 }

@@ -1,6 +1,8 @@
 # GameQuest C++ Sample
 
 GameQuest 샘플은 플레이어 행동이 quest mission 진행도로 이어지는 흐름을 C++ 샘플 구조로 보여준다.
+현재 C++ 구현은 channel handler와 role service로 quest 진행을 검증하는 compact 샘플이며,
+공통 시나리오의 `PlayerQuestSpot` owner 구조까지 구현한 full 샘플은 아니다.
 
 ## 실행
 

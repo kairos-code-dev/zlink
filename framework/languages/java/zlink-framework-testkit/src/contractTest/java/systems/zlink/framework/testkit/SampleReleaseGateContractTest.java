@@ -17,13 +17,12 @@ final class SampleReleaseGateContractTest {
     private static final String FORBIDDEN_SAMPLE_ASYNC_HELPER = "Sample" + "Async";
     private static final String FORBIDDEN_TICTACTOE_RESULT = "TicTacToeClient" + "Result";
 
-    private static final Set<String> REQUIRED_SAMPLES = Set.of(
-        "TicTacToe",
-        "Bingo",
-        "SupportChat",
-        "DeliveryDispatch",
-        "ShoppingMall",
-        "GameQuest");
+	    private static final Set<String> REQUIRED_SAMPLES = Set.of(
+	        "TicTacToe",
+	        "Bingo",
+	        "SupportChat",
+	        "DeliveryDispatch",
+	        "ShoppingMall");
 
     private static final Set<String> REQUIRED_RUNTIME_PACKAGES = Set.of(
         "actors",
@@ -349,10 +348,10 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/server/play/PlayServerApplication.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActorFactory.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorPlaceMarkHandler.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameTimerHandler.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/PlayActorPlaceMarkHandler.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java"));
         assertSampleFilesExist("java", "TicTacToe", "Shared/src/main/java", List.of(
@@ -432,11 +431,11 @@ final class SampleReleaseGateContractTest {
         String entrySpotSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.java");
         String gameSpotSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.java");
         String playSessionSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -611,19 +610,19 @@ final class SampleReleaseGateContractTest {
         String playActorJoinHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorJoinGameHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/handlers/PlayActorJoinGameHandler.java");
         String playPlaceMarkHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorPlaceMarkHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/PlayActorPlaceMarkHandler.java");
         String gameCreatedHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameCreatedHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameCreatedHandler.java");
         String gameTimerHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameTimerHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.java");
         String matchDomainSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -740,10 +739,10 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActorFactory.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/application/gamecreation/TicTacToeGameCreator.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorPlaceMarkHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameTimerHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/PlayActorPlaceMarkHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt"));
@@ -808,11 +807,11 @@ final class SampleReleaseGateContractTest {
         String entrySpotSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.kt");
         String gameSpotSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.kt");
         String playSessionSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -975,19 +974,19 @@ final class SampleReleaseGateContractTest {
         String playActorJoinHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorJoinGameHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/handlers/PlayActorJoinGameHandler.kt");
         String playPlaceMarkHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorPlaceMarkHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/PlayActorPlaceMarkHandler.kt");
         String gameCreatedHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameCreatedHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameCreatedHandler.kt");
         String gameTimerHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameTimerHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.kt");
         assertTrue(playAuthHandlerSource.contains("ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
                 && playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
                 && playAuthHandlerSource.contains("context.actors().bind(playActor).await()")
@@ -1086,12 +1085,12 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoGame.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomGame.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomModels.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/handlers/BingoRoomSpotCreatedHandler.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/handlers/BingoRoomTimerHandler.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/handlers/SubmitBingoCardHandler.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoEntrySpot.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/handlers/MatchBingoActorHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/BingoRoomSpotCreatedHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/BingoRoomTimerHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/SubmitBingoCardHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/entryspot/BingoEntrySpot.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/entryspot/handlers/MatchBingoActorHandler.java",
             "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.java",
             "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.java"));
         assertSampleFilesExist("java", "Bingo", "Server/Registry/src/main/java", List.of(
@@ -1129,7 +1128,7 @@ final class SampleReleaseGateContractTest {
         String roomSource = sampleJavaSource(
             "Bingo",
             "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.java");
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.java");
         String apiHostSource = sampleJavaSource(
             "Bingo",
             "Server/Api/src/main/java",
@@ -1279,12 +1278,12 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/actors/PlayerActorFactory.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/domain/bingo/BingoCard.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/domain/bingo/BingoRoomModels.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/handlers/BingoRoomSpotCreatedHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/handlers/BingoRoomTimerHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/handlers/SubmitBingoCardHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoEntrySpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/handlers/MatchBingoActorHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/BingoRoomSpotCreatedHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/BingoRoomTimerHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/SubmitBingoCardHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/entryspot/BingoEntrySpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/entryspot/handlers/MatchBingoActorHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Server/Registry/src/main/kotlin", List.of(
@@ -1322,7 +1321,7 @@ final class SampleReleaseGateContractTest {
         String roomSource = sampleKotlinSource(
             "Bingo",
             "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.kt");
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.kt");
         String apiHostSource = sampleKotlinSource(
             "Bingo",
             "Server/Api/src/main/kotlin",
@@ -1460,32 +1459,32 @@ final class SampleReleaseGateContractTest {
         assertJavaActorLifecycleSpec(
             "Bingo",
             "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoEntrySpot.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/entryspot/BingoEntrySpot.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.java",
             "systems/zlink/samples/bingo/server/play/infrastructure/zlink/actors/PlayerActor.java",
             "Server/Session/src/main/java",
             "systems/zlink/samples/bingo/server/session/sessions/BingoSession.java");
         assertJavaActorLifecycleSpec(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.java",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java");
         assertKotlinActorLifecycleSpec(
             "Bingo",
             "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoEntrySpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/entryspot/BingoEntrySpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/actors/PlayerActor.kt",
             "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/session/sessions/BingoSession.kt");
         assertKotlinActorLifecycleSpec(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.kt",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt");

@@ -168,9 +168,11 @@ Server/Support/
 | `Application/ConversationAssignment/ConversationAllocator` | 새 상담 티켓에 conversation id를 만들고 conversation Spot 생성을 요청한다. |
 | `Application/ConversationAssignment/AgentAvailabilityDirectory` | 상담 가능 상태로 등록된 agent actor id를 관리한다. |
 | `Application/ConversationAssignment/AgentAssignmentService` | 대기 중인 agent actor를 선택해 conversation에 배정한다. |
-| `Infrastructure/ZLink/Spots/ConversationSpot` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, notification publish 연결을 맡는다. |
-| `Infrastructure/ZLink/Notifications/*` | domain event를 bound session push message로 바꾸고 전송한다. |
-| `Infrastructure/ZLink/Handlers/*` | channel request와 Spot actor request를 application/domain adapter로 연결한다. |
+| `Infrastructure/ZLink/Spots/ConversationSpot/ConversationSpot` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, notification publish 연결을 맡는다. |
+| `Infrastructure/ZLink/Spots/ConversationSpot/Notifications/*` | domain event를 bound session push message로 바꾸고 전송한다. |
+| `Infrastructure/ZLink/Handlers/*` | channel request를 application adapter로 연결한다. |
+| `Infrastructure/ZLink/Spots/EntrySpot/Handlers/*` | Entry Spot actor request를 conversation 생성·agent availability 흐름으로 연결한다. |
+| `Infrastructure/ZLink/Spots/ConversationSpot/Handlers/*` | conversation actor request와 timer callback을 domain operation으로 연결한다. |
 
 Domain 객체는 ZLink framework 타입을 직접 참조하지 않는다.
 `ConversationSpot`은 framework callback을 받아 domain method를 호출하고, domain이

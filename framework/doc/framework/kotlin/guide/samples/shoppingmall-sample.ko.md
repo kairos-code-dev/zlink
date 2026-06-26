@@ -12,14 +12,16 @@
 ## 1. 목적
 
 event-sourced 주문 workflow와 projection을 보여 준다. 같은 `OrderId`의 event는 항상 같은
-`OrderWorkflow` owner 흐름에서 append 되고, projection은 event replay 만으로 재생성된다.
+`OrderWorkflow` instance 흐름에서 append 되고, projection은 event replay 만으로 재생성된다.
 idempotency·dedupe·보상 트랜잭션을 framework primitive 위에서 구현한다. payload codec은 JSON이다.
 
 ## 2. 서버 구성
 
 `Registry`, `CommerceApi`(x2: `api-a`/`api-b`), `OrderWorkflow`(x2: `workflow-a`/`workflow-b`),
-`Client`. `OrderWorkflow`가 event-sourced aggregate(stream replay로 복원), optimistic version
-check, projection folding을 가진 상태 소유 Spot이다. scale-out(API x2 / workflow x2) 구성으로
+`Client`. 현재 Java/Kotlin 구현은 `OrderWorkflow` role service와 channel handler가
+event-sourced aggregate(stream replay로 복원), optimistic version check, projection folding을
+소유하는 compact 구현이다. 공통 시나리오의 최종 목표는 `OrderWorkflowSpot` owner 구조지만,
+현재 Java/Kotlin 샘플은 아직 Spot factory를 등록하지 않는다. scale-out(API x2 / workflow x2) 구성으로
 서로 다른 주문이 서로 다른 instance에서 처리되고 어느 instance에서 조회해도 같은 projection을
 반환함을 검증한다.
 
@@ -40,7 +42,8 @@ check, projection folding을 가진 상태 소유 Spot이다. scale-out(API x2 /
 
 dotnet 행위 정본은 `samples/dotnet/.../ShoppingMall`이다(ShoppingMall dir에는 stale
 artifact만 있었음). transport는 HTTP 대신 JSON-codec ZLink client/server channel을 쓴다(게이트가
-HTTP를 요구하지 않음). owner routing은 `OrderId` 기준으로 안정적이다.
+HTTP를 요구하지 않음). workflow instance 선택은 `OrderId` 기준으로 안정적이다. 현재 샘플은
+이 선택을 명시 endpoint routing으로 구현하며, Spot owner routing으로 구현하지는 않는다.
 
 ## 6. Client self-check
 

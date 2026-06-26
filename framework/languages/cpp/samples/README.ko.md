@@ -38,7 +38,6 @@ Linux 또는 WSL:
 ./framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh
 ./framework/languages/cpp/samples/GameQuest/run_sample.sh
 ./framework/languages/cpp/samples/ShoppingMall/run_sample.sh
-./framework/languages/cpp/samples/ShoppingMall/run_sample.sh
 ./framework/languages/cpp/samples/run_samples.sh
 ```
 
@@ -49,7 +48,6 @@ Windows PowerShell:
 .\framework\languages\cpp\samples\Bingo\run_sample.ps1
 .\framework\languages\cpp\samples\DeliveryDispatch\run_sample.ps1
 .\framework\languages\cpp\samples\GameQuest\run_sample.ps1
-.\framework\languages\cpp\samples\ShoppingMall\run_sample.ps1
 .\framework\languages\cpp\samples\ShoppingMall\run_sample.ps1
 .\framework\languages\cpp\samples\run_samples.ps1
 ```

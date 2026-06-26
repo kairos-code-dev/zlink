@@ -1,6 +1,8 @@
 # GameQuest TypeScript Sample
 
-GameQuest 샘플은 gameplay API가 플레이어 행동을 받고 quest mission 역할이 진행도를 갱신하는 흐름을 보여준다.
+GameQuest 샘플은 gameplay API가 플레이어 행동을 받고 quest mission 역할이 진행도를 갱신하는
+흐름을 보여준다. 현재 TypeScript 구현은 channel handler와 role service로 quest 진행을 검증하는
+compact 샘플이며, 공통 시나리오의 `PlayerQuestSpot` owner 구조까지 구현한 full 샘플은 아니다.
 
 ## 실행
 

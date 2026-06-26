@@ -6,9 +6,10 @@
 구조로 구현한 묶음이다. 기능을 처음 붙일 때는 해당 샘플의 같은 자리를 먼저 본다.
 
 > **샘플 패리티:** cpp는 정본 샘플 전체 — **TicTacToe · Bingo · SupportChat · DeliveryDispatch ·
-> ShoppingMall · GameQuest** — 를 제공한다. TicTacToe·Bingo 가 토폴로지
-> 기준(§2·§3)이고, 나머지는 §4에 요약하며, per-sample 동작은 각 샘플의 `README.ko.md` 와 공통
-> 시나리오 정본이 소유한다.
+> ShoppingMall · GameQuest** — 를 제공한다. TicTacToe·Bingo·SupportChat은 Spot/actor/session
+> 구조까지 구현한 full 샘플이고, DeliveryDispatch·ShoppingMall·GameQuest는 현재 업무 흐름과
+> self-check를 검증하는 compact 샘플이다. compact 샘플은 공통 시나리오의 final state와 메시지
+> 의미를 따르지만, 상태 소유 Spot owner 구조까지 구현했다고 설명하지 않는다.
 
 ## 1. 실행
 
@@ -83,15 +84,16 @@ flowchart LR
 |------|-------------|-----|
 | `Server/Registry/registry_host_factory.hpp` | `enable_registry(pub, router)` 한 줄 registry 서버 | [11 §2](11-registry.ko.md#2-registry-서버-띄우기) |
 | `Server/Play/play_server_host_factory.hpp` | `use_discovery().add_registry_endpoint`, no-arg `enable_client()`, fanout publisher endpoint, protobuf codec, spot mesh | [7](07-channel-messaging.ko.md)·[8](08-spot.ko.md)·[11](11-registry.ko.md) |
-| `Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp` | entry spot — 매칭/룸 배정 | [8 §4](08-spot.ko.md#4-entry-spot-매칭과-룸-배정) |
-| `Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp` | room spot — `add_actor_packet`, join 수락, 도메인 결합 | [8 §3](08-spot.ko.md#3-room-spot-작성) |
+| `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp` | entry spot — 매칭/룸 배정 | [8 §4](08-spot.ko.md#4-entry-spot-매칭과-룸-배정) |
+| `Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp` | room spot — `add_actor_packet`, join 수락, 도메인 결합 | [8 §3](08-spot.ko.md#3-room-spot-작성) |
 | `Server/Session/` | 세션 전담 서버 분리 — 인증과 actor 바인딩 | [9](09-actor-session.ko.md) |
 | `Server/Api/Handlers/match_bingo_handler.hpp` | 매칭 요청 → Play 채널의 room 배정 요청 | [7 §3](07-channel-messaging.ko.md#3-클라이언트-쪽-channel_client_t) |
 
 ## 4. 그 외 정본 샘플
 
-TicTacToe·Bingo 외 샘플은 공통 시나리오 정본을 cpp 구조로 옮긴 것이다. 서버 역할·메시지
-이름·smoke 순서는 [공통 샘플 시나리오](../../common/sample/README.ko.md)를 따르고,
+TicTacToe·Bingo·SupportChat 외 샘플은 공통 시나리오의 업무 흐름을 cpp 구조로 옮긴 compact
+샘플이다. 서버 역할·메시지 이름·smoke 순서는 [공통 샘플 시나리오](../../common/sample/README.ko.md)를
+따르지만, DeliveryDispatch·ShoppingMall·GameQuest의 Spot owner 구조는 아직 구현하지 않았다.
 per-sample 동작은 각 샘플 `README.ko.md` 가 소유한다.
 
 | 샘플 | 보여주는 것 | 코드 |

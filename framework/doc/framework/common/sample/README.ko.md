@@ -26,6 +26,26 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [ShoppingMall](event/shoppingmall.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `OrderWorkflow`, `Registry` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
 | [GameQuest](event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
 
+## 언어별 구현 수준
+
+공통 시나리오는 샘플이 최종적으로 보여 주어야 하는 역할과 흐름을 정의한다. 다만 언어별 샘플은
+현재 구현 단계가 다를 수 있으므로, 문서와 코드를 비교할 때 아래 구분을 먼저 확인한다.
+
+| 샘플 | full 구조 구현 | compact 구현 |
+|------|----------------|---------------|
+| Bingo | .NET, Java, Kotlin, Node.js, C++ | 없음 |
+| TicTacToe | .NET, Java, Kotlin, Node.js, C++ | 없음 |
+| SupportChat | .NET, Java, Kotlin, Node.js, C++ | 없음 |
+| DeliveryDispatch | .NET, Java, Kotlin | Node.js, C++ |
+| ShoppingMall | .NET | Java, Kotlin, Node.js, C++ |
+| GameQuest | .NET, Java, Kotlin | Node.js, C++ |
+
+full 구조 구현은 공통 시나리오의 Spot owner, actor/session, fanout, registry/discovery 경계를
+샘플 코드에 그대로 둔 구현이다. compact 구현은 같은 업무 흐름과 client self-check를 제공하지만,
+일부 상태 소유 흐름을 일반 channel handler나 role service로 접어 넣은 구현이다. compact 구현을
+full 구조라고 설명하면 안 된다. full 구조로 승격할 때는 먼저 해당 언어의 framework public API와
+공통 시나리오 문서가 요구하는 Spot owner 경계를 맞춘 뒤 sample regression을 갱신한다.
+
 ## Spot yield dispatch 샘플 기준
 
 Bingo의 Entry Spot match handler는 player actor 한 명의 입장 준비를 보여 주는 기준
@@ -206,13 +226,17 @@ Server/<StateOwner>/
       Handlers/
       Sessions/
       Spots/
-        Handlers/
-      Notifications/
+        EntrySpot/
+          Handlers/
+        <DomainSpot>/
+          Handlers/
+          Notifications/
 ```
 
-필요 없는 디렉토리는 생략할 수 있다. 예를 들어 TicTacToe는 별도 notification mapper가
-필요 없으면 `Notifications/`를 두지 않아도 된다. 반대로 Bingo처럼 bound session
-push와 domain event 변환이 필요하면 `Notifications/`를 둔다.
+필요 없는 디렉토리는 생략할 수 있다. Entry Spot이 없으면 `EntrySpot/`를 두지 않아도 되고,
+별도 notification mapper가 필요 없으면 `<DomainSpot>/Notifications/`를 두지 않아도 된다.
+반대로 Bingo처럼 bound session push와 domain event 변환이 필요하면 해당 domain Spot 아래에
+`Notifications/`를 둔다.
 
 중요한 기준은 이름 자체가 아니라 의존 방향이다. `Domain`은 `Application`이나
 `Infrastructure`를 알면 안 된다. `Application`은 domain을 사용하지만 framework transport

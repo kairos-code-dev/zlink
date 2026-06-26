@@ -1,6 +1,8 @@
 # ShoppingMall TypeScript Sample
 
-ShoppingMall 샘플은 commerce API가 주문을 시작하고 order workflow 역할이 주문 상태를 이어서 처리하는 흐름을 보여준다.
+ShoppingMall 샘플은 commerce API가 주문을 시작하고 order workflow 역할이 주문 상태를 이어서
+처리하는 흐름을 보여준다. 현재 TypeScript 구현은 channel handler와 role service로 workflow를
+검증하는 compact 샘플이며, 공통 시나리오의 `OrderWorkflowSpot` owner 구조까지 구현한 full 샘플은 아니다.
 
 ## 실행
 

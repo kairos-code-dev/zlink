@@ -5,16 +5,16 @@
 
 ## 1. 목적
 
-배송 배차, timeout 재배정, 상태 fanout, 고객 stream push를 보여 준다. channel handler,
-fanout subscriber, Spot actor join을 한 흐름으로 묶는다.
+배송 배차, timeout 재배정, 상태 fanout, 고객 stream push를 보여 준다. 현재 TypeScript 구현은
+channel handler와 role service로 상태 전이를 검증하는 compact 구현이다. 공통 시나리오의 최종
+목표는 fanout subscriber, Spot actor join, `DeliveryTrackingSpot`/`CustomerEntrySpot` 흐름이지만,
+현재 TypeScript 샘플은 아직 Spot mesh를 등록하지 않는다.
 
 ## 2. 서버 구성
 
 `Registry`, `DispatchApi`, `DispatchCenter`(+ background dispatch worker/work queue),
-`Courier`(A=`timeout-reassign`, B=`accept`, mode로 선택), `Tracking`(channel server +
-fanout publisher + Spot mesh + customer actor + `DeliveryTrackingSpot`/`CustomerEntrySpot`),
-`Session`(stream + session relay + fanout subscriber + Spot mesh) 분리. Registry/Discovery로
-자동 발견한다.
+`Courier`(A=`timeout-reassign`, B=`accept`, mode로 선택), `Tracking`, `Session` 역할을
+TypeScript 샘플 구조 안에서 분리한다. Registry/Discovery로 자동 발견한다.
 
 ## 3. 전체 흐름
 
@@ -35,8 +35,7 @@ query, connector ready event 같은 관찰 가능한 신호를 기다린다).
 Node framework에는 ASP.NET 같은 HTTP 경계가 없으므로 dotnet의 HTTP `POST /deliveries`는
 `deliverydispatch.api` client-server channel(`CreateDeliveryReq → DeliveryCreated`,
 `ServerAssertionReq → ServerAssertionRes`)로 모델링한다. 역할·메시지 의미는 spec대로 유지한다.
-cross-process Session↔Tracking Spot routing은 route-mesh channel과 registry 기반 Spot remote
-주소 관용구를 쓴다.
+cross-process Session↔Tracking Spot routing은 full 구조로 승격할 때 추가해야 하는 경계다.
 
 ## 6. 호출 표면 (객체-메시징)
 

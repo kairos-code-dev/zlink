@@ -1372,7 +1372,7 @@ framework/languages/cpp/samples/
 |   |   +-- host_support.hpp
 |   |   +-- sample.hpp
 |   +-- Client/
-|   |   +-- bingo_notification_inbox.hpp
+|   |   +-- bingo_client_scenario.hpp
 |   |   +-- main.cpp
 |   +-- Server/
 |       +-- Registry/
@@ -1383,14 +1383,16 @@ framework/languages/cpp/samples/
 |       |   |   +-- match_bingo_handler.hpp
 |       |   +-- main.cpp
 |       +-- Play/
-|       |   +-- BingoRoomSpots/
-|       |   |   +-- bingo_room.hpp
-|       |   |   +-- bingo_room_handlers.hpp
-|       |   +-- EntrySpot/
-|       |   |   +-- match_bingo_actor_handler.hpp
-|       |   +-- Handlers/
-|       |   |   +-- allocate_bingo_room_handler.hpp
-|       |   |   +-- ensure_player_actor_handler.hpp
+|       |   +-- Infrastructure/
+|       |   |   +-- ZLink/
+|       |   |       +-- Handlers/
+|       |   |       |   +-- allocate_bingo_room_handler.hpp
+|       |   |       |   +-- ensure_player_actor_handler.hpp
+|       |   |       +-- Spots/
+|       |   |           +-- EntrySpot/
+|       |   |           |   +-- bingo_entry_spot.hpp
+|       |   |           +-- BingoRoomSpot/
+|       |   |               +-- bingo_room_spot.hpp
 |       |   +-- main.cpp
 |       +-- Session/
 |           +-- main.cpp
@@ -1407,7 +1409,7 @@ framework/languages/cpp/samples/
 |   |   +-- host_support.hpp
 |   |   +-- sample.hpp
 |   +-- Client/
-|   |   +-- session_actor_notification_inbox.hpp
+|   |   +-- tictactoe_client_scenario.hpp
 |   |   +-- main.cpp
 |   +-- Server/
 |       +-- Api/
@@ -1425,8 +1427,10 @@ framework/languages/cpp/samples/
 |       |           |   +-- create_game_handler.hpp
 |       |           |   +-- ensure_player_actor_handler.hpp
 |       |           +-- Spots/
-|       |               +-- tictactoe_entry_spot.hpp
-|       |               +-- tictactoe_game_spot.hpp
+|       |               +-- EntrySpot/
+|       |               |   +-- tictactoe_entry_spot.hpp
+|       |               +-- TicTacToeGameSpot/
+|       |                   +-- tictactoe_game_spot.hpp
 |       |   +-- main.cpp
 ```
 

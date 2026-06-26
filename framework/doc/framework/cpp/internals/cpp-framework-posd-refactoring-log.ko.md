@@ -3892,12 +3892,14 @@ rg -n '<금지 표현 패턴>' framework/doc/framework/cpp framework/languages/c
 
 ### 적용한 리팩토링
 
-- Bingo를 공유 설정 디렉터리, `Shared/Contracts`, `Client/bingo_notification_inbox`,
-  `Server/Api/Handlers`, `Server/Play/Handlers`, `Server/Play/BingoRoomSpots`,
-  `Server/Play/EntrySpot` 파일로 분리했다.
+- Bingo를 공유 설정 디렉터리, `Shared/Contracts`, `Server/Api/Handlers`,
+  `Server/Play/Infrastructure/ZLink/Handlers`,
+  `Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot`,
+  `Server/Play/Infrastructure/ZLink/Spots/EntrySpot` 파일로 분리했다.
 - TicTacToe를 공유 actor 디렉터리, 공유 설정 디렉터리, `Shared/Contracts`,
-  `Client/session_actor_notification_inbox`, `Server/Api/Handlers`,
-  `Server/Play/EntrySpot`, `Server/Play/GameSpots`, `Server/Play/Handlers` 파일로 분리했다.
+  `Server/Api/Handlers`, `Server/Play/Infrastructure/ZLink/Spots/EntrySpot`,
+  `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot`,
+  `Server/Play/Infrastructure/ZLink/Handlers` 파일로 분리했다.
 - `test_cpp_framework_layout_contract`가 샘플 파일 분리 경로를 필수로 확인하도록 확장했다.
 - 샘플 README와 draft 샘플 배치 문서를 실제 파일 구조와 맞게 수정했다.
 
@@ -4923,12 +4925,12 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 
 ### 발견한 위험 신호
 
-- `Bingo/Server/Play/EntrySpot/match_bingo_actor_handler.hpp`,
-  `TicTacToe/Server/Play/EntrySpot/join_match_handler.hpp`,
-  `TicTacToe/Server/Play/GameSpots/place_mark_handler.hpp`는 실제 구현 없이 `Handlers/*`
+- `Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/match_bingo_actor_handler.hpp`,
+  `TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/join_match_handler.hpp`,
+  `TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/place_mark_handler.hpp`는 실제 구현 없이 `Handlers/*`
   header만 include하는 wrapper였다. `.NET` 샘플은 handler 구현체가 `Handlers/` 아래에
   직접 있으므로, wrapper는 파일 구조 parity를 보여 주지 못한다.
-- `BingoRoomSpots/bingo_room_handlers.hpp`는 여러 handler를 묶는 aggregate header였고,
+- `Spots/BingoRoomSpot/bingo_room_handlers.hpp`는 여러 handler를 묶는 aggregate header였고,
   `bingo_room_timer_handler.hpp`가 다시 이 aggregate를 include했다. 이 구조는 실제
   의존성보다 include 편의가 앞서며, 어떤 파일이 handler owner인지 흐리게 만든다.
 
@@ -4946,7 +4948,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 ### 적용한 리팩토링
 
 - 실제 구현 없는 handler wrapper header 3개를 삭제했다.
-- `BingoRoomSpots/bingo_room_handlers.hpp` aggregate header를 삭제했다.
+- `Spots/BingoRoomSpot/bingo_room_handlers.hpp` aggregate header를 삭제했다.
 - `Bingo`와 `TicTacToe` sample include를 실제 `Handlers/*` 구현체 경로로 바꿨다.
 - `bingo_room_timer_handler.hpp`는 aggregate header 대신 실제 의존성인 `bingo_room.hpp`를
   include하도록 보정했다.

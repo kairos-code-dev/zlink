@@ -2,10 +2,11 @@
 
 This directory contains executable Java and Kotlin sample checks for the sample
 gate. Java samples live under `java/`, and Kotlin samples live under `kotlin/`.
-Each language directory carries the executable scenario samples that have been
-ported to Java and Kotlin: `Bingo`, `TicTacToe`, `SupportChat`,
-`DeliveryDispatch`, `ShoppingMall`, `ShoppingMall`, and `GameQuest`.
-Each sample exits with a non-zero status when its scenario invariant fails.
+Each language directory carries the executable scenario samples that are part of
+the aggregate sample gate: `Bingo`, `TicTacToe`, `SupportChat`,
+`DeliveryDispatch`, and `ShoppingMall`. `GameQuest` is also present as a
+standalone scenario sample, but the aggregate gate does not run it yet. Each
+sample exits with a non-zero status when its scenario invariant fails.
 
 Open `framework/languages/java` in IntelliJ IDEA to work on the framework and
 samples together. The framework root includes this directory as the
@@ -25,19 +26,17 @@ samples/
   java/
     TicTacToe/
     Bingo/
-    SupportChat/
-    DeliveryDispatch/
-    ShoppingMall/
-    ShoppingMall/
-    GameQuest/
-  kotlin/
-    TicTacToe/
-    Bingo/
-    SupportChat/
-    DeliveryDispatch/
-    ShoppingMall/
-    ShoppingMall/
-    GameQuest/
+	    SupportChat/
+	    DeliveryDispatch/
+	    ShoppingMall/
+	    GameQuest/
+	  kotlin/
+	    TicTacToe/
+	    Bingo/
+	    SupportChat/
+	    DeliveryDispatch/
+	    ShoppingMall/
+	    GameQuest/
 ```
 
 The framework parity samples mirror the .NET sample role layout. Java and
@@ -49,27 +48,26 @@ processes separately. Source packages stay split by the same roles:
 TicTacToe/
   client/
   server/api/handlers/
-  server/configuration/
-  server/play/application/gamecreation/
-  server/play/actors/
-  server/play/domain/tictactoe/
-  server/play/entryspot/handlers/
-  server/play/gamespots/handlers/
-  server/play/sessions/
-  server/play/sessions/handlers/
-  shared/contracts/
+	  server/configuration/
+	  server/play/application/gamecreation/
+	  server/play/actors/
+	  server/play/domain/tictactoe/
+	  server/play/infrastructure/zlink/spots/entryspot/handlers/
+	  server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/
+	  server/play/sessions/
+	  server/play/sessions/handlers/
+	  shared/contracts/
 
 Bingo/
   client/
-  server/api/handlers/
-  server/play/domain/bingo/
-  server/play/actors/
-  server/play/bingoroomspots/handlers/
-  server/play/entryspot/handlers/
-  server/play/handlers/
-  server/registry/
-  server/session/sessions/handlers/
-  server/configuration/
+	  server/api/handlers/
+	  server/play/domain/bingo/
+	  server/play/actors/
+	  server/play/infrastructure/zlink/spots/bingoroomspot/handlers/
+	  server/play/infrastructure/zlink/spots/entryspot/handlers/
+	  server/registry/
+	  server/session/sessions/handlers/
+	  server/configuration/
   client/configuration/
   shared/contracts/
 ```
@@ -98,8 +96,9 @@ On Windows:
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_samples.ps1
 ```
 
-`run_samples.sh` and `run_samples.ps1` delegate to each sample's runner. The
-sample runner starts the server roles as separate processes, waits for
+`run_samples.sh` and `run_samples.ps1` delegate to the aggregate gate samples:
+`TicTacToe`, `Bingo`, `SupportChat`, `DeliveryDispatch`, and `ShoppingMall`.
+Each sample runner starts the server roles as separate processes, waits for
 readiness, runs the probe or client scenario, and cleans up the processes.
 Application role code should not start the other sample roles for the test.
 

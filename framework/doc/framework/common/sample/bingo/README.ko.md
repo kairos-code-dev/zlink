@@ -305,7 +305,7 @@ adapter에 둔다. 이 규칙 덕분에 다른 언어로 옮겨도 gateway 구�
 알림 전송을 위해 별도 notification Spot이나 별도 notification publisher 계층을 만들지 않는다.
 player에게 가는 게임 진행 알림은 `PlayerActor`가 자기 bound session으로 보내고, 서버 간 보상
 fan-out은 `BingoRoom`이 Spot pub/sub topic으로 publish/subscribe한다. Spot pub/sub event
-수신도 `Spots/BingoRoom` 안에서 처리한다.
+수신도 `Spots/BingoRoomSpot/BingoRoom` 안에서 처리한다.
 
 ## 6. 언어별 구현 기준
 
@@ -406,14 +406,19 @@ Server/Play/
       Matchmaking/
         RedisBingoMatchQueue
       Spots/
-        BingoEntrySpot
-        BingoRoom
-        Handlers/
-          ObserveBingoEventsHandler
-          MatchBingoActorHandler
-          StopObservingBingoEventsHandler
-          BingoRewardAcquiredEventHandler
-          SubmitBingoCardHandler
+        EntrySpot/
+          BingoEntrySpot
+          Handlers/
+            ObserveBingoEventsHandler
+            MatchBingoActorHandler
+        BingoRoomSpot/
+          BingoRoom
+          Handlers/
+            StopObservingBingoEventsHandler
+            BingoRewardAcquiredEventHandler
+            SubmitBingoCardHandler
+          Notifications/
+            BingoNotificationPublisher
 ```
 
 역할은 아래처럼 나눈다.
@@ -426,10 +431,12 @@ Server/Play/
 | `Application/RoomAllocation/BingoMatchQueue` | room allocation use case가 필요로 하는 waiting room reservation 계약을 정의한다. |
 | `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 match queue reservation과 room allocation 결과 생성을 조율한다. |
 | `Infrastructure/ZLink/Matchmaking/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
-| `Infrastructure/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, draw 진행, domain 호출, player actor push, reward pub/sub publish/subscribe를 맡는다. |
-| `Infrastructure/ZLink/Spots/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
+| `Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom` | ZLink Spot lifecycle, actor join callback, draw 진행, domain 호출, player actor push, reward pub/sub publish/subscribe를 맡는다. |
+| `Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
 | `Infrastructure/ZLink/Actors/PlayerActor` | player별 bound session push를 감싼다. room Spot은 actor의 public method만 호출하고 stream frame을 직접 만들지 않는다. |
-| `Infrastructure/ZLink/Handlers/*` | channel request와 Spot actor request를 받아 application/domain adapter로 연결한다. |
+| `Infrastructure/ZLink/Handlers/*` | channel request를 받아 application adapter로 연결한다. |
+| `Infrastructure/ZLink/Spots/EntrySpot/Handlers/*` | Entry Spot actor request를 받아 matching과 room join을 연결한다. |
+| `Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/*` | room Spot actor request와 timer/event callback을 받아 domain operation을 호출한다. |
 
 Domain 객체는 ZLink framework 타입을 직접 참조하지 않는다. `BingoRoom` Spot은 framework
 callback을 받아 domain method를 호출하고, domain이 반환한 change와 event를 adapter가

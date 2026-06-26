@@ -11,11 +11,11 @@ idempotency·dedupe·보상 트랜잭션을 framework primitive 위에서 구현
 
 ## 2. 서버 구성
 
-`Registry`, `CommerceApi`(x2: `api-a`/`api-b`), `OrderWorkflow`(x2: `workflow-a`/`workflow-b`),
-`Client`. `OrderWorkflow`가 event-sourced aggregate(stream replay로 복원), optimistic version
-check, projection folding을 가진 상태 소유 Spot이다. scale-out(API x2 / workflow x2) 구성으로
-서로 다른 주문이 서로 다른 instance에서 처리되고 어느 instance에서 조회해도 같은 projection을
-반환함을 검증한다.
+`Registry`, `Server`, `Client`로 구성한다. 현재 TypeScript 구현은 하나의 서버 프로세스 안에서
+commerce API 역할과 `OrderWorkflow` 역할을 module로 나누고, workflow role service와 channel
+handler가 event-sourced aggregate(stream replay로 복원), optimistic version check, projection
+folding을 소유하는 compact 구현이다. 공통 시나리오의 최종 목표는 `OrderWorkflowSpot` owner 구조지만,
+현재 TypeScript 샘플은 아직 Spot factory와 다중 workflow instance를 등록하지 않는다.
 
 ## 3. 전체 흐름
 
@@ -33,8 +33,9 @@ polling 한다. readiness를 sleep으로 숨기지 않는다.
 ## 5. 경계 메모
 
 transport는 HTTP 대신 JSON-codec ZLink client/server channel을 쓴다(게이트가 HTTP를 요구하지
-않음). owner routing은 `OrderId` 기준으로 안정적이고, 같은 `OrderId`는 항상 같은 workflow
-instance owner 흐름으로 모인다.
+않음). 현재 compact 구현에서는 하나의 workflow role service가 `OrderId`별 event stream과
+projection을 관리한다. `OrderId` 기준 owner routing과 다중 workflow instance 검증은 full 구조로
+승격할 때 추가해야 한다.
 
 ## 6. 호출 표면 (객체-메시징)
 
@@ -49,11 +50,11 @@ high-level 호출은 업무 객체를 직접 주고받고, codec(JSON)·packet n
 ## 7. Client self-check
 
 중복 `StartOrderReq`가 같은 `OrderId`를 반환하고 event 중복 append가 없는지, 보상 event가
-append 되는지, 두 instance 어디서 조회해도 같은 projection인지, `startedIdempotencyCount`가
-기대값인지 server-side assertion으로 확인한다.
+append 되는지, projection rebuild 결과가 같은지, `startedIdempotencyCount`가 기대값인지
+server-side assertion으로 확인한다.
 
 ## 8. 완료 기준
 
-- event-sourcing·idempotency·dedupe·보상·projection rebuild·scale-out이 모두 동작한다.
+- event-sourcing·idempotency·dedupe·보상·projection rebuild가 모두 동작한다.
 - JSON codec을 쓰고 readiness를 sleep으로 숨기지 않는다.
 - high-level 호출이 업무 객체 기반이고 codec helper가 노출되지 않는다.

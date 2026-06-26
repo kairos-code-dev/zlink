@@ -465,14 +465,17 @@ Server/Play/
       Sessions/
         PlaySession
       Spots/
-        PlayEntrySpot
-        TicTacToeGame
-        Handlers/
-          PlayActorObserveMilestoneHandler
-          PlayActorJoinGameHandler
-          PlayActorLeaveGameHandler
-          PlayActorPlaceMarkHandler
-          TicTacToeGameTimerHandler
+        EntrySpot/
+          PlayEntrySpot
+          Handlers/
+            PlayActorObserveMilestoneHandler
+            PlayActorJoinGameHandler
+        TicTacToeGameSpot/
+          TicTacToeGame
+          Handlers/
+            PlayActorLeaveGameHandler
+            PlayActorPlaceMarkHandler
+            TicTacToeGameTimerHandler
 ```
 
 역할은 아래처럼 나눈다.
@@ -483,9 +486,10 @@ Server/Play/
 | `Domain/TicTacToe/TicTacToeMatch` | player join, X/O 배정, turn, timeout, win/draw 상태 전이, snapshot 생성을 소유한다. |
 | `Application/GameCreation/TicTacToeGameCreator` | 명시적인 `RoomId`를 만들고, 그 `RoomId` 문자열에서 room Spot routing id를 만든 뒤 room을 생성한다. |
 | `Infrastructure/ZLink/Sessions/PlaySession` | stream 연결, 첫 packet 인증, actor 생성, session binding, client packet dispatch를 맡는다. |
-| `Infrastructure/ZLink/Spots/PlayEntrySpot` | actor entry lifecycle, room join request dispatch, observer milestone subscription, actor destroy 진입점을 맡는다. |
-| `Infrastructure/ZLink/Spots/TicTacToeGame` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, room member push 전송을 맡는다. |
-| `Infrastructure/ZLink/Spots/Handlers/*` | actor request를 받아 entry Spot에서 room Spot으로 join시키거나 room domain operation을 호출한다. |
+| `Infrastructure/ZLink/Spots/EntrySpot/PlayEntrySpot` | actor entry lifecycle, room join request dispatch, observer milestone subscription, actor destroy 진입점을 맡는다. |
+| `Infrastructure/ZLink/Spots/TicTacToeGameSpot/TicTacToeGame` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, room member push 전송을 맡는다. |
+| `Infrastructure/ZLink/Spots/EntrySpot/Handlers/*` | actor request를 받아 entry Spot에서 room Spot으로 join시킨다. |
+| `Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/*` | actor request와 timer callback을 받아 room domain operation을 호출한다. |
 | `Infrastructure/ZLink/Handlers/CreateGameHandler` | Play channel의 room 생성 request를 application use case로 연결한다. |
 
 observer milestone 처리는 `PlayEntrySpot`의 local notification responsibility다. 언어별로

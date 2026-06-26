@@ -83,7 +83,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Play/Infrastructure/ZLink/Handlers/allocate-bingo-room-handler.ts',
       'Server/Play/Infrastructure/ZLink/Handlers/ensure-player-actor-handler.ts',
       'Server/Play/Infrastructure/ZLink/Handlers/match-bingo-channel-handler.ts',
-      'Server/Play/Infrastructure/ZLink/Handlers/submit-bingo-card-channel-handler.ts',
       'Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/bingo-room-timer-handler.ts',
       'Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/match-bingo-actor-handler.ts',
       'Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/observe-bingo-events-handler.ts',

@@ -1,6 +1,8 @@
 # ShoppingMall C++ Sample
 
 ShoppingMall 샘플은 주문 생성과 order workflow 상태 전이를 C++ 샘플 구조로 보여준다.
+현재 C++ 구현은 channel handler와 role service로 workflow를 검증하는 compact 샘플이며,
+공통 시나리오의 `OrderWorkflowSpot` owner 구조까지 구현한 full 샘플은 아니다.
 
 ## 실행
 

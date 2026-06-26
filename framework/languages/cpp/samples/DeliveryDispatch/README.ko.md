@@ -1,6 +1,8 @@
 # DeliveryDispatch C++ Sample
 
 DeliveryDispatch 샘플은 배달 생성, courier 배정, 픽업, 완료까지의 상태 전이를 C++ 샘플 구조로 보여준다.
+현재 C++ 구현은 client self-check와 상태 전이를 검증하는 compact 샘플이며, 공통 시나리오의
+`DeliveryTrackingSpot`/customer actor join 구조까지 구현한 full 샘플은 아니다.
 
 ## 실행
 

@@ -320,6 +320,7 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void ticTacToeDirectSampleUsesFrameworkRuntimePublicFacade() throws IOException {
+        SampleSourcePaths paths = javaSamplePaths("tictactoe");
         assertNoSampleSourcesUnder("java", "TicTacToe", "src/main/java",
             List.of(
                 "systems/zlink/samples/tictactoe/client",
@@ -348,10 +349,10 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/server/play/PlayServerApplication.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActorFactory.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/PlayActorPlaceMarkHandler.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.java",
+            paths.playSpot("entryspot", "PlayEntrySpot"),
+            paths.playSpot("tictactoegamespot", "TicTacToeGame"),
+            paths.playSpotHandler("tictactoegamespot", "PlayActorPlaceMarkHandler"),
+            paths.playSpotHandler("tictactoegamespot", "TicTacToeGameTimerHandler"),
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java"));
         assertSampleFilesExist("java", "TicTacToe", "Shared/src/main/java", List.of(
@@ -431,11 +432,11 @@ final class SampleReleaseGateContractTest {
         String entrySpotSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.java");
+            paths.playSpot("entryspot", "PlayEntrySpot"));
         String gameSpotSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.java");
+            paths.playSpot("tictactoegamespot", "TicTacToeGame"));
         String playSessionSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -610,19 +611,19 @@ final class SampleReleaseGateContractTest {
         String playActorJoinHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/handlers/PlayActorJoinGameHandler.java");
+            paths.playSpotHandler("entryspot", "PlayActorJoinGameHandler"));
         String playPlaceMarkHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/PlayActorPlaceMarkHandler.java");
+            paths.playSpotHandler("tictactoegamespot", "PlayActorPlaceMarkHandler"));
         String gameCreatedHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameCreatedHandler.java");
+            paths.playSpotHandler("tictactoegamespot", "TicTacToeGameCreatedHandler"));
         String gameTimerHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.java");
+            paths.playSpotHandler("tictactoegamespot", "TicTacToeGameTimerHandler"));
         String matchDomainSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -713,6 +714,7 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void ticTacToeKotlinSampleMirrorsJavaRoleLayout() throws IOException {
+        SampleSourcePaths paths = kotlinSamplePaths("tictactoe");
         assertNoSampleSourcesUnder("kotlin", "TicTacToe", "src/main/kotlin",
             List.of(
                 "systems/zlink/samples/kotlin/tictactoe/client",
@@ -739,10 +741,10 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActorFactory.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/application/gamecreation/TicTacToeGameCreator.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/PlayActorPlaceMarkHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.kt",
+            paths.playSpot("entryspot", "PlayEntrySpot"),
+            paths.playSpot("tictactoegamespot", "TicTacToeGame"),
+            paths.playSpotHandler("tictactoegamespot", "PlayActorPlaceMarkHandler"),
+            paths.playSpotHandler("tictactoegamespot", "TicTacToeGameTimerHandler"),
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt"));
@@ -807,11 +809,11 @@ final class SampleReleaseGateContractTest {
         String entrySpotSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.kt");
+            paths.playSpot("entryspot", "PlayEntrySpot"));
         String gameSpotSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.kt");
+            paths.playSpot("tictactoegamespot", "TicTacToeGame"));
         String playSessionSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
@@ -974,19 +976,19 @@ final class SampleReleaseGateContractTest {
         String playActorJoinHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/handlers/PlayActorJoinGameHandler.kt");
+            paths.playSpotHandler("entryspot", "PlayActorJoinGameHandler"));
         String playPlaceMarkHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/PlayActorPlaceMarkHandler.kt");
+            paths.playSpotHandler("tictactoegamespot", "PlayActorPlaceMarkHandler"));
         String gameCreatedHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameCreatedHandler.kt");
+            paths.playSpotHandler("tictactoegamespot", "TicTacToeGameCreatedHandler"));
         String gameTimerHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/handlers/TicTacToeGameTimerHandler.kt");
+            paths.playSpotHandler("tictactoegamespot", "TicTacToeGameTimerHandler"));
         assertTrue(playAuthHandlerSource.contains("ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
                 && playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
                 && playAuthHandlerSource.contains("context.actors().bind(playActor).await()")
@@ -1067,6 +1069,7 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void bingoMirrorsFourClientMatchingTimerAndBoundPushGate() throws IOException {
+        SampleSourcePaths paths = javaSamplePaths("bingo");
         assertNoSampleSourcesUnder("java", "Bingo", "src/main/java");
         assertSampleFilesExist("java", "Bingo", "Client/src/main/java", List.of(
             "systems/zlink/samples/bingo/client/Program.java",
@@ -1085,12 +1088,12 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoGame.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomGame.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomModels.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/BingoRoomSpotCreatedHandler.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/BingoRoomTimerHandler.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/SubmitBingoCardHandler.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/entryspot/BingoEntrySpot.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/entryspot/handlers/MatchBingoActorHandler.java",
+            paths.playSpot("bingoroomspot", "BingoRoomSpot"),
+            paths.playSpotHandler("bingoroomspot", "BingoRoomSpotCreatedHandler"),
+            paths.playSpotHandler("bingoroomspot", "BingoRoomTimerHandler"),
+            paths.playSpotHandler("bingoroomspot", "SubmitBingoCardHandler"),
+            paths.playSpot("entryspot", "BingoEntrySpot"),
+            paths.playSpotHandler("entryspot", "MatchBingoActorHandler"),
             "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.java",
             "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.java"));
         assertSampleFilesExist("java", "Bingo", "Server/Registry/src/main/java", List.of(
@@ -1128,7 +1131,7 @@ final class SampleReleaseGateContractTest {
         String roomSource = sampleJavaSource(
             "Bingo",
             "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.java");
+            paths.playSpot("bingoroomspot", "BingoRoomSpot"));
         String apiHostSource = sampleJavaSource(
             "Bingo",
             "Server/Api/src/main/java",
@@ -1262,6 +1265,7 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void bingoKotlinSampleMirrorsJavaRoleLayout() throws IOException {
+        SampleSourcePaths paths = kotlinSamplePaths("bingo");
         assertNoSampleSourcesUnder("kotlin", "Bingo", "src/main/kotlin");
         assertSampleFilesExist("kotlin", "Bingo", "Client/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/client/Program.kt",
@@ -1278,12 +1282,12 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/actors/PlayerActorFactory.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/domain/bingo/BingoCard.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/domain/bingo/BingoRoomModels.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/BingoRoomSpotCreatedHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/BingoRoomTimerHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/handlers/SubmitBingoCardHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/entryspot/BingoEntrySpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/entryspot/handlers/MatchBingoActorHandler.kt",
+            paths.playSpot("bingoroomspot", "BingoRoomSpot"),
+            paths.playSpotHandler("bingoroomspot", "BingoRoomSpotCreatedHandler"),
+            paths.playSpotHandler("bingoroomspot", "BingoRoomTimerHandler"),
+            paths.playSpotHandler("bingoroomspot", "SubmitBingoCardHandler"),
+            paths.playSpot("entryspot", "BingoEntrySpot"),
+            paths.playSpotHandler("entryspot", "MatchBingoActorHandler"),
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Server/Registry/src/main/kotlin", List.of(
@@ -1321,7 +1325,7 @@ final class SampleReleaseGateContractTest {
         String roomSource = sampleKotlinSource(
             "Bingo",
             "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.kt");
+            paths.playSpot("bingoroomspot", "BingoRoomSpot"));
         String apiHostSource = sampleKotlinSource(
             "Bingo",
             "Server/Api/src/main/kotlin",
@@ -1456,35 +1460,39 @@ final class SampleReleaseGateContractTest {
 
     @Test
     void maintainedSamplesImplementActorLifecycleScenarios() throws IOException {
+        SampleSourcePaths javaBingo = javaSamplePaths("bingo");
+        SampleSourcePaths javaTicTacToe = javaSamplePaths("tictactoe");
+        SampleSourcePaths kotlinBingo = kotlinSamplePaths("bingo");
+        SampleSourcePaths kotlinTicTacToe = kotlinSamplePaths("tictactoe");
         assertJavaActorLifecycleSpec(
             "Bingo",
             "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/entryspot/BingoEntrySpot.java",
-            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.java",
+            javaBingo.playSpot("entryspot", "BingoEntrySpot"),
+            javaBingo.playSpot("bingoroomspot", "BingoRoomSpot"),
             "systems/zlink/samples/bingo/server/play/infrastructure/zlink/actors/PlayerActor.java",
             "Server/Session/src/main/java",
             "systems/zlink/samples/bingo/server/session/sessions/BingoSession.java");
         assertJavaActorLifecycleSpec(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.java",
-            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.java",
+            javaTicTacToe.playSpot("entryspot", "PlayEntrySpot"),
+            javaTicTacToe.playSpot("tictactoegamespot", "TicTacToeGame"),
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.java",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java");
         assertKotlinActorLifecycleSpec(
             "Bingo",
             "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/entryspot/BingoEntrySpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/bingoroomspot/BingoRoomSpot.kt",
+            kotlinBingo.playSpot("entryspot", "BingoEntrySpot"),
+            kotlinBingo.playSpot("bingoroomspot", "BingoRoomSpot"),
             "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/actors/PlayerActor.kt",
             "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/session/sessions/BingoSession.kt");
         assertKotlinActorLifecycleSpec(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.kt",
+            kotlinTicTacToe.playSpot("entryspot", "PlayEntrySpot"),
+            kotlinTicTacToe.playSpot("tictactoegamespot", "TicTacToeGame"),
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.kt",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt");
@@ -1580,6 +1588,28 @@ final class SampleReleaseGateContractTest {
 
     private static Path frameworkJavaRoot() {
         return Path.of(System.getProperty("user.dir")).getParent();
+    }
+
+    private static SampleSourcePaths javaSamplePaths(String packageName) {
+        return new SampleSourcePaths("systems/zlink/samples/" + packageName, ".java");
+    }
+
+    private static SampleSourcePaths kotlinSamplePaths(String packageName) {
+        return new SampleSourcePaths("systems/zlink/samples/kotlin/" + packageName, ".kt");
+    }
+
+    private record SampleSourcePaths(String packageRoot, String extension) {
+        String playSpot(String spotDirectory, String className) {
+            return playZLink("spots/" + spotDirectory + "/" + className);
+        }
+
+        String playSpotHandler(String spotDirectory, String className) {
+            return playZLink("spots/" + spotDirectory + "/handlers/" + className);
+        }
+
+        private String playZLink(String relativePath) {
+            return packageRoot + "/server/play/infrastructure/zlink/" + relativePath + extension;
+        }
     }
 
     private static List<Path> officialActorDestroyDocs() throws IOException {

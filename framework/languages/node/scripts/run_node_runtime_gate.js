@@ -38,12 +38,16 @@ run('lint', process.execPath, [
   'samples/**/*.ts'
 ]);
 for (const testFile of listTestFiles(path.join(nodeRoot, 'test'))) {
-  const relative = path.relative(nodeRoot, testFile);
+  const relative = relativePath(nodeRoot, testFile);
   if (skippedTestFiles.has(relative) || skippedTestFiles.has(path.basename(testFile))) {
     console.log(`-- ${relative} # SKIP framework CI excludes e2e sample/runtime checks`);
     continue;
   }
   run(relative, process.execPath, ['--test', testFile]);
+}
+
+function relativePath(base, file) {
+  return path.relative(base, file).split(path.sep).join('/');
 }
 
 function run(label, command, args) {

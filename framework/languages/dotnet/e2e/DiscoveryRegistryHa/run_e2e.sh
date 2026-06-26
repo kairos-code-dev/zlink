@@ -6,7 +6,10 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 
-SERVER_PROJECT="$ROOT_DIR/Server/DiscoveryRegistryHa.Server.csproj"
+REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/DiscoveryRegistryHa.Registry.csproj"
+PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/DiscoveryRegistryHa.Provider.csproj"
+EMBEDDED_PROJECT="$ROOT_DIR/Server/Embedded/DiscoveryRegistryHa.Embedded.csproj"
+DRIVER_PROJECT="$ROOT_DIR/Server/Driver/DiscoveryRegistryHa.Driver.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/DiscoveryRegistryHa.Client.csproj"
 
 read -r -a PORTS <<<"$(python3 - <<'PY'
@@ -15,7 +18,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 15:
+    while len(sockets) < 16:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -46,6 +49,7 @@ API_A_PHASE1_HTTP_PORT="${PORTS[11]}"
 API_B_PHASE1_HTTP_PORT="${PORTS[12]}"
 API_A_HTTP_PORT="${PORTS[13]}"
 API_B_HTTP_PORT="${PORTS[14]}"
+DRIVER_HTTP_PORT="${PORTS[15]}"
 
 REG1_URL="http://127.0.0.1:$REG1_HTTP_PORT"
 REG2_URL="http://127.0.0.1:$REG2_HTTP_PORT"
@@ -94,8 +98,7 @@ start_registry() {
   local pub="$4"
   local router="$5"
   shift 5
-  ZLINK_E2E_RID="$name" dotnet run --project "$SERVER_PROJECT" -- \
-    --role registry \
+  ZLINK_E2E_RID="$name" dotnet run --project "$REGISTRY_PROJECT" -- \
     --rid "$name" \
     --registry-id "$id" \
     --http-url "$url" \
@@ -122,8 +125,7 @@ start_registry reg-1 1 "$REG1_URL" "$REG1_PUB" "$REG1_ROUTER" \
   --peer-pub-endpoint "$REG3_PUB"
 wait_health "$REG1_URL" reg-1
 
-ZLINK_E2E_RID="api-a" dotnet run --project "$SERVER_PROJECT" -- \
-  --role provider \
+ZLINK_E2E_RID="api-a" dotnet run --project "$PROVIDER_PROJECT" -- \
   --rid api-a \
   --http-url "http://127.0.0.1:$API_A_PHASE1_HTTP_PORT" \
   --channel-endpoint "$API_A" \
@@ -134,8 +136,7 @@ ZLINK_E2E_RID="api-a" dotnet run --project "$SERVER_PROJECT" -- \
 api_a_phase1_pid="$!"
 pids+=("$api_a_phase1_pid")
 
-ZLINK_E2E_RID="api-b" dotnet run --project "$SERVER_PROJECT" -- \
-  --role provider \
+ZLINK_E2E_RID="api-b" dotnet run --project "$PROVIDER_PROJECT" -- \
   --rid api-b \
   --http-url "http://127.0.0.1:$API_B_PHASE1_HTTP_PORT" \
   --channel-endpoint "$API_B" \
@@ -146,11 +147,31 @@ ZLINK_E2E_RID="api-b" dotnet run --project "$SERVER_PROJECT" -- \
 api_b_phase1_pid="$!"
 pids+=("$api_b_phase1_pid")
 
+ZLINK_E2E_RID="driver" dotnet run --project "$DRIVER_PROJECT" -- \
+  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
+  --reg-1-url "$REG1_URL" \
+  --reg-2-url "$REG2_URL" \
+  --reg-3-url "$REG3_URL" \
+  --reg-1-router-endpoint "$REG1_ROUTER" \
+  --reg-2-router-endpoint "$REG2_ROUTER" \
+  --reg-3-router-endpoint "$REG3_ROUTER" \
+  --reg-1-pub-endpoint "$REG1_PUB" \
+  --reg-2-pub-endpoint "$REG2_PUB" \
+  --reg-2-peer-pub-endpoint "$REG1_PUB" \
+  --reg-2-peer-pub-endpoint "$REG3_PUB" \
+  --api-a-endpoint "$API_A" \
+  --api-b-endpoint "$API_B" \
+  --registry-project "$REGISTRY_PROJECT" \
+  --provider-project "$PROVIDER_PROJECT" \
+  --embedded-project "$EMBEDDED_PROJECT" \
+  --log-dir "$LOG_DIR" \
+  >"$LOG_DIR/driver.stdout.log" 2>"$LOG_DIR/driver.stderr.log" &
+pids+=("$!")
+wait_health "http://127.0.0.1:$DRIVER_HTTP_PORT" driver
+
 dotnet run --project "$CLIENT_PROJECT" -- \
   --scenario a1 \
-  --reg-1-url "$REG1_URL" \
-  --reg-1-router-endpoint "$REG1_ROUTER" \
-  --log-dir "$LOG_DIR" \
+  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
   >"$LOG_DIR/client-a1.stdout.log" 2>"$LOG_DIR/client-a1.stderr.log"
 cat "$LOG_DIR/client-a1.stdout.log"
 
@@ -168,8 +189,7 @@ start_registry reg-3 3 "$REG3_URL" "$REG3_PUB" "$REG3_ROUTER" \
   --peer-pub-endpoint "$REG2_PUB"
 wait_health "$REG3_URL" reg-3
 
-ZLINK_E2E_RID="api-a" dotnet run --project "$SERVER_PROJECT" -- \
-  --role provider \
+ZLINK_E2E_RID="api-a" dotnet run --project "$PROVIDER_PROJECT" -- \
   --rid api-a \
   --http-url "http://127.0.0.1:$API_A_HTTP_PORT" \
   --channel-endpoint "$API_A" \
@@ -179,8 +199,7 @@ ZLINK_E2E_RID="api-a" dotnet run --project "$SERVER_PROJECT" -- \
   >"$LOG_DIR/api-a.stdout.log" 2>"$LOG_DIR/api-a.stderr.log" &
 pids+=("$!")
 
-ZLINK_E2E_RID="api-b" dotnet run --project "$SERVER_PROJECT" -- \
-  --role provider \
+ZLINK_E2E_RID="api-b" dotnet run --project "$PROVIDER_PROJECT" -- \
   --rid api-b \
   --http-url "http://127.0.0.1:$API_B_HTTP_PORT" \
   --channel-endpoint "$API_B" \
@@ -192,19 +211,6 @@ pids+=("$!")
 
 dotnet run --project "$CLIENT_PROJECT" -- \
   --scenario cluster \
-  --reg-1-url "$REG1_URL" \
-  --reg-2-url "$REG2_URL" \
-  --reg-3-url "$REG3_URL" \
-  --reg-1-router-endpoint "$REG1_ROUTER" \
-  --reg-2-router-endpoint "$REG2_ROUTER" \
-  --reg-3-router-endpoint "$REG3_ROUTER" \
-  --reg-1-pub-endpoint "$REG1_PUB" \
-  --reg-2-pub-endpoint "$REG2_PUB" \
-  --reg-2-peer-pub-endpoint "$REG1_PUB" \
-  --reg-2-peer-pub-endpoint "$REG3_PUB" \
-  --api-a-endpoint "$API_A" \
-  --api-b-endpoint "$API_B" \
-  --server-project "$SERVER_PROJECT" \
-  --log-dir "$LOG_DIR" \
+  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
   >"$LOG_DIR/client-cluster.stdout.log" 2>"$LOG_DIR/client-cluster.stderr.log"
 cat "$LOG_DIR/client-cluster.stdout.log"

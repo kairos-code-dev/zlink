@@ -13,7 +13,7 @@ using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Registry;
 
-var options = ServerOptions.Parse(args);
+var options = ServerOptions.Parse(args, defaultRole: "provider");
 Directory.CreateDirectory(options.LogDir);
 
 var builder = WebApplication.CreateBuilder(args);
@@ -177,7 +177,7 @@ internal sealed record ServerOptions(
     IReadOnlyList<string> PeerPubEndpoints,
     IReadOnlyList<string> DiscoveryEndpoints)
 {
-    public static ServerOptions Parse(string[] args)
+    public static ServerOptions Parse(string[] args, string defaultRole)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var peers = new List<string>();
@@ -219,7 +219,7 @@ internal sealed record ServerOptions(
             : fallback;
 
         return new ServerOptions(
-            Role: Get("--role", "provider"),
+            Role: defaultRole,
             HttpUrl: Get("--http-url", "http://127.0.0.1:0"),
             LogDir: Get("--log-dir", "logs"),
             EvidenceFile: Get("--evidence-file"),

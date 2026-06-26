@@ -171,6 +171,8 @@ public sealed class UnhandledDispatchPolicyTests
         await using var context = global::Systems.Zlink.Zlink.CreateContext();
         await using var routerSocket = context.CreateRouterSocket();
         await using var dealerSocket = context.CreateDealerSocket();
+        routerSocket.Options.Linger = TimeSpan.Zero;
+        dealerSocket.Options.Linger = TimeSpan.Zero;
         routerSocket.Bind(endpoint);
         dealerSocket.Connect(endpoint);
         var router = new ZLinkBackendRouterSocketWrapper(routerSocket);

@@ -136,6 +136,18 @@ jobs:
         working-directory: bindings/node
         run: npm run build
 
+      - name: Normalize Visual Studio version for node-gyp
+        if: startsWith(matrix.target.name, 'win-')
+        shell: pwsh
+        run: |
+          # GitHub Windows runners currently expose the VS 2026 path through a
+          # VS 18 developer prompt. node-gyp still maps MSVC toolsets by the
+          # Visual Studio major version and only accepts VS 2022 for v143, so
+          # keep the actual toolchain paths from msvc-dev-cmd but present the
+          # prompt version as VS 2022 before node-gyp probes it.
+          echo "VSCMD_VER=17.0" >> $env:GITHUB_ENV
+          echo "VisualStudioVersion=17.0" >> $env:GITHUB_ENV
+
       - name: Build Node binding native addon
         working-directory: bindings/node
         run: npm run rebuild-native

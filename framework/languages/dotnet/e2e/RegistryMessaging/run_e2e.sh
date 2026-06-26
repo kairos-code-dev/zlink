@@ -6,7 +6,9 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 
-SERVER_PROJECT="$ROOT_DIR/Server/RegistryMessaging.Server.csproj"
+REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/RegistryMessaging.Registry.csproj"
+PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/RegistryMessaging.Provider.csproj"
+DRIVER_PROJECT="$ROOT_DIR/Server/Driver/RegistryMessaging.Driver.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RegistryMessaging.Client.csproj"
 
 pick_port() {
@@ -23,6 +25,7 @@ REG_HTTP_PORT="$(pick_port)"
 PROVIDER_A_HTTP_PORT="$(pick_port)"
 PROVIDER_B_HTTP_PORT="$(pick_port)"
 WORKFLOW_HTTP_PORT="$(pick_port)"
+DRIVER_HTTP_PORT="$(pick_port)"
 REG_PUB_PORT="$(pick_port)"
 REG_ROUTER_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
@@ -71,16 +74,17 @@ wait_health() {
 
 start_server() {
   local name="$1"
+  local project="$2"
   shift
-  dotnet run --project "$SERVER_PROJECT" -- "$@" \
+  shift
+  dotnet run --project "$project" -- "$@" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
 
 echo "log_dir=$LOG_DIR"
 
-start_server registry \
-  --role registry \
+start_server registry "$REGISTRY_PROJECT" \
   --rid registry \
   --http-url "http://127.0.0.1:$REG_HTTP_PORT" \
   --registry-pub-endpoint "$REG_PUB" \
@@ -88,8 +92,7 @@ start_server registry \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$REG_HTTP_PORT" registry
 
-start_server api-a \
-  --role provider \
+start_server api-a "$PROVIDER_PROJECT" \
   --rid api-a \
   --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -100,8 +103,7 @@ start_server api-a \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" api-a
 
-start_server api-b \
-  --role provider \
+start_server api-b "$PROVIDER_PROJECT" \
   --rid api-b \
   --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -112,8 +114,7 @@ start_server api-b \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
 
-start_server workflow-a \
-  --role provider \
+start_server workflow-a "$PROVIDER_PROJECT" \
   --rid workflow-a \
   --http-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -122,7 +123,8 @@ start_server workflow-a \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$WORKFLOW_HTTP_PORT" workflow-a
 
-dotnet run --project "$CLIENT_PROJECT" -- \
+start_server driver "$DRIVER_PROJECT" \
+  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
   --provider-a-endpoint "$API_A" \
   --provider-b-endpoint "$API_B" \
@@ -132,8 +134,13 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --provider-a-evidence-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT/evidence" \
   --provider-b-evidence-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT/evidence" \
   --workflow-evidence-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT/evidence" \
-  --server-project "$SERVER_PROJECT" \
-  --log-dir "$LOG_DIR" \
+  --registry-project "$REGISTRY_PROJECT" \
+  --provider-project "$PROVIDER_PROJECT" \
+  --log-dir "$LOG_DIR"
+wait_health "http://127.0.0.1:$DRIVER_HTTP_PORT" driver
+
+dotnet run --project "$CLIENT_PROJECT" -- \
+  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

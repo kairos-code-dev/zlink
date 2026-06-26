@@ -15,7 +15,7 @@ using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Registry;
 
-var options = ServerOptions.Parse(args);
+var options = ServerOptions.Parse(args, defaultRole: "registry");
 Directory.CreateDirectory(options.LogDir);
 
 var builder = WebApplication.CreateBuilder(args);
@@ -278,7 +278,7 @@ internal sealed record ServerOptions(
     int Weight,
     IReadOnlyList<string> RoutePeers)
 {
-    public static ServerOptions Parse(string[] args)
+    public static ServerOptions Parse(string[] args, string defaultRole)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var routePeers = new List<string>();
@@ -310,7 +310,7 @@ internal sealed record ServerOptions(
         var rid = values.GetValueOrDefault("rid", "node");
         Environment.SetEnvironmentVariable("ZLINK_E2E_RID", rid);
         return new ServerOptions(
-            values.GetValueOrDefault("role", "provider"),
+            defaultRole,
             values.GetValueOrDefault("http-url", "http://127.0.0.1:0"),
             values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-e2e-log")),
             values.GetValueOrDefault("evidence-file"),

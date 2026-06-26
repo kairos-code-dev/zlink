@@ -54,12 +54,22 @@ public sealed class WorkerPoolTests
         using var pool = CreatePool(maxThreads: 1, maxQueueLength: 1);
         await using var queue = CreateQueue();
         using var blockPool = new ManualResetEventSlim(false);
+        var workerStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         try
         {
             // Occupy the single pool thread, then fill the single queue slot.
-            _ = CreateCall(pool, _ => { blockPool.Wait(); return 0; }, queue).Async();
-            await WaitForAsync(() => pool.ThreadCount == 1);
+            _ = CreateCall(
+                pool,
+                _ =>
+                {
+                    workerStarted.TrySetResult();
+                    blockPool.Wait();
+                    return 0;
+                },
+                queue).Async();
+            await workerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             _ = CreateCall(pool, _ => 0, queue).Async();
             await WaitForAsync(() => pool.QueueLength == 1);
 

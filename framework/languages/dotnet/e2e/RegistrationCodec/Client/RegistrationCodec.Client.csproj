@@ -7,16 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" />
-    <PackageReference Include="MessagePack" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="../Shared/RegistrationCodec.Shared.csproj" />
-    <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj" />
-    <ProjectReference Include="../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
-    <ProjectReference Include="../../../src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj" />
-    <ProjectReference Include="../../../src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj" />
+    <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj" />
   </ItemGroup>
 </Project>

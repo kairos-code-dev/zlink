@@ -58,6 +58,7 @@ dotnet run --project "$SERVER_PROJECT" -- \
   --rid reg-codec-node \
   --http-url "$SERVER_URL" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
+  --server-project "$SERVER_PROJECT" \
   --evidence-file "$LOG_DIR/server.evidence.log" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/server.stdout.log" 2>"$LOG_DIR/server.stderr.log" &

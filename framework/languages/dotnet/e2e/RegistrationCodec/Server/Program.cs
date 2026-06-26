@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -10,6 +11,7 @@ using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
 
@@ -47,7 +49,8 @@ builder.Services.AddZLinkFramework(framework =>
     framework.UseFilter<SecondFilter>();
 
     var channel = framework.AddClientServerChannel(RegistrationCodecNames.Channel)
-        .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"));
+        .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
+        .EnableClient(Require(options.ChannelEndpoint, "--channel-endpoint"));
     channel.AddHandlerGroup("auto");
     channel.AddHandlerGroup("attr");
     channel.AddRequestHandler<EchoManualRequestHandler, EchoManualReq, EchoReply>("EchoManual");
@@ -74,6 +77,184 @@ app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
     evidence.Clear();
     return Results.Ok(new { status = "cleared" });
 });
+app.MapPost("/scenario/rc-a1", async (IZLinkChannelClient channel, CancellationToken cancellationToken) =>
+{
+    var reply = await channel.RequestToChannel(
+            RegistrationCodecNames.Channel,
+            new EchoAutoReq("rc-a1"))
+        .Async<EchoReply>(cancellationToken);
+    await channel.SendToChannel(
+            RegistrationCodecNames.Channel,
+            new EchoAutoCommand("cmd-rc-a1", "rc-a1-send"))
+        .Async(cancellationToken);
+    return Results.Ok(reply);
+});
+app.MapPost("/scenario/rc-a2", async (IZLinkChannelClient channel, CancellationToken cancellationToken) =>
+{
+    var reply = await channel.RequestToChannel(
+            RegistrationCodecNames.Channel,
+            new EchoReq("rc-a2"))
+        .PacketName("EchoAttr")
+        .Async<EchoReply>(cancellationToken);
+    await channel.SendToChannel(
+            RegistrationCodecNames.Channel,
+            new EchoCommand("cmd-rc-a2", "rc-a2-send"))
+        .PacketName("EchoAttrCommand")
+        .Async(cancellationToken);
+    return Results.Ok(reply);
+});
+app.MapPost("/scenario/rc-a3", async (IZLinkChannelClient channel, CancellationToken cancellationToken) =>
+{
+    var reply = await channel.RequestToChannel(
+            RegistrationCodecNames.Channel,
+            new EchoManualReq("rc-a3"))
+        .Async<EchoReply>(cancellationToken);
+    await channel.SendToChannel(
+            RegistrationCodecNames.Channel,
+            new EchoManualCommand("cmd-rc-a3", "rc-a3-send"))
+        .Async(cancellationToken);
+    return Results.Ok(reply);
+});
+app.MapPost("/scenario/rc-a4-a5", async (IZLinkChannelClient channel, CancellationToken cancellationToken) =>
+{
+    var first = await channel.RequestToChannel(
+            RegistrationCodecNames.Channel,
+            new EchoReq("rc-a4-1"))
+        .PacketName("EchoDi")
+        .Async<EchoReply>(cancellationToken);
+    var second = await channel.RequestToChannel(
+            RegistrationCodecNames.Channel,
+            new EchoReq("rc-a4-2"))
+        .PacketName("EchoDi")
+        .Async<EchoReply>(cancellationToken);
+    return Results.Ok(new[] { first, second });
+});
+app.MapPost("/scenario/rc-b1-b4", async (IZLinkChannelClient channel, CancellationToken cancellationToken) =>
+{
+    var json = await channel.RequestToChannel(
+            RegistrationCodecNames.Channel,
+            new JsonEchoReq("rc-b1"))
+        .PacketName("EchoJson")
+        .Async<EchoReply>(cancellationToken);
+    await channel.SendToChannel(
+            RegistrationCodecNames.Channel,
+            new JsonEchoCommand("cmd-rc-b1", "rc-b1-send"))
+        .PacketName("EchoJsonCommand")
+        .Async(cancellationToken);
+
+    var protobuf = await channel.RequestToChannel(
+            RegistrationCodecNames.Channel,
+            new StringValue { Value = "rc-b2" })
+        .PacketName("EchoProtobuf")
+        .Async<StringValue>(cancellationToken);
+    await channel.SendToChannel(
+            RegistrationCodecNames.Channel,
+            new StringValue { Value = "rc-b2-send" })
+        .PacketName("EchoProtobufCommand")
+        .Async(cancellationToken);
+
+    var packed = await channel.RequestToChannel(
+            RegistrationCodecNames.Channel,
+            new PackedEchoReq { Value = "rc-b3" })
+        .PacketName("EchoMessagePack")
+        .Async<PackedEchoReq>(cancellationToken);
+    await channel.SendToChannel(
+            RegistrationCodecNames.Channel,
+            new PackedEchoCommand { CommandId = "cmd-rc-b3", Value = "rc-b3-send" })
+        .PacketName("EchoMessagePackCommand")
+        .Async(cancellationToken);
+
+    return Results.Ok(new CodecScenarioResult(json, protobuf.Value, packed.Value));
+});
+app.MapPost("/scenario/rc-b5", async (CancellationToken cancellationToken) =>
+{
+    var serverProject = Require(options.ServerProject, "--server-project");
+    var httpPort = PickPort();
+    var channelPort = PickPort();
+    var serverUrl = $"http://127.0.0.1:{httpPort}";
+    var channelEndpoint = $"tcp://127.0.0.1:{channelPort}";
+    var evidenceFile = Path.Combine(options.LogDir, "codec-mismatch.evidence.log");
+    var stdout = Path.Combine(options.LogDir, "codec-mismatch.stdout.log");
+    var stderr = Path.Combine(options.LogDir, "codec-mismatch.stderr.log");
+    using var process = new Process();
+    process.StartInfo = new ProcessStartInfo("dotnet")
+    {
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+    };
+    process.StartInfo.ArgumentList.Add("run");
+    process.StartInfo.ArgumentList.Add("--project");
+    process.StartInfo.ArgumentList.Add(serverProject);
+    process.StartInfo.ArgumentList.Add("--");
+    process.StartInfo.ArgumentList.Add("--rid");
+    process.StartInfo.ArgumentList.Add("codec-mismatch");
+    process.StartInfo.ArgumentList.Add("--http-url");
+    process.StartInfo.ArgumentList.Add(serverUrl);
+    process.StartInfo.ArgumentList.Add("--channel-endpoint");
+    process.StartInfo.ArgumentList.Add(channelEndpoint);
+    process.StartInfo.ArgumentList.Add("--codec-mode");
+    process.StartInfo.ArgumentList.Add("json-only");
+    process.StartInfo.ArgumentList.Add("--evidence-file");
+    process.StartInfo.ArgumentList.Add(evidenceFile);
+    process.StartInfo.ArgumentList.Add("--log-dir");
+    process.StartInfo.ArgumentList.Add(options.LogDir);
+    process.Start();
+    var copyOut = CopyToFileAsync(process.StandardOutput, stdout);
+    var copyErr = CopyToFileAsync(process.StandardError, stderr);
+    try
+    {
+        await WaitHealthAsync(serverUrl, process, cancellationToken);
+        using var mismatchHost = CreateClientHost(channelEndpoint, options.LogDir, "codec-mismatch-client");
+        await mismatchHost.StartAsync(cancellationToken);
+        var mismatchClient = mismatchHost.Services.GetRequiredService<IZLinkChannelClient>();
+
+        var failed = false;
+        try
+        {
+            await mismatchClient.RequestToChannel(
+                    RegistrationCodecNames.Channel,
+                    new StringValue { Value = "rc-b5" })
+                .PacketName("EchoProtobuf")
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async<StringValue>(cancellationToken);
+        }
+        catch (Exception)
+        {
+            failed = true;
+        }
+
+        if (!failed)
+        {
+            return Results.Problem("RC-B5 Protobuf request unexpectedly succeeded against a JSON-only peer.");
+        }
+
+        var json = await mismatchClient.RequestToChannel(
+                RegistrationCodecNames.Channel,
+                new JsonEchoReq("rc-b5-json"))
+            .PacketName("EchoJson")
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<EchoReply>(cancellationToken);
+        if (json.Value != "echo:rc-b5-json")
+        {
+            return Results.Problem("RC-B5 JSON fallback request did not recover after mismatch.");
+        }
+
+        await mismatchHost.StopAsync(cancellationToken);
+    }
+    finally
+    {
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+        }
+
+        await process.WaitForExitAsync(cancellationToken);
+        await Task.WhenAll(copyOut, copyErr);
+    }
+
+    return Results.Ok(new { status = "passed" });
+});
 await app.RunAsync();
 
 static string Require(string? value, string name)
@@ -81,6 +262,75 @@ static string Require(string? value, string name)
     return string.IsNullOrWhiteSpace(value)
         ? throw new InvalidOperationException($"{name} is required.")
         : value;
+}
+
+static IHost CreateClientHost(string channelEndpoint, string logDir, string nodeId)
+{
+    return Host.CreateDefaultBuilder()
+        .ConfigureServices(services =>
+        {
+            services.AddZLinkFramework(framework =>
+            {
+                framework.ConfigureDispatch()
+                    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                    .TraceLogFile(Path.Combine(logDir, $"{nodeId}-flow.log"))
+                    .TraceLabel(nodeId);
+                framework.Codecs.AddJson();
+                framework.Codecs.Use(ZLinkProtobufCodec.Default);
+                framework.Codecs.Use(ZLinkMessagePackCodec.Default);
+                framework.AddClientServerChannel(RegistrationCodecNames.Channel)
+                    .EnableClient(channelEndpoint);
+            });
+        })
+        .Build();
+}
+
+static int PickPort()
+{
+    using var socket = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+    socket.Start();
+    var port = ((System.Net.IPEndPoint)socket.LocalEndpoint).Port;
+    socket.Stop();
+    return port;
+}
+
+static async Task WaitHealthAsync(string serverUrl, Process process, CancellationToken cancellationToken)
+{
+    using var http = new HttpClient();
+    for (var i = 0; i < 120; i++)
+    {
+        if (process.HasExited)
+        {
+            throw new InvalidOperationException($"RC-B5 mismatch server exited early: {process.ExitCode}.");
+        }
+
+        try
+        {
+            using var response = await http.GetAsync($"{serverUrl}/health", cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return;
+            }
+        }
+        catch (HttpRequestException)
+        {
+        }
+
+        await Task.Delay(250, cancellationToken);
+    }
+
+    throw new TimeoutException($"Timed out waiting for RC-B5 mismatch server at {serverUrl}.");
+}
+
+static async Task CopyToFileAsync(StreamReader reader, string path)
+{
+    await using var stream = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+    await using var writer = new StreamWriter(stream);
+    while (await reader.ReadLineAsync() is { } line)
+    {
+        await writer.WriteLineAsync(line);
+        await writer.FlushAsync();
+    }
 }
 
 [ZLinkHandlerGroup("auto")]
@@ -382,7 +632,8 @@ internal sealed record ServerOptions(
     string? ChannelEndpoint,
     string? EvidenceFile,
     string? InvalidMode,
-    string CodecMode)
+    string CodecMode,
+    string? ServerProject)
 {
     public static ServerOptions Parse(string[] args)
     {
@@ -418,6 +669,9 @@ internal sealed record ServerOptions(
             ChannelEndpoint: Get("--channel-endpoint"),
             EvidenceFile: Get("--evidence-file"),
             InvalidMode: Get("--invalid-mode"),
-            CodecMode: Get("--codec-mode") ?? "all");
+            CodecMode: Get("--codec-mode") ?? "all",
+            ServerProject: Get("--server-project"));
     }
 }
+
+internal sealed record CodecScenarioResult(EchoReply Json, string ProtobufValue, string MessagePackValue);

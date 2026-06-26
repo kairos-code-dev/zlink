@@ -20,7 +20,7 @@ using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
 
-var options = ServerOptions.Parse(args);
+var options = ServerOptions.Parse(args, defaultRole: "play");
 Directory.CreateDirectory(options.LogDir);
 
 var builder = WebApplication.CreateBuilder(args);
@@ -1675,7 +1675,7 @@ internal sealed record ServerOptions(
     string? MultiSpotRouterAEndpoint,
     string? MultiSpotRouterBEndpoint)
 {
-    public static ServerOptions Parse(string[] args)
+    public static ServerOptions Parse(string[] args, string defaultRole)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < args.Length; i++)
@@ -1699,7 +1699,7 @@ internal sealed record ServerOptions(
             : throw new ArgumentException($"--{key} is required.");
 
         return new ServerOptions(
-            Required("role"),
+            defaultRole,
             Required("rid"),
             Required("http-url"),
             values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")),

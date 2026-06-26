@@ -2,9 +2,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVER_PROJECT="$SCRIPT_DIR/Server/SpotService.Server.csproj"
+REGISTRY_PROJECT="$SCRIPT_DIR/Server/Registry/SpotService.Registry.csproj"
+PLAY_PROJECT="$SCRIPT_DIR/Server/Play/SpotService.Play.csproj"
+SESSION_PROJECT="$SCRIPT_DIR/Server/Session/SpotService.Session.csproj"
+MULTI_NODE_PROJECT="$SCRIPT_DIR/Server/MultiNode/SpotService.MultiNode.csproj"
+DRIVER_PROJECT="$SCRIPT_DIR/Server/Driver/SpotService.Driver.csproj"
 CLIENT_PROJECT="$SCRIPT_DIR/Client/SpotService.Client.csproj"
-SERVER_DLL="$SCRIPT_DIR/Server/bin/Debug/net8.0/SpotService.Server.dll"
+REGISTRY_DLL="$SCRIPT_DIR/Server/Registry/bin/Debug/net8.0/SpotService.Registry.dll"
+PLAY_DLL="$SCRIPT_DIR/Server/Play/bin/Debug/net8.0/SpotService.Play.dll"
+SESSION_DLL="$SCRIPT_DIR/Server/Session/bin/Debug/net8.0/SpotService.Session.dll"
+MULTI_NODE_DLL="$SCRIPT_DIR/Server/MultiNode/bin/Debug/net8.0/SpotService.MultiNode.dll"
+DRIVER_DLL="$SCRIPT_DIR/Server/Driver/bin/Debug/net8.0/SpotService.Driver.dll"
 CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/SpotService.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
@@ -77,7 +85,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 36:
+    while len(sockets) < 37:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -132,6 +140,7 @@ MULTI_SPOT_ROUTER_B="tcp://127.0.0.1:${PORTS[32]}"
 CLIENT_MULTI_ROUTE_A="tcp://127.0.0.1:${PORTS[33]}"
 CLIENT_MULTI_ROUTE_B="tcp://127.0.0.1:${PORTS[34]}"
 MULTI_B_HTTP="http://127.0.0.1:${PORTS[35]}"
+DRIVER_HTTP="http://127.0.0.1:${PORTS[36]}"
 
 endpoint_port() {
   local endpoint="$1"
@@ -169,14 +178,19 @@ wait_port() {
 
 start_server() {
   local name="$1"
-  shift
-  dotnet "$SERVER_DLL" "$@" \
+  local dll="$2"
+  shift 2
+  dotnet "$dll" "$@" \
     >"$LOG_DIR/${name}.stdout.log" 2>"$LOG_DIR/${name}.stderr.log" &
   PIDS+=("$!")
 }
 
 echo "log_dir=$LOG_DIR"
-dotnet build "$SERVER_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$REGISTRY_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$PLAY_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$SESSION_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$MULTI_NODE_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$DRIVER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 TLS_CERT="$LOG_DIR/session-a-tls.crt"
 TLS_KEY="$LOG_DIR/session-a-tls.key"
@@ -186,8 +200,7 @@ openssl req -x509 -newkey rsa:2048 -nodes \
   -days 1 \
   -subj "/CN=localhost" >/dev/null 2>&1
 
-start_server registry \
-  --role registry \
+start_server registry "$REGISTRY_DLL" \
   --rid registry \
   --http-url "$REGISTRY_HTTP" \
   --registry-pub-endpoint "$REGISTRY_PUB" \
@@ -197,8 +210,7 @@ wait_port registry "$REGISTRY_HTTP"
 wait_port registry-router "$REGISTRY_ROUTER"
 
 if [[ "$SCENARIO_SET" != "sm-q9" ]]; then
-start_server play-a \
-  --role play \
+start_server play-a "$PLAY_DLL" \
   --rid play-a \
   --http-url "$PLAY_A_HTTP" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
@@ -216,8 +228,7 @@ wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
 wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
 
 if [[ "$NEED_PLAY_B" == "1" ]]; then
-start_server play-b \
-  --role play \
+start_server play-b "$PLAY_DLL" \
   --rid play-b \
   --http-url "$PLAY_B_HTTP" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
@@ -234,8 +245,7 @@ wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
 fi
 
 if [[ "$NEED_SESSION_NODES" == "1" ]]; then
-start_server session-a \
-  --role session \
+start_server session-a "$SESSION_DLL" \
   --rid session-a \
   --http-url "$SESSION_A_HTTP" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
@@ -253,8 +263,7 @@ wait_port session-a-spot-router "$SESSION_A_SPOT_ROUTER"
 wait_port session-a-stream "$SESSION_A_STREAM"
 wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
 
-start_server session-b \
-  --role session \
+start_server session-b "$SESSION_DLL" \
   --rid session-b \
   --http-url "$SESSION_B_HTTP" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
@@ -271,8 +280,7 @@ fi
 fi
 
 if [[ "$SCENARIO_SET" == "sm-q9" ]]; then
-start_server multi-node-a \
-  --role multi-node \
+start_server multi-node-a "$MULTI_NODE_DLL" \
   --rid multi-node-a \
   --http-url "$MULTI_A_HTTP" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
@@ -284,8 +292,7 @@ wait_port multi-node-a "$MULTI_A_HTTP"
 wait_port multi-route-a "$MULTI_ROUTE_A"
 wait_port multi-spot-router-a "$MULTI_SPOT_ROUTER_A"
 
-start_server multi-node-b \
-  --role multi-node \
+start_server multi-node-b "$MULTI_NODE_DLL" \
   --rid multi-node-b \
   --http-url "$MULTI_B_HTTP" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
@@ -300,38 +307,43 @@ fi
 
 sleep 2
 
+start_server driver "$DRIVER_DLL" \
+  --driver-url "$DRIVER_HTTP" \
+  --session-a-stream-endpoint "$SESSION_A_STREAM" \
+  --session-b-stream-endpoint "$SESSION_B_STREAM" \
+  --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
+  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --play-a-evidence-url "$PLAY_A_HTTP/evidence" \
+  --play-b-evidence-url "$PLAY_B_HTTP/evidence" \
+  --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
+  --play-a-crash-url "$PLAY_A_HTTP/crash" \
+  --multi-evidence-url "$MULTI_A_HTTP/evidence" \
+  --multi-b-evidence-url "$MULTI_B_HTTP/evidence" \
+  --play-a-rid play-a \
+  --play-b-rid play-b \
+  --session-a-rid session-a \
+  --play-a-control-endpoint "$PLAY_A_CONTROL" \
+  --play-b-control-endpoint "$PLAY_B_CONTROL" \
+  --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+  --play-b-external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
+  --play-a-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
+  --client-control-endpoint "$CLIENT_CONTROL" \
+  --client-external-route-endpoint "$CLIENT_EXTERNAL_ROUTE" \
+  --client-external-route-b-endpoint "$CLIENT_EXTERNAL_ROUTE_B" \
+  --client-external-channel-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
+  --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
+  --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
+  --client-multi-route-a-endpoint "$CLIENT_MULTI_ROUTE_A" \
+  --client-multi-route-b-endpoint "$CLIENT_MULTI_ROUTE_B" \
+  --log-dir "$LOG_DIR"
+wait_port driver "$DRIVER_HTTP"
+
 run_client() {
   local scenario_set="$1"
   echo "client scenario_set=${scenario_set}" >>"$LOG_DIR/client.stdout.log"
   timeout "${ZLINK_SPOT_SERVICE_CLIENT_TIMEOUT:-120s}" dotnet "$CLIENT_DLL" \
-    --session-a-stream-endpoint "$SESSION_A_STREAM" \
-    --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
-    --registry-router-endpoint "$REGISTRY_ROUTER" \
-    --play-a-evidence-url "$PLAY_A_HTTP/evidence" \
-    --play-b-evidence-url "$PLAY_B_HTTP/evidence" \
-    --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
-    --play-a-crash-url "$PLAY_A_HTTP/crash" \
-    --multi-evidence-url "$MULTI_A_HTTP/evidence" \
-    --multi-b-evidence-url "$MULTI_B_HTTP/evidence" \
+    --driver-url "$DRIVER_HTTP" \
     --scenario-set "$scenario_set" \
-    --play-a-rid play-a \
-    --play-b-rid play-b \
-    --session-a-rid session-a \
-    --play-a-control-endpoint "$PLAY_A_CONTROL" \
-    --play-b-control-endpoint "$PLAY_B_CONTROL" \
-    --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
-    --play-b-external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
-    --play-a-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
-    --client-control-endpoint "$CLIENT_CONTROL" \
-    --client-external-route-endpoint "$CLIENT_EXTERNAL_ROUTE" \
-    --client-external-route-b-endpoint "$CLIENT_EXTERNAL_ROUTE_B" \
-    --client-external-channel-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
-    --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
-    --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
-    --client-multi-route-a-endpoint "$CLIENT_MULTI_ROUTE_A" \
-    --client-multi-route-b-endpoint "$CLIENT_MULTI_ROUTE_B" \
-    --log-dir "$LOG_DIR" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
 

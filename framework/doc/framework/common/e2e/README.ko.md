@@ -33,11 +33,21 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 
 ### 코드 작성 규칙
 
-- 각 client 시나리오는 messaging을 helper 뒤로 숨기지 않는다. **public contract 함수를 직접
-  호출**해서 실제 API 사용이 한눈에 들어오게 쓴다.
-- 검증은 샘플처럼 `ensure` 구문으로 직접 표현한다.
-- 연결 부트스트랩(host 구성)은 샘플의 `HostFactory`/`CreateClient`처럼 얇게 분리해도 되지만,
-  request/send/publish/resolve 같은 framework 호출은 시나리오 안에 직접 둔다.
+- e2e는 실제 사용 흐름을 흉내 낸다. client 시나리오는 framework 내부 API를 직접 호출하지 않고,
+  실제 사용자처럼 server app의 HTTP endpoint를 호출한다.
+- client는 언어별 HTTP client wrapper를 사용한다. `.NET`에서는 `ZLinkHttpClient`를 사용하고, raw
+  `HttpClient`로 e2e app endpoint를 직접 호출하지 않는다. stream connector 자체를 검증하는
+  시나리오에서만 stream connector를 client 표면으로 사용한다.
+- client 코드에서 channel/fanout/spot/registry framework client, framework host 구성, test-only
+  helper를 직접 사용하지 않는다. 예를 들어 `.NET` client에서는 `IZLinkChannelClient`,
+  `AddZLinkFramework`, `Host.CreateDefaultBuilder`, reflection 우회, private/internal API 접근을
+  쓰지 않는다.
+- request/send/publish/resolve 같은 framework 호출은 server app 내부에 둔다. server는 app endpoint를
+  통해 사용자가 하는 요청을 받고, 그 안에서 공개 framework API로 실제 기능을 실행한다.
+- client 시나리오는 파일별로 나누고, 각 시나리오 파일 첫머리에 무엇을 검증하는지 짧게 설명한다.
+  시나리오 본문은 가급적 connector 또는 HTTP client 호출 흐름이 보이게 작성하고, 검증 helper가
+  핵심 흐름을 숨기지 않게 한다.
+- 검증은 client-visible 결과와 server evidence/log를 조합해 직접 표현한다.
 - E2E 시나리오가 요구하는 기능이 특정 언어에 없더라도, spec 또는 공통 framework spec/guide에
   공개 계약 근거가 없으면 새 public API를 바로 추가하지 않는다. 다른 언어 구현은 계약 해석을
   비교하는 참고 자료일 뿐, 그 자체로 새 계약의 근거가 아니다.
@@ -47,15 +57,24 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 
 ## 2. 표준 프로젝트 구조
 
-각 config는 언어별 표준 위치에 sample과 분리된 e2e 앱으로 둔다. 예(`.NET`):
+각 config는 언어별 표준 위치에 sample과 분리된 e2e 앱으로 둔다. 서버와 client는 실제 프로세스
+경계를 가진 앱으로 구성하고, 모든 언어가 같은 의미의 폴더 구조를 유지한다. 예(`.NET`):
 
 ```text
 framework/languages/dotnet/e2e/RegistryMessaging/
-|-- Shared/        server·client 공유 contracts
-|-- Server/        서버 앱(고정 구성) — registry/provider 역할
+|-- Shared/        server·client 공유 message/contracts
+|-- Server/
+|   |-- Main/              config의 기본 app server
+|   |   |-- Program.cs
+|   |   |-- <Config>.Server.csproj
+|   |   |-- <Config>ServerHostFactory.cs
+|   |   `-- ... endpoint/handler/options/evidence 파일
+|   |-- <Role>/            역할이 다른 추가 server가 있으면 별도 실행 프로젝트
+|   `-- <OtherRole>/       예: Registry, Publisher, Subscriber, JsonOnlyPeer
 |-- Client/        시나리오 앱
 |   |-- Program.cs        시나리오 이름으로 분기 실행
-|   `-- Scenarios/        config 시나리오별 파일 (public API 직접 호출)
+|   |-- Scenarios/        config 시나리오별 파일
+|   `-- Support/          client option, assertion, process helper
 |-- run_e2e.sh     서버 1회 구동 → client 시나리오 순차 실행
 `-- SCENARIOS 문서는 framework/doc/framework/common/e2e/config-*.ko.md
 ```
@@ -65,9 +84,47 @@ framework/languages/dotnet/e2e/RegistryMessaging/
 시나리오를 실행한다. scale·failover 같은 시나리오는 같은 스크립트가 프로세스를 추가로 띄우거나
 종료한다.
 
-client는 framework public client(channel/route), `zlink-http client`, public DI/container API만
-쓴다. 테스트를 쉽게 만들겠다고 framework 내부 helper, private API, reflection, server/test-only
-state에 손대지 않는다.
+### 2.1 서버 프로젝트 구성 규칙
+
+- 서버 역할이 다르면 `Server/<Role>/` 아래에 별도 실행 프로젝트로 둔다. 하나의 서버 프로젝트를
+  `--role`, `--mode` 옵션으로 registry/publisher/subscriber 또는 정상/오류/peer 서버처럼 바꾸지
+  않는다.
+- `Program.cs`는 실행 진입점만 둔다. host 구성, DI 등록, framework 설정은 `*HostFactory.cs`에 둔다.
+- `AddZLinkFramework` 또는 `AddZLinkRegistry` 설정은 `*HostFactory.cs`에서 바로 보이게 작성한다.
+  얇은 wrapper/extension 메서드 뒤에 framework 설정을 숨기지 않는다.
+- e2e 서버는 작은 실행 예시이므로 flat 구조를 기본으로 한다. `Program.cs`, `*.csproj`,
+  `*HostFactory.cs`, `*Options.cs`, endpoint/handler/filter/evidence 파일을 서버 프로젝트 루트에 둔다.
+- 같은 성격의 파일이 많아져서 탐색이 어려워질 때만 폴더를 만든다. 파일 하나짜리 `Configuration/`,
+  `Endpoints/`, `Handlers/`, `Filters/`, `Infrastructure/` 폴더는 만들지 않는다.
+- 공통 서버 library/shared 프로젝트는 기본으로 만들지 않는다. 중복이 조금 생기더라도 각 서버
+  프로젝트가 자기 구성을 직접 드러내는 쪽을 우선한다. 정말 여러 config 또는 여러 역할에서 같은
+  코드가 반복되어 유지 비용이 커질 때만 별도 shared 프로젝트를 검토한다.
+- `Shared/`는 server와 client가 함께 쓰는 message/contracts만 둔다. server-only host factory,
+  handler, filter, evidence store를 config의 top-level `Shared/`에 넣지 않는다.
+
+### 2.2 client 프로젝트 구성 규칙
+
+- client는 `Client/Program.cs`에서 시나리오를 순차 실행한다.
+- 시나리오는 `Client/Scenarios/` 아래에 scenario별 파일로 분리한다.
+- 각 scenario 파일 첫머리에 해당 시나리오가 무엇을 검증하는지 설명한다.
+- client support 코드는 option parsing, assertion, process lifecycle처럼 시나리오 흐름을 보조하는
+  것만 둔다. framework 호출을 감추는 helper를 만들어 client가 server app을 우회하게 하지 않는다.
+- client는 server app endpoint를 언어별 HTTP client wrapper로 호출한다. server evidence endpoint와
+  log marker는 검증에 사용할 수 있지만, framework 내부 상태나 private/test-only API를 직접 읽지
+  않는다.
+
+### 2.3 주석 작성 규칙
+
+- 시나리오 파일 첫머리에는 이 파일이 어떤 사용자 흐름과 어떤 framework 동작을 검증하는지 적는다.
+  독자가 파일을 열었을 때 "이 시나리오가 왜 필요한가"를 바로 알 수 있어야 한다.
+- 주석은 시나리오 의도, 검증 기준, 기다림이 필요한 이유처럼 코드만으로 드러나지 않는 판단을
+  설명할 때만 쓴다. 코드가 하는 일을 그대로 반복하는 주석은 넣지 않는다.
+- HTTP 호출, server evidence 조회, 프로세스 재시작처럼 시나리오의 핵심 단계에는 짧은 주석을 둘 수
+  있다. 이 주석은 "무엇을 호출한다"보다 "이 단계가 어떤 실사용 조건을 만든다"를 설명해야 한다.
+- helper나 support 코드의 주석으로 핵심 흐름을 대신 설명하지 않는다. 시나리오 본문만 읽어도
+  connector 또는 HTTP client를 통해 어떤 요청을 보내고 무엇을 확인하는지 보여야 한다.
+- public contract가 없어 구현하지 못한 항목은 주석으로 "지원됨"처럼 보이게 만들지 않는다. 해당
+  항목은 feature-map 또는 이슈로 남기고, 주석에는 현재 검증하는 공개 동작만 적는다.
 
 ## 3. config 목록
 

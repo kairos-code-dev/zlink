@@ -5,7 +5,8 @@ internal sealed record ClientOptions(
     string LateSubscriberUrl,
     string RegistryRouterEndpoint,
     string PublisherEndpoint,
-    string ServerProject,
+    string PublisherProject,
+    string SubscriberProject,
     string LogDir,
     string[] SubscriberUrls)
 {
@@ -47,7 +48,8 @@ internal sealed record ClientOptions(
             LateSubscriberUrl: GetOne("--late-subscriber-url"),
             RegistryRouterEndpoint: GetOne("--registry-router-endpoint"),
             PublisherEndpoint: GetOne("--publisher-endpoint"),
-            ServerProject: GetOne("--server-project"),
+            PublisherProject: GetOne("--publisher-project"),
+            SubscriberProject: GetOne("--subscriber-project"),
             LogDir: GetOne("--log-dir"),
             SubscriberUrls: GetMany("--subscriber-url"));
     }

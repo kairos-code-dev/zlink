@@ -20,7 +20,7 @@ internal static class InvalidRegistrationScenario
         };
         process.StartInfo.ArgumentList.Add("run");
         process.StartInfo.ArgumentList.Add("--project");
-        process.StartInfo.ArgumentList.Add(options.ServerProject);
+        process.StartInfo.ArgumentList.Add(options.InvalidServerProject);
         process.StartInfo.ArgumentList.Add("--");
         process.StartInfo.ArgumentList.Add("--rid");
         process.StartInfo.ArgumentList.Add("invalid-duplicate");
@@ -28,8 +28,6 @@ internal static class InvalidRegistrationScenario
         process.StartInfo.ArgumentList.Add($"http://127.0.0.1:{invalidHttpPort}");
         process.StartInfo.ArgumentList.Add("--channel-endpoint");
         process.StartInfo.ArgumentList.Add($"tcp://127.0.0.1:{invalidChannelPort}");
-        process.StartInfo.ArgumentList.Add("--invalid-mode");
-        process.StartInfo.ArgumentList.Add("duplicate");
         process.StartInfo.ArgumentList.Add("--log-dir");
         process.StartInfo.ArgumentList.Add(options.LogDir);
         process.Start();

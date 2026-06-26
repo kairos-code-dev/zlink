@@ -1,12 +1,15 @@
-namespace RegistrationCodec.Client;
+namespace PubSub.Server.Configuration;
 
-internal sealed record ClientOptions(
-    string ChannelEndpoint,
-    string ServerUrl,
-    string InvalidServerProject,
-    string LogDir)
+public sealed class ServerArgs
 {
-    public static ClientOptions Parse(string[] args)
+    private readonly Dictionary<string, List<string>> _values;
+
+    private ServerArgs(Dictionary<string, List<string>> values)
+    {
+        _values = values;
+    }
+
+    public static ServerArgs Parse(string[] args)
     {
         var values = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (var i = 0; i < args.Length; i++)
@@ -32,13 +35,11 @@ internal sealed record ClientOptions(
             bucket.Add(value);
         }
 
-        string Get(string name) => values.TryGetValue(name, out var bucket)
-            ? bucket[^1]
-            : throw new ArgumentException($"{name} is required.");
-        return new ClientOptions(
-            ChannelEndpoint: Get("--channel-endpoint"),
-            ServerUrl: Get("--server-url"),
-            InvalidServerProject: Get("--invalid-server-project"),
-            LogDir: Get("--log-dir"));
+        return new ServerArgs(values);
     }
+
+    public string? Get(string name) => _values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
+
+    public string Require(string name) => Get(name)
+        ?? throw new ArgumentException($"{name} is required.");
 }

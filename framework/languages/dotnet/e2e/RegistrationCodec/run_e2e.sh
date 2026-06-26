@@ -6,7 +6,9 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 
-SERVER_PROJECT="$ROOT_DIR/Server/RegistrationCodec.Server.csproj"
+SERVER_PROJECT="$ROOT_DIR/Server/Main/RegistrationCodec.Server.csproj"
+INVALID_SERVER_PROJECT="$ROOT_DIR/Server/InvalidDuplicate/RegistrationCodec.InvalidDuplicate.csproj"
+JSON_ONLY_PEER_PROJECT="$ROOT_DIR/Server/JsonOnlyPeer/RegistrationCodec.JsonOnlyPeer.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RegistrationCodec.Client.csproj"
 
 pick_port() {
@@ -58,7 +60,7 @@ dotnet run --project "$SERVER_PROJECT" -- \
   --rid reg-codec-node \
   --http-url "$SERVER_URL" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
-  --server-project "$SERVER_PROJECT" \
+  --json-only-peer-project "$JSON_ONLY_PEER_PROJECT" \
   --evidence-file "$LOG_DIR/server.evidence.log" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/server.stdout.log" 2>"$LOG_DIR/server.stderr.log" &
@@ -68,7 +70,7 @@ wait_health "$SERVER_URL" server
 dotnet run --project "$CLIENT_PROJECT" -- \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
   --server-url "$SERVER_URL" \
-  --server-project "$SERVER_PROJECT" \
+  --invalid-server-project "$INVALID_SERVER_PROJECT" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

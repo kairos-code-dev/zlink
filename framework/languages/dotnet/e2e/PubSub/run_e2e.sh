@@ -6,7 +6,9 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 
-SERVER_PROJECT="$ROOT_DIR/Server/PubSub.Server.csproj"
+REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/PubSub.Registry.csproj"
+PUBLISHER_PROJECT="$ROOT_DIR/Server/Publisher/PubSub.Publisher.csproj"
+SUBSCRIBER_PROJECT="$ROOT_DIR/Server/Subscriber/PubSub.Subscriber.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/PubSub.Client.csproj"
 
 pick_port() {
@@ -68,16 +70,17 @@ wait_health() {
 
 start_server() {
   local name="$1"
+  local project="$2"
   shift
-  ZLINK_E2E_RID="$name" dotnet run --project "$SERVER_PROJECT" -- "$@" \
+  shift
+  ZLINK_E2E_RID="$name" dotnet run --project "$project" -- "$@" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
 
 echo "log_dir=$LOG_DIR"
 
-start_server registry \
-  --role registry \
+start_server registry "$REGISTRY_PROJECT" \
   --rid registry \
   --http-url "http://127.0.0.1:$REG_HTTP_PORT" \
   --registry-pub-endpoint "$REG_PUB" \
@@ -85,8 +88,7 @@ start_server registry \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$REG_HTTP_PORT" registry
 
-start_server pub-a \
-  --role publisher \
+start_server pub-a "$PUBLISHER_PROJECT" \
   --rid pub-a \
   --http-url "$PUB_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -101,8 +103,7 @@ for sub in 1 2 3; do
   if [[ "$sub" == "3" ]]; then
     extra_args+=(--handler-delay-ms 3000)
   fi
-  start_server "sub-$sub" \
-    --role subscriber \
+  start_server "sub-$sub" "$SUBSCRIBER_PROJECT" \
     --rid "sub-$sub" \
     --http-url "${!url_var}" \
     --registry-router-endpoint "$REG_ROUTER" \
@@ -121,7 +122,8 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --late-subscriber-url "$SUB_LATE_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
   --publisher-endpoint "$PUB_ENDPOINT" \
-  --server-project "$SERVER_PROJECT" \
+  --publisher-project "$PUBLISHER_PROJECT" \
+  --subscriber-project "$SUBSCRIBER_PROJECT" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

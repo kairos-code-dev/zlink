@@ -6,7 +6,7 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
 {
     public Process StartSubscriber(string name, string httpUrl, string evidenceFile)
     {
-        var startInfo = CreateServerStartInfo(name, "subscriber");
+        var startInfo = CreateServerStartInfo(options.SubscriberProject, name);
         startInfo.ArgumentList.Add("--http-url");
         startInfo.ArgumentList.Add(httpUrl);
         startInfo.ArgumentList.Add("--registry-router-endpoint");
@@ -23,7 +23,7 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
 
     public Process StartPublisher()
     {
-        var startInfo = CreateServerStartInfo("pub-a", "publisher");
+        var startInfo = CreateServerStartInfo(options.PublisherProject, "pub-a");
         startInfo.ArgumentList.Add("--http-url");
         startInfo.ArgumentList.Add(options.PublisherUrl);
         startInfo.ArgumentList.Add("--registry-router-endpoint");
@@ -38,7 +38,7 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
         return Start("pub-restart", startInfo);
     }
 
-    private ProcessStartInfo CreateServerStartInfo(string rid, string role)
+    private static ProcessStartInfo CreateServerStartInfo(string project, string rid)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -49,10 +49,8 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
         startInfo.Environment["ZLINK_E2E_RID"] = rid;
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
-        startInfo.ArgumentList.Add(options.ServerProject);
+        startInfo.ArgumentList.Add(project);
         startInfo.ArgumentList.Add("--");
-        startInfo.ArgumentList.Add("--role");
-        startInfo.ArgumentList.Add(role);
         startInfo.ArgumentList.Add("--rid");
         startInfo.ArgumentList.Add(rid);
         return startInfo;

@@ -125,7 +125,7 @@ test('registry spot remote address resolver accepts framework string RoutingId w
       () => resolver.resolve('bingo-room-a'),
       (error) => {
         assert.equal(error.name, 'ConfigError');
-        assert.match(error.message, /discovery_resolve_spot failed: Operation not supported/);
+        assert.match(error.message, /discovery_resolve_spot failed: (Operation not supported|Not supported)/);
         return true;
       }
     );

@@ -13,7 +13,7 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
 
-var options = ServerOptions.Parse(args);
+var options = ServerOptions.Parse(args, defaultRole: "registry");
 Directory.CreateDirectory(options.LogDir);
 
 var builder = WebApplication.CreateBuilder(args);
@@ -262,7 +262,7 @@ internal sealed record ServerOptions(
     string? EvidenceFile,
     int Weight)
 {
-    public static ServerOptions Parse(string[] args)
+    public static ServerOptions Parse(string[] args, string defaultRole)
     {
         var values = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (var i = 0; i < args.Length; i++)
@@ -290,7 +290,7 @@ internal sealed record ServerOptions(
 
         string? Get(string name) => values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
         return new ServerOptions(
-            Role: Get("--role") ?? throw new ArgumentException("--role is required."),
+            Role: defaultRole,
             Rid: Get("--rid") ?? "node",
             HttpUrl: Get("--http-url") ?? "http://127.0.0.1:0",
             LogDir: Get("--log-dir") ?? "logs",

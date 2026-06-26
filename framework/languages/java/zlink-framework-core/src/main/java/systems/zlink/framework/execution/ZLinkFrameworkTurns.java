@@ -35,12 +35,22 @@ public final class ZLinkFrameworkTurns {
             if (className.equals(ZLinkFrameworkTurns.class.getName())) {
                 continue;
             }
-            if (FRAMEWORK_CALLERS.contains(className)) {
+            if (isFrameworkCaller(className)) {
                 return;
             }
             break;
         }
         throw new IllegalStateException(
             "ZLink framework turn helpers are only available to framework-managed call objects");
+    }
+
+    private static boolean isFrameworkCaller(String className) {
+        for (String frameworkCaller : FRAMEWORK_CALLERS) {
+            if (className.equals(frameworkCaller)
+                || className.startsWith(frameworkCaller + "$")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

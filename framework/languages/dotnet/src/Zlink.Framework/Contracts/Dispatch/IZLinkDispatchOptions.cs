@@ -81,20 +81,6 @@ public sealed record ZLinkMessageFlowEvent(
     string? ErrorType = null,
     string? ErrorMessage = null);
 
-internal sealed record ZLinkDispatchFailure(
-    ZLinkDispatchErrorSurface Surface,
-    ZLinkDispatchMessageKind MessageKind,
-    ZLinkDispatchErrorReason Reason,
-    ZLinkDispatchErrorAction Action,
-    string? PacketName,
-    string? ChannelName = null,
-    string? Topic = null,
-    string? SpotRid = null,
-    string? ActorId = null,
-    string? SourceRid = null,
-    string? CorrelationId = null,
-    Exception? Exception = null);
-
 public interface IZLinkUnhandledDispatchOptions
 {
     ZLinkUnhandledDispatchAction Request { get; set; }

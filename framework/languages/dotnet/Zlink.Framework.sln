@@ -271,6 +271,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotService.Server", "e2e\S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotService.Shared", "e2e\SpotService\Shared\SpotService.Shared.csproj", "{A743E028-E39D-42AD-8949-615DEB94A41B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.SampleRegressionTests", "tests\Zlink.Framework.SampleRegressionTests\Zlink.Framework.SampleRegressionTests.csproj", "{541C4351-95E2-41BF-8A6D-D891DAE63875}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1133,6 +1135,18 @@ Global
 		{A743E028-E39D-42AD-8949-615DEB94A41B}.Release|x64.Build.0 = Release|Any CPU
 		{A743E028-E39D-42AD-8949-615DEB94A41B}.Release|x86.ActiveCfg = Release|Any CPU
 		{A743E028-E39D-42AD-8949-615DEB94A41B}.Release|x86.Build.0 = Release|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Debug|x64.Build.0 = Debug|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Debug|x86.Build.0 = Debug|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Release|Any CPU.Build.0 = Release|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Release|x64.ActiveCfg = Release|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Release|x64.Build.0 = Release|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Release|x86.ActiveCfg = Release|Any CPU
+		{541C4351-95E2-41BF-8A6D-D891DAE63875}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1266,5 +1280,6 @@ Global
 		{193A181F-12A2-4A5B-B693-2C6557AAB2D4} = {8C74DF75-4D77-48D7-A3B2-65ACF5A72053}
 		{2EC8801E-DDD6-458D-B7AC-FA2422213C4A} = {8C74DF75-4D77-48D7-A3B2-65ACF5A72053}
 		{A743E028-E39D-42AD-8949-615DEB94A41B} = {8C74DF75-4D77-48D7-A3B2-65ACF5A72053}
+		{541C4351-95E2-41BF-8A6D-D891DAE63875} = {F3E5F8A1-DEF5-4540-A4B0-73ABB7129801}
 	EndGlobalSection
 EndGlobal

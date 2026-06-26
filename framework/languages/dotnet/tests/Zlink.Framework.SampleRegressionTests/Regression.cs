@@ -1,4 +1,7 @@
-namespace Zlink.Framework.UnitTests.Samples;
+using Xunit;
+using Common = Zlink.Framework.Tests.Common;
+
+namespace Zlink.Framework.SampleRegressionTests;
 
 public sealed class RegressionTests
 {
@@ -23,14 +26,14 @@ public sealed class RegressionTests
     {
         AssertActorLifecycleSpec(
             ResolveSampleRoot("Bingo"),
-            "Server/Play/Infrastructure/ZLink/Spots/BingoEntrySpot.cs",
-            "Server/Play/Infrastructure/ZLink/Spots/BingoRoom.cs",
+            "Server/Play/Infrastructure/ZLink/Spots/EntrySpot/BingoEntrySpot.cs",
+            "Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom.cs",
             "Server/Play/Infrastructure/ZLink/Actors/PlayerActor.cs",
             "Server/Session/Sessions/BingoSession.cs");
         AssertActorLifecycleSpec(
             ResolveSampleRoot("TicTacToe"),
-            "Server/Play/Infrastructure/ZLink/Spots/PlayEntrySpot.cs",
-            "Server/Play/Infrastructure/ZLink/Spots/TicTacToeGame.cs",
+            "Server/Play/Infrastructure/ZLink/Spots/EntrySpot/PlayEntrySpot.cs",
+            "Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/TicTacToeGame.cs",
             "Server/Play/Infrastructure/ZLink/Actors/PlayActor.cs",
             "Server/Play/Infrastructure/ZLink/Sessions/PlaySession.cs");
     }

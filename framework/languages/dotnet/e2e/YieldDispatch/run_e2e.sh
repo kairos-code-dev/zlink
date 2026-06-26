@@ -40,6 +40,15 @@ static_checks() {
     return 1
   fi
   rm -f /tmp/zlink-yield-dispatch-static-yield.$$
+
+  local scenario_file
+  for scenario_file in "$SCRIPT_DIR"/Client/Scenarios/*.cs; do
+    if ! rg -q 'ZlinkStreamConnectorFactory\.Create|YieldConnectorFactory\.Create' "$scenario_file"; then
+      echo "$scenario_file" >&2
+      echo "YieldDispatch client scenarios must create and use a real stream connector." >&2
+      return 1
+    fi
+  done
 }
 
 PIDS=()
@@ -180,6 +189,61 @@ start_server() {
   PIDS+=("$!")
 }
 
+terminate_gracefully() {
+  local name="$1"
+  local pid="$2"
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 100); do
+    local state
+    state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+    if [[ -z "$state" || "$state" == Z* ]]; then
+      wait "$pid" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "${name} did not stop after SIGTERM while yield was pending" >&2
+  return 1
+}
+
+wait_file_contains() {
+  local file="$1"
+  local pattern="$2"
+  local failure="$3"
+  local pid="${4:-}"
+  for _ in $(seq 1 300); do
+    if [[ -f "$file" ]] && grep -F "$pattern" "$file" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      echo "$failure" >&2
+      echo "client exited before marker: $pattern" >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  echo "$failure" >&2
+  echo "missing marker: $pattern" >&2
+  return 1
+}
+
+wait_process_exit() {
+  local name="$1"
+  local pid="$2"
+  for _ in $(seq 1 100); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      wait "$pid"
+      return $?
+    fi
+    sleep 0.1
+  done
+  echo "${name} did not exit after the peer shutdown closed the pending yield request" >&2
+  return 1
+}
+
 echo "log_dir=$LOG_DIR"
 if [[ "${ZLINK_YIELD_DISPATCH_SKIP_BUILD:-0}" != "1" ]]; then
   build_projects
@@ -219,6 +283,7 @@ start_server play-a "$PLAY_DLL" \
   --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
   --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
   --log-dir "$LOG_DIR"
+PLAY_A_PID="${PIDS[-1]}"
 wait_port play-a "$PLAY_A_HTTP"
 wait_port play-a-control "$PLAY_A_CONTROL"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
@@ -270,8 +335,55 @@ wait_port session-b-stream "$SESSION_B_STREAM"
 sleep 1
 
 dotnet "$CLIENT_DLL" \
+  --scenario full \
   --session-a-stream-endpoint "$SESSION_A_STREAM" \
   --session-b-stream-endpoint "$SESSION_B_STREAM" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 cat "$LOG_DIR/client.stdout.log"
+
+SHUTDOWN_ID="YD-E3-$(date +%s)-$$"
+SHUTDOWN_SPOT="yield-shutdown-${STAMP//[^a-zA-Z0-9]/}"
+dotnet "$CLIENT_DLL" \
+  --scenario shutdown-wait \
+  --session-a-stream-endpoint "$SESSION_A_STREAM" \
+  --session-b-stream-endpoint "$SESSION_B_STREAM" \
+  --request-id "$SHUTDOWN_ID" \
+  --spot-rid "$SHUTDOWN_SPOT" \
+  >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
+SHUTDOWN_CLIENT_PID=$!
+wait_file_contains \
+  "$LOG_DIR/play-a.evidence.log" \
+  "yield-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
+  "YD-E3 pending yield marker was not observed before shutdown." \
+  "$SHUTDOWN_CLIENT_PID"
+terminate_gracefully play-a "$PLAY_A_PID"
+wait_process_exit client-shutdown-wait "$SHUTDOWN_CLIENT_PID"
+cat "$LOG_DIR/client-shutdown-wait.stdout.log"
+
+start_server play-a "$PLAY_DLL" \
+  --rid play-a \
+  --http-url "$PLAY_A_HTTP" \
+  --registry-router-endpoint "$REGISTRY_ROUTER" \
+  --control-endpoint "$PLAY_A_CONTROL" \
+  --delay-endpoint "$DELAY_A_ENDPOINT" \
+  --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
+  --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
+  --spot-route-endpoint "$PLAY_A_SPOT_ROUTE" \
+  --log-dir "$LOG_DIR"
+PLAY_A_PID="${PIDS[-1]}"
+wait_port play-a "$PLAY_A_HTTP"
+wait_port play-a-control "$PLAY_A_CONTROL"
+wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
+wait_port play-a-spot-route "$PLAY_A_SPOT_ROUTE"
+sleep 1
+
+dotnet "$CLIENT_DLL" \
+  --scenario shutdown-recovery \
+  --session-a-stream-endpoint "$SESSION_A_STREAM" \
+  --session-b-stream-endpoint "$SESSION_B_STREAM" \
+  --request-id "${SHUTDOWN_ID}-recovery" \
+  --spot-rid "$SHUTDOWN_SPOT" \
+  >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
+cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
+
 echo "yield-dispatch e2e result=passed"

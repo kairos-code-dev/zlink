@@ -51,9 +51,12 @@ internal static class PlayHostFactory
                 .AddRequestHandler<RunTrackAControlHandler, YieldTrackAReq, YieldScenarioResult>("YieldTrackAReq")
                 .AddRequestHandler<RunTimeoutControlHandler, YieldTimeoutScenarioReq, YieldScenarioResult>("YieldTimeoutScenarioReq")
                 .AddRequestHandler<RunTimerControlHandler, YieldTimerScenarioReq, YieldScenarioResult>("YieldTimerScenarioReq")
+                .AddRequestHandler<RunActorTimerControlHandler, YieldActorTimerScenarioReq, YieldScenarioResult>("YieldActorTimerScenarioReq")
                 .AddRequestHandler<RunRemoteControlHandler, YieldRemoteScenarioReq, YieldScenarioResult>("YieldRemoteScenarioReq")
                 .AddRequestHandler<RunRouteBridgeControlHandler, YieldRouteBridgeScenarioReq, YieldScenarioResult>("YieldRouteBridgeScenarioReq")
                 .AddRequestHandler<RunCancellationControlHandler, YieldCancellationScenarioReq, YieldScenarioResult>("YieldCancellationScenarioReq")
+                .AddRequestHandler<RunShutdownControlHandler, YieldShutdownScenarioReq, YieldScenarioResult>("YieldShutdownScenarioReq")
+                .AddRequestHandler<RunShutdownRecoveryControlHandler, YieldShutdownRecoveryReq, YieldScenarioResult>("YieldShutdownRecoveryReq")
                 .AddRequestHandler<BindYieldActorsControlHandler, BindYieldActorsReq, BindYieldActorsReply>("BindYieldActorsReq")
                 .AddRequestHandler<EnsureSpotControlHandler, EnsureSpotReq, EnsureSpotReply>("EnsureSpotReq")
                 .AddRequestHandler<YieldEvidenceControlHandler, YieldEvidenceReq, YieldEvidenceReply>("YieldEvidenceReq");
@@ -329,6 +332,39 @@ internal static class PlayHostFactory
         return new YieldScenarioResult("yield.e2-cancellation", spotRid, evidence.Snapshot());
     }
 
+    internal static async Task<YieldScenarioResult> RunShutdownAsync(
+        IZLinkSpotManager spots,
+        IZLinkRouteClient routes,
+        EvidenceStore evidence,
+        YieldShutdownScenarioReq request)
+    {
+        await spots.GetOrCreateAsync<YieldProbeSpot>(RoutingId.From(request.SpotRid));
+        await RequestSpotAsync<YieldDispatchReply>(
+            routes,
+            request.SpotRid,
+            new YieldReq(request.RequestId, request.DelayMs, "shutdown"),
+            "YieldReq");
+        return new YieldScenarioResult("yield.e3-shutdown-unexpected-completion", request.SpotRid, evidence.Snapshot());
+    }
+
+    internal static async Task<YieldScenarioResult> RunShutdownRecoveryAsync(
+        IZLinkSpotManager spots,
+        IZLinkRouteClient routes,
+        EvidenceStore evidence,
+        NodeOptions node,
+        YieldShutdownRecoveryReq request)
+    {
+        await spots.GetOrCreateAsync<YieldProbeSpot>(RoutingId.From(request.SpotRid));
+        var probe = await RequestSpotAsync<YieldDispatchReply>(
+            routes,
+            request.SpotRid,
+            new ProbeReq(request.RequestId, "shutdown-recovery-probe"),
+            "ProbeReq");
+        Ensure(probe.NodeRid == node.Rid, "YD-E3 recovery probe ran on the wrong node.");
+        Ensure(probe.SpotRid == request.SpotRid, "YD-E3 recovery spot rid mismatch.");
+        return new YieldScenarioResult("yield.e3-shutdown-recovery", request.SpotRid, evidence.Snapshot());
+    }
+
     internal static async Task<YieldScenarioResult> RunTimerAsync(
         IZLinkSpotManager spots,
         IZLinkRouteClient routes,
@@ -393,6 +429,59 @@ internal static class PlayHostFactory
             "TimerStopReq");
 
         return new YieldScenarioResult("yield.track-c-timer", spotRid, evidence.Snapshot());
+    }
+
+    internal static async Task<YieldScenarioResult> RunActorTimerAsync(
+        IZLinkSpotManager spots,
+        IZLinkRouteClient routes,
+        EvidenceStore evidence,
+        NodeOptions node,
+        YieldActorTimerScenarioReq request)
+    {
+        await spots.GetOrCreateAsync<YieldProbeSpot>(RoutingId.From(request.SpotRid));
+        var before = evidence.Snapshot();
+        switch (request.Mode)
+        {
+            case "start-fast":
+                await RequestSpotAsync<YieldDispatchReply>(
+                    routes,
+                    request.SpotRid,
+                    new TimerStartReq(request.RequestId, request.TimerName, "fast", request.PeriodMs, request.DelayMs),
+                    "TimerStartReq");
+                await WaitUntilAsync(
+                    () => CountNew(evidence.Snapshot(), before, $"timer-fast-completed|rid={node.Rid}|spot={request.SpotRid}|request={request.RequestId}") >= 1,
+                    "YD-C3 timer fast marker was not observed.");
+                await RequestSpotAsync<YieldDispatchReply>(
+                    routes,
+                    request.SpotRid,
+                    new TimerStopReq(request.RequestId),
+                    "TimerStopReq");
+                break;
+            case "start-yield":
+                await RequestSpotAsync<YieldDispatchReply>(
+                    routes,
+                    request.SpotRid,
+                    new TimerStartReq(request.RequestId, request.TimerName, "yield-on-first", request.PeriodMs, request.DelayMs),
+                    "TimerStartReq");
+                await WaitUntilAsync(
+                    () => CountNew(evidence.Snapshot(), before, $"timer-yield-released|rid={node.Rid}|spot={request.SpotRid}|request={request.RequestId}") == 1,
+                    "YD-C3 timer yield did not release.");
+                break;
+            case "wait-stop":
+                await WaitUntilAsync(
+                    () => CountNew(evidence.Snapshot(), before, $"timer-yield-completed|rid={node.Rid}|spot={request.SpotRid}|request={request.RequestId}") == 1,
+                    "YD-C3 timer yield did not complete.");
+                await RequestSpotAsync<YieldDispatchReply>(
+                    routes,
+                    request.SpotRid,
+                    new TimerStopReq(request.RequestId),
+                    "TimerStopReq");
+                break;
+            default:
+                throw new InvalidOperationException($"Unknown actor/timer scenario mode: {request.Mode}");
+        }
+
+        return new YieldScenarioResult("yield.c3-actor-timer", request.SpotRid, evidence.Snapshot());
     }
 
     private static async Task<TReply> RequestSpotAsync<TReply>(
@@ -655,6 +744,25 @@ internal sealed class RunTimerControlHandler(
     }
 }
 
+internal sealed class RunActorTimerControlHandler(
+    IZLinkSpotManager spots,
+    IZLinkRouteClient routes,
+    EvidenceStore evidence,
+    NodeOptions node)
+    : IZLinkRouteRequestHandler<YieldActorTimerScenarioReq, YieldScenarioResult>
+{
+    public ValueTask<YieldScenarioResult> HandleAsync(
+        YieldActorTimerScenarioReq request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        return new ValueTask<YieldScenarioResult>(
+            PlayHostFactory.RunActorTimerAsync(spots, routes, evidence, node, request));
+    }
+}
+
 internal sealed class RunRemoteControlHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
@@ -710,6 +818,43 @@ internal sealed class RunCancellationControlHandler(
         cancellationToken.ThrowIfCancellationRequested();
         return new ValueTask<YieldScenarioResult>(
             PlayHostFactory.RunCancellationAsync(spots, routes, evidence, node));
+    }
+}
+
+internal sealed class RunShutdownControlHandler(
+    IZLinkSpotManager spots,
+    IZLinkRouteClient routes,
+    EvidenceStore evidence)
+    : IZLinkRouteRequestHandler<YieldShutdownScenarioReq, YieldScenarioResult>
+{
+    public ValueTask<YieldScenarioResult> HandleAsync(
+        YieldShutdownScenarioReq request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        return new ValueTask<YieldScenarioResult>(
+            PlayHostFactory.RunShutdownAsync(spots, routes, evidence, request));
+    }
+}
+
+internal sealed class RunShutdownRecoveryControlHandler(
+    IZLinkSpotManager spots,
+    IZLinkRouteClient routes,
+    EvidenceStore evidence,
+    NodeOptions node)
+    : IZLinkRouteRequestHandler<YieldShutdownRecoveryReq, YieldScenarioResult>
+{
+    public ValueTask<YieldScenarioResult> HandleAsync(
+        YieldShutdownRecoveryReq request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        return new ValueTask<YieldScenarioResult>(
+            PlayHostFactory.RunShutdownRecoveryAsync(spots, routes, evidence, node, request));
     }
 }
 

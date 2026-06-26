@@ -184,6 +184,21 @@ internal sealed class YieldSession(
                 await Context.Client.Reply(result).Async();
                 return;
             }
+            case "YieldActorTimerScenarioReq":
+            {
+                var request = payload.Decode<YieldActorTimerScenarioReq>();
+                evidence.Add(
+                    $"session-actor-timer|rid={evidence.Rid}|session={Context.SessionId}"
+                    + $"|request={request.RequestId}|spot={request.SpotRid}|mode={request.Mode}");
+                var result = await RequestPlayControlWithRetryAsync<YieldScenarioResult>(
+                    routes,
+                    request,
+                    "YieldActorTimerScenarioReq",
+                    RoutingId.From("play-a"),
+                    cancellationToken);
+                await Context.Client.Reply(result).Async();
+                return;
+            }
             case "YieldRemoteScenarioReq":
             {
                 var request = payload.Decode<YieldRemoteScenarioReq>();
@@ -222,6 +237,32 @@ internal sealed class YieldSession(
                     routes,
                     request,
                     "YieldCancellationScenarioReq",
+                    RoutingId.From("play-a"),
+                    cancellationToken);
+                await Context.Client.Reply(result).Async();
+                return;
+            }
+            case "YieldShutdownScenarioReq":
+            {
+                var request = payload.Decode<YieldShutdownScenarioReq>();
+                evidence.Add($"session-shutdown|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
+                var result = await RequestPlayControlWithRetryAsync<YieldScenarioResult>(
+                    routes,
+                    request,
+                    "YieldShutdownScenarioReq",
+                    RoutingId.From("play-a"),
+                    cancellationToken);
+                await Context.Client.Reply(result).Async();
+                return;
+            }
+            case "YieldShutdownRecoveryReq":
+            {
+                var request = payload.Decode<YieldShutdownRecoveryReq>();
+                evidence.Add($"session-shutdown-recovery|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
+                var result = await RequestPlayControlWithRetryAsync<YieldScenarioResult>(
+                    routes,
+                    request,
+                    "YieldShutdownRecoveryReq",
                     RoutingId.From("play-a"),
                     cancellationToken);
                 await Context.Client.Reply(result).Async();

@@ -286,7 +286,8 @@ HTTP client 호출을 추가하지 않는다.
 
 **한마디로:** yield 대기 중인 handler가 있을 때 프로세스를 정상 종료해도 drain이 끝나거나 정해진 오류로 닫히는가.
 
-- 절차: `YieldReq`가 delay service를 기다리는 동안 play 노드를 정상 종료한다.
+- 절차: client stream connector가 session gateway로 shutdown scenario request를 보내고, play 노드의
+  `YieldReq`가 delay service를 기다리는 동안 play 노드를 정상 종료한다.
 - 검증: shutdown은 무한 대기하지 않는다. pending yield 작업은 정해진 closed/cancelled 오류로 정리되고,
   다음 실행에서 같은 routing id를 다시 사용할 수 있다.
 - 세부 동작: runtime shutdown과 pending yield cleanup.

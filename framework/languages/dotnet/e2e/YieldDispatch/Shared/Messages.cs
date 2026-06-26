@@ -17,11 +17,23 @@ public sealed record YieldTimeoutScenarioReq(string RequestId);
 
 public sealed record YieldTimerScenarioReq(string RequestId);
 
+public sealed record YieldActorTimerScenarioReq(
+    string RequestId,
+    string SpotRid,
+    string TimerName,
+    string Mode,
+    int PeriodMs,
+    int DelayMs);
+
 public sealed record YieldRemoteScenarioReq(string RequestId, string TargetNodeRid);
 
 public sealed record YieldRouteBridgeScenarioReq(string RequestId, string TargetNodeRid);
 
 public sealed record YieldCancellationScenarioReq(string RequestId);
+
+public sealed record YieldShutdownScenarioReq(string RequestId, string SpotRid, int DelayMs);
+
+public sealed record YieldShutdownRecoveryReq(string RequestId, string SpotRid);
 
 public sealed record BindYieldActorsReq(string SpotRid, string[] ActorIds);
 

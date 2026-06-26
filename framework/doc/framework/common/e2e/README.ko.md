@@ -34,26 +34,39 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 ### 코드 작성 규칙
 
 - e2e는 실제 사용 흐름을 흉내 낸다. client 시나리오는 framework 내부 API를 직접 호출하지 않고,
-  실제 사용자처럼 server app의 HTTP endpoint를 호출한다.
+  실제 사용자처럼 **기능을 제공하는 역할 server app의 HTTP endpoint**를 호출한다. 시나리오 실행만
+  대신해 주는 driver/test-runner server endpoint를 호출하는 구조는 실사용 흐름으로 보지 않는다.
 - client는 언어별 HTTP client wrapper를 사용한다. `.NET`에서는 `ZLinkHttpClient`를 사용하고, raw
-  `HttpClient`로 e2e app endpoint를 직접 호출하지 않는다. stream connector 자체를 검증하는
-  시나리오에서만 stream connector를 client 표면으로 사용한다.
+  `HttpClient`로 e2e app endpoint를 직접 호출하지 않는다. stream connector 자체를 검증하거나,
+  상태 변경·event·push처럼 값이 바뀌는 순간을 관찰해야 하는 시나리오에서는 client stream
+  connector를 공개 client 표면으로 사용한다.
 - client 코드에서 channel/fanout/spot/registry framework client, framework host 구성, test-only
   helper를 직접 사용하지 않는다. 예를 들어 `.NET` client에서는 `IZLinkChannelClient`,
   `AddZLinkFramework`, `Host.CreateDefaultBuilder`, reflection 우회, private/internal API 접근을
   쓰지 않는다.
-- request/send/publish/resolve 같은 framework 호출은 server app 내부에 둔다. server는 app endpoint를
-  통해 사용자가 하는 요청을 받고, 그 안에서 공개 framework API로 실제 기능을 실행한다.
+- request/send/publish/resolve 같은 framework 호출은 기능을 제공하는 실제 역할 server app 내부에
+  둔다. server는 app endpoint를 통해 사용자가 하는 요청을 받고, 그 안에서 공개 framework API로
+  실제 기능을 실행한다. 기존 client 검증 코드를 `Server/Driver`, `ScenarioRunner`, `TestHost` 같은
+  별도 프로젝트로 옮겨서 framework 호출을 대신 수행하게 만들지 않는다.
+- process 시작·종료, restart, scale-out/in, failover처럼 서버 구성을 바꾸는 작업은 `run_e2e.*` 또는
+  client support 코드에서 다룰 수 있다. 하지만 이런 코드가 framework messaging 호출을 대신 수행하면
+  안 된다. framework messaging 호출은 실제 역할 server endpoint 안에 있어야 한다.
 - client 시나리오는 파일별로 나누고, 각 시나리오 파일 첫머리에 무엇을 검증하는지 짧게 설명한다.
   시나리오 본문은 가급적 connector 또는 HTTP client 호출 흐름이 보이게 작성하고, 검증 helper가
-  핵심 흐름을 숨기지 않게 한다.
-- 검증은 client-visible 결과와 server evidence/log를 조합해 직접 표현한다.
+  핵심 흐름을 숨기지 않게 한다. 시나리오 파일이 `/run`, `/scenario/all`, `/execute`처럼 시나리오
+  전체를 위임하는 endpoint 하나만 호출해서 끝나면 안 된다.
+- 상태 변경을 확인하려고 같은 HTTP 조회를 짧은 간격으로 수십 번 반복하지 않는다. 서버가 push로
+  알려 줄 수 있는 흐름이면 client stream connector를 먼저 연결해 두고, HTTP 호출은 상태 변경을
+  트리거하는 역할로만 쓴다. 검증은 connector가 받은 push payload와 실제 역할 server evidence/log를
+  함께 대조한다.
+- 검증은 client가 볼 수 있는 결과와 실제 역할 server가 남긴 evidence/log를 조합해 직접 표현한다.
+  시나리오 실행 전용 driver가 남긴 evidence만으로 기능 검증을 대신하지 않는다.
 - E2E 시나리오가 요구하는 기능이 특정 언어에 없더라도, spec 또는 공통 framework spec/guide에
   공개 계약 근거가 없으면 새 public API를 바로 추가하지 않는다. 다른 언어 구현은 계약 해석을
   비교하는 참고 자료일 뿐, 그 자체로 새 계약의 근거가 아니다.
-- 공개 계약 근거가 없어서 구현할 수 없는 항목은 내부 helper, private API, raw-frame 우회로
-  메우지 않는다. feature-map에 public contract gap으로 남기고, 필요한 draft/spec/guide 검토를
-  별도 작업으로 분리한다.
+- 공개 계약 근거가 없어서 구현할 수 없는 항목은 내부 helper, private API, 프레임 바이트를 직접
+  조작하는 우회로 메우지 않는다. feature-map에 public contract gap으로 남기고, 필요한 draft/spec/guide
+  검토를 별도 작업으로 분리한다.
 
 ## 2. 표준 프로젝트 구조
 
@@ -62,7 +75,7 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 
 ```text
 framework/languages/dotnet/e2e/RegistryMessaging/
-|-- Shared/        server·client 공유 message/contracts
+|-- Shared/        server와 client가 함께 쓰는 메시지·계약 타입
 |-- Server/
 |   |-- Main/              config의 기본 app server
 |   |   |-- Program.cs
@@ -84,14 +97,29 @@ framework/languages/dotnet/e2e/RegistryMessaging/
 시나리오를 실행한다. scale·failover 같은 시나리오는 같은 스크립트가 프로세스를 추가로 띄우거나
 종료한다.
 
+`PubSub`와 `RegistrationCodec`의 client 흐름과 역할 server endpoint 사용 방식을 기준 예시로 삼는다.
+client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 직접 호출하고, server endpoint
+안에서 framework 기능을 실행한다. 별도 driver server를 띄운 뒤 client가 그 driver에 "전체 시나리오
+실행"을 맡기는 구조는 이 문서의 표준 구조가 아니다.
+
 ### 2.1 서버 프로젝트 구성 규칙
 
 - 서버 역할이 다르면 `Server/<Role>/` 아래에 별도 실행 프로젝트로 둔다. 하나의 서버 프로젝트를
   `--role`, `--mode` 옵션으로 registry/publisher/subscriber 또는 정상/오류/peer 서버처럼 바꾸지
   않는다.
+- 역할별 프로젝트 안에는 해당 역할 코드만 둔다. 예를 들어 `Server/Registry` 프로젝트 안에
+  publisher/subscriber/play/session/multi-node 분기와 handler가 함께 들어 있으면 안 된다. 같은
+  `Program.cs`를 여러 역할 프로젝트에 복사한 뒤 default role만 바꾸는 방식도 금지한다.
+- `Server/<Role>/`의 `<Role>`은 실제 배포에서 의미가 있는 역할이어야 한다. 이름을 `Main`,
+  `Coordinator`, `Control`, `Scenario`처럼 바꿔도 시나리오 실행만 대신하고 실제 기능을 제공하지
+  않는 server라면 만들 수 없다.
 - `Program.cs`는 실행 진입점만 둔다. host 구성, DI 등록, framework 설정은 `*HostFactory.cs`에 둔다.
 - `AddZLinkFramework` 또는 `AddZLinkRegistry` 설정은 `*HostFactory.cs`에서 바로 보이게 작성한다.
   얇은 wrapper/extension 메서드 뒤에 framework 설정을 숨기지 않는다.
+- `Server/Driver`, `Server/TestRunner`, `Server/ScenarioRunner` 같은 별도 실행 프로젝트는 만들지
+  않는다. 폴더 이름이 다르더라도 시나리오 실행만 위임받는 server는 같은 금지 대상이다. 테스트
+  진행을 위해 프로세스 시작·종료가 필요하면 `run_e2e.*`와 client support 코드에서 다루고,
+  framework 기능 호출은 실제 역할 server endpoint 안에 둔다.
 - e2e 서버는 작은 실행 예시이므로 flat 구조를 기본으로 한다. `Program.cs`, `*.csproj`,
   `*HostFactory.cs`, `*Options.cs`, endpoint/handler/filter/evidence 파일을 서버 프로젝트 루트에 둔다.
 - 같은 성격의 파일이 많아져서 탐색이 어려워질 때만 폴더를 만든다. 파일 하나짜리 `Configuration/`,
@@ -99,12 +127,14 @@ framework/languages/dotnet/e2e/RegistryMessaging/
 - 공통 서버 library/shared 프로젝트는 기본으로 만들지 않는다. 중복이 조금 생기더라도 각 서버
   프로젝트가 자기 구성을 직접 드러내는 쪽을 우선한다. 정말 여러 config 또는 여러 역할에서 같은
   코드가 반복되어 유지 비용이 커질 때만 별도 shared 프로젝트를 검토한다.
-- `Shared/`는 server와 client가 함께 쓰는 message/contracts만 둔다. server-only host factory,
+- `Shared/`는 server와 client가 함께 쓰는 메시지·계약 타입만 둔다. server-only host factory,
   handler, filter, evidence store를 config의 top-level `Shared/`에 넣지 않는다.
 
 ### 2.2 client 프로젝트 구성 규칙
 
 - client는 `Client/Program.cs`에서 시나리오를 순차 실행한다.
+- `Client/Program.cs`에는 옵션 파싱, HTTP client 생성, scenario 호출 순서만 둔다. 개별 scenario의
+  요청·검증 본문은 `Program.cs`에 두지 않는다.
 - 시나리오는 `Client/Scenarios/` 아래에 scenario별 파일로 분리한다.
 - 각 scenario 파일 첫머리에 해당 시나리오가 무엇을 검증하는지 설명한다.
 - client support 코드는 option parsing, assertion, process lifecycle처럼 시나리오 흐름을 보조하는
@@ -112,6 +142,16 @@ framework/languages/dotnet/e2e/RegistryMessaging/
 - client는 server app endpoint를 언어별 HTTP client wrapper로 호출한다. server evidence endpoint와
   log marker는 검증에 사용할 수 있지만, framework 내부 상태나 private/test-only API를 직접 읽지
   않는다.
+- 값 변경·event·push 수신을 기다리는 시나리오는 polling 전용 HTTP loop 대신 client stream
+  connector를 사용한다. HTTP endpoint는 bind, subscribe, state-change trigger처럼 사용자가 실제로
+  일으키는 동작을 표현하고, 변화가 도착했는지는 connector push 수신으로 단언한다. connector가 없는
+  언어 또는 아직 public contract가 없는 기능은 feature-map에 gap으로 남긴다.
+- client scenario는 실제 역할 server endpoint 호출과 검증 흐름을 직접 보여야 한다. driver의
+  `/run` endpoint 하나를 호출하고 "나머지는 server 쪽에서 알아서 검증"하게 만들면 안 된다.
+  evidence 조회도 실제 역할 server에서 가져와야 하며, 시나리오 실행 전용 server의 결과만 읽으면
+  안 된다.
+- 시나리오가 여러 개이면 client scenario 파일도 여러 개로 나눈다. 여러 시나리오를 하나의
+  `AllScenario`, `ScenarioSet`, `DriverScenario` 파일로 묶어 driver에 위임하지 않는다.
 
 ### 2.3 주석 작성 규칙
 
@@ -140,6 +180,7 @@ framework/languages/dotnet/e2e/RegistryMessaging/
 | [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + registry | restart, reconnect, cancellation, in-flight crash, shutdown, 런타임 drain/restore, gray failure, partition 복구, flapping, 혼합 soak, wire 호환 |
 | [Config 6 — Discovery·Registry HA](config-6-discovery-registry-ha.ko.md) | registry 1~3 cluster + provider 2 | registry 다중화 동등성, registry scale-out/in, registry 장애 중 discovery, 충돌 광고·peer flapping, embedded/standalone 배포, topology 조회 |
 | [Config 7 — Monitoring](config-7-monitoring.ko.md) | registry + service 2 + monitor | socket/registry/spot 이벤트 runtime 관찰, 가용성 전이(failover/drain)·장애 중 관측, 다중 source 격리 |
+| [Config 8 — Spot yield dispatch](config-8-yield-dispatch.ko.md) | registry + play 노드 2 + delay service 2 + session gateway 2 | yield terminator가 현재 Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개하는지, actor·timer mailbox 격리, local/remote topology, timeout·cancellation·shutdown 경로, 언어별 동일 의미 |
 
 ## 4. 우선순위
 
@@ -154,13 +195,13 @@ framework/languages/dotnet/e2e/RegistryMessaging/
 - 테스트는 독립된 임시 작업 디렉토리와 로그 디렉토리를 쓴다.
 - 서버 프로세스는 config가 선언한 역할대로 띄운다. registry가 필요한 config는 registry도 별도
   프로세스로 띄운다.
-- port, routing id, Redis key prefix, store path는 실행마다 격리한다.
+- port, routing id, Redis key prefix, 저장소 경로는 실행마다 격리한다.
 - 서버 준비 여부는 sleep만으로 판단하지 않고, 포트 readiness 또는 readiness marker로 확인한다.
-- 성공 기준은 client 반환값, server evidence endpoint, 로그 marker를 조합한다. registry를 쓰는
-  config는 topology도 성공 기준에 넣는다.
+- 성공 기준은 client 반환값, client stream connector가 받은 push, server evidence endpoint, 로그
+  marker를 조합한다. registry를 쓰는 config는 topology도 성공 기준에 넣는다.
 - 실패하면 각 프로세스의 stdout/stderr, framework 로그, client 마지막 요청 정보를 남긴다.
-- 실패 시 먼저 원인 레이어를 분리한다. `core-capi`, `bindings`, `framework`, `sample`,
-  `harness` 중 어디인지 evidence로 판정하고, 고친 레이어에 회귀 테스트를 둔다. framework 테스트를
+- 실패 시 먼저 원인 레이어를 분리한다. `core-capi`, `bindings`, `framework`, `sample`, 테스트 실행
+  스크립트 중 어디인지 evidence로 판정하고, 고친 레이어에 회귀 테스트를 둔다. framework 테스트를
   통과시키려고 C API나 bindings 버그를 framework에서 우회하지 않는다.
 - 같은 시나리오는 언어별 public API 모양만 달라지고, 의미와 marker는 같아야 한다.
 
@@ -207,8 +248,8 @@ framework/languages/dotnet/e2e/RegistryMessaging/
 ### 6.3 실패 evidence에 포함
 
 - 시나리오 실패 시 §5의 stdout/stderr·client 정보에 더해 위 **파일 로그(흐름 추적 포함)**를
-  evidence로 남긴다. 원인 레이어 분리(`core-capi`/`bindings`/`framework`/`sample`/`harness`)도
-  `corr=` 흐름으로 먼저 좁힌다.
+  evidence로 남긴다. 원인 레이어 분리(`core-capi`/`bindings`/`framework`/`sample`/테스트 실행
+  스크립트)도 `corr=` 흐름으로 먼저 좁힌다.
 
 ### 6.4 언어별 적용 시점
 
@@ -229,6 +270,7 @@ ID는 `config 접두사 - 트랙 - 번호`를 쓴다. 예: `RM-A1`(Registry mess
 | `RL` | Resilience/lifecycle |
 | `DR` | Discovery·Registry HA |
 | `MON` | Monitoring |
+| `YD` | Spot yield dispatch |
 
 테스트 이름은 언어 관례에 맞게 바꿔도 되지만, 리포트에는 config id와 시나리오 id가 드러나야 한다.
 
@@ -237,5 +279,5 @@ ID는 `config 접두사 - 트랙 - 번호`를 쓴다. 예: `RM-A1`(Registry mess
 - 각 config의 `P0` 시나리오는 모두 구현되어야 한다.
 - `P1`은 해당 기능을 지원한다고 문서화한 언어에서 구현되어야 한다.
 - 지원하지 않는 기능은 test skip이 아니라 feature map과 문서에 이유가 있어야 한다.
-- 실패 경로는 client-visible 결과와 server-side 로그 또는 observer evidence를 함께 검증한다.
+- 실패 경로는 client가 받은 결과와 실제 역할 server가 남긴 로그 또는 evidence를 함께 검증한다.
 - 실패 원인 분류가 끝나지 않은 상태에서 workaround를 넣은 테스트는 완료로 보지 않는다.

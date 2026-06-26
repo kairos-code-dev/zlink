@@ -223,8 +223,12 @@ internal static class RequestProgressPump
             {
                 if (poller != IntPtr.Zero)
                 {
-                    try { _ = NativeMethods.zlink_poller_remove(poller, handle); }
-                    catch { }
+                    // The progress worker does not own the socket or spot
+                    // handle. During teardown the owner can close that handle
+                    // before this idle worker exits, especially on slower CI
+                    // runners. Destroying the private poller is enough to drop
+                    // its registrations; passing the possibly closed handle
+                    // back into zlink_poller_remove can race native teardown.
                     try { _ = NativeMethods.zlink_poller_destroy(ref poller); }
                     catch { }
                 }

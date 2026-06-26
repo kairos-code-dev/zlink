@@ -20,6 +20,12 @@
 #include "core/recv_internal.hpp"
 #include "utils/debug_log.hpp"
 
+#if defined _WIN32 && defined DLL_EXPORT && !defined ZLINK_STATIC
+#define ZLINK_INTERNAL_EXPORT __declspec (dllexport)
+#else
+#define ZLINK_INTERNAL_EXPORT
+#endif
+
 namespace
 {
 const bool spot_direct_route_debug_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
@@ -222,7 +228,7 @@ extern "C" int zlink_spot_process_routed_router (void *node_, void *socket_)
     }
 }
 
-extern "C" int zlink_spot_drain_routed_router_ingress (void *node_)
+extern "C" ZLINK_INTERNAL_EXPORT int zlink_spot_drain_routed_router_ingress (void *node_)
 {
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
     zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (node);
@@ -242,10 +248,10 @@ extern "C" int zlink_spot_drain_routed_router_ingress (void *node_)
       node_, runtime->execution.data_plane_state.routed_router);
 }
 
-extern "C" int zlink_spot_try_process_routed_router_parts (void *node_,
-                                                             zlink_msg_t *parts_,
-                                                             size_t part_count_,
-                                                             int *processed_out_)
+extern "C" ZLINK_INTERNAL_EXPORT int zlink_spot_try_process_routed_router_parts (void *node_,
+                                                                                 zlink_msg_t *parts_,
+                                                                                 size_t part_count_,
+                                                                                 int *processed_out_)
 {
     if (processed_out_)
         *processed_out_ = 0;

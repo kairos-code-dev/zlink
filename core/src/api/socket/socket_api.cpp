@@ -12,6 +12,12 @@
 #include "sockets/proxy/proxy.hpp"
 #include "services/discovery/discovery_access.hpp"
 
+#if defined _WIN32 && defined DLL_EXPORT && !defined ZLINK_STATIC
+#define ZLINK_INTERNAL_EXPORT __declspec (dllexport)
+#else
+#define ZLINK_INTERNAL_EXPORT
+#endif
+
 zlink_bind_result_t zlink_bind (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);
@@ -92,7 +98,7 @@ int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)
     return handle.socket->stream_dispatch_start_raw (on_raw_);
 }
 
-int zlink_stream_detach (void *s_)
+ZLINK_INTERNAL_EXPORT int zlink_stream_detach (void *s_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)

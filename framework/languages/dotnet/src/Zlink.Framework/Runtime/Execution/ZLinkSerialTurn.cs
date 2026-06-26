@@ -53,9 +53,14 @@ internal sealed class ZLinkSerialTurn
         }
 
         SignalSuspended();
-        var result = await operation.ConfigureAwait(false);
-        await AwaitResumePermitAsync().ConfigureAwait(false);
-        return result;
+        try
+        {
+            return await operation.AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await AwaitResumePermitAsync().ConfigureAwait(false);
+        }
     }
 
     public async ValueTask YieldFrameworkCallAsync(
@@ -70,8 +75,14 @@ internal sealed class ZLinkSerialTurn
         }
 
         SignalSuspended();
-        await operation.ConfigureAwait(false);
-        await AwaitResumePermitAsync().ConfigureAwait(false);
+        try
+        {
+            await operation.AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await AwaitResumePermitAsync().ConfigureAwait(false);
+        }
     }
 
     private void SignalSuspended()

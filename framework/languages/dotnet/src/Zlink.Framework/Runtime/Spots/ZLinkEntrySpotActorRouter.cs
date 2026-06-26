@@ -21,12 +21,15 @@ internal sealed class ZLinkEntrySpotActorRouter
                 continue;
             }
 
-            await dispatch.InvokePacketAsync(
+            await runtimeState.ExecuteDispatchAsync(
+                    header,
+                    ct => dispatch.InvokePacketAsync(
                         descriptor,
                         actor,
                         header,
                         body,
-                        cancellationToken)
+                        ct),
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             return true;
@@ -52,12 +55,15 @@ internal sealed class ZLinkEntrySpotActorRouter
                 continue;
             }
 
-            var reply = await dispatch.InvokePacketForReplyAsync(
+            var reply = await runtimeState.ExecuteDispatchAsync(
+                    header,
+                    ct => dispatch.InvokePacketForReplyAsync(
                         descriptor,
                         actor,
                         header,
                         body,
-                        cancellationToken)
+                        ct),
+                    cancellationToken)
                 .ConfigureAwait(false);
             return new EntrySpotActorReplyDispatchResult(true, reply);
         }

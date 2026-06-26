@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.lang.reflect.Method;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Test;
@@ -117,6 +119,49 @@ final class ZLinkChannelRuntimeTest {
                 reply.forEach(Message::close);
             }
             assertFalse(backend.bridge.routerReceivedInvoked);
+        }
+    }
+
+    @Test
+    void routeBridgeDrainFailureDoesNotStopLaterRawReplyCompletion() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.completeRequests = false;
+        backend.bridge.drainFailuresRemaining = 1;
+        backend.bridge.firstDrainFailed = new CountDownLatch(1);
+        backend.bridge.nextDrainAfterFailure = new CountDownLatch(1);
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(Message.from("raw-request".getBytes())),
+                Duration.ofMillis(300));
+            assertTrue(backend.bridge.firstDrainFailed.await(1, TimeUnit.SECONDS));
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(Message.from("{\"ok\":true}".getBytes()))));
+            assertTrue(backend.bridge.nextDrainAfterFailure.await(1, TimeUnit.SECONDS));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("{\"ok\":true}", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+            assertEquals(0, backend.bridge.drainFailuresRemaining);
         }
     }
 
@@ -322,6 +367,9 @@ final class ZLinkChannelRuntimeTest {
         boolean completeRequests = true;
         boolean consumeRouterReceived;
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
+        int drainFailuresRemaining;
+        CountDownLatch firstDrainFailed;
+        CountDownLatch nextDrainAfterFailure;
 
         @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router) { }
         @Override public boolean send(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) { return true; }
@@ -341,7 +389,22 @@ final class ZLinkChannelRuntimeTest {
             routerReceivedInvoked = true;
             return consumeRouterReceived;
         }
-        @Override public int drain() { return ++drains; }
+        @Override public int drain() {
+            drains++;
+            if (drainFailuresRemaining > 0) {
+                drainFailuresRemaining--;
+                if (firstDrainFailed != null) {
+                    firstDrainFailed.countDown();
+                }
+                throw new IllegalStateException("synthetic drain failure");
+            }
+            if (firstDrainFailed != null
+                && firstDrainFailed.getCount() == 0
+                && nextDrainAfterFailure != null) {
+                nextDrainAfterFailure.countDown();
+            }
+            return drains;
+        }
         @Override public String name() { return "fake-bridge"; }
         @Override public void close() { }
     }

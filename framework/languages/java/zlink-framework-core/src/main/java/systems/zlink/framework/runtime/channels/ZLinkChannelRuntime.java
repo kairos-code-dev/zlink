@@ -1093,6 +1093,18 @@ public final class ZLinkChannelRuntime
             try {
                 bridge.drain();
                 drainSpotRouteBridgeDispatch();
+            } catch (RuntimeException ex) {
+                if (running) {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                        ZLinkDispatchMessageKind.REQUEST,
+                        ZLinkDispatchErrorReason.INVALID_FRAME,
+                        ZLinkDispatchErrorAction.DROP,
+                        null,
+                        channelName,
+                        null,
+                        ex);
+                }
             } finally {
                 spotRouteBridgeDrainScheduled.remove(channelName);
             }

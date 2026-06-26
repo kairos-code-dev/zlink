@@ -6,9 +6,11 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
+import java.lang.foreign.MemorySegment;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.eventing.MonitorEvent;
 import systems.zlink.contracts.eventing.MonitorEventType;
@@ -27,6 +29,7 @@ import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.service.registry.TopologySource;
 import systems.zlink.contracts.service.registry.TopologyState;
 import systems.zlink.contracts.service.spot.ActorBindOperation;
+import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorJoinCompletion;
 import systems.zlink.contracts.service.spot.ActorJoinRequest;
 import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
@@ -47,6 +50,7 @@ import systems.zlink.contracts.service.spot.SpotRouteBridge;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
@@ -112,8 +116,21 @@ import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
+import systems.zlink.runtime.nativeapi.Native;
 
 public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapterFactory {
+    private static boolean recvOrNoData(java.util.function.BooleanSupplier receive) {
+        try {
+            return receive.getAsBoolean();
+        } catch (ZlinkRecvException ex) {
+            if (ex.getResult() == RecvResult.NO_DATA
+                || ex.getResult() == RecvResult.BUSY) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
     @Override
     public ZLinkChannelBackendAdapter createChannelAdapter(ZLinkBackendAdapterOptions options) {
         return new JavaChannelBackendAdapter();
@@ -258,7 +275,9 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
             try (Received result = new Received()) {
-                return socket.recv(result, map(mode)) ? fromReceived(result) : null;
+                return recvOrNoData(() -> socket.recv(result, map(mode)))
+                    ? fromReceived(result)
+                    : null;
             }
         }
         @Override public void close() { socket.close(); }
@@ -277,7 +296,9 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setPeerWeight(int weight) { socket.options().peerWeight(weight); }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
             try (Received result = new Received()) {
-                return socket.recv(result, map(mode)) ? fromReceived(result) : null;
+                return recvOrNoData(() -> socket.recv(result, map(mode)))
+                    ? fromReceived(result)
+                    : null;
             }
         }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { return submit(socket.send(routingId), parts, flags); }
@@ -481,7 +502,13 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void close() { client.close(); }
     }
 
-    private record JavaSpotNode(SpotNode spotNode) implements ZLinkBackendSpotNode {
+    private static final class JavaSpotNode implements ZLinkBackendSpotNode {
+        private final SpotNode spotNode;
+
+        JavaSpotNode(SpotNode spotNode) {
+            this.spotNode = spotNode;
+        }
+
         @Override public String name() { return "spotNode"; }
         @Override public RoutingId routingId() { return spotNode.getRoutingId(); }
         @Override public void setRoutingId(RoutingId routingId) { spotNode.setRoutingId(routingId); }
@@ -496,7 +523,8 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public ZLinkBackendSpot createSpot() { return new JavaSpot(spotNode.createSpot()); }
         @Override public ZLinkBackendSpot entrySpot() { return new JavaSpot(spotNode.entrySpot()); }
         @Override public ZLinkBackendActorRef createActor(String actorId, Message createRequest) {
-            return fromActorRef(spotNode.createActor(actorId, createRequest).ref());
+            Actor actor = spotNode.createActor(actorId, createRequest);
+            return fromActorRef(actor.ref());
         }
         @Override public ZLinkBackendActorRef actorLookup(String actorId) { return fromActorRef(spotNode.actorLookup(actorId)); }
         @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, Duration timeout) {
@@ -597,7 +625,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) {
             Received result = new Received();
-            if (spot.recvRouted(result, map(mode))) {
+            if (recvOrNoData(() -> spot.recvRouted(result, map(mode)))) {
                 return fromReceived(result);
             }
             result.close();

@@ -158,6 +158,79 @@ test('ZLinkRouteClient applies route channel request timeout before registration
   assert.equal('yield' in client.request('route', 'target', { id: 8 }), false);
 });
 
+test('route packet dispatcher sends channel envelopes to route handlers before Spot bridge fallback', async () => {
+  let bridgeCalls = 0;
+  const handledPayloads = [];
+  const replyParts = [];
+  const dispatcher = new framework.ZLinkRoutePacketDispatcher({
+    routerChannelId: 'bingo.play',
+    dispatchErrors: noDispatchErrorReporter(),
+    filters: [],
+    spotRouteBridge: {
+      handleRouterReceived() {
+        bridgeCalls += 1;
+        return true;
+      }
+    },
+    handlers: [{
+      kind: 'request',
+      packetName: 'AllocateBingoRoomReq',
+      handler: {
+        handle(payload, context) {
+          handledPayloads.push({ payload, sourceNodeRid: String(context.sourceNodeRid) });
+          return { roomId: 'room-1' };
+        }
+      }
+    }]
+  });
+
+  const parts = [
+    zlink.Message.from(Buffer.from(JSON.stringify({
+      kind: 1,
+      channelName: 'bingo.play',
+      messageName: 'AllocateBingoRoomReq',
+      contentType: 'application/json',
+      correlationId: 'route-corr',
+      deadline: null,
+      topic: null,
+      errorCode: null,
+      errorMessage: null
+    }))),
+    zlink.Message.from(Buffer.from(JSON.stringify({ mode: 'two-player' })))
+  ];
+  const router = {
+    reply(routingId, requestSeq) {
+      assert.equal(String(routingId), 'api-node');
+      assert.equal(requestSeq, 7n);
+      return {
+        message(message) {
+          replyParts.push(message);
+          return this;
+        },
+        submit() {}
+      };
+    }
+  };
+
+  try {
+    await dispatcher.dispatch({
+      parts,
+      routingId: 'api-node',
+      requestSeq: 7n
+    }, router);
+
+    assert.equal(bridgeCalls, 0);
+    assert.deepEqual(handledPayloads, [{
+      payload: { mode: 'two-player' },
+      sourceNodeRid: 'api-node'
+    }]);
+    assert.equal(replyParts.length, 2);
+  } finally {
+    parts.forEach((part) => part.close());
+    replyParts.forEach((part) => part.close?.());
+  }
+});
+
 test('ZLinkChannelClient and fanout client reject pre-aborted submit before transport dispatch', async () => {
   const controller = new AbortController();
   controller.abort();

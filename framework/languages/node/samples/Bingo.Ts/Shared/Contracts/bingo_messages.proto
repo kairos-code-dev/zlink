@@ -62,6 +62,7 @@ message MatchBingoApiReq {
   string actor_id = 1;
   string display_name = 2;
   string mode = 3;
+  string actor_node_rid = 4;
 }
 
 message MatchBingoApiRes {

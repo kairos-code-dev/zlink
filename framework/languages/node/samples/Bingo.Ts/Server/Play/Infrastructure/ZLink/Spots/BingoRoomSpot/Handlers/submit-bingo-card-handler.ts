@@ -27,13 +27,7 @@ class SubmitBingoCardHandler
     request: SubmitBingoCardReq
   ): Promise<SubmitBingoCardRes> {
     void context;
-    if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-submit-card start actor=${actor.actorId}`);
-    }
     const response = await room.submitCard(actor, request);
-    if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-submit-card done actor=${actor.actorId}`);
-    }
     return response;
   }
 }

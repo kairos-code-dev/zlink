@@ -31,7 +31,7 @@ function createBingoSessionModule(endpoints: {
           .options({
             registrySpotRemoteAddresses: {
               namespace: SampleNames.roomSpotNode,
-              routerChannelId: SampleNames.roomRouteChannel
+              routerChannelId: SampleNames.playChannel
             }
           })
           .codecs()
@@ -40,9 +40,7 @@ function createBingoSessionModule(endpoints: {
             .addRegistryEndpoint(endpoints.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient()
-          .addClientServerChannel(SampleNames.playChannel)
-            .enableClient()
-          .addRouteMesh(SampleNames.roomRouteChannel)
+          .addRouteMesh(SampleNames.playChannel)
             .enableRouter(endpoints.sessionRouteEndpoint)
             .routingId(endpoints.sessionSpotNodeRid)
             .connect(endpoints.preferredPlayRouteEndpoint)

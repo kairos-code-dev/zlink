@@ -2,7 +2,6 @@ using Systems.Zlink;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
@@ -49,12 +48,7 @@ internal sealed class MatchBingoActorHandler(
             .Yield<BingoRoomJoinRes>(cancellationToken);
         logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
         var joinedState = joined.Reply.State;
-        if (joinedState.Status == BingoRoomStatuses.Running)
-        {
-            await actor.Context.BoundSession
-                .Send(new BingoGameStartedNotify { State = joinedState })
-                .Async(cancellationToken);
-        }
+        // join 후에는 actor 객체를 다시 만지지 않는다 — game-started push 는 room 의 OnJoinedActorAsync 가 한다.
 
         return new MatchBingoRes
         {

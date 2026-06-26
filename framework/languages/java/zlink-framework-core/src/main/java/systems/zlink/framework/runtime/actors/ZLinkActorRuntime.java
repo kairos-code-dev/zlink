@@ -883,6 +883,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         void updateNativeBoundSessionActorRef(ZLinkBackendActorRef targetActor) {
+            if (boundSession instanceof ZLinkNativeBoundSessionRuntime runtime) {
+                runtime.updateActorRef(targetActor);
+            }
         }
 
         boolean hasBoundSession() {
@@ -1085,6 +1088,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
 
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
+                ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
+                if (current != null) {
+                    return current;
+                }
                 throw new IllegalStateException(
                     "yield requires a framework Spot handler turn captured when the call object was created");
             }
@@ -1304,7 +1311,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 || result.joinResultCode() != 0
                 || result.actor() == null
                 || context.actorRef == null
-                || result.actor().nodeRid().equals(context.actorRef.nodeRid())) {
+                || result.actor().equals(context.actorRef)) {
                 return CompletableFuture.completedFuture(null);
             }
             return context.rebindNativeActor(result.actor(), timeout)
@@ -1398,6 +1405,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
 
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
+                ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
+                if (current != null) {
+                    return current;
+                }
                 throw new IllegalStateException(
                     "yield requires a framework Spot handler turn captured when the call object was created");
             }

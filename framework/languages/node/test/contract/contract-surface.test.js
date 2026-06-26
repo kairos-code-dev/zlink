@@ -157,7 +157,7 @@ test('entry spot public surface exposes create lifecycle and actor join admissio
   assert.equal(entryContext.includes('close('), false);
 });
 
-test('actor join and bound session call objects expose yield terminators', () => {
+test('actor join call objects expose yield terminators, bound session send does not', () => {
   const actorContracts = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Actors', 'ZLinkActorFactory.ts'),
     'utf8');
@@ -167,7 +167,9 @@ test('actor join and bound session call objects expose yield terminators', () =>
 
   assert.match(actorContracts, /interface ZLinkActorJoinSpotCall[\s\S]*yield<TReply/);
   assert.match(actorContracts, /interface ZLinkActorJoinEntrySpotCall[\s\S]*yield<TReply/);
-  assert.match(boundSessionContracts, /interface ZLinkBoundSessionSendCall[\s\S]*yield\(signal\?: AbortSignal\): Promise<void>/);
+  const boundSessionSendCall = declarationBody(boundSessionContracts, 'ZLinkBoundSessionSendCall');
+  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.equal(boundSessionSendCall.includes('yield('), false);
 });
 
 function exportedCatalogNames(spec) {

@@ -38,7 +38,7 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
                     DisplayName = actor.DisplayName,
                     ObserveOnly = true,
                 })
-            .Async(cancellationToken);
+            .Yield<BingoRoomJoinRes>(cancellationToken);
 
         if (!joined.Accepted)
         {

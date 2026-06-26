@@ -37,6 +37,7 @@ public final class ZLinkFrameworkRuntime
     private final ZLinkSpotRuntime spots;
     private final ZLinkActorRuntime actors;
     private final ZLinkStreamRuntime streams;
+    private final ZLinkBackendContext backendContext;
     private final ZLinkFrameworkRegistration registration;
     // Shared, runtime-mutable message-flow mode cell, installed into the diagnostics
     // options so every surface observes setMessageFlowMode live.
@@ -77,8 +78,13 @@ public final class ZLinkFrameworkRuntime
             ZLinkHandlerFactory.services(handlerFactory);
         runtimeHandlers.add(ZLinkFrameworkRegistration.class, this.registration);
         runtimeHandlers.add(ZLinkFrameworkRuntime.class, this);
+        ZLinkChannelBackendAdapter channelBackend =
+            backendFactory.createChannelAdapter(adapterOptions);
+        ZLinkBackendContext backendContext = channelBackend.createContext();
+        this.backendContext = backendContext;
         this.channels = new ZLinkChannelRuntime(
-            backendFactory.createChannelAdapter(adapterOptions),
+            channelBackend,
+            backendContext,
             backendFactory,
             adapterOptions,
             options.registration(),
@@ -94,6 +100,7 @@ public final class ZLinkFrameworkRuntime
                 adapterOptions,
                 options.registration(),
                 channels,
+                backendContext,
                 serializer,
                 runtimeHandlers,
                 eventDispatcher);
@@ -108,6 +115,8 @@ public final class ZLinkFrameworkRuntime
         }
         if (this.spots != null) {
             this.channels.registerSpotRouteBridgeOwner(this.spots::primaryNode);
+            this.channels.registerSpotRouteBridgeDispatchDrainer(
+                this.spots::drainRoutedDispatchQueues);
         }
         var actorNodeRegistration = options.registration().spotNodes().stream()
             .filter(node -> !node.actorFactories().isEmpty())
@@ -315,7 +324,11 @@ public final class ZLinkFrameworkRuntime
                             closeRuntimeComponent(spots::close);
                         }
                     } finally {
-                        closeHandlerExecutor();
+                        try {
+                            closeRuntimeComponent(backendContext::close);
+                        } finally {
+                            closeHandlerExecutor();
+                        }
                     }
                 }
             }

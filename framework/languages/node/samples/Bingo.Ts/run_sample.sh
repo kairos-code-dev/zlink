@@ -152,8 +152,24 @@ write(sys.argv[1], {
     "sessionBEndpoint": "${BINGO_SESSION_B_ENDPOINT}"
 })
 write(sys.argv[2], base)
-write(sys.argv[3], { **base, "apiEndpoint": "${BINGO_API_A_ENDPOINT}" })
-write(sys.argv[4], { **base, "apiEndpoint": "${BINGO_API_B_ENDPOINT}" })
+write(sys.argv[3], {
+    **base,
+    "apiEndpoint": "${BINGO_API_A_ENDPOINT}",
+    "apiNodeRid": "bingo-api-node-a",
+    "playRouteEndpoints": [
+        "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
+        "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
+    ]
+})
+write(sys.argv[4], {
+    **base,
+    "apiEndpoint": "${BINGO_API_B_ENDPOINT}",
+    "apiNodeRid": "bingo-api-node-b",
+    "playRouteEndpoints": [
+        "${BINGO_PLAY_A_ROUTE_ENDPOINT}",
+        "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
+    ]
+})
 write(sys.argv[5], {
     **base,
     "playEndpoint": "${BINGO_PLAY_A_ENDPOINT}",
@@ -240,8 +256,8 @@ const registryEndpoint = process.argv[2];
 const requiredRouteRids = new Set();
 const requiredSpotRids = new Set(process.argv.slice(3));
 const zlink = require('@zlink-systems/zlink');
-const requiredChannels = new Set(['bingo.api', 'bingo.play']);
-const roomRouteChannel = 'bingo.room.route';
+const requiredChannels = new Set(['bingo.api']);
+const roomRouteChannel = 'bingo.play';
 const roomSpotChannel = 'bingo.room';
 const pause = new Int32Array(new SharedArrayBuffer(4));
 const context = zlink.createContext();
@@ -326,23 +342,21 @@ wait_port registry-pub "${BINGO_REGISTRY_PUB_ENDPOINT}"
 wait_port registry-router "${BINGO_REGISTRY_ROUTER_ENDPOINT}"
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
-start_server play-a dist/Server/Play/main.js "${PLAY_A_CONFIG}"
-wait_port play-a "${BINGO_PLAY_A_ENDPOINT}"
-wait_port play-a-route "${BINGO_PLAY_A_ROUTE_ENDPOINT}"
-wait_port play-a-spot "${BINGO_PLAY_A_SPOT_ENDPOINT}"
-wait_port play-a-spot-pubsub "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}"
-
-start_server play-b dist/Server/Play/main.js "${PLAY_B_CONFIG}"
-wait_port play-b "${BINGO_PLAY_B_ENDPOINT}"
-wait_port play-b-route "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
-wait_port play-b-spot "${BINGO_PLAY_B_SPOT_ENDPOINT}"
-wait_port play-b-spot-pubsub "${BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT}"
-
 start_server api-a dist/Server/Api/main.js "${API_A_CONFIG}"
 wait_port api-a "${BINGO_API_A_ENDPOINT}"
 
 start_server api-b dist/Server/Api/main.js "${API_B_CONFIG}"
 wait_port api-b "${BINGO_API_B_ENDPOINT}"
+
+start_server play-a dist/Server/Play/main.js "${PLAY_A_CONFIG}"
+wait_port play-a-route "${BINGO_PLAY_A_ROUTE_ENDPOINT}"
+wait_port play-a-spot "${BINGO_PLAY_A_SPOT_ENDPOINT}"
+wait_port play-a-spot-pubsub "${BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT}"
+
+start_server play-b dist/Server/Play/main.js "${PLAY_B_CONFIG}"
+wait_port play-b-route "${BINGO_PLAY_B_ROUTE_ENDPOINT}"
+wait_port play-b-spot "${BINGO_PLAY_B_SPOT_ENDPOINT}"
+wait_port play-b-spot-pubsub "${BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT}"
 
 start_server session-a dist/Server/Session/main.js "${SESSION_A_CONFIG}"
 wait_port session-a "${BINGO_SESSION_A_ENDPOINT}"

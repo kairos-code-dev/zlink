@@ -41,7 +41,7 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
           co_await actor.context
             .join_spot (observer_rid, bingo_room_join_req_t{request.room_id, actor.actor.actor_id,
                                                             display_name, true})
-            .async<bingo_room_join_res_t> ();
+            .yield<bingo_room_join_res_t> ();
         co_return observe_bingo_events_res_t{true, std::string (joined.actor.node_rid ().value ())};
     }
 

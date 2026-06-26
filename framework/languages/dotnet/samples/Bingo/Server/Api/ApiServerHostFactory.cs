@@ -25,6 +25,7 @@ public static class ApiServerHostFactory
                 .SetRoutingId(node.RouteRid)
                 .AddHandlerGroup("api");
             options.AddRouteMesh(SampleNames.PlayChannel)
+                .EnableServer(node.PlayRouteEndpoint)
                 .EnableClient()
                 .SetRoutingId(node.RouteRid);
         });

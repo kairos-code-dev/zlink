@@ -18,10 +18,4 @@ public interface IZLinkBoundSessionSendCall
         string value);
 
     ValueTask Async(CancellationToken cancellationToken = default);
-
-    ValueTask Yield(CancellationToken cancellationToken = default)
-    {
-        _ = cancellationToken;
-        throw new NotSupportedException("Yield is not supported by this bound session send call.");
-    }
 }

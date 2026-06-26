@@ -216,7 +216,6 @@ final class HandlerContractTest {
         ZLinkActorJoinEntrySpotCall.class.getMethod("submit", Class.class);
         ZLinkActorJoinEntrySpotCall.class.getMethod("await", Class.class);
         ZLinkActorJoinEntrySpotCall.class.getMethod("yield", Class.class);
-        ZLinkBoundSessionSendCall.class.getMethod("yield");
     }
 
     @Test

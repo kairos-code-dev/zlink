@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.supportchat.server.session.sessions
 
 import kotlinx.coroutines.future.await
+import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionActor
@@ -23,11 +24,11 @@ class SupportChatSession(
         dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
     ) {
-        if (handlers.tryHandleAsync(context, dispatch, payload).await()) {
+        if (ZLinkAwait.await(handlers.tryHandleAsync(context, dispatch, payload))) {
             return
         }
         val actor = requireSingleBoundActor(dispatch.packetName())
-        actor.relay(payload).await()
+        ZLinkAwait.await(actor.relay(payload))
     }
 
     private fun requireSingleBoundActor(packetName: String): ZLinkSessionActor =

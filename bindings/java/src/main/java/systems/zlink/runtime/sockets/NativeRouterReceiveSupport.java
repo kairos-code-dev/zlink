@@ -556,11 +556,6 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                                MemorySegment partOut,
                                MemorySegment hasMoreOut,
                                int flags) {
-        if ((flags & RecvFlags.DONT_WAIT.value()) != 0) {
-            return Native.routerRecvPartNoWaitCritical(InternalAccess.socketHandle(socket),
-                sourceNodeRidOut, sourceSpotRidOut, requestSeqOut, partOut,
-                hasMoreOut, flags);
-        }
         return Native.routerRecvPart(InternalAccess.socketHandle(socket), sourceNodeRidOut,
             sourceSpotRidOut, requestSeqOut, partOut, hasMoreOut, flags);
     }

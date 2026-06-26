@@ -39,16 +39,23 @@ internal sealed class BingoRoom(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnJoinedActorAsync(
+    public async ValueTask OnJoinedActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         logger.LogInformation(
             "bingo room: actor joined. room={RoomId}, actor={ActorId}",
             Context.SpotRid.ToString(),
             actor.ActorId);
-        return ValueTask.CompletedTask;
+
+        // PublishAsync excludes the joining actor, so the room sends the
+        // start event here when this join fills the room.
+        if (_game is not null && _game.Status == BingoRoomStatus.Running)
+        {
+            await actor.Context.BoundSession
+                .Send(new BingoGameStartedNotify { State = _game.Snapshot() })
+                .Async(cancellationToken);
+        }
     }
 
     public ValueTask OnLeaveActorAsync(

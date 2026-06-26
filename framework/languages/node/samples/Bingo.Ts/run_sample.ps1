@@ -288,6 +288,14 @@ try {
     }
     Wait-Port "redis" "tcp://$redisEndpoint"
 
+    Start-ServerAndWait "api-a" "dist/Server/Api/main.js" $apiAConfig @{
+        "api-a" = $apiAEndpoint
+    }
+
+    Start-ServerAndWait "api-b" "dist/Server/Api/main.js" $apiBConfig @{
+        "api-b" = $apiBEndpoint
+    }
+
     Start-ServerAndWait "play-a" "dist/Server/Play/main.js" $playAConfig @{
         "play-a" = $playAEndpoint
         "play-a-route" = $playARouteEndpoint
@@ -300,14 +308,6 @@ try {
         "play-b-route" = $playBRouteEndpoint
         "play-b-spot" = $playBSpotEndpoint
         "play-b-spot-pubsub" = $playBSpotPubSubEndpoint
-    }
-
-    Start-ServerAndWait "api-a" "dist/Server/Api/main.js" $apiAConfig @{
-        "api-a" = $apiAEndpoint
-    }
-
-    Start-ServerAndWait "api-b" "dist/Server/Api/main.js" $apiBConfig @{
-        "api-b" = $apiBEndpoint
     }
 
     Start-ServerAndWait "session-a" "dist/Server/Session/main.js" $sessionAConfig @{

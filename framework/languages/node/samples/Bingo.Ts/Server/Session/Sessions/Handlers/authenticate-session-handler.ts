@@ -57,7 +57,7 @@ class SessionAuthenticator {
     const ensured = await retry(async () => {
       if (this.config.preferredPlayNodeRid.length > 0) {
         return await this.routeClient
-          .request(SampleNames.roomRouteChannel, this.config.preferredPlayNodeRid, ensureRequest)
+          .request(SampleNames.playChannel, this.config.preferredPlayNodeRid, ensureRequest)
           .packetName(PacketNames.ensurePlayerActorReq)
           .timeout(500)
           .submit<EnsurePlayerActorRes>(AbortSignal.timeout(500));

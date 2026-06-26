@@ -1,9 +1,10 @@
 import { Inject } from '@nestjs/common';
-import { zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { ZLINK_SPOT_MANAGER, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import { BingoRoomAllocator } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import { BINGO_SAMPLE_CONFIG } from '../../../../Configuration/sample-config';
-import { PacketNames, allocateBingoRoomRes } from '../../../../../Shared/Contracts/messages';
-import type { ZLinkRequestHandler } from '@zlink-systems/framework';
+import { PacketNames, allocateBingoRoomRes, bingoRoomSettingsPayload } from '../../../../../Shared/Contracts/messages';
+import { BingoRoomSpot } from '../Spots/BingoRoomSpot/bingo-room-spot';
+import type { ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
 import type { BingoRoomAllocator as BingoRoomAllocatorType } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type { BingoSampleConfig } from '../../../../Configuration/sample-config';
 import type {
@@ -16,15 +17,24 @@ import type {
 class AllocateBingoRoomHandler implements ZLinkRequestHandler<AllocateBingoRoomReq & PlayerIdentity, AllocateBingoRoomRes> {
   constructor(
     @Inject(BingoRoomAllocator) private readonly rooms: BingoRoomAllocatorType,
-    @Inject(BINGO_SAMPLE_CONFIG) private readonly config: BingoSampleConfig
+    @Inject(BINGO_SAMPLE_CONFIG) private readonly config: BingoSampleConfig,
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager
   ) {}
 
   async handle(request: AllocateBingoRoomReq & PlayerIdentity): Promise<AllocateBingoRoomRes> {
     const allocated = await this.rooms.allocate(request, this.config.playSpotNodeRid, request.mode);
+    if (allocated.created && allocated.ownerPlayNodeRid === this.config.playSpotNodeRid) {
+      await this.spots.getOrCreate(
+        BingoRoomSpot,
+        allocated.roomId,
+        bingoRoomSettingsPayload(allocated.settings)
+      );
+    }
     return allocateBingoRoomRes(allocated.roomId, allocated.ownerPlayNodeRid);
   }
 }
 
 Inject(BINGO_SAMPLE_CONFIG)(AllocateBingoRoomHandler, undefined, 1);
+Inject(ZLINK_SPOT_MANAGER)(AllocateBingoRoomHandler, undefined, 2);
 
 export { AllocateBingoRoomHandler };

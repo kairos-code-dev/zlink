@@ -44,21 +44,20 @@ function createBingoPlayModule(config: {
           .options({
             registrySpotRemoteAddresses: {
               namespace: SampleNames.roomSpotNode,
-              routerChannelId: SampleNames.roomRouteChannel
+              routerChannelId: SampleNames.playChannel
             }
           })
           .codecs()
             .use(zlinkProtobufCodec())
           .useDiscovery()
             .addRegistryEndpoint(config.registryRouterEndpoint)
-          .addClientServerChannel(SampleNames.playChannel)
-            .enableServer(config.playEndpoint)
-            .addHandlerGroup('play')
-          .addRouteMesh(SampleNames.roomRouteChannel)
+          .addRouteMesh(SampleNames.playChannel)
             .enableRouter(config.playRouteEndpoint)
             .routingId(config.playSpotNodeRid)
             .connect(config.routePeerEndpoints)
-            .addRequestHandler(PacketNames.ensurePlayerActorReq, EnsurePlayerActorHandler)
+            .addHandlerGroup('play')
+          .addClientServerChannel(SampleNames.apiChannel)
+            .enableClient()
           .addSpotMesh(SampleNames.roomSpotNode)
             .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)
             .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid)

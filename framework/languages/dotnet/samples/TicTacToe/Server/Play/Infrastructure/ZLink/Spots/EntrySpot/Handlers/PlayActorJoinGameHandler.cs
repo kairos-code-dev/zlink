@@ -27,7 +27,7 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
         var joined = await actor.Context.JoinSpot(
                 spotRid,
                 new TicTacToeGameJoinReq(message.RoomId, actor.RequirePlayer()))
-            .Async(cancellationToken);
+            .Yield(cancellationToken);
 
         var joinReply = joined.Reply.Decode<TicTacToeGameJoinRes>();
         var reply = new JoinGameRes(joinReply.State);

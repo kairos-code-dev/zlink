@@ -303,14 +303,12 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             return sendWithRetry(stream, sessionRid, header, payloadBytes, actorId);
         }
 
-        @Override
-        public void yield() {
-            ZLinkAwait.awaitVoid(
-                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit()));
-        }
-
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
+                ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
+                if (current != null) {
+                    return current;
+                }
                 throw new IllegalStateException(
                     "yield requires a framework Spot handler turn captured when the call object was created");
             }

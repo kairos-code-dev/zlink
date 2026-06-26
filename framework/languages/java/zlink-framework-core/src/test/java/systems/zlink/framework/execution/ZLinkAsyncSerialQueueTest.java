@@ -106,4 +106,52 @@ final class ZLinkAsyncSerialQueueTest {
             "third-start"), events);
         assertEquals(null, first.join());
     }
+
+    @Test
+    void yield_releasesGateAgainWhenResumedTurnSuspendsAgain() throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<String> firstIo = new CompletableFuture<>();
+        CompletableFuture<String> secondIo = new CompletableFuture<>();
+        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
+        CompletableFuture<Void> firstResumed = new CompletableFuture<>();
+        List<String> events = new ArrayList<>();
+
+        CompletableFuture<Void> first = queue.enqueue(() -> {
+            events.add("first-start");
+            firstStarted.complete(null);
+            String firstResult = ZLinkYieldTurn.current().awaitFrameworkCallBlocking(firstIo);
+            events.add("first-resumed:" + firstResult);
+            firstResumed.complete(null);
+            String secondResult = ZLinkYieldTurn.current().awaitFrameworkCallBlocking(secondIo);
+            events.add("first-resumed-again:" + secondResult);
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+
+        firstStarted.get(3, TimeUnit.SECONDS);
+
+        CompletableFuture<Void> second = queue.enqueue(() -> {
+            events.add("second-start");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+        second.get(3, TimeUnit.SECONDS);
+
+        firstIo.complete("one");
+        firstResumed.get(3, TimeUnit.SECONDS);
+
+        CompletableFuture<Void> third = queue.enqueue(() -> {
+            events.add("third-start");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+        third.get(3, TimeUnit.SECONDS);
+
+        secondIo.complete("two");
+        first.get(3, TimeUnit.SECONDS);
+
+        assertEquals(List.of(
+            "first-start",
+            "second-start",
+            "first-resumed:one",
+            "third-start",
+            "first-resumed-again:two"), events);
+    }
 }

@@ -1854,12 +1854,15 @@ export class ZLinkChannelReceiveLoop {
   }): Promise<void> {
     let closeReceived = true;
     try {
-      if (this.spotRouteBridge?.handleRouterReceived(
+      if (
+        !isChannelEnvelope(received.parts) &&
+        this.spotRouteBridge?.handleRouterReceived(
         this.channelName,
         received.routingId as RoutingId,
         received.requestSeq ?? 0n,
         received.parts
-      ) === true) {
+      ) === true
+      ) {
         closeReceived = false;
         return;
       }
@@ -1872,6 +1875,18 @@ export class ZLinkChannelReceiveLoop {
         received.close();
       }
     }
+  }
+}
+
+function isChannelEnvelope(parts: readonly Message[]): boolean {
+  if (parts.length < 2 || parts[0].data().length === 0) {
+    return false;
+  }
+  try {
+    decodeChannelEnvelope(parts);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -2104,7 +2119,10 @@ export class ZLinkRoutePacketDispatcher {
   }, router: {
     reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
   }): Promise<boolean | void> {
-    if (this.spotRouteBridge !== undefined) {
+    if (
+      this.spotRouteBridge !== undefined &&
+      !isChannelEnvelope(received.parts)
+    ) {
       const processed = this.spotRouteBridge.handleRouterReceived(
         this.routerChannelId,
         received.routingId as RoutingId,

@@ -8,8 +8,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -44,6 +47,8 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkAutoConfiguration
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+import systems.zlink.framework.execution.ZLinkYieldTurnTestSupport
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
@@ -208,6 +213,51 @@ final class KotlinSuspendAnnotationHandlerTest {
             .get(1, TimeUnit.SECONDS)
 
         assertEquals(ProfileReply("coroutine:Ada"), reply)
+    }
+
+    @Test
+    fun kotlinSuspendHandlerKeepsYieldTurnAfterDispatcherSwitch() {
+        val firstExecutor = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "zlink-kotlin-first-dispatcher").apply { isDaemon = true }
+        }
+        val secondExecutor = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "zlink-kotlin-second-dispatcher").apply { isDaemon = true }
+        }
+        firstExecutor.asCoroutineDispatcher().use { firstDispatcher ->
+            secondExecutor.asCoroutineDispatcher().use { secondDispatcher ->
+                val replyStage = CompletableFuture.completedFuture(ProfileReply("yield:Ada"))
+                val handler = KotlinYieldAfterDispatcherSwitchHandler(secondDispatcher, replyStage)
+                val method = KotlinYieldAfterDispatcherSwitchHandler::class.java.methods.single {
+                    it.name == "request"
+                }
+                val result = CompletableFuture<Any?>()
+                val queue = ZLinkAsyncSerialQueue()
+
+                queue.enqueue {
+                    ZLinkHandlerMethodInvoker
+                        .invoke(
+                            handler,
+                            method,
+                            arrayOf(ProfileRequest("Ada")),
+                            listOf(ZLinkCoroutineSuspendHandlerInvoker(firstDispatcher)),
+                        )
+                        .whenComplete { reply, error ->
+                            if (error == null) {
+                                result.complete(reply)
+                            } else {
+                                result.completeExceptionally(error)
+                            }
+                        }
+                        .thenApply {
+                            null
+                        }
+                }
+
+                assertEquals(ProfileReply("yield:Ada"), result.get(3, TimeUnit.SECONDS))
+            }
+        }
+        firstExecutor.shutdownNow()
+        secondExecutor.shutdownNow()
     }
 
     @Test
@@ -404,6 +454,19 @@ class KotlinCoroutineContextHandler {
     @ZLinkRequest
     suspend fun request(request: ProfileRequest): ProfileReply =
         ProfileReply(if (coroutineContext[Job] != null) "coroutine:${request.name}" else "missing")
+}
+
+class KotlinYieldAfterDispatcherSwitchHandler(
+    private val dispatcher: CoroutineDispatcher,
+    private val replyStage: CompletableFuture<ProfileReply>,
+) {
+    @ZLinkRequest
+    suspend fun request(request: ProfileRequest): ProfileReply {
+        delay(1)
+        return withContext(dispatcher) {
+            ZLinkYieldTurnTestSupport.awaitInCurrentTurn(replyStage)
+        }
+    }
 }
 
 class KotlinDispatcherObservationHandler {

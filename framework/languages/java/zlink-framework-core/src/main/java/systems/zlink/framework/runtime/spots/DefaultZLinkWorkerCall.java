@@ -136,6 +136,10 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
 
     private ZLinkYieldTurn requireTurn() {
         if (turn == null) {
+            ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
+            if (current != null) {
+                return current;
+            }
             throw new IllegalStateException(
                 "yield requires a framework Spot handler turn captured when the call object was created");
         }

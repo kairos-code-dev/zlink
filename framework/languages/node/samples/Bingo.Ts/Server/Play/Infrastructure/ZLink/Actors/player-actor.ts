@@ -27,9 +27,6 @@ class PlayerActor implements ZLinkActor {
 
   async push(packetName: string, payload: unknown): Promise<void> {
     this.nextSeq += 1;
-    if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-actor-push actor=${this.actorId} packet=${packetName} seq=${this.nextSeq}`);
-    }
     await this.context.boundSession
       .send(payload)
       .packetName(packetName)

@@ -6,7 +6,6 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall
 import systems.zlink.framework.actors.ZLinkActorJoinResult
 import systems.zlink.framework.actors.ZLinkActorJoinSpotCall
-import systems.zlink.framework.actors.ZLinkBoundSessionSendCall
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.channels.ZLinkRequestCall
@@ -70,11 +69,6 @@ inline suspend fun <reified TReply> yield(
     call: ZLinkActorJoinEntrySpotCall,
 ): ZLinkActorJoinResult<TReply> =
     yield(call, TReply::class.java)
-
-@JvmName("yieldBoundSessionSendCall")
-suspend fun yield(call: ZLinkBoundSessionSendCall) {
-    call.yield()
-}
 
 @JvmName("yieldWorkerCall")
 suspend fun <T> yield(call: ZLinkWorkerCall<T>): T =

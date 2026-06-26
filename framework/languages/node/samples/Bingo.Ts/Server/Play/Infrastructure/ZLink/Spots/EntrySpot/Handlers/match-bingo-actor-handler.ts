@@ -1,7 +1,14 @@
 import { zlinkEntrySpotActorRequestHandler } from '@zlink-systems/nestjs';
 import { BingoEntrySpot } from '../bingo-entry-spot';
 import { PlayerActor } from '../../../Actors/player-actor';
-import { PacketNames } from '../../../../../../../Shared/Contracts/messages';
+import {
+  bingoRoomJoinReq,
+  matchBingoApiReq,
+  matchBingoReq,
+  matchBingoRes,
+  PacketNames
+} from '../../../../../../../Shared/Contracts/messages';
+import { SampleNames, SampleTimings } from '../../../../../../Configuration/sample-names';
 import type {
   ZLinkEntrySpotActorRequestHandler,
   ZLinkSpotActorRequestContext
@@ -9,6 +16,8 @@ import type {
 import type { BingoEntrySpot as BingoEntrySpotType } from '../bingo-entry-spot';
 import type { PlayerActor as PlayerActorType } from '../../../Actors/player-actor';
 import type {
+  BingoRoomJoinRes,
+  MatchBingoApiRes,
   MatchBingoReq,
   MatchBingoRes
 } from '../../../../../../../Shared/Contracts/messages';
@@ -27,15 +36,53 @@ class MatchBingoActorHandler
     request: MatchBingoReq
   ): Promise<MatchBingoRes> {
     void context;
-    if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-match-handler start actor=${actor.actorId}`);
+    const actorId = actor.actorId;
+    const displayName = actor.displayName;
+    const matched = await retryStartupRoute(() => entrySpot.context.outbound
+        .requestToChannel(
+          SampleNames.apiChannel,
+          matchBingoApiReq(actorId, displayName, request.mode, String(entrySpot.context.nodeRid))
+        )
+        .packetName(PacketNames.matchBingoApiReq)
+        .timeout(SampleTimings.requestTimeout)
+        .yield<MatchBingoApiRes>());
+
+    const roomId = matched.roomId;
+    const joined = await actor.context
+      .joinSpot(roomId, bingoRoomJoinReq(roomId, actorId, displayName))
+      .timeout(SampleTimings.requestTimeout)
+      .yield<BingoRoomJoinRes>();
+    if (joined.resultCode !== 0 || joined.reply === undefined) {
+      throw new Error(`Room ${roomId} rejected actor '${actorId}'.`);
     }
-    return await entrySpot.matchActor(actor, {
-      ...request,
-      actorId: actor.actorId,
-      displayName: actor.displayName
-    });
+
+    return matchBingoRes(roomId, joined.reply.state, matched.roomOwnerNodeRid);
   }
+}
+
+async function retryStartupRoute<TValue>(action: () => Promise<TValue>): Promise<TValue> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      return await action();
+    } catch (error) {
+      if (!isStartupRouteError(error)) {
+        throw error;
+      }
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw lastError;
+}
+
+function isStartupRouteError(error: unknown): boolean {
+  const candidate = error as { kind?: unknown; cause?: unknown; message?: unknown };
+  if (candidate.kind === 'routeNotConnected') {
+    return true;
+  }
+  const cause = candidate.cause as { message?: unknown } | undefined;
+  return typeof cause?.message === 'string' && cause.message.includes('Connection refused');
 }
 
 export { MatchBingoActorHandler };

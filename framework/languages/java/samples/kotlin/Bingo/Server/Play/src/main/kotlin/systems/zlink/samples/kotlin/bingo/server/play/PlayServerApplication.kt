@@ -3,6 +3,7 @@ package systems.zlink.samples.kotlin.bingo.server.play
 import com.fasterxml.jackson.databind.MapperFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.json.JsonMapper
+import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -13,6 +14,7 @@ import systems.zlink.framework.configuration.RouteMeshChannelBuilder
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
 import systems.zlink.framework.kotlin.configureDispatch
+import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory
@@ -39,6 +41,7 @@ class PlayServerApplication {
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(PlayServerApplication::class.java)
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile((System.getenv("BINGO_LOG_DIR") ?: "logs") + "/flow-play.log")

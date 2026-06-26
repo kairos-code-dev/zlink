@@ -68,6 +68,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   }
 
   async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
+    this.roomId = this.context.spotRid;
     const settings = request.decode<unknown>(Object as never);
     if (settings !== undefined) {
       this.initializeRoom(roomSettingsFromPayload(settings));
@@ -96,9 +97,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
         reply: joined
       };
     } catch (error) {
-      if (process.env.BINGO_DEBUG_FLOW === '1') {
-        console.log(`play-room-join rejected actor=${actor.actorId} error=${error instanceof Error ? error.message : String(error)}`);
-      }
       return {
         accepted: false
       };

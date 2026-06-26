@@ -98,7 +98,7 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
                     actor.actorId(),
                     actor.displayName(),
                     true))
-            .await(Messages.BingoRoomJoinRes.class);
+            .yield(Messages.BingoRoomJoinRes.class);
         return new Messages.ObserveBingoEventsRes(
             joined.reply().state().status().equals("Running"),
             joined.actor().nodeRid().toString());

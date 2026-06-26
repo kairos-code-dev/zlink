@@ -55,8 +55,9 @@ public final class ZLinkAsyncSerialQueue {
                 result.complete(null);
             }
         });
-        return firstOf(owner, turn.suspended()).thenCompose(ignored -> {
-            if (turn.suspended().isDone() && !owner.isDone()) {
+        CompletableFuture<Void> suspended = turn.suspended();
+        return firstOf(owner, suspended).thenCompose(ignored -> {
+            if (suspended.isDone() && !owner.isDone()) {
                 return CompletableFuture.completedFuture(null);
             }
             return owner;
@@ -66,10 +67,11 @@ public final class ZLinkAsyncSerialQueue {
     private CompletionStage<Void> invokeResume(ZLinkYieldTurn turn, Runnable resume) {
         turn.resetSuspension();
         CompletableFuture<Void> owner = turn.owner();
+        CompletableFuture<Void> suspended = turn.suspended();
         CompletableFuture<Void> resumed = CompletableFuture.runAsync(() -> {
             resume.run();
             if (owner != null && !owner.isDone()) {
-                firstOf(owner, turn.suspended()).join();
+                firstOf(owner, suspended).join();
             }
         }, HANDLER_EXECUTOR);
         return resumed;

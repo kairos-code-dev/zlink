@@ -83,6 +83,44 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
+    void routeBridgeRawRequestCompletesBeforeBridgeConsumesActorJoinReply() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.completeRequests = false;
+        backend.bridge.consumeRouterReceived = true;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(Message.from("raw-request".getBytes())),
+                Duration.ofMillis(300));
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(Message.from("true\nactor-node\nplayer-x\n1\ncmVwbHk=".getBytes()))));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("true\nactor-node\nplayer-x\n1\ncmVwbHk=", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+            assertFalse(backend.bridge.routerReceivedInvoked);
+        }
+    }
+
+    @Test
     void clientServerRequestCompletesExceptionallyWhenBackendResultIsNotOk() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
@@ -279,8 +317,10 @@ final class ZLinkChannelRuntimeTest {
 
     private static final class FakeSpotRouteBridge implements ZLinkBackendSpotRouteBridge {
         boolean nativeCallbackInvoked;
+        boolean routerReceivedInvoked;
         int drains;
         boolean completeRequests = true;
+        boolean consumeRouterReceived;
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
 
         @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router) { }
@@ -297,7 +337,10 @@ final class ZLinkChannelRuntimeTest {
                 List.of()));
             return true;
         }
-        @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) { return false; }
+        @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) {
+            routerReceivedInvoked = true;
+            return consumeRouterReceived;
+        }
         @Override public int drain() { return ++drains; }
         @Override public String name() { return "fake-bridge"; }
         @Override public void close() { }

@@ -5,6 +5,8 @@ import { SampleNames } from '../Configuration/sample-names';
 function createBingoApiModule(config: {
   apiEndpoint: string;
   registryRouterEndpoint: string;
+  apiNodeRid?: string;
+  playRouteEndpoints?: readonly string[];
 }) {
   class BingoApiModule {}
 
@@ -25,8 +27,9 @@ function createBingoApiModule(config: {
             .addClientServerChannel(SampleNames.apiChannel)
               .enableServer(config.apiEndpoint)
               .addHandlerGroup('api')
-            .addClientServerChannel(SampleNames.playChannel)
-              .enableClient()
+            .addRouteMesh(SampleNames.playChannel)
+              .routingId(config.apiNodeRid ?? 'bingo-api-node')
+              .connect(config.playRouteEndpoints)
             .build();
         }
       })

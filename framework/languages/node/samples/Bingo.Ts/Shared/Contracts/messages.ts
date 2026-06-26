@@ -83,6 +83,20 @@ export class MatchBingoReq {
   }
 }
 
+export class MatchBingoApiReq {
+  actorId: string;
+  displayName: string;
+  mode: BingoMode;
+  actorNodeRid: string;
+
+  constructor(actorId: string, displayName: string, mode: BingoMode, actorNodeRid: string) {
+    this.actorId = actorId;
+    this.displayName = displayName;
+    this.mode = mode;
+    this.actorNodeRid = actorNodeRid;
+  }
+}
+
 export interface MatchBingoApiRes {
   roomId: string;
   roomOwnerNodeRid: string;
@@ -283,6 +297,15 @@ function matchBingoReq(mode: BingoMode = BingoModes.twoPlayer): MatchBingoReq {
   return new MatchBingoReq(mode);
 }
 
+function matchBingoApiReq(
+  actorId: string,
+  displayName: string,
+  mode: BingoMode | undefined,
+  actorNodeRid: string
+): MatchBingoApiReq {
+  return new MatchBingoApiReq(actorId, displayName, mode ?? BingoModes.twoPlayer, actorNodeRid);
+}
+
 function matchBingoApiRes(roomId: string, roomOwnerNodeRid: string): MatchBingoApiRes {
   return { roomId, roomOwnerNodeRid };
 }
@@ -437,6 +460,7 @@ export {
   ensurePlayerActorRes,
   matchBingoApiRes,
   matchBingoReq,
+  matchBingoApiReq,
   matchBingoRes,
   numberDrawnNotify,
   observeBingoEventsReq,

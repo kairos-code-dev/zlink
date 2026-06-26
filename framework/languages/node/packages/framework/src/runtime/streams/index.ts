@@ -36,7 +36,6 @@ import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
 import { ZLinkDispatchErrorReporter } from '../channels';
 import { flowIfEnabled } from '../diagnostics';
-import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 import {
   encodeFrameworkPayloadMessage,
   wrapFrameworkPayloadMessage
@@ -1576,15 +1575,12 @@ class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCall {
   private selectedPacketName: string | undefined;
   private readonly selectedMetadata = new Map<string, string>();
   private executed = false;
-  private readonly yieldTurn: ZLinkSpotSerialTurn | undefined;
 
   constructor(
     private readonly runtime: ZLinkStreamBindingRuntime,
     private readonly actorId: string,
     private readonly message: unknown
-  ) {
-    this.yieldTurn = captureZLinkSpotSerialTurn();
-  }
+  ) {}
 
   metadata(key: string, value: string): this {
     this.selectedMetadata.set(key, value);
@@ -1606,15 +1602,6 @@ class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCall {
       this.selectedMetadata,
       signal
     );
-  }
-
-  yield(signal?: AbortSignal): Promise<void> {
-    if (this.yieldTurn === undefined) {
-      return Promise.reject(new ZLinkConfigurationException(
-        'yield requires a framework Spot handler turn captured when the call object was created.'
-      ));
-    }
-    return this.yieldTurn.yieldPromise(this.submit(signal));
   }
 }
 

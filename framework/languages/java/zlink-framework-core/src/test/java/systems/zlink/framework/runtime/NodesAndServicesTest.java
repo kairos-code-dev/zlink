@@ -9,18 +9,32 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
+import java.net.ServerSocket;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
+import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -82,6 +96,87 @@ final class NodesAndServicesTest {
     }
 
     @Test
+    void routeMeshBridgeDispatchesRemoteSpotRequestToTargetSpot() throws Exception {
+        String suffix = Long.toUnsignedString(System.nanoTime());
+        String routeA = "tcp://127.0.0.1:" + freePort();
+        String routeB = "tcp://127.0.0.1:" + freePort();
+        String spotA = "tcp://127.0.0.1:" + freePort();
+        String spotB = "tcp://127.0.0.1:" + freePort();
+        RoutingId targetNodeRid = RoutingId.from("target-node-" + suffix);
+        RoutingId sourceNodeRid = RoutingId.from("source-node-" + suffix);
+        RoutingId roomRid = RoutingId.from("room-" + suffix);
+        TestRemoteAddressResolver.address = new ZLinkSpotRemoteAddress(
+            "route",
+            targetNodeRid,
+            roomRid,
+            ZLinkSpotKind.USER);
+        ClientSpot.reply = new CompletableFuture<>();
+        PingHandler.received = new CompletableFuture<>();
+        FlowObserver.events.clear();
+        ClientSpot.targetRoomRid = roomRid;
+
+        DefaultZLinkFrameworkOptions target = routeBridgeOptions(
+            targetNodeRid,
+            routeA,
+            routeB);
+        target.addSpotMesh("target")
+            .setRoutingId(targetNodeRid)
+            .enableRouter(spotA)
+            .connectRouter(sourceNodeRid, spotB)
+            .addSpotFactory(RoomSpot.class);
+
+        DefaultZLinkFrameworkOptions source = routeBridgeOptions(
+            sourceNodeRid,
+            routeB,
+            routeA);
+        source.addSpotRemoteAddressResolver(TestRemoteAddressResolver.class);
+        source.addSpotMesh("source")
+            .setRoutingId(sourceNodeRid)
+            .enableRouter(spotB)
+            .connectRouter(targetNodeRid, spotA)
+            .addSpotFactory(ClientSpot.class);
+
+        try (ZLinkFrameworkRuntime targetRuntime =
+                 ZLinkFrameworkRuntime.start(target, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime sourceRuntime =
+                 ZLinkFrameworkRuntime.start(source, new ZLinkJavaBackendAdapterFactory())) {
+            targetRuntime.spotManager()
+                .getOrCreate(RoomSpot.class, roomRid)
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+
+            Thread.sleep(200);
+            sourceRuntime.spotManager()
+                .create(ClientSpot.class)
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+
+            try {
+                assertEquals("ping", PingHandler.received.get(2, TimeUnit.SECONDS));
+            } catch (TimeoutException ex) {
+                throw new AssertionError(
+                    "message flow: " + FlowObserver.events
+                        + ", source reply: " + futureState(ClientSpot.reply),
+                    ex);
+            }
+            assertEquals(
+                "pong:ping",
+                ClientSpot.reply.get(2, TimeUnit.SECONDS).value());
+        }
+    }
+
+    private static String futureState(CompletableFuture<?> future) {
+        if (!future.isDone()) {
+            return "pending";
+        }
+        try {
+            return "completed:" + future.getNow(null);
+        } catch (java.util.concurrent.CompletionException ex) {
+            return "failed:" + ex.getCause();
+        }
+    }
+
+    @Test
     void addZLinkFramework_throws_whenStreamNodeRegistersMultipleSessions() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -99,10 +194,125 @@ final class NodesAndServicesTest {
         return options;
     }
 
+    private static DefaultZLinkFrameworkOptions routeBridgeOptions(
+        RoutingId nodeRid,
+        String routeBind,
+        String routePeer) {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofSeconds(2));
+        options.codecs().addJson();
+        options.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+            .setMessageFlowObserver(new FlowObserver());
+        options.addRouteMesh("route")
+            .enableServer(routeBind)
+            .enableClient(routePeer)
+            .setRoutingId(nodeRid);
+        return options;
+    }
+
+    private static int freePort() throws Exception {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            socket.setReuseAddress(true);
+            return socket.getLocalPort();
+        }
+    }
+
     public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;
+        }
+    }
+
+    public record Ping(String value) {
+    }
+
+    public record Pong(String value) {
+    }
+
+    public static final class FlowObserver implements ZLinkMessageFlowObserver {
+        static final List<String> events = new CopyOnWriteArrayList<>();
+
+        @Override
+        public CompletionStage<Void> onMessageFlow(ZLinkMessageFlowEvent flow) {
+            events.add(flow.outcome() + ":"
+                + flow.surface() + ":"
+                + flow.messageKind() + ":"
+                + flow.packetName() + ":"
+                + flow.channelName() + ":"
+                + flow.errorReason());
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class RoomSpot implements ZLinkSpot<ZLinkActor> {
+        private final ZLinkSpotContext context;
+
+        public RoomSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addPacket(PingHandler.class);
+        }
+    }
+
+    public static final class PingHandler
+        implements ZLinkSpotRequestHandler<RoomSpot, Ping, Pong> {
+        static CompletableFuture<String> received = new CompletableFuture<>();
+
+        @Override
+        public Pong handle(RoomSpot spot, Ping request) {
+            received.complete(request.value());
+            return new Pong("pong:" + request.value());
+        }
+    }
+
+    public static final class ClientSpot implements ZLinkSpot<ZLinkActor> {
+        static CompletableFuture<Pong> reply = new CompletableFuture<>();
+        static RoutingId targetRoomRid;
+        private final ZLinkSpotContext context;
+
+        public ClientSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void onInitialize() {
+            context.outbound()
+                .requestToSpot(targetRoomRid, new Ping("ping"))
+                .timeout(Duration.ofSeconds(2))
+                .submit(Pong.class)
+                .whenComplete((value, error) -> {
+                    if (error != null) {
+                        reply.completeExceptionally(error);
+                    } else {
+                        reply.complete(value);
+                    }
+                });
+        }
+    }
+
+    public static final class TestRemoteAddressResolver
+        implements ZLinkSpotRemoteAddressResolver {
+        static ZLinkSpotRemoteAddress address;
+
+        @Override
+        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
+            RoutingId spotRid) {
+            return CompletableFuture.completedFuture(address);
         }
     }
 

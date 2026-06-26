@@ -1,10 +1,10 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers
 
-import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
+import systems.zlink.framework.kotlin.yield
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
@@ -24,10 +24,11 @@ class PlayActorJoinGameHandler {
         request: JoinGameReq,
         cancellationToken: CancellationToken,
     ): JoinGameRes {
-        val result = actor.context()
-            .joinSpot(RoutingId.from(request.roomId), TicTacToeGameJoinReq(request.roomId, actor.requirePlayer()))
-            .submit(TicTacToeGameJoinRes::class.java)
-            .await()
+        val result = yield(
+            actor.context()
+                .joinSpot(RoutingId.from(request.roomId), TicTacToeGameJoinReq(request.roomId, actor.requirePlayer())),
+            TicTacToeGameJoinRes::class.java,
+        )
         actor.joinGame(request.roomId)
         return JoinGameRes(result.reply().state)
     }

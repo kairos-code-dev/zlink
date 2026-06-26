@@ -7,12 +7,17 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.future.future
+import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.Continuation
+import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
+import systems.zlink.framework.execution.ZLinkYieldTurn
+import systems.zlink.framework.execution.ZLinkFrameworkTurns
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker
 
@@ -43,10 +48,14 @@ class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
         handler: Any,
         method: Method,
         logicalArguments: Array<Any>,
-    ): CompletionStage<Any> =
-        scope.future(dispatcher) {
+    ): CompletionStage<Any> {
+        val turn = ZLinkFrameworkTurns.captureCurrent()
+        return (
+        scope.future(dispatcher + ZLinkYieldTurnContext(turn)) {
             invokeSuspend(handler, method, logicalArguments)
         } as CompletionStage<Any>
+        )
+    }
 
     private suspend fun invokeSuspend(
         handler: Any,
@@ -72,4 +81,21 @@ class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
                 continuation.resumeWithException(ex)
             }
         }
+
+    private class ZLinkYieldTurnContext(
+        private val turn: ZLinkYieldTurn?,
+    ) : ThreadContextElement<AutoCloseable>,
+        AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<ZLinkYieldTurnContext>
+
+        override fun updateThreadContext(context: CoroutineContext): AutoCloseable =
+            ZLinkFrameworkTurns.enterTurn(turn)
+
+        override fun restoreThreadContext(
+            context: CoroutineContext,
+            oldState: AutoCloseable,
+        ) {
+            oldState.close()
+        }
+    }
 }

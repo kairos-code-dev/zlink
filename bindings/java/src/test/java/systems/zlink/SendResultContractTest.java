@@ -11,7 +11,9 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotDispatchEvent;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.SpotNodeMode;
 import systems.zlink.contracts.service.spot.SpotNodePublisher;
 import systems.zlink.contracts.service.spot.SpotRouteBridge;
 import systems.zlink.contracts.sockets.SubSocket;
@@ -24,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
@@ -135,6 +138,7 @@ public class SendResultContractTest {
         }
     }
 
+    @Test
     public void spotRouteBridgeRouterDrainCompletesRouterBridgeRequest()
         throws Exception {
         TestSupport.assumeNative();
@@ -208,6 +212,84 @@ public class SendResultContractTest {
                         reply.forEach(Message::close);
                     }
                 }
+            }
+        }
+    }
+
+    @Test
+    public void spotRouteBridgeIngressRaisesDispatchHandlerForTargetSpot()
+        throws Exception {
+        TestSupport.assumeNative();
+
+        String endpoint = TestSupport.tcpEndpoint();
+        AtomicBoolean dispatched = new AtomicBoolean();
+        try (Context targetCtx = Zlink.createContext();
+             SpotNode targetNode = targetCtx.createSpotNode(SpotNodeMode.ROUTED);
+             Spot targetSpot = targetNode.createSpot();
+             RouterSocket targetRouter = targetCtx.createRouterSocket();
+             SpotRouteBridge targetBridge = targetNode.createRouteBridge();
+             Context sourceCtx = Zlink.createContext();
+             SpotNode sourceNode = sourceCtx.createSpotNode(SpotNodeMode.ROUTED);
+             RouterSocket sourceRouter = sourceCtx.createRouterSocket();
+             SpotRouteBridge sourceBridge = sourceNode.createRouteBridge()) {
+            targetSpot.setRoutingId(RoutingId.from("target-spot-dispatch-bridge"));
+            RoutingId targetRouterRid = RoutingId.from("target-router-dispatch-bridge");
+            targetRouter.setRoutingId(targetRouterRid);
+            sourceRouter.setRoutingId(RoutingId.from("source-router-dispatch-bridge"));
+            targetRouter.bind(endpoint);
+            targetBridge.attachRouterChannel(
+                "ingress",
+                targetRouter,
+                new SpotRouteBridgeEndpointOptions());
+            targetSpot.setDispatchHandler(info -> {
+                if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
+                    return;
+                }
+                try (Received routed = new Received()) {
+                    if (!targetSpot.recvRouted(routed, RecvFlags.DONT_WAIT)) {
+                        return;
+                    }
+                    assertEquals("dispatch-bridge-ping",
+                        routed.parts().get(0).toUtf8String());
+                    routed.reply()
+                        .message(Message.from("dispatch-bridge-pong"))
+                        .submit();
+                    dispatched.set(true);
+                }
+            });
+
+            sourceRouter.connect(endpoint);
+            Thread.sleep(50);
+            sourceBridge.attachRouterChannel("egress", sourceRouter);
+
+            CompletionStage<List<Message>> replyStage =
+                sourceBridge.request("egress", targetRouterRid, targetSpot.getRoutingId())
+                    .message(Message.from("dispatch-bridge-ping"))
+                    .timeout(Duration.ofSeconds(2))
+                    .submit();
+
+            TestSupport.awaitCondition(() -> {
+                try (Received inbound = new Received()) {
+                    if (!targetRouter.recv(inbound, RecvFlags.DONT_WAIT)) {
+                        return false;
+                    }
+                    return targetBridge.handleRouterReceived(
+                        "ingress",
+                        inbound.getRoutingId().orElseThrow(),
+                        inbound.requestSeq().orElseThrow(),
+                        inbound.parts());
+                }
+            });
+
+            TestSupport.awaitCondition(dispatched::get);
+            TestSupport.awaitCondition(() -> targetBridge.drain() > 0);
+            List<Message> reply = replyStage.toCompletableFuture()
+                .get(3, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("dispatch-bridge-pong", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
             }
         }
     }

@@ -1,28 +1,29 @@
 import { Inject } from '@nestjs/common';
-import { ZLINK_CHANNEL_CLIENT, zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { ZLINK_ROUTE_CLIENT, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import { PacketNames, allocateBingoRoomReq, matchBingoApiRes, withPlayerIdentity } from '../../../Shared/Contracts/messages';
 import { SampleNames } from '../../Configuration/sample-names';
 import type {
-  ZLinkChannelClient,
+  ZLinkRouteClient,
   ZLinkRequestHandler
 } from '@zlink-systems/framework';
 import type {
   AllocateBingoRoomRes,
-  MatchBingoApiRes,
-  MatchBingoReq,
-  PlayerIdentity
+  MatchBingoApiReq,
+  MatchBingoApiRes
 } from '../../../Shared/Contracts/messages';
 
 @zlinkRequestHandler('api', PacketNames.matchBingoApiReq)
-class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoReq & PlayerIdentity, MatchBingoApiRes> {
-  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly zlinkClient: ZLinkChannelClient) {}
+class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoApiReq, MatchBingoApiRes> {
+  constructor(@Inject(ZLINK_ROUTE_CLIENT) private readonly routes: ZLinkRouteClient) {}
 
-  async handle(request: MatchBingoReq & PlayerIdentity): Promise<MatchBingoApiRes> {
-    const allocated = await this.zlinkClient
-      .requestToChannel(
+  async handle(request: MatchBingoApiReq): Promise<MatchBingoApiRes> {
+    const allocated = await this.routes
+      .request(
         SampleNames.playChannel,
+        request.actorNodeRid,
         withPlayerIdentity(allocateBingoRoomReq(request.mode), request.actorId, request.displayName)
       )
+      .packetName(PacketNames.allocateBingoRoom)
       .submit<AllocateBingoRoomRes>();
     return matchBingoApiRes(allocated.roomId, allocated.roomOwnerNodeRid);
   }

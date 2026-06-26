@@ -1,6 +1,8 @@
 package systems.zlink.framework.execution;
 
+import java.util.Objects;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Supplier;
 import java.util.Set;
 
 public final class ZLinkFrameworkTurns {
@@ -11,7 +13,8 @@ public final class ZLinkFrameworkTurns {
         "systems.zlink.framework.runtime.actors.ZLinkRoutedBoundSessionRuntime",
         "systems.zlink.framework.runtime.channels.ZLinkChannelRuntime",
         "systems.zlink.framework.runtime.spots.DefaultZLinkWorkerCall",
-        "systems.zlink.framework.runtime.spots.ZLinkSpotRuntime");
+        "systems.zlink.framework.runtime.spots.ZLinkSpotRuntime",
+        "systems.zlink.framework.kotlin.ZLinkCoroutineSuspendHandlerInvoker");
 
     private ZLinkFrameworkTurns() {
     }
@@ -19,6 +22,25 @@ public final class ZLinkFrameworkTurns {
     public static ZLinkYieldTurn captureCurrent() {
         requireFrameworkCaller();
         return ZLinkYieldTurn.current();
+    }
+
+    public static <T> T runWithTurn(ZLinkYieldTurn turn, Supplier<T> action) {
+        requireFrameworkCaller();
+        Objects.requireNonNull(action, "action");
+        if (turn == null) {
+            return action.get();
+        }
+        try (ZLinkYieldTurn.Scope ignored = turn.push()) {
+            return action.get();
+        }
+    }
+
+    public static AutoCloseable enterTurn(ZLinkYieldTurn turn) {
+        requireFrameworkCaller();
+        if (turn == null) {
+            return () -> {};
+        }
+        return turn.push();
     }
 
     public static <T> CompletionStage<T> awaitManagedCompletion(

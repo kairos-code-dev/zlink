@@ -15,10 +15,10 @@ public interface IZLinkRequestCall
 
     ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
 
-    ValueTask<TReply> YieldAsync<TReply>(CancellationToken cancellationToken = default)
+    ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
         _ = cancellationToken;
-        throw new NotSupportedException("YieldAsync is not supported by this request call.");
+        throw new NotSupportedException("Yield is not supported by this request call.");
     }
 }
 

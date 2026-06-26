@@ -99,7 +99,7 @@ public sealed class StreamContracts
         await boundSession
             .Send(new PlayerJoined("player-2"))
             .PacketName("player.joined")
-            .YieldAsync();
+            .Yield();
 
         await boundSession.DisconnectAsync();
 
@@ -327,7 +327,7 @@ public sealed class StreamContracts
 
         public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 
-        public ValueTask YieldAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Yield(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private sealed class MetadataPolicy(IReadOnlySet<string> forwardedKeys) : IZLinkMessageMetadataPolicy

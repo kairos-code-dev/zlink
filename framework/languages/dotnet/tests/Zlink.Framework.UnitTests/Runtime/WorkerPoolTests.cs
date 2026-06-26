@@ -179,7 +179,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_YieldAsync_Allows_Dispatcher_Work_While_Worker_Runs()
+    public async Task RunWorker_Yield_Allows_Dispatcher_Work_While_Worker_Runs()
     {
         using var pool = CreatePool(maxThreads: 2);
         await using var queue = CreateQueue();
@@ -203,7 +203,7 @@ public sealed class WorkerPoolTests
                         return 42;
                     },
                     queue);
-                var result = await call.YieldAsync(ct).ConfigureAwait(false);
+                var result = await call.Yield(ct).ConfigureAwait(false);
                 order.Enqueue($"first-resumed:{result}");
                 firstResumed.SetResult();
                 await releaseFirstResume.Task.ConfigureAwait(false);
@@ -243,14 +243,14 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task RunWorker_YieldAsync_Requires_Captured_Turn()
+    public async Task RunWorker_Yield_Requires_Captured_Turn()
     {
         using var pool = CreatePool(maxThreads: 2);
         await using var queue = CreateQueue();
         var call = CreateCall(pool, _ => 1, queue);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => call.YieldAsync().AsTask());
+            () => call.Yield().AsTask());
 
         Assert.Contains("captured", error.Message, StringComparison.Ordinal);
     }

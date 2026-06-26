@@ -106,7 +106,7 @@ internal sealed class ZLinkActorJoinSpotCall(
         }
     }
 
-    public ValueTask<ZLinkActorJoinResult> YieldAsync(CancellationToken cancellationToken = default)
+    public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
     {
         return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
     }
@@ -115,7 +115,7 @@ internal sealed class ZLinkActorJoinSpotCall(
     {
         return _turn
             ?? throw new InvalidOperationException(
-                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
+                "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }
 
@@ -154,7 +154,7 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
         }
     }
 
-    public ValueTask<ZLinkActorJoinResult> YieldAsync(CancellationToken cancellationToken = default)
+    public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
     {
         return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
     }
@@ -163,6 +163,6 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
     {
         return _turn
             ?? throw new InvalidOperationException(
-                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
+                "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }

@@ -19,9 +19,9 @@ public interface IZLinkBoundSessionSendCall
 
     ValueTask Async(CancellationToken cancellationToken = default);
 
-    ValueTask YieldAsync(CancellationToken cancellationToken = default)
+    ValueTask Yield(CancellationToken cancellationToken = default)
     {
         _ = cancellationToken;
-        throw new NotSupportedException("YieldAsync is not supported by this bound session send call.");
+        throw new NotSupportedException("Yield is not supported by this bound session send call.");
     }
 }

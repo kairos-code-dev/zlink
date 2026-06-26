@@ -64,7 +64,7 @@ public sealed class ChannelContracts
             .GetMethods()
             .Select(method => method.Name);
 
-        Assert.DoesNotContain("YieldAsync", methodNames);
+        Assert.DoesNotContain("Yield", methodNames);
     }
 
     [Fact]

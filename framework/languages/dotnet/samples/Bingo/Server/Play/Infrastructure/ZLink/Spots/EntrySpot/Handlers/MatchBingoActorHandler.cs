@@ -33,7 +33,7 @@ internal sealed class MatchBingoActorHandler(
         var matched = await entrySpot.Context.Outbound
             .RequestToChannel(SampleNames.ApiChannel, apiRequest)
             .Timeout(TimeSpan.FromSeconds(5))
-            .YieldAsync<MatchBingoApiRes>(cancellationToken);
+            .Yield<MatchBingoApiRes>(cancellationToken);
         logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
         var roomRid = RoutingId.From(matched.RoomId);
@@ -46,7 +46,7 @@ internal sealed class MatchBingoActorHandler(
                     DisplayName = actor.DisplayName,
                     ObserveOnly = false,
                 })
-            .YieldAsync<BingoRoomJoinRes>(cancellationToken);
+            .Yield<BingoRoomJoinRes>(cancellationToken);
         logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
         var joinedState = joined.Reply.State;
         if (joinedState.Status == BingoRoomStatuses.Running)

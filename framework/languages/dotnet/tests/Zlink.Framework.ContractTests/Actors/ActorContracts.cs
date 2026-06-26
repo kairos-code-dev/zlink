@@ -27,11 +27,11 @@ public sealed class ActorContracts
             .Async();
         var typedJoinReply = await actor.Context
             .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
-            .YieldAsync<JoinedRoom>();
+            .Yield<JoinedRoom>();
         var entryJoin = await actor.Context
             .JoinEntrySpot(RoutingId.From("play-node"), ZLinkMessage.Empty)
             .Timeout(TimeSpan.FromSeconds(1))
-            .YieldAsync();
+            .Yield();
 
         Assert.Equal("player-1", actorRef.ActorId);
         Assert.Equal("player-1", actor.ActorId);
@@ -147,7 +147,7 @@ public sealed class ActorContracts
                 new ActorRef(RoutingId.From("room-node"), "player-1", 1),
                 reply));
 
-        public ValueTask<ZLinkActorJoinResult> YieldAsync(
+        public ValueTask<ZLinkActorJoinResult> Yield(
             CancellationToken cancellationToken = default) =>
             Async(cancellationToken);
     }
@@ -160,7 +160,7 @@ public sealed class ActorContracts
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new ZLinkActorJoinResult(true, result, reply));
 
-        public ValueTask<ZLinkActorJoinResult> YieldAsync(
+        public ValueTask<ZLinkActorJoinResult> Yield(
             CancellationToken cancellationToken = default) =>
             Async(cancellationToken);
     }

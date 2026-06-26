@@ -6,10 +6,10 @@ public interface IZLinkWorkerCall<TResult>
 
     ValueTask<TResult> Async(CancellationToken cancellationToken = default);
 
-    ValueTask<TResult> YieldAsync(CancellationToken cancellationToken = default)
+    ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
     {
         _ = cancellationToken;
-        throw new NotSupportedException("YieldAsync is not supported by this worker call.");
+        throw new NotSupportedException("Yield is not supported by this worker call.");
     }
 
     void Submit(

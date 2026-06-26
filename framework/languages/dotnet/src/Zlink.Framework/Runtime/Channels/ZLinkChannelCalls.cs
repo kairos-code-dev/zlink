@@ -146,7 +146,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
         return reply;
     }
 
-    public ValueTask<TReply> YieldAsync<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
         return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
     }
@@ -155,7 +155,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
     {
         return _turn
             ?? throw new InvalidOperationException(
-                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
+                "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }
 

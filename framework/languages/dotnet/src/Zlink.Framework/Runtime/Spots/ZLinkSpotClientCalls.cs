@@ -129,7 +129,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             activation.Codecs);
     }
 
-    public ValueTask<TReply> YieldAsync<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
         return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
     }
@@ -143,7 +143,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     {
         return _turn
             ?? throw new InvalidOperationException(
-                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
+                "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }
 
@@ -226,7 +226,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
             activation.Codecs);
     }
 
-    public ValueTask<TReply> YieldAsync<TReply>(CancellationToken cancellationToken = default)
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
         return RequireTurn().YieldFrameworkCallAsync(Async<TReply>, cancellationToken);
     }
@@ -235,6 +235,6 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     {
         return _turn
             ?? throw new InvalidOperationException(
-                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
+                "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 }

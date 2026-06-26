@@ -39,7 +39,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
         return new ValueTask<TResult>(completion.Task);
     }
 
-    public ValueTask<TResult> YieldAsync(CancellationToken cancellationToken = default)
+    public ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
     {
         return RequireTurn().YieldFrameworkCallAsync(Async, cancellationToken);
     }
@@ -96,7 +96,7 @@ internal sealed class ZLinkWorkerCall<TResult>(
     {
         return _turn
             ?? throw new InvalidOperationException(
-                "YieldAsync requires a framework Spot handler turn captured when the call object was created.");
+                "Yield requires a framework Spot handler turn captured when the call object was created.");
     }
 
     private sealed class Execution(

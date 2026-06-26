@@ -65,9 +65,7 @@ template <typename TResult> class worker_call_t
     using completion_callback_t = std::function<task_t<void> (result_t<TResult>)>;
 
     worker_call_t () = default;
-    explicit worker_call_t (executor_t executor) :
-        _executor (std::move (executor)),
-        _yield_turn (detail::capture_current_serial_yield_turn ())
+    explicit worker_call_t (executor_t executor) : _executor (std::move (executor))
     {
     }
 
@@ -102,19 +100,20 @@ template <typename TResult> class worker_call_t
             return task_t<TResult> (result_t<TResult>::failure (
               framework_error_kind_t::request_failed, "worker runtime is not configured"));
         }
-        if (!_yield_turn) {
+        auto yield_turn = detail::capture_current_serial_yield_turn ();
+        if (!yield_turn) {
             return task_t<TResult> (result_t<TResult>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn"));
         }
-        if (!_yield_turn->release ()) {
+        if (!yield_turn->release ()) {
             return task_t<TResult> (result_t<TResult>::failure (
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn"));
         }
         return detail::reschedule_task (
           _executor (_timeout, detail::worker_completion_mode_t::owner_queue),
-          _yield_turn->resume_scheduler ());
+          yield_turn->resume_scheduler ());
     }
 
     void submit (completion_callback_t callback)
@@ -152,7 +151,6 @@ template <typename TResult> class worker_call_t
 
     executor_t _executor;
     std::optional<std::chrono::milliseconds> _timeout;
-    std::shared_ptr<detail::serial_yield_turn_t> _yield_turn;
     bool _started = false;
 };
 

@@ -328,12 +328,18 @@ void observe_task_completion (task_t<T> &task, TCallback &&callback)
 
 template <typename T> task_t<T> reschedule_task (task_t<T> task, task_scheduler_t scheduler)
 {
-    auto source = std::make_shared<task_completion_source_t<T>> (std::move (scheduler));
+    auto source = std::make_shared<task_completion_source_t<T>> ();
     auto output = source->task ();
     auto observed = std::make_shared<task_t<T>> (std::move (task));
+    auto target_scheduler = std::make_shared<task_scheduler_t> (std::move (scheduler));
     detail::observe_task_completion (
-      *observed, [source, observed] (const result_t<T> &result) mutable {
-          source->complete (result);
+      *observed, [source, observed, target_scheduler] (const result_t<T> &result) mutable {
+          auto complete = [source, result] () mutable { source->complete (std::move (result)); };
+          if (*target_scheduler) {
+              (*target_scheduler) (std::move (complete));
+          } else {
+              complete ();
+          }
       });
     return output;
 }

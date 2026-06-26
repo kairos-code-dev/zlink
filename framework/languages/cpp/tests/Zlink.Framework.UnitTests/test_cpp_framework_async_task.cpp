@@ -120,5 +120,30 @@ int main ()
         return 7;
     }
 
+    std::deque<std::function<void ()>> rescheduled_work;
+    auto immediate_task = zlink::framework::task_t<int> (
+      zlink::framework::result_t<int>::success (500));
+    auto rescheduled_task = zlink::framework::detail::reschedule_task (
+      std::move (immediate_task),
+      [&rescheduled_work] (std::function<void ()> work) {
+          rescheduled_work.push_back (std::move (work));
+      });
+    int rescheduled_callback_count = 0;
+    zlink::framework::detail::observe_task_completion (
+      rescheduled_task,
+      [&rescheduled_callback_count] (const zlink::framework::result_t<int> &result) {
+          if (result.value () == 500) {
+              ++rescheduled_callback_count;
+          }
+      });
+    if (rescheduled_callback_count != 0 || rescheduled_work.size () != 1) {
+        return 8;
+    }
+    rescheduled_work.front () ();
+    rescheduled_work.pop_front ();
+    if (rescheduled_callback_count != 1 || rescheduled_task.result ().value () != 500) {
+        return 9;
+    }
+
     return 0;
 }

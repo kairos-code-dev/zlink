@@ -97,9 +97,7 @@ class actor_join_spot_call_t
     }
 
     actor_join_spot_call_t (submit_fn_t submit, serializer_registry_t *serializers) :
-        _submit (std::move (submit)),
-        _serializers (serializers),
-        _yield_turn (detail::capture_current_serial_yield_turn ())
+        _submit (std::move (submit)), _serializers (serializers)
     {
     }
 
@@ -144,18 +142,19 @@ class actor_join_spot_call_t
         if (!_submit) {
             return task_t<actor_join_result_t> (submit ());
         }
-        if (!_yield_turn) {
+        auto yield_turn = detail::capture_current_serial_yield_turn ();
+        if (!yield_turn) {
             return task_t<actor_join_result_t> (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn"));
         }
-        if (!_yield_turn->release ()) {
+        if (!yield_turn->release ()) {
             return task_t<actor_join_result_t> (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn"));
         }
         auto source = std::make_shared<detail::task_completion_source_t<actor_join_result_t>> (
-          _yield_turn->resume_scheduler ());
+          yield_turn->resume_scheduler ());
         auto task = source->task ();
         auto submit = _submit;
         std::thread ([source, submit = std::move (submit)] () mutable {
@@ -204,7 +203,6 @@ class actor_join_spot_call_t
     std::optional<result_t<actor_join_result_t>> _result;
     submit_fn_t _submit;
     serializer_registry_t *_serializers = nullptr;
-    std::shared_ptr<detail::serial_yield_turn_t> _yield_turn;
 };
 
 class actor_join_entry_spot_call_t
@@ -224,9 +222,7 @@ class actor_join_entry_spot_call_t
     }
 
     actor_join_entry_spot_call_t (submit_fn_t submit, serializer_registry_t *serializers) :
-        _submit (std::move (submit)),
-        _serializers (serializers),
-        _yield_turn (detail::capture_current_serial_yield_turn ())
+        _submit (std::move (submit)), _serializers (serializers)
     {
     }
 
@@ -271,18 +267,19 @@ class actor_join_entry_spot_call_t
         if (!_submit) {
             return task_t<actor_join_result_t> (submit ());
         }
-        if (!_yield_turn) {
+        auto yield_turn = detail::capture_current_serial_yield_turn ();
+        if (!yield_turn) {
             return task_t<actor_join_result_t> (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn"));
         }
-        if (!_yield_turn->release ()) {
+        if (!yield_turn->release ()) {
             return task_t<actor_join_result_t> (result_t<actor_join_result_t>::failure (
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn"));
         }
         auto source = std::make_shared<detail::task_completion_source_t<actor_join_result_t>> (
-          _yield_turn->resume_scheduler ());
+          yield_turn->resume_scheduler ());
         auto task = source->task ();
         auto submit = _submit;
         std::thread ([source, submit = std::move (submit)] () mutable {
@@ -331,7 +328,6 @@ class actor_join_entry_spot_call_t
     std::optional<result_t<actor_join_result_t>> _result;
     submit_fn_t _submit;
     serializer_registry_t *_serializers = nullptr;
-    std::shared_ptr<detail::serial_yield_turn_t> _yield_turn;
 };
 
 class relay_request_call_t : private detail::call_facade_t<relay_request_call_t, zlink::message_t>

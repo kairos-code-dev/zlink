@@ -38,9 +38,7 @@ template <typename TReply> class request_call_t
     explicit request_call_t (result_t<TReply> result) : _immediate (std::move (result)) {}
 
     request_call_t (std::string packet_name, submit_fn_t submit) :
-        _packet_name (std::move (packet_name)),
-        _submit (std::move (submit)),
-        _yield_turn (detail::capture_current_serial_yield_turn ())
+        _packet_name (std::move (packet_name)), _submit (std::move (submit))
     {
     }
 
@@ -85,18 +83,19 @@ template <typename TReply> class request_call_t
               framework_error_kind_t::request_protocol_error,
               "request call is not bound to a channel client"));
         }
-        if (!_yield_turn) {
+        auto yield_turn = detail::capture_current_serial_yield_turn ();
+        if (!yield_turn) {
             return task_t<TReply> (result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn"));
         }
-        if (!_yield_turn->release ()) {
+        if (!yield_turn->release ()) {
             return task_t<TReply> (result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn"));
         }
         return detail::reschedule_task (_submit (_packet_name, _timeout, _metadata),
-                                        _yield_turn->resume_scheduler ());
+                                        yield_turn->resume_scheduler ());
     }
 
   private:
@@ -105,7 +104,6 @@ template <typename TReply> class request_call_t
     std::chrono::milliseconds _timeout{0};
     metadata_map_t _metadata;
     submit_fn_t _submit;
-    std::shared_ptr<detail::serial_yield_turn_t> _yield_turn;
 };
 
 class channel_request_call_t
@@ -122,8 +120,7 @@ class channel_request_call_t
                             submit_fn_t submit) :
         _packet_name (std::move (packet_name)),
         _serializers (serializers),
-        _submit (std::move (submit)),
-        _yield_turn (detail::capture_current_serial_yield_turn ())
+        _submit (std::move (submit))
     {
     }
 
@@ -175,18 +172,19 @@ class channel_request_call_t
               framework_error_kind_t::request_protocol_error,
               "request call is not bound to a channel client");
         }
-        if (!_yield_turn) {
+        auto yield_turn = detail::capture_current_serial_yield_turn ();
+        if (!yield_turn) {
             co_return result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn captured when the call object was created");
+              "yield requires a framework Spot handler turn");
         }
-        if (!_yield_turn->release ()) {
+        if (!yield_turn->release ()) {
             co_return result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn");
         }
         auto reply = co_await detail::reschedule_task (
-          _submit (_packet_name, _timeout, _metadata), _yield_turn->resume_scheduler ());
+          _submit (_packet_name, _timeout, _metadata), yield_turn->resume_scheduler ());
         if (_serializers == nullptr) {
             co_return result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
@@ -208,7 +206,6 @@ class channel_request_call_t
     metadata_map_t _metadata;
     serializer_registry_t *_serializers = nullptr;
     submit_fn_t _submit;
-    std::shared_ptr<detail::serial_yield_turn_t> _yield_turn;
 };
 
 class send_call_t
@@ -267,9 +264,7 @@ class send_call_t
 class bound_session_send_call_t
 {
   public:
-    explicit bound_session_send_call_t (send_call_t call) :
-        _call (std::move (call)),
-        _yield_turn (detail::capture_current_serial_yield_turn ())
+    explicit bound_session_send_call_t (send_call_t call) : _call (std::move (call))
     {
     }
 
@@ -295,22 +290,22 @@ class bound_session_send_call_t
 
     task_t<void> yield ()
     {
-        if (!_yield_turn) {
+        auto yield_turn = detail::capture_current_serial_yield_turn ();
+        if (!yield_turn) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn captured when the call object was created"));
+              "yield requires a framework Spot handler turn"));
         }
-        if (!_yield_turn->release ()) {
+        if (!yield_turn->release ()) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_protocol_error,
               "yield could not release the current Spot handler turn"));
         }
-        return detail::reschedule_task (_call.async (), _yield_turn->resume_scheduler ());
+        return detail::reschedule_task (_call.async (), yield_turn->resume_scheduler ());
     }
 
   private:
     send_call_t _call;
-    std::shared_ptr<detail::serial_yield_turn_t> _yield_turn;
 };
 
 class relay_call_t : private detail::call_facade_t<relay_call_t, void>

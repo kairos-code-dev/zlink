@@ -5,6 +5,7 @@ const path = require('node:path');
 const nodeRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(nodeRoot, '..', '..', '..');
 const bindingRoot = path.join(repoRoot, 'bindings', 'node');
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 function ensureNodeBindingDist() {
   if (hasRequiredDist()) {
@@ -17,11 +18,14 @@ function ensureNodeBindingDist() {
     );
   }
   console.log('-- preparing bindings/node dist');
-  const result = childProcess.spawnSync('npm', ['--prefix', bindingRoot, 'run', 'build'], {
+  const result = childProcess.spawnSync(npmCommand, ['--prefix', bindingRoot, 'run', 'build'], {
     cwd: repoRoot,
     stdio: 'inherit',
     env: process.env
   });
+  if (result.error) {
+    console.error(`Failed to run ${npmCommand} for bindings/node build: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }

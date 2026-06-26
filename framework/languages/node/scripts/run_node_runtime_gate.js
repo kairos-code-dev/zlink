@@ -5,6 +5,7 @@ const path = require('node:path');
 const { ensureNodeBindingDist } = require('./ensure_node_binding_dist');
 
 const nodeRoot = path.resolve(__dirname, '..');
+const eslintEntry = path.resolve(nodeRoot, 'node_modules/eslint/bin/eslint.js');
 const expectedMajor = Number(process.env.ZLINK_EXPECT_NODE_MAJOR ?? '0');
 const actualMajor = Number(process.versions.node.split('.')[0]);
 const skippedTestFiles = new Set(
@@ -20,35 +21,43 @@ if (expectedMajor !== 0 && actualMajor !== expectedMajor) {
 }
 
 ensureNodeBindingDist();
-run(process.execPath, [
+run('build', process.execPath, [
   path.resolve(nodeRoot, '../../../bindings/node/node_modules/typescript/bin/tsc'),
   '-b',
   'tsconfig.build.json'
 ]);
-run(process.execPath, [
+run('typecheck', process.execPath, [
   path.resolve(nodeRoot, '../../../bindings/node/node_modules/typescript/bin/tsc'),
   '-p',
   'tsconfig.json',
   '--noEmit'
 ]);
-run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'lint']);
+run('lint', process.execPath, [
+  eslintEntry,
+  'packages/*/src/**/*.ts',
+  'samples/**/*.ts'
+]);
 for (const testFile of listTestFiles(path.join(nodeRoot, 'test'))) {
   const relative = path.relative(nodeRoot, testFile);
   if (skippedTestFiles.has(relative) || skippedTestFiles.has(path.basename(testFile))) {
     console.log(`-- ${relative} # SKIP framework CI excludes e2e sample/runtime checks`);
     continue;
   }
-  console.log(`-- ${relative}`);
-  run(process.execPath, ['--test', testFile]);
+  run(relative, process.execPath, ['--test', testFile]);
 }
 
-function run(command, args) {
+function run(label, command, args) {
+  console.log(`-- ${label}`);
   const result = childProcess.spawnSync(command, args, {
     cwd: nodeRoot,
     stdio: 'inherit',
     env: process.env
   });
+  if (result.error) {
+    console.error(`Failed to run ${label}: ${result.error.message}`);
+  }
   if (result.status !== 0) {
+    console.error(`${label} failed with exit code ${result.status ?? 1}.`);
     process.exit(result.status ?? 1);
   }
 }

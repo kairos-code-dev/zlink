@@ -6,7 +6,9 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 
-SERVER_PROJECT="$ROOT_DIR/Server/RuntimeMonitoring.Server.csproj"
+REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/RuntimeMonitoring.Registry.csproj"
+SERVICE_PROJECT="$ROOT_DIR/Server/Service/RuntimeMonitoring.Service.csproj"
+DRIVER_PROJECT="$ROOT_DIR/Server/Driver/RuntimeMonitoring.Driver.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RuntimeMonitoring.Client.csproj"
 
 pick_port() {
@@ -23,6 +25,7 @@ REG_HTTP_PORT="$(pick_port)"
 SVC_HTTP_PORT="$(pick_port)"
 SVC_B_HTTP_PORT="$(pick_port)"
 THROW_HTTP_PORT="$(pick_port)"
+DRIVER_HTTP_PORT="$(pick_port)"
 REG_PUB_PORT="$(pick_port)"
 REG_ROUTER_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
@@ -73,8 +76,7 @@ wait_health() {
 
 echo "log_dir=$LOG_DIR"
 
-ZLINK_E2E_RID="registry" dotnet run --project "$SERVER_PROJECT" -- \
-  --role registry \
+ZLINK_E2E_RID="registry" dotnet run --project "$REGISTRY_PROJECT" -- \
   --rid registry \
   --http-url "$REG_URL" \
   --registry-pub-endpoint "$REG_PUB" \
@@ -85,8 +87,7 @@ ZLINK_E2E_RID="registry" dotnet run --project "$SERVER_PROJECT" -- \
 pids+=("$!")
 wait_health "$REG_URL" registry
 
-ZLINK_E2E_RID="svc-a" dotnet run --project "$SERVER_PROJECT" -- \
-  --role service \
+ZLINK_E2E_RID="svc-a" dotnet run --project "$SERVICE_PROJECT" -- \
   --rid svc-a \
   --http-url "$SVC_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -99,8 +100,7 @@ ZLINK_E2E_RID="svc-a" dotnet run --project "$SERVER_PROJECT" -- \
 pids+=("$!")
 wait_health "$SVC_URL" svc-a
 
-ZLINK_E2E_RID="svc-b" dotnet run --project "$SERVER_PROJECT" -- \
-  --role service \
+ZLINK_E2E_RID="svc-b" dotnet run --project "$SERVICE_PROJECT" -- \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -112,8 +112,7 @@ ZLINK_E2E_RID="svc-b" dotnet run --project "$SERVER_PROJECT" -- \
 pids+=("$!")
 wait_health "$SVC_B_URL" svc-b
 
-ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --project "$SERVER_PROJECT" -- \
-  --role service \
+ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --project "$SERVICE_PROJECT" -- \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
@@ -125,7 +124,8 @@ ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --project "$S
 pids+=("$!")
 wait_health "$THROW_URL" svc-throw
 
-dotnet run --project "$CLIENT_PROJECT" -- \
+ZLINK_E2E_RID="driver" dotnet run --project "$DRIVER_PROJECT" -- \
+  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
   --registry-url "$REG_URL" \
   --service-url "$SVC_URL" \
@@ -134,8 +134,14 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
   --throw-service-url "$THROW_URL" \
   --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
-  --server-project "$SERVER_PROJECT" \
+  --service-project "$SERVICE_PROJECT" \
   --log-dir "$LOG_DIR" \
+  >"$LOG_DIR/driver.stdout.log" 2>"$LOG_DIR/driver.stderr.log" &
+pids+=("$!")
+wait_health "http://127.0.0.1:$DRIVER_HTTP_PORT" driver
+
+dotnet run --project "$CLIENT_PROJECT" -- \
+  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

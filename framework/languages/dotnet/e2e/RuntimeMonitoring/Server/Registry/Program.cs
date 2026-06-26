@@ -15,7 +15,7 @@ using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 
-var options = ServerOptions.Parse(args);
+var options = ServerOptions.Parse(args, defaultRole: "registry");
 Directory.CreateDirectory(options.LogDir);
 
 var builder = WebApplication.CreateBuilder(args);
@@ -271,7 +271,7 @@ internal sealed record ServerOptions(
     string? SpotPubEndpoint,
     string MonitorMode)
 {
-    public static ServerOptions Parse(string[] args)
+    public static ServerOptions Parse(string[] args, string defaultRole)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < args.Length; i++)
@@ -295,7 +295,7 @@ internal sealed record ServerOptions(
             : fallback;
 
         return new ServerOptions(
-            Role: Get("--role", "service"),
+            Role: defaultRole,
             HttpUrl: Get("--http-url", "http://127.0.0.1:0"),
             LogDir: Get("--log-dir", "logs"),
             EvidenceFile: Get("--evidence-file"),

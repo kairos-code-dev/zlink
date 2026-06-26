@@ -22,10 +22,6 @@ public sealed class BackendAdapterFactoryTests
         await using var router = channelAdapter.CreateRouterSocket(context);
         await using var publisher = channelAdapter.CreatePublisherSocket(context);
         await using var subscriber = channelAdapter.CreateSubscriberSocket(context);
-        await using var registry = registryAdapter.CreateRegistry(context);
-        await using var registryQueryClient = registryAdapter.CreateRegistryQueryClient(context);
-        await using var spotNode = spotAdapter.CreateSpotNode(context, SpotNodeMode.All);
-        await using var streamSocket = streamAdapter.CreateStreamSocket(context);
 
         Assert.IsAssignableFrom<IContext>(context.NativeInstance);
         Assert.IsAssignableFrom<IDiscovery>(discovery.NativeInstance);
@@ -33,9 +29,40 @@ public sealed class BackendAdapterFactoryTests
         Assert.IsAssignableFrom<IRouterSocket>(router.NativeInstance);
         Assert.IsAssignableFrom<IPubSocket>(publisher.NativeInstance);
         Assert.IsAssignableFrom<ISubSocket>(subscriber.NativeInstance);
+        await AssertRegistryBackendAsync(channelAdapter, registryAdapter);
+        await AssertSpotBackendAsync(channelAdapter, spotAdapter);
+        await AssertStreamBackendAsync(channelAdapter, streamAdapter);
+    }
+
+    private static async Task AssertRegistryBackendAsync(
+        IZLinkChannelBackendAdapter channelAdapter,
+        IZLinkRegistryBackendAdapter registryAdapter)
+    {
+        await using var context = channelAdapter.CreateContext();
+        await using var registry = registryAdapter.CreateRegistry(context);
+        await using var registryQueryClient = registryAdapter.CreateRegistryQueryClient(context);
+
         Assert.IsAssignableFrom<IRegistry>(registry.NativeInstance);
         Assert.IsAssignableFrom<IRegistryQueryClient>(registryQueryClient.NativeInstance);
+    }
+
+    private static async Task AssertSpotBackendAsync(
+        IZLinkChannelBackendAdapter channelAdapter,
+        IZLinkSpotBackendAdapter spotAdapter)
+    {
+        await using var context = channelAdapter.CreateContext();
+        await using var spotNode = spotAdapter.CreateSpotNode(context, SpotNodeMode.All);
+
         Assert.IsAssignableFrom<ISpotNode>(spotNode.NativeInstance);
+    }
+
+    private static async Task AssertStreamBackendAsync(
+        IZLinkChannelBackendAdapter channelAdapter,
+        IZLinkStreamBackendAdapter streamAdapter)
+    {
+        await using var context = channelAdapter.CreateContext();
+        await using var streamSocket = streamAdapter.CreateStreamSocket(context);
+
         Assert.IsAssignableFrom<IStreamSocket>(streamSocket.NativeInstance);
     }
 

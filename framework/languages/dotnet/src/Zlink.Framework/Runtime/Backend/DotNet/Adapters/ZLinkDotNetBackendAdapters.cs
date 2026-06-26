@@ -70,6 +70,7 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
     public IZLinkBackendStreamSocket CreateStreamSocket(IZLinkBackendContext context)
     {
         var socket = context.RequireNative<IContext>().CreateStreamSocket();
+        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendStreamSocketWrapper(
             socket);
     }

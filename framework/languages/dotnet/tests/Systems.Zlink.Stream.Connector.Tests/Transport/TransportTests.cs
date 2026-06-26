@@ -186,8 +186,10 @@ public sealed partial class StreamConnectorTests
         var port = GetFreeTcpPort();
         listener.Prefixes.Add($"http://127.0.0.1:{port}/ws/");
         listener.Start();
+        var accepting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = Task.Run(async () =>
         {
+            accepting.SetResult();
             var context = await listener.GetContextAsync();
             var webSocketContext = await context.AcceptWebSocketAsync(null);
             using var webSocket = webSocketContext.WebSocket;
@@ -202,9 +204,11 @@ public sealed partial class StreamConnectorTests
         {
             Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/"),
             Heartbeat = DisabledHeartbeat(),
+            ConnectTimeout = TimeSpan.FromSeconds(15),
             MaxReceivePayloadSize = 1,
             Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
         });
+        await accepting.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await connector.Connect.Async();
 
         await WaitUntilAsync(

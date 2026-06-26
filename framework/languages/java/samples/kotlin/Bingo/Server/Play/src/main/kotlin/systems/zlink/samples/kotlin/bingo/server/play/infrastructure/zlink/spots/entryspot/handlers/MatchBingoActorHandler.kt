@@ -3,7 +3,7 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spot
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
-import systems.zlink.framework.kotlin.yieldAwait
+import systems.zlink.framework.kotlin.yield
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot
@@ -30,7 +30,7 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
         request: MatchBingoReq,
         cancellationToken: CancellationToken,
     ): MatchBingoRes {
-        val matched = yieldAwait(
+        val matched = yield(
             entrySpot.context().outbound().requestToChannel(
             SampleNames.ApiChannel,
             MatchBingoApiReq(
@@ -46,7 +46,7 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
         if (cancellationToken.isCancellationRequested) {
             throw IllegalStateException("MatchBingoReq was cancelled")
         }
-        val joined = yieldAwait(
+        val joined = yield(
             actor.context().joinSpot(
                 RoutingId.from(matched.roomId),
                 BingoRoomJoinReq(

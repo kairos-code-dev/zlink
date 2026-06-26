@@ -59,7 +59,7 @@ final class ZLinkAsyncSerialQueueTest {
     }
 
     @Test
-    void yieldAwait_releasesGateUntilOperationCompletes() throws Exception {
+    void yield_releasesGateUntilOperationCompletes() throws Exception {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
         CompletableFuture<String> io = new CompletableFuture<>();
         CompletableFuture<Void> firstStarted = new CompletableFuture<>();

@@ -88,8 +88,7 @@ final class HandlerContractTest {
 
     @Test
     void routeRequestCallDoesNotExposeYieldTerminator() {
-        assertFalse(hasMethod(ZLinkRouteRequestCall.class, "yieldAsync"));
-        assertFalse(hasMethod(ZLinkRouteRequestCall.class, "yieldAwait"));
+        assertFalse(hasMethod(ZLinkRouteRequestCall.class, "yield"));
     }
 
     @Test
@@ -207,22 +206,17 @@ final class HandlerContractTest {
         ZLinkActorContext.class.getMethod("joinEntrySpot", RoutingId.class, Object.class);
         ZLinkActorJoinSpotCall.class.getMethod("submit");
         ZLinkActorJoinSpotCall.class.getMethod("await");
-        ZLinkActorJoinSpotCall.class.getMethod("yieldAsync");
-        ZLinkActorJoinSpotCall.class.getMethod("yieldAwait");
+        ZLinkActorJoinSpotCall.class.getMethod("yield");
         ZLinkActorJoinSpotCall.class.getMethod("submit", Class.class);
         ZLinkActorJoinSpotCall.class.getMethod("await", Class.class);
-        ZLinkActorJoinSpotCall.class.getMethod("yieldAsync", Class.class);
-        ZLinkActorJoinSpotCall.class.getMethod("yieldAwait", Class.class);
+        ZLinkActorJoinSpotCall.class.getMethod("yield", Class.class);
         ZLinkActorJoinEntrySpotCall.class.getMethod("submit");
         ZLinkActorJoinEntrySpotCall.class.getMethod("await");
-        ZLinkActorJoinEntrySpotCall.class.getMethod("yieldAsync");
-        ZLinkActorJoinEntrySpotCall.class.getMethod("yieldAwait");
+        ZLinkActorJoinEntrySpotCall.class.getMethod("yield");
         ZLinkActorJoinEntrySpotCall.class.getMethod("submit", Class.class);
         ZLinkActorJoinEntrySpotCall.class.getMethod("await", Class.class);
-        ZLinkActorJoinEntrySpotCall.class.getMethod("yieldAsync", Class.class);
-        ZLinkActorJoinEntrySpotCall.class.getMethod("yieldAwait", Class.class);
-        ZLinkBoundSessionSendCall.class.getMethod("yieldAsync");
-        ZLinkBoundSessionSendCall.class.getMethod("yieldAwait");
+        ZLinkActorJoinEntrySpotCall.class.getMethod("yield", Class.class);
+        ZLinkBoundSessionSendCall.class.getMethod("yield");
     }
 
     @Test

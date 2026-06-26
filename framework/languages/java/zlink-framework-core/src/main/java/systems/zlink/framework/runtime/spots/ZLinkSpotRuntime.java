@@ -11,6 +11,7 @@ import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceName
 
 import systems.zlink.framework.runtime.backend.*;
 
+import systems.zlink.framework.ZLinkAwait;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.ParameterizedType;
@@ -3222,14 +3223,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public <TReply> CompletionStage<TReply> yieldAsync(Class<TReply> replyType) {
-            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        public <TReply> TReply yield(Class<TReply> replyType) {
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
         }
 
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
                 throw new IllegalStateException(
-                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+                    "yield requires a framework Spot handler turn captured when the call object was created");
             }
             return turn;
         }
@@ -3543,14 +3545,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public <TReply> CompletionStage<TReply> yieldAsync(Class<TReply> replyType) {
-            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        public <TReply> TReply yield(Class<TReply> replyType) {
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
         }
 
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
                 throw new IllegalStateException(
-                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+                    "yield requires a framework Spot handler turn captured when the call object was created");
             }
             return turn;
         }

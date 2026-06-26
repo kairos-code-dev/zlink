@@ -33,7 +33,7 @@ public final class MatchBingoActorHandler
                     request.mode(),
                     SampleTopology.selectedPlayNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
-            .yieldAwait(Messages.MatchBingoApiRes.class);
+            .yield(Messages.MatchBingoApiRes.class);
 
         if (cancellationToken.isCancellationRequested()) {
             throw new IllegalStateException("MatchBingoReq was cancelled");
@@ -47,7 +47,7 @@ public final class MatchBingoActorHandler
                     actor.displayName(),
                     false))
             .timeout(SampleTimings.RequestTimeout)
-            .yieldAwait(Messages.BingoRoomJoinRes.class);
+            .yield(Messages.BingoRoomJoinRes.class);
         if (cancellationToken.isCancellationRequested()) {
             throw new IllegalStateException("MatchBingoReq was cancelled");
         }

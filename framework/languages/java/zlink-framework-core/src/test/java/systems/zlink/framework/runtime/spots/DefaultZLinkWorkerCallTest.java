@@ -214,7 +214,7 @@ class DefaultZLinkWorkerCallTest {
     }
 
     @Test
-    void yieldAwaitAllowsOtherSpotQueueWorkWhileWorkerRuns() throws Exception {
+    void yieldAllowsOtherSpotQueueWorkWhileWorkerRuns() throws Exception {
         pool = new ZLinkWorkerPool(0, 2, Duration.ofSeconds(30), 16);
         CountDownLatch releaseWork = new CountDownLatch(1);
         CompletableFuture<Void> workerStarted = new CompletableFuture<>();
@@ -232,7 +232,7 @@ class DefaultZLinkWorkerCallTest {
                     return 42;
                 },
                 postToQueue())
-                .yieldAwait();
+                .yield();
             events.add("first-resumed:" + result);
             firstResumed.complete(null);
             releaseFirstResume.join();
@@ -269,7 +269,7 @@ class DefaultZLinkWorkerCallTest {
     }
 
     @Test
-    void yieldAwaitRequiresCapturedTurn() {
+    void yieldRequiresCapturedTurn() {
         pool = new ZLinkWorkerPool(0, 2, Duration.ofSeconds(30), 16);
 
         DefaultZLinkWorkerCall<Integer> call =
@@ -277,7 +277,7 @@ class DefaultZLinkWorkerCallTest {
 
         IllegalStateException error = assertThrows(
             IllegalStateException.class,
-            call::yieldAwait);
+            call::yield);
 
         assertTrue(error.getMessage().contains("captured"));
     }

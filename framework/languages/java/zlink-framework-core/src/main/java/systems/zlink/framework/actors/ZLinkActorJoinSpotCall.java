@@ -11,14 +11,14 @@ public interface ZLinkActorJoinSpotCall {
 
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(Class<TReply> replyType);
 
-    default CompletionStage<ZLinkActorJoinResult<Void>> yieldAsync() {
+    default ZLinkActorJoinResult<Void> yield() {
         throw new UnsupportedOperationException(
-            "yieldAsync is not supported by this actor join call");
+            "yield is not supported by this actor join call");
     }
 
-    default <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(Class<TReply> replyType) {
+    default <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType) {
         throw new UnsupportedOperationException(
-            "yieldAsync is not supported by this actor join call");
+            "yield is not supported by this actor join call");
     }
 
     default ZLinkActorJoinResult<Void> await() {
@@ -29,11 +29,4 @@ public interface ZLinkActorJoinSpotCall {
         return ZLinkAwait.await(submit(replyType));
     }
 
-    default ZLinkActorJoinResult<Void> yieldAwait() {
-        return ZLinkAwait.await(yieldAsync());
-    }
-
-    default <TReply> ZLinkActorJoinResult<TReply> yieldAwait(Class<TReply> replyType) {
-        return ZLinkAwait.await(yieldAsync(replyType));
-    }
 }

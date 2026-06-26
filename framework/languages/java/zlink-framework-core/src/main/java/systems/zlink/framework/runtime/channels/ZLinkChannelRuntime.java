@@ -29,6 +29,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
@@ -2168,14 +2169,15 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public <TReply> CompletionStage<TReply> yieldAsync(Class<TReply> replyType) {
-            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        public <TReply> TReply yield(Class<TReply> replyType) {
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
         }
 
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
                 throw new IllegalStateException(
-                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+                    "yield requires a framework Spot handler turn captured when the call object was created");
             }
             return turn;
         }

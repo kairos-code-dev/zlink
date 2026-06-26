@@ -14,6 +14,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
@@ -1071,19 +1072,21 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public CompletionStage<ZLinkActorJoinResult<Void>> yieldAsync() {
-            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit());
+        public ZLinkActorJoinResult<Void> yield() {
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit()));
         }
 
         @Override
-        public <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(Class<TReply> replyType) {
-            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        public <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType) {
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
         }
 
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
                 throw new IllegalStateException(
-                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+                    "yield requires a framework Spot handler turn captured when the call object was created");
             }
             return turn;
         }
@@ -1382,19 +1385,21 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public CompletionStage<ZLinkActorJoinResult<Void>> yieldAsync() {
-            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit());
+        public ZLinkActorJoinResult<Void> yield() {
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit()));
         }
 
         @Override
-        public <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yieldAsync(Class<TReply> replyType) {
-            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType));
+        public <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType) {
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
         }
 
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
                 throw new IllegalStateException(
-                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+                    "yield requires a framework Spot handler turn captured when the call object was created");
             }
             return turn;
         }

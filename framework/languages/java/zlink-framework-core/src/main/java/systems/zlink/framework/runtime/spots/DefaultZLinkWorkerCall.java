@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkWorkerFailedException;
 import systems.zlink.framework.errors.ZLinkWorkerQueueFullException;
@@ -64,14 +65,10 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     }
 
     @Override
-    public CompletionStage<T> yieldAsync() {
+    public T yield() {
         ZLinkYieldTurn capturedTurn = requireTurn();
-        return ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, submit());
-    }
-
-    @Override
-    public T yieldAwait() {
-        return yieldAsync().toCompletableFuture().join();
+        return ZLinkAwait.await(
+            ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, submit()));
     }
 
     @Override
@@ -140,7 +137,7 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     private ZLinkYieldTurn requireTurn() {
         if (turn == null) {
             throw new IllegalStateException(
-                "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+                "yield requires a framework Spot handler turn captured when the call object was created");
         }
         return turn;
     }

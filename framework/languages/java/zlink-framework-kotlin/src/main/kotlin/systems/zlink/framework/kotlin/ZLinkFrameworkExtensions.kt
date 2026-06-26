@@ -29,56 +29,56 @@ suspend fun <TReply> ZLinkRouteRequestCall.awaitReply(replyType: Class<TReply>):
 inline suspend fun <reified TReply> ZLinkRouteRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
 
-@JvmName("yieldAwaitRequestCall")
-suspend fun <TReply> yieldAwait(call: ZLinkRequestCall, replyType: Class<TReply>): TReply =
-    call.yieldAsync(replyType).await()
+@JvmName("yieldRequestCall")
+suspend fun <TReply> yield(call: ZLinkRequestCall, replyType: Class<TReply>): TReply =
+    call.yield(replyType)
 
-@JvmName("yieldAwaitRequestCallReified")
-inline suspend fun <reified TReply> yieldAwait(call: ZLinkRequestCall): TReply =
-    yieldAwait(call, TReply::class.java)
+@JvmName("yieldRequestCallReified")
+inline suspend fun <reified TReply> yield(call: ZLinkRequestCall): TReply =
+    yield(call, TReply::class.java)
 
-@JvmName("yieldAwaitJoinSpotCallVoid")
-suspend fun yieldAwait(call: ZLinkActorJoinSpotCall): ZLinkActorJoinResult<Void> =
-    call.yieldAsync().await()
+@JvmName("yieldJoinSpotCallVoid")
+suspend fun yield(call: ZLinkActorJoinSpotCall): ZLinkActorJoinResult<Void> =
+    call.yield()
 
-@JvmName("yieldAwaitJoinSpotCall")
-suspend fun <TReply> yieldAwait(
+@JvmName("yieldJoinSpotCall")
+suspend fun <TReply> yield(
     call: ZLinkActorJoinSpotCall,
     replyType: Class<TReply>,
 ): ZLinkActorJoinResult<TReply> =
-    call.yieldAsync(replyType).await()
+    call.yield(replyType)
 
-@JvmName("yieldAwaitJoinSpotCallReified")
-inline suspend fun <reified TReply> yieldAwait(
+@JvmName("yieldJoinSpotCallReified")
+inline suspend fun <reified TReply> yield(
     call: ZLinkActorJoinSpotCall,
 ): ZLinkActorJoinResult<TReply> =
-    yieldAwait(call, TReply::class.java)
+    yield(call, TReply::class.java)
 
-@JvmName("yieldAwaitJoinEntrySpotCallVoid")
-suspend fun yieldAwait(call: ZLinkActorJoinEntrySpotCall): ZLinkActorJoinResult<Void> =
-    call.yieldAsync().await()
+@JvmName("yieldJoinEntrySpotCallVoid")
+suspend fun yield(call: ZLinkActorJoinEntrySpotCall): ZLinkActorJoinResult<Void> =
+    call.yield()
 
-@JvmName("yieldAwaitJoinEntrySpotCall")
-suspend fun <TReply> yieldAwait(
+@JvmName("yieldJoinEntrySpotCall")
+suspend fun <TReply> yield(
     call: ZLinkActorJoinEntrySpotCall,
     replyType: Class<TReply>,
 ): ZLinkActorJoinResult<TReply> =
-    call.yieldAsync(replyType).await()
+    call.yield(replyType)
 
-@JvmName("yieldAwaitJoinEntrySpotCallReified")
-inline suspend fun <reified TReply> yieldAwait(
+@JvmName("yieldJoinEntrySpotCallReified")
+inline suspend fun <reified TReply> yield(
     call: ZLinkActorJoinEntrySpotCall,
 ): ZLinkActorJoinResult<TReply> =
-    yieldAwait(call, TReply::class.java)
+    yield(call, TReply::class.java)
 
-@JvmName("yieldAwaitBoundSessionSendCall")
-suspend fun yieldAwait(call: ZLinkBoundSessionSendCall) {
-    call.yieldAsync().await()
+@JvmName("yieldBoundSessionSendCall")
+suspend fun yield(call: ZLinkBoundSessionSendCall) {
+    call.yield()
 }
 
-@JvmName("yieldAwaitWorkerCall")
-suspend fun <T> yieldAwait(call: ZLinkWorkerCall<T>): T =
-    call.yieldAsync().await()
+@JvmName("yieldWorkerCall")
+suspend fun <T> yield(call: ZLinkWorkerCall<T>): T =
+    call.yield()
 
 suspend fun ZLinkClient.send(
     channelName: String,

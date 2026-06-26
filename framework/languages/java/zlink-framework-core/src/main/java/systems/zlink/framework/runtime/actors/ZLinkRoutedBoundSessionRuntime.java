@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
@@ -225,14 +226,15 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public CompletionStage<Void> yieldAsync() {
-            return ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit());
+        public void yield() {
+            ZLinkAwait.awaitVoid(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit()));
         }
 
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
                 throw new IllegalStateException(
-                    "yieldAwait requires a framework Spot handler turn captured when the call object was created");
+                    "yield requires a framework Spot handler turn captured when the call object was created");
             }
             return turn;
         }

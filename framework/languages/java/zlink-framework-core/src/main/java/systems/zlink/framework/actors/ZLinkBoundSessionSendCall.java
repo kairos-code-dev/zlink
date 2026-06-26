@@ -10,16 +10,13 @@ public interface ZLinkBoundSessionSendCall {
 
     CompletionStage<Void> submit();
 
-    default CompletionStage<Void> yieldAsync() {
+    default void yield() {
         throw new UnsupportedOperationException(
-            "yieldAsync is not supported by this bound session send call");
+            "yield is not supported by this bound session send call");
     }
 
     default void await() {
         ZLinkAwait.awaitVoid(submit());
     }
 
-    default void yieldAwait() {
-        ZLinkAwait.awaitVoid(yieldAsync());
-    }
 }

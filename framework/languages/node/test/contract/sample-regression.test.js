@@ -259,7 +259,7 @@ test('node client flow files use ClientScenario names', () => {
   for (const sample of requiredSamples) {
     const clientRoot = path.join(samplesRoot, sample, 'Client');
     for (const file of sampleSourceFiles(clientRoot)) {
-      const relative = path.relative(path.join(samplesRoot, sample), file);
+      const relative = relativePath(path.join(samplesRoot, sample), file);
       const content = fs.readFileSync(file, 'utf8');
       if (/client-app|self-check|TestScenario/.test(relative) || /ClientApp|TestScenario/.test(content)) {
         violations.push(`${sample}/${relative}`);
@@ -437,7 +437,7 @@ test('dotnet-parity TypeScript clients do not import server modules', () => {
     for (const file of sampleSourceFiles(path.join(samplesRoot, sample, 'Client'))) {
       const content = fs.readFileSync(file, 'utf8');
       if (/from ['"]\.\.\/Server\//.test(content)) {
-        violations.push(path.relative(samplesRoot, file));
+        violations.push(relativePath(samplesRoot, file));
       }
     }
   }
@@ -450,7 +450,7 @@ test('node samples use only framework and connector public APIs', () => {
   for (const file of sampleSourceFiles(samplesRoot)) {
     const content = fs.readFileSync(file, 'utf8');
     if (/bindings\/node|runtime\/native|src\/zlink\/runtime|packages\/[^/]+\/src/.test(content)) {
-      violations.push(path.relative(workspaceRoot, file));
+      violations.push(relativePath(workspaceRoot, file));
     }
   }
 
@@ -473,7 +473,7 @@ test('node framework samples exercise the real NestJS application context', () =
 
   const hiddenServerRuntime = [];
   for (const file of sampleSourceFiles(samplesRoot)) {
-    const relative = path.relative(samplesRoot, file);
+    const relative = relativePath(samplesRoot, file);
     if (relative.startsWith('shared/') || relative.includes('/dist/')) {
       continue;
     }
@@ -579,10 +579,10 @@ test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', ()
     }
     const content = fs.readFileSync(file, 'utf8');
     if (/require\(['"][^'"]*samples\/TicTacToe\/|from ['"][^'"]*samples\/TicTacToe\//.test(content)) {
-      violations.push(`${path.relative(samplesRoot, file)} references the JavaScript TicTacToe sample`);
+      violations.push(`${relativePath(samplesRoot, file)} references the JavaScript TicTacToe sample`);
     }
     if (content.includes('@ts-nocheck')) {
-      violations.push(`${path.relative(samplesRoot, file)} disables TypeScript checking`);
+      violations.push(`${relativePath(samplesRoot, file)} disables TypeScript checking`);
     }
   }
 
@@ -668,10 +668,10 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
     }
     const content = fs.readFileSync(file, 'utf8');
     if (/require\(['"][^'"]*samples\/Bingo\/|from ['"][^'"]*samples\/Bingo\//.test(content)) {
-      violations.push(`${path.relative(samplesRoot, file)} references the JavaScript Bingo sample`);
+      violations.push(`${relativePath(samplesRoot, file)} references the JavaScript Bingo sample`);
     }
     if (content.includes('@ts-nocheck')) {
-      violations.push(`${path.relative(samplesRoot, file)} disables TypeScript checking`);
+      violations.push(`${relativePath(samplesRoot, file)} disables TypeScript checking`);
     }
   }
 
@@ -796,7 +796,7 @@ test('node topology samples do not use stdin command protocol as messaging', () 
   for (const file of sampleSourceFiles(samplesRoot)) {
     const content = fs.readFileSync(file, 'utf8');
     if (/runRoleServer|startRoleProcess|withRoleProcess|command ===|stdin\.write/.test(content)) {
-      violations.push(path.relative(samplesRoot, file));
+      violations.push(relativePath(samplesRoot, file));
     }
   }
 
@@ -812,12 +812,12 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
     'samples/SupportChat.Ts/Server/runtime-support.ts'
   ]);
   for (const file of sampleSourceFiles(samplesRoot)) {
-    if (allowedTimingFiles.has(path.relative(workspaceRoot, file))) {
+    if (allowedTimingFiles.has(relativePath(workspaceRoot, file))) {
       continue;
     }
     const content = fs.readFileSync(file, 'utf8');
     if (/\bsleep\s*\(|setTimeout\s*\(|beforeReady/.test(content)) {
-      violations.push(path.relative(workspaceRoot, file));
+      violations.push(relativePath(workspaceRoot, file));
     }
   }
 
@@ -948,7 +948,7 @@ test('node samples use the codecs required by the common specs', () => {
         continue;
       }
       const content = fs.readFileSync(file, 'utf8');
-      const relative = path.relative(samplesRoot, file);
+      const relative = relativePath(samplesRoot, file);
       if (sample === 'TicTacToe.Ts' && /MessagePack|msgpack|toMsgPack|fromMsgPack|zlinkStreamMessagePackCodec|createMessagePackMessage|readMessagePackMessage/.test(content)) {
         violations.push(relative);
       }
@@ -1511,9 +1511,9 @@ test('node samples keep only contracts and shared sample configuration under Sha
   for (const sample of requiredSamples) {
     const sharedRoot = path.join(samplesRoot, sample, 'Shared');
     for (const file of sampleSourceFiles(sharedRoot)) {
-      const relative = path.relative(path.join(samplesRoot, sample), file);
-      if (!relative.startsWith(`Shared${path.sep}Contracts${path.sep}`)
-        && relative !== path.join('Shared', 'Configuration', 'sample-names.ts')) {
+      const relative = relativePath(path.join(samplesRoot, sample), file);
+      if (!relative.startsWith('Shared/Contracts/')
+        && relative !== 'Shared/Configuration/sample-names.ts') {
         violations.push(relative);
       }
     }
@@ -1555,7 +1555,7 @@ test('node session samples do not implement sample-only actor session stores', (
       const content = fs.readFileSync(file, 'utf8');
       for (const pattern of bannedPatterns) {
         if (pattern.test(content)) {
-          violations.push(`${path.relative(samplesRoot, file)} matches ${pattern}`);
+          violations.push(`${relativePath(samplesRoot, file)} matches ${pattern}`);
         }
       }
     }
@@ -1574,7 +1574,7 @@ test('node framework source tree does not keep emitted JavaScript beside TypeScr
   const srcRoot = path.join(workspaceRoot, 'packages', 'framework', 'src');
   const emitted = listFiles(srcRoot)
     .filter((file) => file.endsWith('.js'))
-    .map((file) => path.relative(workspaceRoot, file))
+    .map((file) => relativePath(workspaceRoot, file))
     .sort();
 
   assert.deepEqual(emitted, []);
@@ -1686,7 +1686,7 @@ function findUnreachableSampleTypeScriptFiles() {
 
   return [...files]
     .filter((file) => !used.has(file))
-    .map((file) => path.relative(samplesRoot, file))
+    .map((file) => relativePath(samplesRoot, file))
     .sort();
 }
 
@@ -1770,6 +1770,10 @@ function assertOrdered(name, content, snippets) {
 
 function readSample(sample, relative) {
   return fs.readFileSync(path.join(samplesRoot, sample, relative), 'utf8');
+}
+
+function relativePath(base, file) {
+  return path.relative(base, file).split(path.sep).join('/');
 }
 
 function isAllowedBingoRawSessionCodecFile(relative) {

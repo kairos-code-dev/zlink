@@ -1,6 +1,7 @@
 using DiscoveryRegistryHa.Shared;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
+using DiscoveryRegistryHa.Server.Embedded.Support;
 
 namespace DiscoveryRegistryHa.Server.Embedded;
 

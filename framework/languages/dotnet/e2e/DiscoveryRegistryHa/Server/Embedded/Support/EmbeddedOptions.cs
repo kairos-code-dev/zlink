@@ -1,4 +1,5 @@
-namespace DiscoveryRegistryHa.Server.Embedded;
+using DiscoveryRegistryHa.Server.Embedded;
+namespace DiscoveryRegistryHa.Server.Embedded.Support;
 
 internal sealed record ServerOptions(
     string Role,

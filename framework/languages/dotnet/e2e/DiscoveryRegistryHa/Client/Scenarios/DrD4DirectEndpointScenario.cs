@@ -1,7 +1,7 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using System.Text.Json;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -11,8 +11,14 @@ internal static class DrD4DirectEndpointScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var registry = CreateClient(options.Reg1Url);
-        using var probe = CreateClient(options.ProbeUrl);
+        using var registry = ZLinkHttpClient.Create(options.Reg1Url)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var probe = ZLinkHttpClient.Create(options.ProbeUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
         await registry.Post("/registry/topology/wait")
             .Body(new TopologyReadyWaitRequest(1))
@@ -29,12 +35,6 @@ internal static class DrD4DirectEndpointScenario
 
         Console.WriteLine("scenario DR-D4 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
     static async Task<JsonElement[]> ReadJsonArrayAsync(ZLinkHttpClient client, string path) =>
         (await client.Get(path).SubmitAsync<JsonElement[]>()).Body;

@@ -10,6 +10,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Registry;
+using DiscoveryRegistryHa.Server.Embedded.Support;
 
 namespace DiscoveryRegistryHa.Server.Embedded;
 

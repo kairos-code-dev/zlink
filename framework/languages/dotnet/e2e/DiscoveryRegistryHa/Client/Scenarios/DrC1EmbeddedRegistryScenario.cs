@@ -1,7 +1,7 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using System.Text.Json;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -11,10 +11,22 @@ internal static class DrC1EmbeddedRegistryScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var reg1 = CreateClient(options.Reg1Url);
-        using var consumer = CreateClient(options.Reg1ConsumerUrl);
-        using var providerA = CreateClient(options.ProviderAUrl);
-        using var providerB = CreateClient(options.ProviderBUrl);
+        using var reg1 = ZLinkHttpClient.Create(options.Reg1Url)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var consumer = ZLinkHttpClient.Create(options.Reg1ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
         await reg1.Post("/registry/members/wait")
             .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
@@ -41,12 +53,6 @@ internal static class DrC1EmbeddedRegistryScenario
 
         Console.WriteLine("scenario DR-C1 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
     static async Task AssertDeadRegistryFailsAsync(string reg2Url)
     {

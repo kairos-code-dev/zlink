@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Registry;
 
-namespace DiscoveryRegistryHa.Registry;
+namespace DiscoveryRegistryHa.Server.Registry;
 
 internal static class RegistryHostFactory
 {

@@ -1,4 +1,4 @@
-namespace DiscoveryRegistryHa.Client;
+namespace DiscoveryRegistryHa.Client.Support;
 
 internal sealed record DiscoveryApiResult(
     string Operation,

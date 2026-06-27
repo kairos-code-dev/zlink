@@ -1,6 +1,7 @@
+using DiscoveryRegistryHa.Server.Provider;
 using DiscoveryRegistryHa.Shared;
-using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
+using DiscoveryRegistryHa.Server.Provider.Support;
 
 namespace DiscoveryRegistryHa.Server.Provider;
 

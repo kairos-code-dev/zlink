@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Net.Sockets;
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -12,11 +12,26 @@ internal static class DrC3EmbeddedRegistryScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var survivorConsumer = CreateClient(options.Reg1ConsumerUrl);
-        using var recoveredConsumer = CreateClient(options.Reg2ConsumerUrl);
-        using var providerA = CreateClient(options.ProviderAUrl);
-        using var providerB = CreateClient(options.ProviderBUrl);
-        using var providerC = CreateClient(options.ProviderCUrl);
+        using var survivorConsumer = ZLinkHttpClient.Create(options.Reg1ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var recoveredConsumer = ZLinkHttpClient.Create(options.Reg2ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerC = ZLinkHttpClient.Create(options.ProviderCUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
         var before = await RequestProfileAsync(survivorConsumer, "dr-c3-before");
         ScenarioAssert.That(before.ProviderRid is "api-a" or "api-b", "DR-C3 pre-outage request failed.");
@@ -64,14 +79,20 @@ internal static class DrC3EmbeddedRegistryScenario
                 [options.Reg1PubEndpoint, options.Reg2PubEndpoint]));
             started.Add(await StartProviderAsync(options));
 
-            using var reg2 = CreateClient(options.Reg2Url);
+            using var reg2 = ZLinkHttpClient.Create(options.Reg2Url)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
             await reg2.Post("/registry/members/wait")
                 .Body(new MemberEndpointWaitRequest(options.ProviderCEndpoint))
                 .SubmitRawAsync();
 
             await StopServerAsync(options.Reg2ConsumerUrl);
             await using var recoveredConsumerProcess = await StartConsumerAsync(options);
-            using var freshRecoveredConsumer = CreateClient(options.Reg2ConsumerUrl);
+            using var freshRecoveredConsumer = ZLinkHttpClient.Create(options.Reg2ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
             var after = await RequestProfileAsync(freshRecoveredConsumer, "dr-c3-after");
             ScenarioAssert.That(after.ProviderRid == "api-c", "DR-C3 recovered registry did not route to api-c.");
             await WaitForEvidenceAsync(after, providerC);
@@ -86,12 +107,6 @@ internal static class DrC3EmbeddedRegistryScenario
 
         Console.WriteLine("scenario DR-C3 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
     static async Task<ProfileReply> RequestProfileAsync(ZLinkHttpClient consumer, string phase)
     {

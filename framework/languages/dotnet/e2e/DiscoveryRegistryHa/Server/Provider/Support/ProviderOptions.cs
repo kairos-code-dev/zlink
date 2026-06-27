@@ -1,4 +1,5 @@
-namespace DiscoveryRegistryHa.Server.Provider;
+using DiscoveryRegistryHa.Server.Provider;
+namespace DiscoveryRegistryHa.Server.Provider.Support;
 
 internal sealed record ServerOptions(
     string Role,

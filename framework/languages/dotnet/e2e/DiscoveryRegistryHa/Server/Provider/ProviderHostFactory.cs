@@ -3,8 +3,9 @@ using DiscoveryRegistryHa.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using DiscoveryRegistryHa.Server.Provider.Support;
 
-namespace DiscoveryRegistryHa.Provider;
+namespace DiscoveryRegistryHa.Server.Provider;
 
 internal static class ProviderHostFactory
 {

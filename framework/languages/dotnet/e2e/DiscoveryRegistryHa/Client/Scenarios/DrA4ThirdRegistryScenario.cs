@@ -1,6 +1,6 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -10,9 +10,18 @@ internal static class DrA4ThirdRegistryScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var consumer = CreateClient(options.Reg2ConsumerUrl);
-        using var providerA = CreateClient(options.ProviderAUrl);
-        using var duplicateProvider = CreateClient(options.DuplicateProviderUrl);
+        using var consumer = ZLinkHttpClient.Create(options.Reg2ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var duplicateProvider = ZLinkHttpClient.Create(options.DuplicateProviderUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
         var marker = $"dr-a4-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request/wait")
@@ -30,12 +39,6 @@ internal static class DrA4ThirdRegistryScenario
 
         Console.WriteLine("scenario DR-A4 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
     static async Task<string[]> WaitForEitherProviderEvidenceAsync(
         ZLinkHttpClient providerA,

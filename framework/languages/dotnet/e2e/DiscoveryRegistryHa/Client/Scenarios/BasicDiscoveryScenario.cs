@@ -1,6 +1,6 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -10,10 +10,22 @@ internal static class BasicDiscoveryScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var registry = CreateClient(options.Reg1Url);
-        using var consumer = CreateClient(options.ConsumerUrl);
-        using var providerA = CreateClient(options.ProviderAUrl);
-        using var providerB = CreateClient(options.ProviderBUrl);
+        using var registry = ZLinkHttpClient.Create(options.Reg1Url)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var consumer = ZLinkHttpClient.Create(options.ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
         await registry.Post("/registry/topology/wait")
             .Body(new TopologyReadyWaitRequest(2))
@@ -36,12 +48,6 @@ internal static class BasicDiscoveryScenario
 
         Console.WriteLine("scenario DiscoveryRegistryHa.A1 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
     static async Task<string[]> WaitForEvidenceAsync(ZLinkHttpClient client, string contains) =>
         (await client.Post("/evidence/wait")

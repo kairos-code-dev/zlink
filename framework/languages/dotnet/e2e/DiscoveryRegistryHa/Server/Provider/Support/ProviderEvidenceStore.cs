@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
+using DiscoveryRegistryHa.Server.Provider;
 
-namespace DiscoveryRegistryHa.Server.Provider;
+namespace DiscoveryRegistryHa.Server.Provider.Support;
 
 internal sealed class EvidenceStore
 {

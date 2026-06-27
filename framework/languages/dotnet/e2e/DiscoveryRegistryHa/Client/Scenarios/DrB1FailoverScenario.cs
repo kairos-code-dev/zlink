@@ -1,6 +1,6 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -16,12 +16,24 @@ internal static class DrB1FailoverScenario
             new RegistryCase("reg-3", options.Reg3Url, options.Reg3ConsumerUrl),
         };
 
-        using var providerA = CreateClient(options.ProviderAUrl);
-        using var providerB = CreateClient(options.ProviderBUrl);
+        using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
         foreach (var registryCase in cases)
         {
-            using var registry = CreateClient(registryCase.RegistryUrl);
-            using var consumer = CreateClient(registryCase.ConsumerUrl);
+            using var registry = ZLinkHttpClient.Create(registryCase.RegistryUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+            using var consumer = ZLinkHttpClient.Create(registryCase.ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
             await registry.Post("/registry/members/wait")
                 .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
@@ -52,12 +64,6 @@ internal static class DrB1FailoverScenario
 
         Console.WriteLine("scenario DR-B1 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
     private sealed record RegistryCase(string Name, string RegistryUrl, string ConsumerUrl);
 }

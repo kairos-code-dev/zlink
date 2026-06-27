@@ -1,5 +1,5 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Client.Scenarios;
+using DiscoveryRegistryHa.Client.Support;
 
 var options = ClientOptions.Parse(args);
 

@@ -1,6 +1,6 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -9,9 +9,18 @@ internal static class DrA2ClusterBridgeScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var reg2 = CreateClient(options.Reg2Url);
-        using var consumer = CreateClient(options.ConsumerUrl);
-        using var providerA = CreateClient(options.ProviderAUrl);
+        using var reg2 = ZLinkHttpClient.Create(options.Reg2Url)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var consumer = ZLinkHttpClient.Create(options.ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
         await reg2.Post("/registry/members/wait")
             .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
@@ -35,11 +44,5 @@ internal static class DrA2ClusterBridgeScenario
 
         Console.WriteLine("scenario DR-A2 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
 }

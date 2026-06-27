@@ -1,6 +1,6 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -10,10 +10,22 @@ internal static class DrB2FailoverScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var reg1 = CreateClient(options.Reg1Url);
-        using var consumer = CreateClient(options.Reg1Reg2ConsumerUrl);
-        using var providerA = CreateClient(options.ProviderAUrl);
-        using var providerB = CreateClient(options.ProviderBUrl);
+        using var reg1 = ZLinkHttpClient.Create(options.Reg1Url)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var consumer = ZLinkHttpClient.Create(options.Reg1Reg2ConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
         await reg1.Post("/registry/members/wait")
             .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
@@ -38,11 +50,5 @@ internal static class DrB2FailoverScenario
 
         Console.WriteLine("scenario DR-B2 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
 }

@@ -1,6 +1,6 @@
-using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Shared;
 using Zlink.HttpClient;
+using DiscoveryRegistryHa.Client.Support;
 
 namespace DiscoveryRegistryHa.Client.Scenarios;
 
@@ -10,8 +10,14 @@ internal static class DrD1DirectEndpointScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var embedded = CreateClient(options.EmbeddedUrl);
-        using var consumer = CreateClient(options.EmbeddedConsumerUrl);
+        using var embedded = ZLinkHttpClient.Create(options.EmbeddedUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
+        using var consumer = ZLinkHttpClient.Create(options.EmbeddedConsumerUrl)
+            .Json()
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
 
         var marker = $"dr-d1-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
@@ -31,11 +37,5 @@ internal static class DrD1DirectEndpointScenario
 
         Console.WriteLine("scenario DR-D1 passed");
     }
-
-    static ZLinkHttpClient CreateClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Build();
 
 }

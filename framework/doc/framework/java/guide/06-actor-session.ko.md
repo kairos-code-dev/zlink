@@ -63,6 +63,12 @@ handler에서 받은 spot context로 호출한다.
 `spotRid()`, `isJoined()`, `getSpot(Class)`가 join된 user Spot을 가리킨다. 테스트·클라이언트
 시나리오에서는 `await(replyType)` blocking helper도 쓸 수 있다.
 
+> **join이 성공하면 그 `actor` 객체를 더 접근하지 않는다.** join이 끝나면 actor는 이 Spot을 떠났고,
+> **대상 Spot이 다른 노드면 이 노드의 actor 인스턴스는 retire**된다(접근하면 stale). 호출한 handler는
+> join reply 결과만 쓰고 반환한다. join 직후의 client push 같은 후처리는 actor가 실제로 사는 **대상
+> user Spot**(이동 후 그 Spot의 joined 콜백/handler)에서 한다. (`onLeaveActor`는 actor 객체가 아니라
+> actor가 떠난 **Spot**에게 알리는 콜백이다 — 객체 무효화가 아니라 membership 통지.)
+
 actor 객체를 끝내려면 actor가 Entry Spot에 있는 상태에서
 `ZLinkEntrySpotContext.destroyActor(actor)`를 호출한다. 이 호출은 lifecycle callback을
 호출하지 않고 native actor ref와 framework registry를 정리한다. user Spot에 있는 actor는

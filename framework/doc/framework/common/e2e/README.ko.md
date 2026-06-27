@@ -71,24 +71,29 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 ## 2. 표준 프로젝트 구조
 
 각 config는 언어별 표준 위치에 sample과 분리된 e2e 앱으로 둔다. 서버와 client는 실제 프로세스
-경계를 가진 앱으로 구성하고, 모든 언어가 같은 의미의 폴더 구조를 유지한다. 예(`.NET`):
+경계를 가진 앱으로 구성하고, 모든 언어가 같은 의미의 폴더 구조를 유지한다. `.NET` 구현은 현재
+다른 언어가 따라야 할 기준 형식이다. 언어별 build 도구 이름은 달라도 역할 분리, 시나리오 파일
+분리, evidence/wait 방식은 같은 의미를 유지한다.
+
+예(`.NET`):
 
 ```text
-framework/languages/dotnet/e2e/RegistryMessaging/
+framework/languages/<lang>/e2e/<Config>/
 |-- Shared/        server와 client가 함께 쓰는 메시지·계약 타입
 |-- Server/
-|   |-- Main/              config의 기본 app server
+|   |-- <Role>/            실제 배포 역할별 실행 프로젝트
 |   |   |-- Program.cs
-|   |   |-- <Config>.Server.csproj
-|   |   |-- <Config>ServerHostFactory.cs
-|   |   `-- ... endpoint/handler/options/evidence 파일
-|   |-- <Role>/            역할이 다른 추가 server가 있으면 별도 실행 프로젝트
-|   `-- <OtherRole>/       예: Registry, Publisher, Subscriber, JsonOnlyPeer
+|   |   |-- <Role>HostFactory.*
+|   |   |-- <Role>Options.*
+|   |   |-- <Config>.<Role>.<project>
+|   |   `-- ... endpoint/handler/options/evidence 파일 또는 폴더
+|   `-- <OtherRole>/
 |-- Client/        시나리오 앱
 |   |-- Program.cs        시나리오 이름으로 분기 실행
 |   |-- Scenarios/        config 시나리오별 파일
 |   `-- Support/          client option, assertion, process helper
 |-- run_e2e.sh     서버 1회 구동 → client 시나리오 순차 실행
+|-- feature-map.ko.md
 `-- SCENARIOS 문서는 framework/doc/framework/common/e2e/config-*.ko.md
 ```
 
@@ -102,7 +107,47 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 안에서 framework 기능을 실행한다. 별도 driver server를 띄운 뒤 client가 그 driver에 "전체 시나리오
 실행"을 맡기는 구조는 이 문서의 표준 구조가 아니다.
 
-### 2.1 서버 프로젝트 구성 규칙
+### 2.1 언어별 포팅 단위
+
+다른 언어에 e2e를 추가할 때는 config 하나를 작은 테스트 파일 묶음으로 보지 말고, `.NET`과 같은
+독립 실행 배포 묶음으로 옮긴다. 한 config를 포팅할 때 필요한 기본 산출물은 아래와 같다.
+
+- `Shared/`: server와 client가 함께 쓰는 request/reply/event/evidence DTO만 둔다.
+- `Server/<Role>/`: registry, provider, consumer, publisher, subscriber, play, session처럼 실제
+  배포에서 구분되는 역할마다 하나의 실행 앱을 둔다.
+- `Client/Program.*`: 실행할 시나리오 목록을 선언하고, 옵션에 따라 전체 또는 단일 시나리오를
+  순서대로 호출한다.
+- `Client/Scenarios/<ScenarioId><Name>Scenario.*`: 시나리오 ID 하나마다 파일 하나를 둔다.
+- `Client/Support/`: option parsing, assertion, process manager, evidence wait처럼 여러 시나리오가
+  공유하는 보조 코드만 둔다.
+- `run_e2e.*`: build, 포트 할당, 로그 디렉토리 생성, 서버 프로세스 시작·종료, client 실행,
+  실패 시 로그 위치 출력까지 담당한다.
+- `feature-map.ko.md`: 구현한 시나리오, 미구현 시나리오, public contract gap, harness gap을
+  config 문서의 시나리오 ID와 맞춰 기록한다.
+
+언어별 파일 확장자나 프로젝트 파일 이름은 자연스럽게 바꿔도 된다. 하지만 위 역할 경계가 바뀌면
+언어별 e2e 결과를 서로 비교할 수 없으므로 완료로 보지 않는다.
+
+### 2.2 역할 서버와 endpoint 형태
+
+역할 server는 사용자가 배포하는 app을 작게 만든 것이다. client가 호출하는 endpoint도 이 관점에서
+정한다.
+
+- endpoint는 실제 사용자가 일으키는 동작을 표현한다. 예: publish trigger, request submit,
+  subscribe/bind, admin drain/restore, evidence wait, topology wait.
+- endpoint 하나가 여러 시나리오를 내부에서 실행하고 결과만 돌려주면 안 된다. `/run`,
+  `/scenario/all`, `/execute`처럼 client 검증을 server에 위임하는 endpoint는 금지한다.
+- endpoint 내부에서는 해당 언어 framework의 공개 API를 사용한다. private API, raw frame 조작,
+  reflection 우회, test-only adapter를 쓰지 않는다.
+- evidence endpoint는 역할 server가 실제로 처리한 marker를 노출한다. 시나리오 실행 전용 server가
+  만든 marker만으로 성공을 판정하지 않는다.
+- 값이 바뀌기를 기다려야 하면 역할 server에 bounded wait endpoint를 둔다. 예: `/evidence/wait`,
+  `/topology/wait`, `/admin/weight/wait`. client가 같은 GET을 수십 번 반복해 값 변화를 관찰하는
+  방식은 쓰지 않는다.
+- stream, subscription, monitoring event처럼 server가 push할 수 있는 흐름은 client stream connector를
+  먼저 연결하고 push payload로 검증한다. HTTP는 상태 변경을 일으키는 trigger로만 쓴다.
+
+### 2.3 서버 프로젝트 구성 규칙
 
 - 서버 역할이 다르면 `Server/<Role>/` 아래에 별도 실행 프로젝트로 둔다. 하나의 서버 프로젝트를
   `--role`, `--mode` 옵션으로 registry/publisher/subscriber 또는 정상/오류/peer 서버처럼 바꾸지
@@ -120,17 +165,21 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
   않는다. 폴더 이름이 다르더라도 시나리오 실행만 위임받는 server는 같은 금지 대상이다. 테스트
   진행을 위해 프로세스 시작·종료가 필요하면 `run_e2e.*`와 client support 코드에서 다루고,
   framework 기능 호출은 실제 역할 server endpoint 안에 둔다.
-- e2e 서버는 작은 실행 예시이므로 flat 구조를 기본으로 한다. `Program.cs`, `*.csproj`,
+- e2e 서버는 작은 실행 예시이므로 처음에는 flat 구조를 기본으로 한다. `Program.cs`, `*.csproj`,
   `*HostFactory.cs`, `*Options.cs`, endpoint/handler/filter/evidence 파일을 서버 프로젝트 루트에 둔다.
-- 같은 성격의 파일이 많아져서 탐색이 어려워질 때만 폴더를 만든다. 파일 하나짜리 `Configuration/`,
-  `Endpoints/`, `Handlers/`, `Filters/`, `Infrastructure/` 폴더는 만들지 않는다.
+- 같은 성격의 파일이 2개 이상이면 폴더로 묶는다. 예: `Handlers/`, `Endpoints/`, `Configuration/`,
+  `Infrastructure/`, `Support/`, `Spots/`, `Sessions/`. 반대로 파일 하나짜리 같은 성격 폴더는 만들지
+  않는다. 하나뿐이면 프로젝트 루트에 둔다.
+- `Program.cs`에 endpoint, handler, framework 설정을 길게 넣지 않는다. 현재 `.NET` e2e처럼
+  `Program.cs`는 `RoleHostFactory.Create(args).Run()` 수준의 진입점으로 유지하고, 실제 host 구성은
+  `*HostFactory.*`로 분리한다.
 - 공통 서버 library/shared 프로젝트는 기본으로 만들지 않는다. 중복이 조금 생기더라도 각 서버
   프로젝트가 자기 구성을 직접 드러내는 쪽을 우선한다. 정말 여러 config 또는 여러 역할에서 같은
   코드가 반복되어 유지 비용이 커질 때만 별도 shared 프로젝트를 검토한다.
 - `Shared/`는 server와 client가 함께 쓰는 메시지·계약 타입만 둔다. server-only host factory,
   handler, filter, evidence store를 config의 top-level `Shared/`에 넣지 않는다.
 
-### 2.2 client 프로젝트 구성 규칙
+### 2.4 client 프로젝트 구성 규칙
 
 - client는 `Client/Program.cs`에서 시나리오를 순차 실행한다.
 - `Client/Program.cs`에는 옵션 파싱, HTTP client 생성, scenario 호출 순서만 둔다. 개별 scenario의
@@ -152,8 +201,42 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
   안 된다.
 - 시나리오가 여러 개이면 client scenario 파일도 여러 개로 나눈다. 여러 시나리오를 하나의
   `AllScenario`, `ScenarioSet`, `DriverScenario` 파일로 묶어 driver에 위임하지 않는다.
+- config 문서의 시나리오 ID 하나는 client scenario 파일 하나와 대응해야 한다. 예를 들어 `RC-B1`,
+  `RC-B2`, `RC-B3`, `RC-B4`는 하나의 codec 묶음 파일이 아니라 각각 독립 파일로 둔다. 공통 endpoint가
+  같은 응답을 반환하더라도 client 검증 단위는 나누어야 한다.
+- 여러 시나리오가 같은 server endpoint를 호출해도 된다. 단 각 scenario 파일은 자기 ID가 확인해야
+  하는 reply, push, topology, evidence 조건만 직접 단언한다.
 
-### 2.3 주석 작성 규칙
+### 2.5 `run_e2e.*` 실행 계약
+
+모든 언어의 실행 스크립트는 같은 사용 의미를 가져야 한다.
+
+- 기본 실행은 해당 config의 구현된 시나리오를 순차 실행한다.
+- 단일 시나리오 실행을 지원한다. 예: `./run_e2e.sh RC-B2`, `./run_e2e.sh RL-A4`.
+- 스크립트는 build → 로그 디렉토리 생성 → 서버 시작 → readiness 확인 → client 실행 → 서버 종료
+  순서를 책임진다.
+- readiness는 고정 sleep만으로 보지 않는다. 각 role server의 `/health`, 포트 open, 또는 명시 marker로
+  확인한다.
+- 실패 시 `log_dir=...`를 출력하고, 각 role server와 client의 stdout/stderr/framework log를 남긴다.
+- 시나리오 선택은 client가 하되, client가 server-side scenario runner에 전체 실행을 위임하지 않는다.
+- scale-out, restart, crash, registry outage처럼 프로세스 제어가 필요한 경우는 스크립트나 client
+  support process manager가 담당한다. framework request/send/publish 자체는 실제 역할 server endpoint
+  내부에서만 수행한다.
+
+### 2.6 feature-map 작성 규칙
+
+언어별 e2e에는 config별 `feature-map.ko.md`를 둔다. 이 문서는 skip 목록이 아니라 구현 상태와 gap의
+근거를 남기는 표다.
+
+- config 문서의 모든 시나리오 ID를 행으로 둔다.
+- 상태는 `implemented`, `not-supported`, `blocked`, `deferred`처럼 명확히 쓴다.
+- `not-supported`는 해당 언어의 public contract에 기능이 없다는 뜻이다. 이 경우 필요한 public API와
+  관련 spec/guide 근거가 있는지 함께 적는다.
+- `blocked`는 runtime bug, bindings bug, harness 부족처럼 해결해야 할 원인이 있는 경우에만 쓴다.
+  버그를 피해 시나리오를 약하게 만들지 않는다.
+- 미구현 항목이 있어도 P0이면 완료가 아니다. P1/P2는 해당 기능 지원 여부와 실행 비용을 함께 적는다.
+
+### 2.7 주석 작성 규칙
 
 - 시나리오 파일 첫머리에는 이 파일이 어떤 사용자 흐름과 어떤 framework 동작을 검증하는지 적는다.
   독자가 파일을 열었을 때 "이 시나리오가 왜 필요한가"를 바로 알 수 있어야 한다.

@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using Zlink.HttpClient;
 
-namespace RegistryMessaging.Client;
+namespace RegistryMessaging.Client.Support;
 
 internal sealed class DynamicClusterLauncher(string providerProject, string logDir) : IAsyncDisposable
 {

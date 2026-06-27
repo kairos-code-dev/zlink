@@ -1,6 +1,6 @@
 using Zlink.HttpClient;
-using RegistryMessaging.Client;
 using RegistryMessaging.Shared;
+using RegistryMessaging.Client.Support;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -12,7 +12,10 @@ internal static class RmA4SameRidFailoverScenario
     {
         await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-a4");
         var providerV1 = await cluster.StartProviderAsync("api-a-v1", "api-a");
-        using var providerV1Client = CreateRoleClient(providerV1.HttpUrl);
+        using var providerV1Client = ZLinkHttpClient.Create(providerV1.HttpUrl)
+            .Json()
+            .Timeout(TimeSpan.FromMinutes(5))
+            .Build();
 
         var first = (await providerV1Client.Post("/profile/request")
             .Body(new ProfileRequest("rm-a4-v1"))
@@ -26,7 +29,10 @@ internal static class RmA4SameRidFailoverScenario
         await cluster.StopAsync(providerV1);
 
         var providerV2 = await cluster.StartProviderAsync("api-a-v2", "api-a");
-        using var providerV2Client = CreateRoleClient(providerV2.HttpUrl);
+        using var providerV2Client = ZLinkHttpClient.Create(providerV2.HttpUrl)
+            .Json()
+            .Timeout(TimeSpan.FromMinutes(5))
+            .Build();
 
         var beforeV1 = await ReadEvidenceIgnoringStoppedAsync(providerV1Client);
         var beforeV2 = await ReadEvidenceAsync(providerV2Client);
@@ -57,12 +63,6 @@ internal static class RmA4SameRidFailoverScenario
 
         Console.WriteLine("scenario RM-A4 passed");
     }
-
-    static ZLinkHttpClient CreateRoleClient(string baseUrl) =>
-        ZLinkHttpClient.Create(baseUrl)
-            .Json()
-            .Timeout(TimeSpan.FromMinutes(5))
-            .Build();
 
     static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient client) =>
         (await client.Get("/evidence").SubmitAsync<string[]>()).Body;

@@ -1,4 +1,4 @@
-namespace RegistryMessaging.Client;
+namespace RegistryMessaging.Client.Support;
 
 internal static class ScenarioAssert
 {

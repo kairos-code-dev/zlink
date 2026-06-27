@@ -1,6 +1,6 @@
 using Zlink.HttpClient;
-using RegistryMessaging.Client;
 using RegistryMessaging.Shared;
+using RegistryMessaging.Client.Support;
 
 namespace RegistryMessaging.Client.Scenarios;
 

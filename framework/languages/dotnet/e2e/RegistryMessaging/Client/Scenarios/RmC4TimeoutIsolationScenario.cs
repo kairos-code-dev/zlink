@@ -1,6 +1,6 @@
 using Zlink.HttpClient;
-using RegistryMessaging.Client;
 using RegistryMessaging.Shared;
+using RegistryMessaging.Client.Support;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -30,30 +30,32 @@ internal static class RmC4TimeoutIsolationScenario
             .SubmitAsync<ProfileReply>()).Body;
         ScenarioAssert.That(later.Value == "profile:rm-c4-later", "RM-C4 later reply mismatch.");
 
-        var afterTimeoutEvidence = await WaitForEitherEvidenceAsync(providerA, providerB, "rm-c4-after-timeout");
-        var laterEvidence = await WaitForEitherEvidenceAsync(providerA, providerB, "rm-c4-later");
+        var afterTimeoutWaitA = providerA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest("rm-c4-after-timeout"))
+            .SubmitAsync<string[]>()
+            .AsTask();
+        var afterTimeoutWaitB = providerB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest("rm-c4-after-timeout"))
+            .SubmitAsync<string[]>()
+            .AsTask();
+        var afterTimeoutCompleted = await Task.WhenAny(afterTimeoutWaitA, afterTimeoutWaitB);
+        var afterTimeoutEvidence = (await afterTimeoutCompleted).Body;
+
+        var laterWaitA = providerA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest("rm-c4-later"))
+            .SubmitAsync<string[]>()
+            .AsTask();
+        var laterWaitB = providerB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest("rm-c4-later"))
+            .SubmitAsync<string[]>()
+            .AsTask();
+        var laterCompleted = await Task.WhenAny(laterWaitA, laterWaitB);
+        var laterEvidence = (await laterCompleted).Body;
         var evidence = afterTimeoutEvidence.Concat(laterEvidence).ToArray();
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("rm-c4-after-timeout", StringComparison.Ordinal))
             && evidence.Any(line => line.Contains("rm-c4-later", StringComparison.Ordinal)),
             "RM-C4 follow-up evidence missing.");
         Console.WriteLine("scenario RM-C4 passed");
-    }
-
-    static async Task<string[]> WaitForEitherEvidenceAsync(
-        ZLinkHttpClient providerA,
-        ZLinkHttpClient providerB,
-        string contains)
-    {
-        var waitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains))
-            .SubmitAsync<string[]>()
-            .AsTask();
-        var waitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains))
-            .SubmitAsync<string[]>()
-            .AsTask();
-        var completed = await Task.WhenAny(waitA, waitB);
-        return (await completed).Body;
     }
 }

@@ -1,6 +1,6 @@
 using Zlink.HttpClient;
-using RegistryMessaging.Client;
 using RegistryMessaging.Shared;
+using RegistryMessaging.Client.Support;
 
 namespace RegistryMessaging.Client.Scenarios;
 
@@ -30,7 +30,16 @@ internal static class RmA6MultipleChannelsScenario
         ScenarioAssert.That(workflowReply.Value == $"workflow:{workflowMarker}", "RM-A6 workflow reply value mismatch.");
         ScenarioAssert.That(workflowReply.ProviderRid == "workflow-a", "RM-A6 workflow request should reach workflow-a.");
 
-        var providerEvidence = await WaitForEitherEvidenceAsync(providerA, providerB, profileMarker);
+        var providerWaitA = providerA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(profileMarker))
+            .SubmitAsync<string[]>()
+            .AsTask();
+        var providerWaitB = providerB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(profileMarker))
+            .SubmitAsync<string[]>()
+            .AsTask();
+        var providerCompleted = await Task.WhenAny(providerWaitA, providerWaitB);
+        var providerEvidence = (await providerCompleted).Body;
         var workflowEvidence = (await workflow.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(workflowMarker))
             .SubmitAsync<string[]>()).Body;
@@ -47,22 +56,5 @@ internal static class RmA6MultipleChannelsScenario
                 && line.Contains(workflowMarker, StringComparison.Ordinal)),
             "RM-A6 workflow request was recorded on profile providers.");
         Console.WriteLine("scenario RM-A6 passed");
-    }
-
-    static async Task<string[]> WaitForEitherEvidenceAsync(
-        ZLinkHttpClient providerA,
-        ZLinkHttpClient providerB,
-        string contains)
-    {
-        var waitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains))
-            .SubmitAsync<string[]>()
-            .AsTask();
-        var waitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains))
-            .SubmitAsync<string[]>()
-            .AsTask();
-        var completed = await Task.WhenAny(waitA, waitB);
-        return (await completed).Body;
     }
 }

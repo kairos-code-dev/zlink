@@ -1,8 +1,8 @@
 using Zlink.HttpClient;
-using RegistryMessaging.Client;
 using RegistryMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Registry;
+using RegistryMessaging.Client.Support;
 
 namespace RegistryMessaging.Client.Scenarios;
 

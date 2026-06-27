@@ -1,0 +1,119 @@
+using System.Security.Cryptography;
+using System.Text;
+using RegistryMessaging.Shared;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Handlers;
+using RegistryMessaging.Server.Registry.Configuration;
+using RegistryMessaging.Server.Registry.Endpoints;
+using RegistryMessaging.Server.Registry.Infrastructure;
+using RegistryMessaging.Server.Registry;
+
+namespace RegistryMessaging.Server.Registry.Handlers;
+
+internal sealed class ProfileRequestHandler(EvidenceStore evidence)
+    : IZLinkRequestHandler<ProfileRequest, ProfileReply>
+{
+    public async ValueTask<ProfileReply> HandleAsync(
+        ProfileRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        if (request.Value == "slow")
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        evidence.Add($"profile-request|rid={evidence.Rid}|value={request.Value}|packet={context.PacketName}");
+        return new ProfileReply($"profile:{request.Value}", evidence.Rid);
+    }
+}
+
+internal sealed class ProfileCommandHandler(EvidenceStore evidence)
+    : IZLinkSendHandler<ProfileCommand>
+{
+    public async ValueTask HandleAsync(
+        ProfileCommand command,
+        ZLinkSendContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (command.CommandId.StartsWith("rm-c9-slow-", StringComparison.Ordinal))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        evidence.Add($"profile-command|rid={evidence.Rid}|command={command.CommandId}|packet={context.PacketName}");
+    }
+}
+
+internal sealed class PayloadRequestHandler(EvidenceStore evidence)
+    : IZLinkRequestHandler<PayloadRequest, PayloadReply>
+{
+    public ValueTask<PayloadReply> HandleAsync(
+        PayloadRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Payload)));
+        evidence.Add(
+            $"payload-request|rid={evidence.Rid}|marker={request.Marker}"
+            + $"|length={request.Payload.Length}|sha256={hash}|packet={context.PacketName}");
+        return ValueTask.FromResult(new PayloadReply(request.Marker, request.Payload.Length, hash));
+    }
+}
+
+internal sealed class WorkflowRequestHandler(EvidenceStore evidence)
+    : IZLinkRequestHandler<WorkflowRequest, WorkflowReply>
+{
+    public ValueTask<WorkflowReply> HandleAsync(
+        WorkflowRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"workflow-request|rid={evidence.Rid}|value={request.Value}|packet={context.PacketName}");
+        return ValueTask.FromResult(new WorkflowReply($"workflow:{request.Value}", evidence.Rid));
+    }
+}
+
+internal sealed class RoutePingHandler(EvidenceStore evidence)
+    : IZLinkRouteRequestHandler<ScenarioRoutePing, ScenarioRoutePong>
+{
+    public ValueTask<ScenarioRoutePong> HandleAsync(
+        ScenarioRoutePing request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var source = context.SourceNodeRid.ToString();
+        evidence.Add($"route-request|rid={evidence.Rid}|source={source}|value={request.Value}");
+        return ValueTask.FromResult(new ScenarioRoutePong($"route:{request.Value}", evidence.Rid, source));
+    }
+}
+
+internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
+    : IZLinkMessageFlowObserver
+{
+    public ValueTask OnMessageFlowAsync(
+        ZLinkMessageFlowEvent flow,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        evidence.Add(
+            "dispatch-error"
+            + $"|surface={flow.Surface}"
+            + $"|kind={flow.MessageKind}"
+            + $"|reason={flow.ErrorReason}"
+            + $"|action={flow.ErrorAction}"
+            + $"|packet={flow.PacketName ?? "<null>"}"
+            + $"|channel={flow.ChannelName ?? "<null>"}");
+        return ValueTask.CompletedTask;
+    }
+}

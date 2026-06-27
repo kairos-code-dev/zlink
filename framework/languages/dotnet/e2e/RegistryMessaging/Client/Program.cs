@@ -1,6 +1,6 @@
-using RegistryMessaging.Client;
 using RegistryMessaging.Client.Scenarios;
 using Zlink.HttpClient;
+using RegistryMessaging.Client.Support;
 
 var options = ClientOptions.Parse(args);
 

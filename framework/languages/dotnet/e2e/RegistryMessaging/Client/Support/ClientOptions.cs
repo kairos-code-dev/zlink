@@ -1,4 +1,4 @@
-namespace RegistryMessaging.Client;
+namespace RegistryMessaging.Client.Support;
 
 internal sealed record ClientOptions(
     string RegistryUrl,

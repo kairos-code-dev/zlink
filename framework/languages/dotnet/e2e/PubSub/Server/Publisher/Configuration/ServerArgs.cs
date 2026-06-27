@@ -1,4 +1,6 @@
-namespace PubSub.Server.Configuration;
+using PubSub.Server.Publisher.Endpoints;
+using PubSub.Server.Publisher;
+namespace PubSub.Server.Publisher.Configuration;
 
 public sealed class ServerArgs
 {

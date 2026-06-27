@@ -1,8 +1,9 @@
-using PubSub.Server.Infrastructure;
+using PubSub.Server.Subscriber;
 using PubSub.Shared;
 using Zlink.Framework.Contracts.Handlers;
+using PubSub.Server.Subscriber.Configuration;
 
-namespace PubSub.Server;
+namespace PubSub.Server.Subscriber.Handlers;
 
 internal sealed class EventNotifyHandler(EvidenceStore evidence, HandlerDelayOptions delayOptions)
     : IZLinkPublishHandler<EventNotify>

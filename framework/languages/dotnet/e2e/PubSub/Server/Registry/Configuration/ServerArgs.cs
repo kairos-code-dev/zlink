@@ -1,4 +1,5 @@
-namespace PubSub.Server.Configuration;
+using PubSub.Server.Registry;
+namespace PubSub.Server.Registry.Configuration;
 
 public sealed class ServerArgs
 {

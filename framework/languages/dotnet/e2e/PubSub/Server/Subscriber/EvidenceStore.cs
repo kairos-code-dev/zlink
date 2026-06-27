@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using PubSub.Server.Subscriber.Configuration;
+using PubSub.Server.Subscriber.Handlers;
 
-namespace PubSub.Server.Infrastructure;
+namespace PubSub.Server.Subscriber;
 
 public sealed class EvidenceStore
 {

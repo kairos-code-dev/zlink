@@ -1,7 +1,7 @@
-using PubSub.Client;
 using PubSub.Client.Scenarios;
 using System.Diagnostics;
 using Zlink.HttpClient;
+using PubSub.Client.Support;
 
 var options = ClientOptions.Parse(args);
 Directory.CreateDirectory(options.LogDir);

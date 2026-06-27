@@ -1,4 +1,4 @@
-namespace PubSub.Client;
+namespace PubSub.Client.Support;
 
 internal sealed record ClientOptions(
     string PublisherUrl,

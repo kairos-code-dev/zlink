@@ -1,12 +1,11 @@
-using PubSub.Server.Configuration;
-using PubSub.Server.Endpoints;
-using PubSub.Server.Handlers;
-using PubSub.Server.Infrastructure;
+using PubSub.Server.Publisher.Configuration;
+using PubSub.Server.Publisher.Endpoints;
+using PubSub.Server.Publisher;
 using PubSub.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 
-namespace PubSub.Server;
+namespace PubSub.Server.Publisher;
 
 internal static class PublisherHostFactory
 {

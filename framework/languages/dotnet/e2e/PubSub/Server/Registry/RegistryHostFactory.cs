@@ -1,9 +1,8 @@
-using PubSub.Server.Configuration;
-using PubSub.Server.Endpoints;
-using PubSub.Server.Infrastructure;
+using PubSub.Server.Registry.Configuration;
+using PubSub.Server.Registry;
 using Zlink.Framework.AspNetCore;
 
-namespace PubSub.Server;
+namespace PubSub.Server.Registry;
 
 internal static class RegistryHostFactory
 {

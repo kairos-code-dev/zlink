@@ -1,4 +1,6 @@
-namespace PubSub.Server.Configuration;
+using PubSub.Server.Subscriber.Handlers;
+using PubSub.Server.Subscriber;
+namespace PubSub.Server.Subscriber.Configuration;
 
 public sealed class ServerArgs
 {

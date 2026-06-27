@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace PubSub.Client;
+namespace PubSub.Client.Support;
 
 internal sealed class ServerProcessLauncher(ClientOptions options)
 {

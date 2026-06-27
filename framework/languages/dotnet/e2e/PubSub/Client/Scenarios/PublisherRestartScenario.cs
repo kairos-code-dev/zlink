@@ -1,6 +1,7 @@
 using PubSub.Shared;
 using System.Diagnostics;
 using Zlink.HttpClient;
+using PubSub.Client.Support;
 
 namespace PubSub.Client.Scenarios;
 

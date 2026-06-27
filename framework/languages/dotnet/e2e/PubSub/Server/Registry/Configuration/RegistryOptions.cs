@@ -1,6 +1,7 @@
-using PubSub.Server.Configuration;
+using PubSub.Server.Registry.Configuration;
+using PubSub.Server.Registry;
 
-namespace PubSub.Server;
+namespace PubSub.Server.Registry.Configuration;
 
 internal sealed record RegistryOptions(
     string Rid,

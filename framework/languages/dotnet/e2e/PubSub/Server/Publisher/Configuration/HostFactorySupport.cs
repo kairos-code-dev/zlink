@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
+using PubSub.Server.Publisher.Endpoints;
+using PubSub.Server.Publisher;
 
-namespace PubSub.Server.Configuration;
+namespace PubSub.Server.Publisher.Configuration;
 
 public static class HostFactorySupport
 {

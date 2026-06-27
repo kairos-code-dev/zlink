@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
+using PubSub.Server.Registry.Configuration;
 
-namespace PubSub.Server.Infrastructure;
+namespace PubSub.Server.Registry;
 
 public sealed class EvidenceStore
 {

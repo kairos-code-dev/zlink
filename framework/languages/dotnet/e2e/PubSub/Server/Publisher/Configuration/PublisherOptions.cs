@@ -1,6 +1,8 @@
-using PubSub.Server.Configuration;
+using PubSub.Server.Publisher.Configuration;
+using PubSub.Server.Publisher.Endpoints;
+using PubSub.Server.Publisher;
 
-namespace PubSub.Server;
+namespace PubSub.Server.Publisher.Configuration;
 
 internal sealed record PublisherOptions(
     string Rid,

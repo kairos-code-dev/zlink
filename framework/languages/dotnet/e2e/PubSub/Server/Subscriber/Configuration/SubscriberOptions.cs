@@ -1,6 +1,8 @@
-using PubSub.Server.Configuration;
+using PubSub.Server.Subscriber.Configuration;
+using PubSub.Server.Subscriber.Handlers;
+using PubSub.Server.Subscriber;
 
-namespace PubSub.Server;
+namespace PubSub.Server.Subscriber.Configuration;
 
 internal sealed record SubscriberOptions(
     string Rid,

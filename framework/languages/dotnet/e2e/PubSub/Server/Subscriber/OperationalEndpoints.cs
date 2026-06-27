@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
-using PubSub.Server.Infrastructure;
+using PubSub.Server.Subscriber;
 using PubSub.Shared;
+using PubSub.Server.Subscriber.Configuration;
+using PubSub.Server.Subscriber.Handlers;
 
-namespace PubSub.Server.Endpoints;
+namespace PubSub.Server.Subscriber;
 
 public static class OperationalEndpoints
 {

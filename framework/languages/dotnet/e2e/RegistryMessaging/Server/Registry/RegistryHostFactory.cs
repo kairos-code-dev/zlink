@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Zlink.Framework.AspNetCore;
 using RegistryMessaging.Server.Registry.Configuration;
 using RegistryMessaging.Server.Registry.Endpoints;
-using RegistryMessaging.Server.Registry.Handlers;
 using RegistryMessaging.Server.Registry.Infrastructure;
 
 namespace RegistryMessaging.Server.Registry;

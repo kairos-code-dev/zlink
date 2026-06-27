@@ -1,7 +1,3 @@
-using RegistryMessaging.Server.Registry.Endpoints;
-using RegistryMessaging.Server.Registry.Handlers;
-using RegistryMessaging.Server.Registry.Infrastructure;
-using RegistryMessaging.Server.Registry;
 namespace RegistryMessaging.Server.Registry.Configuration;
 
 internal sealed record ServerOptions(
@@ -11,17 +7,11 @@ internal sealed record ServerOptions(
     string? EvidenceFile,
     string Rid,
     string? RegistryPubEndpoint,
-    string? RegistryRouterEndpoint,
-    string? ChannelEndpoint,
-    string? WorkflowEndpoint,
-    string? RouteEndpoint,
-    int Weight,
-    IReadOnlyList<string> RoutePeers)
+    string? RegistryRouterEndpoint)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var routePeers = new List<string>();
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -36,15 +26,7 @@ internal sealed record ServerOptions(
                 throw new ArgumentException($"Missing value for {key}.");
             }
 
-            var value = args[++i];
-            if (key == "--route-peer")
-            {
-                routePeers.Add(value);
-            }
-            else
-            {
-                values[key[2..]] = value;
-            }
+            values[key[2..]] = args[++i];
         }
 
         var rid = values.GetValueOrDefault("rid", "node");
@@ -56,11 +38,6 @@ internal sealed record ServerOptions(
             values.GetValueOrDefault("evidence-file"),
             rid,
             values.GetValueOrDefault("registry-pub-endpoint"),
-            values.GetValueOrDefault("registry-router-endpoint"),
-            values.GetValueOrDefault("channel-endpoint"),
-            values.GetValueOrDefault("workflow-endpoint"),
-            values.GetValueOrDefault("route-endpoint"),
-            int.TryParse(values.GetValueOrDefault("weight"), out var weight) ? weight : 100,
-            routePeers);
+            values.GetValueOrDefault("registry-router-endpoint"));
     }
 }

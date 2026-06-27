@@ -64,20 +64,6 @@ internal sealed class PayloadRequestHandler(EvidenceStore evidence)
     }
 }
 
-internal sealed class WorkflowRequestHandler(EvidenceStore evidence)
-    : IZLinkRequestHandler<WorkflowRequest, WorkflowReply>
-{
-    public ValueTask<WorkflowReply> HandleAsync(
-        WorkflowRequest request,
-        ZLinkRequestContext context,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"workflow-request|rid={evidence.Rid}|value={request.Value}|packet={context.PacketName}");
-        return ValueTask.FromResult(new WorkflowReply($"workflow:{request.Value}", evidence.Rid));
-    }
-}
-
 internal sealed class RoutePingHandler(EvidenceStore evidence)
     : IZLinkRouteRequestHandler<ScenarioRoutePing, ScenarioRoutePong>
 {

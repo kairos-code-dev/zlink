@@ -40,13 +40,6 @@ internal static class ProviderEndpoints
             await SendProfileWithRetryAsync(channel, "profile", command);
             return Results.Ok(new { status = "sent" });
         });
-        app.MapPost("/workflow/request", async (
-            WorkflowRequest request,
-            IZLinkChannelClient channel) =>
-        {
-            var reply = await RequestWorkflowWithRetryAsync(channel, request);
-            return Results.Ok(reply);
-        });
         app.MapPost("/profile/route/request", async (
             ScenarioRoutePing request,
             IZLinkRouteClient route) =>
@@ -154,31 +147,6 @@ internal static class ProviderEndpoints
         || ex.Kind is ZLinkFrameworkErrorKind.RouteNotConnected
             or ZLinkFrameworkErrorKind.RequestTargetNotFound
             or ZLinkFrameworkErrorKind.RequestProtocolError;
-
-    static async Task<WorkflowReply> RequestWorkflowWithRetryAsync(
-        IZLinkChannelClient channel,
-        WorkflowRequest request)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                return await channel.RequestToChannel("workflow", request)
-                    .PacketName("WorkflowRequest")
-                    .Timeout(TimeSpan.FromSeconds(5))
-                    .Async<WorkflowReply>();
-            }
-            catch (ZLinkFrameworkException ex) when (IsRetriableRequestStartupFailure(ex))
-            {
-                last = ex;
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
-            }
-        }
-
-        throw new InvalidOperationException("Timed out waiting for workflow request channel route.", last);
-    }
 
     static async Task<ScenarioRoutePong> RequestRouteWithRetryAsync(
         IZLinkRouteClient route,

@@ -3,9 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.Contracts.Registry;
 using RegistryMessaging.Server.Registry.Configuration;
-using RegistryMessaging.Server.Registry.Handlers;
 using RegistryMessaging.Server.Registry.Infrastructure;
-using RegistryMessaging.Server.Registry;
 
 namespace RegistryMessaging.Server.Registry.Endpoints;
 

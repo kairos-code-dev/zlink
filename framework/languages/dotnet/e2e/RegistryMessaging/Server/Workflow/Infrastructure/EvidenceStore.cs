@@ -1,17 +1,18 @@
 using System.Collections.Concurrent;
 
-namespace RegistryMessaging.Server.Registry.Infrastructure;
+namespace RegistryMessaging.Server.Workflow.Infrastructure;
 
 internal sealed class EvidenceStore
 {
     private readonly ConcurrentQueue<string> _entries = new();
     private readonly object _fileGate = new();
     private readonly string? _filePath;
+    private readonly SemaphoreSlim _signal = new(0);
 
     public EvidenceStore(string? filePath)
     {
         _filePath = filePath;
-        Rid = Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "node";
+        Rid = Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "workflow";
         if (!string.IsNullOrWhiteSpace(_filePath))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
@@ -24,6 +25,7 @@ internal sealed class EvidenceStore
     public void Add(string entry)
     {
         _entries.Enqueue(entry);
+        _signal.Release();
         if (string.IsNullOrWhiteSpace(_filePath))
         {
             return;
@@ -36,6 +38,29 @@ internal sealed class EvidenceStore
     }
 
     public string[] Snapshot() => _entries.ToArray();
+
+    public async Task<string[]> WaitUntilAsync(
+        Func<string, bool> predicate,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (true)
+        {
+            var snapshot = Snapshot();
+            if (snapshot.Any(predicate))
+            {
+                return snapshot;
+            }
+
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero
+                || !await _signal.WaitAsync(remaining, cancellationToken))
+            {
+                return Snapshot();
+            }
+        }
+    }
 
     public void Clear()
     {

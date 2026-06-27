@@ -59,16 +59,6 @@ internal static class ProviderHostFactory
                     .EnableClient(options.ManualClientEndpoint);
             }
 
-            if (!string.IsNullOrWhiteSpace(options.WorkflowEndpoint))
-            {
-                var workflow = framework.AddClientServerChannel("workflow")
-                    .EnableServer(options.WorkflowEndpoint)
-                    .EnableClient()
-                    .SetRoutingId(RoutingId.From(options.Rid));
-                workflow.ConfigureServerSocket().Weight = options.Weight;
-                workflow.AddRequestHandler<WorkflowRequestHandler, WorkflowRequest, WorkflowReply>("WorkflowRequest");
-            }
-
             if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))
             {
                 var route = framework.AddRouteMesh("profile.route")

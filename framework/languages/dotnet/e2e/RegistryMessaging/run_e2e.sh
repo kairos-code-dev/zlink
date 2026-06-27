@@ -9,6 +9,7 @@ SCENARIO="${1:-all}"
 
 REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/RegistryMessaging.Registry.csproj"
 PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/RegistryMessaging.Provider.csproj"
+WORKFLOW_PROJECT="$ROOT_DIR/Server/Workflow/RegistryMessaging.Workflow.csproj"
 CONSUMER_PROJECT="$ROOT_DIR/Server/Consumer/RegistryMessaging.Consumer.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RegistryMessaging.Client.csproj"
 
@@ -120,7 +121,7 @@ start_server api-b "$PROVIDER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
 
-start_server workflow-a "$PROVIDER_PROJECT" \
+start_server workflow-a "$WORKFLOW_PROJECT" \
   --rid workflow-a \
   --http-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \

@@ -199,13 +199,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.TryAddScoped(actorFactoryType);
         }
 
-        foreach (var sessionType in registration.StreamNodes.Values
-                     .Select(static stream => stream.HeaderSessionType)
-                     .OfType<Type>())
-        {
-            services.TryAddScoped(sessionType);
-        }
-
         foreach (var spotType in registration.SpotNodes.Values
                      .SelectMany(static spotNode => spotNode.SpotFactories))
         {

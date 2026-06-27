@@ -394,7 +394,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             }
         });
 
-        Assert.Contains(services, static service => service.ServiceType == typeof(TestSessionWithEnumerableHandlers));
+        Assert.DoesNotContain(services, static service => service.ServiceType == typeof(TestSessionWithEnumerableHandlers));
         Assert.Contains(services, static service => service.ServiceType == typeof(TestSpot));
         Assert.Contains(services, static service => service.ServiceType == typeof(TestEntrySpot));
 

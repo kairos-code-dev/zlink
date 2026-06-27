@@ -9,6 +9,7 @@ internal static class RlA5ProviderFlappingScenario
 {
     public static async Task RunAsync(
         ZLinkHttpClient consumer,
+        ZLinkHttpClient registry,
         ResilienceProcessManager processes,
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
@@ -66,7 +67,9 @@ internal static class RlA5ProviderFlappingScenario
                 await Task.Delay(100);
             }
 
-            var sawApiB = false;
+            await registry.Post("/topology/wait")
+                .Body(new TopologyWaitRequest("api-b", "Ready", 1))
+                .SubmitAsync<TopologyEntryResult[]>();
             for (var i = 0; i < 24; i++)
             {
                 var marker = $"rl-a5-up-{cycle}-{i}";
@@ -74,13 +77,10 @@ internal static class RlA5ProviderFlappingScenario
                     .Body(new ProfileRequest("fast", marker))
                     .SubmitAsync<ProfileReply>()).Body;
                 ScenarioAssert.That(reply.Value == "profile:fast", "RL-A5 up-window request returned an unexpected value.");
-                sawApiB = sawApiB || reply.ProviderRid == "api-b";
             }
 
-            ScenarioAssert.That(sawApiB, "RL-A5 did not route traffic to api-b after restart.");
-
             await providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest([$"marker=rl-a5-up-{cycle}-"], []))
+                .Body(new EvidenceWaitRequest([$"profile-request|rid=api-b|marker=rl-a5-up-{cycle}-"], []))
                 .SubmitAsync<string[]>();
         }
 

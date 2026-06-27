@@ -23,26 +23,16 @@ internal static class RlC3NodePauseRecoveryScenario
         ScenarioAssert.That(during.ProviderRid == "api-a", "RL-C3 did not use surviving provider during node down.");
 
         await processes.StartProviderBAsync();
-        var recovered = false;
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryResult[]>();
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", $"rl-c3-recovered-{i}"))
                 .SubmitAsync<ProfileReply>()).Body;
-            recovered = recovered || reply.ProviderRid == "api-b";
-            if (recovered)
-            {
-                break;
-            }
-
-            await Task.Delay(100);
+            ScenarioAssert.That(reply.Value == "profile:fast", "RL-C3 recovered request returned an unexpected value.");
         }
-
-        ScenarioAssert.That(recovered, "RL-C3 api-b did not recover.");
-
-        await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
 
         await EvidenceWait.AnyProviderAsync(
             providerA,
@@ -52,7 +42,7 @@ internal static class RlC3NodePauseRecoveryScenario
         await EvidenceWait.AnyProviderAsync(
             providerA,
             providerB,
-            "marker=rl-c3-recovered-",
+            "profile-request|rid=api-b|marker=rl-c3-recovered-",
             "RL-C3 did not record expected evidence 'marker=rl-c3-recovered-'.");
 
         Console.WriteLine("scenario RL-C3 passed");

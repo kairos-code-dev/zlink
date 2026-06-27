@@ -54,22 +54,17 @@ internal static class RlB5DrainInflightScenario
         await drainedProvider.Post("/admin/restore").SubmitRawAsync();
         await WaitForWeightAsync(drainedProvider, 100);
 
-        var restored = false;
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", $"rl-b5-after-{i}"))
                 .SubmitAsync<ProfileReply>()).Body;
-            restored = restored || reply.ProviderRid == slowProvider;
-            if (restored)
-            {
-                break;
-            }
-
-            await Task.Delay(100);
+            ScenarioAssert.That(reply.Value == "profile:fast", "RL-B5 restored request returned an unexpected value.");
         }
 
-        ScenarioAssert.That(restored, "RL-B5 restored provider did not receive follow-up traffic.");
+        await drainedProvider.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest([$"profile-request|rid={slowProvider}|marker=rl-b5-after-"], []))
+            .SubmitAsync<string[]>();
 
         Console.WriteLine("scenario RL-B5 passed");
     }

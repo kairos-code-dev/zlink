@@ -9,6 +9,7 @@ internal static class RlA4DrainAndGreenEndpointScenario
 {
     public static async Task RunAsync(
         ZLinkHttpClient consumer,
+        ZLinkHttpClient registry,
         ResilienceProcessManager processes,
         ZLinkHttpClient providerB)
     {
@@ -47,18 +48,17 @@ internal static class RlA4DrainAndGreenEndpointScenario
             await Task.Delay(100);
         }
 
-        var sawGreen = false;
-        for (var i = 0; i < 24; i++)
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryResult[]>();
+        for (var i = 0; i < 32; i++)
         {
             var marker = $"rl-a4-green-{i}";
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", marker))
                 .SubmitAsync<ProfileReply>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 green request returned an unexpected value.");
-            sawGreen = sawGreen || reply.ProviderRid == "api-b";
         }
-
-        ScenarioAssert.That(sawGreen, "RL-A4 did not route traffic to the green api-b provider after the old endpoint stopped.");
 
         await greenProvider.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(["marker=rl-a4-green-"], []))
@@ -85,18 +85,17 @@ internal static class RlA4DrainAndGreenEndpointScenario
             await Task.Delay(100);
         }
 
-        var restored = false;
-        for (var i = 0; i < 24; i++)
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryResult[]>();
+        for (var i = 0; i < 32; i++)
         {
             var marker = $"rl-a4-restored-{i}";
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", marker))
                 .SubmitAsync<ProfileReply>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 restored request returned an unexpected value.");
-            restored = restored || reply.ProviderRid == "api-b";
         }
-
-        ScenarioAssert.That(restored, "RL-A4 did not route traffic to api-b after the original endpoint was restored.");
 
         await providerB.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(["marker=rl-a4-restored-"], []))

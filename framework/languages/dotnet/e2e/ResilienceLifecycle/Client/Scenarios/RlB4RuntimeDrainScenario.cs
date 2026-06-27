@@ -37,24 +37,17 @@ internal static class RlB4RuntimeDrainScenario
         await providerB.Post("/admin/restore").SubmitRawAsync();
         await WaitForWeightAsync(providerB, 100);
 
-        var restored = false;
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", $"rl-b4-restored-{i}"))
                 .SubmitAsync<ProfileReply>()).Body;
-            restored = restored || reply.ProviderRid == "api-b";
-            if (restored)
-            {
-                break;
-            }
-
-            await Task.Delay(100);
+            ScenarioAssert.That(reply.Value == "profile:fast", "RL-B4 restored request returned an unexpected value.");
         }
 
-        ScenarioAssert.That(
-            restored,
-            "RL-B4 restored api-b did not re-enter routing.");
+        await providerB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-b4-restored-"], []))
+            .SubmitAsync<string[]>();
 
         Console.WriteLine("scenario RL-B4 passed");
     }

@@ -29,22 +29,16 @@ internal static class RlC2TopologyRecoveryScenario
         }
 
         await processes.StartProviderBAsync();
-        var restored = false;
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryResult[]>();
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", $"rl-c2-restored-{i}"))
                 .SubmitAsync<ProfileReply>()).Body;
-            restored = restored || reply.ProviderRid == "api-b";
-            if (restored)
-            {
-                break;
-            }
-
-            await Task.Delay(100);
+            ScenarioAssert.That(reply.Value == "profile:fast", "RL-C2 restored request returned an unexpected value.");
         }
-
-        ScenarioAssert.That(restored, "RL-C2 restored api-b did not re-enter routing.");
 
         await EvidenceWait.AnyProviderAsync(
             providerA,
@@ -54,7 +48,7 @@ internal static class RlC2TopologyRecoveryScenario
         await EvidenceWait.AnyProviderAsync(
             providerA,
             providerB,
-            "marker=rl-c2-restored-",
+            "profile-request|rid=api-b|marker=rl-c2-restored-",
             "RL-C2 did not record expected evidence 'marker=rl-c2-restored-'.");
 
         Console.WriteLine("scenario RL-C2 passed");
@@ -87,5 +81,3 @@ internal static class RlC2TopologyRecoveryScenario
         throw new InvalidOperationException(message);
     }
 }
-
-internal sealed record TopologyEntryResult(string? RoutingId, string Endpoint, string State);

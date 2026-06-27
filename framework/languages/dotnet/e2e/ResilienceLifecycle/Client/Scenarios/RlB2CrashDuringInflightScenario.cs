@@ -9,6 +9,7 @@ internal static class RlB2CrashDuringInflightScenario
 {
     public static async Task RunAsync(
         ZLinkHttpClient consumer,
+        ZLinkHttpClient registry,
         ResilienceProcessManager processes,
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
@@ -63,30 +64,18 @@ internal static class RlB2CrashDuringInflightScenario
             .Body(new WeightWaitRequest(100))
             .SubmitRawAsync();
 
-        ProfileReply? followUp = null;
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            try
-            {
-                followUp = (await consumer.Post("/profile/request")
-                    .Body(new ProfileRequest("fast", $"rl-b2-after-crash-{attempt}"))
-                    .SubmitAsync<ProfileReply>()).Body;
-                if (followUp.ProviderRid == "api-a")
-                {
-                    break;
-                }
-            }
-            catch
-            {
-                // The scenario keeps issuing real requests until routing converges to api-a.
-            }
-
-            await Task.Delay(100);
-        }
-
-        ScenarioAssert.That(followUp?.ProviderRid == "api-a", "RL-B2 surviving provider traffic failed.");
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitRequest("api-b", "Ready", 0))
+            .SubmitAsync<TopologyEntryResult[]>();
+        var followUp = (await consumer.Post("/profile/request/new-client")
+            .Body(new ProfileRequest("fast", "rl-b2-after-crash"))
+            .SubmitAsync<ProfileReply>()).Body;
+        ScenarioAssert.That(followUp.ProviderRid == "api-a", "RL-B2 surviving provider traffic failed.");
 
         await processes.StartProviderBAsync();
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryResult[]>();
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
@@ -105,16 +94,13 @@ internal static class RlB2CrashDuringInflightScenario
             await Task.Delay(100);
         }
 
-        var restored = false;
-        for (var i = 0; i < 24; i++)
+        for (var i = 0; i < 32; i++)
         {
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileRequest("fast", $"rl-b2-restored-{i}"))
                 .SubmitAsync<ProfileReply>()).Body;
-            restored = restored || reply.ProviderRid == "api-b";
+            ScenarioAssert.That(reply.Value == "profile:fast", "RL-B2 restored request returned an unexpected value.");
         }
-
-        ScenarioAssert.That(restored, "RL-B2 did not route traffic to api-b after restart.");
 
         await providerB.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(["marker=rl-b2-restored-"], []))

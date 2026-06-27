@@ -1,0 +1,19 @@
+using RegistrationCodec.Client;
+using Zlink.HttpClient;
+
+namespace RegistrationCodec.Client.Scenarios;
+
+// RC-B3 verifies MessagePack codec round trip.
+internal static class RcB3MessagePackCodecScenario
+{
+    public static async Task RunAsync(ZLinkHttpClient server)
+    {
+        var result = (await server.Post("/codec/roundtrip").SubmitAsync<CodecScenarioResult>()).Body;
+        ScenarioAssert.That(result.MessagePackValue.Contains("echo:rc-b3", StringComparison.Ordinal), "RC-B3 MessagePack reply mismatch.");
+        ScenarioAssert.That(
+            result.MessagePackValue.Contains("content:application/x-msgpack", StringComparison.Ordinal),
+            "RC-B3 MessagePack content type mismatch.");
+
+        Console.WriteLine("scenario RC-B3 passed");
+    }
+}

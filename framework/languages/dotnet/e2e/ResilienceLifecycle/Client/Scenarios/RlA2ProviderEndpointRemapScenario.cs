@@ -9,6 +9,7 @@ internal static class RlA2ProviderEndpointRemapScenario
 {
     public static async Task RunAsync(
         ZLinkHttpClient consumer,
+        ZLinkHttpClient registry,
         ResilienceProcessManager processes,
         ZLinkHttpClient providerB)
     {
@@ -17,7 +18,10 @@ internal static class RlA2ProviderEndpointRemapScenario
 
         var replacement = await processes.StartProviderBRemapAsync();
         using var replacementProvider = ZLinkHttpClient.Create(replacement.Url).Json().Build();
-        await WaitForProviderRidAsync(consumer, "api-b", "rl-a2-rescheduled");
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryResult[]>();
+        await SendRequestBatchAsync(consumer, "rl-a2-rescheduled");
         await replacementProvider.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(["marker=rl-a2-rescheduled-"], []))
             .SubmitAsync<string[]>();
@@ -27,7 +31,10 @@ internal static class RlA2ProviderEndpointRemapScenario
 
         await processes.StartProviderBAsync();
         await WaitUntilAvailableAsync(providerB);
-        await WaitForProviderRidAsync(consumer, "api-b", "rl-a2-original-restored");
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryResult[]>();
+        await SendRequestBatchAsync(consumer, "rl-a2-original-restored");
         await providerB.Post("/evidence/wait")
             .Body(new EvidenceWaitRequest(["marker=rl-a2-original-restored-"], []))
             .SubmitAsync<string[]>();
@@ -35,12 +42,10 @@ internal static class RlA2ProviderEndpointRemapScenario
         Console.WriteLine("scenario RL-A2 passed");
     }
 
-    static async Task WaitForProviderRidAsync(
+    static async Task SendRequestBatchAsync(
         ZLinkHttpClient consumer,
-        string providerRid,
         string markerPrefix)
     {
-        var observed = false;
         for (var i = 0; i < 32; i++)
         {
             var marker = $"{markerPrefix}-{i}";
@@ -48,14 +53,7 @@ internal static class RlA2ProviderEndpointRemapScenario
                 .Body(new ProfileRequest("fast", marker))
                 .SubmitAsync<ProfileReply>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A2 request returned an unexpected value.");
-            observed = observed || reply.ProviderRid == providerRid;
-            if (observed)
-            {
-                return;
-            }
         }
-
-        ScenarioAssert.That(false, $"RL-A2 did not observe traffic on {providerRid} for {markerPrefix}.");
     }
 
     static async Task WaitUntilAvailableAsync(ZLinkHttpClient http)

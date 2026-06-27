@@ -6,18 +6,27 @@ namespace YieldDispatch.Client.Scenarios;
 internal static class YdD4SessionRelayActorYieldScenario
 {
     public static async Task RunAsync(
-        YieldDispatchScenarioContext context,
+        IZlinkStreamConnector client,
+        string sessionBStreamEndpoint,
         YieldActorScenarioContext actors)
     {
-        await using var unbound = YieldConnectorFactory.Create(context.Options.SessionBStreamEndpoint);
+        await using var unbound = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(sessionBStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(60),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024,
+        });
         await unbound.Connect.Async();
 
         var requestId = $"YD-D4-{Guid.NewGuid():N}";
-        var push = context.Client.WaitFor<ActorPushNotify>()
+        var push = client.WaitFor<ActorPushNotify>()
             .Timeout(TimeSpan.FromSeconds(30))
             .Async()
             .AsTask();
-        var reply = await context.Client.Request(new ActorPushYieldReq(requestId, 250, "bound-session-push"))
+        var reply = await client.Request(new ActorPushYieldReq(requestId, 250, "bound-session-push"))
             .PacketName("ActorPushYieldReq")
             .Metadata(YieldDispatchNames.ActorIdMetadata, actors.ActorA)
             .Timeout(TimeSpan.FromSeconds(30))
@@ -30,7 +39,11 @@ internal static class YdD4SessionRelayActorYieldScenario
         await Task.Delay(150);
         ScenarioAssert.That(unbound.ReceivedCount("ActorPushNotify") == 0, "YD-D4 unbound session received actor push.");
 
-        var evidence = await context.ReadPlayEvidenceAsync(requestId, "play-a");
+        var evidence = await client.Request(new YieldEvidenceReq(requestId))
+            .PacketName("YieldEvidenceReq")
+            .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Async<YieldEvidenceReply>();
         ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "actor-push-yield-started",
             "actor-push-yield-released",

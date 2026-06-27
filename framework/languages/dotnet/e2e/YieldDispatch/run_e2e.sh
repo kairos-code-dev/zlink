@@ -33,7 +33,7 @@ static_checks() {
   fi
   rm -f /tmp/zlink-yield-dispatch-static-http.$$
 
-  if rg -n '\.Yield' "$SCRIPT_DIR" -g '*.cs' | rg -v 'Server/Play/' >/tmp/zlink-yield-dispatch-static-yield.$$; then
+  if rg -n '\.Yield(<|\()' "$SCRIPT_DIR" -g '*.cs' | rg -v 'Server/Play/' >/tmp/zlink-yield-dispatch-static-yield.$$; then
     cat /tmp/zlink-yield-dispatch-static-yield.$$ >&2
     rm -f /tmp/zlink-yield-dispatch-static-yield.$$
     echo "YieldDispatch may only call .Yield from Spot/Entry Spot handlers in Server/Play." >&2
@@ -41,22 +41,30 @@ static_checks() {
   fi
   rm -f /tmp/zlink-yield-dispatch-static-yield.$$
 
-  if ! rg -q 'YieldConnectorFactory\.Create' "$SCRIPT_DIR/Client/Support/YieldDispatchScenarioContext.cs"; then
-    echo "YieldDispatch full scenario context must create and use a real stream connector." >&2
+  if rg -n 'YieldConnectorFactory|YieldDispatchScenarioContext|WaitForPlayEvidenceAsync|ReadPlayEvidenceAsync' "$SCRIPT_DIR/Client" -g '*.cs' >/tmp/zlink-yield-dispatch-static-helper.$$; then
+    cat /tmp/zlink-yield-dispatch-static-helper.$$ >&2
+    rm -f /tmp/zlink-yield-dispatch-static-helper.$$
+    echo "YieldDispatch client scenarios must use the stream connector directly instead of thin helpers." >&2
+    return 1
+  fi
+  rm -f /tmp/zlink-yield-dispatch-static-helper.$$
+
+  if ! rg -q 'ZlinkStreamConnectorFactory\.Create' "$SCRIPT_DIR/Client/Program.cs"; then
+    echo "YieldDispatch full scenario must create and use a real stream connector directly." >&2
     return 1
   fi
 
   local scenario_file
   for scenario_file in "$SCRIPT_DIR"/Client/Scenarios/Yd*.cs; do
-    if ! rg -q 'YieldDispatchScenarioContext context' "$scenario_file"; then
+    if ! rg -q 'IZlinkStreamConnector client' "$scenario_file"; then
       echo "$scenario_file" >&2
-      echo "YieldDispatch YD scenario files must use the stream connector scenario context." >&2
+      echo "YieldDispatch YD scenario files must receive the stream connector directly." >&2
       return 1
     fi
   done
 
-  if ! rg -q 'YieldConnectorFactory\.Create' "$SCRIPT_DIR/Client/Scenarios/ShutdownYieldScenario.cs"; then
-    echo "YieldDispatch shutdown scenario must create and use a real stream connector." >&2
+  if ! rg -q 'ZlinkStreamConnectorFactory\.Create' "$SCRIPT_DIR/Client/Scenarios/ShutdownYieldScenario.cs"; then
+    echo "YieldDispatch shutdown scenario must create and use a real stream connector directly." >&2
     return 1
   fi
 }
@@ -227,7 +235,8 @@ wait_file_contains() {
   local pattern="$2"
   local failure="$3"
   local pid="${4:-}"
-  for _ in $(seq 1 300); do
+  local attempts="${5:-300}"
+  for _ in $(seq 1 "$attempts"); do
     if [[ -f "$file" ]] && grep -F "$pattern" "$file" >/dev/null 2>&1; then
       return 0
     fi
@@ -378,7 +387,13 @@ wait_file_contains \
   "YD-E3 pending yield marker was not observed before shutdown." \
   "$SHUTDOWN_CLIENT_PID"
 terminate_gracefully play-a "$PLAY_A_PID"
-wait_process_exit client-shutdown-wait "$SHUTDOWN_CLIENT_PID"
+wait_file_contains \
+  "$LOG_DIR/client-shutdown-wait.stdout.log" \
+  "yield-dispatch shutdown wait result=passed" \
+  "YD-E3 shutdown client did not observe the public closed/cancelled error." \
+  "$SHUTDOWN_CLIENT_PID" \
+  900
+wait "$SHUTDOWN_CLIENT_PID"
 cat "$LOG_DIR/client-shutdown-wait.stdout.log"
 
 start_server play-a "$PLAY_DLL" \

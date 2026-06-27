@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink;
-using YieldDispatch.Delay.Support;
+using YieldDispatch.Server.Delay;
 using YieldDispatch.Shared;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;

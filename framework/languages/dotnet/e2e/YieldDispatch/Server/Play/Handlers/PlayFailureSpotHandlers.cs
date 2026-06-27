@@ -2,8 +2,10 @@ using YieldDispatch.Shared;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
+using YieldDispatch.Server.Play.Handlers;
+using YieldDispatch.Server.Play.Spots;
 
-namespace YieldDispatch.Server.Play;
+namespace YieldDispatch.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("YieldTimeoutReq")]
 internal sealed class YieldTimeoutHandler(EvidenceStore evidence)

@@ -14,6 +14,9 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Actors;
+using YieldDispatch.Server.Session.Support;
+using SessionServerOptions = YieldDispatch.Server.Session.Support.SessionOptions;
+using YieldStreamSession = YieldDispatch.Server.Session.Support.YieldSession;
 
 namespace YieldDispatch.Server.Session;
 
@@ -21,7 +24,7 @@ internal static class SessionHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        var options = SessionOptions.Parse(args);
+        var options = SessionServerOptions.Parse(args);
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
@@ -57,7 +60,7 @@ internal static class SessionHostFactory
                 .AddActorFactory<SessionYieldActorFactory>(YieldDispatchNames.ActorType);
             framework.AddStreamNode(YieldDispatchNames.StreamNode)
                 .Bind(options.StreamEndpoint)
-                .RegisterSession<YieldSession>();
+                .RegisterSession<YieldStreamSession>();
         });
 
         var app = builder.Build();

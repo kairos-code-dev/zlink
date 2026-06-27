@@ -8,7 +8,15 @@ internal static class ShutdownYieldScenario
 {
     public static async Task RunWaitAsync(ClientOptions options)
     {
-        await using var client = YieldConnectorFactory.Create(options.SessionAStreamEndpoint);
+        await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(options.SessionAStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(60),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024,
+        });
         await client.Connect.Async();
 
         try
@@ -28,7 +36,15 @@ internal static class ShutdownYieldScenario
 
     public static async Task RunRecoveryAsync(ClientOptions options)
     {
-        await using var client = YieldConnectorFactory.Create(options.SessionAStreamEndpoint);
+        await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(options.SessionAStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(60),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024,
+        });
         await client.Connect.Async();
 
         var result = await client.Request(new YieldShutdownRecoveryReq(options.RequestId, options.SpotRid))

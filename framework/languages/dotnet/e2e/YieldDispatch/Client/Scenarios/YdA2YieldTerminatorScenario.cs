@@ -5,19 +5,27 @@ namespace YieldDispatch.Client.Scenarios;
 
 internal static class YdA2YieldTerminatorScenario
 {
-    public static async Task<string> RunAsync(YieldDispatchScenarioContext context, string spotRid)
+    public static async Task<string> RunAsync(IZlinkStreamConnector client, string spotRid)
     {
         var requestId = $"YD-A2-{Guid.NewGuid():N}";
-        await context.Client.Send(new YieldCommand(requestId, 350, "corr-a2"))
+        await client.Send(new YieldCommand(requestId, 350, "corr-a2"))
             .PacketName("YieldCommand")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
-        await context.WaitForPlayEvidenceAsync(requestId, "yield-released");
-        await context.Client.Send(new ProbeCommand(requestId, "yield-probe"))
+        await client.Request(new YieldEvidenceWaitReq(requestId, "yield-released"))
+            .PacketName("YieldEvidenceWaitReq")
+            .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Async<YieldEvidenceReply>();
+        await client.Send(new ProbeCommand(requestId, "yield-probe"))
             .PacketName("ProbeCommand")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
-        var evidence = await context.WaitForPlayEvidenceAsync(requestId, "yield-completed");
+        var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "yield-completed"))
+            .PacketName("YieldEvidenceWaitReq")
+            .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Async<YieldEvidenceReply>();
         ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "yield-started",
             "yield-released",

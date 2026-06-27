@@ -5,14 +5,18 @@ namespace YieldDispatch.Client.Scenarios;
 
 internal static class YdC2TimerReentryScenario
 {
-    public static async Task<string> RunAsync(YieldDispatchScenarioContext context, string spotRid)
+    public static async Task<string> RunAsync(IZlinkStreamConnector client, string spotRid)
     {
         var requestId = $"YD-C2-{Guid.NewGuid():N}";
-        await context.Client.Send(new TimerStartCommand(requestId, $"{requestId}-same", "yield-then-next", 50, 350))
+        await client.Send(new TimerStartCommand(requestId, $"{requestId}-same", "yield-then-next", 50, 350))
             .PacketName("TimerStartCommand")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
-        var evidence = await context.WaitForPlayEvidenceAsync(requestId, "timer-next-completed");
+        var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "timer-next-completed"))
+            .PacketName("YieldEvidenceWaitReq")
+            .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Async<YieldEvidenceReply>();
         ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "timer-yield-started",
             "timer-yield-released",
@@ -20,7 +24,7 @@ internal static class YdC2TimerReentryScenario
             "timer-yield-completed",
             "timer-next-started",
             "timer-next-completed"]);
-        await context.Client.Send(new TimerStopCommand(requestId))
+        await client.Send(new TimerStopCommand(requestId))
             .PacketName("TimerStopCommand")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();

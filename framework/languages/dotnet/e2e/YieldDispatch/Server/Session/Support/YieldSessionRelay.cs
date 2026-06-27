@@ -14,8 +14,9 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Actors;
+using YieldDispatch.Server.Session.Support;
 
-namespace YieldDispatch.Server.Session;
+namespace YieldDispatch.Server.Session.Support;
 
 internal sealed partial class YieldSession
 {

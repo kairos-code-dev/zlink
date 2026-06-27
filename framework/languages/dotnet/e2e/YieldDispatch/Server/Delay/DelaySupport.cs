@@ -1,4 +1,4 @@
-namespace YieldDispatch.Delay.Support;
+namespace YieldDispatch.Server.Delay;
 
 internal sealed record NodeOptions(string Rid);
 

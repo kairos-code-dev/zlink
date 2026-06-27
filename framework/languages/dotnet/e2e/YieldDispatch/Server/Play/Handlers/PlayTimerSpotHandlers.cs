@@ -2,8 +2,10 @@ using YieldDispatch.Shared;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
+using YieldDispatch.Server.Play.Handlers;
+using YieldDispatch.Server.Play.Spots;
 
-namespace YieldDispatch.Server.Play;
+namespace YieldDispatch.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("TimerStartReq")]
 internal sealed class TimerStartHandler(EvidenceStore evidence)

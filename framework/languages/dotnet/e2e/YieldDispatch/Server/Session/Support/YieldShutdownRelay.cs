@@ -1,7 +1,9 @@
+using Systems.Zlink;
 using YieldDispatch.Shared;
 using Zlink.Framework.Contracts.Channels;
+using YieldDispatch.Server.Session.Support;
 
-namespace YieldDispatch.Server.Session;
+namespace YieldDispatch.Server.Session.Support;
 
 internal sealed partial class YieldSession
 {
@@ -15,12 +17,13 @@ internal sealed partial class YieldSession
             new EnsureSpotReq(request.SpotRid),
             "EnsureSpotReq",
             cancellationToken);
-        await RequestSpotWithRetryAsync<YieldDispatchReply>(
-            routes,
-            request.SpotRid,
-            new YieldReq(request.RequestId, request.DelayMs, "shutdown"),
-            "YieldReq",
-            cancellationToken);
+        await routes.Request(
+                YieldDispatchNames.SpotRouteChannel,
+                RoutingId.From(request.SpotRid),
+                new YieldReq(request.RequestId, request.DelayMs, "shutdown"))
+            .PacketName("YieldReq")
+            .Timeout(TimeSpan.FromSeconds(90))
+            .Async<YieldDispatchReply>(cancellationToken);
 
         var evidence = await RequestPlayControlWithRetryAsync<YieldEvidenceReply>(
             routes,
@@ -40,11 +43,11 @@ internal sealed partial class YieldSession
             new EnsureSpotReq(request.SpotRid),
             "EnsureSpotReq",
             cancellationToken);
-        await SendSpotWithRetryAsync(
+        await RequestSpotWithRetryAsync<YieldDispatchReply>(
             routes,
             request.SpotRid,
-            new ProbeCommand(request.RequestId, "shutdown-recovery-probe"),
-            "ProbeCommand",
+            new ProbeReq(request.RequestId, "shutdown-recovery-probe"),
+            "ProbeReq",
             cancellationToken);
         await RequestPlayControlWithRetryAsync<YieldEvidenceReply>(
             routes,

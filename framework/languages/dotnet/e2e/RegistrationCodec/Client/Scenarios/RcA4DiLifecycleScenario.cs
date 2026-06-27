@@ -1,6 +1,6 @@
-using RegistrationCodec.Client;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;
+using RegistrationCodec.Client.Support;
 
 namespace RegistrationCodec.Client.Scenarios;
 
@@ -16,25 +16,18 @@ internal static class RcA4DiLifecycleScenario
             first.Value == "echo:rc-a4-1" && second.Value == "echo:rc-a4-2",
             "RC-A4 DI reply mismatch.");
 
-        await EvidenceWait.ForAsync(
-            server,
-            new EvidenceWaitRequest(["di|value=rc-a4-1", "di|value=rc-a4-2"]),
-            evidence =>
-            {
-                var di = evidence.Where(line => line.Contains("di|", StringComparison.Ordinal)).ToArray();
-                if (di.Length < 2)
-                {
-                    return false;
-                }
-
-                var singletonIds = di.Select(line => EvidenceText.ExtractValue(line, "singleton"))
-                    .Distinct(StringComparer.Ordinal)
-                    .Count();
-                var scopedIds = di.Select(line => EvidenceText.ExtractValue(line, "scoped"))
-                    .Distinct(StringComparer.Ordinal)
-                    .Count();
-                return singletonIds == 1 && scopedIds >= 2;
-            },
+        var evidence = (await server.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(["di|value=rc-a4-1", "di|value=rc-a4-2"]))
+            .SubmitAsync<string[]>()).Body;
+        var di = evidence.Where(line => line.Contains("di|", StringComparison.Ordinal)).ToArray();
+        var singletonIds = di.Select(line => EvidenceText.ExtractValue(line, "singleton"))
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        var scopedIds = di.Select(line => EvidenceText.ExtractValue(line, "scoped"))
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        ScenarioAssert.That(
+            di.Length >= 2 && singletonIds == 1 && scopedIds >= 2,
             "RC-A4 expected stable singleton and per-dispatch scoped dependencies.");
 
         Console.WriteLine("scenario RC-A4 passed");

@@ -10,7 +10,7 @@ using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 
-namespace RegistrationCodec.CodecRequester;
+namespace RegistrationCodec.Server.CodecRequester;
 
 internal static class CodecRequesterHostFactory
 {

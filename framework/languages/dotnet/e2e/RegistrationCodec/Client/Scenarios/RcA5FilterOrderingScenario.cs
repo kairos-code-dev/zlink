@@ -1,6 +1,6 @@
-using RegistrationCodec.Client;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;
+using RegistrationCodec.Client.Support;
 
 namespace RegistrationCodec.Client.Scenarios;
 
@@ -10,10 +10,11 @@ internal static class RcA5FilterOrderingScenario
     public static async Task RunAsync(ZLinkHttpClient server)
     {
         await server.Post("/registration/di-filter-order").SubmitAsync<EchoReply[]>();
-        var lines = await EvidenceWait.ForAsync(
-            server,
-            new EvidenceWaitRequest(["filter|", "packet=EchoDi"]),
-            evidence => evidence.Count(line => line.Contains("filter|", StringComparison.Ordinal)
+        var lines = (await server.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(["filter|", "packet=EchoDi"]))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            lines.Count(line => line.Contains("filter|", StringComparison.Ordinal)
                 && line.Contains("packet=EchoDi", StringComparison.Ordinal)) >= 4,
             "RC-A5 filter evidence missing.");
 

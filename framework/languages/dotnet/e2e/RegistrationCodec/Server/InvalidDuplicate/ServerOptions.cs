@@ -1,4 +1,6 @@
-namespace RegistrationCodec.Server.Configuration;
+using RegistrationCodec.Server.InvalidDuplicate.Handlers;
+using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
+namespace RegistrationCodec.Server.InvalidDuplicate;
 
 public sealed record ServerOptions(
     string Rid,

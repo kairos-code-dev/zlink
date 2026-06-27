@@ -1,9 +1,11 @@
 using Google.Protobuf.WellKnownTypes;
-using RegistrationCodec.Server.Infrastructure;
+using RegistrationCodec.Server.Main.Infrastructure;
 using RegistrationCodec.Shared;
 using Zlink.Framework.Contracts.Handlers;
+using RegistrationCodec.Server.Main.Endpoints;
+using RegistrationCodec.Server.Main;
 
-namespace RegistrationCodec.Server.Handlers;
+namespace RegistrationCodec.Server.Main.Handlers;
 
 internal sealed class JsonEchoRequestHandler(EvidenceStore evidence)
     : IZLinkRequestHandler<JsonEchoReq, EchoReply>

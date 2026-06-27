@@ -1,4 +1,6 @@
-namespace RegistrationCodec.Server.Infrastructure;
+using RegistrationCodec.Server.InvalidDuplicate.Handlers;
+using RegistrationCodec.Server.InvalidDuplicate;
+namespace RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
 
 internal sealed class SingletonProbe
 {

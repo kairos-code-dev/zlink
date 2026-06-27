@@ -1,4 +1,7 @@
-namespace RegistrationCodec.Server.Configuration;
+using RegistrationCodec.Server.Main.Endpoints;
+using RegistrationCodec.Server.Main.Handlers;
+using RegistrationCodec.Server.Main.Infrastructure;
+namespace RegistrationCodec.Server.Main;
 
 public sealed record ServerOptions(
     string Rid,

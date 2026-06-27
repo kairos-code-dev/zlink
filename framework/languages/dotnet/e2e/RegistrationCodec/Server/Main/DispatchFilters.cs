@@ -1,7 +1,9 @@
-using RegistrationCodec.Server.Infrastructure;
+using RegistrationCodec.Server.Main.Infrastructure;
 using Zlink.Framework.Contracts.Handlers;
+using RegistrationCodec.Server.Main.Endpoints;
+using RegistrationCodec.Server.Main.Handlers;
 
-namespace RegistrationCodec.Server.Filters;
+namespace RegistrationCodec.Server.Main;
 
 internal sealed class FirstFilter(EvidenceStore evidence) : IZLinkHandlerFilter
 {

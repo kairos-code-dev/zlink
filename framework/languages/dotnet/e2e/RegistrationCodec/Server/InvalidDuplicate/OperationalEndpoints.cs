@@ -1,9 +1,9 @@
-using RegistrationCodec.Server.Configuration;
-using RegistrationCodec.Server.Infrastructure;
+using RegistrationCodec.Server.InvalidDuplicate;
 using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
 using RegistrationCodec.Shared;
+using RegistrationCodec.Server.InvalidDuplicate.Handlers;
 
-namespace RegistrationCodec.Server.InvalidDuplicate.Endpoints;
+namespace RegistrationCodec.Server.InvalidDuplicate;
 
 internal static class OperationalEndpoints
 {

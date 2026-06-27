@@ -1,8 +1,8 @@
 using Google.Protobuf.WellKnownTypes;
-using RegistrationCodec.Server.Infrastructure;
 using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
 using RegistrationCodec.Shared;
 using Zlink.Framework.Contracts.Handlers;
+using RegistrationCodec.Server.InvalidDuplicate;
 
 namespace RegistrationCodec.Server.InvalidDuplicate.Handlers;
 

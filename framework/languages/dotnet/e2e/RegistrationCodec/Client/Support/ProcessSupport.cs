@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Zlink.HttpClient;
 
-namespace RegistrationCodec.Client;
+namespace RegistrationCodec.Client.Support;
 
 internal static class ProcessSupport
 {

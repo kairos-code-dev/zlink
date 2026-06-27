@@ -1,5 +1,6 @@
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;
+using RegistrationCodec.Client.Support;
 
 namespace RegistrationCodec.Client.Scenarios;
 
@@ -11,9 +12,11 @@ internal static class AttributeRegistrationScenario
         var reply = (await server.Post("/registration/attribute").SubmitAsync<EchoReply>()).Body;
         ScenarioAssert.That(reply.Value == "echo:rc-a2", "RC-A2 request reply mismatch.");
 
-        await EvidenceWait.ForAllAsync(
-            server,
-            ["echo-command|variant=attr|id=cmd-rc-a2"],
+        var evidence = (await server.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(["echo-command|variant=attr|id=cmd-rc-a2"]))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            evidence.Any(line => line.Contains("echo-command|variant=attr|id=cmd-rc-a2", StringComparison.Ordinal)),
             "RC-A2 send evidence missing.");
 
         Console.WriteLine("scenario RC-A2 passed");

@@ -1,6 +1,6 @@
-using RegistrationCodec.Client;
 using RegistrationCodec.Client.Scenarios;
 using Zlink.HttpClient;
+using RegistrationCodec.Client.Support;
 
 var options = ClientOptions.Parse(args);
 Directory.CreateDirectory(options.LogDir);

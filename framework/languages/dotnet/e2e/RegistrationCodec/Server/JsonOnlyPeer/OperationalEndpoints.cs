@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using RegistrationCodec.Server.Infrastructure;
-using RegistrationCodec.Server.JsonOnlyPeer.Configuration;
+using RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 using RegistrationCodec.Shared;
+using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
 
-namespace RegistrationCodec.Server.Endpoints;
+namespace RegistrationCodec.Server.JsonOnlyPeer;
 
 internal static class OperationalEndpoints
 {

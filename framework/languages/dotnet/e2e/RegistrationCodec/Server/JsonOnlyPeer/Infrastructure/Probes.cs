@@ -1,4 +1,6 @@
-namespace RegistrationCodec.Server.Infrastructure;
+using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
+using RegistrationCodec.Server.JsonOnlyPeer;
+namespace RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 
 internal sealed class SingletonProbe
 {

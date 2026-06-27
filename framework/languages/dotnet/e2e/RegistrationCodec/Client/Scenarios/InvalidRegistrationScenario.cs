@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RegistrationCodec.Client.Support;
 
 namespace RegistrationCodec.Client.Scenarios;
 

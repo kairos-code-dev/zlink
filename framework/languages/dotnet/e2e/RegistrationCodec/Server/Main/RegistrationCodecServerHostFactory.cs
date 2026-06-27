@@ -3,18 +3,17 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using RegistrationCodec.Server.Configuration;
-using RegistrationCodec.Server.Endpoints;
-using RegistrationCodec.Server.Filters;
-using RegistrationCodec.Server.Handlers;
-using RegistrationCodec.Server.Infrastructure;
+using RegistrationCodec.Server.Main;
+using RegistrationCodec.Server.Main.Endpoints;
+using RegistrationCodec.Server.Main.Handlers;
+using RegistrationCodec.Server.Main.Infrastructure;
 using RegistrationCodec.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Dispatch;
 
-namespace RegistrationCodec.Server;
+namespace RegistrationCodec.Server.Main;
 
 public static class RegistrationCodecServerHostFactory
 {

@@ -1,8 +1,8 @@
-using RegistrationCodec.Server.Infrastructure;
 using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
 using Zlink.Framework.Contracts.Handlers;
+using RegistrationCodec.Server.InvalidDuplicate.Handlers;
 
-namespace RegistrationCodec.Server.InvalidDuplicate.Filters;
+namespace RegistrationCodec.Server.InvalidDuplicate;
 
 internal sealed class FirstFilter(EvidenceStore evidence) : IZLinkHandlerFilter
 {

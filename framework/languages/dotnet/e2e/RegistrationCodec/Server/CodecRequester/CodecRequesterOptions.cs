@@ -1,4 +1,4 @@
-namespace RegistrationCodec.CodecRequester;
+namespace RegistrationCodec.Server.CodecRequester;
 
 internal sealed record CodecRequesterOptions(
     string Rid,

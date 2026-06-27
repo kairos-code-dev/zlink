@@ -3,18 +3,16 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using RegistrationCodec.Server.Endpoints;
-using RegistrationCodec.Server.Filters;
-using RegistrationCodec.Server.Handlers;
-using RegistrationCodec.Server.Infrastructure;
-using RegistrationCodec.Server.JsonOnlyPeer.Configuration;
+using RegistrationCodec.Server.JsonOnlyPeer;
+using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
+using RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 using RegistrationCodec.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Dispatch;
 
-namespace RegistrationCodec.Server;
+namespace RegistrationCodec.Server.JsonOnlyPeer;
 
 public static class RegistrationCodecServerHostFactory
 {

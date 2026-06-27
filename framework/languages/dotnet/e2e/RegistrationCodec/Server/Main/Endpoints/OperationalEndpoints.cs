@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using RegistrationCodec.Server.Configuration;
-using RegistrationCodec.Server.Infrastructure;
+using RegistrationCodec.Server.Main;
+using RegistrationCodec.Server.Main.Infrastructure;
 using RegistrationCodec.Shared;
+using RegistrationCodec.Server.Main.Handlers;
 
-namespace RegistrationCodec.Server.Endpoints;
+namespace RegistrationCodec.Server.Main.Endpoints;
 
 internal static class OperationalEndpoints
 {

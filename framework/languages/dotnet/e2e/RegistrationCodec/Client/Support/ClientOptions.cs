@@ -1,4 +1,4 @@
-namespace RegistrationCodec.Client;
+namespace RegistrationCodec.Client.Support;
 
 internal sealed record ClientOptions(
     string ChannelEndpoint,

@@ -1,5 +1,5 @@
-using RegistrationCodec.Client;
 using Zlink.HttpClient;
+using RegistrationCodec.Client.Support;
 
 namespace RegistrationCodec.Client.Scenarios;
 

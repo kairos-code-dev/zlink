@@ -1,8 +1,9 @@
-using RegistrationCodec.Server.Infrastructure;
+using RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 using RegistrationCodec.Shared;
 using Zlink.Framework.Contracts.Handlers;
+using RegistrationCodec.Server.JsonOnlyPeer;
 
-namespace RegistrationCodec.Server.Handlers;
+namespace RegistrationCodec.Server.JsonOnlyPeer.Handlers;
 
 internal sealed class DiEchoRequestHandler(
     EvidenceStore evidence,

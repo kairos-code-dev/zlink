@@ -1,10 +1,7 @@
 using Google.Protobuf.WellKnownTypes;
-using RegistrationCodec.Server.Configuration;
-using RegistrationCodec.Server.Infrastructure;
-using RegistrationCodec.Server.InvalidDuplicate.Endpoints;
-using RegistrationCodec.Server.InvalidDuplicate.Filters;
-using RegistrationCodec.Server.InvalidDuplicate.Handlers;
+using RegistrationCodec.Server.InvalidDuplicate;
 using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
+using RegistrationCodec.Server.InvalidDuplicate.Handlers;
 using RegistrationCodec.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;

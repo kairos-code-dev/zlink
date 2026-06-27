@@ -1,4 +1,6 @@
-namespace RegistrationCodec.Server.JsonOnlyPeer.Configuration;
+using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
+using RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
+namespace RegistrationCodec.Server.JsonOnlyPeer;
 
 public sealed record ServerOptions(
     string Rid,

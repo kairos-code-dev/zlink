@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using RegistrationCodec.Server.JsonOnlyPeer.Handlers;
+using RegistrationCodec.Server.JsonOnlyPeer;
 
-namespace RegistrationCodec.Server.Infrastructure;
+namespace RegistrationCodec.Server.JsonOnlyPeer.Infrastructure;
 
 internal sealed class EvidenceStore
 {

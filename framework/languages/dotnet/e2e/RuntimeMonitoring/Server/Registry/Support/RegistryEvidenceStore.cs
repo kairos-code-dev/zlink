@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using RuntimeMonitoring.Server.Registry.Handlers;
+using RuntimeMonitoring.Server.Registry;
 
-namespace RuntimeMonitoring.Server.Registry;
+namespace RuntimeMonitoring.Server.Registry.Support;
 
 internal sealed class EvidenceStore
 {

@@ -9,8 +9,9 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Handlers;
+using RuntimeMonitoring.Server.Trigger;
 
-namespace RuntimeMonitoring.Trigger;
+namespace RuntimeMonitoring.Server.Trigger.Support;
 
 internal static class TriggerValidation
 {

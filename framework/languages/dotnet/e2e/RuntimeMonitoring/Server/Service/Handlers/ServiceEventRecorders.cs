@@ -1,6 +1,8 @@
+using RuntimeMonitoring.Server.Service;
+using RuntimeMonitoring.Server.Service.Support;
 using Zlink.Framework.Contracts.Eventing;
 
-namespace RuntimeMonitoring.Server.Service;
+namespace RuntimeMonitoring.Server.Service.Handlers;
 
 internal sealed class SocketEventRecorder(EvidenceStore evidence) : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
 {

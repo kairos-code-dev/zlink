@@ -1,4 +1,4 @@
-namespace RuntimeMonitoring.Client;
+namespace RuntimeMonitoring.Client.Support;
 
 internal sealed record ClientOptions(
     string TriggerUrl,

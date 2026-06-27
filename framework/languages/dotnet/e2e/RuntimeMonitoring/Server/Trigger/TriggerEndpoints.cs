@@ -3,8 +3,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using RuntimeMonitoring.Shared;
 using Zlink.Framework.Contracts.Channels;
+using RuntimeMonitoring.Server.Trigger.Support;
 
-namespace RuntimeMonitoring.Trigger;
+namespace RuntimeMonitoring.Server.Trigger;
 
 internal static class TriggerEndpoints
 {

@@ -1,5 +1,5 @@
-using RuntimeMonitoring.Client;
 using RuntimeMonitoring.Client.Scenarios;
+using RuntimeMonitoring.Client.Support;
 
 var options = ClientOptions.Parse(args);
 

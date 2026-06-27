@@ -1,4 +1,6 @@
-namespace RuntimeMonitoring.Server.Registry;
+using RuntimeMonitoring.Server.Registry.Handlers;
+using RuntimeMonitoring.Server.Registry;
+namespace RuntimeMonitoring.Server.Registry.Support;
 
 internal sealed record ServerOptions(
     string Role,

@@ -1,10 +1,11 @@
+using RuntimeMonitoring.Server.Service;
+using RuntimeMonitoring.Server.Service.Support;
 using RuntimeMonitoring.Shared;
-using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 
-namespace RuntimeMonitoring.Server.Service;
+namespace RuntimeMonitoring.Server.Service.Handlers;
 
 internal sealed class ProfileRequestHandler(EvidenceStore evidence)
     : IZLinkRequestHandler<ProfileRequest, ProfileReply>

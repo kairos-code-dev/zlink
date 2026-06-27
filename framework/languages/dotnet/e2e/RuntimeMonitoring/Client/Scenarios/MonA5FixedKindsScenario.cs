@@ -1,6 +1,6 @@
-using RuntimeMonitoring.Client;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
+using RuntimeMonitoring.Client.Support;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 

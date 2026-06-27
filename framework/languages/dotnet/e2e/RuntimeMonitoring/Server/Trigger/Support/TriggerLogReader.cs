@@ -1,4 +1,5 @@
-namespace RuntimeMonitoring.Trigger;
+using RuntimeMonitoring.Server.Trigger;
+namespace RuntimeMonitoring.Server.Trigger.Support;
 
 internal static class TriggerLogReader
 {

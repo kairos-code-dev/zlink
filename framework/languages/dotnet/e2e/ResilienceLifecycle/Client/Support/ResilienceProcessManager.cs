@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Zlink.HttpClient;
 
-namespace ResilienceLifecycle.Client;
+namespace ResilienceLifecycle.Client.Support;
 
 internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDisposable
 {

@@ -1,6 +1,6 @@
-using ResilienceLifecycle.Client;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
+using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -23,11 +23,15 @@ internal static class RlD1HighFanoutScenario
             replies.Length == 120 && replies.All(reply => reply.Value == "profile:fast"),
             "RL-D1 high request fanout did not complete.");
 
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            "marker=rl-d1-",
-            "RL-D1 did not record expected evidence 'marker=rl-d1-'.");
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d1-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d1-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-d1-", StringComparison.Ordinal)), "RL-D1 did not record expected evidence 'marker=rl-d1-'.");
+        }
 
         Console.WriteLine("scenario RL-D1 passed");
     }

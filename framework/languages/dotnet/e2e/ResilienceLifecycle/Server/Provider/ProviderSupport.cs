@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
+using ResilienceLifecycle.Server.Provider.Handlers;
 
-namespace ResilienceLifecycle.Server.Provider.Support;
+namespace ResilienceLifecycle.Server.Provider;
 
 internal sealed class FaultState
 {

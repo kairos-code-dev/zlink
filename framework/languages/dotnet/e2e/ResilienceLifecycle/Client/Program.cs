@@ -1,6 +1,6 @@
-using ResilienceLifecycle.Client;
 using ResilienceLifecycle.Client.Scenarios;
 using Zlink.HttpClient;
+using ResilienceLifecycle.Client.Support;
 
 var options = ClientOptions.Parse(args);
 

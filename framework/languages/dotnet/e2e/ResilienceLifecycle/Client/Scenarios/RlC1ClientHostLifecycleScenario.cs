@@ -1,6 +1,6 @@
-using ResilienceLifecycle.Client;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
+using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -27,16 +27,24 @@ internal static class RlC1ClientHostLifecycleScenario
             .SubmitAsync<ProfileReply>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:fast", "RL-C1 follow-up failed after client cleanup.");
 
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            "marker=rl-c1-",
-            "RL-C1 did not record expected evidence 'marker=rl-c1-'.");
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            "marker=rl-c1-after-cleanup",
-            "RL-C1 did not record expected evidence 'marker=rl-c1-after-cleanup'.");
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c1-", StringComparison.Ordinal)), "RL-C1 did not record expected evidence 'marker=rl-c1-'.");
+        }
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c1-after-cleanup", StringComparison.Ordinal)), "RL-C1 did not record expected evidence 'marker=rl-c1-after-cleanup'.");
+        }
 
         Console.WriteLine("scenario RL-C1 passed");
     }

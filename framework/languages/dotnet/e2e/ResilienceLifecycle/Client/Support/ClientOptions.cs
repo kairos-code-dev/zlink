@@ -1,4 +1,4 @@
-namespace ResilienceLifecycle.Client;
+namespace ResilienceLifecycle.Client.Support;
 
 internal sealed record ClientOptions(
     string ConsumerUrl,

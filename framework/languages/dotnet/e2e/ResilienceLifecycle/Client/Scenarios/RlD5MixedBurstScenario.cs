@@ -1,6 +1,6 @@
-using ResilienceLifecycle.Client;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
+using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -28,7 +28,33 @@ internal static class RlD5MixedBurstScenario
             replies.All(reply => reply.Value == "profile:fast"),
             "RL-D5 mixed workload replies were invalid.");
 
-        var evidence = await WaitForMixedEvidenceAsync(providerA, providerB);
+        string[] requestEvidence;
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-req-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-req-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            requestEvidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(
+                requestEvidence.Any(line => line.Contains("marker=rl-d5-req-", StringComparison.Ordinal)),
+                "RL-D5 evidence missing for marker=rl-d5-req-.");
+        }
+
+        string[] commandEvidence;
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-cmd-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-cmd-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            commandEvidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(
+                commandEvidence.Any(line => line.Contains("marker=rl-d5-cmd-", StringComparison.Ordinal)),
+                "RL-D5 evidence missing for marker=rl-d5-cmd-.");
+        }
+
+        var evidence = requestEvidence.Concat(commandEvidence).ToArray();
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("marker=rl-d5-req-", StringComparison.Ordinal)),
             "RL-D5 did not record expected evidence 'marker=rl-d5-req-'.");
@@ -37,27 +63,5 @@ internal static class RlD5MixedBurstScenario
             "RL-D5 did not record expected evidence 'marker=rl-d5-cmd-'.");
 
         Console.WriteLine("scenario RL-D5 passed");
-    }
-
-    static async Task<string[]> WaitForMixedEvidenceAsync(
-        ZLinkHttpClient providerA,
-        ZLinkHttpClient providerB)
-    {
-        var requestEvidence = await WaitForEitherProviderAsync(providerA, providerB, "marker=rl-d5-req-");
-        var commandEvidence = await WaitForEitherProviderAsync(providerA, providerB, "marker=rl-d5-cmd-");
-        return requestEvidence.Concat(commandEvidence).ToArray();
-    }
-
-    static async Task<string[]> WaitForEitherProviderAsync(
-        ZLinkHttpClient providerA,
-        ZLinkHttpClient providerB,
-        string markerPrefix)
-    {
-        var evidence = await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            markerPrefix,
-            $"RL-D5 evidence missing for {markerPrefix}.");
-        return evidence;
     }
 }

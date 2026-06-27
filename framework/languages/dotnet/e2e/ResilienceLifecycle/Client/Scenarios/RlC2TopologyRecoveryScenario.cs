@@ -1,6 +1,6 @@
-using ResilienceLifecycle.Client;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
+using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -40,16 +40,24 @@ internal static class RlC2TopologyRecoveryScenario
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-C2 restored request returned an unexpected value.");
         }
 
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            "marker=rl-c2-after-crash-",
-            "RL-C2 did not record expected evidence 'marker=rl-c2-after-crash-'.");
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            "profile-request|rid=api-b|marker=rl-c2-restored-",
-            "RL-C2 did not record expected evidence 'marker=rl-c2-restored-'.");
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c2-after-crash-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c2-after-crash-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c2-after-crash-", StringComparison.Ordinal)), "RL-C2 did not record expected evidence 'marker=rl-c2-after-crash-'.");
+        }
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c2-restored-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c2-restored-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(evidence.Any(line => line.Contains("profile-request|rid=api-b|marker=rl-c2-restored-", StringComparison.Ordinal)), "RL-C2 did not record expected evidence 'marker=rl-c2-restored-'.");
+        }
 
         Console.WriteLine("scenario RL-C2 passed");
     }

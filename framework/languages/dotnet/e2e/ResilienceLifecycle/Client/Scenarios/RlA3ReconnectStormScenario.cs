@@ -1,6 +1,6 @@
-using ResilienceLifecycle.Client;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
+using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -23,11 +23,21 @@ internal static class RlA3ReconnectStormScenario
                 "RL-A3 storm request returned an unexpected reply.");
         }
 
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            "marker=rl-a3-",
-            "RL-A3 did not record expected provider evidence.");
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(["marker=rl-a3-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(["marker=rl-a3-"], []))
+                .SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(
+                evidence.Any(line => line.Contains("marker=rl-a3-", StringComparison.Ordinal)),
+                "RL-A3 did not record expected provider evidence.");
+        }
 
         Console.WriteLine("scenario RL-A3 passed");
     }

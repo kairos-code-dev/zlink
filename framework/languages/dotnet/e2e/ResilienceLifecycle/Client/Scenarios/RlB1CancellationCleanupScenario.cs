@@ -1,6 +1,6 @@
-using ResilienceLifecycle.Client;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
+using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -24,7 +24,21 @@ internal static class RlB1CancellationCleanupScenario
             .SubmitAsync<ProfileReply>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:fast", "RL-B1 follow-up request failed after timeout.");
 
-        await WaitForEitherEvidenceAsync(providerA, providerB, slowMarker);
+        using (var evidenceTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+        {
+            var waitA = providerA.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(["profile-request|", $"marker={slowMarker}"], []))
+                .SubmitAsync<string[]>(evidenceTimeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(["profile-request|", $"marker={slowMarker}"], []))
+                .SubmitAsync<string[]>(evidenceTimeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            evidenceTimeout.Cancel();
+            ScenarioAssert.That(
+                evidence.Any(line => line.Contains($"marker={slowMarker}", StringComparison.Ordinal)),
+                "RL-B1 slow request completion evidence missing.");
+        }
 
         var later = (await consumer.Post("/profile/request")
             .Body(new ProfileRequest("fast", $"rl-b1-later-{Guid.NewGuid():N}"))
@@ -32,18 +46,5 @@ internal static class RlB1CancellationCleanupScenario
         ScenarioAssert.That(later.Value == "profile:fast", "RL-B1 later request failed after slow completion.");
 
         Console.WriteLine("scenario RL-B1 passed");
-    }
-
-    static async Task WaitForEitherEvidenceAsync(
-        ZLinkHttpClient providerA,
-        ZLinkHttpClient providerB,
-        string marker)
-    {
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            new EvidenceWaitRequest(["profile-request|", $"marker={marker}"], []),
-            line => line.Contains($"marker={marker}", StringComparison.Ordinal),
-            "RL-B1 slow request completion evidence missing.");
     }
 }

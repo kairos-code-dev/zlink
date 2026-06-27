@@ -1,6 +1,6 @@
-using ResilienceLifecycle.Client;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
+using ResilienceLifecycle.Client.Support;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
@@ -34,16 +34,24 @@ internal static class RlC3NodePauseRecoveryScenario
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-C3 recovered request returned an unexpected value.");
         }
 
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            "marker=rl-c3-during-down",
-            "RL-C3 did not record expected evidence 'marker=rl-c3-during-down'.");
-        await EvidenceWait.AnyProviderAsync(
-            providerA,
-            providerB,
-            "profile-request|rid=api-b|marker=rl-c3-recovered-",
-            "RL-C3 did not record expected evidence 'marker=rl-c3-recovered-'.");
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c3-during-down"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c3-during-down"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c3-during-down", StringComparison.Ordinal)), "RL-C3 did not record expected evidence 'marker=rl-c3-during-down'.");
+        }
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c3-recovered-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c3-recovered-"], [])).SubmitAsync<string[]>(timeout.Token).AsTask();
+            var completed = await Task.WhenAny(waitA, waitB);
+            var evidence = (await completed).Body;
+            timeout.Cancel();
+            ScenarioAssert.That(evidence.Any(line => line.Contains("profile-request|rid=api-b|marker=rl-c3-recovered-", StringComparison.Ordinal)), "RL-C3 did not record expected evidence 'marker=rl-c3-recovered-'.");
+        }
 
         Console.WriteLine("scenario RL-C3 passed");
     }

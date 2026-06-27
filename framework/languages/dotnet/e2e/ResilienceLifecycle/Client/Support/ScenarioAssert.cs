@@ -1,4 +1,4 @@
-namespace ResilienceLifecycle.Client;
+namespace ResilienceLifecycle.Client.Support;
 
 internal static class ScenarioAssert
 {

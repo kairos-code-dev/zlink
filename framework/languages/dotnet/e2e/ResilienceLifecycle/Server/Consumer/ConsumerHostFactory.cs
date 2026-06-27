@@ -10,7 +10,7 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
 
-namespace ResilienceLifecycle.Consumer;
+namespace ResilienceLifecycle.Server.Consumer;
 
 internal static class ConsumerHostFactory
 {

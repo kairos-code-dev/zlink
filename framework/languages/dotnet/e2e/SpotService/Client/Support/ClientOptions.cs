@@ -1,4 +1,4 @@
-namespace SpotService.Client;
+namespace SpotService.Client.Support;
 
 internal sealed record ClientOptions(
     string GatewayUrl,

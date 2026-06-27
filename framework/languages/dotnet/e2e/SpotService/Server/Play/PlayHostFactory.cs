@@ -1,28 +1,16 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using SpotService.Shared;
 using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Handlers;
+using SpotService.Server.Play.Spots;
 
 namespace SpotService.Server.Play;
 
-internal static partial class PlayHostFactory
+internal static class PlayHostFactory
 {
     public static WebApplication Create(string[] args)
     {
@@ -88,19 +76,19 @@ internal static partial class PlayHostFactory
         });
 
         var app = builder.Build();
-        MapOperationalEndpoints(app, options);
-        MapSpotLifecycleEndpoints(app);
-        MapSpotFailureEndpoints(app);
-        MapSpotInteractionEndpoints(app);
+        OperationalEndpoints.MapOperationalEndpoints(app, options);
+        SpotLifecycleEndpoints.MapSpotLifecycleEndpoints(app);
+        SpotFailureEndpoints.MapSpotFailureEndpoints(app);
+        SpotInteractionEndpoints.MapSpotInteractionEndpoints(app);
         return app;
     }
 
-static string Require(string? value, string optionName)
+internal static string Require(string? value, string optionName)
     => string.IsNullOrWhiteSpace(value)
         ? throw new InvalidOperationException($"{optionName} is required.")
         : value;
 
-static async Task<bool> FailsAsync(Task task)
+internal static async Task<bool> FailsAsync(Task task)
 {
     try
     {
@@ -113,7 +101,7 @@ static async Task<bool> FailsAsync(Task task)
     }
 }
 
-static async Task<StateReply> RequestSpotStateWithRetryAsync(
+internal static async Task<StateReply> RequestSpotStateWithRetryAsync(
     IZLinkRouteClient routes,
     string spotRid,
     StateReq request,
@@ -144,7 +132,7 @@ static async Task<StateReply> RequestSpotStateWithRetryAsync(
     throw new InvalidOperationException(last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
 }
 
-static async Task SendSpotCommandWithRetryAsync(
+internal static async Task SendSpotCommandWithRetryAsync(
     IZLinkRouteClient routes,
     string channelName,
     string spotRid,
@@ -173,7 +161,7 @@ static async Task SendSpotCommandWithRetryAsync(
     throw new InvalidOperationException(last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
 }
 
-static async Task<SpotToSpotReply> RequestSpotToSpotWithRetryAsync(
+internal static async Task<SpotToSpotReply> RequestSpotToSpotWithRetryAsync(
     IZLinkRouteClient routes,
     string sourceSpotRid,
     SpotToSpotReq request,
@@ -206,7 +194,7 @@ static async Task<SpotToSpotReply> RequestSpotToSpotWithRetryAsync(
     throw new TimeoutException(failureMessage, last);
 }
 
-static async Task ExpectFailureAsync(Task task, string message)
+internal static async Task ExpectFailureAsync(Task task, string message)
 {
     try
     {
@@ -220,7 +208,7 @@ static async Task ExpectFailureAsync(Task task, string message)
     throw new InvalidOperationException(message);
 }
 
-static async Task WaitUntilAsync(Func<bool> condition, string failureMessage)
+internal static async Task WaitUntilAsync(Func<bool> condition, string failureMessage)
 {
     var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
     while (DateTimeOffset.UtcNow < deadline)
@@ -236,7 +224,7 @@ static async Task WaitUntilAsync(Func<bool> condition, string failureMessage)
     throw new InvalidOperationException(failureMessage);
 }
 
-static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
+internal static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
 {
     var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
     Exception? last = null;
@@ -280,7 +268,7 @@ static ulong ExtractUInt64(string line, string key)
     return ulong.Parse(value);
 }
 
-static int CountNew(string[] after, string[] before, string pattern)
+internal static int CountNew(string[] after, string[] before, string pattern)
 {
     var beforeCount = before.Count(line => line.Contains(pattern, StringComparison.Ordinal));
     var afterCount = after.Count(line => line.Contains(pattern, StringComparison.Ordinal));

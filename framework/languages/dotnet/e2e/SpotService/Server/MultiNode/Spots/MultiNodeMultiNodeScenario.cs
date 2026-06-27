@@ -1,34 +1,18 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using SpotService.Shared;
 using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.MultiNode.Handlers;
+using SpotService.Server.MultiNode.Spots;
 
-namespace SpotService.Server.MultiNode;
+namespace SpotService.Server.MultiNode.Spots;
 
 
-internal static partial class MultiNodeHostFactory
-{
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    EvidenceStore evidence)
+    MultiNode.EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>
 {
     public async ValueTask<MultiNodeCreateSpotReply> HandleAsync(
@@ -58,7 +42,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
 internal sealed class MultiNodeCreateSpotBHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
-    EvidenceStore evidence)
+    MultiNode.EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>
 {
     public async ValueTask<MultiNodeCreateSpotReply> HandleAsync(
@@ -128,7 +112,7 @@ internal static class MultiNodeScenario
     }
 }
 
-internal sealed class MultiNodeSpotA(IZLinkSpotContext context, EvidenceStore evidence) : IZLinkSpot
+internal sealed class MultiNodeSpotA(IZLinkSpotContext context, MultiNode.EvidenceStore evidence) : IZLinkSpot
 {
     private int _value;
 
@@ -148,7 +132,7 @@ internal sealed class MultiNodeSpotA(IZLinkSpotContext context, EvidenceStore ev
     }
 }
 
-internal sealed class MultiNodeSpotB(IZLinkSpotContext context, EvidenceStore evidence) : IZLinkSpot
+internal sealed class MultiNodeSpotB(IZLinkSpotContext context, MultiNode.EvidenceStore evidence) : IZLinkSpot
 {
     private int _value;
 
@@ -170,7 +154,7 @@ internal sealed class MultiNodeSpotB(IZLinkSpotContext context, EvidenceStore ev
 
 internal sealed class ScenarioStage(ScenarioUserSpot spot)
 {
-    public StateReply Apply(StageProbeReq request, EvidenceStore evidence)
+    public StateReply Apply(StageProbeReq request, MultiNode.EvidenceStore evidence)
     {
         var value = spot.Add(request.Delta);
         evidence.Add(
@@ -191,6 +175,4 @@ internal sealed class ScenarioStage(ScenarioUserSpot spot)
             TimeSpan.FromMilliseconds(command.PeriodMs),
             cancellationToken: cancellationToken);
     }
-}
-
 }

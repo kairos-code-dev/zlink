@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -20,10 +20,11 @@ internal static class SmQ9Scenario
         var directA = (await multiA.Post("/spot/state/request")
             .Body(new MultiNodeStateRouteReq(spotA, 0))
             .SubmitAsync<StateReply>()).Body;
-        var evidenceA = await EvidenceWait.ForAsync(
-            multiA,
-            new EvidenceWaitRequest([$"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11"]),
-            evidence => evidence.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") >= 2,
+        var evidenceA = (await multiA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest([$"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11"]))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            evidenceA.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") >= 2,
             "SM-Q9 node A did not process both route-to-spot requests.");
 
         var createdB = (await multiB.Post("/spot/create-local")
@@ -35,10 +36,11 @@ internal static class SmQ9Scenario
         var directB = (await multiB.Post("/spot/state/request")
             .Body(new MultiNodeStateRouteReq(spotB, 0))
             .SubmitAsync<StateReply>()).Body;
-        var evidenceB = await EvidenceWait.ForAsync(
-            multiB,
-            new EvidenceWaitRequest([$"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17"]),
-            evidence => evidence.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") >= 2,
+        var evidenceB = (await multiB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest([$"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17"]))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            evidenceB.Count(line => line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") >= 2,
             "SM-Q9 node B did not process both route-to-spot requests.");
 
         ScenarioAssert.That(createdA.NodeRid == SpotServiceNames.MultiSpotNodeA, "SM-Q9 node A create reply node mismatch.");

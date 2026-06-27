@@ -19,10 +19,12 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.MultiNode.Handlers;
+using SpotService.Server.MultiNode.Spots;
 
 namespace SpotService.Server.MultiNode;
 
-internal static partial class MultiNodeHostFactory
+internal static class MultiNodeHostFactory
 {
     public static WebApplication Create(string[] args)
     {

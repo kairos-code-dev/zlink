@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -21,12 +21,16 @@ internal static class SmE1Scenario
             .Body(new SpotMissingCommandReq(spotRid, "missing-command"))
             .SubmitAsync<SpotMissingCommandReply>()).Body;
         ScenarioAssert.That(missingCommand.Sent, "SM-E1 missing handler command was not sent.");
-        await EvidenceWait.ForAllAsync(
-            playA,
-            [
-                "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq",
-                "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand",
-            ],
+        var expectedEvidence = new[]
+        {
+            "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq",
+            "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand",
+        };
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-E1 missing handler evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-e1 passed");
     }

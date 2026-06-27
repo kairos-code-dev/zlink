@@ -19,12 +19,12 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.Session.Handlers;
+using SpotService.Server.Session.Spots;
 
-namespace SpotService.Server.Session;
+namespace SpotService.Server.Session.Spots;
 
 
-internal static partial class SessionHostFactory
-{
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
@@ -191,6 +191,4 @@ internal sealed class ScenarioStage(ScenarioUserSpot spot)
             TimeSpan.FromMilliseconds(command.PeriodMs),
             cancellationToken: cancellationToken);
     }
-}
-
 }

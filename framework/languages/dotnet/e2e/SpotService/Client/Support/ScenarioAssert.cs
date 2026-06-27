@@ -1,4 +1,4 @@
-namespace SpotService.Client;
+namespace SpotService.Client.Support;
 
 internal static class ScenarioAssert
 {

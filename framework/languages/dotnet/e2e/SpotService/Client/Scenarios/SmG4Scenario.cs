@@ -1,7 +1,7 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -16,7 +16,10 @@ internal static class SmG4Scenario
         {
             for (var index = 0; index < sessionCount; index++)
             {
-                var client = CreateClient(sessionAStreamEndpoint);
+                var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+                {
+                    Endpoint = new Uri(sessionAStreamEndpoint),
+                });
                 clients.Add(client);
                 await client.Connect.Async();
                 await client.Request(new AuthReq($"actor-sm-g4-{index}", $"bound-load-{index}", "play-a"))
@@ -55,13 +58,5 @@ internal static class SmG4Scenario
         }
 
         Console.WriteLine("operation SpotService.sm-g4 passed");
-    }
-
-    static IZlinkStreamConnector CreateClient(string endpoint)
-    {
-        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(endpoint),
-        });
     }
 }

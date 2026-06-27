@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -36,12 +36,14 @@ internal static class SmE4Scenario
             ScenarioAssert.That(started.Started, $"SM-E4 {policy} overrun timer did not start.");
         }
 
-        var evidence = await EvidenceWait.ForAsync(
-            playA,
-            new EvidenceWaitRequest(
+        var evidenceRequest = new EvidenceWaitRequest(
                 policySpots.Select(pair => $"timer-overrun|rid=play-a|spot={pair.Value}|name=sm-e4-{pair.Key}").ToArray(),
-                TimeoutMilliseconds: 15000),
-            EvidenceIncludesExpectedTimerPolicies,
+                TimeoutMilliseconds: 15000);
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(evidenceRequest)
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            EvidenceIncludesExpectedTimerPolicies(evidence),
             "SM-E4 timer overrun evidence missing or incomplete.");
         var skipLateTicksSkipped = evidence
             .Where(line => line.Contains("name=sm-e4-SkipLateTicks", StringComparison.Ordinal))

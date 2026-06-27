@@ -1,7 +1,7 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -10,7 +10,16 @@ internal static class SmB1Scenario
     public static async Task RunAsync(ZLinkHttpClient playA, string sessionAStreamEndpoint)
     {
         var actorId = $"actor-sm-b1-local-{Guid.NewGuid():N}";
-        await using var client = SpotActorRequestSupport.CreateClient(sessionAStreamEndpoint);
+        ScenarioAssert.That(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint), "session-a stream endpoint is required.");
+        await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(sessionAStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024,
+        });
         await client.Connect.Async();
         await client.Request(new AuthReq(actorId, "local actor", "play-a"))
             .PacketName("AuthReq")
@@ -20,12 +29,16 @@ internal static class SmB1Scenario
             .Async<ActorPingReply>();
         ScenarioAssert.That(ping.ActorId == actorId, "SM-B1 actor reply mismatch.");
         ScenarioAssert.That(ping.NodeRid == "play-a", "SM-B1 local node mismatch.");
-        await EvidenceWait.ForAllAsync(
-            playA,
-            [
-                $"entry-created|rid=play-a|actor={actorId}",
-                $"entry-joined|rid=play-a|actor={actorId}",
-            ],
+        var expectedEvidence = new[]
+        {
+            $"entry-created|rid=play-a|actor={actorId}",
+            $"entry-joined|rid=play-a|actor={actorId}",
+        };
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B1 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-b1 passed");
     }

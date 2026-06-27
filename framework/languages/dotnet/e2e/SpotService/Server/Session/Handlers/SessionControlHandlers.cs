@@ -19,12 +19,12 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.Session.Handlers;
+using SpotService.Server.Session.Spots;
 
-namespace SpotService.Server.Session;
+namespace SpotService.Server.Session.Handlers;
 
 
-internal static partial class SessionHostFactory
-{
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsureActorHandler(
     IZLinkActorManager actors,
@@ -163,6 +163,4 @@ internal sealed class JoinUserSpotActorHandler(
             Accepted: true,
             actor.Generation);
     }
-}
-
 }

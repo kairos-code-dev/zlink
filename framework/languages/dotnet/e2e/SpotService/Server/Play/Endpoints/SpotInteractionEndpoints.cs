@@ -1,14 +1,18 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Handlers;
+using SpotService.Server.Play.Spots;
 
-namespace SpotService.Server.Play;
+namespace SpotService.Server.Play.Endpoints;
 
-internal static partial class PlayHostFactory
+using static SpotService.Server.Play.PlayHostFactory;
+
+internal static class SpotInteractionEndpoints
 {
-    private static void MapSpotInteractionEndpoints(WebApplication app)
+
+    public static void MapSpotInteractionEndpoints(WebApplication app)
     {
         app.MapPost("/spot/outbound", async (
             IZLinkRouteClient routes,

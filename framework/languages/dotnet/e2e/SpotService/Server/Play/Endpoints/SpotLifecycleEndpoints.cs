@@ -5,12 +5,18 @@ using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Spots;
+using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Handlers;
+using SpotService.Server.Play.Spots;
 
-namespace SpotService.Server.Play;
+namespace SpotService.Server.Play.Endpoints;
 
-internal static partial class PlayHostFactory
+using static SpotService.Server.Play.PlayHostFactory;
+
+internal static class SpotLifecycleEndpoints
 {
-    private static void MapSpotLifecycleEndpoints(WebApplication app)
+
+    public static void MapSpotLifecycleEndpoints(WebApplication app)
     {
         app.MapPost("/spot/create", async (
             IZLinkSpotManager spots,

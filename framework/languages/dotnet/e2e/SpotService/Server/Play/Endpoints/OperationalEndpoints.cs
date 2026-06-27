@@ -1,13 +1,16 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
 using SpotService.Shared;
+using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Handlers;
+using SpotService.Server.Play.Spots;
 
-namespace SpotService.Server.Play;
+namespace SpotService.Server.Play.Endpoints;
 
-internal static partial class PlayHostFactory
+using static SpotService.Server.Play.PlayHostFactory;
+
+internal static class OperationalEndpoints
 {
-    private static void MapOperationalEndpoints(WebApplication app, ServerOptions options)
+
+    public static void MapOperationalEndpoints(WebApplication app, ServerOptions options)
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));

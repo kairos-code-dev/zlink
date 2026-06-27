@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Client.Scenarios;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 var options = ClientOptions.Parse(args);
 

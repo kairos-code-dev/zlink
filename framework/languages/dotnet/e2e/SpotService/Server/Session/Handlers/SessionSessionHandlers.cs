@@ -19,12 +19,12 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.Session.Handlers;
+using SpotService.Server.Session.Spots;
 
-namespace SpotService.Server.Session;
+namespace SpotService.Server.Session.Handlers;
 
 
-internal static partial class SessionHostFactory
-{
 internal sealed class ScenarioSession(
     IZLinkSessionContext context,
     IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
@@ -256,6 +256,4 @@ internal sealed class UserSpotAuthSessionHandler(
             throw new InvalidOperationException($"User spot actor join was rejected: {joined.ActorId}");
         }
     }
-}
-
 }

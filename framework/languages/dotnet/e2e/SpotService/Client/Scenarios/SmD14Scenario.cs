@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -8,16 +8,40 @@ internal static class SmD14Scenario
 {
     public static async Task RunAsync(string sessionATlsStreamEndpoint)
     {
-        await using var strict = CreateClient(
-            sessionATlsStreamEndpoint,
-            skipServerCertificateValidation: false);
-        await ExpectFailureAsync(
-            strict.Connect.Async().AsTask(),
+        await using var strict = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(sessionATlsStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024,
+            SkipServerCertificateValidation = false,
+        });
+        var strictTlsRejected = false;
+        try
+        {
+            await strict.Connect.Async();
+        }
+        catch
+        {
+            strictTlsRejected = true;
+        }
+
+        ScenarioAssert.That(
+            strictTlsRejected,
             "SM-D14 expected strict TLS validation to reject the self-signed stream certificate.");
 
-        await using var tls = CreateClient(
-            sessionATlsStreamEndpoint,
-            skipServerCertificateValidation: true);
+        await using var tls = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(sessionATlsStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024,
+            SkipServerCertificateValidation = true,
+        });
         await tls.Connect.Async();
         await tls.Request(new AuthReq("actor-sm-d14-tls", "stream tls", "play-a"))
             .PacketName("AuthReq")
@@ -34,36 +58,5 @@ internal static class SmD14Scenario
         ScenarioAssert.That(notify.Payload.Value == "tls-push", "SM-D14 TLS push payload mismatch.");
 
         Console.WriteLine("operation SpotService.sm-d14 passed");
-    }
-
-    static IZlinkStreamConnector CreateClient(
-        string endpoint,
-        bool skipServerCertificateValidation)
-    {
-        ScenarioAssert.That(!string.IsNullOrWhiteSpace(endpoint), "session-a TLS stream endpoint is required.");
-        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(endpoint),
-            ConnectTimeout = TimeSpan.FromSeconds(5),
-            RequestTimeout = TimeSpan.FromSeconds(5),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-            DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            MaxReceivedMessages = 1024,
-            SkipServerCertificateValidation = skipServerCertificateValidation,
-        });
-    }
-
-    static async Task ExpectFailureAsync(Task task, string message)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(message);
     }
 }

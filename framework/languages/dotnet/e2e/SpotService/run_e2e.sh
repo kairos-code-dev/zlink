@@ -196,24 +196,20 @@ wait_port() {
   local pid="${PIDS[-1]:-}"
   local host
   local port
-  local source_port="${PORTS[$WAIT_SOURCE_PORT_INDEX]}"
-  WAIT_SOURCE_PORT_INDEX=$((WAIT_SOURCE_PORT_INDEX + 1))
   host="$(endpoint_host "$endpoint")"
   port="$(endpoint_port "$endpoint")"
   local attempts="${ZLINK_SPOT_SERVICE_WAIT_PORT_ATTEMPTS:-1800}"
   for _ in $(seq 1 "$attempts"); do
-    if python3 - "$host" "$port" "$source_port" <<'PY' >/dev/null 2>&1
+    if python3 - "$host" "$port" <<'PY' >/dev/null 2>&1
 import socket
 import sys
 
 host = sys.argv[1]
 port = int(sys.argv[2])
-source_port = int(sys.argv[3])
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 try:
     sock.settimeout(0.2)
-    sock.bind(("127.0.0.1", source_port))
     sock.connect((host, port))
 finally:
     sock.close()

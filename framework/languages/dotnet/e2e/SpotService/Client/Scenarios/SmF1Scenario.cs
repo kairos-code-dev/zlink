@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -20,12 +20,16 @@ internal static class SmF1Scenario
             .Body(new SpotStateCommandReq(context.SpotRid, "sm-f1-command"))
             .SubmitAsync<SpotStateCommandReply>()).Body;
         ScenarioAssert.That(command.SpotRid == context.SpotRid && command.Accepted, "SM-F1 command was not accepted.");
-        await EvidenceWait.ForAllAsync(
-            api,
-            [
-                $"spot-state-request|rid=play-a|spot={context.SpotRid}|value={context.CurrentValue}",
-                $"spot-state-command|rid=play-a|spot={context.SpotRid}|marker=sm-f1-command",
-            ],
+        var expectedEvidence = new[]
+        {
+            $"spot-state-request|rid=play-a|spot={context.SpotRid}|value={context.CurrentValue}",
+            $"spot-state-command|rid=play-a|spot={context.SpotRid}|marker=sm-f1-command",
+        };
+        var evidence = (await api.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-F1 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-f1 passed");
     }

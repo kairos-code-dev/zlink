@@ -19,12 +19,12 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.Session.Handlers;
+using SpotService.Server.Session.Spots;
 
-namespace SpotService.Server.Session;
+namespace SpotService.Server.Session.Handlers;
 
 
-internal static partial class SessionHostFactory
-{
 [ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotEventTopic)]
 internal sealed class SpotEventHandler(EvidenceStore evidence)
     : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotEvent>
@@ -313,6 +313,4 @@ internal sealed class IdleCloseTimerHandler(EvidenceStore evidence)
         evidence.Add(
             $"timer-idle-close|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}|closed={closed}");
     }
-}
-
 }

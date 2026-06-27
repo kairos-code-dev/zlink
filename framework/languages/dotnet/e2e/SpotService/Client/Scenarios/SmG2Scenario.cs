@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -18,9 +18,12 @@ internal static class SmG2Scenario
         var firstReply = (await playA.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(firstOwnerSpotRid, "add", 1))
             .SubmitAsync<StateReply>()).Body;
-        var firstEvidence = await EvidenceWait.ForAllAsync(
-            playA,
-            [$"spot-state-request|rid=play-a|spot={firstOwnerSpotRid}|value=1"],
+        var firstExpectedEvidence = new[] { $"spot-state-request|rid=play-a|spot={firstOwnerSpotRid}|value=1" };
+        var firstEvidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(firstExpectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            firstExpectedEvidence.All(expected => firstEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-G2 play-a evidence did not include the first owner request.");
 
         var secondCreated = (await playB.Post("/spot/create")
@@ -29,9 +32,12 @@ internal static class SmG2Scenario
         var secondReply = (await playB.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(secondOwnerSpotRid, "add", 1))
             .SubmitAsync<StateReply>()).Body;
-        var secondEvidence = await EvidenceWait.ForAllAsync(
-            playB,
-            [$"spot-state-request|rid=play-b|spot={secondOwnerSpotRid}|value=1"],
+        var secondExpectedEvidence = new[] { $"spot-state-request|rid=play-b|spot={secondOwnerSpotRid}|value=1" };
+        var secondEvidence = (await playB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(secondExpectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            secondExpectedEvidence.All(expected => secondEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-G2 play-b evidence did not include the remapped owner request.");
 
         ScenarioAssert.That(firstCreated.NodeRid == "play-a", "SM-G2 first owner was not created on play-a.");

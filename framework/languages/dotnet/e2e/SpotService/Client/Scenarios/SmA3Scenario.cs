@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -20,15 +20,16 @@ internal static class SmA3Scenario
         ScenarioAssert.That(routeReply.NodeRid == "play-a", "SM-A3 route reached the wrong node.");
         ScenarioAssert.That(routeReply.Value == 1, "SM-A3 state reply mismatch.");
 
-        await EvidenceWait.ForAllAsync(
-            playA,
-            [$"spot-state-request|rid=play-a|spot={spotRid}|value=1"],
+        var expectedPlayAEvidence = new[] { $"spot-state-request|rid=play-a|spot={spotRid}|value=1" };
+        var playAEvidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedPlayAEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedPlayAEvidence.All(expected => playAEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-A3 evidence mismatch.");
-        var playBEvidence = await EvidenceWait.ForAsync(
-            playB,
-            new EvidenceWaitRequest([]),
-            _ => true,
-            "SM-A3 could not read play-b evidence snapshot.");
+        var playBEvidence = (await playB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest([]))
+            .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             playBEvidence.All(line => !line.Contains(
                 $"spot-state-request|rid=play-b|spot={spotRid}",

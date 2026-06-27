@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -17,12 +17,16 @@ internal static class SmA6Scenario
             .Body(new CloseSpotReq(spotRid))
             .SubmitAsync<CloseSpotReply>()).Body;
         ScenarioAssert.That(closeReply.Closed, "SM-A6 did not close the lifecycle spot.");
-        await EvidenceWait.ForAllAsync(
-            playA,
-            [
-                $"spot-initialize|rid=play-a|spot={spotRid}",
-                $"spot-closing|rid=play-a|spot={spotRid}",
-            ],
+        var expectedEvidence = new[]
+        {
+            $"spot-initialize|rid=play-a|spot={spotRid}",
+            $"spot-closing|rid=play-a|spot={spotRid}",
+        };
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-A6 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-a6 passed");
     }

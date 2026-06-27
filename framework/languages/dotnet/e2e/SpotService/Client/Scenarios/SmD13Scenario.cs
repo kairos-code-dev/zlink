@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -8,18 +8,62 @@ internal static class SmD13Scenario
 {
     public static async Task RunAsync(string sessionAStreamEndpoint)
     {
-        await using var stream = await SpotActorRequestSupport.ConnectAndAuthWithRetryAsync(
-            sessionAStreamEndpoint,
-            new AuthReq("actor-sm-d13", "heartbeat", "play-a"),
-            TimeSpan.FromSeconds(5),
-            heartbeat: new ZlinkStreamHeartbeatOptions
+        IZlinkStreamConnector? stream = null;
+        try
+        {
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+            Exception? last = null;
+            while (DateTimeOffset.UtcNow < deadline)
             {
-                Enabled = true,
-                Interval = TimeSpan.FromMilliseconds(200),
-                Timeout = TimeSpan.FromSeconds(2),
-            });
-        await Task.Delay(600);
-        ScenarioAssert.That(stream.IsConnected, "SM-D13 heartbeat-enabled stream disconnected.");
+                var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+                {
+                    Endpoint = new Uri(sessionAStreamEndpoint),
+                    ConnectTimeout = TimeSpan.FromSeconds(5),
+                    RequestTimeout = TimeSpan.FromSeconds(5),
+                    Heartbeat = new ZlinkStreamHeartbeatOptions
+                    {
+                        Enabled = true,
+                        Interval = TimeSpan.FromMilliseconds(200),
+                        Timeout = TimeSpan.FromSeconds(2),
+                    },
+                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                    MaxReceivedMessages = 1024,
+                });
+                try
+                {
+                    await client.Connect.Async();
+                    await client.Request(new AuthReq("actor-sm-d13", "heartbeat", "play-a"))
+                        .PacketName("AuthReq")
+                        .Async<AuthReply>();
+                    stream = client;
+                    break;
+                }
+                catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
+                {
+                    last = ex;
+                    await client.DisposeAsync();
+                    await Task.Delay(500);
+                }
+            }
+
+            if (stream is null)
+            {
+                throw new InvalidOperationException(
+                    last is null ? "Actor auth did not become routable: actor-sm-d13" : $"Actor auth did not become routable: actor-sm-d13. Last error: {last.Message}",
+                    last);
+            }
+
+            var activeStream = stream;
+            await Task.Delay(600);
+            ScenarioAssert.That(activeStream.IsConnected, "SM-D13 heartbeat-enabled stream disconnected.");
+        }
+        finally
+        {
+            if (stream is not null)
+            {
+                await stream.DisposeAsync();
+            }
+        }
         Console.WriteLine("operation SpotService.sm-d13 passed");
     }
 }

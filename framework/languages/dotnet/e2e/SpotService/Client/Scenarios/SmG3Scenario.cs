@@ -1,8 +1,8 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -22,7 +22,42 @@ internal static class SmG3Scenario
         {
             foreach (var actorId in actorIds)
             {
-                var client = await ConnectAndAuthWithRetryAsync(sessionAStreamEndpoint, spotRid, actorId);
+                IZlinkStreamConnector? client = null;
+                var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+                Exception? last = null;
+                while (DateTimeOffset.UtcNow < deadline)
+                {
+                    var candidate = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+                    {
+                        Endpoint = new Uri(sessionAStreamEndpoint),
+                    });
+                    try
+                    {
+                        await candidate.Connect.Async();
+                        await candidate.Request(new UserSpotAuthReq(spotRid, actorId, actorId, "play-a"))
+                            .PacketName("UserSpotAuthReq")
+                            .Async<AuthReply>();
+                        client = candidate;
+                        break;
+                    }
+                    catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
+                    {
+                        last = ex;
+                        await candidate.DisposeAsync();
+                    }
+
+                    await Task.Delay(250);
+                }
+
+                if (client is null)
+                {
+                    throw new InvalidOperationException(
+                        last is null
+                            ? $"Actor auth did not become routable: {actorId}"
+                            : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}",
+                        last);
+                }
+
                 clients.Add(client);
             }
 
@@ -47,9 +82,11 @@ internal static class SmG3Scenario
                     $"spot-actor-left|rid=play-a|spot={spotRid}|actor={actorId}",
                 })
                 .ToArray();
-            var evidence = await EvidenceWait.ForAllAsync(
-                playA,
-                expectedEvidence,
+            var evidence = (await playA.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(expectedEvidence))
+                .SubmitAsync<string[]>()).Body;
+            ScenarioAssert.That(
+                expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
                 "SM-G3 expected concurrent join and leave evidence.");
             foreach (var actorId in actorIds)
             {
@@ -75,47 +112,4 @@ internal static class SmG3Scenario
 
         Console.WriteLine("operation SpotService.sm-g3 passed");
     }
-
-    static async Task<IZlinkStreamConnector> ConnectAndAuthWithRetryAsync(
-        string endpoint,
-        string spotRid,
-        string actorId)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var client = CreateClient(endpoint);
-            try
-            {
-                await client.Connect.Async();
-                await client.Request(new UserSpotAuthReq(spotRid, actorId, actorId, "play-a"))
-                    .PacketName("UserSpotAuthReq")
-                    .Async<AuthReply>();
-                return client;
-            }
-            catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
-            {
-                last = ex;
-                await client.DisposeAsync();
-            }
-
-            await Task.Delay(250);
-        }
-
-        throw new InvalidOperationException(
-            last is null
-                ? $"Actor auth did not become routable: {actorId}"
-                : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}",
-            last);
-    }
-
-    static IZlinkStreamConnector CreateClient(string endpoint)
-    {
-        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(endpoint),
-        });
-    }
-
 }

@@ -1,6 +1,7 @@
-using SpotService.Client;
 using SpotService.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -9,19 +10,59 @@ internal static class SmB2Scenario
     public static async Task RunAsync(ZLinkHttpClient playB, string sessionAStreamEndpoint)
     {
         var actorId = $"actor-sm-b2-remote-{Guid.NewGuid():N}";
-        var reply = (await SpotActorRequestSupport.RunBoundActorRequestsWithRetryAsync(
-            sessionAStreamEndpoint,
-            new AuthReq(actorId, "remote actor", "play-b"),
-            [new ActorPingReq("b2")],
-            "SM-B2 remote actor flow did not become routable.")).Single();
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        Exception? last = null;
+        ActorPingReply? reply = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri(sessionAStreamEndpoint),
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                RequestTimeout = TimeSpan.FromSeconds(5),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                MaxReceivedMessages = 1024,
+            });
+            try
+            {
+                await client.Connect.Async();
+                await client.Request(new AuthReq(actorId, "remote actor", "play-b"))
+                    .PacketName("AuthReq")
+                    .Async<AuthReply>();
+                reply = await client.Request(new ActorPingReq("b2"))
+                    .PacketName("ActorPingReq")
+                    .Async<ActorPingReply>();
+                break;
+            }
+            catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
+            {
+                last = ex;
+                await Task.Delay(200);
+            }
+        }
+
+        if (reply is null)
+        {
+            throw new InvalidOperationException(
+                last is null
+                    ? "SM-B2 remote actor flow did not become routable."
+                    : $"SM-B2 remote actor flow did not become routable. Last error: {last.Message}",
+                last);
+        }
+
         ScenarioAssert.That(reply.ActorId == actorId, "SM-B2 actor reply mismatch.");
         ScenarioAssert.That(reply.NodeRid == "play-b", "SM-B2 remote node mismatch.");
-        await EvidenceWait.ForAllAsync(
-            playB,
-            [
-                $"entry-created|rid=play-b|actor={actorId}",
-                $"entry-joined|rid=play-b|actor={actorId}",
-            ],
+        var expectedEvidence = new[]
+        {
+            $"entry-created|rid=play-b|actor={actorId}",
+            $"entry-joined|rid=play-b|actor={actorId}",
+        };
+        var evidence = (await playB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B2 remote lifecycle evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-b2 passed");
     }

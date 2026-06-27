@@ -1,30 +1,14 @@
-using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using SpotService.Shared;
-using Systems.Zlink;
-using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework;
-using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Handlers;
+using SpotService.Server.Play.Spots;
 
-namespace SpotService.Server.Play;
+namespace SpotService.Server.Play.Handlers;
 
 
-internal static partial class PlayHostFactory
-{
 [ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotEventTopic)]
 internal sealed class SpotEventHandler(EvidenceStore evidence)
     : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotEvent>
@@ -313,6 +297,4 @@ internal sealed class IdleCloseTimerHandler(EvidenceStore evidence)
         evidence.Add(
             $"timer-idle-close|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}|closed={closed}");
     }
-}
-
 }

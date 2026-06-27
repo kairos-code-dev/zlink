@@ -19,12 +19,13 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Handlers;
+using SpotService.Server.Play.Spots;
 
-namespace SpotService.Server.Play;
+namespace SpotService.Server.Play.Spots;
 
 
-internal static partial class PlayHostFactory
-{
 internal sealed class ScenarioActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
@@ -180,6 +181,4 @@ internal sealed class ScenarioAlternateSpot(
     IZLinkSpotContext context) : IZLinkSpot
 {
     public IZLinkSpotContext Context { get; } = context;
-}
-
 }

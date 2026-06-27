@@ -1,7 +1,7 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -10,7 +10,16 @@ internal static class SmB3Scenario
     public static async Task RunAsync(ZLinkHttpClient playA, string sessionAStreamEndpoint)
     {
         var actorId = $"actor-sm-b3-complex-{Guid.NewGuid():N}";
-        await using var client = SpotActorRequestSupport.CreateClient(sessionAStreamEndpoint);
+        ScenarioAssert.That(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint), "session-a stream endpoint is required.");
+        await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(sessionAStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024,
+        });
         await client.Connect.Async();
         await client.Request(new AuthReq(actorId, "complex actor", "play-a"))
             .PacketName("AuthReq")
@@ -34,9 +43,12 @@ internal static class SmB3Scenario
         ScenarioAssert.That(
             complex.Attributes["role"] == "analyst" && complex.Attributes["region"] == "west",
             "SM-B3 attribute payload mismatch.");
-        await EvidenceWait.ForAllAsync(
-            playA,
-            [$"actor-complex|rid=play-a|actor={actorId}"],
+        var expectedEvidence = new[] { $"actor-complex|rid=play-a|actor={actorId}" };
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B3 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-b3 passed");
     }

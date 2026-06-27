@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -8,9 +8,48 @@ internal static class SmD4Scenario
 {
     public static async Task RunAsync(string sessionAStreamEndpoint)
     {
-        await using var client = await ConnectAndBindWithRetryAsync(sessionAStreamEndpoint);
+        IZlinkStreamConnector? client = null;
+        try
+        {
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+            Exception? last = null;
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                var candidate = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+                {
+                    Endpoint = new Uri(sessionAStreamEndpoint),
+                    ConnectTimeout = TimeSpan.FromSeconds(5),
+                    RequestTimeout = TimeSpan.FromSeconds(5),
+                    Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                    MaxReceivedMessages = 1024,
+                });
+                try
+                {
+                    await candidate.Connect.Async();
+                    var bound = await candidate.Request(new MultiBindReq("actor-sm-d4-x", "actor-sm-d4-y", "play-a"))
+                        .PacketName("MultiBindReq")
+                        .Async<MultiBindReply>();
+                    ScenarioAssert.That(bound.BoundCount == 2, "SM-D4 expected two bound actors.");
+                    client = candidate;
+                    break;
+                }
+                catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
+                {
+                    last = ex;
+                    await candidate.DisposeAsync();
+                    await Task.Delay(200);
+                }
+            }
 
-        var x = await client.Request(new ActorPingReq("to-x"))
+            if (client is null)
+            {
+                throw new InvalidOperationException(
+                    last is null ? "SM-D4 multi-bind did not become routable." : $"SM-D4 multi-bind did not become routable. Last error: {last.Message}",
+                    last);
+            }
+
+            var x = await client.Request(new ActorPingReq("to-x"))
             .PacketName("ActorPingReq")
             .Metadata(SpotServiceNames.ActorIdMetadata, "actor-sm-d4-x")
             .Async<ActorPingReply>();
@@ -43,70 +82,31 @@ internal static class SmD4Scenario
         ScenarioAssert.That(yPushReply.ActorId == "actor-sm-d4-y", "SM-D4 y push reply actor mismatch.");
         ScenarioAssert.That(yNotify.Payload.Value == "push-y", "SM-D4 y push payload mismatch.");
 
-        await ExpectFailureAsync(
-            client.Request(new ActorPingReq("missing-actor-id"))
-                .PacketName("ActorPingReq")
-                .Timeout(TimeSpan.FromSeconds(2))
-                .Async<ActorPingReply>().AsTask(),
-            "SM-D4 expected actor-id-less request to fail with multiple bound actors.");
-
-        Console.WriteLine("operation SpotService.sm-d4 passed");
-    }
-
-    static async Task<IZlinkStreamConnector> ConnectAndBindWithRetryAsync(string endpoint)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var client = CreateClient(endpoint);
+            var actorIdLessRequestFailed = false;
             try
             {
-                await client.Connect.Async();
-                var bound = await client.Request(new MultiBindReq("actor-sm-d4-x", "actor-sm-d4-y", "play-a"))
-                    .PacketName("MultiBindReq")
-                    .Async<MultiBindReply>();
-                ScenarioAssert.That(bound.BoundCount == 2, "SM-D4 expected two bound actors.");
-                return client;
+                await client.Request(new ActorPingReq("missing-actor-id"))
+                .PacketName("ActorPingReq")
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async<ActorPingReply>();
             }
-            catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
+            catch
             {
-                last = ex;
+                actorIdLessRequestFailed = true;
+            }
+
+            ScenarioAssert.That(
+                actorIdLessRequestFailed,
+                "SM-D4 expected actor-id-less request to fail with multiple bound actors.");
+        }
+        finally
+        {
+            if (client is not null)
+            {
                 await client.DisposeAsync();
-                await Task.Delay(200);
             }
         }
 
-        throw new InvalidOperationException(
-            last is null ? "SM-D4 multi-bind did not become routable." : $"SM-D4 multi-bind did not become routable. Last error: {last.Message}",
-            last);
-    }
-
-    static IZlinkStreamConnector CreateClient(string endpoint)
-    {
-        ScenarioAssert.That(!string.IsNullOrWhiteSpace(endpoint), "session-a stream endpoint is required.");
-        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(endpoint),
-            ConnectTimeout = TimeSpan.FromSeconds(5),
-            RequestTimeout = TimeSpan.FromSeconds(5),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-            DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            MaxReceivedMessages = 1024,
-        });
-    }
-
-    static async Task ExpectFailureAsync(Task task, string message)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(message);
+        Console.WriteLine("operation SpotService.sm-d4 passed");
     }
 }

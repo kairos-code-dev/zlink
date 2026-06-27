@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -32,9 +32,12 @@ internal static class SmC1Scenario
         ScenarioAssert.That(afterTimeout.SpotRid == spotRid, "SM-C1 post-timeout request reached the wrong spot.");
         ScenarioAssert.That(afterTimeout.NodeRid == "play-a", "SM-C1 post-timeout request reached the wrong node.");
         ScenarioAssert.That(afterTimeout.Value > viaChannel.Value, "SM-C1 post-timeout state did not advance.");
-        await EvidenceWait.ForAllAsync(
-            playA,
-            [$"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-c1-send"],
+        var expectedEvidence = new[] { $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-c1-send" };
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-C1 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-c1 passed");
     }

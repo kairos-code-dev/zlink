@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -36,17 +36,21 @@ internal static class SmC3Scenario
             .SubmitAsync<SpotToSpotNegativeReply>()).Body;
         ScenarioAssert.That(negative.RequestFailed, "SM-C3 missing target handler request did not fail.");
 
-        await EvidenceWait.ForAllAsync(
-            playA,
-            [
-                $"spot-to-spot|rid=play-a|source={sourceSpotRid}|target={targetSpotRid}|value=",
-                $"spot-state-command|rid=play-a|spot={targetSpotRid}|marker=sm-c3-send-direct",
-                $"spot-event|rid=play-a|spot={targetSpotRid}|marker=sm-c3-publish-direct",
-                $"spot-to-spot-timeout|rid=play-a|source={sourceSpotRid}|target={targetSpotRid}|failed=True",
-                $"spot-to-spot-negative|rid=play-a|source={sourceSpotRid}|target={targetSpotRid}|requestFailed=True",
-                "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq",
-                "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand",
-            ],
+        var expectedEvidence = new[]
+        {
+            $"spot-to-spot|rid=play-a|source={sourceSpotRid}|target={targetSpotRid}|value=",
+            $"spot-state-command|rid=play-a|spot={targetSpotRid}|marker=sm-c3-send-direct",
+            $"spot-event|rid=play-a|spot={targetSpotRid}|marker=sm-c3-publish-direct",
+            $"spot-to-spot-timeout|rid=play-a|source={sourceSpotRid}|target={targetSpotRid}|failed=True",
+            $"spot-to-spot-negative|rid=play-a|source={sourceSpotRid}|target={targetSpotRid}|requestFailed=True",
+            "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq",
+            "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand",
+        };
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-C3 evidence mismatch.");
 
         Console.WriteLine("operation SpotService.sm-c3 passed");

@@ -1,6 +1,6 @@
-using SpotService.Client;
 using SpotService.Shared;
 using Zlink.HttpClient;
+using SpotService.Client.Support;
 
 namespace SpotService.Client.Scenarios;
 
@@ -21,12 +21,16 @@ internal static class SmE3Scenario
             .Body(new SpotMissingTargetReq(spotRid))
             .SubmitAsync<SpotMissingTargetReply>()).Body;
         ScenarioAssert.That(closedSpotRequest.Failed, "SM-E3 closed spot request did not fail.");
-        await EvidenceWait.ForAllAsync(
-            playA,
-            [
-                $"timer-idle-close|rid=play-a|spot={spotRid}|name=sm-e3-idle|closed=True",
-                $"spot-closing|rid=play-a|spot={spotRid}",
-            ],
+        var expectedEvidence = new[]
+        {
+            $"timer-idle-close|rid=play-a|spot={spotRid}|name=sm-e3-idle|closed=True",
+            $"spot-closing|rid=play-a|spot={spotRid}",
+        };
+        var evidence = (await playA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .SubmitAsync<string[]>()).Body;
+        ScenarioAssert.That(
+            expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-E3 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-e3 passed");
     }

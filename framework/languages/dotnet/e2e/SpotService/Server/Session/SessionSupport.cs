@@ -19,12 +19,12 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using SpotService.Server.Session.Handlers;
+using SpotService.Server.Session.Spots;
 
 namespace SpotService.Server.Session;
 
 
-internal static partial class SessionHostFactory
-{
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
     : IZLinkMessageFlowObserver
 {
@@ -176,5 +176,4 @@ internal sealed record ServerOptions(
             values.GetValueOrDefault("multi-spot-router-a-endpoint"),
             values.GetValueOrDefault("multi-spot-router-b-endpoint"));
     }
-}
 }

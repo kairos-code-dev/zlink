@@ -1,14 +1,18 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Handlers;
+using SpotService.Server.Play.Spots;
 
-namespace SpotService.Server.Play;
+namespace SpotService.Server.Play.Endpoints;
 
-internal static partial class PlayHostFactory
+using static SpotService.Server.Play.PlayHostFactory;
+
+internal static class SpotFailureEndpoints
 {
-    private static void MapSpotFailureEndpoints(WebApplication app)
+
+    public static void MapSpotFailureEndpoints(WebApplication app)
     {
         app.MapPost("/spot/missing-handler/request", async (
             IZLinkRouteClient routes,

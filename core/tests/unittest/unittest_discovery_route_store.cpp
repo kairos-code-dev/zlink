@@ -103,6 +103,24 @@ void add_live_provider (zlink::registry_t *registry_,
     provider.registration_id = owner_.registration_id;
 }
 
+zlink_registry_topology_entry_t make_socket_topology (const char *channel_,
+                                                      const char *rid_,
+                                                      const char *endpoint_,
+                                                      uint64_t reported_at_ms_)
+{
+    zlink_registry_topology_entry_t entry;
+    memset (&entry, 0, sizeof (entry));
+    entry.service_kind = ZLINK_SERVICE_KIND_SOCKET;
+    entry.service_role = ZLINK_SERVICE_ROLE_ROUTER;
+    entry.auto_connect_type = ZLINK_AUTO_CONNECT_CLIENT_SERVER;
+    snprintf (entry.channel_name, sizeof (entry.channel_name), "%s", channel_);
+    snprintf (entry.endpoint, sizeof (entry.endpoint), "%s", endpoint_);
+    entry.routing_id = make_rid (rid_);
+    entry.state = ZLINK_TOPOLOGY_STATE_READY;
+    entry.last_reported_ms = reported_at_ms_;
+    return entry;
+}
+
 void test_pending_route_materializes_when_owner_provider_arrives ()
 {
     void *ctx = zlink_ctx_new ();
@@ -219,6 +237,34 @@ void test_provider_rid_collision_is_excluded_from_materialized_peers ()
 
     TEST_ASSERT_FALSE (registry.owner_is_live_locked (first));
     TEST_ASSERT_FALSE (registry.owner_is_live_locked (second));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_provider_heartbeat_keeps_socket_topology_from_stale_gc ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    zlink::registry_t registry (static_cast<zlink::ctx_t *> (ctx));
+    registry._coordination_state.registry_id = 1;
+    registry._coordination_state.heartbeat_timeout_ms = 15;
+
+    const zlink::registry_t::owner_identity_t owner =
+      make_owner ("heartbeat-topology", "owner-live", 1, 10);
+    add_live_provider (&registry, owner);
+
+    const std::string endpoint = std::string ("inproc://") + owner.routing_id_key;
+    registry.upsert_topology_entry (
+      make_socket_topology ("heartbeat-topology", "owner-live", endpoint.c_str (), 1), 1);
+
+    registry.refresh_topology_heartbeat_locked (ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                                                ZLINK_SERVICE_ROLE_ROUTER, "heartbeat-topology",
+                                                endpoint, 20);
+    registry.remove_expired (40);
+
+    TEST_ASSERT_EQUAL_UINT64 (1, registry._projection_state.topology.size ());
+    TEST_ASSERT_EQUAL_UINT64 (
+      20, registry._projection_state.topology.begin ()->second.entry.last_reported_ms);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -448,6 +494,7 @@ int main ()
     RUN_TEST (test_route_winner_falls_back_to_remaining_observation);
     RUN_TEST (test_route_memory_budget_rejects_new_observation_without_partial_store);
     RUN_TEST (test_provider_rid_collision_is_excluded_from_materialized_peers);
+    RUN_TEST (test_provider_heartbeat_keeps_socket_topology_from_stale_gc);
     RUN_TEST (test_route_store_large_lookup_and_cleanup_stays_fast);
     RUN_TEST (test_route_table_pauses_rehash_during_snapshot_iteration);
     RUN_TEST (test_route_table_snapshot_values_uses_cursor_chunks);

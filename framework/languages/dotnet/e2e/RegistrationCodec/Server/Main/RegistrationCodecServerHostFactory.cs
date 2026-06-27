@@ -18,9 +18,14 @@ namespace RegistrationCodec.Server;
 
 public static class RegistrationCodecServerHostFactory
 {
-    public static WebApplication Create(
+    public static WebApplication Create(string[] args)
+    {
+        return Create(args, (app, options) => app.MapRegistrationScenarioEndpoints(options));
+    }
+
+    private static WebApplication Create(
         string[] args,
-        Action<WebApplication, ServerOptions>? configureApp = null)
+        Action<WebApplication, ServerOptions>? configureApp)
     {
         var options = ServerOptions.Parse(args);
         Directory.CreateDirectory(options.LogDir);

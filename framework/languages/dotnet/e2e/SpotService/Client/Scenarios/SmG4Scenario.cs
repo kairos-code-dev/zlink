@@ -1,0 +1,67 @@
+using SpotService.Client;
+using SpotService.Shared;
+using Systems.Zlink.Stream.Connector;
+using Systems.Zlink.Stream.Connector.Contracts;
+
+namespace SpotService.Client.Scenarios;
+
+// Verifies bound-session push isolation under several concurrent actors.
+internal static class SmG4Scenario
+{
+    public static async Task RunAsync(string sessionAStreamEndpoint)
+    {
+        const int sessionCount = 6;
+        var clients = new List<IZlinkStreamConnector>();
+        try
+        {
+            for (var index = 0; index < sessionCount; index++)
+            {
+                var client = CreateClient(sessionAStreamEndpoint);
+                clients.Add(client);
+                await client.Connect.Async();
+                await client.Request(new AuthReq($"actor-sm-g4-{index}", $"bound-load-{index}", "play-a"))
+                    .PacketName("AuthReq")
+                    .Async<AuthReply>();
+            }
+
+            var results = new List<(string ActorId, string Value, ActorPingReply Reply, ActorPushNotify Notify)>();
+            for (var index = 0; index < clients.Count; index++)
+            {
+                var client = clients[index];
+                var actorId = $"actor-sm-g4-{index}";
+                var value = $"push-{index}";
+                var pushed = client.WaitFor<ActorPushNotify>().Async().AsTask();
+                var reply = await client.Request(new ActorPushReq(value))
+                    .PacketName("ActorPushReq")
+                    .Async<ActorPingReply>();
+                var notify = await pushed;
+                results.Add((actorId, value, reply, notify.Payload));
+            }
+
+            foreach (var (actorId, value, reply, notify) in results)
+            {
+                ScenarioAssert.That(reply.ActorId == actorId, "SM-G4 push reply actor mismatch.");
+                ScenarioAssert.That(reply.Value == value, "SM-G4 push reply value mismatch.");
+                ScenarioAssert.That(notify.ActorId == actorId, "SM-G4 push notify actor mismatch.");
+                ScenarioAssert.That(notify.Value == value, "SM-G4 push notify value mismatch.");
+            }
+        }
+        finally
+        {
+            foreach (var client in clients)
+            {
+                await client.DisposeAsync();
+            }
+        }
+
+        Console.WriteLine("operation SpotService.sm-g4 passed");
+    }
+
+    static IZlinkStreamConnector CreateClient(string endpoint)
+    {
+        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(endpoint),
+        });
+    }
+}

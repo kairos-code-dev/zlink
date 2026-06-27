@@ -469,6 +469,11 @@ class registry_t
     owner_identity_t owner_identity_for_provider_locked (const std::string &channel_name_,
                                                          const provider_entry_t &provider_) const;
     void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_, uint64_t now_ms_);
+    void refresh_topology_heartbeat_locked (uint16_t auto_connect_type_,
+                                            uint16_t service_role_,
+                                            const std::string &channel_name_,
+                                            const std::string &endpoint_,
+                                            uint64_t now_ms_);
     bool find_provider_owner_locked (const std::string &channel_name_,
                                      uint16_t service_role_,
                                      const std::string &endpoint_,

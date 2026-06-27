@@ -6,8 +6,8 @@ using Xunit;
 
 namespace Systems.Zlink.Tests;
 
-public sealed class test_request_reply
-{
+    public sealed class test_request_reply
+    {
     [Fact]
     public async Task request_dealer_router_roundtrip()
     {

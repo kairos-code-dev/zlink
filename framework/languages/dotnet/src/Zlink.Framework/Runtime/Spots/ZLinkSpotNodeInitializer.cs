@@ -61,11 +61,20 @@ internal sealed class ZLinkSpotNodeInitializer(
                 node.SetPubBind(pubEndpoint);
             }
 
-            AttachDiscoveryIfConfigured(state, channelAdapter, spotNodeRegistration, node, nodeRuntime);
-            ConnectManualPeers(spotNodeRegistration, nodeRuntime);
-
-            await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
+            try
+            {
+                AttachDiscoveryIfConfigured(state, channelAdapter, spotNodeRegistration, node, nodeRuntime);
+                ConnectManualPeers(spotNodeRegistration, nodeRuntime);
+
+                await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                state.SpotNodes.Remove(spotNodeRegistration.SpotNodeName);
+                await nodeRuntime.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
         }
     }
 

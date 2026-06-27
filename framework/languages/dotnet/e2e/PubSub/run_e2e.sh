@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+SCENARIO="${1:-all}"
 mkdir -p "$LOG_DIR"
 
 REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/PubSub.Registry.csproj"
@@ -125,6 +126,7 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --publisher-project "$PUBLISHER_PROJECT" \
   --subscriber-project "$SUBSCRIBER_PROJECT" \
   --log-dir "$LOG_DIR" \
+  --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

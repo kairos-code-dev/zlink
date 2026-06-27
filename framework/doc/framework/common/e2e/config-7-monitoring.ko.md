@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E 목차](README.ko.md) | [이전: Discovery·Registry HA](config-6-discovery-registry-ha.ko.md)
+[E2E 목차](README.ko.md) | [이전: Discovery·Registry HA](config-6-discovery-registry-ha.ko.md) | [다음: Spot yield dispatch](config-8-yield-dispatch.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 7 — Runtime Monitoring 배포

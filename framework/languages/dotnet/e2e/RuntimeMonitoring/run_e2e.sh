@@ -8,7 +8,9 @@ mkdir -p "$LOG_DIR"
 
 REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/RuntimeMonitoring.Registry.csproj"
 SERVICE_PROJECT="$ROOT_DIR/Server/Service/RuntimeMonitoring.Service.csproj"
-DRIVER_PROJECT="$ROOT_DIR/Server/Driver/RuntimeMonitoring.Driver.csproj"
+FILTERED_SERVICE_PROJECT="$ROOT_DIR/Server/FilteredService/RuntimeMonitoring.FilteredService.csproj"
+THROWING_SERVICE_PROJECT="$ROOT_DIR/Server/ThrowingService/RuntimeMonitoring.ThrowingService.csproj"
+TRIGGER_PROJECT="$ROOT_DIR/Server/Trigger/RuntimeMonitoring.Trigger.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RuntimeMonitoring.Client.csproj"
 
 pick_port() {
@@ -25,7 +27,7 @@ REG_HTTP_PORT="$(pick_port)"
 SVC_HTTP_PORT="$(pick_port)"
 SVC_B_HTTP_PORT="$(pick_port)"
 THROW_HTTP_PORT="$(pick_port)"
-DRIVER_HTTP_PORT="$(pick_port)"
+TRIGGER_HTTP_PORT="$(pick_port)"
 REG_PUB_PORT="$(pick_port)"
 REG_ROUTER_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
@@ -100,32 +102,43 @@ ZLINK_E2E_RID="svc-a" dotnet run --project "$SERVICE_PROJECT" -- \
 pids+=("$!")
 wait_health "$SVC_URL" svc-a
 
-ZLINK_E2E_RID="svc-b" dotnet run --project "$SERVICE_PROJECT" -- \
+ZLINK_E2E_RID="svc-b" dotnet run --project "$FILTERED_SERVICE_PROJECT" -- \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
   --channel-endpoint "$CHANNEL_B_ENDPOINT" \
-  --monitor-mode socket-filter \
   --evidence-file "$LOG_DIR/svc-b.evidence.log" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/svc-b.stdout.log" 2>"$LOG_DIR/svc-b.stderr.log" &
 pids+=("$!")
 wait_health "$SVC_B_URL" svc-b
 
-ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --project "$SERVICE_PROJECT" -- \
+ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --project "$THROWING_SERVICE_PROJECT" -- \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --registry-router-endpoint "$REG_ROUTER" \
   --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
-  --monitor-mode throwing \
   --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/svc-throw.stdout.log" 2>"$LOG_DIR/svc-throw.stderr.log" &
 pids+=("$!")
 wait_health "$THROW_URL" svc-throw
 
-ZLINK_E2E_RID="driver" dotnet run --project "$DRIVER_PROJECT" -- \
-  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
+ZLINK_E2E_RID="trigger" dotnet run --project "$TRIGGER_PROJECT" -- \
+  --http-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
+  --registry-url "$REG_URL" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --service-channel-endpoint "$CHANNEL_ENDPOINT" \
+  --service-b-url "$SVC_B_URL" \
+  --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
+  --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
+  --log-dir "$LOG_DIR" \
+  >"$LOG_DIR/trigger.stdout.log" 2>"$LOG_DIR/trigger.stderr.log" &
+pids+=("$!")
+wait_health "http://127.0.0.1:$TRIGGER_HTTP_PORT" trigger
+
+dotnet run --project "$CLIENT_PROJECT" -- \
+  --trigger-url "http://127.0.0.1:$TRIGGER_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
   --registry-url "$REG_URL" \
   --service-url "$SVC_URL" \
@@ -134,14 +147,8 @@ ZLINK_E2E_RID="driver" dotnet run --project "$DRIVER_PROJECT" -- \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
   --throw-service-url "$THROW_URL" \
   --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
-  --service-project "$SERVICE_PROJECT" \
+  --filtered-service-project "$FILTERED_SERVICE_PROJECT" \
   --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/driver.stdout.log" 2>"$LOG_DIR/driver.stderr.log" &
-pids+=("$!")
-wait_health "http://127.0.0.1:$DRIVER_HTTP_PORT" driver
-
-dotnet run --project "$CLIENT_PROJECT" -- \
-  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

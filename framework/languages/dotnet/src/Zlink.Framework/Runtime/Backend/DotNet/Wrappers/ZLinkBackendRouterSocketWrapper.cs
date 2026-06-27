@@ -3,6 +3,8 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket) : IZLinkBackendRouterSocket
 {
+    private readonly object _gate = new();
+
     public object NativeInstance => nativeSocket;
 
     public void Bind(string endpoint)
@@ -67,14 +69,12 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
 
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
-        // Bridge to the canonical caller-provided-storage recv. The
-        // framework's IZLinkBackendRouterSocket.Recv signature predates
-        // the binding migration and still allocates a fresh Received per
-        // call; future work can lift the caller-provided pattern up to
-        // the framework adapter too.
         var result = Received.Create();
-        if (nativeSocket.Recv(result, flags))
-            return result;
+        lock (_gate)
+        {
+            if (nativeSocket.Recv(result, flags))
+                return result;
+        }
         result.Dispose();
         return null;
     }
@@ -84,10 +84,13 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         Message message,
         SendFlags flags)
     {
-        return nativeSocket.Send(routingId)
-            .Message(message)
-            .Flags(flags)
-            .Submit();
+        lock (_gate)
+        {
+            return nativeSocket.Send(routingId)
+                .Message(message)
+                .Flags(flags)
+                .Submit();
+        }
     }
 
     public bool Send(
@@ -95,10 +98,13 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSocket.Send(routingId)
-            .Messages(parts)
-            .Flags(flags)
-            .Submit();
+        lock (_gate)
+        {
+            return nativeSocket.Send(routingId)
+                .Messages(parts)
+                .Flags(flags)
+                .Submit();
+        }
     }
 
     public bool Request(
@@ -116,7 +122,10 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
             operation = operation.Timeout(value);
         }
 
-        return operation.Submit(callback);
+        lock (_gate)
+        {
+            return operation.Submit(callback);
+        }
     }
 
     public bool Request(
@@ -133,7 +142,10 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
             operation = operation.Timeout(value);
         }
 
-        return operation.Flags(flags).Submit(callback);
+        lock (_gate)
+        {
+            return operation.Flags(flags).Submit(callback);
+        }
     }
 
     public bool SendToSpot(
@@ -142,10 +154,13 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSocket.SendToSpot(targetNodeRid, targetSpotRid)
-            .Messages(parts)
-            .Flags(flags)
-            .Submit();
+        lock (_gate)
+        {
+            return nativeSocket.SendToSpot(targetNodeRid, targetSpotRid)
+                .Messages(parts)
+                .Flags(flags)
+                .Submit();
+        }
     }
 
     public bool RequestToSpot(
@@ -165,7 +180,10 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
             operation = operation.Timeout(value);
         }
 
-        return operation.Submit(callback);
+        lock (_gate)
+        {
+            return operation.Submit(callback);
+        }
     }
 
     public void Reply(
@@ -173,9 +191,12 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         ulong requestSeq,
         Message message)
     {
-        nativeSocket.Reply(routingId, requestSeq)
-            .Message(message)
-            .Submit();
+        lock (_gate)
+        {
+            nativeSocket.Reply(routingId, requestSeq)
+                .Message(message)
+                .Submit();
+        }
     }
 
     public void Reply(
@@ -183,10 +204,19 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         ulong requestSeq,
         IReadOnlyList<Message> parts)
     {
-        nativeSocket.Reply(routingId, requestSeq)
-            .Messages(parts)
-            .Submit();
+        lock (_gate)
+        {
+            nativeSocket.Reply(routingId, requestSeq)
+                .Messages(parts)
+                .Submit();
+        }
     }
 
-    public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        lock (_gate)
+        {
+            return nativeSocket.DisposeAsync();
+        }
+    }
 }

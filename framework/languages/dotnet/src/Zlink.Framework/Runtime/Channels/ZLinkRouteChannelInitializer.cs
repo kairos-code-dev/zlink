@@ -20,13 +20,22 @@ internal sealed class ZLinkRouteChannelInitializer(
         foreach (var routedRegistration in registration.RouteChannels.Values)
         {
             var runtime = CreateRuntime(state, adapter, routedRegistration);
-            foreach (var endpoint in ResolveManualConnections(routedRegistration))
-            {
-                runtime.Connect(endpoint);
-            }
-
-            runtime.Start();
             state.RouteChannels.Add(routedRegistration.RouterChannelId, runtime);
+            try
+            {
+                foreach (var endpoint in ResolveManualConnections(routedRegistration))
+                {
+                    runtime.Connect(endpoint);
+                }
+
+                runtime.Start();
+            }
+            catch
+            {
+                state.RouteChannels.Remove(routedRegistration.RouterChannelId);
+                runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                throw;
+            }
         }
     }
 
@@ -44,35 +53,54 @@ internal sealed class ZLinkRouteChannelInitializer(
         IZLinkChannelBackendAdapter adapter,
         ZLinkRouteChannelRegistration routedRegistration)
     {
-        var router = adapter.CreateRouterSocket(state.Context);
-        router.SetChannelName(routedRegistration.RouterChannelId);
-        ZLinkChannelBundleFactory.ApplySocketConfig(router, routedRegistration.SocketConfig);
-        if (routedRegistration.RoutingId.Size > 0)
+        IZLinkBackendRouterSocket? router = null;
+        IZLinkBackendDiscovery? discovery = null;
+        try
         {
-            router.SetRoutingId(routedRegistration.RoutingId);
-        }
-        // weight 는 bind/discovery 前에 적용해 default-weight 노출 창을 없앤다.
-        router.SetPeerWeight(routedRegistration.SocketConfig.Weight);
-        router.SetMandatory(true);
-        if (!string.IsNullOrWhiteSpace(routedRegistration.BindEndpoint))
-        {
-            router.Bind(routedRegistration.BindEndpoint);
-        }
-        var discovery = AttachDiscoveryIfNeeded(state, adapter, routedRegistration, router);
-        var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
-        var runtime = new ZLinkRouteChannelRuntime(
-            services,
-            registration,
-            routedRegistration,
-            router,
-            discovery,
-            handlers,
+            router = adapter.CreateRouterSocket(state.Context);
+            router.SetChannelName(routedRegistration.RouterChannelId);
+            ZLinkChannelBundleFactory.ApplySocketConfig(router, routedRegistration.SocketConfig);
+            if (routedRegistration.RoutingId.Size > 0)
+            {
+                router.SetRoutingId(routedRegistration.RoutingId);
+            }
+            // weight 는 bind/discovery 前에 적용해 default-weight 노출 창을 없앤다.
+            router.SetPeerWeight(routedRegistration.SocketConfig.Weight);
+            router.SetMandatory(true);
+            if (!string.IsNullOrWhiteSpace(routedRegistration.BindEndpoint))
+            {
+                router.Bind(routedRegistration.BindEndpoint);
+            }
+            discovery = AttachDiscoveryIfNeeded(state, adapter, routedRegistration, router);
+            var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
+            var runtime = new ZLinkRouteChannelRuntime(
+                services,
+                registration,
+                routedRegistration,
+                router,
+                discovery,
+                handlers,
                 new ZLinkCompositeRouteInternalPacketDispatcher(
-                new ZLinkActorEntrySpotRouteInternalPacketDispatcher(
-                    services.GetRequiredService<ZLinkFrameworkRuntime>())),
-            state.StopTokenSource.Token);
-        AttachSpotRouteBridgeIfAccepted(state, routedRegistration, runtime);
-        return runtime;
+                    new ZLinkActorEntrySpotRouteInternalPacketDispatcher(
+                        services.GetRequiredService<ZLinkFrameworkRuntime>())),
+                state.StopTokenSource.Token);
+            AttachSpotRouteBridgeIfAccepted(state, routedRegistration, runtime);
+            return runtime;
+        }
+        catch
+        {
+            if (discovery is not null)
+            {
+                discovery.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+
+            if (router is not null)
+            {
+                router.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+
+            throw;
+        }
     }
 
     private void AttachSpotRouteBridgeIfAccepted(
@@ -101,7 +129,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         }
         catch
         {
-            _ = bridge.DisposeAsync();
+            bridge.DisposeAsync().AsTask().GetAwaiter().GetResult();
             throw;
         }
     }

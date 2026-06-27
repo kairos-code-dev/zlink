@@ -26,18 +26,36 @@ internal static class SlowSubscriberScenario
         }
 
         // Fast subscribers should still reach the tail event while the slow handler is delayed.
-        await ScenarioAssert.EventuallyAsync(() =>
-        {
-            var fastSnapshots = fastSubscribers
-                .Select(subscriber => subscriber.Get("/evidence").Fetch<string[]>())
-                .ToArray();
-            return Task.FromResult(fastSnapshots.All(lines => lines.Any(line =>
-                Evidence.IsEvent(line, runId, PubSubNames.MainTopic)
-                && line.Contains("seq=8", StringComparison.Ordinal))));
-        }, "PS-B1 expected fast subscribers to keep receiving while another handler is slow.", timeout: TimeSpan.FromSeconds(2));
+        var fastWaits = fastSubscribers
+            .Select(subscriber => subscriber.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(
+                    [],
+                    [],
+                    2000)
+                {
+                    ContainsAllLineGroups =
+                    [
+                        ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=8"],
+                    ],
+                })
+                .SubmitAsync<string[]>()
+                .AsTask())
+            .ToArray();
+        await Task.WhenAll(fastWaits);
 
         // The slow subscriber evidence proves that this scenario actually exercised the delayed path.
-        var slowEvidence = slowSubscriber.Get("/evidence").Fetch<string[]>();
+        var slowEvidence = (await slowSubscriber.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(
+                [],
+                [],
+                10000)
+            {
+                ContainsAllLineGroups =
+                [
+                    ["delay-start|", $"run={runId}"],
+                ],
+            })
+            .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             slowEvidence.Any(line => line.Contains("delay-start|", StringComparison.Ordinal)
                 && line.Contains($"run={runId}", StringComparison.Ordinal)),

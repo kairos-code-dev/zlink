@@ -25,21 +25,20 @@ internal static class TopicFilterScenario
             .SubmitRawAsync();
 
         // Each subscriber records both the accepted event and the ignored marker for the other topic.
-        await ScenarioAssert.EventuallyAsync(() =>
-        {
-            var snapshots = subscribers
-                .Select(subscriber => subscriber.Get("/evidence").Fetch<string[]>())
-                .ToArray();
-            return Task.FromResult(snapshots.All(lines =>
-                    lines.Any(line => Evidence.IsEvent(line, runId, PubSubNames.MainTopic)))
-                && snapshots.All(lines =>
-                    lines.Any(line => Evidence.IsIgnored(line, runId, PubSubNames.OtherTopic))));
-        }, "PS-A2 expected topic-based application filtering evidence.");
+        var snapshots = await WaitForAllSubscribersAsync(
+            subscribers,
+            new EvidenceWaitRequest(
+                ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
+                [],
+                10000)
+            {
+                ContainsAllLineGroups =
+                [
+                    ["ignored|", $"run={runId}", $"topic={PubSubNames.OtherTopic}"],
+                ],
+            });
 
         // The non-interest topic must not be recorded as an accepted business event.
-        var snapshots = subscribers
-            .Select(subscriber => subscriber.Get("/evidence").Fetch<string[]>())
-            .ToArray();
         ScenarioAssert.That(
             snapshots.All(lines => lines.Any(line => Evidence.IsEvent(line, runId, PubSubNames.MainTopic))),
             "PS-A2 accepted topic was not recorded.");
@@ -51,5 +50,16 @@ internal static class TopicFilterScenario
             "PS-A2 non-interest topic was recorded as accepted.");
 
         Console.WriteLine("scenario PS-A2 passed");
+    }
+
+    static async Task<string[][]> WaitForAllSubscribersAsync(
+        IReadOnlyList<ZLinkHttpClient> subscribers,
+        EvidenceWaitRequest request)
+    {
+        var waits = subscribers
+            .Select(subscriber => subscriber.Post("/evidence/wait").Body(request).SubmitAsync<string[]>().AsTask())
+            .ToArray();
+        var responses = await Task.WhenAll(waits);
+        return responses.Select(response => response.Body).ToArray();
     }
 }

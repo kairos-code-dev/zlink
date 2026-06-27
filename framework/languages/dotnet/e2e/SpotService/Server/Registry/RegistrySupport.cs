@@ -1,0 +1,154 @@
+using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using SpotService.Shared;
+using Systems.Zlink;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework;
+using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
+using Zlink.Framework.Contracts.Streams;
+using Zlink.Framework.Contracts.Timers;
+
+namespace SpotService.Server.Registry;
+
+
+internal static partial class RegistryHostFactory
+{
+internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
+    : IZLinkMessageFlowObserver
+{
+    public ValueTask OnMessageFlowAsync(
+        ZLinkMessageFlowEvent flow,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            "dispatch-error"
+            + $"|surface={flow.Surface}"
+            + $"|reason={flow.ErrorReason}"
+            + $"|action={flow.ErrorAction}"
+            + $"|packet={flow.PacketName ?? "<null>"}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class EvidenceStore
+{
+    private readonly ConcurrentQueue<string> _entries = new();
+    private readonly object _fileGate = new();
+    private readonly string? _filePath;
+
+    public EvidenceStore(string rid, string? filePath)
+    {
+        Rid = rid;
+        _filePath = filePath;
+        if (!string.IsNullOrWhiteSpace(_filePath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
+            File.WriteAllText(_filePath, string.Empty);
+        }
+    }
+
+    public string Rid { get; }
+
+    public void Add(string entry)
+    {
+        _entries.Enqueue(entry);
+        if (string.IsNullOrWhiteSpace(_filePath))
+        {
+            return;
+        }
+
+        lock (_fileGate)
+        {
+            File.AppendAllText(_filePath, entry + Environment.NewLine);
+        }
+    }
+
+    public string[] Snapshot() => _entries.ToArray();
+}
+
+internal sealed record NodeOptions(string Rid);
+
+internal sealed record ServerOptions(
+    string Role,
+    string Rid,
+    string HttpUrl,
+    string LogDir,
+    string? EvidenceFile,
+    string? RegistryPubEndpoint,
+    string? RegistryRouterEndpoint,
+    string? ControlEndpoint,
+    string? SpotRouterEndpoint,
+    string? SpotPubEndpoint,
+    string? ExternalClientEndpoint,
+    string? ExternalSpotEndpoint,
+    string? ClientSpotPubEndpoint,
+    string? StreamEndpoint,
+    string? TlsStreamEndpoint,
+    string? TlsCertPath,
+    string? TlsKeyPath,
+    string? MultiRouteAEndpoint,
+    string? MultiRouteBEndpoint,
+    string? MultiSpotRouterAEndpoint,
+    string? MultiSpotRouterBEndpoint)
+{
+    public static ServerOptions Parse(string[] args, string defaultRole)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < args.Length; i++)
+        {
+            var key = args[i];
+            if (!key.StartsWith("--", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (i + 1 >= args.Length)
+            {
+                throw new ArgumentException($"Missing value for {key}.");
+            }
+
+            values[key[2..]] = args[++i];
+        }
+
+        string Required(string key) => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : throw new ArgumentException($"--{key} is required.");
+
+        return new ServerOptions(
+            defaultRole,
+            Required("rid"),
+            Required("http-url"),
+            values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")),
+            values.GetValueOrDefault("evidence-file"),
+            values.GetValueOrDefault("registry-pub-endpoint"),
+            values.GetValueOrDefault("registry-router-endpoint"),
+            values.GetValueOrDefault("control-endpoint"),
+            values.GetValueOrDefault("spot-router-endpoint"),
+            values.GetValueOrDefault("spot-pub-endpoint"),
+            values.GetValueOrDefault("external-client-endpoint"),
+            values.GetValueOrDefault("external-spot-endpoint"),
+            values.GetValueOrDefault("client-spot-pub-endpoint"),
+            values.GetValueOrDefault("stream-endpoint"),
+            values.GetValueOrDefault("tls-stream-endpoint"),
+            values.GetValueOrDefault("tls-cert-path"),
+            values.GetValueOrDefault("tls-key-path"),
+            values.GetValueOrDefault("multi-route-a-endpoint"),
+            values.GetValueOrDefault("multi-route-b-endpoint"),
+            values.GetValueOrDefault("multi-spot-router-a-endpoint"),
+            values.GetValueOrDefault("multi-spot-router-b-endpoint"));
+    }
+}
+}

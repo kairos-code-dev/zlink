@@ -3,6 +3,7 @@ namespace RegistrationCodec.Client;
 internal sealed record ClientOptions(
     string ChannelEndpoint,
     string ServerUrl,
+    string CodecRequesterUrl,
     string InvalidServerProject,
     string LogDir)
 {
@@ -38,6 +39,7 @@ internal sealed record ClientOptions(
         return new ClientOptions(
             ChannelEndpoint: Get("--channel-endpoint"),
             ServerUrl: Get("--server-url"),
+            CodecRequesterUrl: Get("--codec-requester-url"),
             InvalidServerProject: Get("--invalid-server-project"),
             LogDir: Get("--log-dir"));
     }

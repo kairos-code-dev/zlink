@@ -1,0 +1,114 @@
+using ResilienceLifecycle.Client;
+using ResilienceLifecycle.Shared;
+using Zlink.HttpClient;
+
+namespace ResilienceLifecycle.Client.Scenarios;
+
+// RL-A4 verifies drain followed by replacement with a green provider endpoint.
+internal static class RlA4DrainAndGreenEndpointScenario
+{
+    public static async Task RunAsync(
+        ZLinkHttpClient consumer,
+        ResilienceProcessManager processes,
+        ZLinkHttpClient providerB)
+    {
+        await providerB.Post("/admin/drain").SubmitRawAsync();
+        await WaitForWeightAsync(providerB, 0);
+
+        var green = await processes.StartProviderBGreenAsync();
+        using var greenProvider = ZLinkHttpClient.Create(green.Url).Json().Build();
+
+        for (var i = 0; i < 12; i++)
+        {
+            var marker = $"rl-a4-rolling-{i}";
+            var reply = (await consumer.Post("/profile/request")
+                .Body(new ProfileRequest("fast", marker))
+                .SubmitAsync<ProfileReply>()).Body;
+            ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 rolling request returned an unexpected value.");
+            ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b", "RL-A4 rolling request used an unexpected provider.");
+        }
+
+        await providerB.Post("/shutdown").SubmitRawAsync();
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            try
+            {
+                var health = await providerB.Get("/health").SubmitRawAsync();
+                if (health.Status != 200)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                break;
+            }
+
+            await Task.Delay(100);
+        }
+
+        var sawGreen = false;
+        for (var i = 0; i < 24; i++)
+        {
+            var marker = $"rl-a4-green-{i}";
+            var reply = (await consumer.Post("/profile/request")
+                .Body(new ProfileRequest("fast", marker))
+                .SubmitAsync<ProfileReply>()).Body;
+            ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 green request returned an unexpected value.");
+            sawGreen = sawGreen || reply.ProviderRid == "api-b";
+        }
+
+        ScenarioAssert.That(sawGreen, "RL-A4 did not route traffic to the green api-b provider after the old endpoint stopped.");
+
+        await greenProvider.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(["marker=rl-a4-green-"], []))
+            .SubmitAsync<string[]>();
+
+        await greenProvider.Post("/shutdown").SubmitRawAsync();
+        await processes.StartProviderBAsync();
+
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            try
+            {
+                var health = await providerB.Get("/health").SubmitRawAsync();
+                if (health.Status == 200)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                // The scenario keeps polling until the original provider accepts HTTP traffic.
+            }
+
+            await Task.Delay(100);
+        }
+
+        var restored = false;
+        for (var i = 0; i < 24; i++)
+        {
+            var marker = $"rl-a4-restored-{i}";
+            var reply = (await consumer.Post("/profile/request")
+                .Body(new ProfileRequest("fast", marker))
+                .SubmitAsync<ProfileReply>()).Body;
+            ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 restored request returned an unexpected value.");
+            restored = restored || reply.ProviderRid == "api-b";
+        }
+
+        ScenarioAssert.That(restored, "RL-A4 did not route traffic to api-b after the original endpoint was restored.");
+
+        await providerB.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(["marker=rl-a4-restored-"], []))
+            .SubmitAsync<string[]>();
+
+        Console.WriteLine("scenario RL-A4 passed");
+    }
+
+    static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
+    {
+        await provider.Post("/admin/weight/wait")
+            .Body(new WeightWaitRequest(expected))
+            .SubmitRawAsync();
+    }
+}

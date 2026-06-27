@@ -60,14 +60,14 @@ internal static class LateSubscriberScenario
             }
 
             // The positive check proves the late subscriber joined the fanout after process start.
-            await ScenarioAssert.EventuallyAsync(() =>
-            {
-                var late = lateSubscriberClient.Get("/evidence").Fetch<string[]>();
-                return Task.FromResult(late.Any(line => Evidence.IsEvent(line, afterLateRun, PubSubNames.MainTopic)));
-            }, "PS-A3 expected late subscriber to receive post-join events.");
+            var lateEvidence = (await lateSubscriberClient.Post("/evidence/wait")
+                .Body(new EvidenceWaitRequest(
+                    ["event|", $"run={afterLateRun}", $"topic={PubSubNames.MainTopic}"],
+                    [],
+                    10000))
+                .SubmitAsync<string[]>()).Body;
 
             // Pub/Sub has no replay contract, so pre-join events must stay absent from late evidence.
-            var lateEvidence = lateSubscriberClient.Get("/evidence").Fetch<string[]>();
             ScenarioAssert.That(
                 lateEvidence.All(line => !line.Contains($"run={beforeLateRun}", StringComparison.Ordinal)),
                 "PS-A3 late subscriber replayed pre-join events.");

@@ -10,3 +10,12 @@ public static class PubSubNames
 public sealed record EventNotify(string RunId, int Sequence, string Value);
 
 public sealed record MissingEventNotify(string RunId, int Sequence, string Value);
+
+public sealed record EvidenceWaitRequest(
+    string[] ContainsAll,
+    string[][] ContainsAnyGroups,
+    int TimeoutMilliseconds = 10000)
+{
+    public string[][] ContainsAllLineGroups { get; init; } = [];
+    public string[][] ContainsAnyLineGroups { get; init; } = [];
+}

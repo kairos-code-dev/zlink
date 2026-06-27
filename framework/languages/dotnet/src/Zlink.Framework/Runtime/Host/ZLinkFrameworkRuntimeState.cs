@@ -50,7 +50,6 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         StopTokenSource.Cancel();
-        await WaitForListenerTasksAsync();
 
         foreach (var node in SpotNodes.Values)
         {
@@ -91,6 +90,8 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         {
             await DisposeSafelyAsync(bundle);
         }
+
+        await WaitForListenerTasksAsync();
 
         StopTokenSource.Dispose();
         await DisposeSafelyAsync(Context);

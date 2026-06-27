@@ -15,9 +15,14 @@ namespace RegistrationCodec.Server.InvalidDuplicate;
 
 public static class RegistrationCodecServerHostFactory
 {
-    public static WebApplication Create(
+    public static WebApplication Create(string[] args)
+    {
+        return CreateWithMode(args.Concat(["--invalid-mode", "duplicate"]).ToArray(), null);
+    }
+
+    private static WebApplication CreateWithMode(
         string[] args,
-        Action<WebApplication, ServerOptions>? configureApp = null)
+        Action<WebApplication, ServerOptions>? configureApp)
     {
         var options = ServerOptions.Parse(args);
         Directory.CreateDirectory(options.LogDir);

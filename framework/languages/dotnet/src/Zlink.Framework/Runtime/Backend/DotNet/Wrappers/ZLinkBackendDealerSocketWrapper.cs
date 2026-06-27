@@ -3,6 +3,8 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket) : IZLinkBackendDealerSocket
 {
+    private readonly object _gate = new();
+
     // DEALER 바인딩의 PeerWeight 옵션은 set-only 이므로 마지막으로 적용한 값을 캐시한다(core 기본 100).
     // framework 가 유일한 writer 이므로 set 한 값을 read 로 돌려주는 것은 정합하다.
     private int _peerWeight = 100;
@@ -69,18 +71,24 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
 
     public bool Send(Message message, SendFlags flags)
     {
-        return nativeSocket.Send()
-            .Message(message)
-            .Flags(flags)
-            .Submit();
+        lock (_gate)
+        {
+            return nativeSocket.Send()
+                .Message(message)
+                .Flags(flags)
+                .Submit();
+        }
     }
 
     public bool Send(IReadOnlyList<Message> parts, SendFlags flags)
     {
-        return nativeSocket.Send()
-            .Messages(parts)
-            .Flags(flags)
-            .Submit();
+        lock (_gate)
+        {
+            return nativeSocket.Send()
+                .Messages(parts)
+                .Flags(flags)
+                .Submit();
+        }
     }
 
     public bool Request(
@@ -97,7 +105,10 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
             operation = operation.Timeout(value);
         }
 
-        return operation.Submit(callback);
+        lock (_gate)
+        {
+            return operation.Submit(callback);
+        }
     }
 
     public bool Request(
@@ -113,20 +124,32 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
             operation = operation.Timeout(value);
         }
 
-        return operation.Flags(flags).Submit(callback);
+        lock (_gate)
+        {
+            return operation.Flags(flags).Submit(callback);
+        }
     }
 
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
         var received = Received.Create();
-        if (nativeSocket.Recv(received, flags))
+        lock (_gate)
         {
-            return received;
+            if (nativeSocket.Recv(received, flags))
+            {
+                return received;
+            }
         }
 
         received.Dispose();
         return null;
     }
 
-    public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        lock (_gate)
+        {
+            return nativeSocket.DisposeAsync();
+        }
+    }
 }

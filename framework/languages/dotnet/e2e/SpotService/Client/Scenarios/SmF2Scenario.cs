@@ -1,0 +1,32 @@
+using SpotService.Client;
+using SpotService.Shared;
+using Zlink.HttpClient;
+
+namespace SpotService.Client.Scenarios;
+
+internal static class SmF2Scenario
+{
+    public static async Task RunAsync(ZLinkHttpClient api, SpotLifecycleOrderContext context)
+    {
+        var state = (await api.Post("/spot/state/request")
+            .Body(new SpotStateRouteReq(context.SpotRid, "add", 5))
+            .SubmitAsync<StateReply>()).Body;
+        ScenarioAssert.That(state.SpotRid == context.SpotRid, "SM-F2 request reached the wrong spot.");
+        ScenarioAssert.That(state.NodeRid == "play-a", "SM-F2 request reached the wrong node.");
+        ScenarioAssert.That(state.Value == context.CurrentValue + 5, "SM-F2 state reply mismatch.");
+        context.CurrentValue = state.Value;
+
+        var command = (await api.Post("/spot/state/command")
+            .Body(new SpotStateCommandReq(context.SpotRid, "sm-f2-command"))
+            .SubmitAsync<SpotStateCommandReply>()).Body;
+        ScenarioAssert.That(command.SpotRid == context.SpotRid && command.Accepted, "SM-F2 command was not accepted.");
+        await EvidenceWait.ForAllAsync(
+            api,
+            [
+                $"spot-state-request|rid=play-a|spot={context.SpotRid}|value={context.CurrentValue}",
+                $"spot-state-command|rid=play-a|spot={context.SpotRid}|marker=sm-f2-command",
+            ],
+            "SM-F2 evidence mismatch.");
+        Console.WriteLine("operation SpotService.sm-f2 passed");
+    }
+}

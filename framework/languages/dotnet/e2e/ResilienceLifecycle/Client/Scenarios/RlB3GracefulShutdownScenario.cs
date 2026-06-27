@@ -1,0 +1,57 @@
+using ResilienceLifecycle.Client;
+using ResilienceLifecycle.Shared;
+using Zlink.HttpClient;
+
+namespace ResilienceLifecycle.Client.Scenarios;
+
+// RL-B3 verifies graceful shutdown avoids stale endpoint routing.
+internal static class RlB3GracefulShutdownScenario
+{
+    public static async Task RunAsync(
+        ZLinkHttpClient consumer,
+        ResilienceProcessManager processes,
+        ZLinkHttpClient providerA,
+        ZLinkHttpClient providerB)
+    {
+        var beforeMarker = $"rl-b3-before-{Guid.NewGuid():N}";
+        var before = (await consumer.Post("/profile/request")
+            .Body(new ProfileRequest("fast", beforeMarker))
+            .SubmitAsync<ProfileReply>()).Body;
+        ScenarioAssert.That(before.ProviderRid is "api-a" or "api-b", "RL-B3 pre-shutdown request failed.");
+
+        await providerB.Post("/shutdown").SubmitRawAsync();
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            try
+            {
+                var health = await providerB.Get("/health").SubmitRawAsync();
+                if (health.Status != 200)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                break;
+            }
+
+            await Task.Delay(100);
+        }
+
+        for (var i = 0; i < 12; i++)
+        {
+            var after = (await consumer.Post("/profile/request")
+                .Body(new ProfileRequest("fast", $"rl-b3-after-{i}"))
+                .SubmitAsync<ProfileReply>()).Body;
+            ScenarioAssert.That(after.ProviderRid == "api-a", "RL-B3 request after graceful shutdown used stale api-b.");
+        }
+
+        await providerA.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(["marker=rl-b3-after-"], []))
+            .SubmitAsync<string[]>();
+
+        await processes.StartProviderBAsync();
+
+        Console.WriteLine("scenario RL-B3 passed");
+    }
+}

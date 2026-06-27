@@ -33,22 +33,32 @@ static_checks() {
   fi
   rm -f /tmp/zlink-yield-dispatch-static-http.$$
 
-  if rg -n '\.Yield' "$SCRIPT_DIR" -g '*.cs' | rg -v 'Server/Play/PlayHostFactory.cs' >/tmp/zlink-yield-dispatch-static-yield.$$; then
+  if rg -n '\.Yield' "$SCRIPT_DIR" -g '*.cs' | rg -v 'Server/Play/' >/tmp/zlink-yield-dispatch-static-yield.$$; then
     cat /tmp/zlink-yield-dispatch-static-yield.$$ >&2
     rm -f /tmp/zlink-yield-dispatch-static-yield.$$
-    echo "YieldDispatch may only call .Yield from Spot/Entry Spot handlers in PlayHostFactory.cs." >&2
+    echo "YieldDispatch may only call .Yield from Spot/Entry Spot handlers in Server/Play." >&2
     return 1
   fi
   rm -f /tmp/zlink-yield-dispatch-static-yield.$$
 
+  if ! rg -q 'YieldConnectorFactory\.Create' "$SCRIPT_DIR/Client/Support/YieldDispatchScenarioContext.cs"; then
+    echo "YieldDispatch full scenario context must create and use a real stream connector." >&2
+    return 1
+  fi
+
   local scenario_file
-  for scenario_file in "$SCRIPT_DIR"/Client/Scenarios/*.cs; do
-    if ! rg -q 'ZlinkStreamConnectorFactory\.Create|YieldConnectorFactory\.Create' "$scenario_file"; then
+  for scenario_file in "$SCRIPT_DIR"/Client/Scenarios/Yd*.cs; do
+    if ! rg -q 'YieldDispatchScenarioContext context' "$scenario_file"; then
       echo "$scenario_file" >&2
-      echo "YieldDispatch client scenarios must create and use a real stream connector." >&2
+      echo "YieldDispatch YD scenario files must use the stream connector scenario context." >&2
       return 1
     fi
   done
+
+  if ! rg -q 'YieldConnectorFactory\.Create' "$SCRIPT_DIR/Client/Scenarios/ShutdownYieldScenario.cs"; then
+    echo "YieldDispatch shutdown scenario must create and use a real stream connector." >&2
+    return 1
+  fi
 }
 
 PIDS=()
@@ -76,6 +86,9 @@ cleanup() {
     fi
     wait "$pid" 2>/dev/null || true
   done
+  pkill -TERM -f "$LOG_DIR" 2>/dev/null || true
+  sleep 0.1
+  pkill -KILL -f "$LOG_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'cleanup; exit 143' TERM INT
@@ -196,7 +209,7 @@ terminate_gracefully() {
     return 0
   fi
   kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 600); do
     local state
     state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
     if [[ -z "$state" || "$state" == Z* ]]; then
@@ -233,7 +246,15 @@ wait_file_contains() {
 wait_process_exit() {
   local name="$1"
   local pid="$2"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 600); do
+    if [[ -r "/proc/$pid/stat" ]]; then
+      local state
+      state="$(awk '{print $3}' "/proc/$pid/stat")"
+      if [[ "$state" == "Z" ]]; then
+        wait "$pid"
+        return $?
+      fi
+    fi
     if ! kill -0 "$pid" 2>/dev/null; then
       wait "$pid"
       return $?

@@ -23,14 +23,12 @@ internal static class FanoutBasicDeliveryScenario
         }
 
         // Wait until every subscriber has proven that it is attached to the fanout stream.
-        await ScenarioAssert.EventuallyAsync(() =>
-        {
-            var snapshots = subscribers
-                .Select(subscriber => subscriber.Get("/evidence").Fetch<string[]>())
-                .ToArray();
-            return Task.FromResult(snapshots.All(lines =>
-                lines.Any(line => Evidence.IsEvent(line, runId, PubSubNames.MainTopic))));
-        }, "PS-A1 expected all initial subscribers to receive warm-up events.");
+        await WaitForAllSubscribersAsync(
+            subscribers,
+            new EvidenceWaitRequest(
+                ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
+                [],
+                10000));
 
         var measureStart = 100;
         var measureCount = 12;
@@ -47,19 +45,36 @@ internal static class FanoutBasicDeliveryScenario
         }
 
         // Publish submit does not promise remote delivery, so the scenario checks a shared contiguous range.
-        await ScenarioAssert.EventuallyAsync(() =>
-        {
-            var snapshots = subscribers
-                .Select(subscriber => subscriber.Get("/evidence").Fetch<string[]>())
-                .ToArray();
-            return Task.FromResult(Evidence.CommonContiguousSequence(
-                snapshots,
+        var measuredSnapshots = await WaitForAllSubscribersAsync(
+            subscribers,
+            new EvidenceWaitRequest(
+                ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
+                [
+                    [$"seq={measureStart}|"],
+                    [$"seq={measureStart + 1}|"],
+                    [$"seq={measureStart + 2}|"],
+                ],
+                10000));
+        ScenarioAssert.That(
+            Evidence.CommonContiguousSequence(
+                measuredSnapshots,
                 runId,
                 PubSubNames.MainTopic,
                 measureStart,
-                measureStart + measureCount - 1).Count >= 3);
-        }, "PS-A1 expected common contiguous sequence on all subscribers.");
+                measureStart + measureCount - 1).Count >= 3,
+            "PS-A1 expected common contiguous sequence on all subscribers.");
 
         Console.WriteLine("scenario PS-A1 passed");
+    }
+
+    static async Task<string[][]> WaitForAllSubscribersAsync(
+        IReadOnlyList<ZLinkHttpClient> subscribers,
+        EvidenceWaitRequest request)
+    {
+        var waits = subscribers
+            .Select(subscriber => subscriber.Post("/evidence/wait").Body(request).SubmitAsync<string[]>().AsTask())
+            .ToArray();
+        var responses = await Task.WhenAll(waits);
+        return responses.Select(response => response.Body).ToArray();
     }
 }

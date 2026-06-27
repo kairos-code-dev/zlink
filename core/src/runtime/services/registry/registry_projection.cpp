@@ -459,6 +459,29 @@ void registry_t::upsert_topology_entry (const zlink_registry_topology_entry_t &e
     _coordination_state.summary_last_changed_ms = now_ms_;
 }
 
+void registry_t::refresh_topology_heartbeat_locked (uint16_t auto_connect_type_,
+                                                    uint16_t service_role_,
+                                                    const std::string &channel_name_,
+                                                    const std::string &endpoint_,
+                                                    uint64_t now_ms_)
+{
+    for (std::map<topology_key_t, topology_entry_t>::iterator it =
+           _projection_state.topology.begin ();
+         it != _projection_state.topology.end (); ++it) {
+        zlink_registry_topology_entry_t &entry = it->second.entry;
+        if (static_cast<uint16_t> (entry.auto_connect_type) != auto_connect_type_
+            || static_cast<uint16_t> (entry.service_role) != service_role_
+            || channel_name_ != entry.channel_name || endpoint_ != entry.endpoint) {
+            continue;
+        }
+        if (entry.state == ZLINK_TOPOLOGY_STATE_STOPPED
+            || entry.state == ZLINK_TOPOLOGY_STATE_LOST) {
+            continue;
+        }
+        entry.last_reported_ms = now_ms_;
+    }
+}
+
 void registry_t::send_service_list (void *pub_)
 {
     uint32_t registry_id = 0;

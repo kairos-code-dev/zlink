@@ -27,6 +27,7 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
 
     internal IntPtr Handle => _kernel.Handle;
     internal SocketKernel Kernel => _kernel;
+    internal object SubmitGate { get; } = new();
     public CommonSocketOptions Options { get; }
 
     public void Bind(string address)

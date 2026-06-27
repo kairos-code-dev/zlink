@@ -1,21 +1,63 @@
 using DiscoveryRegistryHa.Client;
 using DiscoveryRegistryHa.Client.Scenarios;
-using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
 
-using var driver = ZLinkHttpClient.Create(options.DriverUrl)
-    .Json()
-    .Timeout(TimeSpan.FromMinutes(10))
-    .Build();
-
 if (options.Scenario is "a1")
 {
-    await BasicDiscoveryScenario.RunAsync(driver);
+    await BasicDiscoveryScenario.RunAsync(options);
 }
-else if (options.Scenario is "cluster")
+else if (options.Scenario is "dr-a2")
 {
-    await ClusterDiscoveryScenario.RunAsync(driver);
+    await DrA2ClusterBridgeScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-a3")
+{
+    await DrA3ClusterBridgeScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-a4")
+{
+    await DrA4ThirdRegistryScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-b1")
+{
+    await DrB1FailoverScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-b2")
+{
+    await DrB2FailoverScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-d2")
+{
+    await DrD2DirectEndpointScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-d4")
+{
+    await DrD4DirectEndpointScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-b3")
+{
+    await DrB3RecoveryScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-d1")
+{
+    await DrD1DirectEndpointScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-d3")
+{
+    await DrD3DirectEndpointScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-c1")
+{
+    await DrC1EmbeddedRegistryScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-c2")
+{
+    await DrC2EmbeddedRegistryScenario.RunAsync(options);
+}
+else if (options.Scenario is "dr-c3")
+{
+    await DrC3EmbeddedRegistryScenario.RunAsync(options);
 }
 else
 {

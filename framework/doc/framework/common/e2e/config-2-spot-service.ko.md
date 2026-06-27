@@ -4,9 +4,9 @@
 
 # Config 2 — Spot 기반 서비스 배포
 
-> 현재 framework 언어별 E2E 테스트 소스는 재작성 예정이라 제거된 상태다. 이 문서는
-> 새 E2E를 다시 만들 때 유지해야 할 검증 의도와 marker 기준을 설명한다. 현재 runtime
-> 검증은 언어별 unit/contract test와 sample smoke test가 담당한다.
+> 현재 .NET framework E2E는 `framework/languages/dotnet/e2e/SpotService` 아래에서 이
+> 시나리오를 구현한다. 이 문서는 언어별 구현이 유지해야 할 검증 의도, 서버 역할, marker
+> 기준을 설명한다.
 
 상태를 들고 있는 서비스 형상을 띄운다. entry spot이 user spot으로 라우팅하고, 거기에 actor와
 bound session이 붙는 배포다. 이걸 한 번 띄워 두고 spot messaging과 session push가 실제
@@ -484,9 +484,8 @@ target spot packet이 함께 오가도 서로 오염되지 않는지 검증한�
   `SpotNode`가 channel socket을 직접 들고 있지 않다. spot routing을 얹어도 그 channel의 일반
   messaging은 그대로 동작한다.
 - 외부 channel과 spot 사이의 relay packet 의미(frame 순서·request/reply·error·policy)는 한 곳에서
-  정의되고 모든 언어가 같은 의미로 투영한다. core 내부 구현은 implicit SPOT wiring으로 정리
-  중이며(draft: `core/doc/spec/draft/spot-implicit-channel-wiring-plan.ko.md`), v1 공개 검증 범위는
-  RouteMesh 기반 spot route에 한정한다.
+  정의되고 모든 언어가 같은 의미로 투영한다. v1 공개 검증 범위는 RouteMesh 기반 spot route에
+  한정한다.
 
 이 트랙이 쓰는 공개 API(현재 제공, guide 05-spot 문서화):
 

@@ -1,0 +1,118 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using SpotService.Shared;
+using Systems.Zlink;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Spots;
+
+namespace SpotService.Server.Play;
+
+internal static partial class PlayHostFactory
+{
+    private static void MapSpotLifecycleEndpoints(WebApplication app)
+    {
+        app.MapPost("/spot/create", async (
+            IZLinkSpotManager spots,
+            EvidenceStore evidence,
+            NodeOptions node,
+            CreateSpotReq request) =>
+        {
+            var createdSpot = await spots.GetOrCreateAsync<ScenarioUserSpot>(RoutingId.From(request.SpotRid));
+            evidence.Add($"create-spot|rid={node.Rid}|spot={createdSpot.SpotRid}|state={createdSpot.State}");
+            return Results.Ok(new CreateSpotReply(
+                createdSpot.SpotRid.ToString(),
+                node.Rid,
+                createdSpot.State.ToString()));
+        });
+        app.MapPost("/spot/create-alternate", async (
+            IZLinkSpotManager spots,
+            EvidenceStore evidence,
+            NodeOptions node,
+            CreateSpotReq request) =>
+        {
+            var createdSpot = await spots.GetOrCreateAsync<ScenarioAlternateSpot>(RoutingId.From(request.SpotRid));
+            evidence.Add($"create-unsubscribed-spot|rid={node.Rid}|spot={createdSpot.SpotRid}|state={createdSpot.State}");
+            return Results.Ok(new CreateSpotReply(
+                createdSpot.SpotRid.ToString(),
+                node.Rid,
+                createdSpot.State.ToString()));
+        });
+        app.MapPost("/spot/type-mismatch", async (
+            IZLinkSpotManager spots,
+            EvidenceStore evidence,
+            NodeOptions node,
+            SpotTypeMismatchReq request) =>
+        {
+            var rid = RoutingId.From(request.SpotRid);
+            var first = await spots.GetOrCreateAsync<ScenarioUserSpot>(rid);
+            try
+            {
+                await spots.GetOrCreateAsync<ScenarioAlternateSpot>(rid);
+            }
+            catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.SpotTypeMismatch)
+            {
+                evidence.Add($"spot-type-mismatch|rid={node.Rid}|spot={request.SpotRid}|kind={ex.Kind}");
+                return Results.Ok(new SpotTypeMismatchReply(
+                    request.SpotRid,
+                    true,
+                    ex.Kind.ToString(),
+                    first.State.ToString()));
+            }
+
+            throw new InvalidOperationException("Expected SpotTypeMismatch for reused spot rid.");
+        });
+        app.MapPost("/spot/close", async (
+            IZLinkSpotManager spots,
+            EvidenceStore evidence,
+            NodeOptions node,
+            CloseSpotReq request) =>
+        {
+            var closed = await spots.CloseAsync(RoutingId.From(request.SpotRid));
+            evidence.Add($"close-spot|rid={node.Rid}|spot={request.SpotRid}|closed={closed}");
+            await WaitUntilAsync(
+                () => evidence.Snapshot().Any(line => line.Contains($"spot-closing|rid={node.Rid}|spot={request.SpotRid}", StringComparison.Ordinal)),
+                "Expected spot closing evidence.");
+            return Results.Ok(new CloseSpotReply(request.SpotRid, closed));
+        });
+        app.MapPost("/spot/state/request", async (
+            IZLinkRouteClient routes,
+            NodeOptions node,
+            SpotStateRouteReq request) =>
+        {
+            var channelName = string.Equals(node.Rid, "play-b", StringComparison.Ordinal)
+                ? SpotServiceNames.ExternalSpotChannelB
+                : SpotServiceNames.ExternalSpotChannel;
+            var result = await RequestSpotStateWithRetryAsync(
+                routes,
+                request.SpotRid,
+                new StateReq(request.Operation, request.Delta),
+                "Spot state route request timed out.",
+                channelName);
+            return Results.Ok(result);
+        });
+        app.MapPost("/spot/state/command", async (
+            IZLinkRouteClient routes,
+            EvidenceStore evidence,
+            NodeOptions node,
+            SpotStateCommandReq request) =>
+        {
+            var before = evidence.Snapshot();
+            await SendSpotCommandWithRetryAsync(
+                routes,
+                SpotServiceNames.ExternalSpotChannel,
+                request.SpotRid,
+                new StateCommand(request.Marker),
+                "StateCommand",
+                "Spot state command route timed out.");
+            await WaitUntilAsync(
+                () => CountNew(evidence.Snapshot(), before, $"spot-state-command|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") == 1,
+                "Expected spot state command evidence.");
+            return Results.Ok(new SpotStateCommandReply(
+                request.SpotRid,
+                request.Marker,
+                true,
+                evidence.Snapshot()));
+        });
+    }
+}

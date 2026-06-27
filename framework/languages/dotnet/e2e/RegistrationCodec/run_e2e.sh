@@ -9,6 +9,7 @@ mkdir -p "$LOG_DIR"
 SERVER_PROJECT="$ROOT_DIR/Server/Main/RegistrationCodec.Server.csproj"
 INVALID_SERVER_PROJECT="$ROOT_DIR/Server/InvalidDuplicate/RegistrationCodec.InvalidDuplicate.csproj"
 JSON_ONLY_PEER_PROJECT="$ROOT_DIR/Server/JsonOnlyPeer/RegistrationCodec.JsonOnlyPeer.csproj"
+CODEC_REQUESTER_PROJECT="$ROOT_DIR/Server/CodecRequester/RegistrationCodec.CodecRequester.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RegistrationCodec.Client.csproj"
 
 pick_port() {
@@ -23,8 +24,14 @@ PY
 
 SERVER_HTTP_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
+JSON_ONLY_HTTP_PORT="$(pick_port)"
+JSON_ONLY_CHANNEL_PORT="$(pick_port)"
+CODEC_REQUESTER_HTTP_PORT="$(pick_port)"
 SERVER_URL="http://127.0.0.1:$SERVER_HTTP_PORT"
 CHANNEL_ENDPOINT="tcp://127.0.0.1:$CHANNEL_PORT"
+JSON_ONLY_URL="http://127.0.0.1:$JSON_ONLY_HTTP_PORT"
+JSON_ONLY_CHANNEL_ENDPOINT="tcp://127.0.0.1:$JSON_ONLY_CHANNEL_PORT"
+CODEC_REQUESTER_URL="http://127.0.0.1:$CODEC_REQUESTER_HTTP_PORT"
 
 pids=()
 cleanup() {
@@ -60,16 +67,35 @@ dotnet run --project "$SERVER_PROJECT" -- \
   --rid reg-codec-node \
   --http-url "$SERVER_URL" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
-  --json-only-peer-project "$JSON_ONLY_PEER_PROJECT" \
   --evidence-file "$LOG_DIR/server.evidence.log" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/server.stdout.log" 2>"$LOG_DIR/server.stderr.log" &
 pids+=("$!")
 wait_health "$SERVER_URL" server
 
+dotnet run --project "$JSON_ONLY_PEER_PROJECT" -- \
+  --rid codec-mismatch-json-only \
+  --http-url "$JSON_ONLY_URL" \
+  --channel-endpoint "$JSON_ONLY_CHANNEL_ENDPOINT" \
+  --evidence-file "$LOG_DIR/codec-mismatch-json-only.evidence.log" \
+  --log-dir "$LOG_DIR" \
+  >"$LOG_DIR/codec-mismatch-json-only.stdout.log" 2>"$LOG_DIR/codec-mismatch-json-only.stderr.log" &
+pids+=("$!")
+wait_health "$JSON_ONLY_URL" codec-mismatch-json-only
+
+dotnet run --project "$CODEC_REQUESTER_PROJECT" -- \
+  --rid codec-mismatch-requester \
+  --http-url "$CODEC_REQUESTER_URL" \
+  --channel-endpoint "$JSON_ONLY_CHANNEL_ENDPOINT" \
+  --log-dir "$LOG_DIR" \
+  >"$LOG_DIR/codec-mismatch-requester.stdout.log" 2>"$LOG_DIR/codec-mismatch-requester.stderr.log" &
+pids+=("$!")
+wait_health "$CODEC_REQUESTER_URL" codec-mismatch-requester
+
 dotnet run --project "$CLIENT_PROJECT" -- \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
   --server-url "$SERVER_URL" \
+  --codec-requester-url "$CODEC_REQUESTER_URL" \
   --invalid-server-project "$INVALID_SERVER_PROJECT" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"

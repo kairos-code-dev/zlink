@@ -40,11 +40,7 @@ internal static class SubscriberReconnectScenario
                 .Query("sequence", "1")
                 .Query("value", "before-disconnect")
                 .SubmitRawAsync();
-            await ScenarioAssert.EventuallyAsync(() =>
-            {
-                var evidence = reconnectSubscriberClient.Get("/evidence").Fetch<string[]>();
-                return Task.FromResult(evidence.Any(line => Evidence.IsEvent(line, runId, PubSubNames.MainTopic)));
-            }, "PS-A4 expected subscriber to receive before disconnect.");
+            await WaitForSubscriberAsync(reconnectSubscriberClient, runId);
 
             subscriber.Kill(entireProcessTree: true);
             await subscriber.WaitForExitAsync();
@@ -77,14 +73,7 @@ internal static class SubscriberReconnectScenario
         }
 
         // The two always-on subscribers must continue receiving while the extra subscriber is down.
-        await ScenarioAssert.EventuallyAsync(() =>
-        {
-            var fastSnapshots = fastSubscribers
-                .Select(subscriber => subscriber.Get("/evidence").Fetch<string[]>())
-                .ToArray();
-            return Task.FromResult(fastSnapshots.All(lines =>
-                lines.Any(line => Evidence.IsEvent(line, runId, PubSubNames.MainTopic))));
-        }, "PS-A4 expected other subscribers to keep receiving while one subscriber is disconnected.");
+        await WaitForSubscribersAsync(fastSubscribers, runId);
 
         // Restart the same logical subscriber and verify it receives only the post-reconnect range.
         using var restartedSubscriber = processes.StartSubscriber(
@@ -115,14 +104,9 @@ internal static class SubscriberReconnectScenario
                 .SubmitRawAsync();
         }
 
-        await ScenarioAssert.EventuallyAsync(() =>
-        {
-            var evidence = reconnectSubscriberClient.Get("/evidence").Fetch<string[]>();
-            return Task.FromResult(evidence.Any(line => Evidence.IsEvent(line, runId, PubSubNames.MainTopic)));
-        }, "PS-A4 expected reconnected subscriber to receive post-reconnect events.");
+        var reconnectEvidence = await WaitForSubscriberAsync(reconnectSubscriberClient, runId);
 
         // Reconnect should not replay events that were published during the disconnect gap.
-        var reconnectEvidence = reconnectSubscriberClient.Get("/evidence").Fetch<string[]>();
         ScenarioAssert.That(
             reconnectEvidence.All(line =>
                 !line.Contains($"run={runId}", StringComparison.Ordinal)
@@ -132,5 +116,21 @@ internal static class SubscriberReconnectScenario
 
         restartedSubscriber.Kill(entireProcessTree: true);
         await restartedSubscriber.WaitForExitAsync();
+    }
+
+    static async Task<string[]> WaitForSubscriberAsync(ZLinkHttpClient subscriber, string runId)
+    {
+        return (await subscriber.Post("/evidence/wait")
+            .Body(new EvidenceWaitRequest(
+                ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
+                [],
+                10000))
+            .SubmitAsync<string[]>()).Body;
+    }
+
+    static async Task WaitForSubscribersAsync(IReadOnlyList<ZLinkHttpClient> subscribers, string runId)
+    {
+        var waits = subscribers.Select(subscriber => WaitForSubscriberAsync(subscriber, runId)).ToArray();
+        await Task.WhenAll(waits);
     }
 }

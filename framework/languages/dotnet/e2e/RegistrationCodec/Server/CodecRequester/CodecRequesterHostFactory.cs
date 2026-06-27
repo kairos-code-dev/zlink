@@ -1,0 +1,79 @@
+using Google.Protobuf.WellKnownTypes;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using RegistrationCodec.Shared;
+using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Codecs.MessagePack;
+using Zlink.Framework.Codecs.Protobuf;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Dispatch;
+
+namespace RegistrationCodec.CodecRequester;
+
+internal static class CodecRequesterHostFactory
+{
+    public static WebApplication Create(string[] args)
+    {
+        var options = CodecRequesterOptions.Parse(args);
+        Directory.CreateDirectory(options.LogDir);
+
+        var builder = WebApplication.CreateBuilder(args);
+        builder.Logging.ClearProviders();
+        builder.Logging.AddSimpleConsole(console =>
+        {
+            console.SingleLine = true;
+            console.TimestampFormat = "HH:mm:ss.fff ";
+        });
+        builder.WebHost.UseUrls(options.HttpUrl);
+        builder.Services.AddSingleton(options);
+        builder.Services.AddZLinkFramework(framework =>
+        {
+            framework.ConfigureDispatch()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
+                .TraceLabel(options.Rid);
+            framework.Codecs.AddJson();
+            framework.Codecs.Use(ZLinkProtobufCodec.Default);
+            framework.Codecs.Use(ZLinkMessagePackCodec.Default);
+            framework.AddClientServerChannel(RegistrationCodecNames.Channel)
+                .EnableClient(options.ChannelEndpoint);
+        });
+
+        var app = builder.Build();
+        app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
+        app.MapPost("/codec/protobuf/request", async (
+            IZLinkChannelClient channel,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var reply = await channel.RequestToChannel(
+                        RegistrationCodecNames.Channel,
+                        new StringValue { Value = "rc-b5" })
+                    .PacketName("EchoProtobuf")
+                    .Timeout(TimeSpan.FromSeconds(2))
+                    .Async<StringValue>(cancellationToken);
+                return Results.Ok(new CodecMismatchProbeReply(false, null, reply.Value));
+            }
+            catch (Exception ex)
+            {
+                return Results.Ok(new CodecMismatchProbeReply(true, ex.GetType().Name, null));
+            }
+        });
+        app.MapPost("/codec/json/request", async (
+            IZLinkChannelClient channel,
+            CancellationToken cancellationToken) =>
+        {
+            var reply = await channel.RequestToChannel(
+                    RegistrationCodecNames.Channel,
+                    new JsonEchoReq("rc-b5-json"))
+                .PacketName("EchoJson")
+                .Timeout(TimeSpan.FromSeconds(5))
+                .Async<EchoReply>(cancellationToken);
+            return Results.Ok(reply);
+        });
+        return app;
+    }
+}

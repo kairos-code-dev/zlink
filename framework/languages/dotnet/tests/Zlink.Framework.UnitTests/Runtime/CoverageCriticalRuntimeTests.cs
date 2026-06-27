@@ -1,7 +1,12 @@
 using System.Buffers.Binary;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using K4os.Compression.LZ4;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.AspNetCore;
 using Zlink.Framework.AspNetCore.Monitoring;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Backend.Contracts;
@@ -87,6 +92,29 @@ public sealed class CoverageCriticalRuntimeTests
                 oversized,
                 new ZLinkCodecRegistryBuilder(),
                 new OversizedCompressionCodec()));
+    }
+
+    [Fact]
+    public async Task FrameworkHostStartupFailureDisposesCreatedStreamRuntime()
+    {
+        var firstEndpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddStreamNode("stream-a")
+                .Bind(firstEndpoint)
+                .RegisterSession<StartupFailureTestSession>();
+            options.AddStreamNode("stream-b")
+                .Bind("invalid://startup-failure")
+                .RegisterSession<StartupFailureTestSession>();
+        });
+
+        using var host = builder.Build();
+        var startTask = host.StartAsync();
+        var completed = await Task.WhenAny(startTask, Task.Delay(TimeSpan.FromSeconds(5)));
+
+        Assert.Same(startTask, completed);
+        await Assert.ThrowsAnyAsync<Exception>(async () => await startTask);
     }
 
     [Fact]
@@ -247,6 +275,31 @@ public sealed class CoverageCriticalRuntimeTests
     }
 
     private sealed record CompressionProbe(string Text);
+
+    private sealed class StartupFailureTestSession(IZLinkSessionContext context) : IZLinkSession
+    {
+        public IZLinkSessionContext Context { get; } = context;
+
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private static int FindFreeTcpPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
 
     private sealed class PrefixCompressionCodec : IZlinkStreamCompressionCodec
     {

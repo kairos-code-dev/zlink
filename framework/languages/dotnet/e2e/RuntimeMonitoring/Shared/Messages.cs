@@ -12,3 +12,8 @@ public static class RuntimeMonitoringNames
 public sealed record ProfileRequest(string Value, string Marker);
 
 public sealed record ProfileReply(string Value, string ProviderRid, string Marker);
+
+public sealed record EvidenceWaitRequest(
+    string[] ContainsAll,
+    string[][] ContainsAnyGroups,
+    int TimeoutMilliseconds = 10000);

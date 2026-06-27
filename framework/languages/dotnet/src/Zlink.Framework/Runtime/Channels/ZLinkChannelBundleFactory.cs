@@ -18,33 +18,35 @@ internal sealed class ZLinkChannelBundleFactory(
         ZLinkChannelRegistration channel)
     {
         var adapter = backendAdapterFactory.CreateChannelAdapter();
-        var dealer = adapter.CreateDealerSocket(state.Context);
-        dealer.SetChannelName(channelName);
-        ApplySocketConfig(dealer, channel.Client!.SocketConfig);
-        RoutingId localRid = default;
-        if (channel.RoutingId.Size > 0)
-        {
-            localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "dealer");
-            dealer.SetRoutingId(localRid);
-        }
-        // weight 는 bind/connect/discovery 前에 적용해 default-weight 노출 창을 없앤다.
-        dealer.SetPeerWeight(channel.Client.SocketConfig.Weight);
-        if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
-        {
-            dealer.Bind(channel.Client.BindEndpoint);
-        }
-
-        var bundle = new ZLinkChannelRuntimeBundle(
-            dealer,
-            new ZLinkAsyncSubmitter(
-                dealer.OnSendReady,
-                channel.Client.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
-                state.StopTokenSource.Token),
-            localRid,
-            "dealer");
-
+        IZLinkBackendDealerSocket? dealer = null;
+        ZLinkChannelRuntimeBundle? bundle = null;
         try
         {
+            dealer = adapter.CreateDealerSocket(state.Context);
+            dealer.SetChannelName(channelName);
+            ApplySocketConfig(dealer, channel.Client!.SocketConfig);
+            RoutingId localRid = default;
+            if (channel.RoutingId.Size > 0)
+            {
+                localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "dealer");
+                dealer.SetRoutingId(localRid);
+            }
+            // weight 는 bind/connect/discovery 前에 적용해 default-weight 노출 창을 없앤다.
+            dealer.SetPeerWeight(channel.Client.SocketConfig.Weight);
+            if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
+            {
+                dealer.Bind(channel.Client.BindEndpoint);
+            }
+
+            bundle = new ZLinkChannelRuntimeBundle(
+                dealer,
+                new ZLinkAsyncSubmitter(
+                    dealer.OnSendReady,
+                    channel.Client.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
+                    state.StopTokenSource.Token),
+                localRid,
+                "dealer");
+
             if (channel.Client.ManualConnections.Count > 0)
             {
                 AttachManualConnections(bundle, dealer, channel.Client.ManualConnections);
@@ -65,7 +67,15 @@ internal sealed class ZLinkChannelBundleFactory(
         }
         catch
         {
-            _ = DisposeFailedBundleAsync(bundle);
+            if (bundle is not null)
+            {
+                DisposeFailedBundle(bundle);
+            }
+            else if (dealer is not null)
+            {
+                dealer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+
             throw;
         }
     }
@@ -76,33 +86,51 @@ internal sealed class ZLinkChannelBundleFactory(
         string channelName,
         ZLinkChannelRegistration channel)
     {
-        var router = adapter.CreateRouterSocket(state.Context);
-        router.SetChannelName(channelName);
-        ApplySocketConfig(router, channel.Server!.SocketConfig);
-        RoutingId localRid = default;
-        if (channel.RoutingId.Size > 0)
+        IZLinkBackendRouterSocket? router = null;
+        ZLinkChannelRuntimeBundle? bundle = null;
+        try
         {
-            localRid = channel.RoutingId;
-            router.SetRoutingId(localRid);
-        }
-        // weight 는 bind 前에 적용해 default-weight 노출 창을 없앤다(peer 가 그 사이 연결할 수 있다).
-        router.SetPeerWeight(channel.Server.SocketConfig.Weight);
-        router.Bind(channel.Server!.BindEndpoint!);
-        var bundle = new ZLinkChannelRuntimeBundle(router, localRid: localRid, socketRole: "router");
+            router = adapter.CreateRouterSocket(state.Context);
+            router.SetChannelName(channelName);
+            ApplySocketConfig(router, channel.Server!.SocketConfig);
+            RoutingId localRid = default;
+            if (channel.RoutingId.Size > 0)
+            {
+                localRid = channel.RoutingId;
+                router.SetRoutingId(localRid);
+            }
+            // weight 는 bind 前에 적용해 default-weight 노출 창을 없앤다(peer 가 그 사이 연결할 수 있다).
+            router.SetPeerWeight(channel.Server.SocketConfig.Weight);
+            router.Bind(channel.Server!.BindEndpoint!);
+            bundle = new ZLinkChannelRuntimeBundle(router, localRid: localRid, socketRole: "router");
 
-        if (registration.Discovery is not null)
+            if (registration.Discovery is not null)
+            {
+                AttachDiscovery(
+                    bundle,
+                    adapter,
+                    state.Context,
+                    channelName,
+                    ZLinkAutoConnectType.ClientServer,
+                    registration.Discovery.Endpoints,
+                    router.AttachDiscovery);
+            }
+
+            return bundle;
+        }
+        catch
         {
-            AttachDiscovery(
-                bundle,
-                adapter,
-                state.Context,
-                channelName,
-                ZLinkAutoConnectType.ClientServer,
-                registration.Discovery.Endpoints,
-                router.AttachDiscovery);
-        }
+            if (bundle is not null)
+            {
+                DisposeFailedBundle(bundle);
+            }
+            else if (router is not null)
+            {
+                router.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
 
-        return bundle;
+            throw;
+        }
     }
 
     public ZLinkChannelRuntimeBundle CreateSubscriberBundle(
@@ -111,35 +139,53 @@ internal sealed class ZLinkChannelBundleFactory(
         string channelName,
         ZLinkChannelRegistration channel)
     {
-        var subscriber = adapter.CreateSubscriberSocket(state.Context);
-        subscriber.SetChannelName(channelName);
-        ApplySocketConfig(subscriber, channel.Subscriber!.SocketConfig);
-        RoutingId localRid = default;
-        if (channel.RoutingId.Size > 0)
+        IZLinkBackendSubscriberSocket? subscriber = null;
+        ZLinkChannelRuntimeBundle? bundle = null;
+        try
         {
-            localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "sub");
-            subscriber.SetRoutingId(localRid);
-        }
-        subscriber.SetSubscription(string.Empty);
-        var bundle = new ZLinkChannelRuntimeBundle(subscriber, localRid: localRid, socketRole: "sub");
+            subscriber = adapter.CreateSubscriberSocket(state.Context);
+            subscriber.SetChannelName(channelName);
+            ApplySocketConfig(subscriber, channel.Subscriber!.SocketConfig);
+            RoutingId localRid = default;
+            if (channel.RoutingId.Size > 0)
+            {
+                localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "sub");
+                subscriber.SetRoutingId(localRid);
+            }
+            subscriber.SetSubscription(string.Empty);
+            bundle = new ZLinkChannelRuntimeBundle(subscriber, localRid: localRid, socketRole: "sub");
 
-        if (channel.Subscriber!.ManualConnections.Count > 0)
-        {
-            AttachManualConnections(bundle, subscriber, channel.Subscriber.ManualConnections);
-        }
-        else
-        {
-            AttachDiscovery(
-                bundle,
-                adapter,
-                state.Context,
-                channelName,
-                ZLinkAutoConnectType.Fanout,
-                registration.Discovery?.Endpoints ?? [],
-                subscriber.AttachDiscovery);
-        }
+            if (channel.Subscriber!.ManualConnections.Count > 0)
+            {
+                AttachManualConnections(bundle, subscriber, channel.Subscriber.ManualConnections);
+            }
+            else
+            {
+                AttachDiscovery(
+                    bundle,
+                    adapter,
+                    state.Context,
+                    channelName,
+                    ZLinkAutoConnectType.Fanout,
+                    registration.Discovery?.Endpoints ?? [],
+                    subscriber.AttachDiscovery);
+            }
 
-        return bundle;
+            return bundle;
+        }
+        catch
+        {
+            if (bundle is not null)
+            {
+                DisposeFailedBundle(bundle);
+            }
+            else if (subscriber is not null)
+            {
+                subscriber.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+
+            throw;
+        }
     }
 
     public ZLinkChannelRuntimeBundle CreatePublisherBundle(
@@ -149,38 +195,56 @@ internal sealed class ZLinkChannelBundleFactory(
         IZLinkChannelBackendAdapter? adapter = null)
     {
         adapter ??= backendAdapterFactory.CreateChannelAdapter();
-        var publisher = adapter.CreatePublisherSocket(state.Context);
-        publisher.SetChannelName(channelName);
-        ApplySocketConfig(publisher, channel.Publisher!.SocketConfig);
-        RoutingId localRid = default;
-        if (channel.RoutingId.Size > 0)
+        IZLinkBackendPublisherSocket? publisher = null;
+        ZLinkChannelRuntimeBundle? bundle = null;
+        try
         {
-            localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "pub");
-            publisher.SetRoutingId(localRid);
-        }
-        publisher.Bind(channel.Publisher!.BindEndpoint!);
-        var bundle = new ZLinkChannelRuntimeBundle(
-            publisher,
-            new ZLinkAsyncSubmitter(
-                publisher.OnSendReady,
-                channel.Publisher.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
-                state.StopTokenSource.Token),
-            localRid,
-            "pub");
+            publisher = adapter.CreatePublisherSocket(state.Context);
+            publisher.SetChannelName(channelName);
+            ApplySocketConfig(publisher, channel.Publisher!.SocketConfig);
+            RoutingId localRid = default;
+            if (channel.RoutingId.Size > 0)
+            {
+                localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "pub");
+                publisher.SetRoutingId(localRid);
+            }
+            publisher.Bind(channel.Publisher!.BindEndpoint!);
+            bundle = new ZLinkChannelRuntimeBundle(
+                publisher,
+                new ZLinkAsyncSubmitter(
+                    publisher.OnSendReady,
+                    channel.Publisher.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
+                    state.StopTokenSource.Token),
+                localRid,
+                "pub");
 
-        if (registration.Discovery is not null)
+            if (registration.Discovery is not null)
+            {
+                AttachDiscovery(
+                    bundle,
+                    adapter,
+                    state.Context,
+                    channelName,
+                    ZLinkAutoConnectType.Fanout,
+                    registration.Discovery.Endpoints,
+                    publisher.AttachDiscovery);
+            }
+
+            return bundle;
+        }
+        catch
         {
-            AttachDiscovery(
-                bundle,
-                adapter,
-                state.Context,
-                channelName,
-                ZLinkAutoConnectType.Fanout,
-                registration.Discovery.Endpoints,
-                publisher.AttachDiscovery);
-        }
+            if (bundle is not null)
+            {
+                DisposeFailedBundle(bundle);
+            }
+            else if (publisher is not null)
+            {
+                publisher.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
 
-        return bundle;
+            throw;
+        }
     }
 
     internal static void ApplySocketConfig(
@@ -229,8 +293,8 @@ internal sealed class ZLinkChannelBundleFactory(
         bundle.Discovery = discovery;
     }
 
-    private static async ValueTask DisposeFailedBundleAsync(ZLinkChannelRuntimeBundle bundle)
+    private static void DisposeFailedBundle(ZLinkChannelRuntimeBundle bundle)
     {
-        await bundle.DisposeAsync().ConfigureAwait(false);
+        bundle.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 }

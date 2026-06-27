@@ -1,6 +1,16 @@
 namespace SpotService.Client;
 
-internal sealed record ClientOptions(string DriverUrl, string ScenarioSet)
+internal sealed record ClientOptions(
+    string GatewayUrl,
+    string PlayAUrl,
+    string PlayBUrl,
+    string MultiAUrl,
+    string MultiBUrl,
+    string SessionAUrl,
+    string SessionAStreamEndpoint,
+    string SessionATlsStreamEndpoint,
+    string SessionBStreamEndpoint,
+    string OperationGroup)
 {
     public static ClientOptions Parse(string[] args)
     {
@@ -22,9 +32,27 @@ internal sealed record ClientOptions(string DriverUrl, string ScenarioSet)
         }
 
         return new ClientOptions(
-            values.TryGetValue("driver-url", out var driverUrl) && !string.IsNullOrWhiteSpace(driverUrl)
-                ? driverUrl
-                : throw new ArgumentException("--driver-url is required."),
-            values.GetValueOrDefault("scenario-set", "all"));
+            values.TryGetValue("gateway-url", out var gatewayUrl) && !string.IsNullOrWhiteSpace(gatewayUrl)
+                ? gatewayUrl
+                : throw new ArgumentException("--gateway-url is required."),
+            values.TryGetValue("play-a-url", out var playAUrl) && !string.IsNullOrWhiteSpace(playAUrl)
+                ? playAUrl
+                : gatewayUrl,
+            values.TryGetValue("play-b-url", out var playBUrl) && !string.IsNullOrWhiteSpace(playBUrl)
+                ? playBUrl
+                : gatewayUrl,
+            values.TryGetValue("multi-a-url", out var multiAUrl) && !string.IsNullOrWhiteSpace(multiAUrl)
+                ? multiAUrl
+                : gatewayUrl,
+            values.TryGetValue("multi-b-url", out var multiBUrl) && !string.IsNullOrWhiteSpace(multiBUrl)
+                ? multiBUrl
+                : gatewayUrl,
+            values.TryGetValue("session-a-url", out var sessionAUrl) && !string.IsNullOrWhiteSpace(sessionAUrl)
+                ? sessionAUrl
+                : gatewayUrl,
+            values.GetValueOrDefault("session-a-stream-endpoint", ""),
+            values.GetValueOrDefault("session-a-tls-stream-endpoint", ""),
+            values.GetValueOrDefault("session-b-stream-endpoint", ""),
+            values.GetValueOrDefault("operation-group", "all"));
     }
 }

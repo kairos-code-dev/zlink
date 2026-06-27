@@ -20,23 +20,52 @@ internal sealed class ZLinkStreamRuntimeManager(
         var monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
         foreach (var streamNodeRegistration in registration.StreamNodes.Values)
         {
-            var socket = streamAdapter.CreateStreamSocket(state.Context);
-            if (streamNodeRegistration.TlsServer is { } tlsServer)
+            IZLinkBackendStreamSocket? socket = null;
+            IZLinkBackendSocketMonitor? monitor = null;
+            ZLinkStreamNodeRuntime? runtime = null;
+            try
             {
-                socket.SetTlsServer(tlsServer.CertPath, tlsServer.KeyPath, tlsServer.RequireClientCert);
-            }
-            socket.Bind(streamNodeRegistration.BindEndpoint!);
-            var monitor = monitoringAdapter.OpenSocketMonitor(socket);
+                socket = streamAdapter.CreateStreamSocket(state.Context);
+                if (streamNodeRegistration.TlsServer is { } tlsServer)
+                {
+                    socket.SetTlsServer(tlsServer.CertPath, tlsServer.KeyPath, tlsServer.RequireClientCert);
+                }
 
-            var runtime = new ZLinkStreamNodeRuntime(
-                streamNodeRegistration.StreamNodeName,
-                services,
-                socket,
-                monitor,
-                streamNodeRegistration.HeaderSessionType,
-                state.TaskRunner);
-            runtime.Start();
-            state.StreamNodes.Add(streamNodeRegistration.StreamNodeName, runtime);
+                socket.Bind(streamNodeRegistration.BindEndpoint!);
+                monitor = monitoringAdapter.OpenSocketMonitor(socket);
+
+                runtime = new ZLinkStreamNodeRuntime(
+                    streamNodeRegistration.StreamNodeName,
+                    services,
+                    socket,
+                    monitor,
+                    streamNodeRegistration.HeaderSessionType,
+                    state.TaskRunner);
+                state.StreamNodes.Add(streamNodeRegistration.StreamNodeName, runtime);
+                runtime.Start();
+            }
+            catch
+            {
+                state.StreamNodes.Remove(streamNodeRegistration.StreamNodeName);
+                if (runtime is not null)
+                {
+                    runtime.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                }
+                else
+                {
+                    if (monitor is not null)
+                    {
+                        monitor.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    }
+
+                    if (socket is not null)
+                    {
+                        socket.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    }
+                }
+
+                throw;
+            }
         }
     }
 

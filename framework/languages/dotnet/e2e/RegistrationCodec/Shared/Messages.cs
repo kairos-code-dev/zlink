@@ -30,6 +30,15 @@ public sealed record JsonEchoReq(string Value);
 
 public sealed record JsonEchoCommand(string CommandId, string Value);
 
+public sealed record CodecMismatchProbeReply(
+    bool Rejected,
+    string? FailureType,
+    string? Value);
+
+public sealed record EvidenceWaitRequest(
+    string[] ContainsAll,
+    int TimeoutMilliseconds = 10000);
+
 [MessagePackObject]
 public sealed class PackedEchoReq
 {

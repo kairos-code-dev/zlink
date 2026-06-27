@@ -21,14 +21,10 @@ internal static class PublisherRestartScenario
             .Query("sequence", "1")
             .Query("value", "before-publisher-restart")
             .SubmitRawAsync();
-        await ScenarioAssert.EventuallyAsync(() =>
-        {
-            var snapshots = subscribers
-                .Select(subscriber => subscriber.Get("/evidence").Fetch<string[]>())
-                .ToArray();
-            return Task.FromResult(snapshots.All(lines =>
-                lines.Any(line => Evidence.IsEvent(line, runId, PubSubNames.MainTopic))));
-        }, "PS-B2 expected baseline publish before publisher restart.");
+        await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
+            ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=1"],
+            [],
+            10000));
 
         // Stop the HTTP publisher server and wait until the client observes the process gap.
         await publisher.Post("/shutdown").SubmitRawAsync();
@@ -91,16 +87,26 @@ internal static class PublisherRestartScenario
         }
 
         // Recovery is proven by post-restart delivery to every subscriber, not by replaying downtime data.
-        await ScenarioAssert.EventuallyAsync(() =>
+        await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
+            ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
+            [],
+            10000)
         {
-            var snapshots = subscribers
-                .Select(subscriber => subscriber.Get("/evidence").Fetch<string[]>())
-                .ToArray();
-            return Task.FromResult(snapshots.All(lines => lines.Any(line =>
-                Evidence.IsEvent(line, runId, PubSubNames.MainTopic)
-                && Evidence.ExtractInt(line, "seq") >= 20)));
-        }, "PS-B2 expected publish delivery after publisher restart.");
+            ContainsAnyLineGroups = Enumerable.Range(20, 23)
+                .Select(seq => new[] { $"seq={seq}|", $"run={runId}", $"topic={PubSubNames.MainTopic}" })
+                .ToArray(),
+        });
         Console.WriteLine("scenario PS-B2 passed");
         return restartedPublisher;
+    }
+
+    static async Task WaitForSubscribersAsync(
+        IReadOnlyList<ZLinkHttpClient> subscribers,
+        EvidenceWaitRequest request)
+    {
+        var waits = subscribers
+            .Select(subscriber => subscriber.Post("/evidence/wait").Body(request).SubmitAsync<string[]>().AsTask())
+            .ToArray();
+        await Task.WhenAll(waits);
     }
 }

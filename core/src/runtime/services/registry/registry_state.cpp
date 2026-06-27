@@ -667,7 +667,10 @@ void registry_t::handle_heartbeat (const zlink_msg_t *frames_, size_t frame_coun
     if (pit == sit->second.providers.end ())
         return;
 
-    pit->second.last_heartbeat = zlink::clock_t ().now_ms ();
+    const uint64_t now = zlink::clock_t ().now_ms ();
+    pit->second.last_heartbeat = now;
+    refresh_topology_heartbeat_locked (auto_connect_type, service_role, channel_name, endpoint,
+                                       now);
 }
 
 void registry_t::handle_update_attributes (void *router_,

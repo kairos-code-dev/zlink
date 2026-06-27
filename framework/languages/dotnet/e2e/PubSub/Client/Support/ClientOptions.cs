@@ -8,6 +8,7 @@ internal sealed record ClientOptions(
     string PublisherProject,
     string SubscriberProject,
     string LogDir,
+    string Scenario,
     string[] SubscriberUrls)
 {
     public static ClientOptions Parse(string[] args)
@@ -42,6 +43,9 @@ internal sealed record ClientOptions(
         string[] GetMany(string name) => values.TryGetValue(name, out var bucket)
             ? [.. bucket]
             : throw new ArgumentException($"{name} is required.");
+        string GetOptional(string name, string defaultValue) => values.TryGetValue(name, out var bucket)
+            ? bucket[^1]
+            : defaultValue;
 
         return new ClientOptions(
             PublisherUrl: GetOne("--publisher-url"),
@@ -51,6 +55,7 @@ internal sealed record ClientOptions(
             PublisherProject: GetOne("--publisher-project"),
             SubscriberProject: GetOne("--subscriber-project"),
             LogDir: GetOne("--log-dir"),
+            Scenario: GetOptional("--scenario", "all"),
             SubscriberUrls: GetMany("--subscriber-url"));
     }
 }

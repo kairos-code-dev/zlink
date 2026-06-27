@@ -5,6 +5,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private const int DefaultCapacity = 4096;
 
     private readonly object _gate = new();
+    private readonly object _submitGate = new();
     private readonly ZLinkSubmitQueue _pending;
     private readonly TimeSpan? _sendTimeout;
     private readonly CancellationToken _stopToken;
@@ -287,20 +288,23 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         Func<IReadOnlyList<Message>, bool> trySubmit,
         out ZlinkException? retryableFailure)
     {
-        retryableFailure = null;
-        var submitParts = ZLinkMessageParts.CopyAll(parts);
-        try
+        lock (_submitGate)
         {
-            return trySubmit(submitParts);
-        }
-        catch (ZlinkException error)
-        {
-            retryableFailure = error;
-            return false;
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(submitParts);
+            retryableFailure = null;
+            var submitParts = ZLinkMessageParts.CopyAll(parts);
+            try
+            {
+                return trySubmit(submitParts);
+            }
+            catch (ZlinkException error)
+            {
+                retryableFailure = error;
+                return false;
+            }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(submitParts);
+            }
         }
     }
 

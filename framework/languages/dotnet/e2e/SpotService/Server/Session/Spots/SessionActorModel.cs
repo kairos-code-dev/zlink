@@ -1,0 +1,185 @@
+using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using SpotService.Shared;
+using Systems.Zlink;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework;
+using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
+using Zlink.Framework.Contracts.Streams;
+using Zlink.Framework.Contracts.Timers;
+
+namespace SpotService.Server.Session;
+
+
+internal static partial class SessionHostFactory
+{
+internal sealed class ScenarioActorFactory : IZLinkActorFactory
+{
+    public ValueTask<IZLinkActor> CreateAsync(
+        string actorId,
+        IZLinkActorContext context,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IZLinkActor>(new ScenarioActor(actorId, context));
+    }
+}
+
+internal sealed class ScenarioActor(string actorId, IZLinkActorContext context) : IZLinkActor
+{
+    public string ActorId { get; } = actorId;
+
+    public string DisplayName { get; set; } = actorId;
+
+    public int Seen { get; set; }
+
+    public IZLinkActorContext Context { get; } = context;
+}
+
+internal sealed record ScenarioActorCreateRequest(string DisplayName);
+
+internal sealed class ScenarioEntrySpot(
+    IZLinkEntrySpotContext context,
+    EvidenceStore evidence) : IZLinkEntrySpot<ScenarioActor>
+{
+    public IZLinkEntrySpotContext Context { get; } = context;
+
+    public ValueTask OnCreateActorAsync(
+        ScenarioActor actor,
+        ZLinkMessage createRequest,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!createRequest.IsEmpty)
+        {
+            actor.DisplayName = createRequest.Decode<ScenarioActorCreateRequest>().DisplayName;
+        }
+
+        evidence.Add($"entry-created|rid={evidence.Rid}|actor={actor.ActorId}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        ScenarioActor actor,
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        _ = actor;
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
+    }
+
+    public ValueTask OnJoinedActorAsync(
+        ScenarioActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"entry-joined|rid={evidence.Rid}|actor={actor.ActorId}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnLeaveActorAsync(
+        ScenarioActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"entry-left|rid={evidence.Rid}|actor={actor.ActorId}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnDisconnectActorAsync(
+        ScenarioActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"entry-disconnected|rid={evidence.Rid}|actor={actor.ActorId}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class ScenarioUserSpot(
+    IZLinkSpotContext context,
+    EvidenceStore evidence) : IZLinkSpot<ScenarioActor>
+{
+    private int _value;
+
+    public IZLinkSpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.Handlers.AddSubscribe<SpotEventHandler>(SpotServiceNames.SpotEventTopic);
+    }
+
+    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-created|rid={evidence.Rid}|spot={Context.SpotRid}");
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
+    }
+
+    public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-initialize|rid={evidence.Rid}|spot={Context.SpotRid}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-closing|rid={evidence.Rid}|spot={Context.SpotRid}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        ScenarioActor actor,
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
+    }
+
+    public ValueTask OnLeaveActorAsync(ScenarioActor actor, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-actor-left|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnDisconnectActorAsync(ScenarioActor actor, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-actor-disconnected|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        return ValueTask.CompletedTask;
+    }
+
+    public int Add(int delta)
+    {
+        _value += delta;
+        return _value;
+    }
+}
+
+internal sealed class ScenarioAlternateSpot(
+    IZLinkSpotContext context) : IZLinkSpot
+{
+    public IZLinkSpotContext Context { get; } = context;
+}
+
+}

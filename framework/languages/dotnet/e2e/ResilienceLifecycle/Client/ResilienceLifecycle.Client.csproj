@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Shared/ResilienceLifecycle.Shared.csproj" />
     <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj" />
   </ItemGroup>
 </Project>

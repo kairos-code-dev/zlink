@@ -5,10 +5,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+SCENARIO="${1:-all}"
 
 REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/RegistryMessaging.Registry.csproj"
 PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/RegistryMessaging.Provider.csproj"
-DRIVER_PROJECT="$ROOT_DIR/Server/Driver/RegistryMessaging.Driver.csproj"
+CONSUMER_PROJECT="$ROOT_DIR/Server/Consumer/RegistryMessaging.Consumer.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RegistryMessaging.Client.csproj"
 
 pick_port() {
@@ -25,7 +26,10 @@ REG_HTTP_PORT="$(pick_port)"
 PROVIDER_A_HTTP_PORT="$(pick_port)"
 PROVIDER_B_HTTP_PORT="$(pick_port)"
 WORKFLOW_HTTP_PORT="$(pick_port)"
-DRIVER_HTTP_PORT="$(pick_port)"
+CONSUMER_HTTP_PORT="$(pick_port)"
+SINGLE_CONSUMER_HTTP_PORT="$(pick_port)"
+DISCOVERY_CONSUMER_HTTP_PORT="$(pick_port)"
+BACKPRESSURE_CONSUMER_HTTP_PORT="$(pick_port)"
 REG_PUB_PORT="$(pick_port)"
 REG_ROUTER_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
@@ -97,6 +101,7 @@ start_server api-a "$PROVIDER_PROJECT" \
   --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
   --channel-endpoint "$API_A" \
+  --manual-client-endpoint "$API_A" \
   --route-endpoint "$ROUTE_A" \
   --route-peer "$ROUTE_B" \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
@@ -108,6 +113,7 @@ start_server api-b "$PROVIDER_PROJECT" \
   --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
   --channel-endpoint "$API_B" \
+  --manual-client-endpoint "$API_B" \
   --route-endpoint "$ROUTE_B" \
   --route-peer "$ROUTE_A" \
   --evidence-file "$LOG_DIR/api-b.evidence.log" \
@@ -123,24 +129,49 @@ start_server workflow-a "$PROVIDER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$WORKFLOW_HTTP_PORT" workflow-a
 
-start_server driver "$DRIVER_PROJECT" \
-  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
-  --registry-router-endpoint "$REG_ROUTER" \
-  --provider-a-endpoint "$API_A" \
-  --provider-b-endpoint "$API_B" \
-  --provider-a-route-endpoint "$ROUTE_A" \
-  --provider-b-route-endpoint "$ROUTE_B" \
-  --client-route-endpoint "$CLIENT_ROUTE" \
-  --provider-a-evidence-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT/evidence" \
-  --provider-b-evidence-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT/evidence" \
-  --workflow-evidence-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT/evidence" \
-  --registry-project "$REGISTRY_PROJECT" \
-  --provider-project "$PROVIDER_PROJECT" \
+start_server direct-consumer "$CONSUMER_PROJECT" \
+  --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
+  --provider-endpoint "$API_A" \
+  --provider-endpoint "$API_B" \
+  --trace-label direct-consumer \
   --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$DRIVER_HTTP_PORT" driver
+wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" direct-consumer
+
+start_server single-consumer "$CONSUMER_PROJECT" \
+  --http-url "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" \
+  --provider-endpoint "$API_A" \
+  --trace-label single-consumer \
+  --log-dir "$LOG_DIR"
+wait_health "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" single-consumer
+
+start_server discovery-consumer "$CONSUMER_PROJECT" \
+  --http-url "http://127.0.0.1:$DISCOVERY_CONSUMER_HTTP_PORT" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --trace-label discovery-consumer \
+  --log-dir "$LOG_DIR"
+wait_health "http://127.0.0.1:$DISCOVERY_CONSUMER_HTTP_PORT" discovery-consumer
+
+start_server backpressure-consumer "$CONSUMER_PROJECT" \
+  --http-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
+  --provider-endpoint "$API_A" \
+  --low-hwm true \
+  --trace-label backpressure-consumer \
+  --log-dir "$LOG_DIR"
+wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-consumer
 
 dotnet run --project "$CLIENT_PROJECT" -- \
-  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
+  --registry-url "http://127.0.0.1:$REG_HTTP_PORT" \
+  --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
+  --provider-b-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
+  --workflow-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
+  --direct-consumer-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
+  --single-consumer-url "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" \
+  --discovery-consumer-url "http://127.0.0.1:$DISCOVERY_CONSUMER_HTTP_PORT" \
+  --backpressure-consumer-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
+  --registry-project "$REGISTRY_PROJECT" \
+  --provider-project "$PROVIDER_PROJECT" \
+  --log-dir "$LOG_DIR" \
+  --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

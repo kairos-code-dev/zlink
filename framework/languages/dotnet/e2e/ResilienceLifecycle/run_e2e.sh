@@ -5,10 +5,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+SCENARIO="${1:-all}"
 
 REGISTRY_PROJECT="$ROOT_DIR/Server/Registry/ResilienceLifecycle.Registry.csproj"
 PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/ResilienceLifecycle.Provider.csproj"
-DRIVER_PROJECT="$ROOT_DIR/Server/Driver/ResilienceLifecycle.Driver.csproj"
+CONSUMER_PROJECT="$ROOT_DIR/Server/Consumer/ResilienceLifecycle.Consumer.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/ResilienceLifecycle.Client.csproj"
 
 pick_port() {
@@ -24,11 +25,15 @@ PY
 REG_HTTP_PORT="$(pick_port)"
 API_A_HTTP_PORT="$(pick_port)"
 API_B_HTTP_PORT="$(pick_port)"
-DRIVER_HTTP_PORT="$(pick_port)"
+CONSUMER_HTTP_PORT="$(pick_port)"
 REG_PUB_PORT="$(pick_port)"
 REG_ROUTER_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
 API_B_PORT="$(pick_port)"
+API_B_REMAP_HTTP_PORT="$(pick_port)"
+API_B_REMAP_PORT="$(pick_port)"
+API_B_GREEN_HTTP_PORT="$(pick_port)"
+API_B_GREEN_PORT="$(pick_port)"
 
 REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
 REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
@@ -36,6 +41,10 @@ API_A="tcp://127.0.0.1:$API_A_PORT"
 API_B="tcp://127.0.0.1:$API_B_PORT"
 API_A_URL="http://127.0.0.1:$API_A_HTTP_PORT"
 API_B_URL="http://127.0.0.1:$API_B_HTTP_PORT"
+API_B_REMAP_URL="http://127.0.0.1:$API_B_REMAP_HTTP_PORT"
+API_B_REMAP="tcp://127.0.0.1:$API_B_REMAP_PORT"
+API_B_GREEN_URL="http://127.0.0.1:$API_B_GREEN_HTTP_PORT"
+API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
 pids=()
 cleanup() {
@@ -103,24 +112,31 @@ start_server api-b "$PROVIDER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "$API_B_URL" api-b
 
-start_server driver "$DRIVER_PROJECT" \
-  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
+start_server consumer "$CONSUMER_PROJECT" \
+  --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
   --registry-router-endpoint "$REG_ROUTER" \
-  --registry-url "http://127.0.0.1:$REG_HTTP_PORT" \
-  --registry-pub-endpoint "$REG_PUB" \
-  --provider-a-url "$API_A_URL" \
-  --provider-b-url "$API_B_URL" \
-  --provider-a-endpoint "$API_A" \
-  --provider-b-endpoint "$API_B" \
-  --provider-a-evidence-file "$LOG_DIR/api-a.evidence.log" \
-  --provider-b-evidence-file "$LOG_DIR/api-b.evidence.log" \
-  --registry-project "$REGISTRY_PROJECT" \
-  --provider-project "$PROVIDER_PROJECT" \
   --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$DRIVER_HTTP_PORT" driver
+wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" consumer
 
 dotnet run --project "$CLIENT_PROJECT" -- \
-  --driver-url "http://127.0.0.1:$DRIVER_HTTP_PORT" \
+  --consumer-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
+  --registry-url "http://127.0.0.1:$REG_HTTP_PORT" \
+  --registry-pub-endpoint "$REG_PUB" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --provider-a-url "$API_A_URL" \
+  --provider-a-endpoint "$API_A" \
+  --provider-a-evidence-file "$LOG_DIR/api-a.evidence.log" \
+  --provider-b-url "$API_B_URL" \
+  --provider-b-endpoint "$API_B" \
+  --provider-b-evidence-file "$LOG_DIR/api-b.evidence.log" \
+  --provider-b-remap-url "$API_B_REMAP_URL" \
+  --provider-b-remap-endpoint "$API_B_REMAP" \
+  --provider-b-green-url "$API_B_GREEN_URL" \
+  --provider-b-green-endpoint "$API_B_GREEN" \
+  --registry-project "$REGISTRY_PROJECT" \
+  --provider-project "$PROVIDER_PROJECT" \
+  --log-dir "$LOG_DIR" \
+  --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

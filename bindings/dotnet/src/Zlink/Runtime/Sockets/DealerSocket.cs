@@ -247,12 +247,15 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
                 RequestCallState.RequestTimeoutFromUserData(userdata);
             }, handle, (int)timeoutMs, Timeout.Infinite));
 
-            RequestReplySupport.SubmitClonedParts(cloned,
-                (ref ZlinkMsg nativePart,
-                    NativeMethods.ZlinkPartFlag partFlag) =>
-                    NativeMethods.zlink_dealer_request_part(Handle,
-                        ref nativePart, (int)flags, partFlag, timeoutMs,
-                        RequestReplyHandlerPtr, userData));
+            lock (SubmitGate)
+            {
+                RequestReplySupport.SubmitClonedParts(cloned,
+                    (ref ZlinkMsg nativePart,
+                        NativeMethods.ZlinkPartFlag partFlag) =>
+                        NativeMethods.zlink_dealer_request_part(Handle,
+                            ref nativePart, (int)flags, partFlag, timeoutMs,
+                            RequestReplyHandlerPtr, userData));
+            }
 
             return RequestProgressPump.AttachSocket(Handle, completion.Task);
         }
@@ -281,11 +284,14 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
         {
-            RequestReplySupport.SubmitClonedParts(cloned,
-                (ref ZlinkMsg nativePart,
-                    NativeMethods.ZlinkPartFlag partFlag) =>
-                    NativeMethods.zlink_dealer_reply_part(Handle, requestSeq,
-                        ref nativePart, partFlag));
+            lock (SubmitGate)
+            {
+                RequestReplySupport.SubmitClonedParts(cloned,
+                    (ref ZlinkMsg nativePart,
+                        NativeMethods.ZlinkPartFlag partFlag) =>
+                        NativeMethods.zlink_dealer_reply_part(Handle, requestSeq,
+                            ref nativePart, partFlag));
+            }
         }
         catch
         {

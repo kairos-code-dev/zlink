@@ -1,0 +1,17 @@
+using SpotService.Client;
+using SpotService.Shared;
+using Zlink.HttpClient;
+
+namespace SpotService.Client.Scenarios;
+
+internal static class SmF4Scenario
+{
+    public static async Task RunAsync(ZLinkHttpClient playA)
+    {
+        var missingTarget = (await playA.Post("/spot/missing-target/request")
+            .Body(new SpotMissingTargetReq($"missing-spot-sm-f4-{Guid.NewGuid():N}"))
+            .SubmitAsync<SpotMissingTargetReply>()).Body;
+        ScenarioAssert.That(missingTarget.Failed, "SM-F4 missing target request did not fail.");
+        Console.WriteLine("operation SpotService.sm-f4 passed");
+    }
+}

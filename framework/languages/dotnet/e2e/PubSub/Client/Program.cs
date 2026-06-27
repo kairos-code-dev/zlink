@@ -16,22 +16,44 @@ Process? restartedPublisher = null;
 
 try
 {
-    await FanoutBasicDeliveryScenario.RunAsync(publisher, subscribers);
-    await TopicFilterScenario.RunAsync(publisher, subscribers);
-    await LateSubscriberScenario.RunAsync(
-        publisher,
-        lateSubscriber,
-        processLauncher,
-        options.LateSubscriberUrl);
-    await SubscriberReconnectScenario.RunAsync(
-        publisher,
-        lateSubscriber,
-        subscribers.Take(2).ToArray(),
-        processLauncher,
-        options.LateSubscriberUrl);
-    await SlowSubscriberScenario.RunAsync(publisher, subscribers.Take(2).ToArray(), subscribers[^1]);
-    restartedPublisher = await PublisherRestartScenario.RunAsync(publisher, subscribers, processLauncher);
-    await MissingMessageNameScenario.RunAsync(publisher, subscribers);
+    var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["PS-A1"] = () => FanoutBasicDeliveryScenario.RunAsync(publisher, subscribers),
+        ["PS-A2"] = () => TopicFilterScenario.RunAsync(publisher, subscribers),
+        ["PS-A3"] = () => LateSubscriberScenario.RunAsync(
+            publisher,
+            lateSubscriber,
+            processLauncher,
+            options.LateSubscriberUrl),
+        ["PS-A4"] = () => SubscriberReconnectScenario.RunAsync(
+            publisher,
+            lateSubscriber,
+            subscribers.Take(2).ToArray(),
+            processLauncher,
+            options.LateSubscriberUrl),
+        ["PS-B1"] = () => SlowSubscriberScenario.RunAsync(publisher, subscribers.Take(2).ToArray(), subscribers[^1]),
+        ["PS-B2"] = async () => restartedPublisher = await PublisherRestartScenario.RunAsync(
+            publisher,
+            subscribers,
+            processLauncher),
+        ["PS-C1"] = () => MissingMessageNameScenario.RunAsync(publisher, subscribers),
+    };
+
+    if (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase))
+    {
+        foreach (var scenario in scenarios.Values)
+        {
+            await scenario();
+        }
+    }
+    else if (scenarios.TryGetValue(options.Scenario, out var selected))
+    {
+        await selected();
+    }
+    else
+    {
+        throw new ArgumentException($"Unknown scenario '{options.Scenario}'.");
+    }
 }
 finally
 {

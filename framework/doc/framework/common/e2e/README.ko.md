@@ -72,29 +72,37 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 
 각 config는 언어별 표준 위치에 sample과 분리된 e2e 앱으로 둔다. 서버와 client는 실제 프로세스
 경계를 가진 앱으로 구성하고, 모든 언어가 같은 의미의 폴더 구조를 유지한다. `.NET` 구현은 현재
-다른 언어가 따라야 할 기준 형식이다. 언어별 build 도구 이름은 달라도 역할 분리, 시나리오 파일
-분리, evidence/wait 방식은 같은 의미를 유지한다.
+다른 언어가 따라야 할 기준 형식이다. 언어별 build 도구 이름과 파일 확장자는 달라도 역할 분리,
+시나리오 파일 분리, 파일 분류, evidence/wait 방식은 같은 의미를 유지한다.
+
+다른 언어를 작성할 때는 먼저 대응하는 `.NET` config의 현재 파일 배치를 열어 보고, 같은 역할을
+같은 위치에 둔다. 예를 들어 `.NET`에서 `Server/Registry`, `Server/Provider`, `Server/Workflow`가
+별도 실행 프로젝트라면 다른 언어도 registry, provider, workflow를 하나의 서버 프로젝트 안에서
+옵션만 바꿔 구동하지 않는다. `.NET`에서 `Client/Scenarios`와 `Client/Support`로 나눈 흐름도
+같은 의미로 유지한다.
 
 예(`.NET`):
 
 ```text
 framework/languages/<lang>/e2e/<Config>/
-|-- Shared/        server와 client가 함께 쓰는 메시지·계약 타입
+|-- Shared/
 |-- Server/
-|   |-- <Role>/            실제 배포 역할별 실행 프로젝트
+|   |-- <Role>/
 |   |   |-- Program.cs
 |   |   |-- <Role>HostFactory.*
-|   |   |-- <Role>Options.*
 |   |   |-- <Config>.<Role>.<project>
-|   |   `-- ... endpoint/handler/options/evidence 파일 또는 폴더
+|   |   |-- Configuration/
+|   |   |-- Endpoints/
+|   |   |-- Handlers/
+|   |   `-- Infrastructure/
 |   `-- <OtherRole>/
-|-- Client/        시나리오 앱
-|   |-- Program.cs        시나리오 이름으로 분기 실행
-|   |-- Scenarios/        config 시나리오별 파일
-|   `-- Support/          client option, assertion, process helper
-|-- run_e2e.sh     서버 1회 구동 → client 시나리오 순차 실행
+|-- Client/
+|   |-- Program.cs
+|   |-- Scenarios/
+|   `-- Support/
+|-- run_e2e.sh
 |-- feature-map.ko.md
-`-- SCENARIOS 문서는 framework/doc/framework/common/e2e/config-*.ko.md
+`-- README.ko.md
 ```
 
 실행 방식은 sample smoke와 비슷하다. test framework가 같은 프로세스 안에서 host를 직접 만드는
@@ -114,7 +122,15 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 
 - `Shared/`: server와 client가 함께 쓰는 request/reply/event/evidence DTO만 둔다.
 - `Server/<Role>/`: registry, provider, consumer, publisher, subscriber, play, session처럼 실제
-  배포에서 구분되는 역할마다 하나의 실행 앱을 둔다.
+  배포에서 구분되는 역할마다 하나의 실행 앱을 둔다. 같은 역할의 복제본은 같은 프로젝트를 여러
+  번 띄워도 되지만, 서로 다른 역할은 프로젝트와 폴더를 분리한다.
+- `Server/<Role>/Configuration/`: 해당 role의 실행 옵션과 인자 해석을 둔다.
+- `Server/<Role>/Endpoints/`: HTTP endpoint mapping을 둔다. client가 호출하는 app endpoint와
+  evidence/wait/shutdown 같은 운영 endpoint가 여기에 들어간다.
+- `Server/<Role>/Handlers/`: framework handler, route handler, observer처럼 framework runtime에
+  등록되는 타입을 둔다.
+- `Server/<Role>/Infrastructure/`: evidence store, role 내부 상태 저장소처럼 endpoint와 handler가
+  함께 쓰지만 public 메시지 계약은 아닌 구현을 둔다.
 - `Client/Program.*`: 실행할 시나리오 목록을 선언하고, 옵션에 따라 전체 또는 단일 시나리오를
   순서대로 호출한다.
 - `Client/Scenarios/<ScenarioId><Name>Scenario.*`: 시나리오 ID 하나마다 파일 하나를 둔다.
@@ -125,8 +141,8 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 - `feature-map.ko.md`: 구현한 시나리오, 미구현 시나리오, public contract gap, harness gap을
   config 문서의 시나리오 ID와 맞춰 기록한다.
 
-언어별 파일 확장자나 프로젝트 파일 이름은 자연스럽게 바꿔도 된다. 하지만 위 역할 경계가 바뀌면
-언어별 e2e 결과를 서로 비교할 수 없으므로 완료로 보지 않는다.
+언어별 파일 확장자나 프로젝트 파일 이름은 자연스럽게 바꿔도 된다. 하지만 위 역할 경계와 파일
+분류가 바뀌면 언어별 e2e 결과를 서로 비교할 수 없으므로 완료로 보지 않는다.
 
 ### 2.2 역할 서버와 endpoint 형태
 
@@ -165,11 +181,13 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
   않는다. 폴더 이름이 다르더라도 시나리오 실행만 위임받는 server는 같은 금지 대상이다. 테스트
   진행을 위해 프로세스 시작·종료가 필요하면 `run_e2e.*`와 client support 코드에서 다루고,
   framework 기능 호출은 실제 역할 server endpoint 안에 둔다.
-- e2e 서버는 작은 실행 예시이므로 처음에는 flat 구조를 기본으로 한다. `Program.cs`, `*.csproj`,
-  `*HostFactory.cs`, `*Options.cs`, endpoint/handler/filter/evidence 파일을 서버 프로젝트 루트에 둔다.
-- 같은 성격의 파일이 2개 이상이면 폴더로 묶는다. 예: `Handlers/`, `Endpoints/`, `Configuration/`,
-  `Infrastructure/`, `Support/`, `Spots/`, `Sessions/`. 반대로 파일 하나짜리 같은 성격 폴더는 만들지
-  않는다. 하나뿐이면 프로젝트 루트에 둔다.
+- e2e 서버는 작은 실행 예시이지만, 다른 언어가 같은 방식으로 따라가기 쉽도록 파일 성격별 폴더를
+  유지한다. `.NET` e2e와 같은 의미로 `Configuration/`, `Endpoints/`, `Handlers/`, `Infrastructure/`
+  같은 폴더를 둔다. 지금은 파일이 하나뿐이어도 그 역할이 분명하면 같은 폴더에 둔다. 이렇게 해야
+  언어별 구현을 비교할 때 "옵션 파싱", "HTTP 표면", "framework handler", "evidence 저장" 위치를
+  바로 찾을 수 있다.
+- 같은 성격의 파일을 프로젝트 루트와 하위 폴더에 섞어 두지 않는다. 예를 들어 일부 endpoint는
+  `Program.*`에 두고 일부 endpoint는 `Endpoints/`에 두는 식의 혼합 구조는 피한다.
 - `Program.cs`에 endpoint, handler, framework 설정을 길게 넣지 않는다. 현재 `.NET` e2e처럼
   `Program.cs`는 `RoleHostFactory.Create(args).Run()` 수준의 진입점으로 유지하고, 실제 host 구성은
   `*HostFactory.*`로 분리한다.

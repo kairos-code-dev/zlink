@@ -12,11 +12,12 @@
 namespace zlink::samples::tictactoe
 {
 
+using namespace framework;
+
 class tictactoe_game_creator_t
 {
   public:
-    using dependency_types =
-      zlink::framework::dependency_list_t<sample_topology_t, redis_room_route_store_t>;
+    using dependency_types = dependency_list_t<sample_topology_t, redis_room_route_store_t>;
 
     tictactoe_game_creator_t (sample_topology_t &topology, redis_room_route_store_t &routes) :
         _topology (topology), _routes (routes)
@@ -29,9 +30,8 @@ class tictactoe_game_creator_t
     {
         auto room_id = create_room_id ();
         const auto spot_rid = _topology.selected_play_node_rid () + ":" + room_id;
-        _routes.save (
-          room_route_t{spot_rid, _topology.selected_stream_endpoint (),
-                       _topology.selected_play_node_rid ()});
+        _routes.save (room_route_t{spot_rid, _topology.selected_stream_endpoint (),
+                                   _topology.selected_play_node_rid ()});
         return {room_id,
                 std::move (game_name),
                 _topology.selected_stream_endpoint (),

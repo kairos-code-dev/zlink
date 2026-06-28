@@ -221,7 +221,7 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
         .state.status,
       "InProgress");
 
-    entry_spot_t entry_spot;
+    tictactoe_entry_spot_t entry_spot;
     tictactoe_game_spot_t game_spot;
     static_cast<tictactoe_match_t &> (game_spot) = tictactoe_match_t (created.room_id);
     const auto x_join =
@@ -826,7 +826,7 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
     }
 }
 
-TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway)
+TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticActorGatewayRelay)
 {
     const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";
     const auto api_factory = read_file (tictactoe_root / "Server/Api/api_server_host_factory.hpp");
@@ -846,7 +846,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
                std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_entry_spot<entry_spot_t> ()"), std::string::npos);
+    EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"),
+               std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<tictactoe_match_t>"), std::string::npos);
@@ -867,9 +868,12 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
     EXPECT_EQ (api_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
-    EXPECT_NE (create_game_handler.find ("zlink::framework::channel_client_t"), std::string::npos);
+    EXPECT_NE (create_game_handler.find ("channel_client_t"), std::string::npos);
     EXPECT_NE (create_game_handler.find ("sample_names_t::play_channel"), std::string::npos);
-    EXPECT_NE (create_game_handler.find ("create_game_req_t{game_name}"), std::string::npos);
+    EXPECT_NE (create_game_handler.find ("const auto create_request = create_game_req_t{game_name}"),
+               std::string::npos);
+    EXPECT_NE (create_game_handler.find (".request (sample_names_t::play_channel, create_request)"),
+               std::string::npos);
     EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t"), std::string::npos);
     EXPECT_NE (play_factory.find ("redis_room_route_store_t"), std::string::npos);
     EXPECT_NE (play_factory.find (".add<create_game_handler_t> (\"play\")"), std::string::npos);
@@ -892,7 +896,9 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
     EXPECT_NE (client.find ("observe_milestone_req_t"), std::string::npos);
     EXPECT_NE (client.find ("win_milestone_notify_t"), std::string::npos);
     EXPECT_NE (client.find ("stream_e2e_client::codecs::request"), std::string::npos);
-    EXPECT_NE (client.find ("client1, authenticate_req_t"), std::string::npos);
+    EXPECT_NE (client.find ("const auto client1_auth_request = authenticate_req_t"),
+               std::string::npos);
+    EXPECT_NE (client.find ("client1, client1_auth_request"), std::string::npos);
     EXPECT_NE (client.find (".async<authenticate_res_t> ()"), std::string::npos);
     EXPECT_NE (client.find ("stream_e2e_client::codecs::wait_for<game_state_notify_t>"),
                std::string::npos);
@@ -935,7 +941,7 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_EQ (client_main.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (client.find ("bingo-client.log"), std::string::npos);
     EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
-    EXPECT_NE (session_factory.find (".enable_actor_gateway ()"), std::string::npos);
+    EXPECT_EQ (session_factory.find (".enable_actor_gateway"), std::string::npos);
     EXPECT_NE (session.find (".relay_request (payload)"), std::string::npos);
     EXPECT_NE (session.find (".relay (payload)"), std::string::npos);
     EXPECT_EQ (session.find ("payload.to_raw ()"), std::string::npos);

@@ -11,10 +11,12 @@
 namespace zlink::samples::deliverydispatch
 {
 
+using namespace framework;
+
 class delivery_dispatch_client_scenario_t
 {
   public:
-    bool run (zlink::framework::channel_client_t &channels)
+    bool run (channel_client_t &channels)
     {
         if (!run_delivery (channels, "delivery-success")) {
             return false;
@@ -22,9 +24,8 @@ class delivery_dispatch_client_scenario_t
         if (!run_delivery (channels, "delivery-reassign")) {
             return false;
         }
-        const auto assertion =
-          request<server_assertion_req_t, server_assertion_res_t> (
-            channels, {"delivery-success", "delivery-reassign"});
+        const auto assertion = request<server_assertion_req_t, server_assertion_res_t> (
+          channels, {"delivery-success", "delivery-reassign"});
         if (!assertion.passed) {
             return false;
         }
@@ -34,12 +35,10 @@ class delivery_dispatch_client_scenario_t
     }
 
   private:
-    static bool run_delivery (zlink::framework::channel_client_t &channels,
-                              const std::string &delivery_id)
+    static bool run_delivery (channel_client_t &channels, const std::string &delivery_id)
     {
-        const auto subscribed =
-          request<subscribe_delivery_req_t, subscribe_delivery_accepted_t> (channels,
-                                                                           {delivery_id});
+        const auto subscribed = request<subscribe_delivery_req_t, subscribe_delivery_accepted_t> (
+          channels, {delivery_id});
         if (subscribed.delivery_id != delivery_id) {
             return false;
         }
@@ -49,7 +48,7 @@ class delivery_dispatch_client_scenario_t
     }
 
     template <typename TRequest, typename TResponse>
-    static TResponse request (zlink::framework::channel_client_t &channels, TRequest request)
+    static TResponse request (channel_client_t &channels, TRequest request)
     {
         auto result = channels.request_to_channel ("deliverydispatch.dispatch", std::move (request))
                         .template async<TResponse> ()

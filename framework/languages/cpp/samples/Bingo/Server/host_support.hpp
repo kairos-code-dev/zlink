@@ -6,12 +6,14 @@
 namespace zlink::samples::bingo
 {
 
-class stop_after_start_service_t final : public zlink::framework::hosted_service_t
+using namespace framework;
+
+class stop_after_start_service_t final : public hosted_service_t
 {
   public:
-    explicit stop_after_start_service_t (zlink::framework::app_t &app) : _app (app) {}
+    explicit stop_after_start_service_t (app_t &app) : _app (app) {}
 
-    void start (zlink::framework::service_provider_t &) override
+    void start (service_provider_t &) override
     {
         started = true;
         _app.stop ();
@@ -23,7 +25,7 @@ class stop_after_start_service_t final : public zlink::framework::hosted_service
     bool stopped = false;
 
   private:
-    zlink::framework::app_t &_app;
+    app_t &_app;
 };
 
 } // namespace zlink::samples::bingo

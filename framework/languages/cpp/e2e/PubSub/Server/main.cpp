@@ -166,11 +166,11 @@ class evidence_handler_t
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ()
-      .add_json<e2e::event_notify_t> ()
-      .add_json<e2e::evidence_event_t> ()
-      .add_json<e2e::dispatch_error_evidence_t> ()
-      .add_json<e2e::evidence_snapshot_t> ();
+    codecs.add_json ();
+    codecs.add_json<e2e::event_notify_t,
+                    e2e::evidence_event_t,
+                    e2e::dispatch_error_evidence_t,
+                    e2e::evidence_snapshot_t> ();
 }
 
 } // namespace

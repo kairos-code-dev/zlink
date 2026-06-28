@@ -6,15 +6,17 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+
 // Entry Spot actor handler: customer opens a conversation. Delegates the
 // admission decision and orchestration to the SupportEntrySpot.
 class open_conversation_actor_handler_t
 {
   public:
-    zlink::framework::task_t<open_conversation_res_t>
-    handle (support_entry_spot_t &entry_spot, const support_user_actor_t &actor,
-            zlink::framework::spot_actor_request_context_t &context,
-            const open_conversation_req_t &request) const
+    task_t<open_conversation_res_t> handle (support_entry_spot_t &entry_spot,
+                                            const support_user_actor_t &actor,
+                                            spot_actor_request_context_t &context,
+                                            const open_conversation_req_t &request) const
     {
         return entry_spot.open_conversation (actor, context, request);
     }

@@ -269,21 +269,18 @@ class codec_options_builder_t
     {
     }
 
-    template <typename TPayload> codec_options_builder_t &add_json ()
+    template <typename TPayload, typename... TPayloads> void add_json ()
     {
-        if (!_serializers->contains (std::type_index (typeid (TPayload)))) {
-            _serializers->template add_json<TPayload> ();
-        }
-        return *this;
+        add_json_serializer<TPayload> ();
+        (add_json_serializer<TPayloads> (), ...);
     }
 
-    codec_options_builder_t &add_json ()
+    void add_json ()
     {
         _state->json_enabled = true;
         for (const auto &installer : _state->json_serializer_installers) {
             installer ();
         }
-        return *this;
     }
 
     template <typename TExtension> codec_options_builder_t &use (const TExtension &extension)
@@ -307,6 +304,13 @@ class codec_options_builder_t
   private:
     serializer_registry_t *_serializers;
     std::shared_ptr<detail::handler_group_options_state_t> _state;
+
+    template <typename TPayload> void add_json_serializer ()
+    {
+        if (!_serializers->contains (std::type_index (typeid (TPayload)))) {
+            _serializers->template add_json<TPayload> ();
+        }
+    }
 };
 
 class discovery_options_builder_t
@@ -929,13 +933,6 @@ class spot_node_options_builder_t
         return *this;
     }
 
-    spot_node_options_builder_t &enable_actor_gateway ()
-    {
-        _actor_gateway = true;
-        apply ();
-        return *this;
-    }
-
     template <typename TSpot> spot_node_options_builder_t &add_spot (std::string spot_name)
     {
         detail::require_non_blank (spot_name, "SPOT name is required");
@@ -1003,7 +1000,6 @@ class spot_node_options_builder_t
         const auto router_manual_connections = _router_manual_connections;
         const auto pub_sub_manual_connections = _pub_sub_manual_connections;
         const auto discovery_channel = _discovery_channel;
-        const auto actor_gateway = _actor_gateway;
         const auto actions = _actions;
         const auto options = _options;
         auto configure = [=] (spot_node_builder_t &spot_node) {
@@ -1027,9 +1023,6 @@ class spot_node_options_builder_t
             }
             if (!discovery_channel.empty ()) {
                 spot_node.use_discovery (discovery_channel);
-            }
-            if (actor_gateway) {
-                spot_node.enable_actor_gateway ();
             }
             if (options->registry_spot_remote_addresses_enabled) {
                 if (options->registry_spot_route_channel) {
@@ -1065,7 +1058,6 @@ class spot_node_options_builder_t
     std::vector<std::string> _router_manual_connections;
     std::vector<std::string> _pub_sub_manual_connections;
     std::string _discovery_channel;
-    bool _actor_gateway = false;
     std::vector<std::function<void (spot_node_builder_t &)>> _actions;
 };
 

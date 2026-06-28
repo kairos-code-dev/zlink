@@ -339,9 +339,6 @@ void configure_actor_gateway_spot_bridge (
     std::vector<actor_gateway_spot_node_binding_t> actor_gateway_spot_nodes;
     actor_gateway_spot_nodes.reserve (spot_node_snapshot.size ());
     for (const auto &spot_node : spot_node_snapshot) {
-        if (!spot_node.actor_gateway_enabled) {
-            continue;
-        }
         auto runtime = spot_node_runtime_t::from (zlink, spot_node.name);
         if (!runtime) {
             continue;

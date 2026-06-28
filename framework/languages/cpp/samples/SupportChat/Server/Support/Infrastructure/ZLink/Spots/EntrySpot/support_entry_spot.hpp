@@ -17,77 +17,71 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+using framework::actor_ref_t;
+using framework::message_t;
+
 // SupportEntrySpot is the admission point before an actor enters a conversation.
 // Customer actors ask the API channel to allocate and assign the conversation,
 // then join the created ConversationSpot.
-class support_entry_spot_t : public zlink::framework::entry_spot_t
+class support_entry_spot_t : public entry_spot_t
 {
   public:
-    void configure (zlink::framework::entry_spot_context_t &context)
+    void configure (entry_spot_context_t &context)
     {
         _context = context;
         context.handlers ().add_actor_packet<&support_entry_spot_t::open_conversation> ();
         context.handlers ().add_actor_packet<&support_entry_spot_t::set_agent_available> ();
     }
 
-    void configure (zlink::framework::spot_context_t &context)
+    void configure (spot_context_t &context)
     {
-        zlink::framework::entry_spot_context_t entry_context (context);
+        entry_spot_context_t entry_context (context);
         configure (entry_context);
     }
 
-    zlink::framework::task_t<open_conversation_res_t>
-    open_conversation (const support_user_actor_t &actor,
-                       zlink::framework::spot_actor_request_context_t &,
-                       const open_conversation_req_t &request)
+    task_t<open_conversation_res_t> open_conversation (const support_user_actor_t &actor,
+                                                       spot_actor_request_context_t &,
+                                                       const open_conversation_req_t &request)
     {
         if (actor.role != support_chat_roles_t::customer) {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
-              "Only customer actors can open a conversation.");
+            throw framework_exception_t (framework_error_kind_t::request_failed,
+                                         "Only customer actors can open a conversation.");
         }
 
-        auto opened =
-          co_await _context.outbound ()
-            .request_to_channel (
-              sample_names_t::api_channel,
-              open_conversation_api_req_t{actor.actor_id (), actor.display_name, request.subject})
-            .async<open_conversation_api_res_t> ();
-        const auto spot_rid = zlink::framework::spot_rid_t::from_string (
-          std::string (sample_names_t::support_spot_node) + ":"
-          + opened.conversation_id);
-        auto joined = co_await actor.context
-                        .join_spot (spot_rid,
-                                    join_conversation_req_t{opened.conversation_id})
-                        .async<join_conversation_res_t> ();
+        const auto open_request = open_conversation_api_req_t{
+            actor.actor_id (), actor.display_name, request.subject
+        };
+        auto opened = co_await _context.outbound ()
+            .request_to_channel (sample_names_t::api_channel, open_request).async<open_conversation_api_res_t> ();
+        const auto spot_rid = spot_rid_t::from_string (
+          std::string (sample_names_t::support_spot_node) + ":" + opened.conversation_id);
+        const auto join_request = join_conversation_req_t{opened.conversation_id};
+        auto joined = co_await actor.context.join_spot (spot_rid, join_request).async<join_conversation_res_t> ();
         if (joined.result_code != 0) {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
-              "Conversation join was rejected.");
+            throw framework_exception_t (framework_error_kind_t::request_failed,
+                                         "Conversation join was rejected.");
         }
 
-        co_return open_conversation_res_t{joined.reply.state.conversation_id,
-                                          joined.reply.state};
+        co_return open_conversation_res_t{joined.reply.state.conversation_id, joined.reply.state};
     }
 
-    set_agent_available_res_t
-    set_agent_available (const support_user_actor_t &actor,
-                         zlink::framework::spot_actor_request_context_t &,
-                         const set_agent_available_req_t &request)
+    set_agent_available_res_t set_agent_available (const support_user_actor_t &actor,
+                                                   spot_actor_request_context_t &,
+                                                   const set_agent_available_req_t &request)
     {
         if (actor.role != support_chat_roles_t::agent) {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
-              "Only agent actors can set availability.");
+            throw framework_exception_t (framework_error_kind_t::request_failed,
+                                         "Only agent actors can set availability.");
         }
-        support_actor_directory_t::shared ().add_or_update (const_cast<support_user_actor_t &> (actor));
+        support_actor_directory_t::shared ().add_or_update (
+          const_cast<support_user_actor_t &> (actor));
         agent_availability_directory_t::shared ().set_available (
           actor.actor_id (), actor.display_name, request.is_available);
         return set_agent_available_res_t{request.is_available};
     }
 
-    void onCreateActor (support_user_actor_t &actor,
-                        const zlink::framework::message_t &create_request)
+    void onCreateActor (support_user_actor_t &actor, const message_t &create_request)
     {
         const auto request = create_request.decode<ensure_support_user_actor_req_t> ();
         actor.set_identity (request.display_name, request.role);
@@ -107,9 +101,9 @@ class support_entry_spot_t : public zlink::framework::entry_spot_t
 
     void onLeaveActor (const support_user_actor_t &actor)
     {
-        joined_actor_ids.erase (std::remove (joined_actor_ids.begin (), joined_actor_ids.end (),
-                                             actor.actor_id ()),
-                                joined_actor_ids.end ());
+        joined_actor_ids.erase (
+          std::remove (joined_actor_ids.begin (), joined_actor_ids.end (), actor.actor_id ()),
+          joined_actor_ids.end ());
     }
 
     void onDisconnectActor (const support_user_actor_t &actor) { actor.mark_disconnected (); }
@@ -125,14 +119,14 @@ class support_entry_spot_t : public zlink::framework::entry_spot_t
           .count ();
     }
 
-    static zlink::framework::actor_ref_t actor_ref_for (const support_user_actor_t &actor)
+    static actor_ref_t actor_ref_for (const support_user_actor_t &actor)
     {
-        return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (sample_names_t::support_spot_node),
-          sample_names_t::support_actor_type, actor.actor_id (), actor.actor.generation);
+        return actor_ref_t (node_rid_t::from_string (sample_names_t::support_spot_node),
+                            sample_names_t::support_actor_type, actor.actor_id (),
+                            actor.actor.generation);
     }
 
-    zlink::framework::entry_spot_context_t _context;
+    entry_spot_context_t _context;
 };
 
 } // namespace zlink::samples::supportchat

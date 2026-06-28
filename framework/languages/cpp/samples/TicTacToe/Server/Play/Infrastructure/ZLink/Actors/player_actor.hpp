@@ -12,6 +12,10 @@
 namespace zlink::samples::tictactoe
 {
 
+using namespace framework;
+using framework::actor_ref_t;
+using framework::message_t;
+
 struct player_actor_t
 {
     std::string actor_id;
@@ -20,15 +24,15 @@ struct player_actor_t
     mutable bool destroy_after_entry_spot_join = false;
     mutable bool disconnected = false;
     mutable player_info_t player;
-    mutable zlink::framework::actor_context_t context;
+    mutable actor_context_t context;
 
-    void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref) const
+    void set_actor_ref (const actor_ref_t &actor_ref) const
     {
         node_rid = std::string (actor_ref.node_rid ().value ());
         generation = actor_ref.generation ();
     }
 
-    void set_actor_context (zlink::framework::actor_context_t actor_context) const
+    void set_actor_context (actor_context_t actor_context) const
     {
         context = std::move (actor_context);
     }
@@ -39,8 +43,7 @@ struct player_actor_t
 
     void apply_player (player_info_t value) const { player = std::move (value); }
 
-    template <typename TNotify>
-    auto push (const TNotify &notify) const
+    template <typename TNotify> auto push (const TNotify &notify) const
     {
         return context.bound_session ().send (notify).async ();
     }

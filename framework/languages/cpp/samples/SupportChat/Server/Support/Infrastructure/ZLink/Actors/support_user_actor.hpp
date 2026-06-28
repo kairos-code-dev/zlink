@@ -10,10 +10,14 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+using framework::actor_ref_t;
+using framework::message_t;
+
 struct support_user_actor_t
 {
     mutable actor_ref_snapshot_t actor;
-    mutable zlink::framework::actor_context_t context;
+    mutable actor_context_t context;
     std::string display_name;
     std::string role;
     mutable std::string conversation_id;
@@ -22,17 +26,14 @@ struct support_user_actor_t
 
     const std::string &actor_id () const noexcept { return actor.actor_id; }
 
-    void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref) const
+    void set_actor_ref (const actor_ref_t &actor_ref) const
     {
         actor.node_rid = std::string (actor_ref.node_rid ().value ());
         actor.actor_id = std::string (actor_ref.actor_id ());
         actor.generation = actor_ref.generation ();
     }
 
-    void set_actor_context (const zlink::framework::actor_context_t &actor_context) const
-    {
-        context = actor_context;
-    }
+    void set_actor_context (const actor_context_t &actor_context) const { context = actor_context; }
 
     void set_identity (std::string new_display_name, std::string new_role)
     {

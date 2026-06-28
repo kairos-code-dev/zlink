@@ -151,8 +151,7 @@ stream 패킷도 채널 메시지와 같은 typed DTO(`packet_name`)다. 서버 
 ## 6. 자주 막히는 곳
 
 - **세션이 안 생긴다** → stream node에 `register_session<T>()`가 없거나 `bind`를
-  안 했다.
-  `enable_actor_gateway`(spot 노드 쪽) 짝이 맞는지 확인한다([9장 §5](09-actor-session.ko.md#5-actor-gateway)).
+  안 했다. session actor가 필요하면 같은 구성 안에 stream session이 bind할 SpotNode와 route channel이 있는지 확인한다([9장 §5](09-actor-session.ko.md#5-actor-gateway)).
 - **패킷 디코딩 실패** → `packet_name`과 codec 등록을 확인한다.
 - **heartbeat·재연결·TLS 동작** → 이는 서버 session이 아니라 클라이언트
   connector의 책임이다. [connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)가 다룬다.

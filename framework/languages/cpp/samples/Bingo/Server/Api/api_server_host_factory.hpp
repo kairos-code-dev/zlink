@@ -9,27 +9,24 @@
 namespace zlink::samples::bingo
 {
 
+using namespace framework;
+
 class api_server_host_factory_t
 {
   public:
-    static zlink::framework::app_t build (const sample_topology_t &topology, bool auto_stop = true);
-    static zlink::framework::app_t &configure (zlink::framework::app_t &app,
-                                               const sample_topology_t &topology,
-                                               bool auto_stop = true);
+    static app_t build (const sample_topology_t &topology, bool auto_stop = true);
+    static app_t &configure (app_t &app, const sample_topology_t &topology, bool auto_stop = true);
 };
 
-inline zlink::framework::app_t api_server_host_factory_t::build (const sample_topology_t &topology,
-                                                                 bool auto_stop)
+inline app_t api_server_host_factory_t::build (const sample_topology_t &topology, bool auto_stop)
 {
-    auto app = zlink::framework::app_t::create ();
+    auto app = app_t::create ();
     configure (app, topology, auto_stop);
     return app;
 }
 
-inline zlink::framework::app_t &api_server_host_factory_t::configure (
-  zlink::framework::app_t &app,
-  const sample_topology_t &topology,
-  bool auto_stop)
+inline app_t &
+api_server_host_factory_t::configure (app_t &app, const sample_topology_t &topology, bool auto_stop)
 {
     app.logging ().use_console ().set_level ("info");
     if (auto_stop) {

@@ -71,15 +71,20 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
 ## 2. 표준 프로젝트 구조
 
 각 config는 언어별 표준 위치에 sample과 분리된 e2e 앱으로 둔다. 서버와 client는 실제 프로세스
-경계를 가진 앱으로 구성하고, 모든 언어가 같은 의미의 폴더 구조를 유지한다. `.NET` 구현은 현재
-다른 언어가 따라야 할 기준 형식이다. 언어별 build 도구 이름과 파일 확장자는 달라도 역할 분리,
-시나리오 파일 분리, 파일 분류, evidence/wait 방식은 같은 의미를 유지한다.
+경계를 가진 앱으로 구성하고, 모든 언어가 같은 의미의 폴더 구조를 유지한다. 언어별 build 도구
+이름과 파일 확장자는 달라도 역할 분리, 시나리오 파일 분리, 파일 분류, evidence/wait 방식은 같은
+의미를 유지한다.
 
-다른 언어를 작성할 때는 먼저 대응하는 `.NET` config의 현재 파일 배치를 열어 보고, 같은 역할을
-같은 위치에 둔다. 예를 들어 `.NET`에서 `Server/Registry`, `Server/Provider`, `Server/Workflow`가
-별도 실행 프로젝트라면 다른 언어도 registry, provider, workflow를 하나의 서버 프로젝트 안에서
-옵션만 바꿔 구동하지 않는다. `.NET`에서 `Client/Scenarios`와 `Client/Support`로 나눈 흐름도
-같은 의미로 유지한다.
+신규 e2e를 만들거나 기존 e2e를 크게 수정할 때는 아래 구조를 기준으로 정렬한다. 현재 `.NET` e2e는
+이 구조로 정리해 가는 기준 구현이며, 아직 일부 오래된 config에는 role 루트에 option, endpoint,
+handler, evidence 파일이 남아 있을 수 있다. 그런 config를 다른 언어로 옮기거나 손볼 때는 현재
+파일 위치를 그대로 복사하지 말고, 같은 역할의 코드를 아래 분류에 맞춰 배치한다.
+
+다른 언어를 작성할 때는 먼저 대응하는 `.NET` config의 역할 구성과 시나리오 흐름을 확인하고,
+같은 역할을 같은 의미의 위치에 둔다. 예를 들어 `.NET`에서 `Server/Registry`, `Server/Provider`,
+`Server/Workflow`가 별도 실행 프로젝트라면 다른 언어도 registry, provider, workflow를 하나의 서버
+프로젝트 안에서 옵션만 바꿔 구동하지 않는다. `.NET`에서 `Client/Scenarios`와 `Client/Support`로
+나눈 흐름도 같은 의미로 유지한다.
 
 예(`.NET`):
 
@@ -105,15 +110,19 @@ framework/languages/<lang>/e2e/<Config>/
 `-- README.ko.md
 ```
 
+`README.ko.md`는 config별 보충 설명이 필요할 때 둔다. 공통 시나리오 정의와 완료 기준은
+`framework/doc/framework/common/e2e/config-*.ko.md` 문서가 기준이다.
+
 실행 방식은 sample smoke와 비슷하다. test framework가 같은 프로세스 안에서 host를 직접 만드는
 게 아니라, `run_e2e.*`가 서버 프로세스를 순서대로 띄우고 포트 readiness를 확인한 뒤 client
 시나리오를 실행한다. scale·failover 같은 시나리오는 같은 스크립트가 프로세스를 추가로 띄우거나
 종료한다.
 
-`PubSub`와 `RegistrationCodec`의 client 흐름과 역할 server endpoint 사용 방식을 기준 예시로 삼는다.
+역할 server endpoint 사용 방식은 `PubSub`와 `RegistrationCodec`의 client 흐름을 참고할 수 있다.
 client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 직접 호출하고, server endpoint
-안에서 framework 기능을 실행한다. 별도 driver server를 띄운 뒤 client가 그 driver에 "전체 시나리오
-실행"을 맡기는 구조는 이 문서의 표준 구조가 아니다.
+안에서 framework 기능을 실행한다. 다만 오래된 config의 파일 위치가 이 절의 폴더 분류와 다르면,
+그 위치까지 그대로 따라 하지 않는다. 별도 driver server를 띄운 뒤 client가 그 driver에 "전체
+시나리오 실행"을 맡기는 구조는 이 문서의 표준 구조가 아니다.
 
 ### 2.1 언어별 포팅 단위
 

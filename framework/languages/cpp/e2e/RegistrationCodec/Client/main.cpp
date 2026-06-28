@@ -53,20 +53,20 @@ std::string decode_text (const zlink::framework::encoded_payload_t &payload,
 
 void add_json_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ()
-      .add_json<e2e::echo_auto_t> ()
-      .add_json<e2e::echo_auto_reply_t> ()
-      .add_json<e2e::echo_auto_send_t> ()
-      .add_json<e2e::echo_manual_t> ()
-      .add_json<e2e::echo_manual_reply_t> ()
-      .add_json<e2e::json_roundtrip_t> ()
-      .add_json<e2e::json_roundtrip_reply_t> ()
-      .add_json<e2e::scoped_lifecycle_req_t> ()
-      .add_json<e2e::scoped_lifecycle_reply_t> ()
-      .add_json<e2e::scoped_lifecycle_stats_req_t> ()
-      .add_json<e2e::scoped_lifecycle_stats_reply_t> ()
-      .add_json<e2e::filter_order_req_t> ()
-      .add_json<e2e::filter_order_reply_t> ();
+    codecs.add_json ();
+    codecs.add_json<e2e::echo_auto_t,
+                    e2e::echo_auto_reply_t,
+                    e2e::echo_auto_send_t,
+                    e2e::echo_manual_t,
+                    e2e::echo_manual_reply_t,
+                    e2e::json_roundtrip_t,
+                    e2e::json_roundtrip_reply_t,
+                    e2e::scoped_lifecycle_req_t,
+                    e2e::scoped_lifecycle_reply_t,
+                    e2e::scoped_lifecycle_stats_req_t,
+                    e2e::scoped_lifecycle_stats_reply_t,
+                    e2e::filter_order_req_t,
+                    e2e::filter_order_reply_t> ();
 }
 
 void add_custom_codecs (zlink::framework::codec_options_builder_t codecs)

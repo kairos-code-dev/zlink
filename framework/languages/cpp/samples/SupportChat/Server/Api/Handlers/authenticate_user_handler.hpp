@@ -10,6 +10,8 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+
 // API authentication boundary: validates a stream access token and returns the
 // actor identity (id, display name, role).
 class authenticate_user_handler_t
@@ -19,10 +21,7 @@ class authenticate_user_handler_t
     using reply_type = authenticate_user_res_t;
     static constexpr const char *topic_name = "AuthenticateUser";
 
-    explicit authenticate_user_handler_t (zlink::framework::logger_t<> logger = {}) :
-        _logger (std::move (logger))
-    {
-    }
+    explicit authenticate_user_handler_t (logger_t<> logger = {}) : _logger (std::move (logger)) {}
 
     authenticate_user_res_t handle (const authenticate_user_req_t &request)
     {
@@ -47,14 +46,14 @@ class authenticate_user_handler_t
     }
 
   private:
-    authenticate_user_res_t accepted (std::string actor_id, std::string display_name,
-                                      std::string role)
+    authenticate_user_res_t
+    accepted (std::string actor_id, std::string display_name, std::string role)
     {
         _logger.info ("authenticate support user", {{"actor_id", actor_id}});
         return {true, std::move (actor_id), std::move (display_name), std::move (role), ""};
     }
 
-    zlink::framework::logger_t<> _logger;
+    logger_t<> _logger;
 };
 
 } // namespace zlink::samples::supportchat

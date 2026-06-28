@@ -1,0 +1,140 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../../Shared/spot_service_contracts.hpp"
+
+#include <zlink/framework/codecs/json_stream_connector.hpp>
+#include <zlink/stream_connector.hpp>
+
+#include <chrono>
+#include <stdexcept>
+#include <string>
+
+namespace zlink::framework::e2e::spot_service::client::scenarios
+{
+
+inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
+{
+    if (session_stream_endpoint.empty ()) {
+        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-D5");
+    }
+
+    zlink::stream_connector::connector_options_t options;
+    options.endpoint = session_stream_endpoint;
+    options.connect_timeout = std::chrono::milliseconds (5000);
+    options.request_timeout = std::chrono::milliseconds (5000);
+    options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+
+    {
+        constexpr auto actor_id = "stream-disconnect-d5-notified-single";
+        auto stream = zlink::stream_connector::connector_factory_t::create (options);
+        stream.codecs ().add_json ();
+        auto connected = stream.connect ();
+        if (!connected) {
+            throw std::runtime_error ("SM-D5 single stream connect failed");
+        }
+        auto auth =
+          zlink::stream_connector::codecs::request (
+            stream, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D5 Single"})
+            .packet_name ("StreamEnsureAuthReq")
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<stream_auth_res_t> ();
+        auto joined =
+          zlink::stream_connector::codecs::request (
+            stream, join_req_t{.key = "a-stream-disconnect-single",
+                               .actor_id = actor_id,
+                               .display_name = "SM-D5 Single",
+                               .level = 5,
+                               .tags = {"stream", "SM-D5", "single"}})
+            .packet_name ("JoinReq")
+            .metadata ("actor-id", actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<join_res_t> ();
+        if (!auth || !joined) {
+            throw std::runtime_error ("SM-D5 single bind setup failed");
+        }
+        (void) stream.close ();
+    }
+
+    {
+        constexpr auto actor_id = "stream-disconnect-d5-notified-remote";
+        auto stream = zlink::stream_connector::connector_factory_t::create (options);
+        stream.codecs ().add_json ();
+        auto connected = stream.connect ();
+        if (!connected) {
+            throw std::runtime_error ("SM-D5 remote stream connect failed");
+        }
+        auto auth =
+          zlink::stream_connector::codecs::request (
+            stream, stream_ensure_auth_req_t{"play-b", actor_id, "SM-D5 Remote"})
+            .packet_name ("StreamEnsureAuthReq")
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<stream_auth_res_t> ();
+        auto joined =
+          zlink::stream_connector::codecs::request (
+            stream, join_req_t{.key = "b-stream-disconnect-remote",
+                               .actor_id = actor_id,
+                               .display_name = "SM-D5 Remote",
+                               .level = 5,
+                               .tags = {"stream", "SM-D5", "remote"}})
+            .packet_name ("JoinReq")
+            .metadata ("actor-id", actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<join_res_t> ();
+        if (!auth || !joined) {
+            throw std::runtime_error ("SM-D5 remote bind setup failed");
+        }
+        (void) stream.close ();
+    }
+
+    {
+        constexpr auto notified_actor_id = "stream-disconnect-d5-notified";
+        constexpr auto muted_actor_id = "stream-disconnect-d5-muted";
+        auto stream = zlink::stream_connector::connector_factory_t::create (options);
+        stream.codecs ().add_json ();
+        auto connected = stream.connect ();
+        if (!connected) {
+            throw std::runtime_error ("SM-D5 multi stream connect failed");
+        }
+        auto notified_auth =
+          zlink::stream_connector::codecs::request (
+            stream, stream_ensure_auth_req_t{"play-a", notified_actor_id, "SM-D5 Notified"})
+            .packet_name ("StreamEnsureAuthReq")
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<stream_auth_res_t> ();
+        auto muted_auth =
+          zlink::stream_connector::codecs::request (
+            stream, stream_ensure_auth_req_t{"play-a", muted_actor_id, "SM-D5 Muted"})
+            .packet_name ("StreamEnsureAuthReq")
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<stream_auth_res_t> ();
+        auto notified_join =
+          zlink::stream_connector::codecs::request (
+            stream, join_req_t{.key = "a-stream-disconnect-notified",
+                               .actor_id = notified_actor_id,
+                               .display_name = "SM-D5 Notified",
+                               .level = 5,
+                               .tags = {"stream", "SM-D5", "notified"}})
+            .packet_name ("JoinReq")
+            .metadata ("actor-id", notified_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<join_res_t> ();
+        auto muted_join =
+          zlink::stream_connector::codecs::request (
+            stream, join_req_t{.key = "a-stream-disconnect-muted",
+                               .actor_id = muted_actor_id,
+                               .display_name = "SM-D5 Muted",
+                               .level = 5,
+                               .tags = {"stream", "SM-D5", "muted"}})
+            .packet_name ("JoinReq")
+            .metadata ("actor-id", muted_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<join_res_t> ();
+        if (!notified_auth || !muted_auth || !notified_join || !muted_join) {
+            throw std::runtime_error ("SM-D5 multi bind setup failed");
+        }
+        (void) stream.close ();
+    }
+}
+
+} // namespace zlink::framework::e2e::spot_service::client::scenarios

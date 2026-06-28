@@ -6,12 +6,12 @@
 namespace zlink::framework_codecs
 {
 
-template <typename... TPayloads> class json_codec_extension_t
+class json_codec_extension_t
 {
   public:
     template <typename TBuilder> void register_framework_codecs (TBuilder &codecs) const
     {
-        (codecs.template add_json<TPayloads> (), ...);
+        codecs.add_json ();
     }
 
     template <typename TCodecs> void register_connector_codecs (TCodecs &codecs) const
@@ -20,9 +20,11 @@ template <typename... TPayloads> class json_codec_extension_t
     }
 };
 
-template <typename... TPayloads> json_codec_extension_t<TPayloads...> json ()
+inline json_codec_extension_t json ()
 {
     return {};
 }
+
+template <typename TPayload, typename... TPayloads> json_codec_extension_t json () = delete;
 
 } // namespace zlink::framework_codecs

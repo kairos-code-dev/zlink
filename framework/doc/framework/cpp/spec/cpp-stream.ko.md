@@ -156,8 +156,7 @@ public:
 
 app.add_zlink_framework([](auto &options) {
     options.add_spot_mesh("session-actors")
-      .bind("tcp://0.0.0.0:7101")
-      .enable_actor_gateway();
+      .bind("tcp://0.0.0.0:7101");
     options.add_stream_node("route-stream")
       .bind("tcp://0.0.0.0:9200")
       .register_session<client_session_t>()

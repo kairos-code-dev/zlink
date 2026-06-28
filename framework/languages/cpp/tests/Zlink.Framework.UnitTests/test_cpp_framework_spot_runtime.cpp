@@ -738,7 +738,6 @@ int main ()
       .connect_router ("tcp://127.0.0.1:9003")
       .enable_pub_sub ("tcp://0.0.0.0:9004")
       .connect_pub_sub ("tcp://127.0.0.1:9005")
-      .enable_actor_gateway ()
       .use_discovery ("game.stage")
       .add_entry_spot<entry_spot_t> ()
       .add_actor_factory<player_actor_factory_t> ("player")
@@ -754,7 +753,7 @@ int main ()
         || *snapshots[0].pub_bind_endpoint != "tcp://0.0.0.0:9004"
         || snapshots[0].pub_sub_manual_connections.size () != 1
         || snapshots[0].pub_sub_manual_connections[0] != "tcp://127.0.0.1:9005"
-        || !snapshots[0].actor_gateway_enabled || !snapshots[0].discovery_channel_name
+        || !snapshots[0].discovery_channel_name
         || *snapshots[0].discovery_channel_name != "game.stage"
         || snapshots[0].spot_names.size () != 2 || snapshots[0].entry_spot_name != "entry"
         || snapshots[0].actor_types.size () != 1) {
@@ -1149,6 +1148,22 @@ int main ()
     if (!destroy_result || !duplicate_destroy
         || lifecycle_entry_spot->left_count != entry_left_before_destroy) {
         return 73;
+    }
+    zlink::framework::service_collection_t post_destroy_services;
+    auto post_destroy_provider = post_destroy_services.build_provider ();
+    zlink::framework::serializer_registry_t post_destroy_serializers;
+    add_string_serializer (post_destroy_serializers);
+    const auto created_before_post_destroy_relay = lifecycle_entry_spot->created_count;
+    const auto joined_before_post_destroy_relay = lifecycle_entry_spot->joined_count;
+    auto post_destroy_relay = lifecycle_runtime.relay_actor_packet (
+      destroy_context.actor_ref (), destroy_context, "missing.after.destroy",
+      zlink::message_t::from (std::string ("after-destroy")), post_destroy_provider,
+      post_destroy_serializers);
+    if (post_destroy_relay
+        || post_destroy_relay.error_kind () != framework_error_kind_t::actor_route_not_found
+        || lifecycle_entry_spot->created_count != created_before_post_destroy_relay
+        || lifecycle_entry_spot->joined_count != joined_before_post_destroy_relay) {
+        return 120;
     }
     if (lifecycle_gateway.manager ().find ("destroy-player")) {
         return 79;

@@ -14,6 +14,8 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+
 // Translates conversation domain events into bound session push messages and
 // delivers them to the relevant participants. This is the only place that maps
 // a ConversationEvent onto a ParticipantJoined/Assigned/ChatMessage/Typing/
@@ -36,39 +38,43 @@ class conversation_notification_publisher_t
         if (state.agent_actor_id.empty ()) {
             return;
         }
-        push (customer, participant_joined_notify_t{state.conversation_id, state.agent_actor_id,
-                                                    support_chat_roles_t::agent, state});
+        const auto notify = participant_joined_notify_t{state.conversation_id, state.agent_actor_id,
+                                                        support_chat_roles_t::agent, state};
+        push (customer, notify);
     }
 
   private:
     void publish_one (const conversation_event_t &event, const actor_map_t &actors)
     {
         switch (event.kind) {
-        case conversation_event_kind_t::participant_joined:
-            publish_participant_joined (event, actors);
-            break;
-        case conversation_event_kind_t::assigned:
-            publish_assigned (event, actors);
-            break;
-        case conversation_event_kind_t::message_appended:
-            publish_message (event, actors);
-            break;
-        case conversation_event_kind_t::typing_changed:
-            publish_typing (event, actors);
-            break;
-        case conversation_event_kind_t::idle:
-            for (const auto &[_, actor] : actors) {
-                push (*actor, conversation_idle_notify_t{event.state.conversation_id, event.state});
-            }
-            break;
-        case conversation_event_kind_t::closed:
-            for (const auto &[_, actor] : actors) {
-                push (*actor,
-                      conversation_closed_notify_t{event.state.conversation_id, event.state});
-            }
-            break;
-        default:
-            throw std::runtime_error ("Unsupported conversation event.");
+            case conversation_event_kind_t::participant_joined:
+                publish_participant_joined (event, actors);
+                break;
+            case conversation_event_kind_t::assigned:
+                publish_assigned (event, actors);
+                break;
+            case conversation_event_kind_t::message_appended:
+                publish_message (event, actors);
+                break;
+            case conversation_event_kind_t::typing_changed:
+                publish_typing (event, actors);
+                break;
+            case conversation_event_kind_t::idle:
+                for (const auto &[_, actor] : actors) {
+                    const auto notify =
+                      conversation_idle_notify_t{event.state.conversation_id, event.state};
+                    push (*actor, notify);
+                }
+                break;
+            case conversation_event_kind_t::closed:
+                for (const auto &[_, actor] : actors) {
+                    const auto notify =
+                      conversation_closed_notify_t{event.state.conversation_id, event.state};
+                    push (*actor, notify);
+                }
+                break;
+            default:
+                throw std::runtime_error ("Unsupported conversation event.");
         }
     }
 
@@ -78,9 +84,9 @@ class conversation_notification_publisher_t
         auto found = actors.find (customer_id);
         if (found != actors.end () && found->second != nullptr
             && found->second->actor_id () != event.actor_id) {
-            push (*found->second, participant_joined_notify_t{event.state.conversation_id,
-                                                              event.actor_id, event.role,
-                                                              event.state});
+            const auto notify = participant_joined_notify_t{
+              event.state.conversation_id, event.actor_id, event.role, event.state};
+            push (*found->second, notify);
         }
     }
 
@@ -90,8 +96,9 @@ class conversation_notification_publisher_t
         if (found == actors.end () || found->second == nullptr) {
             return;
         }
-        push (*found->second,
-              conversation_assigned_notify_t{event.state.conversation_id, event.state});
+        const auto notify =
+          conversation_assigned_notify_t{event.state.conversation_id, event.state};
+        push (*found->second, notify);
     }
 
     void publish_message (const conversation_event_t &event, const actor_map_t &actors)
@@ -104,8 +111,9 @@ class conversation_notification_publisher_t
             if (actor_id == message.sender_actor_id || actor == nullptr) {
                 continue;
             }
-            push (*actor,
-                  chat_message_notify_t{event.state.conversation_id, message, event.state});
+            const auto notify =
+              chat_message_notify_t{event.state.conversation_id, message, event.state};
+            push (*actor, notify);
         }
     }
 
@@ -118,16 +126,16 @@ class conversation_notification_publisher_t
             if (actor_id == event.actor_id || actor == nullptr) {
                 continue;
             }
-            push (*actor, typing_changed_notify_t{event.state.conversation_id, event.actor_id,
-                                                  *event.is_typing, event.state});
+            const auto notify = typing_changed_notify_t{event.state.conversation_id, event.actor_id,
+                                                        *event.is_typing, event.state};
+            push (*actor, notify);
         }
     }
 
     template <typename TNotify> void push (const support_user_actor_t &actor, const TNotify &notify)
     {
         auto send_task = actor.context.bound_session ().send (notify).async ();
-        zlink::framework::observe_task_completion (
-          send_task, [] (const zlink::framework::result_t<void> &) {});
+        observe_task_completion (send_task, [] (const result_t<void> &) {});
     }
 };
 

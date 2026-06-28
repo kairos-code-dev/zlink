@@ -15,35 +15,30 @@
 namespace zlink::samples::tictactoe
 {
 
+using namespace framework;
+
 inline constexpr const char *sample_log_file = "tictactoe-server.log";
 
 class api_server_host_factory_t
 {
   public:
-    static zlink::framework::app_t build (const sample_topology_t &topology, bool auto_stop = true)
+    static app_t build (const sample_topology_t &topology, bool auto_stop = true)
     {
-        auto app = zlink::framework::app_t::create ();
+        auto app = app_t::create ();
         configure (app, topology, auto_stop);
         return app;
     }
 
-    static zlink::framework::app_t &configure (zlink::framework::app_t &app,
-                                               const sample_topology_t &topology,
-                                               bool auto_stop = true)
+    static app_t &configure (app_t &app, const sample_topology_t &topology, bool auto_stop = true)
     {
-        app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
             options.configure_dispatch ()
-              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .message_flow (message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("api"))
               .trace_label ("tictactoe-api");
             options.handlers ().add<authenticate_player_handler_t> ("api");
 
-            options.codecs ()
-              .add_json ()
-              .add_json<authenticate_player_req_t> ()
-              .add_json<authenticate_player_res_t> ()
-              .add_json<create_game_req_t> ()
-              .add_json<create_game_res_t> ();
+            options.codecs ().add_json ();
 
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_server (topology.selected_api_endpoint ())

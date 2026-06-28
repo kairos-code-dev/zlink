@@ -8,12 +8,14 @@
 namespace zlink::samples::deliverydispatch
 {
 
+using namespace framework;
+
 class assign_delivery_handler_t
 {
   public:
     using request_type = assign_delivery_req_t;
     using reply_type = delivery_state_t;
-    using dependency_types = zlink::framework::dependency_list_t<delivery_dispatch_server_role_t>;
+    using dependency_types = dependency_list_t<delivery_dispatch_server_role_t>;
     static constexpr const char *topic_name = "AssignDeliveryReq";
 
     explicit assign_delivery_handler_t (delivery_dispatch_server_role_t &server) : _server (server)

@@ -8,7 +8,9 @@
 namespace zlink::samples::supportchat
 {
 
-inline void load_sample_configuration (zlink::framework::app_t &app, int argc, char **argv)
+using namespace framework;
+
+inline void load_sample_configuration (app_t &app, int argc, char **argv)
 {
     app.config ().load_cli (argc, argv);
     if (auto path = app.config ().model ().get ("config")) {
@@ -17,12 +19,12 @@ inline void load_sample_configuration (zlink::framework::app_t &app, int argc, c
     app.config ().load_env ("ZLINK_CPP_SAMPLE__").load_cli (argc, argv);
 }
 
-inline sample_topology_t sample_topology_from_config (zlink::framework::app_t &app)
+inline sample_topology_t sample_topology_from_config (app_t &app)
 {
     return app.config ().bind<sample_topology_t> ("sample.topology").value_or (sample_topology_t{});
 }
 
-inline bool sample_keep_running (zlink::framework::app_t &app)
+inline bool sample_keep_running (app_t &app)
 {
     return app.config ().model ().get ("sample.host.keepRunning").value_or ("false") == "true";
 }

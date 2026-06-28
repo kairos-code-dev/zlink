@@ -141,7 +141,6 @@ options.add_spot_mesh ("bingo.room.discovery")
 | `add_entry_spot<T>()` | 입장 spot 등록 (노드당 1개) |
 | `add_spot<T>(name)` | spot 타입 등록 |
 | `add_actor_factory<F>(type)` | actor factory 등록 ([9장](09-actor-session.ko.md)) |
-| `enable_actor_gateway()` | actor gateway 활성화 ([9장](09-actor-session.ko.md)) |
 
 ## 3. room spot 작성
 

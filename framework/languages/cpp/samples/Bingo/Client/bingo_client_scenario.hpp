@@ -50,17 +50,17 @@ class bingo_client_scenario_t
             co_await observer.connect ().async ();
 
             trace ("authenticate client1");
+            const auto client1_auth_request = authenticate_req_t{bingo_sample_players_t::player1};
             auto client1_auth =
-              co_await stream_e2e_client::codecs::request (
-                client1, authenticate_req_t{bingo_sample_players_t::player1})
+              co_await stream_e2e_client::codecs::request (client1, client1_auth_request)
                 .async<authenticate_res_t> ();
             ensure (client1_auth.actor_id == bingo_sample_players_t::player1);
             ensure (!client1_auth.actor_node_rid.empty ());
 
             trace ("match client1");
+            const auto client1_match_request = match_bingo_req_t{bingo_sample_modes_t::two_player};
             auto client1_match =
-              co_await stream_e2e_client::codecs::request (
-                client1, match_bingo_req_t{bingo_sample_modes_t::two_player})
+              co_await stream_e2e_client::codecs::request (client1, client1_match_request)
                 .async<match_bingo_res_t> ();
             ensure (client1_match.state.status == bingo_room_status_t::waiting);
             ensure (client1_match.state.host_actor_id == client1_auth.actor_id);
@@ -74,26 +74,25 @@ class bingo_client_scenario_t
             ensure (!client1_self_join, "self join notify must not be delivered");
 
             trace ("authenticate observer");
+            const auto observer_auth_request = authenticate_req_t{bingo_sample_players_t::observer};
             auto observer_auth =
-              co_await stream_e2e_client::codecs::request (
-                observer, authenticate_req_t{bingo_sample_players_t::observer})
+              co_await stream_e2e_client::codecs::request (observer, observer_auth_request)
                 .async<authenticate_res_t> ();
             ensure (observer_auth.actor_id == bingo_sample_players_t::observer);
             ensure (observer_auth.actor_node_rid != client1_match.room_owner_node_rid);
 
             trace ("observe reward events");
-            auto observed =
-              co_await stream_e2e_client::codecs::request (
-                observer, observe_bingo_events_req_t{client1_match.room_id})
-                .async<observe_bingo_events_res_t> ();
+            const auto observe_request = observe_bingo_events_req_t{client1_match.room_id};
+            auto observed = co_await stream_e2e_client::codecs::request (observer, observe_request)
+                              .async<observe_bingo_events_res_t> ();
             ensure (observed.subscribed);
             ensure (observed.observer_node_rid == observer_auth.actor_node_rid);
             ensure (observed.observer_node_rid != client1_match.room_owner_node_rid);
 
             trace ("authenticate client2");
+            const auto client2_auth_request = authenticate_req_t{bingo_sample_players_t::player2};
             auto client2_auth =
-              co_await stream_e2e_client::codecs::request (
-                client2, authenticate_req_t{bingo_sample_players_t::player2})
+              co_await stream_e2e_client::codecs::request (client2, client2_auth_request)
                 .async<authenticate_res_t> ();
             ensure (client2_auth.actor_id == bingo_sample_players_t::player2);
             ensure (client2_auth.actor_id != client1_auth.actor_id);
@@ -101,32 +100,29 @@ class bingo_client_scenario_t
 
             trace ("match client2");
             auto client1_joined_future = std::async (std::launch::async, [&client1, &client2_auth] {
-                auto result =
-                  stream_e2e_client::codecs::wait_for<player_joined_notify_t> (client1)
-                    .where (&player_joined_notify_t::actor_id, client2_auth.actor_id)
-                    .async ()
-                    .result ();
+                auto result = stream_e2e_client::codecs::wait_for<player_joined_notify_t> (client1)
+                                .where (&player_joined_notify_t::actor_id, client2_auth.actor_id)
+                                .async ()
+                                .result ();
                 if (!result) {
                     throw std::runtime_error ("client1 joined notify wait failed");
                 }
                 return result.value ();
             });
             auto client1_started_future = std::async (std::launch::async, [&client1] {
-                auto result =
-                  stream_e2e_client::codecs::wait_for<game_started_notify_t> (client1)
-                    .async ()
-                    .result ();
+                auto result = stream_e2e_client::codecs::wait_for<game_started_notify_t> (client1)
+                                .async ()
+                                .result ();
                 if (!result) {
                     throw std::runtime_error ("client1 game started wait failed");
                 }
                 return result.value ();
             });
             auto client2_match_future = std::async (std::launch::async, [&client2] {
-                auto result =
-                  stream_e2e_client::codecs::request (
-                    client2, match_bingo_req_t{bingo_sample_modes_t::two_player})
-                    .async<match_bingo_res_t> ()
-                    .result ();
+                const auto match_request = match_bingo_req_t{bingo_sample_modes_t::two_player};
+                auto result = stream_e2e_client::codecs::request (client2, match_request)
+                                .async<match_bingo_res_t> ()
+                                .result ();
                 if (!result) {
                     throw std::runtime_error ("client2 match failed");
                 }
@@ -147,16 +143,16 @@ class bingo_client_scenario_t
                 .async ()
                 .result ();
             ensure (!client2_self_join, "self join notify must not be delivered");
-            ensure (std::any_of (
-              client2_match.state.players.begin (), client2_match.state.players.end (),
-              [&client1_auth] (const bingo_player_state_t &player) {
-                  return player.actor_id == client1_auth.actor_id && player.is_host;
-              }));
-            ensure (std::any_of (
-              client2_match.state.players.begin (), client2_match.state.players.end (),
-              [&client2_auth] (const bingo_player_state_t &player) {
-                  return player.actor_id == client2_auth.actor_id && !player.is_host;
-              }));
+            ensure (
+              std::any_of (client2_match.state.players.begin (), client2_match.state.players.end (),
+                           [&client1_auth] (const bingo_player_state_t &player) {
+                               return player.actor_id == client1_auth.actor_id && player.is_host;
+                           }));
+            ensure (
+              std::any_of (client2_match.state.players.begin (), client2_match.state.players.end (),
+                           [&client2_auth] (const bingo_player_state_t &player) {
+                               return player.actor_id == client2_auth.actor_id && !player.is_host;
+                           }));
 
             const auto room_id = client1_match.room_id;
             trace ("client1 wait joined");
@@ -167,9 +163,10 @@ class bingo_client_scenario_t
             ensure (client2_match.state.room_id == room_id);
 
             trace ("client2 submit card");
+            const auto client2_card_request =
+              submit_bingo_card_req_t{room_id, client2_card_numbers};
             auto client2_card =
-              co_await stream_e2e_client::codecs::request (
-                client2, submit_bingo_card_req_t{room_id, client2_card_numbers})
+              co_await stream_e2e_client::codecs::request (client2, client2_card_request)
                 .async<submit_bingo_card_res_t> ();
             ensure (client2_card.state.status == bingo_room_status_t::running);
             ensure (std::any_of (
@@ -191,20 +188,18 @@ class bingo_client_scenario_t
                 return result.value ();
             });
             auto client1_ended_future = std::async (std::launch::async, [&client1] {
-                auto result =
-                  stream_e2e_client::codecs::wait_for<game_ended_notify_t> (client1)
-                    .async ()
-                    .result ();
+                auto result = stream_e2e_client::codecs::wait_for<game_ended_notify_t> (client1)
+                                .async ()
+                                .result ();
                 if (!result) {
                     throw std::runtime_error ("client1 game ended wait failed");
                 }
                 return result.value ();
             });
             auto client2_ended_future = std::async (std::launch::async, [&client2] {
-                auto result =
-                  stream_e2e_client::codecs::wait_for<game_ended_notify_t> (client2)
-                    .async ()
-                    .result ();
+                auto result = stream_e2e_client::codecs::wait_for<game_ended_notify_t> (client2)
+                                .async ()
+                                .result ();
                 if (!result) {
                     throw std::runtime_error ("client2 game ended wait failed");
                 }
@@ -238,9 +233,10 @@ class bingo_client_scenario_t
                       return result.value ();
                   }));
             }
+            const auto client1_card_request =
+              submit_bingo_card_req_t{room_id, client1_card_numbers};
             auto client1_card =
-              co_await stream_e2e_client::codecs::request (
-                client1, submit_bingo_card_req_t{room_id, client1_card_numbers})
+              co_await stream_e2e_client::codecs::request (client1, client1_card_request)
                 .async<submit_bingo_card_res_t> ();
             trace ("wait reward announcement");
             auto reward = reward_future.get ();
@@ -284,9 +280,9 @@ class bingo_client_scenario_t
             ensure (reward.receiving_spot_node_rid == observed.observer_node_rid);
 
             trace ("stop observing");
+            const auto stop_observing_request = stop_observing_bingo_events_req_t{room_id};
             auto stopped =
-              co_await stream_e2e_client::codecs::request (
-                observer, stop_observing_bingo_events_req_t{room_id})
+              co_await stream_e2e_client::codecs::request (observer, stop_observing_request)
                 .async<stop_observing_bingo_events_res_t> ();
             trace ("stop observing completed");
             ensure (stopped.stopped);
@@ -305,18 +301,14 @@ class bingo_client_scenario_t
 
     static void ensure (bool condition, const char *expression)
     {
-        if (!condition) { throw std::runtime_error (std::string ("Ensure failed: ") + expression); }
+        if (!condition) {
+            throw std::runtime_error (std::string ("Ensure failed: ") + expression);
+        }
     }
 
-    static void ensure (bool condition)
-    {
-        ensure (condition, "condition");
-    }
+    static void ensure (bool condition) { ensure (condition, "condition"); }
 
-    static void trace (const char *step)
-    {
-        std::cerr << "bingo step: " << step << '\n';
-    }
+    static void trace (const char *step) { std::cerr << "bingo step: " << step << '\n'; }
 };
 
 } // namespace zlink::samples::bingo

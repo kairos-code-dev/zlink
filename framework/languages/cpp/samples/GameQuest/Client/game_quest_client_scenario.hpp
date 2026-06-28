@@ -13,10 +13,12 @@
 namespace zlink::samples::gamequest
 {
 
+using namespace framework;
+
 class game_quest_client_scenario_t
 {
   public:
-    bool run (zlink::framework::channel_client_t &channels)
+    bool run (channel_client_t &channels)
     {
         const auto subscribed =
           request<subscribe_quest_req_t, subscribe_quest_res_t> (channels, {"player-alice"});
@@ -52,26 +54,25 @@ class game_quest_client_scenario_t
 
         request<complete_mission_req_t, event_res_t> (
           channels, {"player-alice", "tutorial", "mission-tutorial"});
-        request<enter_area_req_t, event_res_t> (
-          channels, {"player-alice", "ruins", "enter-ruins"});
+        request<enter_area_req_t, event_res_t> (channels, {"player-alice", "ruins", "enter-ruins"});
 
-        request<collect_item_req_t, event_res_t> (
-          channels, {"player-bob", "healing-herb", 1, "herb-1"});
+        request<collect_item_req_t, event_res_t> (channels,
+                                                  {"player-bob", "healing-herb", 1, "herb-1"});
         const auto bob_subscribed =
           request<subscribe_quest_req_t, subscribe_quest_res_t> (channels, {"player-bob"});
         if (!any_progress (bob_subscribed.active_quests, "herb-gathering", 1, "")) {
             return false;
         }
-        request<collect_item_req_t, event_res_t> (
-          channels, {"player-bob", "healing-herb", 4, "herb-2"});
+        request<collect_item_req_t, event_res_t> (channels,
+                                                  {"player-bob", "healing-herb", 4, "herb-2"});
         const auto bob_progress =
           request<get_quest_progress_req_t, get_quest_progress_res_t> (channels, {"player-bob"});
         if (!any_progress (bob_progress.active_quests, "herb-gathering", 5, "RewardGranted")) {
             return false;
         }
 
-        request<delete_quest_projection_req_t, quest_progress_t> (
-          channels, {"player-bob", "herb-gathering"});
+        request<delete_quest_projection_req_t, quest_progress_t> (channels,
+                                                                  {"player-bob", "herb-gathering"});
         const auto missing =
           request<get_quest_progress_req_t, get_quest_progress_res_t> (channels, {"player-bob"});
         if (any_quest (missing.active_quests, "herb-gathering")) {
@@ -83,9 +84,8 @@ class game_quest_client_scenario_t
             return false;
         }
 
-        const auto sync =
-          request<sync_quest_progress_req_t, sync_quest_progress_res_t> (channels,
-                                                                        {"player-alice"});
+        const auto sync = request<sync_quest_progress_req_t, sync_quest_progress_res_t> (
+          channels, {"player-alice"});
         if (!any_progress (sync.updated_quests, "first-hunt", 4, "")) {
             return false;
         }
@@ -100,7 +100,7 @@ class game_quest_client_scenario_t
 
   private:
     template <typename TRequest, typename TResponse>
-    static TResponse request (zlink::framework::channel_client_t &channels, TRequest request)
+    static TResponse request (channel_client_t &channels, TRequest request)
     {
         auto result = channels.request_to_channel ("gamequest.quest", std::move (request))
                         .template async<TResponse> ()
@@ -118,12 +118,10 @@ class game_quest_client_scenario_t
         return std::find (values.begin (), values.end (), needle) != values.end ();
     }
 
-    static bool any_quest (const std::vector<quest_progress_t> &values,
-                           const std::string &quest_id)
+    static bool any_quest (const std::vector<quest_progress_t> &values, const std::string &quest_id)
     {
-        return std::any_of (values.begin (), values.end (), [&] (const auto &progress) {
-            return progress.quest_id == quest_id;
-        });
+        return std::any_of (values.begin (), values.end (),
+                            [&] (const auto &progress) { return progress.quest_id == quest_id; });
     }
 
     static bool any_progress (const std::vector<quest_progress_t> &values,
@@ -132,8 +130,8 @@ class game_quest_client_scenario_t
                               const std::string &status)
     {
         return std::any_of (values.begin (), values.end (), [&] (const auto &progress) {
-            return progress.quest_id == quest_id && progress.current_count >= min_count &&
-                   (status.empty () || progress.status == status);
+            return progress.quest_id == quest_id && progress.current_count >= min_count
+                   && (status.empty () || progress.status == status);
         });
     }
 };

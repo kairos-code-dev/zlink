@@ -11,13 +11,14 @@
 namespace zlink::samples::bingo
 {
 
+using namespace framework;
+
 class allocate_bingo_room_handler_t
 {
   public:
     using request_type = allocate_bingo_room_req_t;
     using reply_type = allocate_bingo_room_res_t;
-    using dependency_types =
-      zlink::framework::dependency_list_t<bingo_room_allocator_t, sample_topology_t>;
+    using dependency_types = dependency_list_t<bingo_room_allocator_t, sample_topology_t>;
     static constexpr const char *topic_name = "AllocateBingoRoom";
 
     allocate_bingo_room_handler_t (bingo_room_allocator_t &rooms, sample_topology_t &topology) :
@@ -31,8 +32,7 @@ class allocate_bingo_room_handler_t
             throw std::runtime_error ("actor id must not be empty");
         }
         const auto owner_node_rid = _topology.selected_play_node_rid ();
-        const auto reservation =
-          _rooms.allocate (request.mode, request.actor_id, owner_node_rid);
+        const auto reservation = _rooms.allocate (request.mode, request.actor_id, owner_node_rid);
         return {reservation.room_id, reservation.owner_play_node_rid};
     }
 

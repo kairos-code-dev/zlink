@@ -991,31 +991,71 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
-  add_executable(zlink_cpp_e2e_registry_messaging_server
-    e2e/RegistryMessaging/Server/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_registry_messaging_server PRIVATE
+  add_executable(zlink_cpp_e2e_registry_messaging_registry
+    e2e/RegistryMessaging/Server/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registry_messaging_registry PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_registry_messaging_server PRIVATE
+  target_include_directories(zlink_cpp_e2e_registry_messaging_registry PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_registry_messaging_provider
+    e2e/RegistryMessaging/Server/Provider/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registry_messaging_provider PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_registry_messaging_provider PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_registry_messaging_workflow
+    e2e/RegistryMessaging/Server/Workflow/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registry_messaging_workflow PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_registry_messaging_workflow PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_registry_messaging_client
     e2e/RegistryMessaging/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registry_messaging_client PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::http_client)
   target_include_directories(zlink_cpp_e2e_registry_messaging_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_spot_service_server
-    e2e/SpotService/Server/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_spot_service_server PRIVATE
+  add_executable(zlink_cpp_e2e_spot_service_registry
+    e2e/SpotService/Server/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_spot_service_registry PRIVATE
+    zlink::framework
+    zlink::http_client)
+  target_include_directories(zlink_cpp_e2e_spot_service_registry PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_spot_service_play
+    e2e/SpotService/Server/Play/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_spot_service_play PRIVATE
+    zlink::framework
+    zlink::http_client)
+  target_include_directories(zlink_cpp_e2e_spot_service_play PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_spot_service_session
+    e2e/SpotService/Server/Session/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_spot_service_session PRIVATE
+    zlink::framework
+    zlink::http_client)
+  target_include_directories(zlink_cpp_e2e_spot_service_session PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_spot_service_gateway
+    e2e/SpotService/Server/Gateway/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_spot_service_gateway PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_spot_service_server PRIVATE
+  target_include_directories(zlink_cpp_e2e_spot_service_gateway PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_spot_service_client
     e2e/SpotService/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_client PRIVATE
     zlink::framework
+    zlink::http_client
     zlink::stream_e2e_client)
   target_include_directories(zlink_cpp_e2e_spot_service_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)

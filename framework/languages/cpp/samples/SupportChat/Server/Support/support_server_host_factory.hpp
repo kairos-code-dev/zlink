@@ -25,28 +25,28 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+
 class support_server_host_factory_t
 {
   public:
-    static zlink::framework::app_t build (const sample_topology_t &topology, bool auto_stop = true)
+    static app_t build (const sample_topology_t &topology, bool auto_stop = true)
     {
-        auto app = zlink::framework::app_t::create ();
+        auto app = app_t::create ();
         configure (app, topology, auto_stop);
         return app;
     }
 
-    static zlink::framework::app_t &configure (zlink::framework::app_t &app,
-                                               const sample_topology_t &topology,
-                                               bool auto_stop = true)
+    static app_t &configure (app_t &app, const sample_topology_t &topology, bool auto_stop = true)
     {
         auto notifications = std::make_shared<conversation_notification_publisher_t> ();
         conversation_spot_t::use_notification_publisher (notifications);
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
-        app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
             options.configure_dispatch ()
-              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .message_flow (message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("support"))
               .trace_label ("supportchat-support");
             options.services ()
@@ -63,8 +63,7 @@ class support_server_host_factory_t
             options.add_client_server_channel (sample_names_t::support_channel)
               .enable_server (topology.support_channel_endpoint)
               .use_handler_group ("support");
-            options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client ();
+            options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
             options.add_route_mesh (sample_names_t::actor_session_route_channel)
               .enable_server (topology.support_actor_route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (sample_names_t::support_spot_node))
@@ -73,7 +72,6 @@ class support_server_host_factory_t
               .use_registry_spot_resolver (sample_names_t::actor_session_route_channel)
               .set_routing_id (zlink::routing_id_t::from (sample_names_t::support_spot_node))
               .enable_router (topology.support_router_endpoint)
-              .enable_actor_gateway ()
               .enable_pub_sub (topology.support_spot_endpoint)
               .add_spot<conversation_spot_t> (sample_names_t::conversation_spot)
               .add_entry_spot<support_entry_spot_t> ()

@@ -7,12 +7,12 @@
 namespace zlink::framework_codecs
 {
 
-template <typename... TPayloads> class messagepack_codec_extension_t
+class messagepack_codec_extension_t
 {
   public:
     template <typename TBuilder> void register_framework_codecs (TBuilder &codecs) const
     {
-        (register_payload<TPayloads> (codecs), ...);
+        codecs.add_json ();
     }
 
     void register_connector_codecs (zlink::stream_connector::codec_registry_t &codecs) const
@@ -21,9 +21,9 @@ template <typename... TPayloads> class messagepack_codec_extension_t
           .use_default_codec (zlink::stream_connector::codec_t::message_pack);
     }
 
-  private:
+  public:
     template <typename TPayload, typename TBuilder>
-    static void register_payload (TBuilder &codecs)
+    static void register_payload_serializer (TBuilder &codecs)
     {
         codecs.template add_serializer<TPayload> (
           [] (const TPayload &value) {
@@ -37,9 +37,12 @@ template <typename... TPayloads> class messagepack_codec_extension_t
     }
 };
 
-template <typename... TPayloads> messagepack_codec_extension_t<TPayloads...> messagepack ()
+inline messagepack_codec_extension_t messagepack ()
 {
     return {};
 }
+
+template <typename TPayload, typename... TPayloads>
+messagepack_codec_extension_t messagepack () = delete;
 
 } // namespace zlink::framework_codecs

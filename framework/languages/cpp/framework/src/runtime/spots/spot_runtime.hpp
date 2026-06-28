@@ -48,6 +48,7 @@ class spot_node_builder_state_t
     std::map<std::string, std::uint64_t> actor_generations;
     std::set<std::string> actor_created_keys;
     std::set<std::string> destroying_actors;
+    std::set<std::string> destroyed_actor_keys;
     struct actor_factory_registration_t
     {
         std::type_index actor_type{typeid (void)};

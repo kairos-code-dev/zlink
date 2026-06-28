@@ -42,6 +42,9 @@
   actor가 bound session으로 보낸 push를 client 수신과 play/session evidence로 검증한다.
 - `SM-D2`: `session-a` gateway에 붙은 상태에서 preferred가 아닌 `play-b` actor로 remote stream
   relay를 보내고, remote actor push가 session gateway route를 거쳐 돌아오는지 검증한다.
+- `SM-D3`: entry spot actor와 user spot actor를 각각 실제 stream session에 bind하고,
+  public stream connector request/push로 entry/user spot 경로의 relay와 bound-session push를
+  검증한다.
 - `SM-D4`: 한 stream session에 두 actor를 bind하고 `actor-id` metadata로 각각 다른 actor에
   relay/push가 전달되며, metadata 없는 request가 실패하는지 검증한다.
 - `SM-D5`: stream session 종료 시 session handler가 선택한 actor에만 public
@@ -50,6 +53,8 @@
   같은 push를 받지 않는지 검증한다.
 - `SM-D7`: stream auth 전 packet dispatch가 실패하고, 잘못된 auth request가 public error로
   끝나며, auth 성공 후 request dispatch가 정상 동작하는지 검증한다.
+- `SM-D8`: stream 연결 종료 시 pending request가 실패하고 자동 재전송되지 않으며, 새 stream
+  session에서 재auth/rebind한 뒤 actor messaging이 정상 재개되는지 검증한다.
 - `SM-D9`: stream inbound observer가 auth/join/state response의 kind/name/request-seq를
   관측하는지 검증한다.
 - `SM-D11`: 같은 client process에서 stream actor request와 일반 channel request를 동시에 보내도
@@ -73,17 +78,28 @@
 - `SM-G1`: actor와 stream session이 붙은 `play-a`를 실제 SIGKILL하고, 같은 gateway에 bind된
   `play-b` actor/session은 계속 동작하는지 확인한 뒤 살아 있는 `play-b`에 재auth/rebind해
   상태를 복구한다.
+- `SM-G2`: 앱이 같은 logical key의 owner spot RoutingId를 `play-a`에서 `play-b`로 remap한
+  흐름을 `/spot/create`와 target node가 명시된 spot route request로 표현하고, remap 전후
+  request evidence가 새 owner에만 남는지 검증한다.
+- `SM-G3`: 다수 stream client가 같은 user spot에 동시에 join/request/leave를 보내고, actor별
+  `ActorJoined`/`ActorLeft` evidence가 정확히 1회씩 남는지 검증한다.
+- `SM-G4`: 다수 stream client가 각각 다른 actor에 bind된 상태에서 동시에 push를 트리거하고,
+  각 client가 자기 actor의 `ActorPushNotify`만 수신하는지 검증한다.
 
 ## 남은 시나리오
 
-- `SM-A5`: C++ framework에는 Stage wrapper 공개 계층이 아직 없다.
-- `SM-D3`: entry spot에 actor를 bind하는 공개 예제/runner 경로가 아직 없다. user spot actor bind는
-  `SM-D1`/`SM-D2`가 검증한다.
-- `SM-D8`: stream reconnect 중 pending request 실패와 재auth/rebind를 분리해 고정하는 stream
-  client harness 단계가 필요하다. 다른 gateway 재접속은 `SM-D12`가 검증한다.
-- `SM-D10`: stream backpressure 정책을 public contract로 고정하고 부하를 주입하는 harness가
-  필요하다.
-- `SM-D13`: stream heartbeat 중단을 제어하는 public harness knob이 아직 없다.
+- `SM-A5`: C++ framework는 Stage wrapper를 별도 타입으로 제공하지 않고 응용이 SPOT 위에
+  직접 구성한다. request/lifecycle은 기존 SPOT 공개 표면으로 검증할 수 있지만, 현재 hosted E2E
+  런타임에는 public timer 등록 뒤 tick을 앱 handler evidence로 관측하는 연결이 없어
+  `detail::timer_runtime_t` 주입 없이 timer 요구까지 검증할 수 없다.
+- `SM-D10`: .NET 시나리오는 `MaxReceivedMessages`로 stream client 수신 큐 한계를 고정한 뒤
+  최신 push만 남는지 검증한다. C++ stream connector의 공개 옵션에는 같은 의미의 수신 메시지 큐
+  한계가 없고, 현재 공개 옵션은 inbound observer 알림 drop 한계만 제공한다. 공통 E2E만 근거로
+  새 public API를 추가하지 않고, C++ connector의 수신 큐 backpressure 계약을 별도 설계로 확정한
+  뒤 같은 시나리오를 추가해야 한다.
+- `SM-D13`: heartbeat-enabled stream이 유지된 뒤 request가 성공하는 경로는 구현했다.
+  heartbeat 중단을 의도적으로 유도하는 public harness knob은 아직 없어, 중단 감지 검증은
+  별도 harness 설계가 필요하다.
 - `SM-D14`: C++ stream E2E runner에 TLS endpoint/certificate 구성이 아직 없다.
 - `SM-E2`: C++ framework에는 public `add_timer` 등록 표면이 있지만, E2E 앱에서 timer tick을
   자동 발화해 handler evidence로 관측하는 public runner 연결이 아직 없다. 현재 timer 발화와
@@ -92,11 +108,6 @@
   public runner 연결이 필요하다.
 - `SM-E4`: timer overrun policy별 tick 패턴은 현재 unit test 범위이며, E2E 앱에서 tick 지연과
   catch-up을 public evidence로 만드는 runner 연결이 아직 없다.
-- `SM-G2`: owner 재배치는 framework 자동 기능이 아니라 앱의 key-to-routing-id remap이므로,
-  scale-out 중 remap을 안정적으로 고정하는 harness가 필요하다.
-- `SM-G3`: 다수 client의 동시 join/leave/request 경합을 재현하는 부하 harness가 아직 없다.
-- `SM-G4`: 다수 bound session push 부하와 오배달 없음을 확인하는 부하 harness가 아직 없다.
-
 ## 남은 구현 후보
 
-- `SM-G2`, `SM-G3`, `SM-G4`
+- 없음

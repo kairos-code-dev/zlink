@@ -9,12 +9,12 @@
 namespace zlink::framework_codecs
 {
 
-template <typename... TPayloads> class protobuf_codec_extension_t
+class protobuf_codec_extension_t
 {
   public:
     template <typename TBuilder> void register_framework_codecs (TBuilder &codecs) const
     {
-        (register_payload<TPayloads> (codecs), ...);
+        codecs.add_json ();
     }
 
     void register_connector_codecs (zlink::stream_connector::codec_registry_t &codecs) const
@@ -23,9 +23,9 @@ template <typename... TPayloads> class protobuf_codec_extension_t
           .use_default_codec (zlink::stream_connector::codec_t::protobuf);
     }
 
-  private:
+  public:
     template <typename TPayload, typename TBuilder>
-    static void register_payload (TBuilder &codecs)
+    static void register_payload_serializer (TBuilder &codecs)
     {
         codecs.template add_serializer<TPayload> (
           [] (const TPayload &value) {
@@ -39,10 +39,13 @@ template <typename... TPayloads> class protobuf_codec_extension_t
     }
 };
 
-template <typename... TPayloads> protobuf_codec_extension_t<TPayloads...> protobuf ()
+inline protobuf_codec_extension_t protobuf ()
 {
     return {};
 }
+
+template <typename TPayload, typename... TPayloads>
+protobuf_codec_extension_t protobuf () = delete;
 
 template <typename... TPayloads> class protobuf_serializers_t
 {
@@ -52,7 +55,7 @@ template <typename... TPayloads> class protobuf_serializers_t
         static zlink::framework::serializer_registry_t registry = [] {
             zlink::framework::serializer_registry_t serializers;
             serializers_proxy_t proxy{serializers};
-            protobuf<TPayloads...> ().register_framework_codecs (proxy);
+            (protobuf_codec_extension_t::register_payload_serializer<TPayloads> (proxy), ...);
             return serializers;
         } ();
         return registry;

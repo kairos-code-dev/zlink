@@ -20,6 +20,12 @@ namespace detail
 namespace
 {
 thread_local std::optional<stream_header_t> current_stream_relay_header;
+
+stream_header_t actor_relay_header (stream_message_kind_t kind, std::string packet_name)
+{
+    return stream_header_t (kind, stream_codec_t::json, stream_header_flags_t::none,
+                            std::nullopt, std::move (packet_name));
+}
 }
 
 void enter_stream_relay_dispatch (const stream_header_t &header)
@@ -454,6 +460,15 @@ relay_call_t session_actor_t::relay (const zlink::message_t &payload)
     return relay_call_t (result_t<void>::success ());
 }
 
+relay_call_t session_actor_t::relay (std::string packet_name, const zlink::message_t &payload)
+{
+    detail::enter_stream_relay_dispatch (
+      detail::actor_relay_header (stream_message_kind_t::send, std::move (packet_name)));
+    auto call = relay (payload);
+    detail::exit_stream_relay_dispatch ();
+    return call;
+}
+
 relay_request_call_t session_actor_t::relay_request (const zlink::message_t &payload)
 {
     const auto header = detail::current_stream_relay_dispatch ();
@@ -507,6 +522,16 @@ relay_request_call_t session_actor_t::relay_request (const zlink::message_t &pay
     }
     return relay_request_call_t (
       result_t<zlink::message_t>::success (std::move (*dispatched.value ())));
+}
+
+relay_request_call_t session_actor_t::relay_request (std::string packet_name,
+                                                     const zlink::message_t &payload)
+{
+    detail::enter_stream_relay_dispatch (
+      detail::actor_relay_header (stream_message_kind_t::request, std::move (packet_name)));
+    auto call = relay_request (payload);
+    detail::exit_stream_relay_dispatch ();
+    return call;
 }
 
 relay_call_t session_actor_t::notify_disconnected ()

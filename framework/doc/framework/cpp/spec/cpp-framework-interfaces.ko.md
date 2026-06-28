@@ -1220,7 +1220,6 @@ public:
     spot_node_builder_t &enable_pub_sub(std::string endpoint);
     spot_node_builder_t &connect_pub_sub(std::string endpoint);
     spot_node_builder_t &use_discovery(std::string channel_name);
-    spot_node_builder_t &enable_actor_gateway();
 
     template <typename TEntrySpot>
     spot_node_builder_t &add_entry_spot();

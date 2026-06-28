@@ -13,25 +13,20 @@
 namespace zlink::samples::bingo
 {
 
-inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &app,
-                                                      const sample_topology_t &topology)
+using namespace framework;
+
+inline app_t &add_bingo_api_server (app_t &app, const sample_topology_t &topology)
 {
-    app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+    app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
-          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (flow_log_path ("api-" + topology.api_node))
           .trace_label ("api-" + topology.api_node);
         options.handlers ()
           .add<authenticate_player_handler_t> ("api")
           .add<match_bingo_api_handler_t> ("api");
 
-        options.codecs ().use (
-          zlink::framework_codecs::protobuf<authenticate_player_req_t,
-                                            authenticate_player_res_t,
-                                            match_bingo_api_req_t,
-                                            match_bingo_api_res_t,
-                                            allocate_bingo_room_req_t,
-                                            allocate_bingo_room_res_t> ());
+        options.codecs ().use (framework_codecs::protobuf ());
 
         options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
 

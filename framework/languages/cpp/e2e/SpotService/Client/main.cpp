@@ -1,6 +1,41 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "../Shared/spot_service_contracts.hpp"
+#include "Scenarios/sm_a1_scenario.hpp"
+#include "Scenarios/sm_a2_scenario.hpp"
+#include "Scenarios/sm_a3_scenario.hpp"
+#include "Scenarios/sm_a4_scenario.hpp"
+#include "Scenarios/sm_a6_scenario.hpp"
+#include "Scenarios/sm_a7_scenario.hpp"
+#include "Scenarios/sm_a8_scenario.hpp"
+#include "Scenarios/sm_b1_scenario.hpp"
+#include "Scenarios/sm_b2_scenario.hpp"
+#include "Scenarios/sm_b3_scenario.hpp"
+#include "Scenarios/sm_b4_scenario.hpp"
+#include "Scenarios/sm_b5_scenario.hpp"
+#include "Scenarios/sm_b6_scenario.hpp"
+#include "Scenarios/sm_b7_scenario.hpp"
+#include "Scenarios/sm_b8_scenario.hpp"
+#include "Scenarios/sm_c1_scenario.hpp"
+#include "Scenarios/sm_c2_scenario.hpp"
+#include "Scenarios/sm_c3_scenario.hpp"
+#include "Scenarios/sm_c4_scenario.hpp"
+#include "Scenarios/sm_d1_scenario.hpp"
+#include "Scenarios/sm_d2_scenario.hpp"
+#include "Scenarios/sm_d3_scenario.hpp"
+#include "Scenarios/sm_d4_scenario.hpp"
+#include "Scenarios/sm_d5_scenario.hpp"
+#include "Scenarios/sm_d6_scenario.hpp"
+#include "Scenarios/sm_d7_scenario.hpp"
+#include "Scenarios/sm_d8_scenario.hpp"
+#include "Scenarios/sm_d9_scenario.hpp"
+#include "Scenarios/sm_d11_scenario.hpp"
+#include "Scenarios/sm_d12_scenario.hpp"
+#include "Scenarios/sm_d13_scenario.hpp"
+#include "Scenarios/sm_e1_scenario.hpp"
+#include "Scenarios/sm_g2_scenario.hpp"
+#include "Scenarios/sm_g3_scenario.hpp"
+#include "Scenarios/sm_g4_scenario.hpp"
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
 
@@ -247,7 +282,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             run_play_node_crash_recovery_scenario (routes);
             return;
         }
-
         auto refresh_actor = [&actors] (const std::string &actor_id) {
             auto refreshed = actors.find (actor_id);
             ensure (refreshed.has_value (), "actor was not found after join: " + actor_id);
@@ -271,10 +305,12 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (local_join.actor_id == "alice" && local_join.display_name == "Alice"
                   && local_join.level == 7 && local_join.tags.size () == 2
                   && local_join.tags[0] == "alpha" && local_join.tags[1] == "local",
-                "SM-B3 join payload fidelity mismatch");
+                "SM-A1/SM-B1 join payload fidelity mismatch");
         std::cout << "scenario SM-A1 passed\n";
+        if (_scenario_mode == "sm-a1") {
+            return;
+        }
         std::cout << "scenario SM-B1 passed\n";
-        std::cout << "scenario SM-B3 passed\n";
         local = refresh_actor ("alice");
 
         auto state1 =
@@ -351,7 +387,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario SM-A3 passed\n";
         std::cout << "scenario SM-A4 passed\n";
         std::cout << "scenario SM-B2 passed\n";
-        std::cout << "scenario SM-B4 passed\n";
 
         auto worker_future = std::async (std::launch::async, [&] {
             return relay_request<e2e::worker_res_t> (same_key_actor, "WorkerReq",
@@ -1427,44 +1462,48 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ()
-      .add_json<e2e::actor_ref_dto_t> ()
-      .add_json<e2e::ensure_actor_req_t> ()
-      .add_json<e2e::ensure_actor_res_t> ()
-      .add_json<e2e::join_req_t> ()
-      .add_json<e2e::join_res_t> ()
-      .add_json<e2e::state_req_t> ()
-      .add_json<e2e::state_res_t> ()
-      .add_json<e2e::leave_req_t> ()
-      .add_json<e2e::leave_res_t> ()
-      .add_json<e2e::destroy_actor_req_t> ()
-      .add_json<e2e::destroy_actor_res_t> ()
-      .add_json<e2e::disconnect_req_t> ()
-      .add_json<e2e::disconnect_res_t> ()
-      .add_json<e2e::channel_echo_req_t> ()
-      .add_json<e2e::channel_echo_res_t> ()
-      .add_json<e2e::channel_command_t> ()
-      .add_json<e2e::mesh_event_t> ()
-      .add_json<e2e::outbound_req_t> ()
-      .add_json<e2e::outbound_res_t> ()
-      .add_json<e2e::worker_req_t> ()
-      .add_json<e2e::worker_res_t> ()
-      .add_json<e2e::direct_spot_req_t> ()
-      .add_json<e2e::direct_spot_res_t> ()
-      .add_json<e2e::direct_spot_command_t> ()
-      .add_json<e2e::slow_spot_req_t> ()
-      .add_json<e2e::unhandled_spot_req_t> ()
-      .add_json<e2e::spot_to_spot_req_t> ()
-      .add_json<e2e::spot_to_spot_res_t> ()
-      .add_json<e2e::type_mismatch_req_t> ()
-      .add_json<e2e::type_mismatch_res_t> ()
-      .add_json<e2e::lifecycle_req_t> ()
-      .add_json<e2e::lifecycle_res_t> ()
-      .add_json<e2e::stream_auth_req_t> ()
-      .add_json<e2e::stream_auth_res_t> ()
-      .add_json<e2e::actor_push_req_t> ()
-      .add_json<e2e::actor_push_res_t> ()
-      .add_json<e2e::actor_push_notify_t> ();
+    codecs.add_json ();
+    codecs.add_json<e2e::actor_ref_dto_t,
+                    e2e::ensure_actor_req_t,
+                    e2e::ensure_actor_res_t,
+                    e2e::join_req_t,
+                    e2e::join_res_t,
+                    e2e::state_req_t,
+                    e2e::state_res_t,
+                    e2e::actor_ping_req_t,
+                    e2e::slow_actor_ping_req_t,
+                    e2e::actor_ping_res_t,
+                    e2e::leave_req_t,
+                    e2e::leave_res_t,
+                    e2e::destroy_actor_req_t,
+                    e2e::destroy_actor_res_t,
+                    e2e::disconnect_req_t,
+                    e2e::disconnect_res_t,
+                    e2e::channel_echo_req_t,
+                    e2e::channel_echo_res_t,
+                    e2e::channel_command_t,
+                    e2e::mesh_event_t,
+                    e2e::outbound_req_t,
+                    e2e::outbound_res_t,
+                    e2e::worker_req_t,
+                    e2e::worker_res_t,
+                    e2e::direct_spot_req_t,
+                    e2e::direct_spot_res_t,
+                    e2e::direct_spot_command_t,
+                    e2e::slow_spot_req_t,
+                    e2e::unhandled_spot_req_t,
+                    e2e::spot_to_spot_req_t,
+                    e2e::spot_to_spot_res_t,
+                    e2e::type_mismatch_req_t,
+                    e2e::type_mismatch_res_t,
+                    e2e::lifecycle_req_t,
+                    e2e::lifecycle_res_t,
+                    e2e::stream_auth_req_t,
+                    e2e::stream_ensure_auth_req_t,
+                    e2e::stream_auth_res_t,
+                    e2e::actor_push_req_t,
+                    e2e::actor_push_res_t,
+                    e2e::actor_push_notify_t> ();
 }
 
 } // namespace
@@ -1482,12 +1521,436 @@ int main (int argc, char **argv)
     const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
     const auto alternate_stream_endpoint = env_or ("ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT");
     const auto scenario_mode = env_or ("ZLINK_CPP_E2E_SCENARIO_MODE");
+    const auto play_http_endpoint = env_or ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT");
+    const auto play_b_http_endpoint = env_or ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT");
+    const auto session_http_endpoint = env_or ("ZLINK_CPP_E2E_SESSION_HTTP_ENDPOINT");
+    const auto gateway_http_endpoint = env_or ("ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
     const auto client_rid = env_or ("ZLINK_CPP_E2E_CLIENT_RID", "client-session");
     const auto crash_ready_file = env_or ("ZLINK_CPP_E2E_CRASH_READY_FILE");
     const auto crash_go_file = env_or ("ZLINK_CPP_E2E_CRASH_GO_FILE");
     const auto crash_observed_file = env_or ("ZLINK_CPP_E2E_CRASH_OBSERVED_FILE");
 
+    if (scenario_mode == "sm-a1") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a1_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-A1 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-a2") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a2_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-A2 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-a3") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a3_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-A3 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-a4") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a4_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-A4 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-a6") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a6_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-A6 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-a7") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a7_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-A7 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-a8") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a8_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-A8 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-b1") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_b1_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-B1 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-b2") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_b2_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-B2 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-b3") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_b3_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-B3 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-b4") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_b4_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-B4 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-b5") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_b5_scenario (
+              play_http_endpoint);
+            std::cout << "scenario SM-B5 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-b6") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_b6_scenario (
+              play_http_endpoint, stream_endpoint);
+            std::cout << "scenario SM-B6 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-b7") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_b7_scenario (
+              play_http_endpoint, stream_endpoint);
+            std::cout << "scenario SM-B7 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-b8") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_b8_scenario (
+              play_http_endpoint, stream_endpoint);
+            std::cout << "scenario SM-B8 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-c1") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_c1_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-C1 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-c2") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_c2_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-C2 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-c3") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_c3_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-C3 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-c4") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_c4_scenario (
+              play_http_endpoint, gateway_http_endpoint);
+            std::cout << "scenario SM-C4 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d1") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d1_scenario (
+              play_http_endpoint, stream_endpoint);
+            std::cout << "scenario SM-D1 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d2") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d2_scenario (
+              play_b_http_endpoint, stream_endpoint);
+            std::cout << "scenario SM-D2 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d3") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d3_scenario (
+              play_http_endpoint, stream_endpoint);
+            std::cout << "scenario SM-D3 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d4") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d4_scenario (
+              stream_endpoint);
+            std::cout << "scenario SM-D4 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d5") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d5_scenario (
+              stream_endpoint);
+            std::cout << "scenario SM-D5 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d6") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d6_scenario (
+              stream_endpoint, alternate_stream_endpoint);
+            std::cout << "scenario SM-D6 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d7") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d7_scenario (
+              stream_endpoint);
+            std::cout << "scenario SM-D7 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d8") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d8_scenario (
+              stream_endpoint);
+            std::cout << "scenario SM-D8 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d9") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d9_scenario (
+              stream_endpoint);
+            std::cout << "scenario SM-D9 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d11") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d11_scenario (
+              session_http_endpoint, stream_endpoint);
+            std::cout << "scenario SM-D11 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d12") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d12_scenario (
+              stream_endpoint, alternate_stream_endpoint);
+            std::cout << "scenario SM-D12 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-d13") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_d13_scenario (
+              stream_endpoint);
+            std::cout << "scenario SM-D13 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-e1") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_e1_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-E1 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-g2") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_g2_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-G2 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-g3") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_g3_scenario (
+              play_http_endpoint, stream_endpoint);
+            std::cout << "scenario SM-G3 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-g4") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_g4_scenario (
+              stream_endpoint);
+            std::cout << "scenario SM-G4 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
     auto app = zlink::framework::app_t::create ();
     auto scenario = std::make_unique<scenario_service_t> (
       app, stream_endpoint, alternate_stream_endpoint, scenario_mode, crash_ready_file,
@@ -1531,7 +1994,6 @@ int main (int argc, char **argv)
           .use_registry_spot_resolver (e2e::route_channel)
           .set_routing_id (zlink::routing_id_t::from (client_rid))
           .enable_router (spot_router_endpoint)
-          .enable_actor_gateway ()
           .enable_pub_sub (pubsub_endpoint);
     });
     app.add_hosted_service (std::move (scenario));

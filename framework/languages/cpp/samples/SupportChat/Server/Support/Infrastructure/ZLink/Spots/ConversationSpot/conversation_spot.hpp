@@ -23,12 +23,16 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+using framework::actor_ref_t;
+using framework::message_t;
+
 // ConversationSpot owns the ZLink Spot lifecycle, the joined actors, and the
 // Conversation domain aggregate. It registers the in-conversation actor
 // handlers (send message, set typing, close), forwards domain calls, and routes
 // domain events through the notification publisher. Idle/close decisions live in
 // the domain; the spot only forwards the time signal.
-class conversation_spot_t : public zlink::framework::spot_t
+class conversation_spot_t : public spot_t
 {
   public:
     conversation_spot_t () : _publisher (notification_publisher_or_default ()) {}
@@ -41,7 +45,7 @@ class conversation_spot_t : public zlink::framework::spot_t
         notification_publisher () = std::move (publisher);
     }
 
-    void configure (zlink::framework::spot_context_t &context)
+    void configure (spot_context_t &context)
     {
         _context = context;
         context.handlers ().add_actor_packet<&conversation_spot_t::send_message> ();
@@ -49,7 +53,7 @@ class conversation_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&conversation_spot_t::close> ();
     }
 
-    zlink::framework::spot_create_response_t on_create (const zlink::framework::message_t &request)
+    spot_create_response_t on_create (const message_t &request)
     {
         auto create = request.decode<conversation_create_request_t> ();
         auto conversation_id = std::string (_context.spot_rid ().value ());
@@ -60,12 +64,11 @@ class conversation_spot_t : public zlink::framework::spot_t
         _conversation = std::make_unique<conversation_t> (
           conversation_id, create.subject, create.customer_actor_id, create.customer_display_name,
           create.created_at_unix_ms);
-        return zlink::framework::spot_create_response_t::accept ();
+        return spot_create_response_t::accept ();
     }
 
-    zlink::framework::spot_actor_join_response_t
-    on_actor_join (const support_user_actor_t &actor,
-                   const zlink::framework::message_t &request_message)
+    spot_actor_join_response_t on_actor_join (const support_user_actor_t &actor,
+                                              const message_t &request_message)
     {
         join_conversation_req_t join;
         try {
@@ -76,13 +79,12 @@ class conversation_spot_t : public zlink::framework::spot_t
         }
         auto &conversation = require_conversation ();
         if (join.conversation_id != conversation.conversation_id ()) {
-            return zlink::framework::spot_actor_join_response_t::reject ();
+            return spot_actor_join_response_t::reject ();
         }
 
         if (actor.role == support_chat_roles_t::agent) {
             const auto agent_state = join_agent (actor);
-            return zlink::framework::spot_actor_join_response_t::accept (
-              join_conversation_res_t{agent_state});
+            return spot_actor_join_response_t::accept (join_conversation_res_t{agent_state});
         }
 
         actor.join_conversation (join.conversation_id);
@@ -92,14 +94,15 @@ class conversation_spot_t : public zlink::framework::spot_t
         if (actor.actor_id () == conversation.customer_actor_id ()) {
             _publisher->publish_joined_agent_to_customer (actor, conversation.snapshot ());
         }
-        return zlink::framework::spot_actor_join_response_t::accept (
+        return spot_actor_join_response_t::accept (
           join_conversation_res_t{conversation.snapshot ()});
     }
 
     conversation_state_t join_agent (const support_user_actor_t &agent)
     {
         auto &conversation = require_conversation ();
-        auto change = conversation.join_agent (agent.actor_id (), agent.display_name, now_unix_ms ());
+        auto change =
+          conversation.join_agent (agent.actor_id (), agent.display_name, now_unix_ms ());
         agent.join_conversation (conversation.conversation_id ());
         _actors[agent.actor_id ()] = const_cast<support_user_actor_t *> (&agent);
         support_actor_directory_t::shared ().add_or_update (
@@ -108,17 +111,16 @@ class conversation_spot_t : public zlink::framework::spot_t
         return change.state;
     }
 
-    send_chat_message_res_t
-    send_message (const support_user_actor_t &actor,
-                  const zlink::framework::spot_actor_request_context_t &context,
-                  const send_chat_message_req_t &request)
+    send_chat_message_res_t send_message (const support_user_actor_t &actor,
+                                          const spot_actor_request_context_t &context,
+                                          const send_chat_message_req_t &request)
     {
         if (context.packet_name.empty ()) {
             throw std::runtime_error ("packet name is required");
         }
         ensure_conversation_id (request.conversation_id);
-        auto change = require_conversation ().send_message (actor.actor_id (), request.text,
-                                                            now_unix_ms ());
+        auto change =
+          require_conversation ().send_message (actor.actor_id (), request.text, now_unix_ms ());
         _publisher->publish (change.events, _actors);
         schedule_idle_check ();
         chat_message_t appended;
@@ -131,7 +133,7 @@ class conversation_spot_t : public zlink::framework::spot_t
     }
 
     set_typing_res_t set_typing (const support_user_actor_t &actor,
-                                 const zlink::framework::spot_actor_request_context_t &context,
+                                 const spot_actor_request_context_t &context,
                                  const set_typing_req_t &request)
     {
         if (context.packet_name.empty ()) {
@@ -144,7 +146,7 @@ class conversation_spot_t : public zlink::framework::spot_t
     }
 
     close_conversation_res_t close (const support_user_actor_t &actor,
-                                    const zlink::framework::spot_actor_request_context_t &context,
+                                    const spot_actor_request_context_t &context,
                                     const close_conversation_req_t &request)
     {
         if (context.packet_name.empty ()) {
@@ -268,7 +270,7 @@ class conversation_spot_t : public zlink::framework::spot_t
         }
     }
 
-    zlink::framework::spot_context_t _context;
+    spot_context_t _context;
     std::shared_ptr<conversation_notification_publisher_t> _publisher;
     std::map<std::string, support_user_actor_t *> _actors;
     std::unique_ptr<conversation_t> _conversation;

@@ -10,9 +10,11 @@
 namespace zlink::samples::bingo
 {
 
+using namespace framework;
+
 struct sample_topology_t
 {
-    static sample_topology_t bind (const zlink::framework::configuration_section_t &section)
+    static sample_topology_t bind (const configuration_section_t &section)
     {
         sample_topology_t topology;
         topology.registry_pub_endpoint =
@@ -87,8 +89,10 @@ struct sample_topology_t
         }
         topology.play_a_node_rid = section.get ("playANodeRid").value_or (topology.play_a_node_rid);
         topology.play_b_node_rid = section.get ("playBNodeRid").value_or (topology.play_b_node_rid);
-        topology.api_a_route_rid = section.get ("apiAPlayRouteRid").value_or (topology.api_a_route_rid);
-        topology.api_b_route_rid = section.get ("apiBPlayRouteRid").value_or (topology.api_b_route_rid);
+        topology.api_a_route_rid =
+          section.get ("apiAPlayRouteRid").value_or (topology.api_a_route_rid);
+        topology.api_b_route_rid =
+          section.get ("apiBPlayRouteRid").value_or (topology.api_b_route_rid);
         topology.session_a_route_rid =
           section.get ("sessionAPlayRouteRid").value_or (topology.session_a_route_rid);
         topology.session_b_route_rid =

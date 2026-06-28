@@ -552,17 +552,31 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
         auto &source_state = *_state;
         decrement_actor_count_unlocked (source_state);
         erase_actor_route_unlocked (*_state->node, key);
-        const auto source_left = source_state.onLeaveActor_callbacks.find (actor_type);
-        if (source_left != source_state.onLeaveActor_callbacks.end ()
-            && source_state.spot_instance) {
+        const auto source_admission = source_state.actor_admissions.find (actor_type);
+        if (source_admission != source_state.actor_admissions.end ()
+            && source_admission->second.onLeaveActor && source_state.spot_instance) {
             node_lock.unlock ();
             if (!source_state.run_serial_sync ("spot-lifecycle-leave", [&] {
-                    source_left->second (source_state.spot_instance.get (), actor);
+                    source_admission->second.onLeaveActor (source_state.spot_instance.get (),
+                                                           actor);
                 })) {
                 return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
                   framework_error_kind_t::request_rejected, "spot serial queue is full"));
             }
             node_lock.lock ();
+        } else {
+            const auto source_left = source_state.onLeaveActor_callbacks.find (actor_type);
+            if (source_left != source_state.onLeaveActor_callbacks.end ()
+                && source_state.spot_instance) {
+                node_lock.unlock ();
+                if (!source_state.run_serial_sync ("spot-lifecycle-leave", [&] {
+                        source_left->second (source_state.spot_instance.get (), actor);
+                    })) {
+                    return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+                      framework_error_kind_t::request_rejected, "spot serial queue is full"));
+                }
+                node_lock.lock ();
+            }
         }
 
         auto &entry_state = *entry_context->second._state;
@@ -648,6 +662,7 @@ task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor
         _state->node->destroying_actors.insert (key);
         erase_actor_route_unlocked (*_state->node, key);
         _state->node->actor_created_keys.erase (key);
+        _state->node->destroyed_actor_keys.insert (key);
         _state->node->actor_instances.erase (key);
         decrement_actor_count_unlocked (*_state);
         if (_state->node->destroy_actor_registry) {
@@ -1094,12 +1109,6 @@ spot_node_builder_t &spot_node_builder_t::connect_pub_sub (std::string endpoint)
 spot_node_builder_t &spot_node_builder_t::connect_peer_pub (std::string endpoint)
 {
     return connect_pub_sub (std::move (endpoint));
-}
-
-spot_node_builder_t &spot_node_builder_t::enable_actor_gateway ()
-{
-    _state->snapshot.actor_gateway_enabled = true;
-    return *this;
 }
 
 spot_node_builder_t &spot_node_builder_t::use_discovery (std::string channel_name)
@@ -1651,6 +1660,7 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
 {
     leave_previous_actor_route_unlocked (key, actor_type, actor);
     auto &target_state = *context._state;
+    _state->destroyed_actor_keys.erase (key);
     detail::record_actor_context_route_unlocked (
       *_state, key, detail::effective_spot_node_rid (_state->snapshot), target_state,
       committed.generation ());
@@ -1865,6 +1875,12 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
     }
 
     const auto key = actor_key (actor_ref);
+    auto found_location = _state->actor_spot_rids.find (key);
+    if (found_location == _state->actor_spot_rids.end ()
+        && _state->destroyed_actor_keys.contains (key)) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor has been destroyed");
+    }
     auto &actor_instance_slot = _state->actor_instances[key];
     if (!actor_instance_slot) {
         actor_instance_slot =
@@ -1876,7 +1892,6 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
     }
     auto actor_instance = actor_instance_slot;
 
-    auto found_location = _state->actor_spot_rids.find (key);
     if (found_location == _state->actor_spot_rids.end ()) {
         if (!_state->snapshot.entry_spot_name) {
             return result_t<std::optional<zlink::message_t>>::failure (

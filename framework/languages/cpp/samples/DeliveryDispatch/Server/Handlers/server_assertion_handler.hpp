@@ -8,12 +8,14 @@
 namespace zlink::samples::deliverydispatch
 {
 
+using namespace framework;
+
 class server_assertion_handler_t
 {
   public:
     using request_type = server_assertion_req_t;
     using reply_type = server_assertion_res_t;
-    using dependency_types = zlink::framework::dependency_list_t<delivery_dispatch_server_role_t>;
+    using dependency_types = dependency_list_t<delivery_dispatch_server_role_t>;
     static constexpr const char *topic_name = "ServerAssertionReq";
 
     explicit server_assertion_handler_t (delivery_dispatch_server_role_t &server) : _server (server)

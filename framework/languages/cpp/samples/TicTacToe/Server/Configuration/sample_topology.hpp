@@ -10,9 +10,11 @@
 namespace zlink::samples::tictactoe
 {
 
+using namespace framework;
+
 struct sample_topology_t
 {
-    static sample_topology_t bind (const zlink::framework::configuration_section_t &section)
+    static sample_topology_t bind (const configuration_section_t &section)
     {
         sample_topology_t topology;
         topology.registry_pub_endpoint =

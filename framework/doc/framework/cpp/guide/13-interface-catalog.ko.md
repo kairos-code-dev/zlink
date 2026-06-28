@@ -86,7 +86,7 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 | `add_client_server_channel(name)` | `enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` · `use_handler_group(g)` | [7](07-channel-messaging.ko.md) |
 | `add_fanout_channel(name)` | `enable_publisher(ep)` · `enable_subscriber([ep])` · `use_handler_group(g)` | [7 §6](07-channel-messaging.ko.md) |
 | `add_route_mesh(name)` | `enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` (ROUTER 공유, SpotMesh와 같은 프로세스면 자동 bridge) | [7 §7](07-channel-messaging.ko.md) |
-| `add_spot_mesh(name)` | `bind` · `enable_router` · `enable_pub_sub` · `use_discovery` · `add_entry_spot<T>` · `add_spot<T>` · `add_actor_factory<F>` · `enable_actor_gateway` | [8](08-spot.ko.md)·[9](09-actor-session.ko.md) |
+| `add_spot_mesh(name)` | `bind` · `enable_router` · `enable_pub_sub` · `use_discovery` · `add_entry_spot<T>` · `add_spot<T>` · `add_actor_factory<F>` | [8](08-spot.ko.md)·[9](09-actor-session.ko.md) |
 | `http()` | `listen` · `configure_tls` · `map_get/post/...<T>` · `use<TMiddleware>` · `map_health/readiness/liveness` | [6](06-http-hosting.ko.md) |
 | `use_discovery()` | `add_registry_endpoint(ep)` | [11](11-registry.ko.md) |
 | `enable_registry(pub, router)` | registry 서버 | [11 §2](11-registry.ko.md) |
@@ -133,7 +133,7 @@ spot_context_t}`; `spot_create_state_t{existing, created, rejected}`.
 | `session_actor_manager_t` | `create(type,id[, create_request])` · `find(id)` · `get_or_create(type,id[, create_request])` · `bind(actor_ref)` · `unbind_session(id)` (DI 주입). 반환값은 application actor 객체가 아니라 `session_actor_t` handle |
 
 - **factory**: `spot_node_builder_t::add_actor_factory<TFactory>(actor_type)`로 등록(duck-typed: `create(actor_id)`).
-- **gateway**: 공개 `actor_gateway_t` 클래스는 없다. `spot_node` 쪽 `enable_actor_gateway()` +
+- **gateway**: 공개 `actor_gateway_t` 클래스는 없다. SpotNode와 route channel 설정으로 bridge가 자동 구성된다.
 - "ensure" 명명 계약은 없다 — `get_or_create*` 의미로 대신한다.
 
 ## 5. STREAM session — session · stream · header

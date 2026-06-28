@@ -10,12 +10,14 @@
 namespace zlink::samples::bingo
 {
 
+using namespace framework;
+
 class ensure_player_actor_handler_t
 {
   public:
     using request_type = ensure_player_actor_req_t;
     using reply_type = ensure_player_actor_res_t;
-    using dependency_types = zlink::framework::dependency_list_t<sample_topology_t>;
+    using dependency_types = dependency_list_t<sample_topology_t>;
     static constexpr const char *topic_name = "EnsurePlayerActor";
 
     explicit ensure_player_actor_handler_t (sample_topology_t &topology) : _topology (topology) {}

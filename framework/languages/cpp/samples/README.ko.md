@@ -1,6 +1,6 @@
 # ZLink C++ Framework Samples
 
-C++ 샘플은 `zlink::framework::app_t`가 제공하는 configuration 기능을 사용한다. 실행
+C++ 샘플은 `app_t`가 제공하는 configuration 기능을 사용한다. 실행
 설정은 `app.config()`에서 JSON, 환경 변수, CLI 값을 읽고, 샘플 topology 구조체로
 bind한 뒤 framework builder 에 전달한다.
 

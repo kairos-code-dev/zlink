@@ -162,9 +162,9 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 게이트웨이는 stream 노드와 spot 노드를 잇는 다리다. 양쪽에 한 줄씩 선언한다.
 
 ```cpp
-// spot 노드 쪽 — actor 입장을 게이트웨이 경유로 받는다
+// spot 노드 쪽 — actor 입장은 SpotNode와 route channel 설정으로 자동 연결된다
 options.add_spot_mesh (...).add_node ("bingo.room.node")
-  .enable_actor_gateway ();
+  .add_entry_spot<bingo_entry_spot_t> ();
 
 // stream 노드 쪽 — 이 stream의 session actor를 해당 spot 노드로 보낸다
 options.add_stream_node ("tictactoe.stream")

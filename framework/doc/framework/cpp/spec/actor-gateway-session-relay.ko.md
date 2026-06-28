@@ -48,7 +48,6 @@ Session 서버는 STREAM endpoint와 relay 대상 SpotNode를 함께 구성한�
 app.add_zlink_framework([](auto &options) {
     options.add_spot_mesh("session-actors")
       .bind("tcp://0.0.0.0:7101")
-      .enable_actor_gateway()
       .add_entry_spot<player_entry_spot_t>();
     options.add_stream_node("client-stream")
       .bind("tcp://0.0.0.0:9200")
@@ -149,7 +148,7 @@ actor가 client 연결을 끊어야 할 때는 `bound_session_t::disconnect().as
 
 | 영역 | C++ framework 책임 |
 |------|--------------------|
-| stream initialization | STREAM은 별도 attach 호출 없이 bind한다. `enable_actor_gateway()`로 표시한 SpotNode와의 relay bridge는 host build 시 framework가 자동 구성한다 |
+| stream initialization | STREAM은 별도 attach 호출 없이 bind한다. framework는 등록된 SpotNode와 route channel 설정을 보고 relay bridge를 자동 구성한다 |
 | session bind | local actor handle 또는 remote actor ref를 backend stream binding으로 넘긴다 |
 | session relay | route mesh packet을 만들지 않고 ActorGateway bound actor send 경로를 사용한다 |
 | actor push | `bound_session_t`가 ActorGateway bound session send wrapper로 내려간다 |

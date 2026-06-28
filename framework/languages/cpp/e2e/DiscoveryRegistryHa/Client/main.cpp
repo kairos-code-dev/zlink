@@ -76,10 +76,10 @@ void ensure (bool condition, const std::string &message)
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ()
-      .add_json<rm::profile_request_t> ()
-      .add_json<rm::profile_reply_t> ()
-      .add_json<rm::profile_command_t> ();
+    codecs.add_json ();
+    codecs.add_json<rm::profile_request_t,
+                    rm::profile_reply_t,
+                    rm::profile_command_t> ();
 }
 
 std::string role_name (zlink::framework::service_role_t role)

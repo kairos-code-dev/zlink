@@ -551,7 +551,10 @@ class session_actor_t
     actor_context_t context () const;
     bound_session_t bound_session () const;
     relay_call_t relay (const zlink::message_t &payload);
+    relay_call_t relay (std::string packet_name, const zlink::message_t &payload);
     relay_request_call_t relay_request (const zlink::message_t &payload);
+    relay_request_call_t relay_request (std::string packet_name,
+                                        const zlink::message_t &payload);
     relay_call_t notify_disconnected ();
 
   private:

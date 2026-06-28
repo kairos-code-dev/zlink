@@ -1,0 +1,105 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../../Shared/spot_service_contracts.hpp"
+
+#include <zlink/framework/codecs/json_stream_connector.hpp>
+#include <zlink/http_client.hpp>
+#include <zlink/stream_connector.hpp>
+
+#include <chrono>
+#include <stdexcept>
+#include <string>
+
+namespace zlink::framework::e2e::spot_service::client::scenarios
+{
+
+inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
+                                const std::string &session_stream_endpoint)
+{
+    if (play_http_endpoint.empty ()) {
+        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-B8");
+    }
+    if (session_stream_endpoint.empty ()) {
+        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-B8");
+    }
+
+    constexpr auto actor_id = "sm-b8-destroy";
+    auto play_a = zlink::http_client::client_t::create ()
+                    .base_url (play_http_endpoint)
+                    .json ()
+                    .build ();
+    auto joined =
+      play_a.post ("/spot/join")
+        .body (join_req_t{.key = "sm-b8-destroy",
+                          .actor_id = actor_id,
+                          .display_name = "SM-B8 Destroy",
+                          .level = 8,
+                          .tags = {"destroy", "SM-B8"}})
+        .submit_raw ()
+        .result ();
+    if (!joined) {
+        throw std::runtime_error (joined.error () ? joined.error ()->what ()
+                                                 : "SM-B8 join HTTP failed");
+    }
+    if (joined.value ().status >= 400) {
+        throw std::runtime_error ("SM-B8 join HTTP status "
+                                  + std::to_string (joined.value ().status) + ": "
+                                  + joined.value ().body);
+    }
+    const auto join_reply = nlohmann::json::parse (joined.value ().body).get<join_res_t> ();
+
+    zlink::stream_connector::connector_options_t options;
+    options.endpoint = session_stream_endpoint;
+    options.connect_timeout = std::chrono::milliseconds (5000);
+    options.request_timeout = std::chrono::milliseconds (5000);
+    options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+    auto stream = zlink::stream_connector::connector_factory_t::create (options);
+    stream.codecs ().add_json ();
+
+    auto connected = stream.connect ();
+    if (!connected) {
+        throw std::runtime_error ("SM-B8 stream connect failed");
+    }
+    auto auth =
+      zlink::stream_connector::codecs::request (
+        stream, stream_auth_req_t{"play-a", actor_id, "SM-B8 Destroy", join_reply.actor})
+        .packet_name ("StreamAuthReq")
+        .timeout (std::chrono::milliseconds (5000))
+        .submit<stream_auth_res_t> ();
+    if (!auth) {
+        throw std::runtime_error ("SM-B8 stream auth failed");
+    }
+
+    auto left = zlink::stream_connector::codecs::request (stream, leave_req_t{"pre-destroy"})
+                  .packet_name ("LeaveReq")
+                  .metadata ("actor-id", actor_id)
+                  .timeout (std::chrono::milliseconds (5000))
+                  .submit<leave_res_t> ();
+    if (!left || !left.value ().left || left.value ().actor_id != actor_id) {
+        throw std::runtime_error ("SM-B8 leave before destroy failed");
+    }
+
+    auto destroyed =
+      zlink::stream_connector::codecs::request (stream, destroy_actor_req_t{"explicit"})
+        .packet_name ("DestroyActorReq")
+        .metadata ("actor-id", actor_id)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit<destroy_actor_res_t> ();
+    if (!destroyed || !destroyed.value ().destroyed || destroyed.value ().actor_id != actor_id) {
+        throw std::runtime_error ("SM-B8 destroy reply mismatch");
+    }
+
+    auto after_destroy =
+      zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"after-destroy"})
+        .packet_name ("ActorPingReq")
+        .metadata ("actor-id", actor_id)
+        .timeout (std::chrono::milliseconds (1000))
+        .submit<actor_ping_res_t> ();
+    (void) stream.close ();
+    if (after_destroy) {
+        throw std::runtime_error ("SM-B8 destroyed actor unexpectedly accepted request");
+    }
+}
+
+} // namespace zlink::framework::e2e::spot_service::client::scenarios

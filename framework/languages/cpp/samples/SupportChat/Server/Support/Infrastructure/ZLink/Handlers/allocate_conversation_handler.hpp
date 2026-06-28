@@ -10,6 +10,8 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+
 // Support channel handler: the API server requests conversation allocation. The
 // allocator owns ConversationId creation; the spot mesh owns spot creation.
 class allocate_conversation_handler_t
@@ -18,8 +20,7 @@ class allocate_conversation_handler_t
     using request_type = allocate_conversation_req_t;
     using reply_type = allocate_conversation_res_t;
     using dependency_types =
-      zlink::framework::dependency_list_t<support_conversation_allocator_t,
-                                          zlink::framework::spot_node_manager_t>;
+      dependency_list_t<support_conversation_allocator_t, spot_node_manager_t>;
     static constexpr const char *topic_name = "AllocateConversation";
 
     explicit allocate_conversation_handler_t (support_conversation_allocator_t &allocator) :
@@ -28,7 +29,7 @@ class allocate_conversation_handler_t
     }
 
     allocate_conversation_handler_t (support_conversation_allocator_t &allocator,
-                                              zlink::framework::spot_node_manager_t &spots) :
+                                     spot_node_manager_t &spots) :
         _allocator (allocator), _spots (&spots)
     {
     }
@@ -37,16 +38,13 @@ class allocate_conversation_handler_t
     {
         const auto conversation_id =
           _allocator.allocate (request.customer_actor_id, request.subject);
-        const auto spot_rid = zlink::framework::spot_rid_t::from_string (
-          std::string (sample_names_t::support_spot_node) + ":"
-          + conversation_id);
+        const auto spot_rid = spot_rid_t::from_string (
+          std::string (sample_names_t::support_spot_node) + ":" + conversation_id);
         if (_spots != nullptr) {
             (void) _spots->get_or_create_spot (
-              sample_names_t::conversation_spot,
-              spot_rid,
+              sample_names_t::conversation_spot, spot_rid,
               conversation_create_request_t{request.customer_actor_id,
-                                            request.customer_display_name,
-                                            request.subject,
+                                            request.customer_display_name, request.subject,
                                             static_cast<long long> (0)});
         }
         return allocate_conversation_res_t{conversation_id,
@@ -55,7 +53,7 @@ class allocate_conversation_handler_t
 
   private:
     support_conversation_allocator_t &_allocator;
-    zlink::framework::spot_node_manager_t *_spots;
+    spot_node_manager_t *_spots;
 };
 
 } // namespace zlink::samples::supportchat

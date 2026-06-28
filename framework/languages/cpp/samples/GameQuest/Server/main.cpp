@@ -9,6 +9,8 @@
 
 #include <zlink/framework.hpp>
 
+using namespace zlink;
+
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -49,21 +51,22 @@ std::string registry_router_endpoint ()
 int main (int argc, char **argv)
 {
     using namespace zlink::samples::gamequest;
+    using namespace framework;
 
-    auto registry_app = zlink::framework::app_t::create ();
-    registry_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+    auto registry_app = app_t::create ();
+    registry_app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
-          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (flow_log_path ("registry"))
           .trace_label ("gamequest-registry");
         options.enable_registry (registry_pub_endpoint (), registry_router_endpoint ());
     });
     std::thread registry_thread ([&] { (void) registry_app.run (argc, argv); });
 
-    auto app = zlink::framework::app_t::create ();
-    app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+    auto app = app_t::create ();
+    app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
-          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (flow_log_path ("server"))
           .trace_label ("gamequest-server");
         options.services ().add_singleton<game_quest_server_role_t> (
@@ -81,27 +84,7 @@ int main (int argc, char **argv)
           .add<delete_quest_projection_handler_t> ("quest")
           .add<rebuild_quest_projection_handler_t> ("quest")
           .add<game_quest_server_assert_handler_t> ("quest");
-        options.codecs ()
-          .add_json ()
-          .add_json<enter_area_req_t> ()
-          .add_json<kill_monster_req_t> ()
-          .add_json<collect_item_req_t> ()
-          .add_json<complete_mission_req_t> ()
-          .add_json<unlock_feature_req_t> ()
-          .add_json<subscribe_quest_req_t> ()
-          .add_json<subscribe_quest_res_t> ()
-          .add_json<get_quest_progress_req_t> ()
-          .add_json<get_quest_progress_res_t> ()
-          .add_json<sync_quest_progress_req_t> ()
-          .add_json<sync_quest_progress_res_t> ()
-          .add_json<get_gameplay_snapshot_req_t> ()
-          .add_json<get_gameplay_snapshot_res_t> ()
-          .add_json<delete_quest_projection_req_t> ()
-          .add_json<rebuild_quest_projection_req_t> ()
-          .add_json<game_quest_server_assert_req_t> ()
-          .add_json<game_quest_server_assert_res_t> ()
-          .add_json<event_res_t> ()
-          .add_json<quest_progress_t> ();
+        options.codecs ().add_json ();
         options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("gamequest.quest")
           .enable_server (quest_endpoint ())

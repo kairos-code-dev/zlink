@@ -15,50 +15,52 @@
 namespace zlink::samples::tictactoe
 {
 
-class entry_spot_t : public zlink::framework::entry_spot_t
+using namespace framework;
+using framework::actor_ref_t;
+using framework::message_t;
+
+class tictactoe_entry_spot_t : public entry_spot_t
 {
   public:
-    void configure (zlink::framework::entry_spot_context_t &context)
+    void configure (entry_spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_actor_packet<&entry_spot_t::join_game> ();
-        context.handlers ().add_actor_packet<&entry_spot_t::observe_milestone> ();
-        context.handlers ().add_subscribe<&entry_spot_t::on_player_win_milestone> (
+        context.handlers ().add_actor_packet<&tictactoe_entry_spot_t::join_game> ();
+        context.handlers ().add_actor_packet<&tictactoe_entry_spot_t::observe_milestone> ();
+        context.handlers ().add_subscribe<&tictactoe_entry_spot_t::on_player_win_milestone> (
           sample_names_t::player_milestone_topic);
     }
 
-    void configure (zlink::framework::spot_context_t &context)
+    void configure (spot_context_t &context)
     {
-        zlink::framework::entry_spot_context_t entry_context (context);
+        entry_spot_context_t entry_context (context);
         configure (entry_context);
     }
 
-    zlink::framework::task_t<join_game_res_t>
-    join_game (const player_actor_t &actor,
-               zlink::framework::spot_actor_request_context_t &,
-               const join_game_req_t &request)
+    task_t<join_game_res_t> join_game (const player_actor_t &actor,
+                                       spot_actor_request_context_t &,
+                                       const join_game_req_t &request)
     {
-        const auto spot_rid = zlink::framework::spot_rid_t::from_string (
-          std::string (sample_names_t::spot_node) + ":" + request.room_id);
+        const auto spot_rid =
+          spot_rid_t::from_string (std::string (sample_names_t::spot_node) + ":" + request.room_id);
         auto payload = tictactoe_game_join_req_t{request.room_id, request.player};
         if (payload.player.actor_id.empty ()) {
             payload.player = {actor.actor_id, actor.actor_id, sample_names_t::required_level, 0};
         }
-        auto joined = co_await actor.context.join_spot (spot_rid, payload).yield<join_game_res_t> ();
+        auto joined =
+          co_await actor.context.join_spot (spot_rid, payload).yield<join_game_res_t> ();
         co_return joined.reply;
     }
 
-    observe_milestone_res_t observe_milestone (
-      const player_actor_t &actor,
-      zlink::framework::spot_actor_request_context_t &,
-      const observe_milestone_req_t &)
+    observe_milestone_res_t observe_milestone (const player_actor_t &actor,
+                                               spot_actor_request_context_t &,
+                                               const observe_milestone_req_t &)
     {
         observers[actor.actor_id] = const_cast<player_actor_t *> (&actor);
         return {true};
     }
 
-    void onCreateActor (const player_actor_t &actor,
-                        const zlink::framework::message_t &create_request)
+    void onCreateActor (const player_actor_t &actor, const message_t &create_request)
     {
         const auto request = create_request.decode<ensure_player_actor_req_t> ();
         actor.apply_player (
@@ -92,27 +94,23 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     void on_player_win_milestone (const player_win_milestone_event_t &event)
     {
         for (auto &[_, actor] : observers) {
-            auto send_task =
-              actor->push (win_milestone_notify_t{event.room_id,
-                                                  event.actor_id,
-                                                  event.display_name,
-                                                  event.wins,
-                                                  std::string (_context.node_rid ().value ())});
-            zlink::framework::observe_task_completion (
-              send_task, [] (const zlink::framework::result_t<void> &) {});
+            const auto notify =
+              win_milestone_notify_t{event.room_id, event.actor_id, event.display_name, event.wins,
+                                     std::string (_context.node_rid ().value ())};
+            auto send_task = actor->push (notify);
+            observe_task_completion (send_task, [] (const result_t<void> &) {});
         }
     }
 
-    static zlink::framework::actor_ref_t actor_ref_for (const player_actor_t &actor)
+    static actor_ref_t actor_ref_for (const player_actor_t &actor)
     {
-        return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (actor.node_rid.empty ()
+        return actor_ref_t (node_rid_t::from_string (actor.node_rid.empty ()
                                                        ? std::string (sample_names_t::spot_node)
                                                        : actor.node_rid),
-          sample_names_t::actor_type, actor.actor_id, actor.generation);
+                            sample_names_t::actor_type, actor.actor_id, actor.generation);
     }
 
-    zlink::framework::entry_spot_context_t _context;
+    entry_spot_context_t _context;
     std::map<std::string, player_actor_t *> observers;
 };
 

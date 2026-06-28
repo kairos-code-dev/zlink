@@ -11,20 +11,20 @@
 namespace zlink::samples::tictactoe
 {
 
+using namespace framework;
+
 class create_game_handler_t
 {
   public:
     using request_type = create_game_req_t;
     using reply_type = create_game_res_t;
     using dependency_types =
-      zlink::framework::dependency_list_t<tictactoe_game_creator_t,
-                                          sample_topology_t,
-                                          zlink::framework::spot_node_manager_t>;
+      dependency_list_t<tictactoe_game_creator_t, sample_topology_t, spot_node_manager_t>;
     static constexpr const char *topic_name = "CreateGame";
 
     create_game_handler_t (tictactoe_game_creator_t &creator,
                            sample_topology_t &topology,
-                           zlink::framework::spot_node_manager_t &spots) :
+                           spot_node_manager_t &spots) :
         _creator (creator), _topology (topology), _spots (spots)
     {
     }
@@ -32,8 +32,8 @@ class create_game_handler_t
     create_game_res_t handle (const create_game_req_t &request)
     {
         auto response = _creator.create (request.game_name);
-        const auto spot_rid = zlink::framework::spot_rid_t::from_string (
-          std::string (sample_names_t::spot_node) + ":" + response.room_id);
+        const auto spot_rid = spot_rid_t::from_string (std::string (sample_names_t::spot_node) + ":"
+                                                       + response.room_id);
         _spots.get_or_create_spot (sample_names_t::match_spot, spot_rid);
         return response;
     }
@@ -41,7 +41,7 @@ class create_game_handler_t
   private:
     tictactoe_game_creator_t &_creator;
     sample_topology_t &_topology;
-    zlink::framework::spot_node_manager_t &_spots;
+    spot_node_manager_t &_spots;
 };
 
 } // namespace zlink::samples::tictactoe

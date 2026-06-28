@@ -59,7 +59,8 @@ void wait_for_file (const std::string &path)
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)
 {
-    codecs.add_json ().add_json<e2e::event_notify_t> ();
+    codecs.add_json ();
+    codecs.add_json<e2e::event_notify_t> ();
 }
 
 class scenario_service_t final : public zlink::framework::hosted_service_t

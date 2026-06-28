@@ -18,8 +18,7 @@ auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([](auto &options) {
     options.spot_node("session-actors")
-      .bind("tcp://0.0.0.0:7101")
-      .enable_actor_gateway();
+      .bind("tcp://0.0.0.0:7101");
     options.add_stream_node("route-stream")
       .bind("tcp://0.0.0.0:9200")
       .register_session<route_session_t>()

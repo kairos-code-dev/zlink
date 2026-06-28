@@ -8,12 +8,14 @@
 namespace zlink::samples::gamequest
 {
 
+using namespace framework;
+
 class complete_mission_handler_t
 {
   public:
     using request_type = complete_mission_req_t;
     using reply_type = event_res_t;
-    using dependency_types = zlink::framework::dependency_list_t<game_quest_server_role_t>;
+    using dependency_types = dependency_list_t<game_quest_server_role_t>;
     static constexpr const char *topic_name = "CompleteMissionReq";
 
     explicit complete_mission_handler_t (game_quest_server_role_t &server) : _server (server) {}

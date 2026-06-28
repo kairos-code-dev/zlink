@@ -8,12 +8,14 @@
 namespace zlink::samples::shoppingmall
 {
 
+using namespace framework;
+
 class start_order_handler_t
 {
   public:
     using request_type = start_order_req_t;
     using reply_type = start_order_res_t;
-    using dependency_types = zlink::framework::dependency_list_t<shopping_mall_server_role_t>;
+    using dependency_types = dependency_list_t<shopping_mall_server_role_t>;
     static constexpr const char *topic_name = "StartOrderReq";
 
     explicit start_order_handler_t (shopping_mall_server_role_t &server) : _server (server) {}

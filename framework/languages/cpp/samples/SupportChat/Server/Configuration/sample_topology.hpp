@@ -9,9 +9,11 @@
 namespace zlink::samples::supportchat
 {
 
+using namespace framework;
+
 struct sample_topology_t
 {
-    static sample_topology_t bind (const zlink::framework::configuration_section_t &section)
+    static sample_topology_t bind (const configuration_section_t &section)
     {
         sample_topology_t topology;
         topology.registry_pub_endpoint =
@@ -29,14 +31,12 @@ struct sample_topology_t
           section.get ("sessionSpotEndpoint").value_or (topology.session_spot_endpoint);
         topology.session_router_endpoint =
           section.get ("sessionRouterEndpoint").value_or (topology.session_router_endpoint);
-        topology.session_actor_route_endpoint =
-          section.get ("sessionActorRouteEndpoint")
-            .value_or (topology.session_actor_route_endpoint);
+        topology.session_actor_route_endpoint = section.get ("sessionActorRouteEndpoint")
+                                                  .value_or (topology.session_actor_route_endpoint);
         topology.support_router_endpoint =
           section.get ("supportRouterEndpoint").value_or (topology.support_router_endpoint);
-        topology.support_actor_route_endpoint =
-          section.get ("supportActorRouteEndpoint")
-            .value_or (topology.support_actor_route_endpoint);
+        topology.support_actor_route_endpoint = section.get ("supportActorRouteEndpoint")
+                                                  .value_or (topology.support_actor_route_endpoint);
         topology.support_spot_endpoint =
           section.get ("supportSpotEndpoint").value_or (topology.support_spot_endpoint);
         topology.conversation_spot_router_endpoint =

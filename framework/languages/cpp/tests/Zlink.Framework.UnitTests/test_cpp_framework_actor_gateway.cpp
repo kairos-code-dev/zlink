@@ -61,7 +61,7 @@ int main ()
     using zlink::framework::framework_error_kind_t;
 
     zlink::framework::zlink_builder_t zlink;
-    zlink.add_spot_node ("session-actors").bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
+    zlink.add_spot_node ("session-actors").bind ("tcp://0.0.0.0:7101");
     zlink.stream ("client-stream")
       .bind ("tcp://0.0.0.0:9200")
       .register_session ("client");

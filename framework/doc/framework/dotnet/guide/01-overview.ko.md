@@ -205,9 +205,10 @@ SPOT은 game room, stage, zone, 주문 처리 단위처럼 하나의 상태 영�
 
 Actor는 연결 하나 또는 사용자 하나를 대표하는 서버 쪽 객체다. STREAM session이 외부
 client 연결을 받고, actor는 SPOT에 입장해 상태 처리에 참여한다. 서버 간 actor relay도
-가능하므로 session 서버와 domain 서버를 나눌 수 있다.
+가능하므로 session 서버와 domain 서버를 나눌 수 있다. actor lifecycle·호스팅은 6장이,
+session↔actor binding·dispatch·client push 는 7장이 다룬다.
 
-[6장 →](06-actor-spot.ko.md)
+[6장 →](06-actor-spot.ko.md) · [7장 →](07-actor-session.ko.md)
 
 ### Stream — 클라이언트 실시간 연결
 
@@ -215,7 +216,7 @@ client 연결을 받고, actor는 SPOT에 입장해 상태 처리에 참여한�
 접속을 받고, 연결마다 session 인스턴스를 생성한다. client 측 접속은 별도 산출물인
 Stream Connector가 담당한다.
 
-[7장 →](08-stream.ko.md)
+[8장 →](08-stream.ko.md)
 
 ### Registry / Discovery — 주소 자동 연결
 
@@ -223,7 +224,7 @@ Stream Connector가 담당한다.
 Registry 서버가 등록된 서버 목록을 관리하고, client 역할의 서버가 Discovery로 현재
 살아 있는 서버를 동적으로 찾는다.
 
-[8장 →](09-registry.ko.md)
+[9장 →](09-registry.ko.md)
 
 ### 통합 4축 한눈에
 
@@ -242,7 +243,7 @@ flowchart LR
 | channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkChannelClient`, `IZLinkHandlerFilter` | [04-channel-messaging](04-channel-messaging.ko.md) |
 | PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkFanoutClient` | [04-channel-messaging](04-channel-messaging.ko.md) |
 | SPOT | typed spot factory, Spot context outbound, timer | [05-spot](05-spot.ko.md) |
-| actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-spot](06-actor-spot.ko.md) |
+| actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-spot](06-actor-spot.ko.md) · [07-actor-session](07-actor-session.ko.md) |
 | STREAM | framework session packet, Stream Connector | [08-stream](08-stream.ko.md) |
 | 인프라 | Registry topology, runtime monitoring | [09-registry](09-registry.ko.md), [10-monitoring](10-monitoring.ko.md) |
 
@@ -345,14 +346,15 @@ handler registration 이 정한다. 자세한 규칙은
 2. [03-concepts](03-concepts.ko.md) — 핵심 개념 (channel, 역할, DI)
 3. [04-channel-messaging](04-channel-messaging.ko.md) — request/send/pub-sub 상세
 4. [05-spot](05-spot.ko.md) — room/stage/zone, timer, routed Spot 호출
-5. [06-actor-spot](06-actor-spot.ko.md) — actor lifecycle, session actor dispatch
-6. [08-stream](08-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
-7. [09-registry](09-registry.ko.md) — Registry 구동과 topology 조회
-8. [10-monitoring](10-monitoring.ko.md) — runtime 이벤트 관찰
-9. [11-feature-map](11-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
-10. [12-interface-catalog](12-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-11. [13-grpc-alternative](13-grpc-alternative.ko.md) — **ZLink 을 어디에 쓰나**(사용처·문제 신호·경계 + 케이스 허브, 도입 판단 문서)
-12. 케이스 스터디 — 도입 판단과 아키텍처 매핑:
+5. [06-actor-spot](06-actor-spot.ko.md) — actor lifecycle, Spot 호스팅·콜백
+6. [07-actor-session](07-actor-session.ko.md) — session↔actor binding·dispatch, client push
+7. [08-stream](08-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
+8. [09-registry](09-registry.ko.md) — Registry 구동과 topology 조회
+9. [10-monitoring](10-monitoring.ko.md) — runtime 이벤트 관찰
+10. [11-feature-map](11-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
+11. [12-interface-catalog](12-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
+12. [13-grpc-alternative](13-grpc-alternative.ko.md) — **ZLink 을 어디에 쓰나**(사용처·문제 신호·경계 + 케이스 허브, 도입 판단 문서)
+13. 케이스 스터디 — 도입 판단과 아키텍처 매핑:
     [13 전자상거래](case-studies/13-case-ecommerce-checkout.ko.md) ·
     [14 mesh+운영](case-studies/14-case-microservice-mesh.ko.md) ·
     [15 게임](case-studies/15-case-realtime-game.ko.md) ·

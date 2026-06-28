@@ -14,12 +14,14 @@ framework 의 channel discovery 는 **Registry 서버**를 중심에 둔다. Reg
 `Discovery` 는 이 Registry 에 붙어 자기 channel view 를 자동 갱신한다.
 
 의존 방향에 주의한다: **channel runtime 이 Registry 에 의존한다**(반대가 아님).
+연결을 거는 쪽과 받는 쪽으로 나눠 보면 분명하다.
 
-- `AddZLinkFramework(...)` 는 `Discovery` 로 Registry 에 **연결하러 가는** 쪽.
-- `AddZLinkRegistry(...)` 는 `Discovery` 가 **연결을 맺으러 오는** 쪽.
+- `AddZLinkFramework(...)` 쪽의 `Discovery` 가 Registry 로 **연결을 건다(outbound)** —
+  즉 client 역할이다.
+- `AddZLinkRegistry(...)` 는 그 연결을 **받는 서버(inbound)** 다.
 
-그래서 두 등록 호출은 분리되어 있다. Registry 는 framework runtime 의 일부가 아닌
-독립 infrastructure 컴포넌트다.
+즉 방향은 언제나 `channel runtime → Registry` 한쪽이며, 그래서 등록 호출도 둘로
+나뉜다. Registry 는 framework runtime 의 일부가 아니라 독립 infrastructure 컴포넌트다.
 
 그림으로 보면 방향이 분명하다 — **서비스가 Registry 로 붙으러 가고**(등록·heartbeat),
 Registry 는 **topology 를 다시 뿌려** 각 서비스의 `Discovery` view 를 갱신한다.
@@ -120,10 +122,16 @@ builder.Services.AddZLinkRegistry(registry =>
 > 포트 관례: PUB=`5550`, ROUTER=`5551`. peer 는 PUB 을, query client/discovery 는
 > ROUTER 를 가리킨다(혼동 주의).
 
-## 4. clustering
+## 4. clustering 과 failover
 
-Registry 하나면 단일 장애점(SPOF)이다. peer Registry 의 **PUB endpoint** 를 등록해
-서로의 broadcast 를 구독하며 topology 를 합산한다.
+Registry 하나면 단일 장애점(SPOF)이다. 이걸 없애려면 **두 곳을 같이** 손봐야 한다.
+Registry 끼리 묶는 일(아래 4-1)과, 서비스가 여러 Registry 를 바라보게 하는 일(4-2)은
+서로 다른 설정이며 **둘 다** 있어야 한 Registry 가 죽어도 messaging 이 이어진다.
+
+### 4-1. Registry 끼리 묶기 — peer broadcast
+
+peer Registry 의 **PUB endpoint** 를 등록하면, 서로의 topology broadcast 를 구독해
+같은 그림을 공유한다(한 곳에 등록된 서비스를 다른 곳도 알게 된다).
 
 ```csharp
 builder.Services.AddZLinkRegistry(registry =>
@@ -134,6 +142,41 @@ builder.Services.AddZLinkRegistry(registry =>
     registry.AddPeer("tcp://registry-2:5550");   // PUB(5550) 임에 주의
     registry.AddPeer("tcp://registry-3:5550");
 });
+```
+
+### 4-2. 서비스가 여러 Registry 를 바라보게 하기 — Discovery multi-endpoint
+
+peer 로 묶기만 해서는 부족하다. **서비스 쪽**도 여러 Registry 의 ROUTER endpoint 를
+등록해야, 붙어 있던 Registry 가 죽었을 때 남은 Registry 로 옮겨 가며 discovery 를
+유지한다. `AddRegistryEndpoint(...)` 를 **여러 번** 부르면 된다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.UseDiscovery()
+        .AddRegistryEndpoint("tcp://registry-1:5551")   // ROUTER(5551) — peer 의 PUB(5550) 아님
+        .AddRegistryEndpoint("tcp://registry-2:5551")
+        .AddRegistryEndpoint("tcp://registry-3:5551");
+    // ... 채널 등록 ...
+});
+```
+
+등록한 endpoint 중 살아 있는 Registry 가 하나라도 있으면(4-1 의 peer 공유 덕에 그 Registry 가
+양쪽 서비스를 알고 있으므로) 서비스는 discovery 를 잃지 않고 messaging 을 이어 간다. endpoint 를
+하나만 등록하면, 그 Registry 가 죽는 순간 discovery 가 끊겨 새 연결을 찾지 못한다(클러스터를 띄워도
+4-2 를 빼면 failover 가 동작하지 않는 흔한 함정이다).
+
+```mermaid
+flowchart LR
+  SVC["service<br/>AddRegistryEndpoint × 3"]
+  R1["Registry-1"]
+  R2["Registry-2 ✗(down)"]
+  R3["Registry-3"]
+  SVC -->|"register/heartbeat"| R1
+  SVC -. "장애 시 전환" .-> R2
+  SVC -. "장애 시 전환" .-> R3
+  R1 <==>|"peer PUB broadcast"| R3
+  R1 <==>|"peer PUB broadcast"| R2
 ```
 
 ## 5. topology 조회
@@ -166,6 +209,33 @@ app.MapGet("/health", async (IZLinkRegistryQuery registry) =>
 `ValueTask` 비동기다. embedded Registry 가 아직 시작되지 않았으면 첫 query 호출이
 그 자리에서 Registry 를 시작시킨다(lazy start).
 
+#### filter 로 한 channel 만 보기 + readiness 판정
+
+`TopologyAsync` 는 `ZLinkRegistryTopologyFilter` 를 받아 한 channel 만 추려서 본다. warm-up 확인
+(특정 channel 의 router 가 준비됐는지)에 자주 쓴다.
+
+```csharp
+var topology = await query.TopologyAsync(
+    new ZLinkRegistryTopologyFilter(ChannelName: "play"), ct);
+
+// 이 channel 에 Ready 상태인 router 가 N개 이상인지로 준비 완료를 판정
+var readyRouters = topology.Count(entry =>
+    entry.State == ZLinkTopologyState.Ready && entry.ServiceRole == ZLinkServiceRole.Router);
+```
+
+topology 항목(`ZLinkRegistryTopologyEntry`)의 주요 필드:
+
+| 필드 | 의미 |
+|------|------|
+| `ChannelName` | 이 항목이 속한 channel 이름 |
+| `RoutingId` | 멤버의 routing id |
+| `Endpoint` | 멤버가 bind 한 endpoint |
+| `State` | `ZLinkTopologyState` — `Ready` 면 트래픽을 받을 준비가 됨 |
+| `ServiceRole` | `ZLinkServiceRole` — `Router`/`Server`/`Publisher` 등 그 멤버의 역할 |
+
+`MemberPeersAsync(channelName)` 도 멤버별로 `ServiceRole`·`Endpoint` 를 돌려주므로, peer broadcast 로
+합쳐진 멤버가 보이는지 검증할 때 같은 필드를 본다.
+
 ### 원격 — `IZLinkRegistryQueryClient`
 
 다른 프로세스의 Registry 를 조회할 때는 별도 등록한다.
@@ -190,24 +260,36 @@ app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient query) =>
 연결 실패 시 framework 가 몰래 retry 하지 않으니, retry 는 호출자/monitoring 에서
 명시적으로 한다.
 
-## 6. Registry 기반 route 기본 구현
+## 6. Registry 기반 SPOT 주소 resolver
 
-SPOT 라우팅을 Registry 로 기본 구현하려면 명시적으로 켠다.
-`UseDiscovery().AddRegistryEndpoint(...)` 만으로는 자동 등록되지 않는다.
+외부에서 `spotRid` 로 보낸 send/request 가 소유 노드에 닿으려면, framework 가
+`spotRid → 소유 노드 주소`를 찾을 수 있어야 한다. 이 resolver 는 자동으로 켜지지
+않는다 — `UseDiscovery().AddRegistryEndpoint(...)` 만으로는 등록되지 않으니 명시해야 한다.
+
+대부분은 **SpotMesh 빌더의 `UseRegistrySpotResolver()`** 한 줄이면 된다. 이 mesh 의
+channel 이름을 그대로 registry namespace 로 삼아 resolve 한다(spot 호스팅 노드의 전체
+배선은 [05-spot §2·§5](05-spot.ko.md) 참고).
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-        options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+    options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
 
-        options.AddRouteMesh("play")
-            .EnableServer("tcp://0.0.0.0:7201");
-
-    // 이 호출이 있어야 Registry 기반 SPOT resolver 가 켜진다(AddRegistryEndpoint 만으론 자동 등록 안 됨).
-    // 인자 "game" = resolver 가 SPOT 주소를 찾을 때 쓰는 registry 키(채널명 "play" 와 별개).
-    options.UseRegistrySpotRemoteAddresses("game");           // SPOT RoutingId → owner node 주소 resolver
+    options.AddSpotMesh("game.stage")
+        .UseRegistrySpotResolver()            // spotRid → 소유 노드 주소 (mesh 이름 "game.stage" 를 namespace 로)
+        .EnableRouter("tcp://0.0.0.0:9001");
 });
 ```
+
+> **namespace 와 route channel 이름이 달라야 하는 경우에만** 수동형을 쓴다.
+> `UseRegistrySpotResolver()` 는 mesh 이름 하나를 namespace 와 route channel 양쪽에
+> 똑같이 쓴다. 둘을 따로 지정해야 하는 드문 경우에는 framework 수준의
+> `UseRegistrySpotRemoteAddresses(namespace)` 로 풀어 쓴다.
+>
+> ```csharp
+> options.UseRegistrySpotRemoteAddresses("game")   // resolve 에 쓸 namespace
+>     .RouterChannelId = "play";                    // route 가 실제로 흐르는 channel 이름
+> ```
 
 Registry 를 key-value 저장소로 노출하는 것은 아니다. Redis/DB 가 필요하면 custom
 resolver 를 등록한다([07-actor-session](07-actor-session.ko.md) §4).

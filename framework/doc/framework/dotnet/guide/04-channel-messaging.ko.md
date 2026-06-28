@@ -341,15 +341,36 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 }
 ```
 
-- `Publish` 는 인자가 **3개**다: `channelName`, `topic`, `message`. topic 은 그
-  channel 안에서 어느 구독자 집합이 받을지를 정하는 fan-out 라우팅 값이다.
+- `Publish` 는 인자가 **3개**다: `channelName`, `topic`, `message`. topic 은 그 publish 에
+  붙는 분류 라벨이다.
 - publish 한 message 는 **구독자 수와 무관하게 한 번만 인코딩**된다. framework 는 그
   인코딩 결과를 **구독 중인 각 구독자 연결로 한 번씩 전달**할 뿐, 구독자마다 다시
   직렬화하지 않는다(framework 내부 최적화).
 - `IZLinkFanoutClient` 는 fanout channel 에 publish 하는 DI client 이다.
 
+> **구독 연결.** 구독자는 `AddFanoutChannel(name).EnableSubscriber()` 로 채널을 구독한다.
+> discovery 없이 publisher 에 직접 붙을 때는 endpoint 를 주는 `EnableSubscriber(publisherEndpoint)`
+> 오버로드를 쓴다.
+
+> **구독자 쪽 topic 필터링(.NET).** 구독자는 채널을 구독할 때 topic 을 지정하지 않고, 받은
+> 메시지의 `context.Topic` 을 handler 안에서 보고 처리/무시를 정한다. 즉 topic 으로 받을 메시지를
+> 미리 거르는 게 아니라, 받아서 `context.Topic` 으로 분기한다.
+>
+> ```csharp
+> public ValueTask HandleAsync(EventNotify message, ZLinkPublishContext context, CancellationToken ct)
+> {
+>     if (context.Topic == "orders.created") { /* 처리 */ }
+>     else { /* 이 구독자 관심 밖 — 무시 */ }
+>     return ValueTask.CompletedTask;
+> }
+> ```
+
 > `Async(...)`/`Async<T>(...)` 의 완료는 transport 위임까지만 보장한다.
 > remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](03-concepts.ko.md) §6.2).
+
+> **pub/sub 는 replay 가 없다.** 구독자가 **아직 붙기 전**에 publish 된 메시지나, **끊겨 있는
+> 동안** 지나간 메시지는 다시 받지 못한다(재연결해도 그 사이 것은 안 온다). 놓치면 안 되는 이벤트는
+> 별도 재동기화(예: 재연결 후 현재 상태를 한 번 request)로 메운다.
 
 ## 5. filter — 공통 처리
 
@@ -528,6 +549,12 @@ graph LR
 ```
 
 특정 엔티티(주문 ID·사용자 ID)가 늘 같은 노드로 가야 하면 route mesh(§9)를 사용한다.
+
+> **provider 에 안정적 식별자 주기 — client-server 채널의 `SetRoutingId(...)`.** `SetRoutingId` 는
+> route mesh 전용이 아니다. client-server provider 에도 걸어 두면(`EnableServer(...).EnableClient().SetRoutingId(RoutingId.From(rid))`)
+> 그 노드가 **고정된 논리 id** 를 갖는다. provider 가 죽고 같은 rid 로 새로 떠도 discovery 가 같은
+> 논리 id 로 계속 라우팅하므로(same-rid failover), 응답에 어느 노드가 처리했는지(rid)를 실어 보내거나
+> 프로세스 교체 후에도 라우팅을 이어 갈 때 쓴다.
 
 ## 9. route mesh — 주소 라우팅
 

@@ -93,7 +93,40 @@ actor 안에서의 spot join 과 현재 상태 조회는 주입된 `IZLinkActorC
 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
 
 `spotRid`는 user Spot 의 `RoutingId`이고, `spotNodeRid`는 Entry Spot 을 가진 SpotNode 의
-`RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서 `RoutingId`를 얻는 규칙은 application registry 가 정한다.
+`RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서 `RoutingId`를 얻는 규칙은 application 이
+정하는데, 샘플·e2e 는 대부분 **domain id 를 그대로 `RoutingId.From(roomId)`** 로 쓴다(예: Bingo 의
+`RoutingId.From(matched.RoomId)`, DeliveryDispatch 의 `RoutingId.From(deliveryId)`). 즉 별도
+매핑 레이어 없이 domain id 자체가 `spotRid` 다.
+
+### actor 생성·보장 — `IZLinkActorManager.GetOrCreateAsync`
+
+actor 를 처음 만들거나(있으면 재사용) 보장하는 진입점은 `IZLinkActorManager.GetOrCreateAsync` 다.
+보통 일반 채널 handler 에서 부른다. 생성 요청 payload 를 넘기면 그것이 Entry Spot 의
+`OnCreateActorAsync` 로 전달된다(§3). 반환값은 그 actor 를 가리키는 **ref 3종(`NodeRid`·`ActorId`·
+`Generation`)** 이라, 이후 session 이 이 값으로 actor 에 bind 한다([07 §2](07-actor-session.ko.md)).
+
+```csharp
+public sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
+    : IZLinkRequestHandler<EnsureCustomerActor, CustomerActorEnsured>
+{
+    public async ValueTask<CustomerActorEnsured> HandleAsync(
+        EnsureCustomerActor request, ZLinkRequestContext context, CancellationToken ct)
+    {
+        var actor = await actors.GetOrCreateAsync(
+            request.CustomerId,                 // actorId (domain id)
+            SampleNames.CustomerActorType,      // §2 factory 등록 키("player" 같은 actorType)
+            request,                            // createReq → Entry Spot 의 OnCreateActorAsync 로 전달(선택)
+            ct);
+
+        // 반환된 ref 3종을 session bind 용으로 돌려준다
+        return new CustomerActorEnsured(request.CustomerId,
+            new ActorRefSnapshot(actor.NodeRid.ToString(), actor.ActorId, actor.Generation));
+    }
+}
+```
+
+> create payload 가 필요 없으면 `GetOrCreateAsync(actorId, actorType, ct)` 오버로드를 쓴다.
+> `Generation` 은 actor 가 다른 노드로 migration 될 때마다 올라가는 값이다(§3 "actor 이동").
 
 ## 3. Spot 이 actor 를 호스팅 — 콜백과 트리거 함수
 
@@ -115,6 +148,8 @@ framework 가 actor lifecycle 의 특정 시점마다 그 Spot 의 **콜백 메�
 
 > **admission 은 `OnActorJoinAsync` 의 반환값으로 정한다.** `ZLinkSpotActorJoinResult.Accept(reply)`
 > 면 통과, `Reject(reply)` 면 거부다. reply `ZLinkMessage` 는 join 호출자에게 그대로 돌아간다.
+> **reply 는 선택**이라, 돌려줄 게 없으면 인자 없는 `Accept()` / `Reject()` 를 쓴다(샘플의 흔한 형태:
+> Entry Spot 은 보통 `Accept()`, user Spot 은 조건 불일치 시 `Reject()`).
 
 > **`OnCreateActorAsync` 는 Entry Spot 전용**이다(actor 가 처음 머무는 곳). user Spot 은 이미 만들어진
 > actor 가 join 으로 들어오므로 create 콜백이 없다.
@@ -295,7 +330,9 @@ internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> log
 
 > **join 후 `actor` 를 다시 만지지 않는다.** join 이 끝나면 actor 는 이 Entry Spot 을 떠났으므로
 > (크로스노드면 이 노드 인스턴스는 retire), `joined` 결과만 쓰고 반환한다. join 직후 client 에 push 할
-> 게 있으면 room(`BingoRoom`)의 `OnJoinedActorAsync` 에서 한다(§3 "actor 이동" 규칙). — admission·leave·disconnect (`BingoRoom : IZLinkSpot<PlayerActor>`)
+> 게 있으면 room(`BingoRoom`)의 `OnJoinedActorAsync` 에서 한다(§3 "actor 이동" 규칙).
+
+### ③ room (user Spot) — admission · leave · disconnect (`BingoRoom : IZLinkSpot<PlayerActor>`)
 
 ```csharp
 internal sealed class BingoRoom(IZLinkSpotContext context, /* … */) : IZLinkSpot<PlayerActor>

@@ -13,11 +13,19 @@
 
 ## 현재 구현 기준
 
-외부에서 특정 Spot 으로 send/request 를 보낼 때는 **RouteMesh channel** 을 쓰고, framework 가 core
-route bridge 를 내부에서 **자동으로** 잇는다(명시 accept/egress 호출 없음). 사용자는 RouteMesh
-channel 과 `SpotNode` 를 같은 프로세스에 두기만 하면 되고, raw `DEALER`·`ROUTER`·`PUB` socket 을
-`SpotNode` 에 직접 attach 하지 않는다. 외부에서 Spot 으로 topic 을 publish 할 때는
-`IZLinkSpotPublisherClient` 를 주입해 `PublishSpot(...)` 으로 보낸다(이것도 자동 연결).
+외부에서 특정 Spot 으로 send/request 를 보낼 때는 **RouteMesh channel** 을 쓴다. RouteMesh channel 과
+`SpotNode` 를 같은 프로세스에 두면, framework 가 둘을 잇는 route bridge 를 자동으로 깐다 — 직접
+accept/egress 를 호출하거나 raw `DEALER`·`ROUTER`·`PUB` socket 을 `SpotNode` 에 붙일 필요가 없다.
+
+단, 자동으로 깔리는 것은 transport(소켓 배선)까지다. "이 `spotRid` 를 가진 room 이 지금 어느 노드에
+있나"를 찾아 주는 일은 **별도 스위치**가 필요하다 — SpotMesh 에 `UseRegistrySpotResolver()` 를 켜면
+framework 가 registry 를 통해 `spotRid → 소유 노드 주소`를 resolve 한다. 이걸 빼면 같은 프로세스의
+local bridge 가 가진 spot 으로는 fallback 으로 닿지만, **다른 노드가 소유한 spot 까지는 라우팅하지
+못한다.** 그래서 spot 을 여러 노드에 분산하는 배포에서는 사실상 필수이고, 아래 §2·§5 의 spot 호스팅
+예제에도 항상 들어간다.
+
+외부에서 Spot 으로 topic 을 publish 할 때는 `IZLinkSpotPublisherClient` 를 주입해 `PublishSpot(...)`
+으로 보낸다(이 연결은 같은 SpotMesh 에 붙는 것만으로 자동이라 resolver 가 따로 필요 없다).
 
 ## 1. SPOT 이란
 
@@ -78,6 +86,9 @@ discovery 기반 mesh 로 묶는 형태가 표준이다.
 builder.Services.AddZLinkFramework(options =>
 {
     var mesh = options.AddSpotMesh("game.stage");
+    // 외부→spot send/request 를 받을 노드라면 resolver 를 켠다: spotRid 로 소유 노드를
+    // registry 에서 찾아 준다(이 mesh 이름을 namespace 로 사용). 빼면 외부→spot 가 안 닿는다.
+    mesh.UseRegistrySpotResolver();
     // 같은 channel("game.stage") 노드끼리 자동 연결되는 핵심: 모든 노드가 같은
     // registry 에 자기 router/pub-sub bind endpoint 를 등록하고, registry 가
     // 알려준 peer 들과 router↔router·pub/sub mesh 를 알아서 배선한다. 그래서 별도
@@ -115,6 +126,12 @@ node 역할은 서로 독립이다.
 | `EnablePubSub(endpoint)` | 이 노드의 pub/sub 소켓을 열어 **같은 channel topic publish/subscribe**(mesh). local spot 의 `Publish`/구독에 필요(없으면 불가) |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
+
+> **node 함수 vs mesh 함수.** 위 표의 함수들은 노드 한 대의 소켓·타입을 켠다. 반면
+> `UseRegistrySpotResolver()` 는 `AddSpotMesh(...)` 가 돌려주는 **mesh 빌더**에 거는 mesh 수준
+> 함수다. 이 함수는 외부에서 `spotRid` 로 들어온 메시지를 받을 때, 그 spotRid 의 소유 노드를
+> registry 로 찾도록 켠다. spot 을 여러 노드에 분산해 외부→spot 을 받는 노드라면 켠다. 같은
+> resolver 를 두 번 등록하면 시작 예외다.
 
 위 표는 **SpotNode 자체 설정**이다 — 자기 소켓(`EnableRouter`·`EnablePubSub`)과 만들 spot 타입
 (`AddSpotFactory`·`AddEntrySpot`). 채널은 노드 소속이 아니다. 같은 channel 안의 spot↔spot 은 §1 처럼
@@ -316,6 +333,27 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
     }
 }
 ```
+
+lifecycle callback 은 호출 순서가 정해져 있다. **`OnCreateAsync`(생성 1회) → `OnInitializeAsync`
+(초기화 1회) → … → `OnClosingAsync`(종료 1회).** 위 예제는 `OnInitializeAsync`/`OnClosingAsync`
+만 보였는데, 생성 시점에 한 번 불리는 `OnCreateAsync` 가 추가로 있다.
+
+```csharp
+// OnCreateAsync: 생성 요청 메시지를 받아 초기 상태를 세팅하고, 생성을 수락/거부한다.
+public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(ZLinkMessage request, CancellationToken ct)
+{
+    var create = request.Decode<DeliverySpotCreate>();   // GetOrCreateAsync 에 넘긴 payload(§4)
+    _deliveryId = create.DeliveryId;
+
+    // Accept(reply) 의 reply 는 생성 호출자에게 ZLinkSpotCreateResult.Reply 로 돌아간다(선택).
+    return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept(new DeliverySpotCreated(_deliveryId)));
+    // 거부하려면 ZLinkSpotCreateResponse.Reject() — 호출자는 State == Rejected 를 받는다.
+}
+```
+
+> **`Context.SpotRid` vs `Context.NodeRid`.** `Context.SpotRid` 는 이 spot 한 개의 논리 주소,
+> `Context.NodeRid` 는 이 spot 을 호스팅하는 **노드**의 routing id 다. 어느 노드가 spot 을
+> 소유하는지 응답·로그에 실어 보낼 때 `Context.NodeRid` 를 쓴다.
 
 spot handler 는 첫 인자로 spot 인스턴스를 받는다.
 
@@ -645,6 +683,47 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherC
   `State`/`Reply` 만 들고 다니고, 이후 메시징은 publish 나 route bridge channel socket
   로 한다.
 
+#### 생성 시 payload 넘기기 — `GetOrCreateAsync(spotRid, createMessage, ct)`
+
+실무에서는 보통 **domain id 로 `spotRid` 를 만들고, 생성 메시지를 함께 넘긴다.** 그 메시지는
+spot 의 `OnCreateAsync` 로 그대로 전달돼, spot 이 자기 초기 상태를 세팅한다(§3 참고).
+
+```csharp
+// 채널 handler 안 — deliveryId 라는 domain id 로 tracking spot 을 보장(없으면 생성)
+await spots.GetOrCreateAsync<DeliveryTrackingSpot>(
+    RoutingId.From(request.DeliveryId),               // spotRid = domain id 를 RoutingId 로
+    new DeliverySpotCreate(request.DeliveryId),       // 이 payload 가 OnCreateAsync 로 들어간다
+    cancellationToken);
+```
+
+#### in-process directory — 채널 handler 에서 살아 있는 spot 인스턴스에 닿기
+
+같은 프로세스의 일반 채널 handler 가 특정 spot 인스턴스의 메서드를 직접 부르고 싶을 때는,
+spot 이 생성 시 자신을 **directory(앱이 가진 `Dictionary<domainId, spot>`)** 에 등록해 두고
+handler 가 그 directory 로 조회한다. cross-node route(§5)와 달리 **같은 노드 안**에서만 쓰는
+지름길이다.
+
+```csharp
+// 1) DI 싱글톤 directory 등록:  services.AddSingleton<DeliverySpotDirectory>();
+
+// 2) spot 이 OnCreateAsync 에서 자신을 등록 (directory 는 생성자 주입)
+public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(ZLinkMessage request, CancellationToken ct)
+{
+    _deliveryId = request.Decode<DeliverySpotCreate>().DeliveryId;
+    directory.Add(_deliveryId, this);
+    return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept(new DeliverySpotCreated(_deliveryId)));
+}
+
+// 3) 채널 handler 가 보장 후 조회해서 spot 메서드 호출
+await spots.GetOrCreateAsync<DeliveryTrackingSpot>(
+    RoutingId.From(request.DeliveryId), new DeliverySpotCreate(request.DeliveryId), ct);
+directory.Require(request.DeliveryId).Record(request);   // 같은 노드의 spot 인스턴스 메서드 직접 호출
+```
+
+> **동기화 주의.** spot 의 메서드를 directory 로 직접 부르면 spot 의 직렬 실행 큐를 거치지
+> 않는다. 위 `Record(...)` 처럼 *간단한 append* 면 괜찮지만, 복잡한 상태를 만질 때는 직접
+> 호출 대신 spot packet(`SendToSpot`/`RequestToSpot`, §5)으로 보내 직렬화하는 편이 안전하다.
+
 ## 5. SPOT 메시징
 
 spot 이 주고받는 메시지는 **대상이 무엇이냐**로 나뉜다. 종류마다 보내는 함수와 받는
@@ -683,7 +762,7 @@ flowchart LR
 | 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 배선 |
 |------|---------------------------|----------------------------|------------------------|-----------|
 | topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(mesh, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | 같은 SpotMesh pub colocation → **자동** (보내는 쪽 SpotMesh + `EnablePubSub`) |
-| spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(routeMesh, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: RouteMesh channel + SpotNode colocation → **자동** |
+| spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(routeMesh, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: RouteMesh channel + SpotNode colocation(transport 자동) + 받는 SpotMesh 에 **`UseRegistrySpotResolver()`**(spotRid→노드 resolve) |
 | actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM gateway 자동(같은 프로세스 SpotNode) + `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
 | 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel 의 handler, [04](04-channel-messaging.ko.md)) | 그 channel 의 handler | `AddClientServerChannel(name).EnableClient()` ↔ 그 channel server |
 
@@ -889,6 +968,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddRouteMesh("api").EnableServer("tcp://0.0.0.0:9201");  // spot packet — 외부→spot 자동 bridge
 
     var node = options.AddSpotMesh("game.stage");
+    node.UseRegistrySpotResolver();                         // 외부→spot: spotRid → 소유 노드 resolve (필수)
     node.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
     node.EnableRouter("tcp://0.0.0.0:9001");                // spot↔spot · actor packet
     node.EnablePubSub("tcp://0.0.0.0:9000");                // topic publish/subscribe
@@ -935,9 +1015,10 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 ## 7. 자주 막히는 곳
 
 - **`Publish` 가 안 된다** → 노드에 `EnablePubSub(endpoint)` 가 없다.
-- **외부→spot route 가 안 닿는다** → 받는 프로세스에 `AddRouteMesh(name)` 가 `SpotNode` 와 같은
-  프로세스에 있는지(자동 bridge 조건), 보내는 쪽이 같은 RouteMesh channel 이름을 쓰는지, `spotRid`
-  의 소유 노드가 registry 로 resolve 되는지 확인한다.
+- **외부→spot route 가 안 닿는다** → 세 가지를 확인한다. (1) 받는 프로세스에서 `AddRouteMesh(name)` 가
+  `SpotNode` 와 같은 프로세스에 있는지(자동 bridge 조건), (2) 보내는 쪽이 같은 RouteMesh channel 이름을
+  쓰는지, (3) 받는 SpotMesh 에 `UseRegistrySpotResolver()` 가 켜져 있는지. 특히 (3)이 빠지면 다른
+  노드가 소유한 spotRid 를 registry 에서 못 찾아, 같은 프로세스에 없는 spot 으로는 메시지가 닿지 않는다.
 - **Spot factory 타입 중복** → 같은 `SpotNode` 안에서 같은 타입을 두 번 등록하면 시작 예외.
 - **`AddSpotMesh` 가 시작 예외** → 같은 channel 이름으로 두 번 등록했다. 한 프로세스에 여러
   SpotNode 를 둘 수 있지만 이름은 노드마다 달라야 한다.

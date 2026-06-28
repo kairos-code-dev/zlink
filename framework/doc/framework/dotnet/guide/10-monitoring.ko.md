@@ -55,13 +55,14 @@ builder.Services.AddZLinkMonitoring(monitor =>
 });
 
 // AddZLinkMonitoring 은 source 등록만 한다 — event handler 는 자동 등록되지 않으니 직접 DI 로 등록한다.
-builder.Services.AddSingleton<
+// framework 는 이벤트마다 새 scope 에서 handler 를 resolve 하므로 AddScoped 가 자연스럽다.
+builder.Services.AddScoped<
     IZLinkRuntimeEventHandler<ZLinkSocketEvent>,
     ProfileServerSocketMonitor>();
-builder.Services.AddSingleton<
+builder.Services.AddScoped<
     IZLinkRuntimeEventHandler<ZLinkRegistryEvent>,
     RegistryMonitor>();
-builder.Services.AddSingleton<
+builder.Services.AddScoped<
     IZLinkRuntimeEventHandler<ZLinkSpotEvent>,
     StageNodeMonitor>();
 ```
@@ -84,8 +85,16 @@ builder.Services.AddSingleton<
 ## 3. event handler 작성
 
 `IZLinkRuntimeEventHandler<TEvent>` 를 구현한 뒤 같은 타입으로 DI 에 등록하면
-framework 가 scope 에서 handler 를 꺼내 호출한다. `AddZLinkMonitoring(...)` 은
-source 만 등록하며, event handler 를 자동 스캔하거나 자동 등록하지 않는다.
+framework 가 이벤트마다 새 DI scope 를 열어 그 안에서 handler 를 resolve 해 호출한다.
+그래서 `AddScoped` 가 기본 선택이고, handler 가 무상태라면 `AddSingleton` 도 무방하다.
+`AddZLinkMonitoring(...)` 은 source 만 등록하며, event handler 를 자동 스캔하거나
+자동 등록하지 않는다.
+
+> **handler 가 던져도 messaging 은 멈추지 않는다.** 이벤트 dispatch 는 messaging 경로와 분리된
+> detached task(`monitoring-event-dispatch`)로 돌아, `HandleAsync` 가 예외를 던져도 그 실패는
+> 격리되고 이후 메시지 처리는 정상 복구된다. 단 이 실패의 stderr 로그는 기본적으로 조용하고,
+> `ZLINK_DEBUG_FRAMEWORK_TASKS=1` 환경변수를 켰을 때만 `monitoring-event-dispatch` 마커로 남는다
+> (handler 문제를 추적할 땐 이 변수를 켜고 그 마커로 grep 한다).
 
 ### socket
 
@@ -202,9 +211,10 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 
 ## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
 
-monitoring 이 socket/registry/spot **상태 변화**를 본다면, 메시지 흐름 추적은 한 메시지가
-**도착했나 / 핸들러로 갔나 / 응답이 나갔나**를 dispatch 길목에서 표준 기능으로 찍는다. `corr=`로
-grep 하면 한 요청의 생애주기가 노드 간으로 이어진다. dispatch 제어가 아니라 관측이다.
+monitoring 이 socket/registry/spot 의 **상태 변화**를 본다면, 메시지 흐름 추적은 메시지
+하나가 **도착했는지 / handler 로 전달됐는지 / 응답이 나갔는지**를 dispatch 경로에서 기록한다.
+로그를 `corr=` 로 grep 하면 한 요청의 생애주기를 노드 간에 이어서 추적할 수 있다. dispatch 를
+제어하는 게 아니라 관측만 한다.
 
 `ConfigureDispatch()` 체인으로만 켠다(진단 필드는 read-only).
 
@@ -224,9 +234,68 @@ builder.Services.AddZLinkFramework(options =>
 - 운영 중 켜고 끄기: `IZLinkMessageFlowControl` 을 DI 에서 받아 `SetMessageFlowMode(...)`(재시작
   불필요, 모든 surface 즉시 반영).
 - 콜렉터/OTel 연동: `IZLinkMessageFlowObserver` 를 등록해 구조화 이벤트를 받는다(앱 레이어).
-  framework 는 OTel 에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다.
+  framework 는 OTel 에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다
+  (작성법은 바로 아래 "observer 로 흐름 이벤트 받기").
 - 정식 계약은 [spec/aspnet-core-monitoring §9](../spec/aspnet-core-monitoring.ko.md), 공통 의미는
   [공통 스펙 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md) 참고.
+
+### observer 로 흐름 이벤트 받기
+
+로그 파일만으로는 부족하고 흐름 이벤트를 코드로 받고 싶을 때(metric 집계, OTel 전송,
+에러 알림) `IZLinkMessageFlowObserver` 를 구현한다. 등록은 같은 `ConfigureDispatch()`
+체인의 `SetMessageFlowObserver<T>()` 로 하고, observer 는 **DI 에서 resolve** 되므로
+생성자에 필요한 서비스를 주입받을 수 있다.
+
+```csharp
+options.ConfigureDispatch()
+    .SetMessageFlowObserver<MetricFlowObserver>()   // DI 에서 생성 — 생성자 주입 가능
+    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+```
+
+```csharp
+public sealed class MetricFlowObserver(IMetricSink metrics) : IZLinkMessageFlowObserver
+{
+    public ValueTask OnMessageFlowAsync(ZLinkMessageFlowEvent flow, CancellationToken ct)
+    {
+        // 에러만 추려서 집계 — Outcome 으로 분기한다
+        if (flow.Outcome == ZLinkMessageFlowOutcome.Error)
+        {
+            metrics.CountError(
+                surface: flow.Surface,            // 어느 dispatch 표면에서
+                kind: flow.MessageKind,           // request/send/publish 중 무엇이
+                reason: flow.ErrorReason,         // 왜 실패했는지
+                packet: flow.PacketName);
+        }
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+`OnMessageFlowAsync` 가 매 전이마다 받는 `ZLinkMessageFlowEvent` 의 주요 필드:
+
+| 필드 | 의미 |
+|------|------|
+| `Outcome` | 이 이벤트가 무슨 전이인지. `Received`·`Dispatched`·`Replied`·`Sent`·`ReplyReceived`·`Dropped`·`Error` |
+| `Surface` | dispatch 표면(채널/spot/stream 등 어느 경로에서 일어났는지) |
+| `MessageKind` | request·send·publish 등 메시지 종류 |
+| `PacketName` / `ChannelName` / `Topic` | 어떤 packet 이, 어느 channel·topic 에서 |
+| `CorrelationId` | 노드 간 한 요청을 잇는 추적 ID(로그의 `corr=`) |
+| `SpotRid` / `ActorId` | 관련된 spot·actor(해당될 때만) |
+| `SourceRid` / `LocalRid` / `PeerRid` | 이벤트의 출발 노드·현재 노드·상대 노드 routing id |
+| `SocketRole` | 이벤트가 일어난 소켓 역할(server/client/publisher/subscriber 등) |
+| `ErrorReason` / `ErrorAction` / `ErrorType` / `ErrorMessage` | 실패 원인·후속 처리·예외 정보(`Outcome=Error` 일 때만 채워짐) |
+| `MessageSize` | payload 크기(`IncludeMessageSizes(true)` 일 때) |
+
+전체 필드는 spec 또는 record 정의(`ZLinkMessageFlowEvent`)를 확인한다.
+
+- **`MessageFlow(...)` 모드는 로그와 observer 양쪽의 이벤트 생성 범위를 함께 정한다.**
+  observer 가 모든 전이를 받는 게 아니다 — `Off` 면 이벤트를 아예 만들지 않고, `ErrorsOnly`
+  는 drop/error 중심, `KeyTransitions` 이상이면 성공 전이까지 전달한다. 성공 전이는
+  `TraceSampleRate(...)` 로 샘플링될 수도 있다. 즉 observer 는 이 게이팅·샘플링을 통과한
+  이벤트만 받으므로, 모든 에러를 빠짐없이 받으려면 모드를 `ErrorsOnly` 이상으로 둔다.
+- observer 는 **관측 전용**이고 dispatch 와 분리된 fire-and-forget 으로 호출되므로,
+  `OnMessageFlowAsync` 가 예외를 던져도 원래 dispatch 결과는 바뀌지 않는다(흐름이 막히지
+  않는다).
 
 ## 6. 더 보기
 

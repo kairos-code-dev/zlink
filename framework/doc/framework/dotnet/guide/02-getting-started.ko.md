@@ -27,7 +27,7 @@ channel request를 보내는 부분만 본다.
 | API 서버 조립 | `Server/Api/ApiServer.cs` |
 | HTTP handler | `Server/Api/Handlers/CreateGameHttpHandler.cs` |
 | Play 서버 조립 | `Server/Play/PlayServer.cs` |
-| channel handler | `Server/Play/Adapters/ZLink/Handlers/CreateGameHandler.cs` |
+| channel handler | `Server/Play/Infrastructure/ZLink/Handlers/CreateGameHandler.cs` |
 | 메시지 계약 | `Shared/Contracts/Messages.cs` |
 
 현재 저장소의 `TicTacToe.Server.csproj`는 NuGet 패키지가 아니라 프로젝트 참조로
@@ -48,33 +48,39 @@ sequenceDiagram
     Api->>Play: RequestToChannel("Play", CreateGameReq)
     Play->>Spot: room SPOT 생성
     Spot-->>Play: room id
-    Play-->>Api: CreateGameRes {RoomId, PlayEndpoint, GameName}
+    Play-->>Api: CreateGameRes {RoomId, OwnerPlayEndpoint, GameName}
     Api-->>Client: HTTP 200 CreateGameHttpRes
 ```
 
-이 흐름에서 API 서버는 Play 서버 주소를 Discovery로 찾지 않는다. 실제 `.NET`
-`TicTacToe` 샘플은 설정값 `PlayChannelEndpoint`를 읽어
+이 흐름에서 API 서버는 Play 서버 주소를 Discovery로 찾지 않는다. 설정값으로 Play endpoint 를 읽어
 `EnableClient(endpoint)`로 직접 연결한다. 처음 읽을 때는 이 방식이 가장 단순하다.
+
+> **이 장은 단순화한다.** 실제 `TicTacToe` 샘플은 Play 노드를 **여러 개**(`Play(0)`/`Play(1)`,
+> 설정 `PlayChannelEndpoints[]`) 띄우고, `CreateGameHttpHandler` 가 게임마다 owner Play 노드를
+> 하나 골라 보낸다. 아래 코드는 흐름의 본질(HTTP→channel request→reply)을 보이려고 Play 노드 하나만
+> 쓰는 형태로 줄였다. 다중 노드·owner 선택의 전체 모습은 위 표의 실제 파일을 본다.
 
 ## 3. 메시지 계약
 
-실제 샘플의 메시지는 `Shared/Contracts/Messages.cs`에 있다.
+메시지는 `Shared/Contracts/Messages.cs`에 있다. 아래는 이 장의 흐름에 필요한 **핵심 필드만 추린**
+형태다(실제 `CreateGameRes`/`CreateGameHttpRes` 에는 다중 Play 노드용 `PlayEndpoints`·`PlayNodes`,
+`RequiredLevel` 등 필드가 더 있다 — §2 단순화 참고).
 
 ```csharp
 // Http* = 외부 HTTP 경계 계약. 입력이 비어 올 수 있어 GameName 은 nullable.
 public sealed record CreateGameHttpReq(string? GameName);
 
-public sealed record CreateGameHttpRes(
+public sealed record CreateGameHttpRes(   // 실제 파일에는 필드가 더 있다(추려서 표시)
     string RoomId,
-    string PlayEndpoint,
+    string OwnerPlayEndpoint,
     string GameName);
 
 // (Http 접두사 없음) = 서버 간 channel 계약(내부). 정규화 후라 GameName 은 non-null.
 public sealed record CreateGameReq(string GameName);
 
-public sealed record CreateGameRes(
+public sealed record CreateGameRes(       // 실제 파일에는 필드가 더 있다(추려서 표시)
     string RoomId,
-    string PlayEndpoint,
+    string OwnerPlayEndpoint,
     string GameName);
 ```
 
@@ -126,7 +132,7 @@ public static async Task<IResult> HandleAsync(
 
     return Results.Ok(new CreateGameHttpRes(
         reply.RoomId,
-        reply.PlayEndpoint,
+        reply.OwnerPlayEndpoint,
         reply.GameName));
 }
 ```
@@ -179,7 +185,7 @@ $ framework/languages/dotnet/samples/TicTacToe/run_sample.sh
 ```
 
 스크립트는 Play 서버와 API 서버를 띄운 뒤 sample client를 실행한다. 첫 단계에서 sample
-client는 API 서버에 `POST /games`를 보내고, 이어서 반환된 `PlayEndpoint`로 STREAM
+client는 API 서버에 `POST /games`를 보내고, 이어서 반환된 `OwnerPlayEndpoint`로 STREAM
 접속을 진행한다. 이 장은 그중 `POST /games`에서 `CreateGameReq`로 이어지는 부분만
 설명한다.
 

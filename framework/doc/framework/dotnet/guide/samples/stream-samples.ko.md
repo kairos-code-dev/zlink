@@ -22,8 +22,8 @@ loop 를 직접 돌려야 하는 low-level 표면과, framework 가 dispatch 를
 주는 session 표면이 함께 등장하면 그렇다. 그래서 이 문서는 framework session 표면을
 기준으로 다음 두 가지만 다룬다.
 
-1. header session
-2. header session
+1. header session — header 의 packet name 으로 payload 를 decode 하는 흐름(§3)
+2. header session — decode 한 packet 을 곧바로 응답(reply)으로 돌려보내는 흐름(§4)
 
 recv 방식을 사용하는 샘플은 이 문서에 포함하지 않는다.
 
@@ -195,7 +195,7 @@ codec registry 를 사용해 `ZLinkMessage`를 encode/decode 한다.
 오류 분류를 전달한다. 필요할 때는 `Diagnostic` 을 통해 native errno 와 메시지까지
 함께 확인할 수 있다.
 
-## 3. header session 샘플
+## 3. header session 샘플 — packet name 으로 decode
 
 이 절은 header 가 알려 준 packet name 으로 payload 타입을 골라 decode 하는
 흐름을 보여 준다.
@@ -328,7 +328,7 @@ JSON, Protobuf, MessagePack, custom codec 은 같은 handler 코드를 통과하
 - session handler 는 packet 이름과 DTO 타입만 다룬다.
 - codec 을 바꿔도 handler, actor join, SPOT create 코드는 그대로 둔다.
 
-## 4. header session 샘플
+## 4. header session 샘플 — decode 후 즉시 reply
 
 이 절은 framework 가 decode 해 준 packet 을 곧바로 응답으로 돌려보내는 흐름을
 보여 준다.

@@ -176,6 +176,41 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
 > 의 응답 방식(반환값, [06 §3](06-actor-spot.ko.md))과 다르다는 점에 주의한다. STREAM session
 > 작성법은 [08-stream](08-stream.ko.md)이 다룬다.
 
+위 예제는 actor 가 **같은 프로세스**에 있어 `IZLinkActorManager.GetOrCreateAsync` 로 바로 만들고
+bind 한다. actor 를 **다른 노드(Play 서버)** 가 호스팅하는 분리 토폴로지(§1 A)에서는, Play 서버에
+actor 를 보장해 달라고 요청해 ref 3종을 받은 뒤, 그 값으로 `ActorRef` 를 만들어 bind 한다
+(ensure-then-bind).
+
+```csharp
+// 1) Play 서버(route mesh channel)에 actor 보장을 요청 → ref 3종을 받는다([06 §2])
+var ensured = await channels.RequestToChannel(
+        TrackingRouteChannel, new EnsureCustomerActor(customerId))
+    .Async<CustomerActorEnsured>(ct);
+
+// 2) 받은 NodeRid/ActorId/Generation 으로 ActorRef 를 만들어 이 session 에 bind
+await context.Actors.BindAsync(
+    new ActorRef(
+        RoutingId.From(ensured.Actor.NodeRid),
+        ensured.Actor.ActorId,
+        ensured.Actor.Generation),
+    ct);
+```
+
+> **한 session 에 actor 가 여러 개 bind 될 수 있다.** 위 `OnDispatchAsync` 예제는 `Bound.Count == 1`
+> 일 때만 relay 했지만, 한 session 이 두 개 이상 actor 에 bind 된 경우엔 어느 actor 로 보낼지
+> **actor-id metadata** 로 지정하고 `Context.Actors.Find(actorId)` 로 찾아 relay 한다(metadata 는
+> client 가 붙인다 — [08 §metadata](08-stream.ko.md)). actor 가 하나뿐이면 metadata 없이
+> `Bound.Single()` 로, 여럿인데 metadata 가 없으면 `ActorRouteNotFound` 로 처리한다.
+>
+> ```csharp
+> var actorId = dispatch.Metadata.Find("actor-id");
+> var actor = string.IsNullOrWhiteSpace(actorId)
+>     ? context.Actors.Bound.Single()             // 하나뿐이면 그걸로
+>     : context.Actors.Find(actorId)              // 여럿이면 metadata 로 선택
+>       ?? throw new InvalidOperationException($"actor route not found: {actorId}");
+> await actor.RelayAsync(payload, ct);
+> ```
+
 ## 3. Play 서버: actor 가 자기 client 로 push
 
 Spot actor handler 는 stream 을 직접 들지 않는다. 자기 client 로 보내려면 handler 가 받은 actor 의
@@ -232,6 +267,76 @@ public sealed class PlayerNotifyHandler
   fire-and-forget(route 위임 완료이지 client app ack 이 아님)이다.
 - `DisconnectAsync(...)` 는 응용이 거는 것이라 session 의 `OnDisconnectedAsync` 를 다시 일으키지
   않는다(stream 만 닫고 binding 정리).
+
+## 3.5 세션 directory — actor 밖에서 특정 client 로 push
+
+§3 의 `BoundSession.Send` 는 *actor handler 안*에서 자기 client 로 보내는 길이다. 그런데 actor 와
+무관한 외부 사건(예: 다른 서비스의 publish, 관리자 명령)을 **특정 사용자의 client 로** 밀어 넣어야
+할 때가 있다. framework 는 "appId 로 session 을 찾아 주는" public client 를 제공하지 않으므로,
+**앱이 직접 session directory 를 들고** 푸시한다. 패턴은 세 부분이다.
+
+**(1) 연결/해제 시 directory 에 등록·제거** — `OnConnectedAsync`/`OnDisconnectedAsync` 가 그 자리다.
+session 의 key 로는 `Context.SessionId` 를 쓴다.
+
+```csharp
+public ValueTask OnConnectedAsync(CancellationToken ct)
+{
+    sessions.Add(Context);        // 앱이 가진 directory(예: Dictionary<sessionId, IZLinkSessionContext>)
+    return ValueTask.CompletedTask;
+}
+
+public ValueTask OnDisconnectedAsync(CancellationToken ct)
+{
+    sessions.Remove(Context);     // 끊긴 session 은 반드시 빼 준다(메모리 누수·죽은 push 방지)
+    return ValueTask.CompletedTask;
+}
+```
+
+> appId(playerId 등)로 찾고 싶으면 directory 를 `Dictionary<appId, IZLinkSessionContext>` 로 두고,
+> 인증 packet handler 에서 appId→`Context` 를 등록한다. 정리는 `OnDisconnectedAsync` 에서 한다.
+
+**(2) directory 로 찾아 `Context.Client.Send(...)` 로 push** — `Reply(...)` 가 아니라 `Send(...)` 다
+(요청에 대한 응답이 아니라 server 가 먼저 보내는 단방향 push). packet 이름은 `.PacketName(...)` 으로
+명시한다.
+
+```csharp
+if (sessions.TryGet(playerId, out var session))
+{
+    await session.Client.Send(new QuestProgressNotify(playerId, progress))
+        .PacketName("QuestProgress")    // client 가 이 이름으로 받는다
+        .Async();
+}
+```
+
+**(3) push 실패로 죽은 session 정리(선택)** — 이미 끊긴 session 으로의 push 는 실패로 나타날 수
+있다. GameQuest 는 push 를 `ZlinkSubmitException` 으로 감싸 잡고, 잡히면 directory 에서 빼서 stale
+entry 가 쌓이지 않게 한다(`OnDisconnectedAsync` 정리와 더불어 보강하는 안전망).
+
+```csharp
+try
+{
+    await session.Client.Send(notify).PacketName("QuestProgress").Async();
+}
+catch (ZlinkSubmitException)
+{
+    sessions.Remove(session);   // 끊긴 session — directory 에서 제거
+}
+```
+
+### publish handler → session push 브리지
+
+흔한 조합은 **fanout channel 의 publish 를 받아 위 directory 로 흘려보내는** 것이다. publish
+handler 가 메시지를 받아, 구독 중인 session 들에 `Context.Client.Send` 로 push 한다(이러면 다른
+서비스가 publish 한 이벤트가 특정 client 들에게 전달된다).
+
+```csharp
+public sealed class DeliveryStatusFanoutHandler(CustomerSessionDirectory sessions)
+    : IZLinkPublishHandler<DeliveryStatusNotify>
+{
+    public ValueTask HandleAsync(DeliveryStatusNotify message, ZLinkPublishContext context, CancellationToken ct)
+        => sessions.PublishAsync(message, ct);   // directory 가 구독 session 들로 Client.Send fan-out
+}
+```
 
 ## 4. resolver — Spot lookup 만 public
 

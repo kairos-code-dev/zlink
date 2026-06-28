@@ -193,6 +193,33 @@ while (running)
   콜백 work item 만 큐에 넣고 다음 읽기로 넘어간다. `Immediate` 모드는 수신 루프가
   콜백 실행을 그 자리에서 기다리므로 느린 콜백이 다음 읽기를 늦춘다.
 
+### 한 번만 기다리기 — `WaitFor<T>()` / `ReceivedCount`
+
+`On<T>(...)` 는 들어오는 packet 마다 계속 불리는 **상시 핸들러**다. 반면 특정 push 가 *한 번* 오기를
+기다렸다가 그 값을 받고 싶을 때는 `WaitFor<T>()` 를 쓴다. request/response 가 아니라, server 가 먼저
+보내는 push 한 건을 기다리는 용도다(이 push 의 server 쪽 끝점은 보통 actor 의 `BoundSession.Send`
+또는 session 의 `Client.Send` 다 — [07 §3](07-actor-session.ko.md)).
+
+```csharp
+// 이 push 가 오면 받아서 진행 — Timeout 까지 안 오면 예외
+var notify = await connector.WaitFor<ActorPushNotify>()
+    .Timeout(TimeSpan.FromSeconds(30))
+    .Async(cancellationToken);
+```
+
+`ReceivedCount("PacketName")` 는 그 이름으로 **지금 received store 에 남아 있는** packet 수를
+돌려준다(누적 합계가 아니라, `WaitFor` 로 가져가면 줄어들고 store 한도를 넘으면 오래된 것부터
+빠진다). "이 client 는 그 push 를 받지 *않았어야* 한다(== 0)" 같은 검증/진단에 쓴다.
+
+```csharp
+// 예: 이 session 으로는 push 가 오지 않았음을 확인
+ScenarioAssert.That(connector.ReceivedCount("ActorPushNotify") == 0, "push 가 오면 안 된다");
+```
+
+> `WaitFor`/`ReceivedCount` 는 connector 가 들고 있는 **bounded received store** 위에서 동작한다.
+> 크기는 `ZlinkStreamConnectorOptions.MaxReceivedMessages`(기본 1024)로 정하고, 한도를 넘으면 오래된
+> 것부터 버린다. payload 크기 한도(`MaxReceivePayloadSize`)와는 별개 설정이다.
+
 ### send / request
 
 ```csharp
@@ -217,6 +244,49 @@ await connector
   또는 `.PacketName(...)` 으로 override.
 - request/response 는 `request_seq` 로 correlate 된다. packet 이름은 correlation 에
   쓰지 않고, `request_seq` 와 kind(Response/Error)로만 pending request 를 짝짓는다.
+
+### metadata 로 라우팅 — 어느 spot/actor/node 로 보낼지 지정
+
+STREAM client 는 서버의 session 으로 메시지를 보낸다. session 은 메시지에 붙은 문자열
+**metadata** 를 읽고, 그 메시지를 어느 **spot·actor·node** 로 전달할지 정한다. client 는
+`.Metadata(key, value)` 로 metadata 를 붙이고, 같은 호출에 여러 번 체이닝할 수 있다.
+
+```csharp
+// 특정 spot(room) 으로 보내기 — key 이름은 애플리케이션이 정한 상수
+await client.Send(new TimerStartCommand(requestId))
+    .PacketName("TimerStartCommand")
+    .Metadata("spot-rid", spotRid)            // 이 명령을 받을 room 의 spotRid
+    .Async();
+
+// 특정 actor 로 보내기
+var reply = await client.Request(new ActorYieldReq(requestId))
+    .Metadata("actor-id", actorId)            // session 에 bind 된 여러 actor 중 하나를 지정
+    .Async<ActorYieldReply>();
+```
+
+서버 session 은 dispatch 컨텍스트에서 같은 key 로 값을 읽어 라우팅을 결정한다.
+
+```csharp
+// session.OnDispatchAsync 안 — metadata 를 읽어 해당 spot 으로 relay
+var spotRid = dispatch.Metadata.Find("spot-rid");
+if (string.IsNullOrWhiteSpace(spotRid))
+    throw new InvalidOperationException("spot-rid metadata is required.");
+
+// "spot.route" = spot 으로 가는 RouteMesh channel 이름(앱이 등록한 이름).
+// 운영 코드는 보통 이 호출을 discovery 경합 대비 재시도로 감싼다.
+await routes.Send("spot.route", RoutingId.From(spotRid), command)
+    .PacketName(dispatch.PacketName)
+    .Async(ct);
+```
+
+- **key 는 애플리케이션 규약**이다. framework 가 `"spot-rid"` 같은 이름을 강제하지
+  않으니, client·server 가 같은 상수를 공유하면 된다(예: `"spot-rid"`, `"actor-id"`,
+  `"target-node-rid"`).
+- actor 가 session 에 **하나만** bind 돼 있으면 `actor-id` 를 생략하고 그 actor 로
+  보내도록 server 에서 처리할 수 있다. 여럿이면 어느 actor 인지 metadata 로 지정해야
+  한다.
+- payload(packet)는 "무엇을 할지", metadata 는 "어디로 보낼지"를 나른다 — 둘을
+  섞지 않는 게 읽기 편하다.
 
 ### heartbeat / reconnect
 

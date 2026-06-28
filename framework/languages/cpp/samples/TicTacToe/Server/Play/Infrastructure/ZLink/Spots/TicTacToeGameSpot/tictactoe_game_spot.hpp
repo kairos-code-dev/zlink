@@ -8,7 +8,6 @@
 
 #include <zlink/framework.hpp>
 
-#include <iostream>
 #include <map>
 #include <stdexcept>
 #include <vector>
@@ -86,7 +85,6 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         }
         actor.mark_for_destroy_after_room_leave ();
         (void) _context.leaveActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
-        std::cout << "actor: LeaveGameReq completed. actor=" << actor.actor_id << std::endl;
         return {snapshot ()};
     }
 
@@ -128,8 +126,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
             if (actor_id == source_actor_id || actor == nullptr) {
                 continue;
             }
-            auto send_task = actor->context.bound_session ().send (notify).async ();
-            observe_task_completion (send_task, [] (const result_t<void> &) {});
+            (void) actor->context.bound_session ().send (notify).async ();
         }
     }
 
@@ -145,9 +142,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         if (player.wins == 100) {
             const auto milestone_event = player_win_milestone_event_t{
               state.room_id, player.actor_id, player.display_name, player.wins};
-            auto publish_task =
-              _context.publish (sample_names_t::player_milestone_topic, milestone_event).async ();
-            observe_task_completion (publish_task, [] (const result_t<void> &) {});
+            (void) _context.publish (sample_names_t::player_milestone_topic, milestone_event).async ();
         }
     }
 

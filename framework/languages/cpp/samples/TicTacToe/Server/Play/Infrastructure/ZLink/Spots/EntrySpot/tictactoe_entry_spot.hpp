@@ -97,8 +97,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
             const auto notify =
               win_milestone_notify_t{event.room_id, event.actor_id, event.display_name, event.wins,
                                      std::string (_context.node_rid ().value ())};
-            auto send_task = actor->push (notify);
-            observe_task_completion (send_task, [] (const result_t<void> &) {});
+            (void) actor->push (notify);
         }
     }
 

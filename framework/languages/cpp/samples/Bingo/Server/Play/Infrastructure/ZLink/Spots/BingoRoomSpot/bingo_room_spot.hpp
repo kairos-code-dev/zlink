@@ -92,24 +92,8 @@ class bingo_room_spot_t : public spot_t
                            const stop_observing_bingo_events_req_t &request)
     {
         (void) request;
-        const auto actor_id = actor.actor.actor_id;
         observers.erase (actor.actor.actor_id);
-        const auto observed_room_id = _observed_room_id;
-        const auto node_rid = std::string (_context.node_rid ().value ());
-        auto leave_task =
-          _context.leaveActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
-        observe_task_completion (leave_task, [observed_room_id, actor_id,
-                                              node_rid] (const result_t<actor_ref_t> &left) {
-            if (!left) {
-                std::cerr << "bingo observer room: leave failed. observedRoom=" << observed_room_id
-                          << ", observer=" << actor_id
-                          << ", error=" << (left.error () ? left.error ()->what () : "unknown")
-                          << '\n';
-                return;
-            }
-            std::cerr << "bingo observer room: actor left. observedRoom=" << observed_room_id
-                      << ", observer=" << actor_id << ", nodeRid=" << node_rid << '\n';
-        });
+        (void) _context.leaveActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
         return {true, actor.actor.node_rid};
     }
 

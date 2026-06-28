@@ -393,12 +393,15 @@ void configure_invalid (zlink::framework::zlink_framework_options_t &options,
 {
     if (mode == "duplicate") {
         options.handlers ()
-          .add<auto_request_handler_t> (e2e::handler_group)
-          .add<auto_request_handler_t> (e2e::handler_group);
+          .group (e2e::handler_group)
+          .add<auto_request_handler_t> ()
+          .add<auto_request_handler_t> ();
         return;
     }
     if (mode == "wrong-group") {
-        options.handlers ().add_send<auto_send_handler_t> (e2e::handler_group);
+        options.handlers ()
+          .group (e2e::handler_group)
+          .add_send<auto_send_handler_t> ();
         options.add_fanout_channel ("registration.codec.invalid")
           .enable_subscriber (endpoint)
           .use_handler_group (e2e::handler_group);
@@ -443,15 +446,6 @@ int main (int argc, char **argv)
             options.services ().add_transient<manual_route_handler_t> ();
             add_json_codecs (options.codecs ());
             add_custom_codecs (options.codecs ());
-            options.handlers ()
-              .add<auto_request_handler_t> (e2e::handler_group)
-              .add_send<auto_send_handler_t> (e2e::handler_group)
-              .add<scoped_lifecycle_handler_t> (e2e::handler_group)
-              .add<scoped_lifecycle_stats_handler_t> (e2e::handler_group)
-              .add<filter_order_handler_t> (e2e::handler_group)
-              .add<json_roundtrip_handler_t> (e2e::handler_group)
-              .add<custom_roundtrip_handler_t> (e2e::handler_group)
-              .add<mismatch_roundtrip_handler_t> (e2e::handler_group);
             options.add_client_server_channel (e2e::api_channel)
               .enable_server (api_endpoint)
               .use_handler_group (e2e::handler_group);
@@ -465,6 +459,16 @@ int main (int argc, char **argv)
               .listen (http_endpoint)
               .map_health ("/health")
               .map_get<evidence_handler_t> ("/evidence");
+            options.handlers ()
+              .group (e2e::handler_group)
+              .add<auto_request_handler_t> ()
+              .add_send<auto_send_handler_t> ()
+              .add<scoped_lifecycle_handler_t> ()
+              .add<scoped_lifecycle_stats_handler_t> ()
+              .add<filter_order_handler_t> ()
+              .add<json_roundtrip_handler_t> ()
+              .add<custom_roundtrip_handler_t> ()
+              .add<mismatch_roundtrip_handler_t> ();
         });
         return app.run (argc, argv);
     }

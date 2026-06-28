@@ -71,17 +71,18 @@ int main (int argc, char **argv)
           .trace_label ("deliverydispatch-server");
         options.services ().add_singleton<delivery_dispatch_server_role_t> (
           std::make_unique<delivery_dispatch_server_role_t> ());
-        options.handlers ()
-          .add<create_delivery_handler_t> ("dispatch")
-          .add<subscribe_delivery_handler_t> ("dispatch")
-          .add<assign_delivery_handler_t> ("dispatch")
-          .add<advance_delivery_handler_t> ("dispatch")
-          .add<server_assertion_handler_t> ("dispatch");
         options.codecs ().add_json ();
         options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("deliverydispatch.dispatch")
           .enable_server (dispatch_endpoint ())
           .use_handler_group ("dispatch");
+        options.handlers ()
+          .group ("dispatch")
+          .add<create_delivery_handler_t> ()
+          .add<subscribe_delivery_handler_t> ()
+          .add<assign_delivery_handler_t> ()
+          .add<advance_delivery_handler_t> ()
+          .add<server_assertion_handler_t> ();
     });
     const auto exit_code = app.run (argc, argv);
     registry_app.stop ();

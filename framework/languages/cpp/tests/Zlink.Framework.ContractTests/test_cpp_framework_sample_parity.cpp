@@ -876,7 +876,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
                std::string::npos);
     EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t"), std::string::npos);
     EXPECT_NE (play_factory.find ("redis_room_route_store_t"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add<create_game_handler_t> (\"play\")"), std::string::npos);
+    EXPECT_NE (play_factory.find (".group (\"play\")"), std::string::npos);
+    EXPECT_NE (play_factory.find (".add<create_game_handler_t> ()"), std::string::npos);
     EXPECT_EQ (api_factory.find ("add_singleton<create_game_room_handler_t>"), std::string::npos);
     EXPECT_FALSE (std::filesystem::exists (
       tictactoe_root / "Server/Play/Application/GameCreation/create_game_room_handler.hpp"));

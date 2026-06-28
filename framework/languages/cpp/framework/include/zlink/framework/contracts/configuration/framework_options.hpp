@@ -36,6 +36,38 @@ namespace zlink::framework
 class handler_options_builder_t
 {
   public:
+    class group_builder_t
+    {
+      public:
+        group_builder_t (handler_options_builder_t &owner, std::string group_name) :
+            _owner (&owner), _group_name (std::move (group_name))
+        {
+            detail::require_non_blank (_group_name, "handler group name is required");
+        }
+
+        template <typename THandler> group_builder_t &add ()
+        {
+            _owner->template add_to_group<THandler> (_group_name);
+            return *this;
+        }
+
+        template <typename THandler> group_builder_t &add_send ()
+        {
+            _owner->template add_send_to_group<THandler> (_group_name);
+            return *this;
+        }
+
+        template <typename THandler> group_builder_t &add_publish ()
+        {
+            _owner->template add_publish_to_group<THandler> (_group_name);
+            return *this;
+        }
+
+      private:
+        handler_options_builder_t *_owner;
+        std::string _group_name;
+    };
+
     handler_options_builder_t (service_collection_t &services,
                                handler_registry_t &handlers,
                                serializer_registry_t &serializers,
@@ -47,7 +79,13 @@ class handler_options_builder_t
     {
     }
 
-    template <typename THandler> handler_options_builder_t &add (std::string group_name)
+    group_builder_t group (std::string group_name)
+    {
+        return group_builder_t (*this, std::move (group_name));
+    }
+
+  private:
+    template <typename THandler> void add_to_group (std::string group_name)
     {
         using request_type = typename THandler::request_type;
         using reply_type = typename THandler::reply_type;
@@ -117,12 +155,11 @@ class handler_options_builder_t
                     detail::message_name<request_type> (),
                     static_cast<task_t<reply_type> (THandler::*) (
                       const request_type &, const route_handler_context_t &)> (&THandler::handle));
-              });
+            });
         }
-        return *this;
     }
 
-    template <typename THandler> handler_options_builder_t &add_send (std::string group_name)
+    template <typename THandler> void add_send_to_group (std::string group_name)
     {
         using message_type = typename THandler::message_type;
         auto topic_name = detail::handler_topic_name<THandler, message_type> ();
@@ -191,10 +228,9 @@ class handler_options_builder_t
                       const message_type &, const route_handler_context_t &)> (&THandler::handle));
               });
         }
-        return *this;
     }
 
-    template <typename THandler> handler_options_builder_t &add_publish (std::string group_name)
+    template <typename THandler> void add_publish_to_group (std::string group_name)
     {
         using event_type = typename THandler::event_type;
         auto topic_name = detail::handler_topic_name<THandler, event_type> ();
@@ -212,10 +248,8 @@ class handler_options_builder_t
                                      channel_name, topic_name, &THandler::handle,
                                      {.execution = handler_execution_t::offload});
                                });
-        return *this;
     }
 
-  private:
     template <typename TPayload> void add_serializers () { add_json_serializer<TPayload> (); }
 
     template <typename TPayload> void add_json_serializer ()

@@ -52,7 +52,7 @@
 | handler context | `request_context_t` · `send_context_t` · `publish_context_t`(topic/source) |
 | filter 계약 | `TFilter::invoke(const handler_invocation_context_t&, handler_next_t)` — `next()` 호출 안 하면 handler 미실행 |
 | `handler_invocation_context_t` | `{descriptor, context, shared_ptr<const message_t> message}` |
-| 등록 | `options.handlers().add<T>("group")` / `use_filter<TFilter>()` |
+| 등록 | `options.handlers().group("group").add<T>()` / `use_filter<TFilter>()` |
 
 **codec 등록** (`codecs/serializer.hpp`): `serializer_registry_t` — JSON 기본 serializer는
 `add_json<T>()`로 등록한다. Protobuf와 MessagePack은 framework codec extension package를
@@ -81,7 +81,7 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 | 진입점 | 내용 | 장 |
 |--------|------|-----|
 | `services()` | DI 등록 (`add_singleton/scoped/transient<T>`) | [4장](04-di-container.ko.md) |
-| `handlers()` | 핸들러 그룹 등록 (`add<T>("group")`) | [3 §6.1](03-concepts.ko.md) |
+| `handlers()` | 핸들러 그룹 등록 (`group("group").add<T>()`) | [3 §6.1](03-concepts.ko.md) |
 | `codecs()` | `add_json` / `use(extension)` / `add_serializer<T>` | [7 §2](07-channel-messaging.ko.md) |
 | `add_client_server_channel(name)` | `enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` · `use_handler_group(g)` | [7](07-channel-messaging.ko.md) |
 | `add_fanout_channel(name)` | `enable_publisher(ep)` · `enable_subscriber([ep])` · `use_handler_group(g)` | [7 §6](07-channel-messaging.ko.md) |

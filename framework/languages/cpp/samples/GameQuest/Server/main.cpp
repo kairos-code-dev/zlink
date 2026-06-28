@@ -71,24 +71,25 @@ int main (int argc, char **argv)
           .trace_label ("gamequest-server");
         options.services ().add_singleton<game_quest_server_role_t> (
           std::make_unique<game_quest_server_role_t> ());
-        options.handlers ()
-          .add<enter_area_handler_t> ("quest")
-          .add<kill_monster_handler_t> ("quest")
-          .add<collect_item_handler_t> ("quest")
-          .add<complete_mission_handler_t> ("quest")
-          .add<unlock_feature_handler_t> ("quest")
-          .add<subscribe_quest_handler_t> ("quest")
-          .add<get_quest_progress_handler_t> ("quest")
-          .add<sync_quest_progress_handler_t> ("quest")
-          .add<get_gameplay_snapshot_handler_t> ("quest")
-          .add<delete_quest_projection_handler_t> ("quest")
-          .add<rebuild_quest_projection_handler_t> ("quest")
-          .add<game_quest_server_assert_handler_t> ("quest");
         options.codecs ().add_json ();
         options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("gamequest.quest")
           .enable_server (quest_endpoint ())
           .use_handler_group ("quest");
+        options.handlers ()
+          .group ("quest")
+          .add<enter_area_handler_t> ()
+          .add<kill_monster_handler_t> ()
+          .add<collect_item_handler_t> ()
+          .add<complete_mission_handler_t> ()
+          .add<unlock_feature_handler_t> ()
+          .add<subscribe_quest_handler_t> ()
+          .add<get_quest_progress_handler_t> ()
+          .add<sync_quest_progress_handler_t> ()
+          .add<get_gameplay_snapshot_handler_t> ()
+          .add<delete_quest_projection_handler_t> ()
+          .add<rebuild_quest_projection_handler_t> ()
+          .add<game_quest_server_assert_handler_t> ();
     });
     const auto exit_code = app.run (argc, argv);
     registry_app.stop ();

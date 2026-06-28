@@ -90,8 +90,9 @@ app.add_zlink_framework([](auto &options) {
       .enable_server("tcp://0.0.0.0:7100")
       .use_handler_group("api");
     options.handlers()
-      .add<get_user_handler_t>("api")
-      .add<refresh_profile_cache_handler_t>("api");
+      .group ("api")
+      .add<get_user_handler_t> ()
+      .add<refresh_profile_cache_handler_t> ();
 });
 ```
 

@@ -1967,9 +1967,6 @@ int main (int argc, char **argv)
         configure_codecs (options.codecs ());
         options.services ().add_singleton<client_channel_state_t> (
           std::make_unique<client_channel_state_t> ());
-        options.handlers ()
-          .add<channel_echo_handler_t> (e2e::handler_group)
-          .add_send<channel_command_handler_t> (e2e::handler_group);
         options.use_discovery ().add_registry_endpoint (registry_router);
         auto api_channel = options.add_client_server_channel (e2e::api_channel)
                              .enable_server (api_endpoint)
@@ -1995,6 +1992,10 @@ int main (int argc, char **argv)
           .set_routing_id (zlink::routing_id_t::from (client_rid))
           .enable_router (spot_router_endpoint)
           .enable_pub_sub (pubsub_endpoint);
+        options.handlers ()
+          .group (e2e::handler_group)
+          .add<channel_echo_handler_t> ()
+          .add_send<channel_command_handler_t> ();
     });
     app.add_hosted_service (std::move (scenario));
     const auto code = app.run (argc, argv);

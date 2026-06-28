@@ -503,13 +503,15 @@ static_assert (
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::handler_options_builder_t &> ()
-                             .add_send<named_send_handler_t> ("api")),
-                 zlink::framework::handler_options_builder_t &>);
+                             .group ("api")
+                             .add_send<named_send_handler_t> ()),
+                 zlink::framework::handler_options_builder_t::group_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::handler_options_builder_t &> ()
-                             .add_publish<named_publish_handler_t> ("events")),
-                 zlink::framework::handler_options_builder_t &>);
+                             .group ("events")
+                             .add_publish<named_publish_handler_t> ()),
+                 zlink::framework::handler_options_builder_t::group_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_node_options_builder_t &> ()
@@ -879,7 +881,7 @@ int main ()
     zlink::framework::zlink_framework_options_t options (services, option_handlers, serializers,
                                                          zlink, monitoring);
     options.use_filter<named_filter_t> ();
-    options.handlers ().add<alias_registered_handler_t> ("sample");
+    options.handlers ().group ("sample").add<alias_registered_handler_t> ();
 
     return 0;
 }

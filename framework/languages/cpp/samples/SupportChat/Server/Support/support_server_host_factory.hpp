@@ -54,10 +54,6 @@ class support_server_host_factory_t
               .add_singleton<agent_availability_directory_t> ()
               .add_singleton<agent_assignment_service_t, agent_availability_directory_t> ()
               .add_singleton<support_actor_directory_t> ();
-            options.handlers ()
-              .add<ensure_support_user_actor_handler_t> ("support")
-              .add<allocate_conversation_handler_t> ("support")
-              .add<assign_agent_handler_t> ("support");
             options.codecs ().use (support_chat_json_codec ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::support_channel)
@@ -76,6 +72,11 @@ class support_server_host_factory_t
               .add_spot<conversation_spot_t> (sample_names_t::conversation_spot)
               .add_entry_spot<support_entry_spot_t> ()
               .add_actor_factory<support_user_actor_factory_t> (sample_names_t::support_actor_type);
+            options.handlers ()
+              .group ("support")
+              .add<ensure_support_user_actor_handler_t> ()
+              .add<allocate_conversation_handler_t> ()
+              .add<assign_agent_handler_t> ();
         });
         return app;
     }

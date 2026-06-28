@@ -981,7 +981,8 @@ handler owner 타입은 service collection에서 resolve한다. 일반 applicati
 options.services().add_transient<order_handler_t>();
 
 options.handlers()
-  .add<order_created_handler_t>("orders-api");
+  .group ("orders-api")
+  .add<order_created_handler_t> ();
 ```
 
 STREAM application 업무 경로는 header 객체를 직접 받지 않는다. C++ stream session과 actor relay는
@@ -1539,13 +1540,14 @@ module은 서비스 등록, runtime 구성, handler 등록, monitoring 구성을
 `app_t::add_zlink_framework(options_callback)`는 `.NET`의
 `AddZLinkFramework(options => ...)`에 대응하는 C++ 고수준 구성 진입점이다. C++에는 assembly
 reflection이 없으므로 `.NET`의 `AddHandlersFromAssemblyOf(...)`만 그대로 옮기지 않는다.
-그 대신 handler 타입을 명시해서 `options.handlers().add<THandler>(group_name)`,
-`add_send<THandler>(group_name)`, `add_publish<THandler>(group_name)`으로 등록한다.
+그 대신 handler group을 먼저 고르고, 그 group 안에 handler 타입을 명시해서
+`options.handlers().group(group_name).add<THandler>()`,
+`add_send<THandler>()`, `add_publish<THandler>()`로 등록한다.
 나머지 codec, discovery, client-server channel, handler group 구성은 `.NET`과 같은 읽기 수준을
 유지한다.
 
 `options.codecs().add_json()`은 JSON codec 사용만 선언한다. 사용자가 모든 request/reply message
-type을 codec 설정에 나열하지 않는다. C++ framework는 `options.handlers().add<THandler>(...)`에서
+type을 codec 설정에 나열하지 않는다. C++ framework는 `options.handlers().group(...).add<THandler>()`에서
 handler의 `request_type`, `reply_type`을 읽어 필요한 JSON serializer를 내부에서 등록한다.
 send handler는 `message_type`, publish handler는 `event_type`을 읽어 같은 방식으로 serializer와
 handler registry 항목을 등록한다. 따라서 request/send/publish handler를 같은 group 이름으로
@@ -1578,12 +1580,6 @@ host logging 설정에서 정한다. custom category가 필요하면 `logger_fac
 
 ```cpp
 app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &options) {
-    options.handlers()
-      .add<authenticate_player_handler_t>("api")
-      .add<match_bingo_api_handler_t>("api")
-      .add_send<player_command_handler_t>("api")
-      .add_publish<notification_event_handler_t>("events");
-
     options.use_filter<audit_filter_t>();
     options.metadata().add_forwarded_metadata_key("trace-id");
 
@@ -1605,6 +1601,16 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
       zlink::framework::dispatch_mode_t::dynamic;
     dispatch.diagnostics.message_flow =
       zlink::framework::message_flow_log_mode_t::errors_only;
+
+    options.handlers()
+      .group("api")
+      .add<authenticate_player_handler_t>()
+      .add<match_bingo_api_handler_t>()
+      .add_send<player_command_handler_t>();
+
+    options.handlers()
+      .group("events")
+      .add_publish<notification_event_handler_t>();
 });
 ```
 
@@ -2062,7 +2068,8 @@ int main(int argc, char **argv)
         options.add_spot_mesh("orders")
           .enable_router("tcp://0.0.0.0:7101");
         options.handlers()
-          .add<order_created_handler_t>("orders-api");
+          .group ("orders-api")
+          .add<order_created_handler_t> ();
     });
 
     return app.run(argc, argv);

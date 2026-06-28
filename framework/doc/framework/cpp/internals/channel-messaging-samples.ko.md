@@ -48,7 +48,8 @@ app.add_zlink_framework([](auto &options) {
     options.add_client_server_channel("account")
       .enable_client();
     options.handlers()
-      .add<user_handler_t>("api");
+      .group ("api")
+      .add<user_handler_t> ();
 });
 ```
 

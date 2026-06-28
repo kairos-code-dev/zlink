@@ -4412,7 +4412,7 @@ ctest --test-dir framework/languages/cpp/build -R sample_smoke_sample_cpp_framew
 선택은 `add_zlink_framework(options_callback)`를 주 표면으로 두는 것이다. C++ role module은
 내부 확장 단위로 유지할 수 있지만, 샘플과 사용자 문서에는 options builder를 노출한다. C++에서
 reflection이 없다는 차이는 `AddHandlersFromAssemblyOf(...)`를
-`options.handlers().add<THandler>(group_name)`으로 바꾸는 데서만 드러나야 한다.
+`options.handlers().group(group_name).add<THandler>()`로 바꾸는 데서만 드러나야 한다.
 
 ### 적용한 리팩토링
 
@@ -4420,7 +4420,7 @@ reflection이 없다는 차이는 `AddHandlersFromAssemblyOf(...)`를
   `app_t::add_zlink_framework(options_callback)` 중심으로 수정했다.
 - C++ sample API 설정의 목표 형태를 `.NET` `ApiServerHostFactory`와 같은 수준의 예제로 명시했다.
 - handler 자동 검색은 C++에서 제공하지 않고,
-  `options.handlers().add<authenticate_player_handler_t>("api")`처럼 handler 타입을 명시하는 것으로
+  `options.handlers().group("api").add<authenticate_player_handler_t>()`처럼 handler 타입을 명시하는 것으로
   차이를 제한한다고 정리했다.
 - `options.codecs().add_json()`은 codec 사용 선언만 맡기고, request/reply message type은 handler
   registration에서 framework가 읽어 serializer를 자동 등록하는 방향으로 낮췄다.
@@ -8925,15 +8925,15 @@ handler lookup table은 계속 runtime owner 안에 숨긴다.
 |------|------|------|
 | channel builder에 `add_send_handler`/`add_publish_handler`를 직접 추가한다 | `.NET` 이름과 가장 가깝다 | C++의 group 기반 설치 규칙과 handler registry 설치 로직이 channel builder로 퍼진다 |
 | 사용자가 낮은 수준 `handler_registry_t`를 직접 쓰게 둔다 | 변경이 없다 | high-level options가 request-only가 되어 `.NET` 사용 흐름과 어긋난다 |
-| `handler_options_builder_t`에 `add_send`/`add_publish`를 추가한다 | group 기반 깊은 모듈을 유지하고 serializer 자동 등록을 공유한다 | method 이름이 `.NET`과 1:1은 아니다 |
+| `handler_options_builder_t::group(...)` 아래에 `add_send`/`add_publish`를 둔다 | group 기반 깊은 모듈을 유지하고 serializer 자동 등록을 공유한다 | method 이름이 `.NET`과 1:1은 아니다 |
 
 선택은 세 번째 방식이다. C++ high-level configuration은 handler group을 기준으로 channel에
 연결하므로, handler kind별 설치도 같은 builder 안에 모으는 편이 정보 은닉에 맞다.
 
 ### 적용한 리팩토링
 
-- `handler_options_builder_t::add_send<THandler>(group_name)`을 추가했다.
-- `handler_options_builder_t::add_publish<THandler>(group_name)`을 추가했다.
+- `handler_options_builder_t::group(group_name).add_send<THandler>()`를 추가했다.
+- `handler_options_builder_t::group(group_name).add_publish<THandler>()`를 추가했다.
 - send handler는 `message_type`, publish handler는 `event_type`을 읽어 JSON serializer 자동
   등록과 handler registry 설치를 수행한다.
 - topic 이름은 handler의 `topic_name`이 있으면 사용하고, 없으면 payload type의 message name을

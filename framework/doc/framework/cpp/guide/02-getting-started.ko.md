@@ -150,13 +150,14 @@ Play 서버는 `tictactoe.play` channel의 server 역할을 열고 handler group
 붙인다.
 
 ```cpp
-options.handlers ()
-  .add<create_game_handler_t> ("play")
-  .add<ensure_player_actor_handler_t> ("play");
-
 options.add_client_server_channel (sample_names_t::play_channel)
   .enable_server (topology.play_endpoint)
   .use_handler_group ("play");
+
+options.handlers ()
+  .group ("play")
+  .add<create_game_handler_t> ()
+  .add<ensure_player_actor_handler_t> ();
 ```
 
 `create_game_handler_t`는 `CreateGameReq`를 받아 room id, game name, owner Play stream

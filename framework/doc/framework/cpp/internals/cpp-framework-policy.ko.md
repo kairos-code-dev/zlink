@@ -133,7 +133,8 @@ int main(int argc, char **argv)
           .use_handler_group("orders-api");
 
         options.handlers()
-          .add<create_order_handler_t>("orders-api");
+          .group ("orders-api")
+          .add<create_order_handler_t> ();
     });
 
     return app.run(argc, argv);
@@ -794,10 +795,12 @@ handler framework는 사용자가 메시지를 함수 수준에서 처리하게 
 
 ```cpp
 options.handlers()
-  .add<order_created_handler_t>("orders-api");
+  .group ("orders-api")
+  .add<order_created_handler_t> ();
 
 options.handlers()
-  .add<get_order_status_handler_t>("orders-api");
+  .group ("orders-api")
+  .add<get_order_status_handler_t> ();
 ```
 
 handler owner 타입은 handler class의 type alias와 `handle(...)` 함수로 드러낸다.
@@ -817,7 +820,7 @@ public:
 };
 ```
 
-이 경우 handler 타입은 `options.handlers().add<THandler>(...)`에서 service collection에
+이 경우 handler 타입은 `options.handlers().group(...).add<THandler>()`에서 service collection에
 자동 등록된다. 생성자 주입이 필요하면 `dependency_types`에 의존 타입을 적는다. framework가
 없는 타입을 임의로 추측해 생성하지 않도록, 생성자 후보와 의존성은 handler 타입 안에서
 명시해야 한다.

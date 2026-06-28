@@ -86,10 +86,13 @@ class get_price_handler_t
 };
 
 app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-    options.handlers ().add<get_price_handler_t> ("price");
     options.add_client_server_channel ("price")
       .enable_server ("tcp://0.0.0.0:7301")
       .use_handler_group ("price");
+
+    options.handlers ()
+      .group ("price")
+      .add<get_price_handler_t> ();
 });
 ```
 

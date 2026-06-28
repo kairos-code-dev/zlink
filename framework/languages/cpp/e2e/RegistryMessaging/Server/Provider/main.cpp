@@ -94,9 +94,6 @@ int main (int argc, char **argv)
         framework.services ().add_transient<rm_provider::server_weight_handler_t,
                                             zlink::framework::channel_runtime_options_t> ();
         configure_common_codecs (framework.codecs ());
-        framework.handlers ()
-          .add<rm_provider::profile_request_handler_t> (e2e::handler_group)
-          .add_send<rm_provider::profile_command_handler_t> (e2e::handler_group);
         if (!options.embedded_registry_pub.empty () && !options.embedded_registry_router.empty ()) {
             framework.enable_registry (options.embedded_registry_pub,
                                        options.embedded_registry_router);
@@ -137,6 +134,10 @@ int main (int argc, char **argv)
               .map_get<rm_provider::evidence_handler_t> ("/evidence")
               .map_post<rm_provider::server_weight_handler_t> ("/admin/server-weight");
         }
+        framework.handlers ()
+          .group (e2e::handler_group)
+          .add<rm_provider::profile_request_handler_t> ()
+          .add_send<rm_provider::profile_command_handler_t> ();
     });
     return app.run (argc, argv);
 }

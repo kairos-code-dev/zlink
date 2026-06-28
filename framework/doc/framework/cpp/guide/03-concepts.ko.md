@@ -231,7 +231,7 @@ graph TB
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
 보장은 [8장](08-spot.ko.md), 채널 핸들러 노출은 [7장](07-channel-messaging.ko.md).
 
-**handler 노출은 명시적이다** — `options.handlers().add<T>("api")` 로 group 에 넣고,
+**handler 노출은 명시적이다** — `options.handlers().group("api").add<T>()` 로 group 에 넣고,
 channel 등록에서 `use_handler_group("api")` 로 붙인다. 시작 단계에서 같은 handler
 group 안 packet 중복, registry handler 중복, client/subscriber 의 연결 경로 누락,
 허용되지 않는 반환형 등이 거부된다.

@@ -5,7 +5,7 @@
 
 ## 구현한 시나리오
 
-- `RC-A1`: `options.handlers().add<THandler>(group)`와 `use_handler_group(group)`로
+- `RC-A1`: `options.handlers().group(group).add<THandler>()`와 `use_handler_group(group)`로
   handler group 기반 request/send 등록을 검증한다. C++에서는 packet 타입의
   `static constexpr packet_name`이 공개 packet 이름이 된다.
 - `RC-A3`: route mesh builder의

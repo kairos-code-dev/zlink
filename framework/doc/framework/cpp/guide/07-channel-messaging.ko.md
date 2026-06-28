@@ -20,15 +20,11 @@
 
 > **cpp 는 수동 등록만 제공한다.** 어트리뷰트·리플렉션 기반 자동 등록(어노테이션
 > scan)은 cpp 언어 표준이 아니라 제공하지 않는다 — 핸들러는 항상 명시 registry
-> (`handlers().add<T>(...)`, SPOT 은 `configure()` context)로 등록한다. dotnet·node·java
+> (`handlers().group(...).add<T>()`, SPOT 은 `configure()` context)로 등록한다. dotnet·node·java
 > 는 수동에 더해 어트리뷰트/데코레이터 자동 등록도 제공한다.
 
 ```cpp
 app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-    options.handlers ()
-      .add<create_game_handler_t> ("play")
-      .add<ensure_player_actor_handler_t> ("play");
-
     options.codecs ().use (
       zlink::framework_codecs::messagepack<create_game_req_t,
                                            create_game_res_t> ());
@@ -36,6 +32,11 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
     options.add_client_server_channel ("tictactoe.play")
       .enable_server ("tcp://0.0.0.0:5561")
       .use_handler_group ("play");
+
+    options.handlers ()
+      .group ("play")
+      .add<create_game_handler_t> ()
+      .add<ensure_player_actor_handler_t> ();
 });
 ```
 
@@ -208,8 +209,9 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
     options.use_filter<audit_filter_t> ();
 
     options.handlers ()
-      .add<create_game_handler_t> ("play")
-      .add<ensure_player_actor_handler_t> ("play");
+      .group ("play")
+      .add<create_game_handler_t> ()
+      .add<ensure_player_actor_handler_t> ();
 });
 ```
 
@@ -290,10 +292,12 @@ co_await publisher.publish ("bingo.notifications", "room-3187",
                             number_drawn_notify_t{state}).async ();
 
 // subscriber 쪽 — 핸들러 그룹으로 받는다
-options.handlers ().add_publish<number_drawn_handler_t> ("notifications");
 options.add_fanout_channel ("bingo.notifications")
   .enable_subscriber ("tcp://10.30.1.20:5571")
   .use_handler_group ("notifications");
+options.handlers ()
+  .group ("notifications")
+  .add_publish<number_drawn_handler_t> ();
 ```
 
 `publisher_t`는 `auto pub = app.advanced().zlink().publisher();`의

@@ -42,7 +42,7 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 | target Spot 직접 호출 public client | actor 생성 또는 Entry Spot join 뒤 actor/session handle 사용 |
 | raw timer callback | `spot_context_t::add_timer(...)`와 `timer_tick_t` metadata |
 
-application handler owner는 `options.handlers().add<THandler>(...)`로 등록한 타입이어야 한다.
+application handler owner는 `options.handlers().group(...).add<THandler>()`로 등록한 타입이어야 한다.
 생성자 주입이 필요하면 handler 타입의 `dependency_types`에 의존 타입을 적는다. 이 규칙은
 handler lifecycle과 shutdown 중 resolve 금지 같은 host 정책을 한곳에서 닫기 위해 필요하다.
 
@@ -86,8 +86,9 @@ app.add_zlink_framework([](auto &options) {
       .enable_server("tcp://0.0.0.0:7001")
       .use_handler_group("orders-api");
     options.handlers()
-      .add<order_created_handler_t>("orders-api")
-      .add<get_order_status_handler_t>("orders-api");
+      .group ("orders-api")
+      .add<order_created_handler_t> ()
+      .add<get_order_status_handler_t> ();
 });
 ```
 
@@ -101,12 +102,13 @@ request/relay를 기다려야 하면 blocking wait를 쓰지 않고 `co_await ca
 사용한다.
 
 CPU-bound 또는 blocking 가능성이 있는 handler는 framework handler coroutine executor에서
-실행한다. `options.handlers().add<THandler>(...)`는 기본적으로 offload 실행 정책을 적용한다.
+실행한다. `options.handlers().group(...).add<THandler>()`는 기본적으로 offload 실행 정책을 적용한다.
 사용자가 host factory에서 handler마다 실행 정책을 반복해서 쓰게 만들지 않는다.
 
 ```cpp
 options.handlers()
-  .add<match_handler_t>("match-api");
+  .group ("match-api")
+  .add<match_handler_t> ();
 ```
 
 ## 4. Messaging 주입 기준

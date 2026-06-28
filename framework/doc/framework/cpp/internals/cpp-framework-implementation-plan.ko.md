@@ -580,7 +580,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-integration
 구현 항목:
 
 - `handler_registry_t`
-- `options.handlers().add<THandler>(group)`
+- `options.handlers().group(group).add<THandler>()`
 - handler alias: `request_type`, `reply_type`, `spot_type`, `actor_type`
 - handler `topic_name`
 - typed deserialize/serialize

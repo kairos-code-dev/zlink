@@ -553,12 +553,12 @@ int main ()
     options_filter_t::invoke_count = 0;
     options_send_handler_t::last_value.clear ();
     options_publish_handler_t::last_value.clear ();
-    options.handlers ().add<options_request_handler_t> ("api");
+    options.handlers ().group ("api").add<options_request_handler_t> ();
     options.codecs ().add_json ();
-    options.handlers ().add<late_options_request_handler_t> ("api");
-    options.handlers ().add<context_options_request_handler_t> ("api");
-    options.handlers ().add_send<options_send_handler_t> ("api");
-    options.handlers ().add_publish<options_publish_handler_t> ("events");
+    options.handlers ().group ("api").add<late_options_request_handler_t> ();
+    options.handlers ().group ("api").add<context_options_request_handler_t> ();
+    options.handlers ().group ("api").add_send<options_send_handler_t> ();
+    options.handlers ().group ("events").add_publish<options_publish_handler_t> ();
     options.use_filter<options_filter_t> ();
     options.metadata ().add_forwarded_metadata_key ("trace-id");
     auto &dispatch = options.configure_dispatch ();
@@ -798,7 +798,7 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.handlers ().add_send<options_send_handler_t> ("commands");
+        invalid_options.handlers ().group ("commands").add_send<options_send_handler_t> ();
         invalid_options.add_fanout_channel ("bad-events").use_handler_group ("commands");
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -821,7 +821,7 @@ int main ()
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
         invalid_options.add_client_server_channel ("bad-api").use_handler_group ("events");
-        invalid_options.handlers ().add_publish<options_publish_handler_t> ("events");
+        invalid_options.handlers ().group ("events").add_publish<options_publish_handler_t> ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         incompatible_late_handler_group_failed =
@@ -891,8 +891,8 @@ int main ()
         invalid_options.add_client_server_channel ("duplicate-api")
           .enable_server ("tcp://127.0.0.1:9340")
           .use_handler_group ("api");
-        invalid_options.handlers ().add_send<options_send_handler_t> ("api");
-        invalid_options.handlers ().add_send<options_send_handler_t> ("api");
+        invalid_options.handlers ().group ("api").add_send<options_send_handler_t> ();
+        invalid_options.handlers ().group ("api").add_send<options_send_handler_t> ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_high_level_send_handler_failed =
@@ -914,8 +914,8 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.handlers ().add<options_request_handler_t> ("api");
-        invalid_options.handlers ().add<options_request_handler_t> ("api");
+        invalid_options.handlers ().group ("api").add<options_request_handler_t> ();
+        invalid_options.handlers ().group ("api").add<options_request_handler_t> ();
         invalid_options.add_client_server_channel ("late-duplicate-api")
           .enable_server ("tcp://127.0.0.1:9341")
           .use_handler_group ("api");
@@ -1187,7 +1187,7 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.handlers ().add<options_request_handler_t> (" ");
+              invalid_options.handlers ().group (" ").add<options_request_handler_t> ();
           },
           "handler group name is required")) {
         return 43;

@@ -1143,10 +1143,6 @@ inline int run_play_server (int argc, char **argv)
                          zlink::framework::spot_node_manager_t,
                          zlink::framework::session_actor_manager_t> ();
         configure_codecs (options.codecs ());
-        options.handlers ()
-          .add<channel_echo_handler_t> (e2e::handler_group)
-          .add_send<channel_command_handler_t> (e2e::handler_group)
-          .add<channel_slow_handler_t> (e2e::handler_group);
         options.use_discovery ().add_registry_endpoint (registry_router);
 
         auto play_route = options.add_route_mesh (e2e::route_channel)
@@ -1221,6 +1217,11 @@ inline int run_play_server (int argc, char **argv)
           .map_post<lifecycle_spot_handler_t> ("/spot/lifecycle")
           .map_post<close_spot_handler_t> ("/spot/close")
           .map_post<type_mismatch_spot_handler_t> ("/spot/type-mismatch");
+        options.handlers ()
+          .group (e2e::handler_group)
+          .add<channel_echo_handler_t> ()
+          .add_send<channel_command_handler_t> ()
+          .add<channel_slow_handler_t> ();
     });
     return app.run (argc, argv);
 }

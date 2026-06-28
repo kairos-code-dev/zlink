@@ -47,9 +47,6 @@ class play_server_host_factory_t
               .add_singleton<redis_room_route_store_t, sample_topology_t> ()
               .add_singleton<tictactoe_game_creator_t, sample_topology_t,
                              redis_room_route_store_t> ();
-            options.handlers ()
-              .add<create_game_handler_t> ("play")
-              .add<ensure_player_actor_handler_t> ("play");
             options.codecs ().add_json ();
             options.services ().add_singleton<sample_topology_t> (
               std::make_unique<sample_topology_t> (topology));
@@ -74,6 +71,10 @@ class play_server_host_factory_t
             options.add_stream_node (sample_names_t::stream_name)
               .bind (topology.selected_stream_endpoint ())
               .register_session<play_session_t> ();
+            options.handlers ()
+              .group ("play")
+              .add<create_game_handler_t> ()
+              .add<ensure_player_actor_handler_t> ();
         });
         return app;
     }

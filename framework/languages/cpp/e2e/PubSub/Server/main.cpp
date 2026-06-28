@@ -220,15 +220,6 @@ int main (int argc, char **argv)
             });
         options.services ().add_singleton<evidence_state_t> (std::move (state));
         configure_codecs (options.codecs ());
-        if (env_has_topic (topics, e2e::topic_fanout)) {
-            options.handlers ().add_publish<fanout_handler_t> (e2e::handler_group);
-        }
-        if (env_has_topic (topics, e2e::topic_alpha)) {
-            options.handlers ().add_publish<alpha_handler_t> (e2e::handler_group);
-        }
-        if (env_has_topic (topics, e2e::topic_beta)) {
-            options.handlers ().add_publish<beta_handler_t> (e2e::handler_group);
-        }
         options.use_discovery ().add_registry_endpoint (registry_router);
         auto channel = options.add_fanout_channel (e2e::event_channel);
         if (publisher_endpoint.empty ()) {
@@ -241,6 +232,21 @@ int main (int argc, char **argv)
           .listen (http_endpoint)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence");
+        if (env_has_topic (topics, e2e::topic_fanout)) {
+            options.handlers ()
+              .group (e2e::handler_group)
+              .add_publish<fanout_handler_t> ();
+        }
+        if (env_has_topic (topics, e2e::topic_alpha)) {
+            options.handlers ()
+              .group (e2e::handler_group)
+              .add_publish<alpha_handler_t> ();
+        }
+        if (env_has_topic (topics, e2e::topic_beta)) {
+            options.handlers ()
+              .group (e2e::handler_group)
+              .add_publish<beta_handler_t> ();
+        }
     });
     return app.run (argc, argv);
 }

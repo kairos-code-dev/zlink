@@ -37,15 +37,16 @@ class api_server_host_factory_t
               .message_flow (message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("api"))
               .trace_label ("supportchat-api");
-            options.handlers ()
-              .add<authenticate_user_handler_t> ("api")
-              .add<open_conversation_handler_t> ("api");
             options.codecs ().use (support_chat_json_codec ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_server (topology.api_channel_endpoint)
               .use_handler_group ("api");
             options.add_client_server_channel (sample_names_t::support_channel).enable_client ();
+            options.handlers ()
+              .group ("api")
+              .add<authenticate_user_handler_t> ()
+              .add<open_conversation_handler_t> ();
         });
         return app;
     }

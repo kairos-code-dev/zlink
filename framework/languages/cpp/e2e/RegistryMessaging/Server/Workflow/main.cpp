@@ -42,12 +42,14 @@ int main (int argc, char **argv)
         framework.services ().add_singleton<rm_workflow::scenario_state_t> (
           std::make_unique<rm_workflow::scenario_state_t> (options.rid, options.instance_id));
         configure_common_codecs (framework.codecs ());
-        framework.handlers ().add<rm_workflow::workflow_request_handler_t> (e2e::handler_group);
         framework.use_discovery ().add_registry_endpoint (options.registry_router);
         framework.add_client_server_channel (e2e::workflow_channel)
           .enable_server (options.workflow_endpoint)
           .set_routing_id (zlink::routing_id_t::from (options.rid))
           .use_handler_group (e2e::handler_group);
+        framework.handlers ()
+          .group (e2e::handler_group)
+          .add<rm_workflow::workflow_request_handler_t> ();
     });
     return app.run (argc, argv);
 }

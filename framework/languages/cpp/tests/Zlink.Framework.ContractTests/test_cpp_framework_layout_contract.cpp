@@ -530,7 +530,7 @@ bool implementation_plan_goal8_covers_handler_serializer_model (const std::files
     bool ok = true;
     const std::string required[] = {
       "`handler_registry_t`",
-      "options.handlers().add<THandler>(group)",
+      "options.handlers().group(group).add<THandler>()",
       "handler alias: `request_type`, `reply_type`, `spot_type`, `actor_type`",
       "handler `topic_name`",
       "typed deserialize/serialize",

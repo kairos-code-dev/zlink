@@ -83,7 +83,8 @@ app.add_zlink_framework([&](auto &options) {
       .map_post<create_game_http_handler_t>("/games");
 
     options.handlers()
-      .add<authenticate_player_handler_t>("api");
+      .group ("api")
+      .add<authenticate_player_handler_t> ();
 });
 ```
 

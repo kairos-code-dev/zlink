@@ -69,19 +69,20 @@ int main (int argc, char **argv)
           .trace_label ("shoppingmall-server");
         options.services ().add_singleton<shopping_mall_server_role_t> (
           std::make_unique<shopping_mall_server_role_t> ());
-        options.handlers ()
-          .add<start_order_handler_t> ("workflow")
-          .add<continue_order_workflow_handler_t> ("workflow")
-          .add<get_order_state_handler_t> ("workflow")
-          .add<delete_order_projection_handler_t> ("workflow")
-          .add<rebuild_order_projection_handler_t> ("workflow")
-          .add<seed_pending_idempotency_handler_t> ("workflow")
-          .add<server_assertion_handler_t> ("workflow");
         options.codecs ().add_json ();
         options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("shoppingmall.workflow")
           .enable_server (workflow_endpoint ())
           .use_handler_group ("workflow");
+        options.handlers ()
+          .group ("workflow")
+          .add<start_order_handler_t> ()
+          .add<continue_order_workflow_handler_t> ()
+          .add<get_order_state_handler_t> ()
+          .add<delete_order_projection_handler_t> ()
+          .add<rebuild_order_projection_handler_t> ()
+          .add<seed_pending_idempotency_handler_t> ()
+          .add<server_assertion_handler_t> ();
     });
     const auto exit_code = app.run (argc, argv);
     registry_app.stop ();

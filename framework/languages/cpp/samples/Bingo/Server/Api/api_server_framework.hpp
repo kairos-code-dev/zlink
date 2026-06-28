@@ -22,10 +22,6 @@ inline app_t &add_bingo_api_server (app_t &app, const sample_topology_t &topolog
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (flow_log_path ("api-" + topology.api_node))
           .trace_label ("api-" + topology.api_node);
-        options.handlers ()
-          .add<authenticate_player_handler_t> ("api")
-          .add<match_bingo_api_handler_t> ("api");
-
         options.codecs ().use (framework_codecs::protobuf ());
 
         options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
@@ -38,6 +34,11 @@ inline app_t &add_bingo_api_server (app_t &app, const sample_topology_t &topolog
           .enable_server (topology.selected_api_play_route_endpoint ())
           .set_routing_id (zlink::routing_id_t::from (topology.selected_api_route_rid ()))
           .enable_client ();
+
+        options.handlers ()
+          .group ("api")
+          .add<authenticate_player_handler_t> ()
+          .add<match_bingo_api_handler_t> ();
     });
     return app;
 }

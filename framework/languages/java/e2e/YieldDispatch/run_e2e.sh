@@ -132,6 +132,26 @@ with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
 PY
 }
 
+wait_readiness() {
+  : >"${log_dir}/readiness.stdout.log"
+  : >"${log_dir}/readiness.stderr.log"
+  for attempt in $(seq 1 60); do
+    if ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
+      ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
+      ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
+      ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        timeout -k 5s 20s "$(client_bin)" --readiness \
+        >>"${log_dir}/readiness.stdout.log" 2>>"${log_dir}/readiness.stderr.log"; then
+      return 0
+    fi
+    printf 'readiness attempt %s failed\n' "${attempt}" >>"${log_dir}/readiness.stderr.log"
+    sleep 0.5
+  done
+  echo "Timed out waiting for route and spot readiness" >&2
+  return 1
+}
+
 gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
@@ -230,7 +250,7 @@ wait_port session-route "${SESSION_ROUTE_ENDPOINT}"
 wait_port session-spot "${SESSION_SPOT_ENDPOINT}"
 wait_port session-stream "${STREAM_ENDPOINT}"
 wait_http session-http "${SESSION_HTTP}"
-sleep 2
+wait_readiness
 
 ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
 ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \

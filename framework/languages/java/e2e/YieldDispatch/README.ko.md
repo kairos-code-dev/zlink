@@ -55,4 +55,4 @@ play/session evidence JSON을 남긴다. 성공 기준은 `scenario YD-A1 passed
 `scenario YD-C2 passed`, `scenario YD-C3 passed`, `scenario YD-D2 passed`,
 `scenario YD-D3 passed`, `scenario YD-D4 passed`,
 `yield-dispatch e2e result=passed` 출력과 message flow 로그 생성이다. 최근 확인된 통과 로그는
-`logs/20260630-031940-2462845`이며, `YD-D4`까지 포함해 통과했다.
+`logs/20260630-032840-2493437`이며, `YD-D4`까지 포함해 통과했다.

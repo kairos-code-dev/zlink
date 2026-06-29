@@ -31,6 +31,11 @@ public final class Program {
             ZLinkStreamConnectorOptions.createDefault(URI.create(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))));
         try {
             connector.connect().await();
+            if (args.length > 0 && "--readiness".equals(args[0])) {
+                runReadinessProbe(connector);
+                System.out.println("yield-dispatch readiness=ready");
+                return;
+            }
             runScenario(connector, "YD-A1", List.of(
                 "hold-started",
                 "hold-resumed",
@@ -572,10 +577,6 @@ public final class Program {
             ZLinkStreamConnectorOptions.createDefault(URI.create(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))));
         try {
             unbound.connect().await();
-            CompletionStage<ZLinkStreamMessage<Contracts.ActorPushNotify>> unboundPush = unbound
-                .waitFor(Contracts.ActorPushNotify.class)
-                .timeout(Duration.ofMillis(400))
-                .submit(Contracts.ActorPushNotify.class);
             CompletionStage<ZLinkStreamMessage<Contracts.ActorPushNotify>> push = connector
                 .waitFor(Contracts.ActorPushNotify.class)
                 .timeout(REQUEST_TIMEOUT)
@@ -594,6 +595,10 @@ public final class Program {
             ensure(requestId.equals(notify.requestId()), "YD-D4 push request mismatch");
             ensure("bound-session-push".equals(notify.value()), "YD-D4 push value mismatch");
             ensure(Contracts.PLAY_NODE_A.equals(notify.nodeRid()), "YD-D4 push node mismatch");
+            CompletionStage<ZLinkStreamMessage<Contracts.ActorPushNotify>> unboundPush = unbound
+                .waitFor(Contracts.ActorPushNotify.class)
+                .timeout(Duration.ofMillis(400))
+                .submit(Contracts.ActorPushNotify.class);
             unbound.dispatch().await();
             expectFailure(() -> unbound.await(unboundPush), "YD-D4 unbound session received actor push");
         } finally {
@@ -610,6 +615,24 @@ public final class Program {
             "actor-push-yield-released",
             "actor-push-yield-resumed",
             "actor-push-yield-completed"), "actor=" + actorA);
+    }
+
+    private static void runReadinessProbe(ZLinkStreamConnector connector) throws Exception {
+        Contracts.EnsureSpotReply playA = connector
+            .request(new Contracts.EnsureSpotRequest(Contracts.TARGET_SPOT))
+            .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.EnsureSpotReply.class);
+        ensure(Contracts.TARGET_SPOT.equals(playA.spotRid()), "readiness play-a spot mismatch");
+        ensure(Contracts.PLAY_NODE_A.equals(playA.nodeRid()), "readiness play-a node mismatch");
+
+        Contracts.EnsureSpotReply playB = connector
+            .request(new Contracts.EnsureSpotRequest(Contracts.TARGET_SPOT))
+            .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.EnsureSpotReply.class);
+        ensure(Contracts.TARGET_SPOT.equals(playB.spotRid()), "readiness play-b spot mismatch");
+        ensure(Contracts.PLAY_NODE_B.equals(playB.nodeRid()), "readiness play-b node mismatch");
     }
 
     private static void joinActor(

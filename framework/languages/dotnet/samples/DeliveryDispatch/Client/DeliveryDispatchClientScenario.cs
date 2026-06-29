@@ -7,42 +7,45 @@ namespace DeliveryDispatch.Client;
 
 internal sealed class DeliveryDispatchClientScenario
 {
+    // End-to-end client story:
+    // 1. Open one customer stream session and two courier stream sessions.
+    // 2. Bind courier-a and courier-b independently so each courier actor can push to its own client.
+    // 3. Create a delivery where courier-a receives an offer and accepts it.
+    // 4. Create another delivery where courier-a receives an offer but stays silent.
+    // 5. Let the dispatch server time out courier-a, reassign to courier-b, and finish the delivery.
+    // 6. Ask the server to verify that tracking saw the expected status sequences.
     public async ValueTask RunAsync(
         ZLinkHttpClient http,
         IZlinkStreamConnector customer,
-        IZlinkStreamConnector courier,
+        IZlinkStreamConnector courierA,
+        IZlinkStreamConnector courierB,
         CancellationToken cancellationToken = default)
     {
+        // The sample uses three logical client sessions:
+        // one customer session and one independent courier session per courier.
         await customer.Connect.Async(cancellationToken);
-        await courier.Connect.Async(cancellationToken);
+        await courierA.Connect.Async(cancellationToken);
+        await courierB.Connect.Async(cancellationToken);
 
-        _ = await BindCouriersAsync(courier, cancellationToken);
+        // Each courier binds its own stream session to the actor chosen by the server side directory.
+        _ = await BindCourierAsync(courierA, "courier-a", cancellationToken);
+        _ = await BindCourierAsync(courierB, "courier-b", cancellationToken);
 
-        await RunSuccessfulDeliveryAsync(http, customer, courier, cancellationToken);
-        await RunReassignedDeliveryAsync(http, customer, courier, cancellationToken);
+        // Run both dispatch paths: direct acceptance first, then timeout-based reassignment.
+        await RunSuccessfulDeliveryAsync(http, customer, courierA, cancellationToken);
+        await RunReassignedDeliveryAsync(http, customer, courierA, courierB, cancellationToken);
         await AssertServerEvidenceAsync(http, cancellationToken);
     }
 
-    private static async ValueTask<CouriersBound> BindCouriersAsync(
+    private static async ValueTask<CourierBound> BindCourierAsync(
         IZlinkStreamConnector courier,
+        string courierId,
         CancellationToken cancellationToken)
     {
-        Exception? lastError = null;
-        for (var attempt = 1; attempt <= 40; attempt++)
-        {
-            try
-            {
-                return await courier.Request(new BindCouriers(["courier-a", "courier-b"]))
-                    .Async<CouriersBound>(cancellationToken);
-            }
-            catch (Exception error) when (error is not OperationCanceledException)
-            {
-                lastError = error;
-                await Task.Delay(100, cancellationToken);
-            }
-        }
-
-        throw new InvalidOperationException("Courier stream bind failed.", lastError);
+        // The client only identifies the courier. The server attaches the current stream session
+        // to the courier actor and replies with the actor/session binding evidence.
+        return await courier.Request(new BindCourierSession(courierId))
+            .Async<CourierBound>(cancellationToken);
     }
 
     private static async ValueTask RunSuccessfulDeliveryAsync(
@@ -51,7 +54,11 @@ internal sealed class DeliveryDispatchClientScenario
         IZlinkStreamConnector courier,
         CancellationToken cancellationToken)
     {
+        // Success path: customer subscribes, dispatch creates the delivery,
+        // courier-a receives the offer through stream push, then accepts.
         var deliveryId = "delivery-success";
+
+        // Register waits before creating the delivery so push messages cannot race past the client.
         var offer = courier.WaitFor<OfferDelivery>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Async(cancellationToken);
@@ -81,6 +88,7 @@ internal sealed class DeliveryDispatchClientScenario
             .Fetch<DeliveryCreated>();
         Ensure(created.DeliveryId == deliveryId);
 
+        // courier-a receives the offer through its bound stream session and accepts it.
         var courierOffer = (await offer).Payload;
         await courier.Send(new CourierDecision(
                 courierOffer.DeliveryId,
@@ -98,15 +106,20 @@ internal sealed class DeliveryDispatchClientScenario
     private static async ValueTask RunReassignedDeliveryAsync(
         ZLinkHttpClient http,
         IZlinkStreamConnector customer,
-        IZlinkStreamConnector courier,
+        IZlinkStreamConnector courierA,
+        IZlinkStreamConnector courierB,
         CancellationToken cancellationToken)
     {
+        // Reassignment path: courier-a receives the first offer and does not respond.
+        // The server timeout causes the same delivery to be offered to courier-b.
         var deliveryId = "delivery-reassign";
-        var firstOffer = courier.WaitFor<OfferDelivery>()
+
+        // courier-a and courier-b are different stream sessions, so each waits on its own connector.
+        var firstOffer = courierA.WaitFor<OfferDelivery>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Where(message => message.Payload.CourierId == "courier-a")
             .Async(cancellationToken);
-        var secondOffer = courier.WaitFor<OfferDelivery>()
+        var secondOffer = courierB.WaitFor<OfferDelivery>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Where(message => message.Payload.CourierId == "courier-b")
             .Async(cancellationToken);
@@ -136,9 +149,11 @@ internal sealed class DeliveryDispatchClientScenario
             .Fetch<DeliveryCreated>();
         Ensure(created.DeliveryId == deliveryId);
 
+        // courier-a intentionally does not answer. The dispatch server times out and offers the
+        // same delivery to courier-b, which accepts through its own bound stream session.
         _ = await firstOffer;
         var acceptedOffer = (await secondOffer).Payload;
-        await courier.Send(new CourierDecision(
+        await courierB.Send(new CourierDecision(
                 acceptedOffer.DeliveryId,
                 acceptedOffer.CourierId,
                 Accepted: true,
@@ -156,6 +171,7 @@ internal sealed class DeliveryDispatchClientScenario
         ZLinkHttpClient http,
         CancellationToken cancellationToken)
     {
+        // The final HTTP check proves that server-side tracking saw the full status sequences.
         var assertion = http.Post("/self-check/assert")
             .Body(new ServerAssertionReq("delivery-success", "delivery-reassign"))
             .Fetch<ServerAssertionRes>();

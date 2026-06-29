@@ -238,8 +238,9 @@ ZLink 샘플의 흐름을 같은 배송 하나 기준으로 보면 다음과 같
 먼저 session route와 묶인다. 이때 `CourierSession module`이 임의의 `CourierEntrySpot module`을 고르면
 노드 배치 책임이 session 쪽으로 새어 나온다. 그래서 중간에 `CourierDirectory module`이 있어
 actor를 둘 node를 정하고, 선택한 node의 `CourierEntrySpot module` 아래 actor 준비를 요청한다.
-directory는 actor node rid와 session route를 기억하고, 실제 actor-session bind는
-`CourierSession module`이 `BindAsync` 뒤 session-origin 메시지를 actor에 relay해서 확정한다.
+directory는 actor node rid와 session route를 기억한다. `CourierSession module`은
+반환받은 actor ref로 `BindAsync`를 호출하고, 같은 bind request를 actor에 relay해서
+actor node 쪽에서도 `BoundSession`으로 client에 push할 수 있게 한다.
 
 ```mermaid
 sequenceDiagram
@@ -260,13 +261,13 @@ sequenceDiagram
     end
 
     CourierClient->>CourierSession: connect stream
+    CourierClient->>CourierSession: BindCourierSession(courier-a)
     CourierSession->>CourierDirectory: BindCourier(courier-a, session route)
     CourierDirectory->>CourierDirectory: choose node rid
     CourierDirectory->>CourierRoute: EnsureCourierActor(courier-a)
     CourierRoute->>CourierEntry: create or find actor
     CourierEntry->>CourierActor: create or find actor
-    CourierSession->>CourierActor: bind ActorRef to session route
-    CourierSession->>CourierActor: CourierSessionAttached
+    CourierSession->>CourierActor: BindAsync and relay BindCourierSession
     CourierDirectory->>CourierDirectory: remember node rid and session route
 ```
 
@@ -396,7 +397,12 @@ channel에 보낼 뿐이고, actor 위치 조회와 target node 선택은 courie
 
 ## 검증 시나리오
 
-Client scenario는 두 배송을 만든다.
+Client scenario는 customer stream session 하나와 courier stream session 두 개를 만든다.
+`courier-a`와 `courier-b`는 같은 CourierSession server endpoint에 연결하지만 서로 다른
+stream connector를 사용하므로 session도 분리된다. 각 배송원 client는 자기 courier id로
+`BindCourierSession`을 한 번 보낸 뒤 배송 제안을 기다린다.
+
+그 뒤 두 배송을 만든다.
 
 1. `delivery-success`: `courier-a` actor가 node-1에서 session route를 통해 제안을 받고
    바로 수락한다. 고객은 `Assigned`, `Accepted`, `PickedUp`, `Delivered`를 stream으로

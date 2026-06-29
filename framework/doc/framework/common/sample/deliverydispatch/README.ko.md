@@ -248,11 +248,11 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 | Message | 방향 | 필드 | 의미 |
 |---------|------|------|------|
 | `AssignDelivery` | Dispatch server HTTP API module -> dispatch channel module | `DeliveryId`, `CustomerId`, `PickupAddress`, `DropoffAddress` | 배차 대상 배송을 내부 dispatch 흐름에 넣는다. |
+| `BindCourierSession` | Courier client -> CourierSession server stream, CourierSession server -> CourierActor | `CourierId`, `Actor`, `SessionRoute` | client는 `CourierId`만 보내고, CourierSession server는 actor bind relay 때 actor 위치와 session route를 채워 actor node가 bound session을 알 수 있게 한다. |
 | `BindCourier` | CourierSession server -> CourierGateway server | `CourierId`, `SessionRoute` | 배송원 stream session route를 courier id와 연결한다. |
 | `CourierBound` | CourierGateway server -> CourierSession server | `CourierId`, `Actor`, `SessionRoute` | 배송원 actor 위치와 session route 연결이 끝났음을 알린다. |
 | `EnsureCourierActor` | CourierGateway server -> target SpotNode | `CourierId` | 선택된 SpotNode의 `CourierEntrySpot` 아래에 배송원 actor가 존재하도록 만든다. |
 | `CourierActorEnsured` | target SpotNode -> CourierGateway server | `CourierId`, `Actor` | 배송원 actor 위치를 반환한다. |
-| `CourierSessionAttached` | CourierSession server -> CourierActor | `CourierId` | `BindAsync` 뒤 actor node에 session-origin 메시지를 전달해 bound session 경로를 확정한다. |
 | `OfferDelivery` | DispatchWorker module -> CourierGateway server | `DeliveryId`, `CourierId`, `PickupAddress`, `DropoffAddress` | 특정 배송원에게 배송 제안을 보낸다. |
 | `OfferDeliveryResult` | CourierGateway server -> DispatchWorker module | `DeliveryId`, `CourierId`, `Accepted` | 배송원이 제안을 수락했는지 반환한다. |
 
@@ -315,11 +315,11 @@ sequenceDiagram
     end
 
     CourierClient->>CourierSession: connect stream
+    CourierClient->>CourierSession: BindCourierSession(courier-a)
     CourierSession->>CourierDirectory: BindCourier(courier-a, session route)
     CourierDirectory->>CourierRoute: EnsureCourierActor(courier-a)
     CourierRoute->>CourierEntry: create or find actor
-    CourierSession->>CourierActor: bind ActorRef to session route
-    CourierSession->>CourierActor: CourierSessionAttached
+    CourierSession->>CourierActor: BindAsync and relay BindCourierSession
     CustomerClient->>CustomerSession: SubscribeDelivery(delivery-success)
     CustomerSession->>CustomerEntry: EnsureCustomerActor(customer id)
     CustomerEntry->>CustomerActor: bind session
@@ -391,17 +391,17 @@ sequenceDiagram
     end
 
     CourierClientA->>CourierSession: connect stream
+    CourierClientA->>CourierSession: BindCourierSession(courier-a)
     CourierSession->>CourierDirectory: BindCourier(courier-a, session route)
     CourierDirectory->>CourierRouteA: EnsureCourierActor(courier-a)
     CourierRouteA->>CourierEntryA: create or find actor
-    CourierSession->>CourierActorA: bind ActorRef to session route
-    CourierSession->>CourierActorA: CourierSessionAttached
+    CourierSession->>CourierActorA: BindAsync and relay BindCourierSession
     CourierClientB->>CourierSession: connect stream
+    CourierClientB->>CourierSession: BindCourierSession(courier-b)
     CourierSession->>CourierDirectory: BindCourier(courier-b, session route)
     CourierDirectory->>CourierRouteB: EnsureCourierActor(courier-b)
     CourierRouteB->>CourierEntryB: create or find actor
-    CourierSession->>CourierActorB: bind ActorRef to session route
-    CourierSession->>CourierActorB: CourierSessionAttached
+    CourierSession->>CourierActorB: BindAsync and relay BindCourierSession
     CustomerClient->>CustomerSession: SubscribeDelivery(delivery-reassign)
     CustomerSession->>CustomerEntry: EnsureCustomerActor(customer id)
     CustomerEntry->>CustomerActor: bind session

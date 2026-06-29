@@ -19,7 +19,15 @@ await using var customer = ZlinkStreamConnectorFactory.Create(new ZlinkStreamCon
     WaitTimeout = TimeSpan.FromSeconds(15),
     DispatchMode = ZlinkStreamDispatchMode.Immediate,
 });
-await using var courier = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+await using var courierA = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+{
+    Endpoint = new Uri(courierStreamEndpoint),
+    ConnectTimeout = TimeSpan.FromSeconds(5),
+    RequestTimeout = TimeSpan.FromSeconds(5),
+    WaitTimeout = TimeSpan.FromSeconds(15),
+    DispatchMode = ZlinkStreamDispatchMode.Immediate,
+});
+await using var courierB = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
 {
     Endpoint = new Uri(courierStreamEndpoint),
     ConnectTimeout = TimeSpan.FromSeconds(5),
@@ -28,7 +36,7 @@ await using var courier = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConn
     DispatchMode = ZlinkStreamDispatchMode.Immediate,
 });
 
-await new DeliveryDispatchClientScenario().RunAsync(http, customer, courier);
+await new DeliveryDispatchClientScenario().RunAsync(http, customer, courierA, courierB);
 
 Console.WriteLine("deliverydispatch=completed");
 

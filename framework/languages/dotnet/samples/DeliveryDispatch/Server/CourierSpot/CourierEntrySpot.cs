@@ -12,8 +12,8 @@ internal sealed class CourierEntrySpot(
 
     public void Configure()
     {
+        Context.Handlers.AddActorRequest<BindCourierSessionActorHandler, CourierActor>(nameof(BindCourierSession));
         Context.Handlers.AddActorPacket<CourierDecisionActorHandler, CourierActor>(nameof(CourierDecision));
-        Context.Handlers.AddActorPacket<CourierSessionAttachedActorHandler, CourierActor>(nameof(CourierSessionAttached));
     }
 
     public ValueTask OnCreateActorAsync(
@@ -41,6 +41,29 @@ internal sealed class CourierEntrySpot(
     }
 }
 
+internal sealed class BindCourierSessionActorHandler
+    : IZLinkEntrySpotActorRequestHandler<CourierEntrySpot, CourierActor, BindCourierSession, CourierBound>
+{
+    public ValueTask<CourierBound> HandleAsync(
+        CourierEntrySpot entrySpot,
+        CourierActor actor,
+        ZLinkSpotActorRequestContext context,
+        BindCourierSession message,
+        CancellationToken cancellationToken)
+    {
+        _ = entrySpot;
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        var actorRef = message.Actor
+            ?? throw new InvalidOperationException("Courier bind relay requires actor ref.");
+        var sessionRoute = message.SessionRoute
+            ?? throw new InvalidOperationException("Courier bind relay requires session route.");
+        Console.Error.WriteLine(
+            $"deliverydispatch courier-actor: session bound courier={message.CourierId} actor={actor.ActorId}");
+        return ValueTask.FromResult(new CourierBound(message.CourierId, actorRef, sessionRoute));
+    }
+}
+
 internal sealed class CourierDecisionActorHandler
     : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, CourierDecision>
 {
@@ -57,25 +80,6 @@ internal sealed class CourierDecisionActorHandler
         actor.Complete(message);
         Console.Error.WriteLine(
             $"deliverydispatch courier-actor: decision delivery={message.DeliveryId} courier={actor.ActorId} accepted={message.Accepted}");
-        return ValueTask.CompletedTask;
-    }
-}
-
-internal sealed class CourierSessionAttachedActorHandler
-    : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, CourierSessionAttached>
-{
-    public ValueTask HandleAsync(
-        CourierEntrySpot entrySpot,
-        CourierActor actor,
-        ZLinkSpotActorSendContext context,
-        CourierSessionAttached message,
-        CancellationToken cancellationToken)
-    {
-        _ = entrySpot;
-        _ = context;
-        cancellationToken.ThrowIfCancellationRequested();
-        Console.Error.WriteLine(
-            $"deliverydispatch courier-actor: session attached courier={message.CourierId} actor={actor.ActorId}");
         return ValueTask.CompletedTask;
     }
 }

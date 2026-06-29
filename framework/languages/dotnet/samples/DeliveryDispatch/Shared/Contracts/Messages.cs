@@ -36,11 +36,10 @@ public sealed record CourierBound(
     ActorRefSnapshot Actor,
     string SessionRoute);
 
-public sealed record BindCouriers(
-    string[] CourierIds);
-
-public sealed record CouriersBound(
-    CourierBound[] Couriers);
+public sealed record BindCourierSession(
+    string CourierId,
+    ActorRefSnapshot? Actor = null,
+    string? SessionRoute = null);
 
 public sealed record EnsureCourierActor(
     string CourierId);
@@ -48,9 +47,6 @@ public sealed record EnsureCourierActor(
 public sealed record CourierActorEnsured(
     string CourierId,
     ActorRefSnapshot Actor);
-
-public sealed record CourierSessionAttached(
-    string CourierId);
 
 public sealed record SubscribeDelivery(
     string DeliveryId);

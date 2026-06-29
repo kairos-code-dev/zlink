@@ -187,7 +187,7 @@ wait_port courier-route "${DELIVERYDISPATCH_COURIER_ROUTE}"
 start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj"
 wait_http dispatch "${DELIVERYDISPATCH_DISPATCH_HTTP}"
 
-sleep "${DELIVERYDISPATCH_STARTUP_DELAY_SECONDS:-3}"
+sleep "${DELIVERYDISPATCH_STARTUP_DELAY_SECONDS:-10}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \
   --api-url "${DELIVERYDISPATCH_DISPATCH_HTTP}" \

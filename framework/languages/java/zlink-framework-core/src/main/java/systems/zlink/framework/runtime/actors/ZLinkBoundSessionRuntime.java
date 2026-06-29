@@ -331,7 +331,12 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                     return;
                 }
                 try (Message payloadPart = Message.from(payloadBytes)) {
-                    if (stream.send(sessionRid, header, List.of(payloadPart), SendFlags.DONT_WAIT)) {
+                    if (stream.relayBoundActor(
+                        sessionRid,
+                        actorId,
+                        header,
+                        List.of(payloadPart),
+                        SendFlags.DONT_WAIT)) {
                         result.complete(null);
                         return;
                     }

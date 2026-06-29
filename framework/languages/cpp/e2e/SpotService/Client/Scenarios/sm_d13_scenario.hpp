@@ -38,8 +38,7 @@ inline void run_sm_d13_scenario (const std::string &session_stream_endpoint)
     }
 
     auto auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D13 Heartbeat"})
+      stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D13 Heartbeat"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -53,7 +52,7 @@ inline void run_sm_d13_scenario (const std::string &session_stream_endpoint)
         throw std::runtime_error ("SM-D13 heartbeat-enabled stream disconnected");
     }
 
-    auto ping = zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"heartbeat"})
+    auto ping = stream.request (actor_ping_req_t{"heartbeat"})
                   .packet_name ("ActorPingReq")
                   .timeout (std::chrono::milliseconds (5000))
                   .submit<actor_ping_res_t> ();

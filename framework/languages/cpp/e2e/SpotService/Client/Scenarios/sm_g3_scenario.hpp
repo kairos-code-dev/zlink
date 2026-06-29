@@ -80,8 +80,7 @@ inline void run_sm_g3_actor_flow (const std::string &session_stream_endpoint,
     std::string auth_error = "not attempted";
     for (int attempt = 0; attempt < 20; ++attempt) {
         auto auth_result =
-          zlink::stream_connector::codecs::request (
-            stream, stream_ensure_auth_req_t{"play-a", actor_id, actor_id + "-display"})
+          stream.request (stream_ensure_auth_req_t{"play-a", actor_id, actor_id + "-display"})
             .packet_name ("StreamEnsureAuthReq")
             .timeout (std::chrono::milliseconds (5000))
             .submit<stream_auth_res_t> ();
@@ -100,8 +99,7 @@ inline void run_sm_g3_actor_flow (const std::string &session_stream_endpoint,
     }
 
     auto joined =
-      zlink::stream_connector::codecs::request (
-        stream, join_req_t{.key = spot_key,
+      stream.request (join_req_t{.key = spot_key,
                            .actor_id = actor_id,
                            .display_name = actor_id + "-display",
                            .level = 3,
@@ -116,7 +114,7 @@ inline void run_sm_g3_actor_flow (const std::string &session_stream_endpoint,
         throw std::runtime_error ("SM-G3 join failed for " + actor_id);
     }
 
-    auto ping = zlink::stream_connector::codecs::request (stream, actor_ping_req_t{actor_id})
+    auto ping = stream.request (actor_ping_req_t{actor_id})
                   .packet_name ("ActorPingReq")
                   .metadata ("actor-id", actor_id)
                   .timeout (std::chrono::milliseconds (5000))
@@ -126,7 +124,7 @@ inline void run_sm_g3_actor_flow (const std::string &session_stream_endpoint,
         throw std::runtime_error ("SM-G3 actor request mismatch for " + actor_id);
     }
 
-    auto left = zlink::stream_connector::codecs::request (stream, leave_req_t{"sm-g3"})
+    auto left = stream.request (leave_req_t{"sm-g3"})
                   .packet_name ("LeaveReq")
                   .metadata ("actor-id", actor_id)
                   .timeout (std::chrono::milliseconds (5000))

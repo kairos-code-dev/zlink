@@ -62,8 +62,7 @@ inline void run_sm_b7_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-B7 stream connect failed");
     }
     auto auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_auth_req_t{"play-a", actor_id, "SM-B7 Order", join_reply.actor})
+      stream.request (stream_auth_req_t{"play-a", actor_id, "SM-B7 Order", join_reply.actor})
         .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -71,12 +70,12 @@ inline void run_sm_b7_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-B7 stream auth failed");
     }
 
-    auto first = zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"order-1"})
+    auto first = stream.request (actor_ping_req_t{"order-1"})
                    .packet_name ("ActorPingReq")
                    .metadata ("actor-id", actor_id)
                    .timeout (std::chrono::milliseconds (5000))
                    .submit<actor_ping_res_t> ();
-    auto second = zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"order-2"})
+    auto second = stream.request (actor_ping_req_t{"order-2"})
                     .packet_name ("ActorPingReq")
                     .metadata ("actor-id", actor_id)
                     .timeout (std::chrono::milliseconds (5000))

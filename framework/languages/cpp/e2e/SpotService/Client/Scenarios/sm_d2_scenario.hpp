@@ -73,8 +73,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
     }
 
     auto auth =
-      zlink::stream_connector::codecs::request (
-        remote, stream_auth_req_t{"play-b", actor_id, "SM-D2 Remote", join_reply.actor})
+      remote.request (stream_auth_req_t{"play-b", actor_id, "SM-D2 Remote", join_reply.actor})
         .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -82,7 +81,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
         throw std::runtime_error ("SM-D2 stream auth failed");
     }
 
-    auto ping = zlink::stream_connector::codecs::request (remote, actor_ping_req_t{"remote-relay"})
+    auto ping = remote.request (actor_ping_req_t{"remote-relay"})
                   .packet_name ("ActorPingReq")
                   .metadata ("actor-id", actor_id)
                   .timeout (std::chrono::milliseconds (5000))
@@ -100,7 +99,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
         .to_future ("SM-D2 remote stream push notify missing");
     auto unbound_wait =
       unbound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (500));
-    auto pushed = zlink::stream_connector::codecs::request (remote, actor_push_req_t{"push-remote"})
+    auto pushed = remote.request (actor_push_req_t{"push-remote"})
                     .packet_name ("PushReq")
                     .metadata ("actor-id", actor_id)
                     .timeout (std::chrono::milliseconds (5000))

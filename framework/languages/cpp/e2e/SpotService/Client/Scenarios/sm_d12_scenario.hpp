@@ -39,8 +39,7 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto first_auth =
-      zlink::stream_connector::codecs::request (
-        first, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D12 Transfer"})
+      first.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D12 Transfer"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -50,8 +49,7 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto joined =
-      zlink::stream_connector::codecs::request (
-        first, join_req_t{.key = "sm-d12-transfer",
+      first.request (join_req_t{.key = "sm-d12-transfer",
                           .actor_id = actor_id,
                           .display_name = "SM-D12 Transfer",
                           .level = 12,
@@ -65,7 +63,7 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto first_state =
-      zlink::stream_connector::codecs::request (first, state_req_t{.op = "add", .amount = 11})
+      first.request (state_req_t{.op = "add", .amount = 11})
         .packet_name ("StateReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<state_res_t> ();
@@ -90,8 +88,7 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto second_auth =
-      zlink::stream_connector::codecs::request (
-        second, stream_auth_req_t{"play-a", actor_id, "SM-D12 Transfer", joined.value ().actor})
+      second.request (stream_auth_req_t{"play-a", actor_id, "SM-D12 Transfer", joined.value ().actor})
         .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -101,7 +98,7 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto snapshot =
-      zlink::stream_connector::codecs::request (second, state_req_t{.op = "add", .amount = 0})
+      second.request (state_req_t{.op = "add", .amount = 0})
         .packet_name ("StateReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<state_res_t> ();
@@ -114,7 +111,7 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
       second.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
         .to_future ("SM-D12 push notify missing");
     auto pushed =
-      zlink::stream_connector::codecs::request (second, actor_push_req_t{"after-transfer"})
+      second.request (actor_push_req_t{"after-transfer"})
         .packet_name ("PushReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<actor_push_res_t> ();
@@ -127,7 +124,7 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto resumed =
-      zlink::stream_connector::codecs::request (second, state_req_t{.op = "add", .amount = 5})
+      second.request (state_req_t{.op = "add", .amount = 5})
         .packet_name ("StateReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<state_res_t> ();

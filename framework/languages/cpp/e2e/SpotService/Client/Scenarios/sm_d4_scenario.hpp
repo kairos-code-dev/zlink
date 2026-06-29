@@ -36,14 +36,12 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
     }
 
     auto first_auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_ensure_auth_req_t{"play-a", first_actor_id, "SM-D4 X"})
+      stream.request (stream_ensure_auth_req_t{"play-a", first_actor_id, "SM-D4 X"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
     auto second_auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_ensure_auth_req_t{"play-a", second_actor_id, "SM-D4 Y"})
+      stream.request (stream_ensure_auth_req_t{"play-a", second_actor_id, "SM-D4 Y"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -53,13 +51,13 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
     }
 
     auto first_ping =
-      zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"to-x"})
+      stream.request (actor_ping_req_t{"to-x"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", first_actor_id)
         .timeout (std::chrono::milliseconds (5000))
         .submit<actor_ping_res_t> ();
     auto second_ping =
-      zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"to-y"})
+      stream.request (actor_ping_req_t{"to-y"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", second_actor_id)
         .timeout (std::chrono::milliseconds (5000))
@@ -75,7 +73,7 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
                         .where (&actor_push_notify_t::actor_id, first_actor_id)
                         .to_future ("SM-D4 first actor push notify missing");
     auto first_push =
-      zlink::stream_connector::codecs::request (stream, actor_push_req_t{"push-x"})
+      stream.request (actor_push_req_t{"push-x"})
         .packet_name ("PushReq")
         .metadata ("actor-id", first_actor_id)
         .timeout (std::chrono::milliseconds (5000))
@@ -93,7 +91,7 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
                          .where (&actor_push_notify_t::actor_id, second_actor_id)
                          .to_future ("SM-D4 second actor push notify missing");
     auto second_push =
-      zlink::stream_connector::codecs::request (stream, actor_push_req_t{"push-y"})
+      stream.request (actor_push_req_t{"push-y"})
         .packet_name ("PushReq")
         .metadata ("actor-id", second_actor_id)
         .timeout (std::chrono::milliseconds (5000))
@@ -108,7 +106,7 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
     }
 
     auto missing_actor_id =
-      zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"missing-actor-id"})
+      stream.request (actor_ping_req_t{"missing-actor-id"})
         .packet_name ("ActorPingReq")
         .timeout (std::chrono::milliseconds (3000))
         .submit<actor_ping_res_t> ();

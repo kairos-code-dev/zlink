@@ -66,8 +66,7 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
     }
 
     auto leave_auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_auth_req_t{"play-a", leave_actor_id, "SM-B6 Left", leave_actor})
+      stream.request (stream_auth_req_t{"play-a", leave_actor_id, "SM-B6 Left", leave_actor})
         .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -75,7 +74,7 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-B6 leave stream auth failed");
     }
 
-    auto left = zlink::stream_connector::codecs::request (stream, leave_req_t{"explicit"})
+    auto left = stream.request (leave_req_t{"explicit"})
                   .packet_name ("LeaveReq")
                   .metadata ("actor-id", leave_actor_id)
                   .timeout (std::chrono::milliseconds (5000))
@@ -114,9 +113,7 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-B6 disconnect stream connect failed");
     }
     auto disconnect_auth =
-      zlink::stream_connector::codecs::request (
-        disconnect_stream,
-        stream_auth_req_t{"play-a", disconnect_actor_id, "SM-B6 Disconnected",
+      disconnect_stream.request (stream_auth_req_t{"play-a", disconnect_actor_id, "SM-B6 Disconnected",
                           disconnect_actor})
         .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))

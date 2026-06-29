@@ -34,14 +34,12 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
             throw std::runtime_error ("SM-D5 single stream connect failed");
         }
         auto auth =
-          zlink::stream_connector::codecs::request (
-            stream, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D5 Single"})
+          stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D5 Single"})
             .packet_name ("StreamEnsureAuthReq")
             .timeout (std::chrono::milliseconds (5000))
             .submit<stream_auth_res_t> ();
         auto joined =
-          zlink::stream_connector::codecs::request (
-            stream, join_req_t{.key = "a-stream-disconnect-single",
+          stream.request (join_req_t{.key = "a-stream-disconnect-single",
                                .actor_id = actor_id,
                                .display_name = "SM-D5 Single",
                                .level = 5,
@@ -65,14 +63,12 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
             throw std::runtime_error ("SM-D5 remote stream connect failed");
         }
         auto auth =
-          zlink::stream_connector::codecs::request (
-            stream, stream_ensure_auth_req_t{"play-b", actor_id, "SM-D5 Remote"})
+          stream.request (stream_ensure_auth_req_t{"play-b", actor_id, "SM-D5 Remote"})
             .packet_name ("StreamEnsureAuthReq")
             .timeout (std::chrono::milliseconds (5000))
             .submit<stream_auth_res_t> ();
         auto joined =
-          zlink::stream_connector::codecs::request (
-            stream, join_req_t{.key = "b-stream-disconnect-remote",
+          stream.request (join_req_t{.key = "b-stream-disconnect-remote",
                                .actor_id = actor_id,
                                .display_name = "SM-D5 Remote",
                                .level = 5,
@@ -97,20 +93,17 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
             throw std::runtime_error ("SM-D5 multi stream connect failed");
         }
         auto notified_auth =
-          zlink::stream_connector::codecs::request (
-            stream, stream_ensure_auth_req_t{"play-a", notified_actor_id, "SM-D5 Notified"})
+          stream.request (stream_ensure_auth_req_t{"play-a", notified_actor_id, "SM-D5 Notified"})
             .packet_name ("StreamEnsureAuthReq")
             .timeout (std::chrono::milliseconds (5000))
             .submit<stream_auth_res_t> ();
         auto muted_auth =
-          zlink::stream_connector::codecs::request (
-            stream, stream_ensure_auth_req_t{"play-a", muted_actor_id, "SM-D5 Muted"})
+          stream.request (stream_ensure_auth_req_t{"play-a", muted_actor_id, "SM-D5 Muted"})
             .packet_name ("StreamEnsureAuthReq")
             .timeout (std::chrono::milliseconds (5000))
             .submit<stream_auth_res_t> ();
         auto notified_join =
-          zlink::stream_connector::codecs::request (
-            stream, join_req_t{.key = "a-stream-disconnect-notified",
+          stream.request (join_req_t{.key = "a-stream-disconnect-notified",
                                .actor_id = notified_actor_id,
                                .display_name = "SM-D5 Notified",
                                .level = 5,
@@ -120,8 +113,7 @@ inline void run_sm_d5_scenario (const std::string &session_stream_endpoint)
             .timeout (std::chrono::milliseconds (5000))
             .submit<join_res_t> ();
         auto muted_join =
-          zlink::stream_connector::codecs::request (
-            stream, join_req_t{.key = "a-stream-disconnect-muted",
+          stream.request (join_req_t{.key = "a-stream-disconnect-muted",
                                .actor_id = muted_actor_id,
                                .display_name = "SM-D5 Muted",
                                .level = 5,

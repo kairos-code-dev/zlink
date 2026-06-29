@@ -194,9 +194,8 @@ static_assert (
                              .to_future ()),
                  std::future<auto_payload_t>>);
 static_assert (
-  std::is_same_v<decltype (zlink::stream_e2e_client::codecs::request (
-                             std::declval<zlink::stream_e2e_client::coroutine_connector_t &> (),
-                             std::declval<auto_payload_t> ())
+  std::is_same_v<decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
+                             .request (std::declval<auto_payload_t> ())
                              .async<auto_payload_t> ()),
                  zlink::stream_e2e_client::task_t<auto_payload_t>>);
 
@@ -1385,7 +1384,7 @@ int main ()
     if (!auto_connector.connect ()) {
         return 30;
     }
-    if (!zlink::stream_connector::codecs::send (auto_connector, auto_payload_t{"auto"}).submit ()) {
+    if (!auto_connector.send (auto_payload_t{"auto"}).submit ()) {
         return 31;
     }
     auto_server_thread.join ();

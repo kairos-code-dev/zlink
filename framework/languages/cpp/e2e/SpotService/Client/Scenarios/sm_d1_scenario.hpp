@@ -73,8 +73,7 @@ inline void run_sm_d1_scenario (const std::string &play_http_endpoint,
     }
 
     auto auth =
-      zlink::stream_connector::codecs::request (
-        bound, stream_auth_req_t{"play-a", actor_id, "SM-D1 Local", join_reply.actor})
+      bound.request (stream_auth_req_t{"play-a", actor_id, "SM-D1 Local", join_reply.actor})
         .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -82,7 +81,7 @@ inline void run_sm_d1_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-D1 stream auth failed");
     }
 
-    auto ping = zlink::stream_connector::codecs::request (bound, actor_ping_req_t{"local-relay"})
+    auto ping = bound.request (actor_ping_req_t{"local-relay"})
                   .packet_name ("ActorPingReq")
                   .metadata ("actor-id", actor_id)
                   .timeout (std::chrono::milliseconds (5000))
@@ -100,7 +99,7 @@ inline void run_sm_d1_scenario (const std::string &play_http_endpoint,
         .to_future ("SM-D1 bound stream push notify missing");
     auto unbound_wait =
       unbound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (500));
-    auto pushed = zlink::stream_connector::codecs::request (bound, actor_push_req_t{"push-local"})
+    auto pushed = bound.request (actor_push_req_t{"push-local"})
                     .packet_name ("PushReq")
                     .metadata ("actor-id", actor_id)
                     .timeout (std::chrono::milliseconds (5000))

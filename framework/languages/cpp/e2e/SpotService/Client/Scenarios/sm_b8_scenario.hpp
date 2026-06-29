@@ -62,8 +62,7 @@ inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-B8 stream connect failed");
     }
     auto auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_auth_req_t{"play-a", actor_id, "SM-B8 Destroy", join_reply.actor})
+      stream.request (stream_auth_req_t{"play-a", actor_id, "SM-B8 Destroy", join_reply.actor})
         .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -71,7 +70,7 @@ inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-B8 stream auth failed");
     }
 
-    auto left = zlink::stream_connector::codecs::request (stream, leave_req_t{"pre-destroy"})
+    auto left = stream.request (leave_req_t{"pre-destroy"})
                   .packet_name ("LeaveReq")
                   .metadata ("actor-id", actor_id)
                   .timeout (std::chrono::milliseconds (5000))
@@ -81,7 +80,7 @@ inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
     }
 
     auto destroyed =
-      zlink::stream_connector::codecs::request (stream, destroy_actor_req_t{"explicit"})
+      stream.request (destroy_actor_req_t{"explicit"})
         .packet_name ("DestroyActorReq")
         .metadata ("actor-id", actor_id)
         .timeout (std::chrono::milliseconds (5000))
@@ -91,7 +90,7 @@ inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
     }
 
     auto after_destroy =
-      zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"after-destroy"})
+      stream.request (actor_ping_req_t{"after-destroy"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", actor_id)
         .timeout (std::chrono::milliseconds (1000))

@@ -33,8 +33,7 @@ inline void run_sm_d7_scenario (const std::string &session_stream_endpoint)
             throw std::runtime_error ("SM-D7 unauthenticated stream connect failed");
         }
         auto rejected =
-          zlink::stream_connector::codecs::request (
-            unauthenticated, actor_ping_req_t{"before-auth"})
+          unauthenticated.request (actor_ping_req_t{"before-auth"})
             .packet_name ("ActorPingReq")
             .timeout (std::chrono::milliseconds (3000))
             .submit<actor_ping_res_t> ();
@@ -52,8 +51,7 @@ inline void run_sm_d7_scenario (const std::string &session_stream_endpoint)
             throw std::runtime_error ("SM-D7 invalid-auth stream connect failed");
         }
         auto rejected =
-          zlink::stream_connector::codecs::request (
-            invalid, stream_auth_req_t{"play-a", "actor-sm-d7-invalid", "SM-D7 Invalid", {}})
+          invalid.request (stream_auth_req_t{"play-a", "actor-sm-d7-invalid", "SM-D7 Invalid", {}})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
             .submit<stream_auth_res_t> ();
@@ -72,8 +70,7 @@ inline void run_sm_d7_scenario (const std::string &session_stream_endpoint)
     }
 
     auto auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D7 Auth"})
+      stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D7 Auth"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -82,7 +79,7 @@ inline void run_sm_d7_scenario (const std::string &session_stream_endpoint)
         throw std::runtime_error ("SM-D7 stream auth reply mismatch");
     }
 
-    auto reply = zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"auth-ok"})
+    auto reply = stream.request (actor_ping_req_t{"auth-ok"})
                    .packet_name ("ActorPingReq")
                    .timeout (std::chrono::milliseconds (5000))
                    .submit<actor_ping_res_t> ();

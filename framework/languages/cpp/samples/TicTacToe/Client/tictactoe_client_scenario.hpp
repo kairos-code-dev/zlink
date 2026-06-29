@@ -164,7 +164,7 @@ class tictactoe_client_scenario_t
             trace ("authenticate client1");
             const auto client1_auth_request = authenticate_req_t{options.x_actor_id};
             auto client1_auth =
-              co_await stream_e2e_client::codecs::request (client1, client1_auth_request)
+              co_await client1.request (client1_auth_request)
                 .async<authenticate_res_t> ();
             ensure (client1_auth.player.actor_id == options.x_actor_id);
             ensure (client1_auth.player.wins == 99);
@@ -172,7 +172,7 @@ class tictactoe_client_scenario_t
             trace ("authenticate client2");
             const auto client2_auth_request = authenticate_req_t{options.o_actor_id};
             auto client2_auth =
-              co_await stream_e2e_client::codecs::request (client2, client2_auth_request)
+              co_await client2.request (client2_auth_request)
                 .async<authenticate_res_t> ();
             ensure (client2_auth.player.actor_id == options.o_actor_id);
             ensure (client2_auth.player.actor_id != client1_auth.player.actor_id);
@@ -180,11 +180,11 @@ class tictactoe_client_scenario_t
             trace ("authenticate observer");
             const auto observer_auth_request = authenticate_req_t{options.observer_actor_id};
             auto observer_auth =
-              co_await stream_e2e_client::codecs::request (observer, observer_auth_request)
+              co_await observer.request (observer_auth_request)
                 .async<authenticate_res_t> ();
             ensure (observer_auth.player.actor_id == options.observer_actor_id);
             const auto observe_request = observe_milestone_req_t{};
-            auto observe = co_await stream_e2e_client::codecs::request (observer, observe_request)
+            auto observe = co_await observer.request (observe_request)
                              .async<observe_milestone_res_t> ();
             ensure (observe.subscribed);
             std::cout << "observer-subscription=verified subscribed=true\n";
@@ -192,7 +192,7 @@ class tictactoe_client_scenario_t
             trace ("join client1");
             const auto client1_join_request = join_game_req_t{room.room_id, client1_auth.player};
             auto client1_join =
-              co_await stream_e2e_client::codecs::request (client1, client1_join_request)
+              co_await client1.request (client1_join_request)
                 .async<join_game_res_t> ();
             ensure (client1_join.state.room_id == room.room_id);
             ensure (client1_join.state.x_actor_id == options.x_actor_id);
@@ -214,7 +214,7 @@ class tictactoe_client_scenario_t
             trace ("join client2");
             const auto client2_join_request = join_game_req_t{room.room_id, client2_auth.player};
             auto client2_join =
-              co_await stream_e2e_client::codecs::request (client2, client2_join_request)
+              co_await client2.request (client2_join_request)
                 .async<join_game_res_t> ();
             ensure (client2_join.state.room_id == room.room_id);
             ensure (client2_join.state.x_actor_id == options.x_actor_id);
@@ -242,7 +242,7 @@ class tictactoe_client_scenario_t
             trace ("client1 first move");
             const auto client1_first_move_request = place_mark_req_t{0};
             auto client1_first_move =
-              co_await stream_e2e_client::codecs::request (client1, client1_first_move_request)
+              co_await client1.request (client1_first_move_request)
                 .async<place_mark_res_t> ();
             ensure (client1_first_move.state.room_id == room.room_id);
             ensure (client1_first_move.state.last_move_actor_id == options.x_actor_id);
@@ -262,7 +262,7 @@ class tictactoe_client_scenario_t
             trace ("client2 first move");
             const auto client2_first_move_request = place_mark_req_t{3};
             auto client2_first_move =
-              co_await stream_e2e_client::codecs::request (client2, client2_first_move_request)
+              co_await client2.request (client2_first_move_request)
                 .async<place_mark_res_t> ();
             ensure (client2_first_move.state.room_id == room.room_id);
             ensure (client2_first_move.state.last_move_actor_id == options.o_actor_id);
@@ -282,7 +282,7 @@ class tictactoe_client_scenario_t
             trace ("client1 second move");
             const auto client1_second_move_request = place_mark_req_t{1};
             auto client1_second_move =
-              co_await stream_e2e_client::codecs::request (client1, client1_second_move_request)
+              co_await client1.request (client1_second_move_request)
                 .async<place_mark_res_t> ();
             ensure (client1_second_move.state.room_id == room.room_id);
             ensure (client1_second_move.state.last_move_actor_id == options.x_actor_id);
@@ -302,7 +302,7 @@ class tictactoe_client_scenario_t
             trace ("client2 second move");
             const auto client2_second_move_request = place_mark_req_t{4};
             auto client2_second_move =
-              co_await stream_e2e_client::codecs::request (client2, client2_second_move_request)
+              co_await client2.request (client2_second_move_request)
                 .async<place_mark_res_t> ();
             ensure (client2_second_move.state.room_id == room.room_id);
             ensure (client2_second_move.state.last_move_actor_id == options.o_actor_id);
@@ -327,7 +327,7 @@ class tictactoe_client_scenario_t
             trace ("client1 winning move");
             const auto client1_winning_move_request = place_mark_req_t{2};
             auto client1_winning_move =
-              co_await stream_e2e_client::codecs::request (client1, client1_winning_move_request)
+              co_await client1.request (client1_winning_move_request)
                 .async<place_mark_res_t> ();
             ensure (client1_winning_move.state.room_id == room.room_id);
             ensure (client1_winning_move.state.last_move_actor_id == options.x_actor_id);
@@ -350,10 +350,10 @@ class tictactoe_client_scenario_t
                       << " receivingSpotNodeRid=" << milestone.receiving_spot_node_rid << '\n';
 
             const auto client1_leave_request = leave_game_req_t{room.room_id};
-            co_await stream_e2e_client::codecs::request (client1, client1_leave_request)
+            co_await client1.request (client1_leave_request)
               .async<place_mark_res_t> ();
             const auto client2_leave_request = leave_game_req_t{room.room_id};
-            co_await stream_e2e_client::codecs::request (client2, client2_leave_request)
+            co_await client2.request (client2_leave_request)
               .async<place_mark_res_t> ();
 
             co_await client1.close ().async ();
@@ -381,7 +381,7 @@ class tictactoe_client_scenario_t
             trace ("recreate authenticate");
             const auto recreate_auth_request = authenticate_req_t{options.x_actor_id};
             auto recreated =
-              co_await stream_e2e_client::codecs::request (client, recreate_auth_request)
+              co_await client.request (recreate_auth_request)
                 .async<authenticate_res_t> ();
             ensure (recreated.player.actor_id == options.x_actor_id);
             co_await client.close ().async ();

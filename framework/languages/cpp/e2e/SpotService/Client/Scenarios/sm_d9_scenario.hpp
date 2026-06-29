@@ -47,8 +47,7 @@ inline void run_sm_d9_scenario (const std::string &session_stream_endpoint)
 
     constexpr auto actor_id = "actor-sm-d9";
     auto auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D9 Observer"})
+      stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D9 Observer"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -57,11 +56,11 @@ inline void run_sm_d9_scenario (const std::string &session_stream_endpoint)
         throw std::runtime_error ("SM-D9 stream auth reply mismatch");
     }
 
-    auto first = zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"observer-1"})
+    auto first = stream.request (actor_ping_req_t{"observer-1"})
                    .packet_name ("ActorPingReq")
                    .timeout (std::chrono::milliseconds (5000))
                    .submit<actor_ping_res_t> ();
-    auto second = zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"observer-2"})
+    auto second = stream.request (actor_ping_req_t{"observer-2"})
                     .packet_name ("ActorPingReq")
                     .timeout (std::chrono::milliseconds (5000))
                     .submit<actor_ping_res_t> ();

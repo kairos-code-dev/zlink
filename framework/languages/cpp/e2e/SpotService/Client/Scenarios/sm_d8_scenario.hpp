@@ -36,8 +36,7 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
         throw std::runtime_error ("SM-D8 first stream connect failed");
     }
     auto first_auth =
-      zlink::stream_connector::codecs::request (
-        first, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D8 Reconnect"})
+      first.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D8 Reconnect"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -48,8 +47,7 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
 
     std::promise<zlink::stream_connector::result_t<actor_ping_res_t>> pending_promise;
     auto pending = pending_promise.get_future ();
-    zlink::stream_connector::codecs::request (
-      first, slow_actor_ping_req_t{"before-disconnect", 1000})
+    first.request (slow_actor_ping_req_t{"before-disconnect", 1000})
       .packet_name ("SlowActorPingReq")
       .timeout (std::chrono::milliseconds (10000))
       .submit<actor_ping_res_t> (
@@ -79,8 +77,7 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
         throw std::runtime_error ("SM-D8 second stream connect failed");
     }
     auto second_auth =
-      zlink::stream_connector::codecs::request (
-        second, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D8 Reconnect"})
+      second.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D8 Reconnect"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -90,7 +87,7 @@ inline void run_sm_d8_scenario (const std::string &session_stream_endpoint)
     }
 
     auto resumed =
-      zlink::stream_connector::codecs::request (second, actor_ping_req_t{"after-reconnect"})
+      second.request (actor_ping_req_t{"after-reconnect"})
         .packet_name ("ActorPingReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<actor_ping_res_t> ();

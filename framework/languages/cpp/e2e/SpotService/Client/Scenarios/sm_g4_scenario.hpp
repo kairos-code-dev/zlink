@@ -24,8 +24,7 @@ inline stream_auth_res_t sm_g4_auth_stream (zlink::stream_connector::connector_t
     std::string auth_error = "not attempted";
     for (int attempt = 0; attempt < 20; ++attempt) {
         auto auth_result =
-          zlink::stream_connector::codecs::request (
-            stream, stream_ensure_auth_req_t{"play-a", actor_id, actor_id + "-display"})
+          stream.request (stream_ensure_auth_req_t{"play-a", actor_id, actor_id + "-display"})
             .packet_name ("StreamEnsureAuthReq")
             .timeout (std::chrono::milliseconds (5000))
             .submit<stream_auth_res_t> ();
@@ -50,7 +49,7 @@ inline void sm_g4_push_and_verify (zlink::stream_connector::connector_t &stream,
     const auto value = "push-" + std::to_string (index);
     auto wait = stream.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
                   .to_future ("SM-G4 push notify missing for " + actor_id);
-    auto pushed = zlink::stream_connector::codecs::request (stream, actor_push_req_t{value})
+    auto pushed = stream.request (actor_push_req_t{value})
                     .packet_name ("PushReq")
                     .metadata ("actor-id", actor_id)
                     .timeout (std::chrono::milliseconds (5000))

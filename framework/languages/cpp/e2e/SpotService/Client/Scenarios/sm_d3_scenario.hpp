@@ -37,8 +37,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-D3 entry stream connect failed");
     }
     auto entry_auth =
-      zlink::stream_connector::codecs::request (
-        entry, stream_ensure_auth_req_t{"play-a", entry_actor_id, "SM-D3 Entry"})
+      entry.request (stream_ensure_auth_req_t{"play-a", entry_actor_id, "SM-D3 Entry"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -48,7 +47,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     }
 
     auto entry_ping =
-      zlink::stream_connector::codecs::request (entry, actor_ping_req_t{"entry-relay"})
+      entry.request (actor_ping_req_t{"entry-relay"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", entry_actor_id)
         .timeout (std::chrono::milliseconds (5000))
@@ -63,7 +62,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
       entry.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
         .to_future ("SM-D3 entry push notify missing");
     auto entry_push =
-      zlink::stream_connector::codecs::request (entry, actor_push_req_t{"entry-push"})
+      entry.request (actor_push_req_t{"entry-push"})
         .packet_name ("PushReq")
         .metadata ("actor-id", entry_actor_id)
         .timeout (std::chrono::milliseconds (5000))
@@ -112,8 +111,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-D3 user stream connect failed");
     }
     auto user_auth =
-      zlink::stream_connector::codecs::request (
-        user, stream_auth_req_t{"play-a", user_actor_id, "SM-D3 User", user_join.actor})
+      user.request (stream_auth_req_t{"play-a", user_actor_id, "SM-D3 User", user_join.actor})
         .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -122,7 +120,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     }
 
     auto user_ping =
-      zlink::stream_connector::codecs::request (user, actor_ping_req_t{"user-relay"})
+      user.request (actor_ping_req_t{"user-relay"})
         .packet_name ("ActorPingReq")
         .metadata ("actor-id", user_actor_id)
         .timeout (std::chrono::milliseconds (5000))
@@ -137,7 +135,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
       user.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
         .to_future ("SM-D3 user push notify missing");
     auto user_push =
-      zlink::stream_connector::codecs::request (user, actor_push_req_t{"user-push"})
+      user.request (actor_push_req_t{"user-push"})
         .packet_name ("PushReq")
         .metadata ("actor-id", user_actor_id)
         .timeout (std::chrono::milliseconds (5000))

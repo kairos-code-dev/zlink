@@ -896,10 +896,10 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
                std::string::npos);
     EXPECT_NE (client.find ("observe_milestone_req_t"), std::string::npos);
     EXPECT_NE (client.find ("win_milestone_notify_t"), std::string::npos);
-    EXPECT_NE (client.find ("stream_e2e_client::codecs::request"), std::string::npos);
+    EXPECT_NE (client.find (".request (client1_auth_request)"), std::string::npos);
     EXPECT_NE (client.find ("const auto client1_auth_request = authenticate_req_t"),
                std::string::npos);
-    EXPECT_NE (client.find ("client1, client1_auth_request"), std::string::npos);
+    EXPECT_EQ (client.find ("client1, client1_auth_request"), std::string::npos);
     EXPECT_NE (client.find (".async<authenticate_res_t> ()"), std::string::npos);
     EXPECT_NE (client.find ("client2.wait_for<game_state_notify_t> ()"), std::string::npos);
     EXPECT_EQ (client.find ("tictactoe-client.log"), std::string::npos);

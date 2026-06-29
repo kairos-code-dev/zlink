@@ -36,8 +36,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
         throw std::runtime_error ("SM-D6 bound stream connect failed");
     }
     auto bound_auth =
-      zlink::stream_connector::codecs::request (
-        bound, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D6 Bound"})
+      bound.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D6 Bound"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -57,8 +56,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
         throw std::runtime_error ("SM-D6 unbound stream connect failed");
     }
     auto unbound_auth =
-      zlink::stream_connector::codecs::request (
-        unbound, stream_ensure_auth_req_t{"play-b", shadow_actor_id, "SM-D6 Shadow"})
+      unbound.request (stream_ensure_auth_req_t{"play-b", shadow_actor_id, "SM-D6 Shadow"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -72,7 +70,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
     auto unbound_wait =
       unbound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (500));
     auto pushed =
-      zlink::stream_connector::codecs::request (bound, actor_push_req_t{"push-bound-only"})
+      bound.request (actor_push_req_t{"push-bound-only"})
         .packet_name ("PushReq")
         .metadata ("actor-id", actor_id)
         .timeout (std::chrono::milliseconds (5000))

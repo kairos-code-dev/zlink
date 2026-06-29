@@ -643,16 +643,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto connected = stream.connect ().submit ();
         ensure (static_cast<bool> (connected), scenario_id + " stream connect failed");
 
-        auto auth = zlink::stream_e2e_client::codecs::send (
-                      stream, e2e::stream_auth_req_t{target_node, actor_id, display_name, actor})
+        auto auth = stream.send (e2e::stream_auth_req_t{target_node, actor_id, display_name, actor})
                       .packet_name ("StreamAuthReq")
                       .submit ();
         ensure (static_cast<bool> (auth),
                 scenario_id + " stream auth failed: " + stream_error_text (auth));
         std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
-        auto joined = zlink::stream_e2e_client::codecs::send (
-                        stream, e2e::join_req_t{.key = key,
+        auto joined = stream.send (e2e::join_req_t{.key = key,
                                                 .actor_id = actor_id,
                                                 .display_name = actor_id + "-display",
                                                 .level = target_node == "play-a" ? 31 : 41,
@@ -664,8 +662,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
         auto state =
-          zlink::stream_e2e_client::codecs::send (
-            stream, e2e::state_req_t{.op = "add", .amount = target_node == "play-a" ? 13 : 17})
+          stream.send (e2e::state_req_t{.op = "add", .amount = target_node == "play-a" ? 13 : 17})
             .packet_name ("StateReq")
             .submit ();
         ensure (static_cast<bool> (state),
@@ -675,7 +672,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
             .to_future (scenario_id + " push notify missing");
         auto pushed =
-          zlink::stream_e2e_client::codecs::send (stream, e2e::actor_push_req_t{push_value})
+          stream.send (e2e::actor_push_req_t{push_value})
             .packet_name ("PushReq")
             .submit ();
         ensure (static_cast<bool> (pushed),
@@ -698,8 +695,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             auto connected = unauthenticated.connect ().submit ();
             ensure (static_cast<bool> (connected), "SM-D7 unauthenticated stream connect failed");
 
-            auto before_auth = zlink::stream_e2e_client::codecs::request (
-                                 unauthenticated, e2e::state_req_t{.op = "add", .amount = 1})
+            auto before_auth = unauthenticated.request (e2e::state_req_t{.op = "add", .amount = 1})
                                  .packet_name ("StateReq")
                                  .timeout (std::chrono::milliseconds (3000))
                                  .async<e2e::state_res_t> ()
@@ -718,8 +714,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             auto connected = invalid.connect ().submit ();
             ensure (static_cast<bool> (connected), "SM-D7 invalid-auth stream connect failed");
 
-            auto rejected = zlink::stream_e2e_client::codecs::request (
-                              invalid, e2e::stream_auth_req_t{"play-a", actor_id,
+            auto rejected = invalid.request (e2e::stream_auth_req_t{"play-a", actor_id,
                                                               actor_id + "-display", invalid_actor})
                               .packet_name ("StreamAuthReq")
                               .timeout (std::chrono::milliseconds (3000))
@@ -743,8 +738,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (connected), "SM-D7 stream connect failed");
 
         auto auth =
-          zlink::stream_e2e_client::codecs::request (
-            stream, e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
+          stream.request (e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::stream_auth_res_t> ()
@@ -754,8 +748,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                   && auth.value ().session_node_rid == "session-a",
                 "SM-D7 stream auth reply mismatch");
 
-        auto joined = zlink::stream_e2e_client::codecs::request (
-                        stream, e2e::join_req_t{.key = "a-stream-auth",
+        auto joined = stream.request (e2e::join_req_t{.key = "a-stream-auth",
                                                 .actor_id = actor_id,
                                                 .display_name = actor_id + "-display",
                                                 .level = 71,
@@ -769,8 +762,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (joined.value ().actor_id == actor_id && joined.value ().owner_node_rid == "play-a",
                 "SM-D7 stream join dispatch reply mismatch");
 
-        auto state = zlink::stream_e2e_client::codecs::request (
-                       stream, e2e::state_req_t{.op = "add", .amount = 7})
+        auto state = stream.request (e2e::state_req_t{.op = "add", .amount = 7})
                        .packet_name ("StateReq")
                        .timeout (std::chrono::milliseconds (5000))
                        .async<e2e::state_res_t> ()
@@ -854,16 +846,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (unbound_connected), "SM-D6 unbound stream connect failed");
 
         auto auth =
-          zlink::stream_e2e_client::codecs::request (
-            bound, e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
+          bound.request (e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::stream_auth_res_t> ()
             .result ();
         ensure (static_cast<bool> (auth), "SM-D6 stream auth failed: " + stream_error_text (auth));
 
-        auto joined = zlink::stream_e2e_client::codecs::request (
-                        bound, e2e::join_req_t{.key = "a-stream-push",
+        auto joined = bound.request (e2e::join_req_t{.key = "a-stream-push",
                                                .actor_id = actor_id,
                                                .display_name = actor_id + "-display",
                                                .level = 81,
@@ -880,8 +870,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             .to_future ("SM-D6 bound push notify missing");
         auto unbound_wait =
           unbound.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (500)).async ();
-        auto pushed = zlink::stream_e2e_client::codecs::request (
-                        bound, e2e::actor_push_req_t{"stream-push-d6-value"})
+        auto pushed = bound.request (e2e::actor_push_req_t{"stream-push-d6-value"})
                         .packet_name ("PushReq")
                         .timeout (std::chrono::milliseconds (5000))
                         .async<e2e::actor_push_res_t> ()
@@ -914,16 +903,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (connected), "SM-D11 stream connect failed");
 
         auto auth =
-          zlink::stream_e2e_client::codecs::request (
-            stream, e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
+          stream.request (e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::stream_auth_res_t> ()
             .result ();
         ensure (static_cast<bool> (auth), "SM-D11 stream auth failed: " + stream_error_text (auth));
 
-        auto joined = zlink::stream_e2e_client::codecs::request (
-                        stream, e2e::join_req_t{.key = "a-stream-channel-mixed",
+        auto joined = stream.request (e2e::join_req_t{.key = "a-stream-channel-mixed",
                                                 .actor_id = actor_id,
                                                 .display_name = actor_id + "-display",
                                                 .level = 91,
@@ -936,8 +923,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-D11 stream join failed: " + stream_error_text (joined));
 
         auto stream_request = std::async (std::launch::async, [&] {
-            return zlink::stream_e2e_client::codecs::request (
-                     stream, e2e::state_req_t{.op = "add", .amount = 11})
+            return stream.request (e2e::state_req_t{.op = "add", .amount = 11})
               .packet_name ("StateReq")
               .timeout (std::chrono::milliseconds (5000))
               .async<e2e::state_res_t> ()
@@ -981,8 +967,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (connected), "SM-D5 stream connect failed");
 
         auto notified_auth =
-          zlink::stream_e2e_client::codecs::request (
-            stream, e2e::stream_auth_req_t{"play-a", notified_actor_id,
+          stream.request (e2e::stream_auth_req_t{"play-a", notified_actor_id,
                                            notified_actor_id + "-display", notified_actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
@@ -992,8 +977,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-D5 notified actor auth failed: " + stream_error_text (notified_auth));
 
         auto muted_auth =
-          zlink::stream_e2e_client::codecs::request (
-            stream, e2e::stream_auth_req_t{"play-a", muted_actor_id, muted_actor_id + "-display",
+          stream.request (e2e::stream_auth_req_t{"play-a", muted_actor_id, muted_actor_id + "-display",
                                            muted_actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
@@ -1003,8 +987,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-D5 muted actor auth failed: " + stream_error_text (muted_auth));
 
         auto notified_join =
-          zlink::stream_e2e_client::codecs::request (
-            stream, e2e::join_req_t{.key = "a-stream-disconnect-notified",
+          stream.request (e2e::join_req_t{.key = "a-stream-disconnect-notified",
                                     .actor_id = notified_actor_id,
                                     .display_name = notified_actor_id + "-display",
                                     .level = 91,
@@ -1017,8 +1000,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (notified_join),
                 "SM-D5 notified actor join failed: " + stream_error_text (notified_join));
 
-        auto muted_join = zlink::stream_e2e_client::codecs::request (
-                            stream, e2e::join_req_t{.key = "a-stream-disconnect-muted",
+        auto muted_join = stream.request (e2e::join_req_t{.key = "a-stream-disconnect-muted",
                                                     .actor_id = muted_actor_id,
                                                     .display_name = muted_actor_id + "-display",
                                                     .level = 92,
@@ -1050,8 +1032,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto first_connected = first.connect ().submit ();
         ensure (static_cast<bool> (first_connected), "SM-D12 first stream connect failed");
 
-        auto first_auth = zlink::stream_e2e_client::codecs::request (
-                            first, e2e::stream_auth_req_t{"play-a", actor_id, display_name, actor})
+        auto first_auth = first.request (e2e::stream_auth_req_t{"play-a", actor_id, display_name, actor})
                             .packet_name ("StreamAuthReq")
                             .timeout (std::chrono::milliseconds (3000))
                             .async<e2e::stream_auth_res_t> ()
@@ -1059,8 +1040,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (first_auth),
                 "SM-D12 first auth failed: " + stream_error_text (first_auth));
 
-        auto joined = zlink::stream_e2e_client::codecs::request (
-                        first, e2e::join_req_t{.key = "a-stream-reconnect",
+        auto joined = first.request (e2e::join_req_t{.key = "a-stream-reconnect",
                                                .actor_id = actor_id,
                                                .display_name = display_name,
                                                .level = 121,
@@ -1074,8 +1054,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (joined.value ().owner_node_rid == "play-a", "SM-D12 first owner mismatch");
         actor = joined.value ().actor;
 
-        auto first_state = zlink::stream_e2e_client::codecs::request (
-                             first, e2e::state_req_t{.op = "add", .amount = 11})
+        auto first_state = first.request (e2e::state_req_t{.op = "add", .amount = 11})
                              .packet_name ("StateReq")
                              .timeout (std::chrono::milliseconds (5000))
                              .async<e2e::state_res_t> ()
@@ -1094,8 +1073,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (second_connected), "SM-D12 second stream connect failed");
 
         auto second_auth =
-          zlink::stream_e2e_client::codecs::request (
-            second, e2e::stream_auth_req_t{"play-a", actor_id, display_name, actor})
+          second.request (e2e::stream_auth_req_t{"play-a", actor_id, display_name, actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::stream_auth_res_t> ()
@@ -1103,8 +1081,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (second_auth),
                 "SM-D12 second auth failed: " + stream_error_text (second_auth));
 
-        auto snapshot = zlink::stream_e2e_client::codecs::request (
-                          second, e2e::state_req_t{.op = "add", .amount = 0})
+        auto snapshot = second.request (e2e::state_req_t{.op = "add", .amount = 0})
                           .packet_name ("StateReq")
                           .timeout (std::chrono::milliseconds (5000))
                           .async<e2e::state_res_t> ()
@@ -1114,8 +1091,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (snapshot.value ().owner_node_rid == "play-a" && snapshot.value ().value == 11,
                 "SM-D12 snapshot value mismatch");
 
-        auto resumed = zlink::stream_e2e_client::codecs::request (
-                         second, e2e::state_req_t{.op = "add", .amount = 5})
+        auto resumed = second.request (e2e::state_req_t{.op = "add", .amount = 5})
                          .packet_name ("StateReq")
                          .timeout (std::chrono::milliseconds (5000))
                          .async<e2e::state_res_t> ()
@@ -1127,8 +1103,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto push_wait =
           second.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
             .to_future ("SM-D12 push notify missing after rebind");
-        auto pushed = zlink::stream_e2e_client::codecs::request (
-                        second, e2e::actor_push_req_t{"stream-reconnect-d12-push"})
+        auto pushed = second.request (e2e::actor_push_req_t{"stream-reconnect-d12-push"})
                         .packet_name ("PushReq")
                         .timeout (std::chrono::milliseconds (5000))
                         .async<e2e::actor_push_res_t> ()
@@ -1159,8 +1134,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (play_a_connected), "SM-G1 play-a stream connect failed");
 
         auto play_a_auth =
-          zlink::stream_e2e_client::codecs::request (
-            play_a_stream, e2e::stream_auth_req_t{"play-a", play_a_actor_id,
+          play_a_stream.request (e2e::stream_auth_req_t{"play-a", play_a_actor_id,
                                                   play_a_actor_id + "-display", play_a_actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
@@ -1173,8 +1147,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::string play_a_join_error = "play-a join not attempted";
         for (int attempt = 0; attempt < 10; ++attempt) {
             auto play_a_join =
-              zlink::stream_e2e_client::codecs::request (
-                play_a_stream, e2e::join_req_t{.key = "a-crash-g1",
+              play_a_stream.request (e2e::join_req_t{.key = "a-crash-g1",
                                                .actor_id = play_a_actor_id,
                                                .display_name = play_a_actor_id + "-display",
                                                .level = 301,
@@ -1192,8 +1165,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         }
         ensure (play_a_joined, "SM-G1 play-a join failed: " + play_a_join_error);
 
-        auto play_a_state = zlink::stream_e2e_client::codecs::request (
-                              play_a_stream, e2e::state_req_t{.op = "add", .amount = 31})
+        auto play_a_state = play_a_stream.request (e2e::state_req_t{.op = "add", .amount = 31})
                               .packet_name ("StateReq")
                               .timeout (std::chrono::milliseconds (5000))
                               .async<e2e::state_res_t> ()
@@ -1202,8 +1174,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-G1 play-a initial state mismatch");
 
         auto play_b_auth =
-          zlink::stream_e2e_client::codecs::request (
-            play_a_stream, e2e::stream_auth_req_t{"play-b", play_b_actor_id,
+          play_a_stream.request (e2e::stream_auth_req_t{"play-b", play_b_actor_id,
                                                   play_b_actor_id + "-display", play_b_actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
@@ -1216,8 +1187,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::string play_b_join_error = "play-b join not attempted";
         for (int attempt = 0; attempt < 10; ++attempt) {
             auto play_b_join =
-              zlink::stream_e2e_client::codecs::request (
-                play_a_stream, e2e::join_req_t{.key = "b-crash-g1",
+              play_a_stream.request (e2e::join_req_t{.key = "b-crash-g1",
                                                .actor_id = play_b_actor_id,
                                                .display_name = play_b_actor_id + "-display",
                                                .level = 302,
@@ -1236,8 +1206,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         }
         ensure (play_b_joined, "SM-G1 play-b join failed: " + play_b_join_error);
 
-        auto play_b_state = zlink::stream_e2e_client::codecs::request (
-                              play_a_stream, e2e::state_req_t{.op = "add", .amount = 41})
+        auto play_b_state = play_a_stream.request (e2e::state_req_t{.op = "add", .amount = 41})
                               .packet_name ("StateReq")
                               .metadata ("actor-id", play_b_actor_id)
                               .timeout (std::chrono::milliseconds (5000))
@@ -1249,8 +1218,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         write_signal_file (_crash_ready_file);
         wait_signal_file (_crash_go_file, "play-a crash");
 
-        auto play_b_after_crash = zlink::stream_e2e_client::codecs::request (
-                                    play_a_stream, e2e::state_req_t{.op = "add", .amount = 1})
+        auto play_b_after_crash = play_a_stream.request (e2e::state_req_t{.op = "add", .amount = 1})
                                     .packet_name ("StateReq")
                                     .metadata ("actor-id", play_b_actor_id)
                                     .timeout (std::chrono::milliseconds (5000))
@@ -1259,8 +1227,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (play_b_after_crash) && play_b_after_crash.value ().value == 42,
                 "SM-G1 play-b state did not survive play-a crash");
 
-        auto failed_after_crash = zlink::stream_e2e_client::codecs::request (
-                                    play_a_stream, e2e::state_req_t{.op = "add", .amount = 1})
+        auto failed_after_crash = play_a_stream.request (e2e::state_req_t{.op = "add", .amount = 1})
                                     .packet_name ("StateReq")
                                     .metadata ("actor-id", play_a_actor_id)
                                     .timeout (std::chrono::milliseconds (3000))
@@ -1288,9 +1255,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (recovered_connected), "SM-G1 recovered stream connect failed");
 
         auto recovered_auth =
-          zlink::stream_e2e_client::codecs::request (
-            recovered_stream,
-            e2e::stream_auth_req_t{"play-b", recovered_actor_id, recovered_actor_id + "-display",
+          recovered_stream.request (e2e::stream_auth_req_t{"play-b", recovered_actor_id, recovered_actor_id + "-display",
                                    recovered_actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
@@ -1299,8 +1264,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (recovered_auth),
                 "SM-G1 recovered auth failed: " + stream_error_text (recovered_auth));
 
-        auto recovered_state = zlink::stream_e2e_client::codecs::request (
-                                 recovered_stream, e2e::state_req_t{.op = "add", .amount = 7})
+        auto recovered_state = recovered_stream.request (e2e::state_req_t{.op = "add", .amount = 7})
                                  .packet_name ("StateReq")
                                  .timeout (std::chrono::milliseconds (5000))
                                  .async<e2e::state_res_t> ()
@@ -1329,8 +1293,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (connected), "SM-D4 stream connect failed");
 
         auto auth_first =
-          zlink::stream_e2e_client::codecs::request (
-            stream, e2e::stream_auth_req_t{"play-a", first_actor_id, first_actor_id + "-display",
+          stream.request (e2e::stream_auth_req_t{"play-a", first_actor_id, first_actor_id + "-display",
                                            first_actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
@@ -1341,8 +1304,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
         auto auth_second =
-          zlink::stream_e2e_client::codecs::request (
-            stream, e2e::stream_auth_req_t{"play-b", second_actor_id, second_actor_id + "-display",
+          stream.request (e2e::stream_auth_req_t{"play-b", second_actor_id, second_actor_id + "-display",
                                            second_actor})
             .packet_name ("StreamAuthReq")
             .timeout (std::chrono::milliseconds (3000))
@@ -1352,8 +1314,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-D4 second stream auth failed: " + stream_error_text (auth_second));
         std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
-        auto join_first = zlink::stream_e2e_client::codecs::request (
-                            stream, e2e::join_req_t{.key = "a-stream-multi",
+        auto join_first = stream.request (e2e::join_req_t{.key = "a-stream-multi",
                                                     .actor_id = first_actor_id,
                                                     .display_name = first_actor_id + "-display",
                                                     .level = 51,
@@ -1366,8 +1327,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (join_first),
                 "SM-D4 first stream join failed: " + stream_error_text (join_first));
 
-        auto join_second = zlink::stream_e2e_client::codecs::request (
-                             stream, e2e::join_req_t{.key = "b-stream-multi",
+        auto join_second = stream.request (e2e::join_req_t{.key = "b-stream-multi",
                                                      .actor_id = second_actor_id,
                                                      .display_name = second_actor_id + "-display",
                                                      .level = 61,
@@ -1380,8 +1340,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (join_second),
                 "SM-D4 second stream join failed: " + stream_error_text (join_second));
 
-        auto state_first = zlink::stream_e2e_client::codecs::request (
-                             stream, e2e::state_req_t{.op = "add", .amount = 23})
+        auto state_first = stream.request (e2e::state_req_t{.op = "add", .amount = 23})
                              .packet_name ("StateReq")
                              .metadata ("actor-id", first_actor_id)
                              .timeout (std::chrono::milliseconds (5000))
@@ -1390,8 +1349,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (state_first),
                 "SM-D4 first state send failed: " + stream_error_text (state_first));
 
-        auto state_second = zlink::stream_e2e_client::codecs::request (
-                              stream, e2e::state_req_t{.op = "add", .amount = 29})
+        auto state_second = stream.request (e2e::state_req_t{.op = "add", .amount = 29})
                               .packet_name ("StateReq")
                               .metadata ("actor-id", second_actor_id)
                               .timeout (std::chrono::milliseconds (5000))
@@ -1403,8 +1361,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto first_push_wait =
           stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
             .to_future ("SM-D4 first push notify missing");
-        auto first_pushed = zlink::stream_e2e_client::codecs::request (
-                              stream, e2e::actor_push_req_t{"stream-multi-a-push"})
+        auto first_pushed = stream.request (e2e::actor_push_req_t{"stream-multi-a-push"})
                               .packet_name ("PushReq")
                               .metadata ("actor-id", first_actor_id)
                               .timeout (std::chrono::milliseconds (5000))
@@ -1420,8 +1377,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto second_push_wait =
           stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
             .to_future ("SM-D4 second push notify missing");
-        auto second_pushed = zlink::stream_e2e_client::codecs::request (
-                               stream, e2e::actor_push_req_t{"stream-multi-b-push"})
+        auto second_pushed = stream.request (e2e::actor_push_req_t{"stream-multi-b-push"})
                                .packet_name ("PushReq")
                                .metadata ("actor-id", second_actor_id)
                                .timeout (std::chrono::milliseconds (5000))
@@ -1435,8 +1391,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-D4 second push routed to wrong actor: " + second_push.actor_id + "/"
                   + second_push.value);
 
-        auto missing_actor_id = zlink::stream_e2e_client::codecs::request (
-                                  stream, e2e::state_req_t{.op = "add", .amount = 1})
+        auto missing_actor_id = stream.request (e2e::state_req_t{.op = "add", .amount = 1})
                                   .packet_name ("StateReq")
                                   .timeout (std::chrono::milliseconds (3000))
                                   .async<e2e::state_res_t> ()

@@ -38,8 +38,7 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
         throw std::runtime_error ("SM-D11 stream connect failed");
     }
     auto auth =
-      zlink::stream_connector::codecs::request (
-        stream, stream_ensure_auth_req_t{"play-a", actor_id, "SM-D11 Stream Channel"})
+      stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D11 Stream Channel"})
         .packet_name ("StreamEnsureAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
@@ -49,7 +48,7 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
     }
 
     auto stream_reply =
-      zlink::stream_connector::codecs::request (stream, actor_ping_req_t{"stream-side"})
+      stream.request (actor_ping_req_t{"stream-side"})
         .packet_name ("ActorPingReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<actor_ping_res_t> ();

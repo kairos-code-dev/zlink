@@ -96,7 +96,8 @@ inline void run_sm_d1_scenario (const std::string &play_http_endpoint,
     }
 
     auto bound_wait =
-      bound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000));
+      bound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
+        .to_future ("SM-D1 bound stream push notify missing");
     auto unbound_wait =
       unbound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (500));
     auto pushed = zlink::stream_connector::codecs::request (bound, actor_push_req_t{"push-local"})
@@ -108,8 +109,8 @@ inline void run_sm_d1_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-D1 actor push request failed");
     }
 
-    auto notify = bound_wait.submit ();
-    if (!notify || notify.value ().actor_id != actor_id || notify.value ().value != "push-local") {
+    auto notify = bound_wait.get ();
+    if (notify.actor_id != actor_id || notify.value != "push-local") {
         throw std::runtime_error ("SM-D1 bound stream push notify mismatch");
     }
     auto unbound_notify = unbound_wait.submit ();

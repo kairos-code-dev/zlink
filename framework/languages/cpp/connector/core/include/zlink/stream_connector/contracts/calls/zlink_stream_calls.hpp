@@ -10,7 +10,9 @@
 
 #include <chrono>
 #include <functional>
+#include <future>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -332,6 +334,22 @@ template <typename TMessage> class wait_call_t
                   callback (std::move (result));
               }
           });
+    }
+
+    std::future<TMessage> to_future (std::string failure_message = "stream connector wait failed")
+    {
+        auto promise = std::make_shared<std::promise<TMessage>> ();
+        auto future = promise->get_future ();
+        submit ([promise, failure_message = std::move (failure_message)] (
+                  result_t<TMessage> result) mutable {
+            if (!result) {
+                promise->set_exception (std::make_exception_ptr (
+                  std::runtime_error (failure_message)));
+                return;
+            }
+            promise->set_value (std::move (result.value ()));
+        });
+        return future;
     }
 
   private:

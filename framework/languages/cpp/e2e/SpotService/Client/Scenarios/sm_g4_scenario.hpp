@@ -48,7 +48,8 @@ inline void sm_g4_push_and_verify (zlink::stream_connector::connector_t &stream,
 {
     const auto actor_id = "actor-sm-g4-" + std::to_string (index);
     const auto value = "push-" + std::to_string (index);
-    auto wait = stream.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000));
+    auto wait = stream.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
+                  .to_future ("SM-G4 push notify missing for " + actor_id);
     auto pushed = zlink::stream_connector::codecs::request (stream, actor_push_req_t{value})
                     .packet_name ("PushReq")
                     .metadata ("actor-id", actor_id)
@@ -58,8 +59,8 @@ inline void sm_g4_push_and_verify (zlink::stream_connector::connector_t &stream,
         throw std::runtime_error ("SM-G4 push reply mismatch for " + actor_id);
     }
 
-    auto notify = wait.submit ();
-    if (!notify || notify.value ().actor_id != actor_id || notify.value ().value != value) {
+    auto notify = wait.get ();
+    if (notify.actor_id != actor_id || notify.value != value) {
         throw std::runtime_error ("SM-G4 push notify mismatch for " + actor_id);
     }
 }

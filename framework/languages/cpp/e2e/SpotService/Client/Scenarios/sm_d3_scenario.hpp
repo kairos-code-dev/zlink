@@ -60,7 +60,8 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     }
 
     auto entry_wait =
-      entry.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000));
+      entry.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
+        .to_future ("SM-D3 entry push notify missing");
     auto entry_push =
       zlink::stream_connector::codecs::request (entry, actor_push_req_t{"entry-push"})
         .packet_name ("PushReq")
@@ -71,9 +72,8 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
         || entry_push.value ().actor_id != entry_actor_id) {
         throw std::runtime_error ("SM-D3 entry actor push failed");
     }
-    auto entry_notify = entry_wait.submit ();
-    if (!entry_notify || entry_notify.value ().actor_id != entry_actor_id
-        || entry_notify.value ().value != "entry-push") {
+    auto entry_notify = entry_wait.get ();
+    if (entry_notify.actor_id != entry_actor_id || entry_notify.value != "entry-push") {
         throw std::runtime_error ("SM-D3 entry push notify mismatch");
     }
 
@@ -134,7 +134,8 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
     }
 
     auto user_wait =
-      user.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000));
+      user.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
+        .to_future ("SM-D3 user push notify missing");
     auto user_push =
       zlink::stream_connector::codecs::request (user, actor_push_req_t{"user-push"})
         .packet_name ("PushReq")
@@ -145,9 +146,8 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
         || user_push.value ().actor_id != user_actor_id) {
         throw std::runtime_error ("SM-D3 user actor push failed");
     }
-    auto user_notify = user_wait.submit ();
-    if (!user_notify || user_notify.value ().actor_id != user_actor_id
-        || user_notify.value ().value != "user-push") {
+    auto user_notify = user_wait.get ();
+    if (user_notify.actor_id != user_actor_id || user_notify.value != "user-push") {
         throw std::runtime_error ("SM-D3 user push notify mismatch");
     }
 

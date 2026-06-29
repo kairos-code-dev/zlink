@@ -111,7 +111,8 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     }
 
     auto notify_wait =
-      second.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000));
+      second.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
+        .to_future ("SM-D12 push notify missing");
     auto pushed =
       zlink::stream_connector::codecs::request (second, actor_push_req_t{"after-transfer"})
         .packet_name ("PushReq")
@@ -120,9 +121,8 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
     if (!pushed || !pushed.value ().pushed || pushed.value ().actor_id != actor_id) {
         throw std::runtime_error ("SM-D12 push request failed");
     }
-    auto notify = notify_wait.submit ();
-    if (!notify || notify.value ().actor_id != actor_id
-        || notify.value ().value != "after-transfer") {
+    auto notify = notify_wait.get ();
+    if (notify.actor_id != actor_id || notify.value != "after-transfer") {
         throw std::runtime_error ("SM-D12 push notify mismatch");
     }
 

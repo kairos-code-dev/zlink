@@ -67,7 +67,8 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
     }
 
     auto bound_wait =
-      bound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000));
+      bound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
+        .to_future ("SM-D6 bound push notify missing");
     auto unbound_wait =
       unbound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (500));
     auto pushed =
@@ -80,9 +81,8 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
         throw std::runtime_error ("SM-D6 push trigger failed");
     }
 
-    auto notify = bound_wait.submit ();
-    if (!notify || notify.value ().actor_id != actor_id
-        || notify.value ().value != "push-bound-only") {
+    auto notify = bound_wait.get ();
+    if (notify.actor_id != actor_id || notify.value != "push-bound-only") {
         throw std::runtime_error ("SM-D6 bound push notify mismatch");
     }
     auto leaked = unbound_wait.submit ();

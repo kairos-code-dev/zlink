@@ -72,7 +72,8 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
     }
 
     auto first_wait = stream.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
-                        .where (&actor_push_notify_t::actor_id, first_actor_id);
+                        .where (&actor_push_notify_t::actor_id, first_actor_id)
+                        .to_future ("SM-D4 first actor push notify missing");
     auto first_push =
       zlink::stream_connector::codecs::request (stream, actor_push_req_t{"push-x"})
         .packet_name ("PushReq")
@@ -83,13 +84,14 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
         || first_push.value ().actor_id != first_actor_id) {
         throw std::runtime_error ("SM-D4 first actor push failed");
     }
-    auto first_notify = first_wait.submit ();
-    if (!first_notify || first_notify.value ().value != "push-x") {
+    auto first_notify = first_wait.get ();
+    if (first_notify.value != "push-x") {
         throw std::runtime_error ("SM-D4 first actor push notify mismatch");
     }
 
     auto second_wait = stream.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
-                         .where (&actor_push_notify_t::actor_id, second_actor_id);
+                         .where (&actor_push_notify_t::actor_id, second_actor_id)
+                         .to_future ("SM-D4 second actor push notify missing");
     auto second_push =
       zlink::stream_connector::codecs::request (stream, actor_push_req_t{"push-y"})
         .packet_name ("PushReq")
@@ -100,8 +102,8 @@ inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
         || second_push.value ().actor_id != second_actor_id) {
         throw std::runtime_error ("SM-D4 second actor push failed");
     }
-    auto second_notify = second_wait.submit ();
-    if (!second_notify || second_notify.value ().value != "push-y") {
+    auto second_notify = second_wait.get ();
+    if (second_notify.value != "push-y") {
         throw std::runtime_error ("SM-D4 second actor push notify mismatch");
     }
 

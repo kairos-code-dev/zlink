@@ -96,7 +96,8 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
     }
 
     auto remote_wait =
-      remote.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000));
+      remote.wait_for<actor_push_notify_t> (std::chrono::milliseconds (10000))
+        .to_future ("SM-D2 remote stream push notify missing");
     auto unbound_wait =
       unbound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (500));
     auto pushed = zlink::stream_connector::codecs::request (remote, actor_push_req_t{"push-remote"})
@@ -108,9 +109,8 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
         throw std::runtime_error ("SM-D2 actor push request failed");
     }
 
-    auto notify = remote_wait.submit ();
-    if (!notify || notify.value ().actor_id != actor_id
-        || notify.value ().value != "push-remote") {
+    auto notify = remote_wait.get ();
+    if (notify.actor_id != actor_id || notify.value != "push-remote") {
         throw std::runtime_error ("SM-D2 remote stream push notify mismatch");
     }
     auto unbound_notify = unbound_wait.submit ();

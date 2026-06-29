@@ -177,7 +177,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             info.routing_id = provider.routing_id;
             info.source_registry = provider.source_registry;
             info.registration_id = provider.registration_id;
-            info.weight = provider.weight == 0 ? 0 : 100;
+            info.weight = provider.weight;
             info.value = provider.value;
             info.metadata = provider.metadata;
             info.registered_at = 0;

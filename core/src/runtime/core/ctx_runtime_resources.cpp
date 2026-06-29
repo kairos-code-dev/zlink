@@ -57,6 +57,7 @@ void zlink::ctx_runtime_resources_t::teardown (ctx_t &ctx_, ctx_socket_registry_
     _io_thread_registry.stop_all ();
     _io_thread_registry.destroy_all ();
 
+    stop_reaper ();
     LIBZLINK_DELETE (_reaper);
     _reaper = NULL;
     socket_registry_.clear ();

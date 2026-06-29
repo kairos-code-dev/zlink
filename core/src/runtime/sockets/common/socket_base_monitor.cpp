@@ -484,6 +484,14 @@ bool zlink::socket_base_t::dispatch_monitor_event (void *monitor_socket_,
 
 void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
 {
+    socket_base_t *monitor_socket = detach_monitor_socket (send_monitor_stopped_event_);
+    if (monitor_socket)
+        zlink_close (monitor_socket);
+}
+
+zlink::socket_base_t *
+zlink::socket_base_t::detach_monitor_socket (bool send_monitor_stopped_event_)
+{
     monitor_runtime_t &monitor = monitor_runtime ();
     if (monitor.socket) {
         monitor.events_atomic.store (0, std::memory_order_release);
@@ -512,7 +520,6 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
                                             0, endpoint_uri_pair_t ()))
                 dispatch_monitor_event (monitor.socket, record);
         }
-        zlink_close (monitor.socket);
         monitor.socket = NULL;
         monitor.events = 0;
         monitor.lossy = true;
@@ -521,5 +528,7 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
             wait_async_quiesced (10000);
         }
         lifecycle_coordinator ().set_monitor_async_mailbox_owned (false);
+        return monitor_socket;
     }
+    return NULL;
 }

@@ -241,6 +241,7 @@ class spot_node_t : public discovery_observer_t
     bool can_suspend_control_task () const;
     int destroy_handles ();
     int destroy_internal_receiver ();
+    void close_logical_request_reply_states ();
     void close_control_sockets ();
     void stop_data_plane_sockets ();
     int start_data_plane ();

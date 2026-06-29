@@ -6,10 +6,27 @@
 #include "core/recv_internal.hpp"
 #include "utils/random.hpp"
 
+#include <cstdarg>
+#include <cstdlib>
+#include <stdio.h>
+
 namespace
 {
 const long internal_pair_handshake_timeout_ms = 100;
 const int internal_pair_socket_removal_timeout_ms = 1000;
+
+void debug_internal_pair_queue (const char *fmt_, ...)
+{
+    const char *enabled = std::getenv ("ZLINK_DEBUG_INTERNAL_PAIR_QUEUE");
+    if (!enabled || enabled[0] == '\0')
+        return;
+
+    va_list args;
+    va_start (args, fmt_);
+    std::fprintf (stderr, "[internal-pair-queue] ");
+    std::vfprintf (stderr, fmt_, args);
+    va_end (args);
+}
 
 void set_internal_pair_socket_defaults (zlink::socket_base_t *socket_)
 {
@@ -132,6 +149,11 @@ void zlink::internal_pair_queue::close (queue_t *queue_)
     if (!queue_)
         return;
 
+    debug_internal_pair_queue ("close queue=%p rx=%d tx=%d endpoint=%s\n",
+                               static_cast<void *> (queue_),
+                               queue_->_rx ? queue_->_rx->socket_id () : -1,
+                               queue_->_tx ? queue_->_tx->socket_id () : -1,
+                               queue_->_endpoint.c_str ());
     if (queue_->_tx) {
         close_internal_pair_socket (queue_->_tx);
         queue_->_tx = NULL;
@@ -178,6 +200,10 @@ int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_, const char *prefix_,
         close_internal_pair_sockets (rx, tx);
         return -1;
     }
+
+    debug_internal_pair_queue ("ensure prefix=%s queue=%p rx=%d tx=%d endpoint=%s\n", prefix_,
+                               static_cast<void *> (queue_), rx->socket_id (), tx->socket_id (),
+                               endpoint);
 
     set_internal_pair_socket_defaults (rx);
     set_internal_pair_socket_defaults (tx);

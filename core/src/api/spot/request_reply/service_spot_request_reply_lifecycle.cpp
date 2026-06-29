@@ -322,6 +322,24 @@ void zlink::spot_reqrep_internal::erase_spot_owner_state (void *spot_)
     }
 }
 
+void zlink::spot_reqrep_internal::erase_spot_owner_state (
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return;
+
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex ());
+    for (std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t>>::iterator it =
+           spot_owner_states ().begin ();
+         it != spot_owner_states ().end ();) {
+        if (it->second == state_)
+            it = spot_owner_states ().erase (it);
+        else
+            ++it;
+    }
+    state_->owner = NULL;
+}
+
 int zlink::spot_reqrep_internal::install_spot_dispatch_event_task (
   spot_request_reply_state_t *state_)
 {

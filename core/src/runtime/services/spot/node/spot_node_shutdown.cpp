@@ -6,11 +6,14 @@
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_access.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "api/socket/request_completion_queue_internal.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
 #include "services/spot/common/spot_debug.hpp"
 #include "services/spot/pubsub/spot_pub.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
 #include "services/spot/runtime/spot_runtime_internal.hpp"
+#include "services/spot/runtime/spot_handle.hpp"
 #include "services/spot/pubsub/spot_sub.hpp"
 
 namespace zlink
@@ -114,6 +117,53 @@ void spot_node_t::close_attachment_monitors (std::deque<attachment_monitor_handl
     }
 }
 
+void spot_node_t::close_logical_request_reply_states ()
+{
+    std::vector<std::shared_ptr<spot_logical_state_t>> logical_states;
+    {
+        scoped_lock_t lock (_sync);
+        logical_states.reserve (_handle_state.spots_by_rid.size () + 1);
+        if (_handle_state.entry_spot)
+            logical_states.push_back (_handle_state.entry_spot);
+        for (std::map<std::string, std::shared_ptr<spot_logical_state_t>>::const_iterator it =
+               _handle_state.spots_by_rid.begin ();
+             it != _handle_state.spots_by_rid.end (); ++it) {
+            if (it->second)
+                logical_states.push_back (it->second);
+        }
+    }
+
+    std::set<spot_logical_state_t *> seen;
+    for (size_t i = 0; i < logical_states.size (); ++i) {
+        const std::shared_ptr<spot_logical_state_t> &logical = logical_states[i];
+        if (!logical || !seen.insert (logical.get ()).second)
+            continue;
+
+        std::shared_ptr<spot_reqrep_internal::spot_request_reply_state_t> state =
+          logical->request_reply_state;
+        if (!state)
+            continue;
+
+        spot_reqrep_internal::set_spot_completion_phase (
+          state, spot_reqrep_internal::spot_request_reply_completion_closing);
+        spot_reqrep_internal::set_spot_completion_phase (
+          state, spot_reqrep_internal::spot_request_reply_completion_closed);
+        spot_reqrep_internal::unregister_spot_identity (state);
+        spot_reqrep_internal::unregister_spot_channel_reply_observers (state);
+
+        std::vector<std::shared_ptr<spot_reqrep_internal::spot_channel_reply_source_t>> sources;
+        spot_reqrep_internal::clear_spot_channel_reply_sources (state, &sources);
+        close_spot_subscribe_dispatch_queue (&state->recv.subscribe_queue);
+        request_completion::close (&state->completion_state.direct);
+        for (size_t source_index = 0; source_index < sources.size (); ++source_index) {
+            if (sources[source_index])
+                request_completion::close (&sources[source_index]->completion);
+        }
+        spot_reqrep_internal::erase_spot_owner_state (state);
+        logical->request_reply_state.reset ();
+    }
+}
+
 int spot_node_t::destroy ()
 {
     {
@@ -136,10 +186,19 @@ int spot_node_t::destroy ()
       false, "step=begin node=%p service=%s state=%d tracked=%zu", static_cast<void *> (this),
       _discovery_state.discovery_service.c_str (), static_cast<int> (_lifecycle.state ()),
       _lifecycle.owned_socket_count ());
-    if (_discovery_state.discovery && _discovery_state.registered)
+    if (_discovery_state.discovery && _discovery_state.registered) {
+        spot_shutdown_logf_local (false, "step=unregister_begin node=%p",
+                                  static_cast<void *> (this));
         (void) unregister_registered ();
+        spot_shutdown_logf_local (false, "step=unregister_complete node=%p",
+                                  static_cast<void *> (this));
+    }
+    spot_shutdown_logf_local (false, "step=detach_phase_begin node=%p",
+                              static_cast<void *> (this));
     begin_destroy_detach_phase (&discovery, &service_discoveries, &active_peer_endpoints,
                                 &bound_endpoint, &router_bind_endpoint);
+    spot_shutdown_logf_local (false, "step=detach_phase_complete node=%p peers=%zu",
+                              static_cast<void *> (this), active_peer_endpoints.size ());
     for (size_t i = 0; i < active_peer_endpoints.size (); ++i)
         (void) send_data_plane_command (spot_control_protocol::cmd_disconnect_peer_pub,
                                         active_peer_endpoints[i].c_str ());
@@ -176,6 +235,7 @@ int spot_node_t::destroy ()
         preserve_first_error (_runtime->stop_and_join (), &first_error);
     spot_shutdown_logf_local (false, "step=data_plane_stopped node=%p error=%d",
                               static_cast<void *> (this), first_error);
+    close_logical_request_reply_states ();
     preserve_first_error (destroy_handles (), &first_error);
     preserve_first_error (destroy_internal_receiver (), &first_error);
     if (_runtime)

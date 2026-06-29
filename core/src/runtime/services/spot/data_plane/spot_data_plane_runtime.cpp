@@ -16,9 +16,13 @@
 #include "core/auto_hwm_policy.hpp"
 #include "core/socket_poller.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
+#include "sockets/common/socket_close_ops.hpp"
 #include "sockets/common/socket_base.hpp"
 
+#include <cstdlib>
 #include <errno.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 namespace zlink
@@ -28,6 +32,19 @@ namespace
 static const int spot_data_plane_hwm_default = 0;
 static const int spot_internal_peer_ctrl_sndhwm_default = 0;
 static const int spot_internal_peer_ctrl_rcvhwm_default = 0;
+
+static void spot_data_plane_debug_logf (const char *fmt_, ...)
+{
+    if (!std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN"))
+        return;
+
+    std::fprintf (stderr, "[spot-data-plane] ");
+    va_list args;
+    va_start (args, fmt_);
+    std::vfprintf (stderr, fmt_, args);
+    va_end (args);
+    std::fflush (stderr);
+}
 
 static bool read_socket_int_option (socket_base_t *socket_, int option_, int *value_out_)
 {
@@ -86,12 +103,50 @@ static void close_mesh_peer_observer (spot_node_t *node_, spot_data_plane_runtim
 {
     if (!state_)
         return;
-    if (state_->mesh_pub)
-        (void) state_->mesh_pub->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
-    if (state_->mesh_xsub)
-        (void) state_->mesh_xsub->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
-    spot_data_plane_t::close_socket_ptr (node_, state_->mesh_peer_observer.pub_monitor);
-    spot_data_plane_t::close_socket_ptr (node_, state_->mesh_peer_observer.xsub_monitor);
+    socket_base_t *pub_monitor = state_->mesh_peer_observer.pub_monitor;
+    socket_base_t *xsub_monitor = state_->mesh_peer_observer.xsub_monitor;
+    socket_base_t *pub_source_monitor = NULL;
+    socket_base_t *xsub_source_monitor = NULL;
+    state_->mesh_peer_observer.pub_monitor = NULL;
+    state_->mesh_peer_observer.xsub_monitor = NULL;
+    if (state_->mesh_pub) {
+        spot_data_plane_debug_logf ("mesh_pub stop monitor begin sid=%d\n",
+                                    state_->mesh_pub->socket_id ());
+        pub_source_monitor = state_->mesh_pub->detach_monitor_socket (false);
+        spot_data_plane_debug_logf ("mesh_pub stop monitor end\n");
+    }
+    if (state_->mesh_xsub) {
+        spot_data_plane_debug_logf ("mesh_xsub stop monitor begin sid=%d\n",
+                                    state_->mesh_xsub->socket_id ());
+        xsub_source_monitor = state_->mesh_xsub->detach_monitor_socket (false);
+        spot_data_plane_debug_logf ("mesh_xsub stop monitor end\n");
+    }
+    if (pub_monitor) {
+        spot_data_plane_debug_logf ("close pub_monitor begin sid=%d\n",
+                                    pub_monitor->socket_id ());
+        spot_node_access_t::untrack_owned_socket (node_, pub_monitor);
+        (void) socket_close_ops_t::request_close (pub_monitor, 0);
+        spot_data_plane_debug_logf ("close pub_monitor end\n");
+    }
+    if (xsub_monitor) {
+        spot_data_plane_debug_logf ("close xsub_monitor begin sid=%d\n",
+                                    xsub_monitor->socket_id ());
+        spot_node_access_t::untrack_owned_socket (node_, xsub_monitor);
+        (void) socket_close_ops_t::request_close (xsub_monitor, 0);
+        spot_data_plane_debug_logf ("close xsub_monitor end\n");
+    }
+    if (pub_source_monitor) {
+        spot_data_plane_debug_logf ("close pub_source_monitor begin sid=%d\n",
+                                    pub_source_monitor->socket_id ());
+        (void) socket_close_ops_t::request_close (pub_source_monitor, 0);
+        spot_data_plane_debug_logf ("close pub_source_monitor end\n");
+    }
+    if (xsub_source_monitor) {
+        spot_data_plane_debug_logf ("close xsub_source_monitor begin sid=%d\n",
+                                    xsub_source_monitor->socket_id ());
+        (void) socket_close_ops_t::request_close (xsub_source_monitor, 0);
+        spot_data_plane_debug_logf ("close xsub_source_monitor end\n");
+    }
 }
 
 static int open_mesh_peer_observer (spot_data_plane_runtime_state_t *state_)
@@ -652,10 +707,14 @@ void spot_data_plane_t::teardown_runtime (spot_node_t *node_,
         state_->remote_mesh.pending_messages.clear ();
     }
 
+    spot_data_plane_debug_logf ("delete poller begin\n");
     LIBZLINK_DELETE (state_->poller);
     state_->poller = NULL;
+    spot_data_plane_debug_logf ("delete poller end\n");
 
+    spot_data_plane_debug_logf ("close observer begin\n");
     close_mesh_peer_observer (node_, state_);
+    spot_data_plane_debug_logf ("close observer end\n");
 
     {
         scoped_lock_t lock (spot_node_access_t::sync (node_));

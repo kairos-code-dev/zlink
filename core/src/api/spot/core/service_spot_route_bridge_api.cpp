@@ -125,13 +125,12 @@ bool build_endpoint_source_rid (void *socket_,
                                 const char *channel_name_,
                                 zlink_routing_id_t *out_)
 {
+    (void) socket_;
     if (!out_ || !valid_channel_name (channel_name_)) {
         errno = EFAULT;
         return false;
     }
     memset (out_, 0, sizeof (*out_));
-    if (socket_ && zlink_get_routing_id (socket_, out_) == 0 && out_->size > 0)
-        return true;
 
     const size_t channel_name_len = strlen (channel_name_);
     const char prefix[] = "bridge:";

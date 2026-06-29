@@ -124,19 +124,6 @@ zlink_close_result_t zlink_close (void *s_)
         errno = EBUSY;
         return ZLINK_CLOSE_BUSY;
     }
-    if (zlink::socket_reqrep_internal::has_pending_request_work (request_reply_state)
-        && !zlink::socket_reqrep_internal::current_thread_is_completion_owner (
-          request_reply_state)) {
-        errno = EBUSY;
-        return ZLINK_CLOSE_BUSY;
-    }
-    if (zlink::spot_reqrep_internal::has_pending_router_spot_request_work (router_spot_state)
-        && !zlink::spot_reqrep_internal::current_thread_is_router_completion_owner (
-          router_spot_state)) {
-        errno = EBUSY;
-        return ZLINK_CLOSE_BUSY;
-    }
-
     monitor_handler_state_t *monitor_state = find_monitor_handler_state (handle.socket);
     zlink::socket_base_t *raw_monitor_source = raw_monitor_snapshot_subject (monitor_state);
     if (monitor_state) {

@@ -48,7 +48,7 @@ int timer_handle_acquire_poller_ref (timer_handle_t *timer_)
     }
 
     std::lock_guard<std::mutex> lock (timer_->mutex);
-    if (timer_->receive_callback_active || timer_->poller_refs > 0) {
+    if (timer_->handler || timer_->receive_callback_active || timer_->poller_refs > 0) {
         errno = EBUSY;
         return -1;
     }
@@ -216,7 +216,7 @@ zlink_recv_result_t zlink_timer_recv (void *timer_, uint64_t *fire_count_out_)
     }
 
     std::unique_lock<std::mutex> lock (timer->mutex);
-    if (timer->receive_callback_active) {
+    if (timer->handler || timer->receive_callback_active) {
         errno = EBUSY;
         return ZLINK_RECV_BUSY;
     }
@@ -258,7 +258,6 @@ zlink_timer_handler (void *timer_, zlink_timer_handler_fn handler_, void *userda
         return ZLINK_HANDLER_BUSY;
     }
 
-    timer->receive_callback_active = true;
     timer->handler = handler_;
     timer->handler_userdata = userdata_;
     return ZLINK_HANDLER_OK;

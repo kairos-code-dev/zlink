@@ -258,6 +258,7 @@ int validate_request_parts (zlink_msg_t *parts_, size_t part_count_);
 int init_buffer_frame (zlink_msg_t *msg_, const void *data_, size_t size_);
 std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_);
 void erase_spot_owner_state (void *spot_);
+void erase_spot_owner_state (const std::shared_ptr<spot_request_reply_state_t> &state_);
 int install_spot_dispatch_event_task (spot_request_reply_state_t *state_);
 void run_spot_dispatch_worker_once (void *spot_);
 void run_spot_dispatch_events_once (void *spot_);

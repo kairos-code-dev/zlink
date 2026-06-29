@@ -5,6 +5,7 @@ set(unittests
     unittest_ypipe
     unittest_poller
     unittest_service_mode_policy
+    unittest_fast_mutex
     unittest_mtrie
     unittest_ip_resolver
     unittest_ipc_address

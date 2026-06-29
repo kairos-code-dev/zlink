@@ -41,8 +41,9 @@ struct spot_timeout_reaper_shutdown_t
             g_spot_timeout_reaper_stopping = true;
             g_spot_timeout_reaper_cv.notify_all ();
         }
-        if (g_spot_timeout_reaper_thread.joinable ())
+        if (g_spot_timeout_reaper_thread.joinable ()) {
             g_spot_timeout_reaper_thread.join ();
+        }
     }
 };
 

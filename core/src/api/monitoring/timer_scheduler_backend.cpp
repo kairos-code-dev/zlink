@@ -150,6 +150,9 @@ void scheduler_fire_timer (timer_handle_t *timer_)
 
     std::unique_lock<std::mutex> scheduler_lock (scheduler->mutex);
     std::unique_lock<std::mutex> timer_lock (timer_->mutex);
+    if (handler) {
+        timer_->receive_callback_active = false;
+    }
     if (reschedule && !timer_->destroyed && timer_->running && !timer_->stop_requested) {
         schedule_timer_locked (timer_, next_deadline_ns);
         scheduler->cv.notify_all ();
@@ -211,9 +214,11 @@ void run_scheduler_loop (std::shared_ptr<scheduler_state_t> scheduler_)
 void ensure_scheduler_started (const std::shared_ptr<scheduler_state_t> &scheduler_)
 {
     std::lock_guard<std::mutex> lock (scheduler_->mutex);
-    if (scheduler_->started)
-        return;
     scheduler_->shutdown_requested = false;
+    if (scheduler_->started) {
+        scheduler_->cv.notify_all ();
+        return;
+    }
     scheduler_->worker = std::thread (run_scheduler_loop, scheduler_);
     scheduler_->worker.detach ();
     scheduler_->started = true;

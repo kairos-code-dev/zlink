@@ -4,19 +4,34 @@
 
 #include "api/monitoring/monitor_api_internal.hpp"
 
+#include <cstdlib>
 #include <map>
+#include <stdio.h>
 
 #include "api/core/close_result_internal.hpp"
 #include "api/socket/part_helper_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "core/ctx.hpp"
 #include "services/control/service_control_runtime.hpp"
+#include "sockets/common/socket_close_ops.hpp"
 #include "utils/clock.hpp"
 #include "utils/mutex.hpp"
 #include "utils/sleep.hpp"
 
 namespace
 {
+void monitor_debug_logf (const char *fmt_, ...)
+{
+    if (!std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN"))
+        return;
+    std::fprintf (stderr, "[monitor-close] ");
+    va_list args;
+    va_start (args, fmt_);
+    std::vfprintf (stderr, fmt_, args);
+    va_end (args);
+    std::fflush (stderr);
+}
+
 struct monitor_handler_registry_t
 {
     zlink::mutex_t sync;
@@ -301,6 +316,17 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
     const int linger = 0;
     (void) socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
     monitor_handler_state_t *monitor_state = find_monitor_handler_state (socket);
+    zlink::socket_base_t *raw_monitor_source = raw_monitor_snapshot_subject (monitor_state);
+    zlink::socket_base_t *raw_source_monitor_socket = NULL;
+    if (raw_monitor_source && raw_monitor_source != socket) {
+        if (monitor_state)
+            monitor_state->snapshot_subject.store (NULL, std::memory_order_release);
+        raw_source_monitor_socket = raw_monitor_source->detach_monitor_socket (false);
+    }
+    monitor_debug_logf ("monitor_sid=%d raw_source_sid=%d source_monitor_sid=%d\n",
+                        socket ? socket->socket_id () : -1,
+                        raw_monitor_source ? raw_monitor_source->socket_id () : -1,
+                        raw_source_monitor_socket ? raw_source_monitor_socket->socket_id () : -1);
     const bool had_dispatch_monitor =
       monitor_state && monitor_state->socket_handler.load (std::memory_order_acquire);
     const bool no_dispatch_monitor =
@@ -328,6 +354,8 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
     }
     if (monitor_state && zlink::current_monitor_handler_state () == monitor_state) {
         const zlink_close_result_t rc = zlink_close (monitor);
+        if (raw_source_monitor_socket)
+            (void) zlink::socket_close_ops_t::request_close (raw_source_monitor_socket, 0);
         if (rc == ZLINK_CLOSE_OK)
             *monitor_p_ = NULL;
         return rc;
@@ -341,6 +369,8 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
                && zlink::clock_t ().now_ms () < deadline_ms) {
             zlink::sleep_ms (1);
         }
+        if (raw_source_monitor_socket)
+            (void) zlink::socket_close_ops_t::request_close (raw_source_monitor_socket, 0);
         *monitor_p_ = NULL;
         return ZLINK_CLOSE_OK;
     }
@@ -348,6 +378,10 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
         socket->stop ();
     }
     const zlink_close_result_t rc = zlink_close (monitor);
+    if (raw_source_monitor_socket)
+        (void) zlink::socket_close_ops_t::request_close (raw_source_monitor_socket, 0);
+    monitor_debug_logf ("monitor_close rc=%d source_monitor_sid=%d\n", static_cast<int> (rc),
+                        raw_source_monitor_socket ? raw_source_monitor_socket->socket_id () : -1);
     if (rc == ZLINK_CLOSE_OK)
         *monitor_p_ = NULL;
     return rc;

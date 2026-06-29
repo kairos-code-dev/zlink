@@ -73,7 +73,6 @@ zlink::service::spot_node_t &framework_runtime_t::add_spot_node ()
 
 void framework_runtime_t::drain ()
 {
-    _offload.drain ();
     _spot_node.reset ();
     _registry.reset ();
     _discovery.reset ();
@@ -85,6 +84,7 @@ void framework_runtime_t::drain ()
         _context->term ();
         _context.reset ();
     }
+    _offload.drain ();
 }
 
 offload_executor_t &framework_runtime_t::offload_executor () noexcept

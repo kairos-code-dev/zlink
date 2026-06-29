@@ -260,6 +260,14 @@ struct stage_spot_t : public zlink::framework::spot_t
         packet_seen = message.value;
     }
 
+    void on_state_update_context (const zlink::framework::spot_packet_context_t &context,
+                                  const state_update_t &message)
+    {
+        last_value = message.value;
+        packet_seen = message.value;
+        last_packet_content_type = context.content_type;
+    }
+
     void on_throwing_state_update (const state_update_t &)
     {
         throw std::runtime_error ("spot failure");
@@ -307,6 +315,7 @@ struct stage_spot_t : public zlink::framework::spot_t
         }
         const auto trace = context.metadata.find ("trace-id");
         last_trace_id = trace ? std::string (*trace) : "";
+        last_actor_content_type = context.content_type;
         saw_tenant_id = context.metadata.contains ("tenant-id");
         actor.moved_value = request.value;
     }
@@ -339,6 +348,8 @@ struct stage_spot_t : public zlink::framework::spot_t
     int disconnected_count{};
     int last_value{};
     std::string last_trace_id;
+    std::string last_packet_content_type;
+    std::string last_actor_content_type;
     bool saw_tenant_id = false;
     bool accept_join = true;
     static inline int create_count = 0;
@@ -1722,16 +1733,19 @@ int main ()
 
     context.handlers ()
       .add_handler<&stage_spot_t::on_state_update> ("state.update")
+      .add_handler<&stage_spot_t::on_state_update_context> ("state.context")
       .add_handler<&stage_spot_t::on_throwing_state_update> ("state.throw")
       .add_actor_packet<&stage_spot_t::on_move> ("move");
     const auto handler_descriptors = context.handlers ().descriptors ();
-    if (handler_descriptors.size () != 3
+    if (handler_descriptors.size () != 4
         || handler_descriptors[0].kind != zlink::framework::spot_handler_kind_t::packet
         || handler_descriptors[0].packet_name != "state.update"
         || handler_descriptors[1].kind != zlink::framework::spot_handler_kind_t::packet
-        || handler_descriptors[1].packet_name != "state.throw"
-        || handler_descriptors[2].kind != zlink::framework::spot_handler_kind_t::actor_packet
-        || handler_descriptors[2].packet_name != "move") {
+        || handler_descriptors[1].packet_name != "state.context"
+        || handler_descriptors[2].kind != zlink::framework::spot_handler_kind_t::packet
+        || handler_descriptors[2].packet_name != "state.throw"
+        || handler_descriptors[3].kind != zlink::framework::spot_handler_kind_t::actor_packet
+        || handler_descriptors[3].packet_name != "move") {
         return 20;
     }
 
@@ -1769,6 +1783,12 @@ int main ()
       zlink::message_t::from (std::string ("30")));
     if (!packet_dispatch || stage_spot.last_value != 30 || stage_spot.packet_seen != 30) {
         return 22;
+    }
+    const auto packet_context_dispatch = context.handlers ().invoke_packet (
+      "state.context", stage_spot, spot_provider, spot_serializers,
+      zlink::message_t::from (std::string ("32")));
+    if (!packet_context_dispatch || stage_spot.last_packet_content_type != "application/json") {
+        return 108;
     }
 
     const auto throwing_packet_dispatch =
@@ -1845,6 +1865,24 @@ int main ()
     if (!metadata_dispatch || actor.moved_value != 56 || stage_spot.last_trace_id != "trace-1"
         || stage_spot.saw_tenant_id) {
         return 40;
+    }
+    auto typed_metadata = projected;
+    typed_metadata.content_type = "application/x-msgpack";
+    player_actor_factory_t typed_actor;
+    const auto typed_actor_dispatch = context.handlers ().invoke_actor_packet (
+      "move", stage_spot, typed_actor, spot_provider, spot_serializers,
+      zlink::message_t::from (std::string ("57")), typed_metadata);
+    if (!typed_actor_dispatch || typed_actor.moved_value != 57
+        || stage_spot.last_actor_content_type != "application/x-msgpack") {
+        return 109;
+    }
+    const auto route_actor_ref = zlink::framework::actor_ref_t{
+      zlink::framework::node_rid_t::from_string ("actor-node"), "player", "actor-1", 1};
+    const auto route_packet = zlink::framework::detail::make_spot_actor_packet_route_request (
+      route_actor_ref, context.spot_rid (), "move",
+      zlink::message_t::from (std::string ("58")), typed_metadata);
+    if (route_packet.content_type != "application/x-msgpack") {
+        return 110;
     }
 
     auto serial_state = std::make_shared<zlink::framework::detail::spot_context_state_t> ();

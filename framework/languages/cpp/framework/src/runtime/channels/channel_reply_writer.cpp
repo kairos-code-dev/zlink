@@ -57,7 +57,7 @@ runtime::messaging::envelope_header_t channel_reply_writer_t::create_reply_heade
     header.kind = kind;
     header.channel_name = std::move (channel_name);
     header.message_name = request.message_name;
-    header.content_type = runtime::messaging::envelope_codec_t::default_content_type;
+    header.content_type = request.content_type;
     header.correlation_id = request.correlation_id;
     return header;
 }

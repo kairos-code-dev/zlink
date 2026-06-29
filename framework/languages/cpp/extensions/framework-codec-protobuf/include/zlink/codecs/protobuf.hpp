@@ -35,7 +35,8 @@ class protobuf_codec_extension_t
           [] (const zlink::framework::encoded_payload_t &payload) {
               return zlink::framework::detail::encoded_payload_to_raw (payload)
                 .template parse_json<TPayload> ();
-          });
+          },
+          "application/x-protobuf");
     }
 };
 
@@ -75,7 +76,8 @@ template <typename... TPayloads> class protobuf_serializers_t
           typename zlink::framework::serializer_t<TPayload>::serialize_fn_t serialize,
           typename zlink::framework::serializer_t<TPayload>::deserialize_fn_t deserialize)
         {
-            _serializers->template add<TPayload> (std::move (serialize), std::move (deserialize));
+            _serializers->template add<TPayload> (std::move (serialize), std::move (deserialize),
+                                                  "application/x-protobuf");
             return *this;
         }
 

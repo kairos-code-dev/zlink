@@ -8,6 +8,7 @@
 
 #include "runtime/channels/channel_outbound_exchange.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/diagnostics/monitoring_runtime.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
@@ -18,6 +19,7 @@
 #include <exception>
 #include <mutex>
 #include <utility>
+#include <vector>
 
 namespace zlink::framework::detail
 {
@@ -272,6 +274,56 @@ channel_runtime_t::channel_runtime_t (std::shared_ptr<channel_runtime_state_t> s
 {
 }
 
+namespace
+{
+
+void drain_zlink_builder_state_runtime (zlink_builder_state_t &state) noexcept
+{
+    state.stream_runtime.reset ();
+    state.registry_runtime.reset ();
+    state.route_channels.clear ();
+    for (auto &[_, spot_node] : state.spot_nodes) {
+        if (spot_node && spot_node->worker_executor) {
+            spot_node->worker_executor->drain ();
+        }
+        if (spot_node) {
+            drain_spot_node_executors (*spot_node);
+        }
+    }
+    state.spot_nodes.clear ();
+    state.runtime.reset ();
+}
+
+} // namespace
+
+zlink_builder_state_t::~zlink_builder_state_t ()
+{
+    drain_zlink_builder_state_runtime (*this);
+}
+
+void drain_zlink_builder_runtime (zlink_builder_t &builder) noexcept
+{
+    if (!builder._state) {
+        return;
+    }
+    drain_zlink_builder_state_runtime (*builder._state);
+}
+
+void bind_zlink_monitoring (zlink_builder_t &builder, const monitoring_builder_t &monitoring)
+{
+    if (!builder._state) {
+        return;
+    }
+    auto state = monitoring_runtime_t::from (monitoring).state ();
+    builder._state->runtime->monitoring = state;
+    builder._state->registry_runtime->monitoring = state;
+    for (auto &[_, spot_node] : builder._state->spot_nodes) {
+        if (spot_node) {
+            spot_node->monitoring = state;
+        }
+    }
+}
+
 void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t &options)
 {
     builder._state->runtime->dispatch = options;
@@ -394,13 +446,28 @@ result_t<void> channel_runtime_t::retry_pending (std::uint64_t operation_id)
 
 void channel_runtime_t::close () noexcept
 {
-    _state->closed = true;
+    {
+        std::lock_guard lock (_state->mutex);
+        _state->closed = true;
+    }
     drain ();
 }
 
 void channel_runtime_t::shutdown () noexcept
 {
-    _state->shutdown = true;
+    std::vector<std::shared_ptr<route_channel_runtime_t>> route_channels;
+    {
+        std::lock_guard lock (_state->mutex);
+        _state->shutdown = true;
+        for (auto &[_, route_channel] : _state->route_channels) {
+            if (route_channel) {
+                route_channels.push_back (route_channel);
+            }
+        }
+    }
+    for (auto &route_channel : route_channels) {
+        route_channel->stop ();
+    }
     drain ();
 }
 
@@ -430,6 +497,16 @@ void channel_runtime_t::bind_serializers (serializer_registry_t &serializers) no
 void channel_runtime_t::bind_discovery (discovery_snapshot_t discovery) noexcept
 {
     _state->discovery = std::move (discovery);
+    if (_state->monitoring) {
+        for (const auto &endpoint : _state->discovery.registry_endpoints) {
+            monitoring_runtime_t (_state->monitoring)
+              .publish_discovery (discovery_event_payload_t{
+                runtime_event_base_t{"channel.discovery"},
+                discovery_event_kind_t::connected,
+                endpoint,
+                "registry endpoint configured"});
+        }
+    }
 }
 
 dispatch_options_t channel_runtime_t::dispatch_options () const
@@ -446,8 +523,19 @@ void channel_runtime_t::drain () noexcept
 void channel_runtime_t::set_server_peer_weight (const std::string &channel_name,
                                                 zlink::peer_weight_t value)
 {
-    std::lock_guard lock (_state->mutex);
-    _state->server_peer_weight_overrides.insert_or_assign (channel_name, value);
+    {
+        std::lock_guard lock (_state->mutex);
+        _state->server_peer_weight_overrides.insert_or_assign (channel_name, value);
+    }
+    if (_state->monitoring) {
+        monitoring_runtime_t (_state->monitoring)
+          .publish_socket (socket_event_payload_t{runtime_event_base_t{channel_name},
+                                                  socket_event_kind_t::peer_admission_changed,
+                                                  {},
+                                                  {},
+                                                  0,
+                                                  value.value ()});
+    }
 }
 
 std::optional<zlink::peer_weight_t>
@@ -761,6 +849,31 @@ message_bus_t::submit_request (std::string channel_name,
 {
     return detail::channel_outbound_exchange_t (_state).submit_request (
       std::move (channel_name), std::move (packet_name), request_type, request, timeout, metadata);
+}
+
+task_t<zlink::message_t>
+message_bus_t::submit_request_message_async (
+  std::string channel_name,
+  std::string packet_name,
+  std::type_index request_type,
+  const void *request,
+  std::shared_ptr<const void> request_owner,
+  std::chrono::milliseconds timeout,
+  channel_request_call_t::metadata_map_t metadata)
+{
+    auto state = _state;
+    return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
+      [state, channel_name = std::move (channel_name), packet_name = std::move (packet_name),
+       request_type, request, request_owner = std::move (request_owner), timeout,
+       metadata = std::move (metadata)] () mutable
+      -> boost::asio::awaitable<result_t<zlink::message_t>> {
+          (void) request_owner;
+          auto result = message_bus_t (state)
+                          .submit_request (std::move (channel_name), std::move (packet_name),
+                                           request_type, request, timeout, metadata)
+                          .message ();
+          co_return result;
+      });
 }
 
 result_t<void> message_bus_t::submit_send (std::string channel_name,

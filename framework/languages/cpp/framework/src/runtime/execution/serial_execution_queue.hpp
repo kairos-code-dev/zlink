@@ -38,6 +38,7 @@ class serial_execution_queue_t
     void run (std::string name, std::function<void ()> work);
     void drain ();
     void close ();
+    void cancel_pending ();
 
     std::size_t pending_count () const;
     bool closed () const;
@@ -59,6 +60,8 @@ class serial_execution_queue_t
     mutable std::mutex _mutex;
     std::condition_variable _empty;
     std::deque<work_item_t> _queue;
+    std::vector<std::shared_ptr<detail::serial_yield_turn_t>> _active_turns;
+    std::vector<std::string> _active_names;
     bool _closed = false;
     bool _drain_scheduled = false;
     bool _draining = false;

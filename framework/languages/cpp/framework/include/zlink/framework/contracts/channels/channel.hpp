@@ -402,10 +402,11 @@ class message_bus_t
               const auto effective_timeout = timeout > std::chrono::milliseconds::zero ()
                                                ? timeout
                                                : bus.default_request_timeout (channel_name);
-              return task_t<zlink::message_t> (
-                bus.submit_request (channel_name, packet_name, std::type_index (typeid (TRequest)),
-                                    &request, effective_timeout, metadata)
-                  .message ());
+              auto request_owner = std::make_shared<TRequest> (request);
+              auto *request_ptr = request_owner.get ();
+              return bus.submit_request_message_async (
+                channel_name, packet_name, std::type_index (typeid (TRequest)),
+                request_ptr, std::move (request_owner), effective_timeout, metadata);
           });
     }
 
@@ -504,6 +505,14 @@ class message_bus_t
                     const void *request,
                     std::chrono::milliseconds timeout,
                     const channel_request_call_t::metadata_map_t &metadata);
+    task_t<zlink::message_t>
+    submit_request_message_async (std::string channel_name,
+                                  std::string packet_name,
+                                  std::type_index request_type,
+                                  const void *request,
+                                  std::shared_ptr<const void> request_owner,
+                                  std::chrono::milliseconds timeout,
+                                  channel_request_call_t::metadata_map_t metadata);
     serializer_registry_t *serializers () const noexcept;
     result_t<void> submit_send (std::string channel_name,
                                 std::string packet_name,

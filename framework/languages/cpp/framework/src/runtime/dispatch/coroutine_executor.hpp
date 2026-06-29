@@ -92,5 +92,6 @@ class coroutine_executor_t
 
 coroutine_executor_t &handler_coroutine_executor ();
 void configure_handler_coroutine_executor (std::size_t worker_count);
+void shutdown_handler_coroutine_executor () noexcept;
 
 } // namespace zlink::framework::runtime

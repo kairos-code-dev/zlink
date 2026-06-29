@@ -122,6 +122,19 @@ shared_operation_runner_t &shared_operation_runner ()
     return runner;
 }
 
+void publish_received_message_dropped (connector_state_t &state) noexcept
+{
+    auto handlers = state.error_handlers;
+    for (const auto &handler : handlers) {
+        try {
+            handler (error_t{error_code_t::received_message_dropped,
+                             "Received message was dropped because the receive queue is full."});
+        }
+        catch (...) {
+        }
+    }
+}
+
 } // namespace
 
 boost::asio::io_context &shared_io_context ()
@@ -164,6 +177,11 @@ void deliver_received_packet (connector_state_t &state, packet_t packet)
     }
     if (state.options.dispatch_mode == dispatch_mode_t::immediate) {
         dispatch_packet (state, packet);
+        state.state_changed.notify_all ();
+        return;
+    }
+    if (state.dispatch_queue.size () >= state.options.max_received_messages) {
+        publish_received_message_dropped (state);
         state.state_changed.notify_all ();
         return;
     }
@@ -481,6 +499,11 @@ parse_connect_options (const std::shared_ptr<detail::connector_state_t> &state)
         return result_t<parsed_endpoint_options_t>::failure (
           error_code_t::configuration_error,
           "stream connector does not support the configured transport in this build");
+    }
+    if (state->options.max_received_messages == 0) {
+        return result_t<parsed_endpoint_options_t>::failure (
+          error_code_t::configuration_error,
+          "stream connector max_received_messages must be greater than zero");
     }
     parsed_endpoint_options_t parsed;
     parsed.tcp = state->options.transport == transport_t::tcp

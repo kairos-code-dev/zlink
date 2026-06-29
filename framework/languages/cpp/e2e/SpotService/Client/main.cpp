@@ -672,15 +672,15 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 scenario_id + " stream state send failed: " + stream_error_text (state));
 
         auto push_wait =
-          stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000)).async ();
+          stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
+            .to_future (scenario_id + " push notify missing");
         auto pushed =
           zlink::stream_e2e_client::codecs::send (stream, e2e::actor_push_req_t{push_value})
             .packet_name ("PushReq")
             .submit ();
         ensure (static_cast<bool> (pushed),
                 scenario_id + " push trigger failed: " + stream_error_text (pushed));
-        auto push = push_wait.result ();
-        ensure (static_cast<bool> (push), scenario_id + " push notify missing");
+        (void) push_wait.get ();
 
         (void) stream.close ().submit ();
         std::cout << "scenario " << scenario_id << " passed\n";
@@ -876,7 +876,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-D6 stream join dispatch failed: " + stream_error_text (joined));
 
         auto bound_wait =
-          bound.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000)).async ();
+          bound.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
+            .to_future ("SM-D6 bound push notify missing");
         auto unbound_wait =
           unbound.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (500)).async ();
         auto pushed = zlink::stream_e2e_client::codecs::request (
@@ -888,10 +889,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (static_cast<bool> (pushed),
                 "SM-D6 push trigger failed: " + stream_error_text (pushed));
 
-        auto notify = bound_wait.result ();
-        ensure (static_cast<bool> (notify), "SM-D6 bound push notify missing");
-        ensure (notify.value ().actor_id == actor_id
-                  && notify.value ().value == "stream-push-d6-value",
+        auto notify = bound_wait.get ();
+        ensure (notify.actor_id == actor_id && notify.value == "stream-push-d6-value",
                 "SM-D6 bound push notify mismatch");
 
         auto unbound_notify = unbound_wait.result ();
@@ -1126,7 +1125,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (resumed.value ().value == 16, "SM-D12 resumed state value mismatch");
 
         auto push_wait =
-          second.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000)).async ();
+          second.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
+            .to_future ("SM-D12 push notify missing after rebind");
         auto pushed = zlink::stream_e2e_client::codecs::request (
                         second, e2e::actor_push_req_t{"stream-reconnect-d12-push"})
                         .packet_name ("PushReq")
@@ -1135,10 +1135,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                         .result ();
         ensure (static_cast<bool> (pushed),
                 "SM-D12 push trigger failed: " + stream_error_text (pushed));
-        auto notify = push_wait.result ();
-        ensure (static_cast<bool> (notify), "SM-D12 push notify missing after rebind");
-        ensure (notify.value ().actor_id == actor_id
-                  && notify.value ().value == "stream-reconnect-d12-push",
+        auto notify = push_wait.get ();
+        ensure (notify.actor_id == actor_id && notify.value == "stream-reconnect-d12-push",
                 "SM-D12 push notify mismatch");
 
         (void) second.close ().submit ();
@@ -1403,7 +1401,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-D4 second state send failed: " + stream_error_text (state_second));
 
         auto first_push_wait =
-          stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000)).async ();
+          stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
+            .to_future ("SM-D4 first push notify missing");
         auto first_pushed = zlink::stream_e2e_client::codecs::request (
                               stream, e2e::actor_push_req_t{"stream-multi-a-push"})
                               .packet_name ("PushReq")
@@ -1413,15 +1412,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                               .result ();
         ensure (static_cast<bool> (first_pushed),
                 "SM-D4 first push trigger failed: " + stream_error_text (first_pushed));
-        auto first_push = first_push_wait.result ();
-        ensure (static_cast<bool> (first_push), "SM-D4 first push notify missing");
-        ensure (first_push.value ().actor_id == first_actor_id
-                  && first_push.value ().value == "stream-multi-a-push",
-                "SM-D4 first push routed to wrong actor: " + first_push.value ().actor_id + "/"
-                  + first_push.value ().value);
+        auto first_push = first_push_wait.get ();
+        ensure (first_push.actor_id == first_actor_id && first_push.value == "stream-multi-a-push",
+                "SM-D4 first push routed to wrong actor: " + first_push.actor_id + "/"
+                  + first_push.value);
 
         auto second_push_wait =
-          stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000)).async ();
+          stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
+            .to_future ("SM-D4 second push notify missing");
         auto second_pushed = zlink::stream_e2e_client::codecs::request (
                                stream, e2e::actor_push_req_t{"stream-multi-b-push"})
                                .packet_name ("PushReq")
@@ -1431,12 +1429,11 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                .result ();
         ensure (static_cast<bool> (second_pushed),
                 "SM-D4 second push trigger failed: " + stream_error_text (second_pushed));
-        auto second_push = second_push_wait.result ();
-        ensure (static_cast<bool> (second_push), "SM-D4 second push notify missing");
-        ensure (second_push.value ().actor_id == second_actor_id
-                  && second_push.value ().value == "stream-multi-b-push",
-                "SM-D4 second push routed to wrong actor: " + second_push.value ().actor_id + "/"
-                  + second_push.value ().value);
+        auto second_push = second_push_wait.get ();
+        ensure (second_push.actor_id == second_actor_id
+                  && second_push.value == "stream-multi-b-push",
+                "SM-D4 second push routed to wrong actor: " + second_push.actor_id + "/"
+                  + second_push.value);
 
         auto missing_actor_id = zlink::stream_e2e_client::codecs::request (
                                   stream, e2e::state_req_t{.op = "add", .amount = 1})

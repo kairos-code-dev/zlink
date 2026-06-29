@@ -52,6 +52,8 @@ void route_channel_runtime_t::stop () noexcept
     std::lock_guard lock (_mutex);
     _running = false;
     _pending_requests.clear ();
+    _send_backend = {};
+    _request_backend = {};
 }
 
 bool route_channel_runtime_t::running () const noexcept

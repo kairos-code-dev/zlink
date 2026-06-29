@@ -126,8 +126,14 @@ class route_channel_host_service_t::route_loop_t
         _stop (&stop),
         _context (std::make_unique<zlink::context_t> ()),
         _router (std::make_unique<zlink::router_socket_t> (*_context)),
-        _backend (std::make_unique<detail::backend::native_route_backend_t> (*_router))
+        _backend (std::make_unique<detail::backend::native_route_backend_t> (
+          *_router, stop, _runtime->manual_connections ()))
     {
+        _router->options ().handover (true);
+        _router->options ().heartbeat_interval (std::chrono::milliseconds (250));
+        _router->options ().heartbeat_timeout (std::chrono::milliseconds (1000));
+        _router->options ().reconnect_interval (std::chrono::milliseconds (50));
+        _router->options ().reconnect_interval_max (std::chrono::milliseconds (250));
         if (_runtime->routing_id ()) {
             _router->set_routing_id (*_runtime->routing_id ());
         }
@@ -186,7 +192,10 @@ class route_channel_host_service_t::route_loop_t
             zlink::received_t received;
             const int rc = _router->recv (received, zlink::recv_flags_t::dontwait);
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                const int bridge_drained = _backend->drain_spot_route_bridge ();
+                if (bridge_drained <= 0) {
+                    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                }
                 continue;
             }
             if (rc != static_cast<int> (zlink::recv_result_t::ok) || !received.routing_id ()) {
@@ -207,6 +216,9 @@ class route_channel_host_service_t::route_loop_t
 
     void stop () noexcept
     {
+        if (_backend) {
+            _backend->close ();
+        }
         if (_router) {
             try {
                 _router->close ();
@@ -226,15 +238,20 @@ class route_channel_host_service_t::route_loop_t
 
     void term () noexcept
     {
-        _backend.reset ();
-        _router.reset ();
+        clear_replies ();
         _spot_route_discovery.reset ();
+        if (_backend) {
+            _backend->close ();
+            _backend.reset ();
+        }
+        _router.reset ();
         if (_context) {
             try {
                 _context->term ();
             }
             catch (...) {
             }
+            _context.reset ();
         }
     }
 
@@ -289,7 +306,7 @@ class route_channel_host_service_t::route_loop_t
 
     static zlink::message_t clone (const zlink::message_t &message)
     {
-        return zlink::message_t::from (message.to_string ());
+        return message;
     }
 
     static std::vector<zlink::message_t> clone_messages (
@@ -385,6 +402,12 @@ class route_channel_host_service_t::route_loop_t
         _workers.clear ();
     }
 
+    void clear_replies () noexcept
+    {
+        std::lock_guard<std::mutex> lock (_replies_mutex);
+        _replies.clear ();
+    }
+
     detail::channel_runtime_manager_t _manager;
     detail::route_channel_runtime_t *_runtime;
     std::string _route_channel_id;
@@ -446,6 +469,11 @@ void route_channel_host_service_t::start (service_provider_t &services)
 void route_channel_host_service_t::stop () noexcept
 {
     _stop.store (true, std::memory_order_release);
+    auto registry_runtime = detail::registry_runtime_t::from (_registry);
+    auto manager = detail::channel_runtime_manager_t::from (_bus);
+    for (const auto &route_channel_id : manager.route_channel_ids ()) {
+        registry_runtime.detach_spot_route_discovery (route_channel_id);
+    }
     for (auto &loop : _loops) {
         loop->stop ();
     }

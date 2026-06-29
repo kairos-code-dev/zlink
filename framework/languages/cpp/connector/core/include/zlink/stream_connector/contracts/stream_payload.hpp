@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/stream_connector/contracts/zlink_stream_enums.hpp>
 
 #include <concepts>
 #include <string>
@@ -43,6 +44,24 @@ auto to_packet_payload (const TMessage &message, int) -> decltype (to_stream_pay
 template <typename TMessage> zlink::message_t to_packet_payload (const TMessage &, ...)
 {
     return zlink::message_t::from (std::string ("{}"));
+}
+
+template <typename TMessage>
+auto apply_packet_payload (TMessage &message,
+                           zlink::stream_connector::codec_t codec,
+                           const zlink::message_t &payload,
+                           int) -> decltype (from_stream_payload (codec, payload, message), void ())
+{
+    from_stream_payload (codec, payload, message);
+}
+
+template <typename TMessage>
+void apply_packet_payload (TMessage &message,
+                           zlink::stream_connector::codec_t,
+                           const zlink::message_t &payload,
+                           ...)
+{
+    apply_packet_payload (message, payload, 0);
 }
 
 template <typename TMessage>

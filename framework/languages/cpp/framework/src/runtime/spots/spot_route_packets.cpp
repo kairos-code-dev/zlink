@@ -58,6 +58,7 @@ void to_json (nlohmann::json &json, const spot_actor_packet_route_request_t &val
                           {"actorGeneration", value.actor_generation},
                           {"spotRid", value.spot_rid},
                           {"packetName", value.packet_name_value},
+                          {"contentType", value.content_type},
                           {"metadata", value.metadata},
                           {"payload", value.payload}};
 }
@@ -70,6 +71,7 @@ void from_json (const nlohmann::json &json, spot_actor_packet_route_request_t &v
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
     value.spot_rid = json.at ("spotRid").get<std::string> ();
     value.packet_name_value = json.at ("packetName").get<std::string> ();
+    value.content_type = json.value ("contentType", "application/json");
     value.metadata = json.value ("metadata", std::map<std::string, std::string>{});
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
 }
@@ -210,6 +212,7 @@ make_spot_actor_packet_route_request (const actor_ref_t &actor_ref,
                                              .actor_generation = actor_ref.generation (),
                                              .spot_rid = std::string (spot_rid.value ()),
                                              .packet_name_value = std::string (packet_name),
+                                             .content_type = metadata.content_type,
                                              .metadata = metadata.values,
                                              .payload = payload.to_bytes ()};
 }

@@ -7,6 +7,9 @@
 #include <zlink/Contracts/Sockets/routed_socket_contracts.hpp>
 
 #include <cerrno>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -51,8 +54,9 @@ framework_exception_t map_native_route_exception (const std::exception &error)
     if (const auto *request_error = dynamic_cast<const zlink::request_error_t *> (&error);
         request_error != nullptr) {
         if (request_error->result () == zlink::request_result_t::timed_out) {
-            return framework_exception_t (framework_error_kind_t::timeout,
-                                          "route request timed out");
+            return framework_exception_t (framework_error_kind_t::route_not_connected,
+                                          "native route request disconnected before reply",
+                                          true);
         }
         if (request_error->result () == zlink::request_result_t::not_connected
             || is_route_unreachable_errno (request_error->internal_errno ())) {
@@ -73,9 +77,76 @@ framework_exception_t map_native_route_exception (const std::exception &error)
     return framework_exception_t (framework_error_kind_t::request_failed, error.what ());
 }
 
+struct route_request_callback_state_t
+{
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool completed = false;
+    zlink::request_result_t result = zlink::request_result_t::internal_error;
+    std::vector<zlink::message_t> reply;
+};
+
+result_t<void> wait_for_route_request_callback (
+  const std::shared_ptr<route_request_callback_state_t> &callback_state,
+  std::chrono::milliseconds timeout,
+  const std::function<bool ()> &stopping)
+{
+    const auto has_deadline = timeout > std::chrono::milliseconds::zero ();
+    const auto deadline = has_deadline
+                            ? std::chrono::steady_clock::now () + timeout
+                            : std::chrono::steady_clock::time_point::max ();
+    while (true) {
+        {
+            std::lock_guard lock (callback_state->mutex);
+            if (callback_state->completed) {
+                return result_t<void>::success ();
+            }
+        }
+        if (stopping && stopping ()) {
+            return result_t<void>::failure (framework_error_kind_t::shutdown,
+                                            "native route backend is shutting down");
+        }
+        if (has_deadline && std::chrono::steady_clock::now () >= deadline) {
+            return result_t<void>::failure (
+              framework_error_kind_t::disconnected,
+              "native route request disconnected before reply");
+        }
+        auto wait_time = std::chrono::milliseconds (50);
+        if (has_deadline) {
+            const auto remaining =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - std::chrono::steady_clock::now ());
+            if (remaining < wait_time) {
+                wait_time = remaining > std::chrono::milliseconds::zero ()
+                              ? remaining
+                              : std::chrono::milliseconds (1);
+            }
+        }
+        std::unique_lock lock (callback_state->mutex);
+        callback_state->changed.wait_for (lock, wait_time);
+    }
+}
+
 } // namespace
 
-native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router) : _router (&router)
+native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router) :
+    _router (&router)
+{
+}
+
+native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router,
+                                                std::atomic_bool &stop) :
+    _router (&router), _stop (&stop)
+{
+}
+
+native_route_backend_t::native_route_backend_t (
+  zlink::router_socket_t &router,
+  std::atomic_bool &stop,
+  std::vector<std::string> reconnect_endpoints) :
+    _router (&router),
+    _stop (&stop),
+    _reconnect_endpoints (std::move (reconnect_endpoints))
 {
 }
 
@@ -141,16 +212,75 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
     }
     try {
         if (target_spot_rid && _spot_route_bridge) {
-            auto reply =
-              _spot_route_bridge->request (_spot_route_channel_name, target_node_rid,
-                                           *target_spot_rid, copied, timeout)
-                .get ();
+            auto callback_state = std::make_shared<route_request_callback_state_t> ();
+            const bool submitted =
+              _spot_route_bridge->request (
+                _spot_route_channel_name, target_node_rid, *target_spot_rid, copied,
+                [callback_state] (zlink::request_result_t result,
+                                  std::vector<zlink::message_t> reply) {
+                    {
+                        std::lock_guard lock (callback_state->mutex);
+                        callback_state->result = result;
+                        callback_state->reply = std::move (reply);
+                        callback_state->completed = true;
+                    }
+                    callback_state->changed.notify_all ();
+                },
+                zlink::send_flags_t::none, timeout);
+            if (!submitted) {
+                return result_t<runtime::messaging::message_parts_t>::failure (
+                  framework_error_kind_t::request_failed,
+                  "native route bridge request was not submitted");
+            }
+            if (auto waited = wait_for_route_request_callback (
+                  callback_state, timeout, [this] { return stopping (); });
+                !waited) {
+                forget_peer (target_node_rid);
+                return result_t<runtime::messaging::message_parts_t>::failure (
+                  waited.error_kind (),
+                  waited.error () ? waited.error ()->what () : "native route request failed");
+            }
+            if (callback_state->result != zlink::request_result_t::ok) {
+                forget_peer (target_node_rid);
+                throw zlink::request_error_t (callback_state->result);
+            }
+            auto reply = std::move (callback_state->reply);
             return result_t<runtime::messaging::message_parts_t>::success (
               runtime::messaging::message_parts_t (std::move (reply)));
         }
         auto submit = std::move (_router->request (target_node_rid)).message (copied[0]);
         submit = append_remaining_parts (std::move (submit), copied);
-        auto reply = std::move (submit).timeout (timeout).async().get ();
+        auto callback_state = std::make_shared<route_request_callback_state_t> ();
+        const bool submitted =
+          std::move (submit).timeout (timeout).submit (
+            [callback_state] (zlink::request_result_t result,
+                              std::vector<zlink::message_t> reply) {
+                {
+                    std::lock_guard lock (callback_state->mutex);
+                    callback_state->result = result;
+                    callback_state->reply = std::move (reply);
+                    callback_state->completed = true;
+                }
+                callback_state->changed.notify_all ();
+            });
+        if (!submitted) {
+            return result_t<runtime::messaging::message_parts_t>::failure (
+              framework_error_kind_t::request_failed,
+              "native route request was not submitted");
+        }
+        if (auto waited = wait_for_route_request_callback (
+              callback_state, timeout, [this] { return stopping (); });
+            !waited) {
+            forget_peer (target_node_rid);
+            return result_t<runtime::messaging::message_parts_t>::failure (
+              waited.error_kind (),
+              waited.error () ? waited.error ()->what () : "native route request failed");
+        }
+        if (callback_state->result != zlink::request_result_t::ok) {
+            forget_peer (target_node_rid);
+            throw zlink::request_error_t (callback_state->result);
+        }
+        auto reply = std::move (callback_state->reply);
         return result_t<runtime::messaging::message_parts_t>::success (
           runtime::messaging::message_parts_t (std::move (reply)));
     }
@@ -175,6 +305,64 @@ bool native_route_backend_t::handle_router_received (
     }
     catch (const std::exception &) {
         return true;
+    }
+}
+
+int native_route_backend_t::drain_spot_route_bridge ()
+{
+    if (!_spot_route_bridge) {
+        return 0;
+    }
+    try {
+        return _spot_route_bridge->drain ();
+    }
+    catch (const std::exception &) {
+        return -1;
+    }
+}
+
+void native_route_backend_t::close () noexcept
+{
+    if (_spot_route_bridge) {
+        try {
+            _spot_route_bridge->close ();
+        }
+        catch (...) {
+        }
+        _spot_route_bridge.reset ();
+    }
+    _router = nullptr;
+}
+
+bool native_route_backend_t::stopping () const noexcept
+{
+    return _stop != nullptr && _stop->load (std::memory_order_acquire);
+}
+
+void native_route_backend_t::forget_peer (const zlink::routing_id_t &target_node_rid) noexcept
+{
+    if (_router == nullptr) {
+        return;
+    }
+    try {
+        _router->disconnect_rid (target_node_rid);
+    }
+    catch (...) {
+    }
+    for (const auto &endpoint : _reconnect_endpoints) {
+        try {
+            _router->disconnect (endpoint);
+        }
+        catch (...) {
+        }
+        try {
+            if (_reconnect_endpoints.size () == 1) {
+                _router->options ().connect_routing_id (target_node_rid);
+            }
+            _router->connect (endpoint);
+        }
+        catch (...) {
+        }
     }
 }
 

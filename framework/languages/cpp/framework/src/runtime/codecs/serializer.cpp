@@ -12,6 +12,7 @@ struct serializer_descriptor_t
 {
     serializer_registry_t::serialize_any_fn_t serialize;
     serializer_registry_t::deserialize_any_fn_t deserialize;
+    std::string content_type;
 };
 
 class serializer_registry_state_t
@@ -39,10 +40,12 @@ serializer_registry_t::operator= (serializer_registry_t &&) noexcept = default;
 
 serializer_registry_t &serializer_registry_t::add_erased (std::type_index type,
                                                           serialize_any_fn_t serialize,
-                                                          deserialize_any_fn_t deserialize)
+                                                          deserialize_any_fn_t deserialize,
+                                                          std::string content_type)
 {
     const auto [_, inserted] = _state->serializers.emplace (
-      type, detail::serializer_descriptor_t{std::move (serialize), std::move (deserialize)});
+      type, detail::serializer_descriptor_t{std::move (serialize), std::move (deserialize),
+                                            std::move (content_type)});
     if (!inserted) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "duplicate serializer registration");
@@ -95,6 +98,15 @@ void serializer_registry_t::deserialize (std::type_index type,
 bool serializer_registry_t::contains (std::type_index type) const
 {
     return _state->serializers.find (type) != _state->serializers.end ();
+}
+
+std::string serializer_registry_t::content_type (std::type_index type) const
+{
+    const auto found = _state->serializers.find (type);
+    if (found == _state->serializers.end () || found->second.content_type.empty ()) {
+        return "application/octet-stream";
+    }
+    return found->second.content_type;
 }
 
 } // namespace zlink::framework

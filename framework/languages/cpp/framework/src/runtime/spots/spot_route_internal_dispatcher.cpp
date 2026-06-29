@@ -76,6 +76,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             auto actor_ref = actor_ref_from_spot_route (request);
             auto actor_gateway = bind_actor_route (actor_ref, header, received);
             spot_actor_message_metadata_t metadata;
+            metadata.content_type = request.content_type;
             metadata.values = request.metadata;
             auto relayed = runtime.manager ().relay_actor_packet (
               actor_ref, _actor_gateway.actor_context (actor_ref), request.packet_name_value,

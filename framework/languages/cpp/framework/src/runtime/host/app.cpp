@@ -73,6 +73,10 @@ class app_state_t
 {
   public:
     app_state_t () : metrics (monitoring) {}
+    ~app_state_t ()
+    {
+        hosted_services.clear ();
+    }
 
     void start_hosted_services (service_provider_t &provider,
                                 std::vector<hosted_service_t *> &started)
@@ -85,6 +89,7 @@ class app_state_t
 
     void stop_hosted_services (const std::vector<hosted_service_t *> &started) noexcept
     {
+        channel_runtime_t::from (zlink.message_bus ()).shutdown ();
         for (auto it = started.rbegin (); it != started.rend (); ++it) {
             (*it)->stop ();
         }
@@ -114,13 +119,11 @@ class app_state_t
 namespace
 {
 
-std::atomic<zlink::framework::detail::app_state_t *> g_active_app{nullptr};
+volatile std::sig_atomic_t g_stop_signal_requested = 0;
 
 void handle_process_signal (int) noexcept
 {
-    if (auto *state = g_active_app.load (std::memory_order_acquire)) {
-        state->stop_requested.store (true, std::memory_order_release);
-    }
+    g_stop_signal_requested = 1;
 }
 
 } // namespace
@@ -132,7 +135,9 @@ app_t::app_t () : _state (std::make_unique<detail::app_state_t> ())
 {
 }
 
-app_t::~app_t () = default;
+app_t::~app_t ()
+{
+}
 
 app_t::app_t (app_t &&) noexcept = default;
 
@@ -306,6 +311,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
+    detail::bind_zlink_monitoring (_state->zlink, _state->monitoring);
     detail::bind_stream_serializers (_state->zlink, _state->serializers);
     auto &actor_gateway_runtime =
       _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> ();
@@ -409,7 +415,7 @@ int app_t::run (int argc, char **argv)
 {
     _state->config.load_cli (argc, argv);
     _state->config.model ().set ("host.signal_handlers", "installed");
-    g_active_app.store (_state.get (), std::memory_order_release);
+    g_stop_signal_requested = 0;
     std::signal (SIGINT, handle_process_signal);
     std::signal (SIGTERM, handle_process_signal);
 
@@ -418,21 +424,24 @@ int app_t::run (int argc, char **argv)
     try {
         _state->start_hosted_services (provider, started);
         while (!_state->stop_requested.load (std::memory_order_acquire)) {
+            if (g_stop_signal_requested != 0) {
+                _state->stop_requested.store (true, std::memory_order_release);
+                break;
+            }
             std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
     }
     catch (...) {
         _state->stop_hosted_services (started);
+        detail::drain_zlink_builder_runtime (_state->zlink);
         provider.close ();
-        auto *expected = _state.get ();
-        g_active_app.compare_exchange_strong (expected, nullptr, std::memory_order_acq_rel);
         throw;
     }
 
     _state->stop_hosted_services (started);
+    detail::drain_zlink_builder_runtime (_state->zlink);
     provider.close ();
-    auto *expected = _state.get ();
-    g_active_app.compare_exchange_strong (expected, nullptr, std::memory_order_acq_rel);
+    runtime::shutdown_handler_coroutine_executor ();
     return _state->stop_requested.load (std::memory_order_acquire) ? 0 : _state->exit_code;
 }
 

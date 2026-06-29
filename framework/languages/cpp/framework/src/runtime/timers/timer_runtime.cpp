@@ -5,6 +5,7 @@
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -45,7 +46,8 @@ void timer_t::cancel () noexcept
 timer_t spot_context_t::add_timer_erased (std::string name,
                                           std::chrono::milliseconds period,
                                           timer_options_t options,
-                                          std::type_index handler_type)
+                                          std::type_index handler_type,
+                                          detail::timer_state_t::handler_invoker_t handler_invoker)
 {
     if (name.empty ()) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -75,8 +77,13 @@ timer_t spot_context_t::add_timer_erased (std::string name,
     state->period = period;
     state->options = options;
     state->handler_type = handler_type;
+    state->handler_invoker = std::move (handler_invoker);
     state->native_timer = std::make_unique<zlink::timer_t> ();
-    state->native_timer->start (period);
+    auto context = _state;
+    state->native_timer->on_fire ([context, state] (std::uint64_t fire_count) {
+        detail::timer_runtime_t::post_fire_count (context, state, fire_count);
+    });
+    state->native_timer->start (period, std::numeric_limits<std::uint64_t>::max ());
     _state->timers.push_back (state);
     return timer_t (state);
 }
@@ -94,6 +101,31 @@ timer_runtime_t::timer_runtime_t (std::shared_ptr<spot_context_state_t> context)
 timer_runtime_t timer_runtime_t::from (spot_context_t &context)
 {
     return timer_runtime_t (context._state);
+}
+
+void timer_runtime_t::post_fire_count (const std::shared_ptr<spot_context_state_t> &context,
+                                       const std::shared_ptr<timer_state_t> &state,
+                                       std::uint64_t fire_count)
+{
+    if (!context || !state || state->disposed) {
+        return;
+    }
+    const bool posted = context->try_post_serial_async (
+      "spot-timer:" + state->name,
+      [context, state, fire_count] (auto complete) mutable {
+          framework::timer_t timer (state);
+          auto runtime = timer_runtime_t (context);
+          auto task = runtime.dispatch_fire_count_async (timer, fire_count);
+          detail::observe_task_completion (
+            task, [complete] (const result_t<timer_tick_t> &) mutable { complete ([] {}); });
+      });
+    if (!posted) {
+        std::lock_guard lock (state->mutex);
+        if (!state->disposed) {
+            state->pending_fire = true;
+            state->pending_fire_count = fire_count;
+        }
+    }
 }
 
 namespace
@@ -196,6 +228,99 @@ timer_runtime_t::dispatch_fire_count (timer_t &timer,
         reset_running ();
         return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed,
                                                 "unknown timer handler failure");
+    }
+}
+
+task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (
+  timer_t &timer,
+  std::uint64_t fire_count) const
+{
+    auto state = timer._state;
+    if (!state || state->disposed) {
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::closed,
+                                                   "SPOT timer is disposed");
+    }
+    {
+        std::lock_guard lock (state->mutex);
+        if (state->running) {
+            state->pending_fire = true;
+            state->pending_fire_count = fire_count;
+            co_return result_t<timer_tick_t>::failure (
+              framework_error_kind_t::request_rejected, "SPOT timer callback is already running");
+        }
+        state->running = true;
+    }
+    if (!state->handler_invoker) {
+        co_return result_t<timer_tick_t>::failure (
+          framework_error_kind_t::request_protocol_error, "SPOT timer handler is not configured");
+    }
+    if (!_context || !_context->spot_instance || !_context->channel_runtime
+        || !_context->channel_runtime->serializers) {
+        co_return result_t<timer_tick_t>::failure (
+          framework_error_kind_t::request_protocol_error, "SPOT timer context is not configured");
+    }
+
+    _context->enter_callback ();
+    auto reset_running = [state, this] {
+        bool post_pending = false;
+        std::uint64_t pending_fire_count = 0;
+        {
+            std::lock_guard lock (state->mutex);
+            state->running = false;
+            post_pending = state->pending_fire && !state->disposed;
+            pending_fire_count = state->pending_fire_count;
+            state->pending_fire = false;
+            state->pending_fire_count = 0;
+        }
+        _context->leave_callback ();
+        if (post_pending) {
+            post_fire_count (_context, state, pending_fire_count);
+        }
+    };
+
+    try {
+        auto tick = make_tick (*state, fire_count);
+        auto handler_task = state->handler_invoker (
+          _context->spot_instance.get (), *_context->channel_runtime->serializers, tick);
+        (void) co_await handler_task;
+        reset_running ();
+        co_return result_t<timer_tick_t>::success (std::move (tick));
+    }
+    catch (const framework_exception_t &error) {
+        const auto stopped = state->options.stop_on_unhandled_exception;
+        state->failure_events.push_back (
+          timer_failure_event_t{state->name, state->handler_type, state->delivery_index, stopped,
+                                error.what ()});
+        if (stopped) {
+            state->disposed = true;
+        }
+        reset_running ();
+        co_return result_t<timer_tick_t>::failure (error.kind (), error.what (),
+                                                   error.is_retriable ());
+    }
+    catch (const std::exception &error) {
+        const auto stopped = state->options.stop_on_unhandled_exception;
+        state->failure_events.push_back (
+          timer_failure_event_t{state->name, state->handler_type, state->delivery_index, stopped,
+                                error.what ()});
+        if (stopped) {
+            state->disposed = true;
+        }
+        reset_running ();
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed,
+                                                   error.what ());
+    }
+    catch (...) {
+        const auto stopped = state->options.stop_on_unhandled_exception;
+        state->failure_events.push_back (timer_failure_event_t{
+          state->name, state->handler_type, state->delivery_index, stopped,
+          "unknown timer handler failure"});
+        if (stopped) {
+            state->disposed = true;
+        }
+        reset_running ();
+        co_return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed,
+                                                   "unknown timer handler failure");
     }
 }
 

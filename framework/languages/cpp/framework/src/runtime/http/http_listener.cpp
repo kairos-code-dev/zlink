@@ -135,18 +135,22 @@ class http_host_service_t::listener_t
 
     void stop_workers () noexcept
     {
-        if (_workers_stopped.exchange (true, std::memory_order_acq_rel)) {
-            return;
-        }
-        _io_workers.stop ();
-        _io_workers.join ();
+        stop_and_join_workers ();
     }
 
     void wait_for_workers () noexcept
     {
-        if (_workers_stopped.exchange (true, std::memory_order_acq_rel)) {
+        stop_and_join_workers ();
+    }
+
+    void stop_and_join_workers () noexcept
+    {
+        std::lock_guard lock (_worker_stop_mutex);
+        if (_workers_stopped.load (std::memory_order_acquire)) {
             return;
         }
+        _workers_stopped.store (true, std::memory_order_release);
+        _io_workers.stop ();
         _io_workers.join ();
     }
 
@@ -328,6 +332,7 @@ class http_host_service_t::listener_t
     std::atomic_size_t _active_connections;
     std::atomic_size_t _active_requests;
     std::atomic_bool _workers_stopped{false};
+    std::mutex _worker_stop_mutex;
     std::mutex _sockets_mutex;
     std::unordered_set<tcp::socket *> _sockets;
     parsed_http_endpoint_t _parsed;

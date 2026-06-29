@@ -329,9 +329,11 @@ class codec_options_builder_t
     template <typename TPayload>
     codec_options_builder_t &
     add_serializer (typename serializer_t<TPayload>::serialize_fn_t serialize,
-                    typename serializer_t<TPayload>::deserialize_fn_t deserialize)
+                    typename serializer_t<TPayload>::deserialize_fn_t deserialize,
+                    std::string content_type = "application/octet-stream")
     {
-        _serializers->template add<TPayload> (std::move (serialize), std::move (deserialize));
+        _serializers->template add<TPayload> (std::move (serialize), std::move (deserialize),
+                                              std::move (content_type));
         return *this;
     }
 
@@ -816,6 +818,19 @@ class route_mesh_channel_builder_t
     route_mesh_channel_builder_t &add_request_handler (
       std::string packet_name,
       TReply (TOwner::*method) (const TRequest &, const route_handler_context_t &))
+    {
+        _route_handlers.push_back (
+          [packet = std::move (packet_name), method] (route_channel_builder_t &channel) mutable {
+              channel.add_request_handler<TOwner, TRequest, TReply> (std::move (packet), method);
+          });
+        apply ();
+        return *this;
+    }
+
+    template <typename TOwner, typename TRequest, typename TReply>
+    route_mesh_channel_builder_t &
+    add_request_handler (std::string packet_name,
+                         task_t<TReply> (TOwner::*method) (const TRequest &))
     {
         _route_handlers.push_back (
           [packet = std::move (packet_name), method] (route_channel_builder_t &channel) mutable {

@@ -1297,6 +1297,16 @@ int main ()
         hosted_service.stop ();
         return 83;
     }
+    auto hosted_bus_reply = hosted_builder.message_bus ()
+                              .request ("hosted", request_t{29})
+                              .packet_name ("request")
+                              .timeout (std::chrono::milliseconds (2000))
+                              .async<reply_t> ()
+                              .result ();
+    if (!hosted_bus_reply || hosted_bus_reply.value ().value != 129) {
+        hosted_service.stop ();
+        return 246;
+    }
     auto hosted_send = hosted_builder.message_bus ()
                          .send ("hosted", event_t{30})
                          .packet_name ("event")

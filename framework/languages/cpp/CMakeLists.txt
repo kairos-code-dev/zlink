@@ -1060,6 +1060,42 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_spot_service_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
+  add_executable(zlink_cpp_e2e_yield_dispatch_registry
+    e2e/YieldDispatch/Server/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_registry PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_registry PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_yield_dispatch_delay
+    e2e/YieldDispatch/Server/Delay/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_yield_dispatch_play
+    e2e/YieldDispatch/Server/Play/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_yield_dispatch_session
+    e2e/YieldDispatch/Server/Session/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_session PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_session PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_yield_dispatch_client
+    e2e/YieldDispatch/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_yield_dispatch_client PRIVATE
+    zlink::framework
+    zlink::stream_e2e_client)
+  target_include_directories(zlink_cpp_e2e_yield_dispatch_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
   add_executable(zlink_cpp_e2e_pubsub_server
     e2e/PubSub/Server/main.cpp)
   target_link_libraries(zlink_cpp_e2e_pubsub_server PRIVATE

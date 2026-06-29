@@ -239,12 +239,11 @@ template <typename TMessage> class wait_call_t
     template <typename TValue, typename TExpected>
     wait_call_t &where (TValue TMessage::*member, TExpected &&expected)
     {
-        auto expected_value =
-          std::decay_t<TExpected> (std::forward<TExpected> (expected));
-        return where ([member, expected_value = std::move (expected_value)] (
-                        const TMessage &message) {
-            return std::invoke (member, message) == expected_value;
-        });
+        auto expected_value = std::decay_t<TExpected> (std::forward<TExpected> (expected));
+        return where (
+          [member, expected_value = std::move (expected_value)] (const TMessage &message) {
+              return std::invoke (member, message) == expected_value;
+          });
     }
 
     /// Waits for a matching packet, consumes it, and decodes it as TMessage.
@@ -262,7 +261,7 @@ template <typename TMessage> class wait_call_t
                     return predicate (packet);
                 } else {
                     TMessage message{};
-                    detail::apply_packet_payload (message, packet.payload, 0);
+                    detail::apply_packet_payload (message, packet.codec, packet.payload, 0);
                     return predicate (message);
                 }
             };
@@ -271,15 +270,16 @@ template <typename TMessage> class wait_call_t
         auto packet =
           detail::submit_wait (_state, _packet_name, std::move (packet_predicate), _timeout);
         if (!packet) {
-            return result_t<TMessage>::failure (
-              packet.error_code (),
-              packet.error () ? packet.error ()->message : "stream connector wait failed");
+            return result_t<TMessage>::failure (packet.error_code (),
+                                                packet.error () ? packet.error ()->message
+                                                                : "stream connector wait failed");
         }
         if constexpr (std::is_same_v<TMessage, packet_t>) {
             return result_t<TMessage>::success (std::move (packet.value ()));
         } else {
             TMessage message{};
-            detail::apply_packet_payload (message, packet.value ().payload, 0);
+            detail::apply_packet_payload (message, packet.value ().codec, packet.value ().payload,
+                                          0);
             return result_t<TMessage>::success (std::move (message));
         }
     }
@@ -302,7 +302,7 @@ template <typename TMessage> class wait_call_t
                     return predicate (packet);
                 } else {
                     TMessage message{};
-                    detail::apply_packet_payload (message, packet.payload, 0);
+                    detail::apply_packet_payload (message, packet.codec, packet.payload, 0);
                     return predicate (message);
                 }
             };
@@ -314,9 +314,8 @@ template <typename TMessage> class wait_call_t
         detail::submit_wait_async (
           state, std::move (packet_name), std::move (packet_predicate), timeout,
           [callback = std::move (callback)] (result_t<packet_t> packet) mutable {
-              result_t<TMessage> result =
-                result_t<TMessage>::failure (error_code_t::configuration_error,
-                                             "stream connector wait failed");
+              result_t<TMessage> result = result_t<TMessage>::failure (
+                error_code_t::configuration_error, "stream connector wait failed");
               if (!packet) {
                   result = result_t<TMessage>::failure (
                     packet.error_code (),
@@ -325,7 +324,8 @@ template <typename TMessage> class wait_call_t
                   result = result_t<TMessage>::success (std::move (packet.value ()));
               } else {
                   TMessage message{};
-                  detail::apply_packet_payload (message, packet.value ().payload, 0);
+                  detail::apply_packet_payload (message, packet.value ().codec,
+                                                packet.value ().payload, 0);
                   result = result_t<TMessage>::success (std::move (message));
               }
               if (callback) {
@@ -341,7 +341,8 @@ template <typename TMessage> class wait_call_t
                  std::string packet_name,
                  std::chrono::milliseconds default_timeout) :
         _state (std::move (state)),
-        _packet_name (std::move (packet_name)), _timeout (default_timeout)
+        _packet_name (std::move (packet_name)),
+        _timeout (default_timeout)
     {
     }
 

@@ -2,9 +2,11 @@
 
 #include "runtime/execution/serial_execution_queue.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 #include <memory>
+#include <vector>
 
 namespace zlink::framework::runtime
 {
@@ -33,20 +35,18 @@ class serial_yield_turn_impl_t final :
 
     detail::task_scheduler_t resume_scheduler () override
     {
-        return [weak = weak_from_this ()] (std::function<void ()> work) mutable {
-            if (auto self = weak.lock ()) {
-                if (self->_queue.try_post_async_front (
-                      self->_name + "-yield-resume",
-                      [work = std::move (work)] (auto complete) mutable {
-                          try {
-                              work ();
-                          }
-                          catch (...) {
-                          }
-                          complete ([] {});
-                      })) {
-                    return;
-                }
+        return [self = shared_from_this ()] (std::function<void ()> work) mutable {
+            if (self->_queue.try_post_async (
+                  self->_name + "-yield-resume",
+                  [work = std::move (work)] (auto complete) mutable {
+                      try {
+                          work ();
+                      }
+                      catch (...) {
+                      }
+                      complete ([] {});
+                  })) {
+                return;
             }
             if (work) {
                 work ();
@@ -175,6 +175,22 @@ void serial_execution_queue_t::close ()
     }
 }
 
+void serial_execution_queue_t::cancel_pending ()
+{
+    std::vector<std::shared_ptr<detail::serial_yield_turn_t>> active_turns;
+    {
+        std::lock_guard<std::mutex> lock (_mutex);
+        _closed = true;
+        _queue.clear ();
+        active_turns = _active_turns;
+    }
+    for (auto &turn : active_turns) {
+        if (turn) {
+            (void) turn->release ();
+        }
+    }
+}
+
 std::size_t serial_execution_queue_t::pending_count () const
 {
     std::lock_guard<std::mutex> lock (_mutex);
@@ -220,12 +236,26 @@ void serial_execution_queue_t::drain_loop ()
         try {
             auto turn = std::make_shared<serial_yield_turn_impl_t> (
               *this, name, [this, name] (std::function<void ()> completion) mutable {
+                  bool queue_closed = false;
+                  {
+                      std::lock_guard<std::mutex> lock (_mutex);
+                      queue_closed = _closed;
+                  }
+                  if (queue_closed) {
+                      complete_one (std::move (name), std::move (completion));
+                      return;
+                  }
                   _executor.submit (
                     [this, name = std::move (name),
                      completion = std::move (completion)] () mutable {
                         complete_one (std::move (name), std::move (completion));
                     });
               });
+            {
+                std::lock_guard<std::mutex> lock (_mutex);
+                _active_turns.push_back (turn);
+                _active_names.push_back (name);
+            }
             detail::serial_yield_turn_scope_t scope (turn);
             item.work ([turn = std::move (turn)] (std::function<void ()> completion) mutable {
                 (void) turn->complete (std::move (completion));
@@ -260,6 +290,12 @@ void serial_execution_queue_t::complete_one (std::string name, std::function<voi
 
     {
         std::lock_guard<std::mutex> lock (_mutex);
+        _active_turns.erase (
+          std::remove_if (_active_turns.begin (), _active_turns.end (),
+                          [] (const auto &turn) { return !turn || turn->released (); }),
+          _active_turns.end ());
+        _active_names.erase (std::remove (_active_names.begin (), _active_names.end (), name),
+                             _active_names.end ());
         --_active;
         _draining = false;
         if (!_queue.empty ()) {

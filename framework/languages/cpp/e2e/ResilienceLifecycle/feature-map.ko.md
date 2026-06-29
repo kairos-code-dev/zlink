@@ -46,6 +46,6 @@
   timeout으로 bounded하게 끝나지 않고 native call이 오래 붙잡히는 경로가 있어 runner에 넣지
   않는다. registry outage 중 established socket 지속성은 C++ public call timeout 보장이 먼저
   정리되어야 한다.
-- `RL-D2`: C++ dispatch error observer failure는 내부 `dispatch_error_reporter_t` counter로는
-  관측할 수 있지만, framework public API에는 observer 실패를 runtime error sink event로 받는
-  표면이 없다. public 관측 표면이 추가되기 전에는 E2E runner가 이 항목을 단언하지 않는다.
+- `RL-D2`: C++ framework product는 dispatch observer failure를 runtime diagnostic path로 분리해
+  원래 reply/drop 결과를 바꾸지 않도록 처리한다. 현재 E2E runner는 이 observer 실패 event를
+  공통 marker로 수집하고 단언하는 harness 연결이 아직 없다.

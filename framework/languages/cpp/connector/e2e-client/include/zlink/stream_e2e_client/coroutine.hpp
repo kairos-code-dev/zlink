@@ -6,6 +6,8 @@
 
 #include <chrono>
 #include <functional>
+#include <future>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -80,10 +82,7 @@ class coroutine_send_call_t
 class coroutine_request_call_t
 {
   public:
-    explicit coroutine_request_call_t (request_call_t inner) :
-        _inner (std::move (inner))
-    {
-    }
+    explicit coroutine_request_call_t (request_call_t inner) : _inner (std::move (inner)) {}
 
     coroutine_request_call_t &packet_name (std::string name)
     {
@@ -121,7 +120,10 @@ class coroutine_request_call_t
         return *this;
     }
 
-    template <typename TReply> result_t<TReply> submit () { return _inner.template submit<TReply> (); }
+    template <typename TReply> result_t<TReply> submit ()
+    {
+        return _inner.template submit<TReply> ();
+    }
 
     template <typename TReply> void submit (std::function<void (result_t<TReply>)> callback)
     {
@@ -189,6 +191,19 @@ template <typename TMessage> class coroutine_wait_call_t
         return task;
     }
 
+    std::future<TMessage> to_future (std::string failure_message = "stream wait failed")
+    {
+        return std::async (
+          std::launch::async,
+          [inner = std::move (_inner), failure_message = std::move (failure_message)] () mutable {
+              auto result = inner.submit ();
+              if (!result) {
+                  throw std::runtime_error (failure_message);
+              }
+              return std::move (result.value ());
+          });
+    }
+
   private:
     wait_call_t<TMessage> _inner;
 };
@@ -215,10 +230,7 @@ class coroutine_connector_t
             return *_last_result;
         }
 
-        explicit operator bool ()
-        {
-            return static_cast<bool> (submit ());
-        }
+        explicit operator bool () { return static_cast<bool> (submit ()); }
 
         error_code_t error_code ()
         {
@@ -230,10 +242,10 @@ class coroutine_connector_t
 
         task_t<void> async ()
         {
-            auto task = task_t<void> (
-              [operation = std::move (_operation)] (std::function<void (result_t<void>)> callback) mutable {
-                  operation (std::move (callback));
-              });
+            auto task = task_t<void> ([operation = std::move (_operation)] (
+                                        std::function<void (result_t<void>)> callback) mutable {
+                operation (std::move (callback));
+            });
             task.start ();
             return task;
         }
@@ -254,8 +266,7 @@ class coroutine_connector_t
         return coroutine_send_call_t (_connector->send (std::move (packet)));
     }
 
-    template <typename TRequest>
-    coroutine_request_call_t request (const TRequest &request)
+    template <typename TRequest> coroutine_request_call_t request (const TRequest &request)
     {
         return coroutine_request_call_t (_connector->request (request));
     }
@@ -284,7 +295,7 @@ class coroutine_connector_t
 
     template <typename TMessage>
     coroutine_wait_call_t<TMessage> wait_for (std::string packet_name,
-                                             std::chrono::milliseconds timeout)
+                                              std::chrono::milliseconds timeout)
     {
         return coroutine_wait_call_t<TMessage> (
           _connector->wait_for<TMessage> (std::move (packet_name), timeout));

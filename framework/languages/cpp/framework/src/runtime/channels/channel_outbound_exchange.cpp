@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <exception>
+#include <future>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -53,6 +54,29 @@ bool has_connection (const channel_capability_snapshot_t *capability)
                || !capability->connect_endpoints.empty ());
 }
 
+bool runtime_is_stopping (const channel_runtime_state_t &state)
+{
+    std::lock_guard lock (state.mutex);
+    return state.shutdown || state.closed;
+}
+
+struct socket_close_guard_t
+{
+    zlink::socket_t *socket = nullptr;
+
+    ~socket_close_guard_t ()
+    {
+        if (!socket) {
+            return;
+        }
+        try {
+            socket->close ();
+        }
+        catch (...) {
+        }
+    }
+};
+
 framework_exception_t map_native_request_exception (const std::exception &error)
 {
     if (const auto *request_error = dynamic_cast<const zlink::request_error_t *> (&error);
@@ -86,6 +110,71 @@ framework_exception_t map_native_request_exception (const std::exception &error)
     return framework_exception_t (framework_error_kind_t::request_failed, error.what ());
 }
 
+std::optional<std::string>
+select_weighted_discovery_endpoint (const std::shared_ptr<channel_runtime_state_t> &state,
+                                    zlink::service::discovery_t &discovery,
+                                    const std::string &channel_name,
+                                    std::chrono::milliseconds timeout)
+{
+    const auto deadline = timeout > std::chrono::milliseconds::zero ()
+                            ? std::chrono::steady_clock::now () + timeout
+                            : std::chrono::steady_clock::now () + std::chrono::seconds (1);
+    while (true) {
+        struct candidate_t
+        {
+            std::string endpoint;
+            std::uint32_t weight = 0;
+        };
+        std::vector<candidate_t> candidates;
+        std::uint64_t total_weight = 0;
+        for (const auto &entry : discovery.member_peers ()) {
+            if (entry.service_role () != zlink::service_role::router || entry.endpoint ().empty ()) {
+                continue;
+            }
+            const auto weight = entry.weight ().value ();
+            if (weight == 0) {
+                continue;
+            }
+            candidates.push_back ({entry.endpoint (), weight});
+            total_weight += weight;
+        }
+        if (!candidates.empty () && total_weight > 0) {
+            const bool equal_weights =
+              std::all_of (candidates.begin (), candidates.end (), [&] (const candidate_t &item) {
+                  return item.weight == candidates.front ().weight;
+              });
+            std::uint64_t slot = 0;
+            {
+                std::lock_guard lock (state->mutex);
+                auto &cursor = state->weighted_discovery_cursors[channel_name];
+                if (equal_weights) {
+                    slot = cursor % candidates.size ();
+                    cursor = (cursor + 1) % candidates.size ();
+                } else {
+                    slot = cursor % total_weight;
+                    cursor = (cursor + 1) % total_weight;
+                }
+            }
+            if (equal_weights) {
+                return candidates[slot].endpoint;
+            }
+            std::uint64_t current = 0;
+            for (const auto &candidate : candidates) {
+                current += candidate.weight;
+                if (slot < current) {
+                    return candidate.endpoint;
+                }
+            }
+            return candidates.back ().endpoint;
+        }
+
+        if (std::chrono::steady_clock::now () >= deadline) {
+            return std::nullopt;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    }
+}
+
 } // namespace
 
 class channel_native_publisher_t
@@ -108,8 +197,8 @@ class channel_native_publisher_t
     {
         std::lock_guard lock (_mutex);
         drain_subscription_events ();
-        zlink::message_t publish_header = zlink::message_t::from (parts[0].to_string ());
-        zlink::message_t publish_body = zlink::message_t::from (parts[1].to_string ());
+        zlink::message_t publish_header = parts[0];
+        zlink::message_t publish_body = parts[1];
         const bool sent =
           _socket.publish (topic).message (publish_header).message (publish_body).submit ();
         if (!sent) {
@@ -184,7 +273,7 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                                               std::nullopt,
                                               std::nullopt,
                                               std::nullopt};
-              });
+            });
             runtime::messaging::envelope_codec_t envelope;
             auto parts =
               envelope.encode_parts (header, request_type, request, *_state->serializers);
@@ -230,26 +319,32 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                         throw framework_exception_t (framework_error_kind_t::timeout,
                                                      "channel request timed out");
                     }
-                    zlink::message_t request_header =
-                      zlink::message_t::from (parts[0].to_string ());
-                    zlink::message_t request_body = zlink::message_t::from (parts[1].to_string ());
-                    zlink::context_t context;
-                    zlink::dealer_socket_t dealer (context);
-                    apply_weighted_channel_socket_options (dealer, *client);
-                    dealer.channel_name (channel_name);
-                    dealer.options ().immediate (true);
-                    dealer.options ().connect_timeout (connect_timeout);
-                    dealer.options ().request_timeout (connect_timeout);
+                    zlink::message_t request_header = parts[0];
+                    zlink::message_t request_body = parts[1];
+                    auto context = std::make_unique<zlink::context_t> ();
+                    auto dealer = std::make_unique<zlink::dealer_socket_t> (*context);
+                    socket_close_guard_t close_dealer{dealer.get ()};
+                    apply_weighted_channel_socket_options (*dealer, *client);
+                    dealer->channel_name (channel_name);
+                    dealer->options ().immediate (true);
+                    dealer->options ().connect_timeout (connect_timeout);
+                    dealer->options ().request_timeout (connect_timeout);
                     std::unique_ptr<zlink::service::discovery_t> discovery;
                     if (client_uses_discovery && endpoints.empty ()) {
                         discovery = std::make_unique<zlink::service::discovery_t> (
-                          context, zlink::auto_connect_type::client_server, channel_name);
+                          *context, zlink::auto_connect_type::client_server, channel_name);
                         for (const auto &registry_endpoint : _state->discovery.registry_endpoints) {
                             connect_registry_with_retry (*discovery, registry_endpoint);
                         }
-                        dealer.attach_discovery (*discovery);
+                        auto endpoint = select_weighted_discovery_endpoint (
+                          _state, *discovery, channel_name, connect_timeout);
+                        if (endpoint) {
+                            dealer->connect (*endpoint);
+                        } else {
+                            dealer->attach_discovery (*discovery);
+                        }
                     } else {
-                        dealer.connect (endpoints[attempt]);
+                        dealer->connect (endpoints[attempt]);
                     }
                     if (timeout > std::chrono::milliseconds::zero ()) {
                         const auto wait_for_connect =
@@ -266,12 +361,45 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
                         throw framework_exception_t (framework_error_kind_t::timeout,
                                                      "channel request timed out");
                     }
-                    auto pending_reply = dealer.request ()
-                                           .message (request_header)
-                                           .message (request_body)
-                                           .timeout (request_timeout)
-                                           .async ();
-                    auto native_reply = pending_reply.get ();
+                    auto native_request =
+                      std::make_unique<zlink::async_result_t<std::vector<zlink::message_t>>> (
+                        dealer->request ()
+                          .message (request_header)
+                          .message (request_body)
+                          .timeout (request_timeout)
+                          .async ());
+                    while (native_request->wait_for (std::chrono::milliseconds (50))
+                           != std::future_status::ready) {
+                        if (runtime_is_stopping (*_state)) {
+                            dealer->options ().linger (std::chrono::milliseconds (0));
+                            try {
+                                context->options ().blocky (false);
+                            }
+                            catch (...) {
+                            }
+                            try {
+                                context->shutdown ();
+                            }
+                            catch (...) {
+                            }
+                            close_dealer.socket = nullptr;
+                            dealer.reset ();
+                            // The native request API has no cancel handle. During framework
+                            // shutdown, abandon this per-request native context so the Spot
+                            // handler can complete with a public shutdown error.
+                            (void) discovery.release ();
+                            (void) context.release ();
+                            (void) native_request.release ();
+                            throw framework_exception_t (framework_error_kind_t::shutdown,
+                                                         "channel runtime is shutting down");
+                        }
+                        if (timeout > std::chrono::milliseconds::zero ()
+                            && std::chrono::steady_clock::now () >= deadline) {
+                            throw framework_exception_t (framework_error_kind_t::timeout,
+                                                         "channel request timed out");
+                        }
+                    }
+                    auto native_reply = native_request->get ();
                     if (timeout > std::chrono::milliseconds::zero ()
                         && std::chrono::steady_clock::now () >= deadline) {
                         throw framework_exception_t (framework_error_kind_t::timeout,
@@ -472,8 +600,8 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
             }
             std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
-            zlink::message_t send_header = zlink::message_t::from (parts[0].to_string ());
-            zlink::message_t send_body = zlink::message_t::from (parts[1].to_string ());
+            zlink::message_t send_header = parts[0];
+            zlink::message_t send_body = parts[1];
             const bool sent = dealer.send ().message (send_header).message (send_body).submit ();
             if (!sent) {
                 fail_pending_send ();

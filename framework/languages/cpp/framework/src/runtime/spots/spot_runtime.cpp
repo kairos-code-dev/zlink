@@ -9,6 +9,7 @@
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/route_channel_runtime.hpp"
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
+#include "runtime/diagnostics/monitoring_runtime.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
@@ -63,19 +64,27 @@ class spot_worker_scheduler_t final : public detail::worker_scheduler_t
     std::weak_ptr<detail::spot_context_state_t> _owner;
 };
 
-std::shared_ptr<runtime::offload_executor_t> framework_worker_executor ()
+std::shared_ptr<runtime::offload_executor_t>
+framework_worker_executor (const std::shared_ptr<detail::spot_node_builder_state_t> &node)
 {
+    if (node && node->worker_executor) {
+        return node->worker_executor;
+    }
     const auto hardware_workers =
       static_cast<std::size_t> (std::max (1u, std::thread::hardware_concurrency ()));
-    static auto executor = std::make_shared<runtime::offload_executor_t> (
+    auto executor = std::make_shared<runtime::offload_executor_t> (
       0, hardware_workers * 2, 1024, std::chrono::seconds (30));
+    if (node) {
+        node->worker_executor = executor;
+    }
     return executor;
 }
 
 std::shared_ptr<detail::worker_scheduler_t>
 make_spot_worker_scheduler (const std::shared_ptr<detail::spot_context_state_t> &owner)
 {
-    return std::make_shared<spot_worker_scheduler_t> (framework_worker_executor (), owner);
+    return std::make_shared<spot_worker_scheduler_t> (framework_worker_executor (owner->node),
+                                                      owner);
 }
 
 void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_t> &state)
@@ -85,6 +94,31 @@ void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_
       std::make_shared<runtime::serial_execution_queue_t> (*state->serial_executor);
     state->worker_scheduler = make_spot_worker_scheduler (state);
 }
+
+} // namespace
+
+namespace detail
+{
+
+spot_node_builder_state_t::~spot_node_builder_state_t () = default;
+
+void drain_spot_node_executors (spot_node_builder_state_t &node)
+{
+    for (auto &[_, context] : node.spot_contexts_by_rid) {
+        auto state = context._state;
+        if (state && state->serial_executor) {
+            if (state->serial_queue) {
+                state->serial_queue->cancel_pending ();
+            }
+            state->serial_executor->drain ();
+        }
+    }
+}
+
+} // namespace detail
+
+namespace
+{
 
 zlink::message_t framework_reply_or_empty (const std::optional<message_t> &reply,
                                            serializer_registry_t &serializers)
@@ -664,6 +698,7 @@ task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor
         _state->node->actor_created_keys.erase (key);
         _state->node->destroyed_actor_keys.insert (key);
         _state->node->actor_instances.erase (key);
+        _state->node->actor_mailboxes.erase (key);
         decrement_actor_count_unlocked (*_state);
         if (_state->node->destroy_actor_registry) {
             auto cleanup = _state->node->destroy_actor_registry (actor);
@@ -822,35 +857,49 @@ spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_ri
                                                     route_channel_name, submitted_packet_name,
                                                     payload, effective_timeout, metadata);
               state->ordering_log.push_back ("request_to:" + std::string (spot_rid.value ()));
-              auto reply = runtime.request_reply_spot_parts (
-                zlink::routing_id_t::from (std::string (node_rid.value ())),
-                zlink::routing_id_t::from (std::string (spot_rid.value ())), std::move (parts),
-                effective_timeout);
-              if (!reply) {
-                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    reply.error_kind (),
-                    reply.error () ? reply.error ()->what () : "SPOT route request failed"));
-              }
-              runtime::messaging::envelope_codec_t envelope;
-              auto reply_header = envelope.decode_header (reply.value ());
-              if (!reply_header) {
-                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    reply_header.error_kind (), reply_header.error ()
-                                                  ? reply_header.error ()->what ()
-                                                  : "SPOT route reply header decode failed"));
-              }
-              if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
-                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    framework_error_kind_t::request_failed,
-                    reply_header.value ().error_message.value_or ("SPOT route request failed")));
-              }
-              auto body = envelope.decode_body (reply.value ());
-              if (!body) {
-                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                    body.error_kind (), body.error () ? body.error ()->what ()
-                                                      : "SPOT route reply body decode failed"));
-              }
-              return task_t<zlink::message_t> (result_t<zlink::message_t>::success (body.value ()));
+              return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
+                [state, route_channel_name, node_rid = std::move (node_rid),
+                 spot_rid = std::move (spot_rid), parts = std::move (parts),
+                 effective_timeout] () mutable -> boost::asio::awaitable<result_t<zlink::message_t>> {
+                    try {
+                        detail::channel_runtime_manager_t manager (state->channel_runtime);
+                        auto &runtime = manager.get_route_channel (route_channel_name);
+                        auto reply = runtime.request_reply_spot_parts (
+                          zlink::routing_id_t::from (std::string (node_rid.value ())),
+                          zlink::routing_id_t::from (std::string (spot_rid.value ())),
+                          std::move (parts), effective_timeout);
+                        if (!reply) {
+                            co_return result_t<zlink::message_t>::failure (
+                              reply.error_kind (),
+                              reply.error () ? reply.error ()->what () : "SPOT route request failed");
+                        }
+                        runtime::messaging::envelope_codec_t envelope;
+                        auto reply_header = envelope.decode_header (reply.value ());
+                        if (!reply_header) {
+                            co_return result_t<zlink::message_t>::failure (
+                              reply_header.error_kind (),
+                              reply_header.error () ? reply_header.error ()->what ()
+                                                    : "SPOT route reply header decode failed");
+                        }
+                        if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
+                            co_return result_t<zlink::message_t>::failure (
+                              framework_error_kind_t::request_failed,
+                              reply_header.value ().error_message.value_or (
+                                "SPOT route request failed"));
+                        }
+                        auto body = envelope.decode_body (reply.value ());
+                        if (!body) {
+                            co_return result_t<zlink::message_t>::failure (
+                              body.error_kind (), body.error () ? body.error ()->what ()
+                                                                : "SPOT route reply body decode failed");
+                        }
+                        co_return result_t<zlink::message_t>::success (body.value ());
+                    }
+                    catch (const framework_exception_t &error) {
+                        co_return result_t<zlink::message_t>::failure (
+                          error.kind (), error.what (), error.is_retriable ());
+                    }
+                });
           }
           catch (const framework_exception_t &error) {
               return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
@@ -1875,6 +1924,11 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
     }
 
     const auto key = actor_key (actor_ref);
+    auto &mailbox_slot = _state->actor_mailboxes[key];
+    if (!mailbox_slot) {
+        mailbox_slot = std::make_shared<std::mutex> ();
+    }
+    auto actor_mailbox = mailbox_slot;
     auto found_location = _state->actor_spot_rids.find (key);
     if (found_location == _state->actor_spot_rids.end ()
         && _state->destroyed_actor_keys.contains (key)) {
@@ -1958,6 +2012,7 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                 dispatch_error_surface_t::spot_actor,
                                 dispatch_message_kind_t::actor_request, packet_name, {},
                                 found_location->second.value (), actor_ref.actor_id ());
+    std::unique_lock actor_mailbox_lock (*actor_mailbox);
     auto reply =
       spot_handler_registry_t (context->_state)
         .invoke_erased (spot_handler_kind_t::actor_packet, packet_name, {},
@@ -2132,6 +2187,15 @@ spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (std::str
                            detail::effective_spot_node_rid (_state->snapshot)),
                          spot_rid, spot_name});
     }
+    if (_state->monitoring) {
+        monitoring_runtime_t (_state->monitoring)
+          .publish_spot_snapshot (spot_event_payload_t{runtime_event_base_t{_state->snapshot.name},
+                                                       spot_event_kind_t::subjects_changed,
+                                                       _state->snapshot.name,
+                                                       {},
+                                                       {spot_name},
+                                                       std::nullopt});
+    }
     return spot_create_result_t{spot_rid, spot_create_state_t::created, create_reply, context};
 }
 
@@ -2208,7 +2272,17 @@ task_t<bool> spot_node_runtime_t::close_spot (spot_rid_t spot_rid)
         }
         context = found->second;
     }
-    co_return result_t<bool>::success (context->close ().result ().value ());
+    const bool closed = context->close ().result ().value ();
+    if (closed && _state->monitoring) {
+        monitoring_runtime_t (_state->monitoring)
+          .publish_spot_snapshot (spot_event_payload_t{runtime_event_base_t{_state->snapshot.name},
+                                                       spot_event_kind_t::subjects_changed,
+                                                       _state->snapshot.name,
+                                                       {},
+                                                       {},
+                                                       std::nullopt});
+    }
+    co_return result_t<bool>::success (closed);
 }
 
 node_rid_t spot_node_runtime_t::node_rid () const
@@ -2471,45 +2545,73 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
                                                                   : "spot routed body missing"));
                 continue;
             }
-            auto result = spot_handler_registry_t (context._state)
-                            .invoke_erased (
-                              spot_handler_kind_t::packet, header.value ().message_name, {},
-                              std::type_index (typeid (void)), context._state->spot_instance.get (),
-                              nullptr, services, serializers, body.value ())
-                            .result ();
-            if (!result) {
-                const auto *error = result.error ();
-                const framework_exception_t exception (
-                  result.error_kind (),
-                  error != nullptr ? error->what () : "spot routed handler failed",
-                  error != nullptr && error->is_retriable ());
-                if (header.value ().kind == runtime::messaging::message_kind_t::request) {
-                    reply_error (exception);
-                } else {
-                    report_spot_dispatch_error (
-                      _state, dispatch_error_surface_t::spot_route, dispatch_message_kind_t::send,
-                      dispatch_reason_from_error (result.error_kind ()),
-                      dispatch_error_action_t::drop, header.value ().message_name, std::nullopt,
-                      std::string (context._state->spot_rid.value ()));
-                }
-                continue;
-            }
-            if (header.value ().kind == runtime::messaging::message_kind_t::request) {
-                auto reply_parts = replies.reply_raw_envelope (
-                  replies.create_reply_header (runtime::messaging::message_kind_t::response,
-                                               header.value ().channel_name, header.value ()),
-                  result.value ());
-                submit_reply (*native, inbound, reply_parts);
-                report_spot_dispatch_trace (
-                  _state, message_flow_outcome_t::replied, dispatch_error_surface_t::spot_route,
-                  dispatch_message_kind_t::response, header.value ().message_name, {},
-                  context._state->spot_rid.value ());
-            } else {
-                report_spot_dispatch_trace (
-                  _state, message_flow_outcome_t::dispatched, dispatch_error_surface_t::spot_route,
-                  dispatch_message_kind_t::send, header.value ().message_name, {},
-                  context._state->spot_rid.value ());
-            }
+            auto handler_task =
+              spot_handler_registry_t (context._state)
+                .invoke_erased (
+                  spot_handler_kind_t::packet, header.value ().message_name, {},
+                  std::type_index (typeid (void)), context._state->spot_instance.get (), nullptr,
+                  services, serializers, body.value (),
+                  spot_actor_message_metadata_t{.content_type = header.value ().content_type,
+                                                .values = header.value ().metadata});
+            auto task_holder =
+              std::make_shared<task_t<zlink::message_t>> (std::move (handler_task));
+            auto native_for_reply = native;
+            auto inbound_for_reply = std::make_shared<zlink::received_t> (std::move (inbound));
+            auto header_value = header.value ();
+            auto node_state = _state;
+            auto spot_rid = std::string (context._state->spot_rid.value ());
+            detail::observe_task_completion (
+              *task_holder,
+              [task_holder, native_for_reply, inbound_for_reply, header_value, node_state,
+               spot_rid, replies, submit_reply] (const result_t<zlink::message_t> &result) mutable {
+                  if (!result) {
+                      const auto *error = result.error ();
+                      const framework_exception_t exception (
+                        result.error_kind (),
+                        error != nullptr ? error->what () : "spot routed handler failed",
+                        error != nullptr && error->is_retriable ());
+                      if (header_value.kind == runtime::messaging::message_kind_t::request) {
+                          report_spot_dispatch_error (
+                            node_state, dispatch_error_surface_t::spot_route,
+                            dispatch_message_kind_t::request,
+                            dispatch_reason_from_error (exception.kind ()),
+                            dispatch_error_action_t::reply_error, header_value.message_name,
+                            std::nullopt, spot_rid);
+                          if (inbound_for_reply->request_seq ()) {
+                              auto reply_parts = replies.reply_raw_envelope (
+                                replies.create_error_header (header_value.channel_name,
+                                                             header_value, exception),
+                                zlink::message_t::from (""));
+                              submit_reply (*native_for_reply, *inbound_for_reply, reply_parts);
+                          }
+                      } else {
+                          report_spot_dispatch_error (
+                            node_state, dispatch_error_surface_t::spot_route,
+                            dispatch_message_kind_t::send,
+                            dispatch_reason_from_error (result.error_kind ()),
+                            dispatch_error_action_t::drop, header_value.message_name,
+                            std::nullopt, spot_rid);
+                      }
+                      return;
+                  }
+                  if (header_value.kind == runtime::messaging::message_kind_t::request) {
+                      auto reply_parts = replies.reply_raw_envelope (
+                        replies.create_reply_header (runtime::messaging::message_kind_t::response,
+                                                     header_value.channel_name, header_value),
+                        result.value ());
+                      submit_reply (*native_for_reply, *inbound_for_reply, reply_parts);
+                      report_spot_dispatch_trace (
+                        node_state, message_flow_outcome_t::replied,
+                        dispatch_error_surface_t::spot_route,
+                        dispatch_message_kind_t::response, header_value.message_name, {},
+                        spot_rid);
+                  } else {
+                      report_spot_dispatch_trace (
+                        node_state, message_flow_outcome_t::dispatched,
+                        dispatch_error_surface_t::spot_route, dispatch_message_kind_t::send,
+                        header_value.message_name, {}, spot_rid);
+                  }
+              });
             ++dispatched;
         }
     }

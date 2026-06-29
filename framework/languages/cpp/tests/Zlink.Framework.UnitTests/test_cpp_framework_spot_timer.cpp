@@ -20,10 +20,12 @@ struct entry_spot_t : public zlink::framework::entry_spot_t
 
 struct tick_handler_t
 {
+    void handle (zlink::framework::spot_t &, const zlink::framework::timer_tick_t &) const {}
 };
 
 struct failing_tick_handler_t
 {
+    void handle (zlink::framework::spot_t &, const zlink::framework::timer_tick_t &) const {}
 };
 
 } // namespace

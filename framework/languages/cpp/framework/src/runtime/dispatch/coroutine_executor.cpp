@@ -38,6 +38,12 @@ std::size_t &configured_worker_count ()
     return worker_count;
 }
 
+bool &executor_shutdown_requested ()
+{
+    static bool requested = false;
+    return requested;
+}
+
 std::size_t default_worker_count ()
 {
     return std::max (1u, std::thread::hardware_concurrency ());
@@ -88,7 +94,19 @@ void configure_handler_coroutine_executor (std::size_t worker_count)
     if (executor) {
         return;
     }
+    executor_shutdown_requested () = false;
     configured_worker_count () = worker_count;
+}
+
+void shutdown_handler_coroutine_executor () noexcept
+{
+    std::unique_ptr<coroutine_executor_t> executor;
+    {
+        std::lock_guard lock (executor_mutex ());
+        executor_shutdown_requested () = true;
+        executor_fast_path ().store (nullptr, std::memory_order_release);
+        executor = std::move (executor_instance ());
+    }
 }
 
 } // namespace zlink::framework::runtime

@@ -33,7 +33,8 @@ class messagepack_codec_extension_t
           [] (const zlink::framework::encoded_payload_t &payload) {
               return zlink::framework::detail::encoded_payload_to_raw (payload)
                 .template parse_json<TPayload> ();
-          });
+          },
+          "application/x-msgpack");
     }
 };
 

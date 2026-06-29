@@ -114,12 +114,23 @@ class channel_host_service_t::server_loop_t
         if (_context) {
             try {
                 _context->shutdown ();
-                _context->term ();
             }
             catch (...) {
             }
         }
         join_workers ();
+        clear_replies ();
+        if (_router) {
+            _router.reset ();
+        }
+        if (_context) {
+            try {
+                _context->term ();
+            }
+            catch (...) {
+            }
+            _context.reset ();
+        }
     }
 
   private:
@@ -131,7 +142,7 @@ class channel_host_service_t::server_loop_t
 
     static zlink::message_t clone (const zlink::message_t &message)
     {
-        return zlink::message_t::from (message.to_string ());
+        return message;
     }
 
     static zlink::framework::runtime::messaging::message_parts_t
@@ -214,6 +225,12 @@ class channel_host_service_t::server_loop_t
             }
         }
         _workers.clear ();
+    }
+
+    void clear_replies () noexcept
+    {
+        std::lock_guard<std::mutex> lock (_replies_mutex);
+        _replies.clear ();
     }
 
     void apply_runtime_options ()
@@ -311,18 +328,28 @@ class channel_host_service_t::subscriber_loop_t
         if (_context) {
             try {
                 _context->shutdown ();
-                _context->term ();
             }
             catch (...) {
             }
         }
         join_workers ();
+        if (_subscriber) {
+            _subscriber.reset ();
+        }
+        if (_context) {
+            try {
+                _context->term ();
+            }
+            catch (...) {
+            }
+            _context.reset ();
+        }
     }
 
   private:
     static zlink::message_t clone (const zlink::message_t &message)
     {
-        return zlink::message_t::from (message.to_string ());
+        return message;
     }
 
     static zlink::framework::runtime::messaging::message_parts_t

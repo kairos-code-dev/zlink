@@ -21,8 +21,8 @@
   client/server server를 여는 조합을 별도 프로세스로 실행한다.
 - `RC-B1`: JSON serializer roundtrip을 검증한다.
 - `RC-B4` 일부: JSON serializer와 custom serializer가 같은 channel에서 공존하는지 검증한다.
-  공통 시나리오가 요구하는 Protobuf/MessagePack content type 공존은 `RC-B2`/`RC-B3`과 같은
-  C++ content type 제한 때문에 아직 제외한다.
+  C++ framework는 content type을 channel envelope와 SPOT context로 전달할 수 있다. Protobuf와
+  MessagePack의 실제 공존 runner는 아직 E2E에 추가되지 않았다.
 - `RC-B5`: client와 server가 서로 다른 reply serializer를 등록했을 때 typed request가
   decode failure로 실패하는지 검증한다.
 
@@ -31,8 +31,6 @@
 - `RC-A2`: attribute 기반 handler discovery는 `.NET`의 attribute 표면이다. C++에는
   런타임 attribute나 assembly scan 공개 API가 없으므로 `RC-A1`의 handler group 등록이
   C++의 대응 표면이다.
-- `RC-B2`, `RC-B3`, `RC-B4`의 Protobuf/MessagePack 공존 부분: C++ framework에는
-  protobuf/messagepack extension 헤더가 있지만 현재
-  channel message envelope의 공개 content type은 `application/json`으로 고정되어 있다.
-  extension은 payload serializer 등록만 제공하므로 `application/x-protobuf` 또는
-  messagepack content type을 공개 channel API로 검증할 수 없다.
+- `RC-B2`, `RC-B3`, `RC-B4`의 Protobuf/MessagePack 공존 부분: C++ framework product에는
+  content type 기반 serializer 등록과 channel envelope 전달 경로가 있다. 아직 E2E runner가
+  Protobuf/MessagePack extension을 실제 process 구성에 묶어 공통 scenario marker로 검증하지 않는다.

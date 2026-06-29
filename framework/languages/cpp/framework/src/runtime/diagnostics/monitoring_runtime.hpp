@@ -46,6 +46,7 @@ class monitoring_runtime_t
     explicit monitoring_runtime_t (std::shared_ptr<monitoring_runtime_state_t> state);
 
     static monitoring_runtime_t from (const monitoring_builder_t &builder);
+    const std::shared_ptr<monitoring_runtime_state_t> &state () const noexcept { return _state; }
 
     void publish_socket (socket_event_payload_t event) const;
     void publish_discovery (discovery_event_payload_t event) const;

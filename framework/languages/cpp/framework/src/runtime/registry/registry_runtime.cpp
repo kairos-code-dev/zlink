@@ -5,6 +5,7 @@
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/diagnostics/monitoring_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <zlink/Contracts/Core/context.hpp>
@@ -665,6 +666,14 @@ void registry_runtime_t::project_topology (const zlink_builder_state_t &builder)
     for (const auto &[_, spot_node] : builder.spot_nodes) {
         project_spot_node (builder, spot_node->snapshot);
     }
+    if (_state->monitoring) {
+        monitoring_runtime_t (_state->monitoring)
+          .publish_registry_snapshot (
+            "registry",
+            registry_status_t{registry_state_t::running, "registry", _state->options.pub_endpoint,
+                              _state->options.router_endpoint, 0},
+            _state->topology, _state->services);
+    }
 }
 
 void registry_runtime_t::project_channel (const zlink_builder_state_t &builder,
@@ -729,6 +738,15 @@ void registry_runtime_t::attach_spot_route_discovery (
     for (const auto &[_, route] : _state->spot_routes) {
         (void) bridge->bind_spot_route (route);
     }
+}
+
+void registry_runtime_t::detach_spot_route_discovery (
+  const std::string &route_channel_name) noexcept
+{
+    if (!_state || route_channel_name.empty ()) {
+        return;
+    }
+    _state->spot_route_discoveries.erase (route_channel_name);
 }
 
 void registry_runtime_t::cleanup_stale_spot_routes (const std::set<std::string> &active_spot_rids)

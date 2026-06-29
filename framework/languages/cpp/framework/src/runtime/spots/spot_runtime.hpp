@@ -32,6 +32,7 @@ class spot_node_builder_state_t
 {
   public:
     explicit spot_node_builder_state_t (std::string name) : snapshot{.name = std::move (name)} {}
+    ~spot_node_builder_state_t ();
 
     mutable std::recursive_mutex mutex;
     spot_node_snapshot_t snapshot;
@@ -44,6 +45,7 @@ class spot_node_builder_state_t
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
     dispatch_options_t dispatch;
     std::shared_ptr<registry_runtime_state_t> registry_runtime;
+    std::shared_ptr<monitoring_runtime_state_t> monitoring;
     std::map<std::string, spot_rid_t> actor_spot_rids;
     std::map<std::string, std::uint64_t> actor_generations;
     std::set<std::string> actor_created_keys;
@@ -67,11 +69,15 @@ class spot_node_builder_state_t
       actor_packet_relay;
     std::map<std::string, actor_factory_registration_t> actor_factories;
     std::map<std::string, std::shared_ptr<void>> actor_instances;
+    std::map<std::string, std::shared_ptr<std::mutex>> actor_mailboxes;
     std::map<std::string, spot_route_t> actor_routes;
     std::map<std::string, std::shared_ptr<service::spot_t>> native_spots_by_rid;
     std::map<std::string, std::function<std::optional<spot_route_t> (spot_rid_t)>> resolvers;
+    std::shared_ptr<runtime::offload_executor_t> worker_executor;
     std::uint64_t next_spot_id = 1;
 };
+
+void drain_spot_node_executors (spot_node_builder_state_t &node);
 
 class spot_context_state_t
 {

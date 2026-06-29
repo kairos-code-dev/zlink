@@ -136,11 +136,21 @@ void spot_node_host_service_t::stop () noexcept
         }
         try {
             native->node->close ();
+            native->node.reset ();
         }
         catch (...) {
         }
         try {
-            native->context.shutdown ();
+            native->discovery.reset ();
+        }
+        catch (...) {
+        }
+        try {
+            native->context.options ().blocky (false);
+        }
+        catch (...) {
+        }
+        try {
             native->context.term ();
         }
         catch (...) {

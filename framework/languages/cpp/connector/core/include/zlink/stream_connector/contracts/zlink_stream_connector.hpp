@@ -103,8 +103,7 @@ class connector_t
     }
 
     /// Starts a typed wait call with the given timeout.
-    template <typename TMessage>
-    wait_call_t<TMessage> wait_for (std::chrono::milliseconds timeout)
+    template <typename TMessage> wait_call_t<TMessage> wait_for (std::chrono::milliseconds timeout)
     {
         return wait_for<TMessage> (detail::message_packet_name<TMessage> ()).timeout (timeout);
     }
@@ -112,8 +111,7 @@ class connector_t
     /// Starts a typed wait call with the given packet name.
     template <typename TMessage> wait_call_t<TMessage> wait_for (std::string packet_name)
     {
-        return wait_call_t<TMessage> (
-          _state, std::move (packet_name), options ().wait_timeout);
+        return wait_call_t<TMessage> (_state, std::move (packet_name), options ().wait_timeout);
     }
 
     /// Starts a typed wait call with the given packet name and timeout.
@@ -159,8 +157,7 @@ class connector_t
     }
 
     /// Starts a request call by copying the request payload into a packet.
-    template <typename TRequest>
-    request_call_t request (const TRequest &request)
+    template <typename TRequest> request_call_t request (const TRequest &request)
     {
         auto packet = make_packet<TRequest> ();
         packet.payload = detail::to_packet_payload (request, 0);
@@ -184,16 +181,16 @@ class connector_t
     template <typename TMessage>
     connector_t &on (std::string packet_name, std::function<void (const TMessage &)> callback)
     {
-        return on_packet_erased (std::move (packet_name),
-                                 [callback = std::move (callback)] (const packet_t &packet) {
-                                     if constexpr (std::is_same_v<TMessage, packet_t>) {
-                                         callback (packet);
-                                     } else {
-                                         TMessage message{};
-                                         detail::apply_packet_payload (message, packet.payload, 0);
-                                         callback (std::move (message));
-                                     }
-                                 });
+        return on_packet_erased (
+          std::move (packet_name), [callback = std::move (callback)] (const packet_t &packet) {
+              if constexpr (std::is_same_v<TMessage, packet_t>) {
+                  callback (packet);
+              } else {
+                  TMessage message{};
+                  detail::apply_packet_payload (message, packet.codec, packet.payload, 0);
+                  callback (std::move (message));
+              }
+          });
     }
 
     /// Registers a packet callback for the packet name resolved from TMessage.

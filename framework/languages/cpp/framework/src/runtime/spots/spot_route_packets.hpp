@@ -45,6 +45,7 @@ struct spot_actor_packet_route_request_t
     std::uint64_t actor_generation = 0;
     std::string spot_rid;
     std::string packet_name_value;
+    std::string content_type = "application/json";
     std::map<std::string, std::string> metadata;
     std::vector<std::uint8_t> payload;
 };

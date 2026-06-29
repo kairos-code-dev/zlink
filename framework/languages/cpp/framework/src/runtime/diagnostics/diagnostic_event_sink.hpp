@@ -87,10 +87,21 @@ class diagnostic_event_sink_t
     }
 
   private:
+    struct observer_executor_holder_t
+    {
+        std::unique_ptr<runtime::offload_executor_t> executor =
+          std::make_unique<runtime::offload_executor_t> (1, 1024);
+
+        ~observer_executor_holder_t ()
+        {
+            executor.reset ();
+        }
+    };
+
     static runtime::offload_executor_t &observer_executor ()
     {
-        static auto executor = std::make_unique<runtime::offload_executor_t> (1, 1024);
-        return *executor;
+        static observer_executor_holder_t holder;
+        return *holder.executor;
     }
 };
 

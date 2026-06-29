@@ -72,10 +72,10 @@ class support_chat_client_scenario_t
             ensure (customer_auth.actor_id == support_chat_tokens_t::customer1);
             ensure (customer_auth.role == support_chat_roles_t::customer);
 
-            auto assigned_for_agent =
-              stream_e2e_client::codecs::wait_for<conversation_assigned_notify_t> (agent).async ();
-            auto joined_for_customer =
-              stream_e2e_client::codecs::wait_for<participant_joined_notify_t> (customer).async ();
+            auto assigned_for_agent = agent.wait_for<conversation_assigned_notify_t> ().to_future (
+              "agent conversation assigned notify wait failed");
+            auto joined_for_customer = customer.wait_for<participant_joined_notify_t> ().to_future (
+              "customer participant joined notify wait failed");
             const auto open_request = open_conversation_req_t{"checkout payment failed"};
             auto opened = co_await stream_e2e_client::codecs::request (customer, open_request)
                             .async<open_conversation_res_t> ();
@@ -84,30 +84,32 @@ class support_chat_client_scenario_t
                     || opened.state.status == conversation_statuses_t::active);
 
             // 7-8. customer sees ParticipantJoined, agent sees ConversationAssigned.
-            auto joined = co_await joined_for_customer;
+            auto joined = joined_for_customer.get ();
             ensure (joined.actor_id == agent_auth.actor_id);
             ensure (joined.conversation_id == opened.conversation_id);
             ensure (joined.role == support_chat_roles_t::agent);
             ensure (joined.state.status == conversation_statuses_t::active);
 
-            auto assigned = co_await assigned_for_agent;
+            auto assigned = assigned_for_agent.get ();
             ensure (assigned.conversation_id == opened.conversation_id);
             ensure (assigned.state.agent_actor_id == agent_auth.actor_id);
 
             // 13-14. typing change verified on the opposite client.
             auto agent_typing_for_customer =
-              stream_e2e_client::codecs::wait_for<typing_changed_notify_t> (customer).async ();
+              customer.wait_for<typing_changed_notify_t> ().to_future (
+                "customer typing changed notify wait failed");
             const auto typing_request = set_typing_req_t{opened.conversation_id, true};
             auto typing = co_await stream_e2e_client::codecs::request (agent, typing_request)
                             .async<set_typing_res_t> ();
             ensure (typing.state.status == conversation_statuses_t::active);
-            auto agent_typing_push = co_await agent_typing_for_customer;
+            auto agent_typing_push = agent_typing_for_customer.get ();
             ensure (agent_typing_push.actor_id == agent_auth.actor_id);
             ensure (agent_typing_push.is_typing);
 
             // 9-10. agent greeting; customer receives MessageSeq 1.
             auto agent_message_for_customer =
-              stream_e2e_client::codecs::wait_for<chat_message_notify_t> (customer).async ();
+              customer.wait_for<chat_message_notify_t> ().to_future (
+                "customer chat message notify wait failed");
             const auto agent_message_request = send_chat_message_req_t{
               opened.conversation_id, "I can help with a new payment link."};
             auto sent_by_agent =
@@ -115,7 +117,7 @@ class support_chat_client_scenario_t
                 .async<send_chat_message_res_t> ();
             ensure (sent_by_agent.message.message_seq == 1ULL);
             ensure (sent_by_agent.state.last_message_seq == 1ULL);
-            auto agent_message_push = co_await agent_message_for_customer;
+            auto agent_message_push = agent_message_for_customer.get ();
             ensure (agent_message_push.message.sender_actor_id == agent_auth.actor_id);
             ensure (agent_message_push.message.text == "I can help with a new payment link.");
 
@@ -130,58 +132,55 @@ class support_chat_client_scenario_t
             ensure (reconnected.actor_id == customer_auth.actor_id);
 
             // 11-12. customer reply; agent receives MessageSeq 2.
-            auto customer_message_for_agent =
-              stream_e2e_client::codecs::wait_for<chat_message_notify_t> (agent).async ();
+            auto customer_message_for_agent = agent.wait_for<chat_message_notify_t> ().to_future (
+              "agent chat message notify wait failed");
             const auto customer_message_request =
               send_chat_message_req_t{opened.conversation_id, "I cannot complete payment."};
             auto sent_by_customer = co_await stream_e2e_client::codecs::request (
                                       reconnecting_customer, customer_message_request)
                                       .async<send_chat_message_res_t> ();
             ensure (sent_by_customer.message.message_seq == 2ULL);
-            auto customer_message_push = co_await customer_message_for_agent;
+            auto customer_message_push = customer_message_for_agent.get ();
             ensure (customer_message_push.message.sender_actor_id == customer_auth.actor_id);
             ensure (customer_message_push.message.text == "I cannot complete payment.");
 
             auto follow_up_for_customer =
-              stream_e2e_client::codecs::wait_for<chat_message_notify_t> (reconnecting_customer)
-                .async ();
+              reconnecting_customer.wait_for<chat_message_notify_t> ().to_future (
+                "reconnecting customer chat message notify wait failed");
             const auto follow_up_request =
               send_chat_message_req_t{opened.conversation_id, "Please try this replacement link."};
             auto follow_up_by_agent =
               co_await stream_e2e_client::codecs::request (agent, follow_up_request)
                 .async<send_chat_message_res_t> ();
             ensure (follow_up_by_agent.message.message_seq == 3ULL);
-            auto follow_up_push = co_await follow_up_for_customer;
+            auto follow_up_push = follow_up_for_customer.get ();
             ensure (follow_up_push.message.sender_actor_id == agent_auth.actor_id);
             ensure (follow_up_push.state.last_message_seq == 3ULL);
 
             // 17. idle timeout transitions both clients to WaitingForClose.
             const auto idle_timeout = std::chrono::milliseconds (10000);
-            auto idle_for_customer =
-              stream_e2e_client::codecs::wait_for<conversation_idle_notify_t> (
-                reconnecting_customer)
-                .timeout (idle_timeout)
-                .async ();
-            auto idle_for_agent =
-              stream_e2e_client::codecs::wait_for<conversation_idle_notify_t> (agent)
-                .timeout (idle_timeout)
-                .async ();
-            auto idle_customer_push = co_await idle_for_customer;
+            auto idle_for_customer = reconnecting_customer.wait_for<conversation_idle_notify_t> ()
+                                       .timeout (idle_timeout)
+                                       .to_future ("reconnecting customer idle notify wait failed");
+            auto idle_for_agent = agent.wait_for<conversation_idle_notify_t> ()
+                                    .timeout (idle_timeout)
+                                    .to_future ("agent idle notify wait failed");
+            auto idle_customer_push = idle_for_customer.get ();
             ensure (idle_customer_push.conversation_id == opened.conversation_id);
             ensure (idle_customer_push.state.status == conversation_statuses_t::waiting_for_close);
-            auto idle_agent_push = co_await idle_for_agent;
+            auto idle_agent_push = idle_for_agent.get ();
             ensure (idle_agent_push.conversation_id == opened.conversation_id);
             ensure (idle_agent_push.state.status == conversation_statuses_t::waiting_for_close);
 
             // Explicit close: customer closes, agent receives ConversationClosed.
-            auto closed_for_agent =
-              stream_e2e_client::codecs::wait_for<conversation_closed_notify_t> (agent).async ();
+            auto closed_for_agent = agent.wait_for<conversation_closed_notify_t> ().to_future (
+              "agent conversation closed notify wait failed");
             const auto close_request = close_conversation_req_t{opened.conversation_id, "resolved"};
             auto closed =
               co_await stream_e2e_client::codecs::request (reconnecting_customer, close_request)
                 .async<close_conversation_res_t> ();
             ensure (closed.state.status == conversation_statuses_t::closed);
-            auto closed_agent_push = co_await closed_for_agent;
+            auto closed_agent_push = closed_for_agent.get ();
             ensure (closed_agent_push.conversation_id == opened.conversation_id);
             ensure (closed_agent_push.state.status == conversation_statuses_t::closed);
 
@@ -208,11 +207,10 @@ class support_chat_client_scenario_t
                 .async<open_conversation_res_t> ();
             ensure (no_agent.state.status == conversation_statuses_t::waiting_for_agent);
             ensure (no_agent.state.subject == "agent unavailable");
-            auto unexpected_close =
-              stream_e2e_client::codecs::wait_for<conversation_closed_notify_t> (waiting_customer)
-                .timeout (std::chrono::milliseconds (500))
-                .async ()
-                .result ();
+            auto unexpected_close = waiting_customer.wait_for<conversation_closed_notify_t> ()
+                                      .timeout (std::chrono::milliseconds (500))
+                                      .async ()
+                                      .result ();
             ensure (!unexpected_close, "Waiting conversation must not be closed.");
 
             // Second agent + customer: explicit close end-to-end.
@@ -239,31 +237,31 @@ class support_chat_client_scenario_t
             ensure (closing_customer_auth.actor_id == support_chat_tokens_t::customer3);
 
             auto explicit_assigned_for_agent =
-              stream_e2e_client::codecs::wait_for<conversation_assigned_notify_t> (closing_agent)
-                .async ();
+              closing_agent.wait_for<conversation_assigned_notify_t> ().to_future (
+                "closing agent conversation assigned notify wait failed");
             auto explicit_joined_for_customer =
-              stream_e2e_client::codecs::wait_for<participant_joined_notify_t> (closing_customer)
-                .async ();
+              closing_customer.wait_for<participant_joined_notify_t> ().to_future (
+                "closing customer participant joined notify wait failed");
             const auto explicit_open_request = open_conversation_req_t{"explicit close"};
             auto explicit_opened =
               co_await stream_e2e_client::codecs::request (closing_customer, explicit_open_request)
                 .async<open_conversation_res_t> ();
-            auto explicit_joined_push = co_await explicit_joined_for_customer;
+            auto explicit_joined_push = explicit_joined_for_customer.get ();
             ensure (explicit_joined_push.actor_id == closing_agent_auth.actor_id);
             ensure (explicit_joined_push.state.status == conversation_statuses_t::active);
-            auto explicit_assigned_push = co_await explicit_assigned_for_agent;
+            auto explicit_assigned_push = explicit_assigned_for_agent.get ();
             ensure (explicit_assigned_push.state.agent_actor_id == closing_agent_auth.actor_id);
 
             auto explicit_closed_for_agent =
-              stream_e2e_client::codecs::wait_for<conversation_closed_notify_t> (closing_agent)
-                .async ();
+              closing_agent.wait_for<conversation_closed_notify_t> ().to_future (
+                "closing agent conversation closed notify wait failed");
             const auto explicit_close_request =
               close_conversation_req_t{explicit_opened.conversation_id, "done"};
             auto explicit_closed =
               co_await stream_e2e_client::codecs::request (closing_customer, explicit_close_request)
                 .async<close_conversation_res_t> ();
             ensure (explicit_closed.state.status == conversation_statuses_t::closed);
-            auto explicit_closed_push = co_await explicit_closed_for_agent;
+            auto explicit_closed_push = explicit_closed_for_agent.get ();
             ensure (explicit_closed_push.conversation_id == explicit_opened.conversation_id);
             ensure (explicit_closed_push.state.status == conversation_statuses_t::closed);
 

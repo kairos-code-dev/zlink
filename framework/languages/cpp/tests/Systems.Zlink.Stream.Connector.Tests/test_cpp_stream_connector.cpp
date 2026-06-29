@@ -29,6 +29,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <mutex>
@@ -57,8 +58,7 @@ class prefix_compression_codec_t final : public zlink::stream_connector::compres
         return zlink::message_t::from (_prefix + ":" + payload.to_string ());
     }
 
-    zlink::message_t decompress (const zlink::message_t &payload,
-                                 std::size_t) const override
+    zlink::message_t decompress (const zlink::message_t &payload, std::size_t) const override
     {
         const auto value = payload.to_string ();
         const auto marker = _prefix + ":";
@@ -75,13 +75,10 @@ class prefix_compression_codec_t final : public zlink::stream_connector::compres
 class oversized_compression_codec_t final : public zlink::stream_connector::compression_codec_t
 {
   public:
-    zlink::message_t compress (const zlink::message_t &payload) const override
-    {
-        return payload;
-    }
+    zlink::message_t compress (const zlink::message_t &payload) const override { return payload; }
 
-    zlink::message_t decompress (const zlink::message_t &, std::size_t max_decompressed_size)
-      const override
+    zlink::message_t decompress (const zlink::message_t &,
+                                 std::size_t max_decompressed_size) const override
     {
         return zlink::message_t::from (std::string (max_decompressed_size + 1, 'x'));
     }
@@ -191,6 +188,11 @@ static_assert (
                              .wait_for<auto_payload_t> ()
                              .async ()),
                  zlink::stream_e2e_client::task_t<auto_payload_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
+                             .wait_for<auto_payload_t> ()
+                             .to_future ()),
+                 std::future<auto_payload_t>>);
 static_assert (
   std::is_same_v<decltype (zlink::stream_e2e_client::codecs::request (
                              std::declval<zlink::stream_e2e_client::coroutine_connector_t &> (),
@@ -356,7 +358,9 @@ zlink::message_t make_server_frame (zlink::stream_connector::message_kind_t kind
 {
     zlink::stream_connector::detail::stream_header_t header;
     header.kind = kind;
-    header.codec = zlink::stream_connector::codec_t::raw;
+    header.codec = kind == zlink::stream_connector::message_kind_t::error
+                     ? zlink::stream_connector::codec_t::json
+                     : zlink::stream_connector::codec_t::raw;
     header.flags = compressed ? zlink::stream_connector::header_flags_t::payload_compressed
                               : zlink::stream_connector::header_flags_t::none;
     header.request_seq = kind == zlink::stream_connector::message_kind_t::request
@@ -615,8 +619,7 @@ int main ()
         return 1;
     }
 
-    auto states =
-      std::make_shared<std::vector<zlink::stream_connector::connection_state_t>> ();
+    auto states = std::make_shared<std::vector<zlink::stream_connector::connection_state_t>> ();
     connector.on_connection_state_changed (
       [states] (const zlink::stream_connector::connection_state_changed_t &state) {
           states->push_back (state.current);
@@ -646,6 +649,18 @@ int main ()
         if (!connect_lifetime_latch.wait_for (std::chrono::milliseconds (100))
             || !connect_lifetime_seen) {
             return 97;
+        }
+
+        zlink::stream_connector::connector_options_t invalid_received_options;
+        invalid_received_options.endpoint = endpoint;
+        invalid_received_options.max_received_messages = 0;
+        auto invalid_received_connector =
+          zlink::stream_connector::connector_factory_t::create (invalid_received_options);
+        auto invalid_received_connect = invalid_received_connector.connect ();
+        if (invalid_received_connect
+            || invalid_received_connect.error_code ()
+                 != zlink::stream_connector::error_code_t::configuration_error) {
+            return 154;
         }
 
         bool close_lifetime_seen = false;
@@ -861,7 +876,8 @@ int main ()
                 if (custom_server.recv (inbound) != 0) {
                     return;
                 }
-                buffer += inbound.parts ().empty () ? std::string{} : inbound.parts ()[0].to_string ();
+                buffer +=
+                  inbound.parts ().empty () ? std::string{} : inbound.parts ()[0].to_string ();
                 while (auto frame = try_read_server_frame_raw (buffer)) {
                     if (frame->header.kind == zlink::stream_connector::message_kind_t::send
                         && frame->header.name == "custom.outbound" && frame->compressed
@@ -874,8 +890,7 @@ int main ()
         });
         zlink::stream_connector::connector_options_t custom_options;
         custom_options.endpoint = custom_endpoint;
-        custom_options.compression_codec =
-          std::make_shared<prefix_compression_codec_t> ("custom");
+        custom_options.compression_codec = std::make_shared<prefix_compression_codec_t> ("custom");
         auto custom_connector =
           zlink::stream_connector::connector_factory_t::create (custom_options);
         if (!custom_connector.connect ()) {
@@ -936,6 +951,36 @@ int main ()
         return 58;
     }
     receive_connector.close ();
+
+    zlink::stream_connector::connector_options_t capped_receive_options;
+    capped_receive_options.endpoint = "inproc://unused-capped-receive";
+    capped_receive_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
+    capped_receive_options.max_received_messages = 1;
+    auto capped_receive_connector =
+      zlink::stream_connector::connector_factory_t::create (capped_receive_options);
+    std::atomic_bool received_drop_seen{false};
+    capped_receive_connector.on_error ([&] (const zlink::stream_connector::error_t &error) {
+        if (error.code == zlink::stream_connector::error_code_t::received_message_dropped) {
+            received_drop_seen = true;
+        }
+    });
+    auto capped_runtime =
+      zlink::stream_connector::detail::connector_runtime_t::from (capped_receive_connector);
+    capped_runtime.receive_packet (zlink::stream_connector::packet_t{
+      .name = "queued.one", .payload = zlink::message_t::from ("one")});
+    capped_runtime.receive_packet (zlink::stream_connector::packet_t{
+      .name = "dropped.two", .payload = zlink::message_t::from ("two")});
+    if (capped_receive_connector.pending_dispatch_count () != 1) {
+        return 152;
+    }
+    auto capped_first =
+      capped_receive_connector.wait_for ("queued.one", std::chrono::milliseconds (10));
+    auto capped_second =
+      capped_receive_connector.wait_for ("dropped.two", std::chrono::milliseconds (10));
+    if (!received_drop_seen || !capped_first || capped_second
+        || capped_second.error_code () != zlink::stream_connector::error_code_t::disconnected) {
+        return 153;
+    }
 
     zlink::stream_socket_t observer_server (context);
     observer_server.options ().notify (false);
@@ -1457,6 +1502,46 @@ int main ()
     }
     timeout_connector.close ();
 
+    zlink::stream_socket_t error_reply_server (context);
+    error_reply_server.options ().notify (false);
+    error_reply_server.bind ("tcp://127.0.0.1:0");
+    const auto error_reply_endpoint = error_reply_server.options ().last_endpoint ();
+    joining_thread_t error_reply_server_thread ([&error_reply_server] {
+        zlink::received_t inbound;
+        if (error_reply_server.recv (inbound) != 0) {
+            return;
+        }
+        std::string buffer =
+          inbound.parts ().empty () ? std::string{} : inbound.parts ()[0].to_string ();
+        if (auto frame = try_read_server_frame (buffer)) {
+            auto reply = make_server_frame (zlink::stream_connector::message_kind_t::error,
+                                            frame->header.request_seq.value (), frame->header.name,
+                                            "{\"error\":\"server closed request\"}");
+            inbound.send ().message (reply).submit ();
+        }
+        inbound.close ();
+    });
+    zlink::stream_connector::connector_options_t error_reply_options;
+    error_reply_options.endpoint = error_reply_endpoint;
+    error_reply_options.request_timeout = std::chrono::milliseconds (100);
+    auto error_reply_connector =
+      zlink::stream_connector::connector_factory_t::create (error_reply_options);
+    if (!error_reply_connector.connect ()) {
+        return 150;
+    }
+    auto error_reply = error_reply_connector.request (login_request_t{})
+                         .packet_name ("error.reply.request")
+                         .timeout (std::chrono::milliseconds (100))
+                         .submit<login_reply_t> ();
+    error_reply_server_thread.join ();
+    if (error_reply
+        || error_reply.error_code () != zlink::stream_connector::error_code_t::remote_error
+        || !error_reply.error ()
+        || error_reply.error ()->message.find ("server closed request") == std::string::npos) {
+        return 151;
+    }
+    error_reply_connector.close ();
+
     zlink::stream_socket_t callback_response_server (context);
     callback_response_server.options ().notify (false);
     callback_response_server.bind ("tcp://127.0.0.1:0");
@@ -1605,7 +1690,7 @@ int main ()
     std::atomic_bool coroutine_send_seen{false};
     std::atomic_bool coroutine_request_seen{false};
     joining_thread_t coroutine_thread ([&coroutine_server, &coroutine_send_seen,
-                                   &coroutine_request_seen] {
+                                        &coroutine_request_seen] {
         std::string buffer;
         while (!coroutine_send_seen || !coroutine_request_seen) {
             zlink::received_t inbound;
@@ -2109,7 +2194,7 @@ int main ()
               reconnect_success_connecting = true;
               reconnect_success_connecting_latch.signal ();
           }
-    });
+      });
     if (!reconnect_success_connector.connect ()
         || std::find (reconnect_success_states->begin (), reconnect_success_states->end (),
                       zlink::stream_connector::connection_state_t::reconnecting)

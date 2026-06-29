@@ -2,6 +2,8 @@
 
 #include <zlink/framework.hpp>
 
+#include "runtime/messaging/envelope_codec.hpp"
+
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -52,6 +54,10 @@ int main ()
     if (encoded.to_string () != "42") {
         return 1;
     }
+    if (serializers.content_type (std::type_index (typeid (payload_t)))
+        != "application/octet-stream") {
+        return 10;
+    }
 
     const auto decoded = serializers.get<payload_t> ().deserialize (encoded);
     if (decoded.value != 42) {
@@ -63,6 +69,10 @@ int main ()
     const auto json_decoded = serializers.get<json_payload_t> ().deserialize (json_encoded);
     if (json_decoded.value != 77) {
         return 3;
+    }
+    if (serializers.content_type (std::type_index (typeid (json_payload_t)))
+        != "application/json") {
+        return 11;
     }
 
     zlink::framework::payload_view_t view (encoded);
@@ -122,7 +132,8 @@ int main ()
       [] (const zlink::framework::encoded_payload_t &payload) {
           const std::string text = payload.to_string ();
           return payload_t{std::stoi (text.substr (std::string ("avro:").size ()))};
-      });
+      },
+      "application/avro");
 
     const auto custom_encoded = config_serializers.get<payload_t> ().serialize ({9});
     if (custom_encoded.to_string () != "avro:9") {
@@ -130,6 +141,19 @@ int main ()
     }
     if (config_serializers.get<payload_t> ().deserialize (custom_encoded).value != 9) {
         return 9;
+    }
+    zlink::framework::runtime::messaging::envelope_codec_t envelope;
+    zlink::framework::runtime::messaging::envelope_header_t header;
+    header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    header.channel_name = "codec";
+    header.message_name = "custom";
+    payload_t envelope_payload{12};
+    const auto custom_parts =
+      envelope.encode_parts (header, std::type_index (typeid (payload_t)), &envelope_payload,
+                             config_serializers);
+    const auto custom_header = envelope.decode_header (custom_parts);
+    if (!custom_header || custom_header.value ().content_type != "application/avro") {
+        return 12;
     }
 
     return 0;

@@ -2,7 +2,9 @@
 
 #include <zlink/framework.hpp>
 
+#include "runtime/channels/channel_runtime.hpp"
 #include "runtime/diagnostics/monitoring_runtime.hpp"
+#include "runtime/spots/spot_runtime.hpp"
 
 #include <chrono>
 #include <optional>
@@ -14,6 +16,12 @@ namespace
 
 struct timer_handler_t
 {
+};
+
+class monitoring_spot_t : public zlink::framework::spot_t
+{
+  public:
+    void configure (zlink::framework::spot_context_t &) {}
 };
 
 } // namespace
@@ -338,6 +346,61 @@ int main ()
     auto not_live = app.health ().report ();
     if (not_live.liveness != zlink::framework::health_status_t::unhealthy || not_live.live ()) {
         return 8;
+    }
+
+    zlink::framework::monitoring_builder_t auto_monitoring;
+    zlink::framework::zlink_builder_t auto_zlink;
+    zlink::framework::serializer_registry_t auto_serializers;
+    int auto_channel_events = 0;
+    int auto_discovery_events = 0;
+    int auto_spot_events = 0;
+    auto_monitoring.add_socket_events ("auto.channel")
+      .add_discovery_events ("channel.discovery")
+      .add_spot_events ("auto.spot.node", 1s)
+      .on<zlink::framework::socket_event_payload_t> (
+        [&] (const zlink::framework::socket_event_payload_t &event) {
+            if (event.source_name == "auto.channel"
+                && event.event == zlink::framework::socket_event_kind_t::peer_admission_changed) {
+                ++auto_channel_events;
+            }
+        })
+      .on<zlink::framework::discovery_event_payload_t> (
+        [&] (const zlink::framework::discovery_event_payload_t &event) {
+            if (event.source_name == "channel.discovery"
+                && event.endpoint == "tcp://registry.auto:5551") {
+                ++auto_discovery_events;
+            }
+        })
+      .on<zlink::framework::spot_event_payload_t> (
+        [&] (const zlink::framework::spot_event_payload_t &event) {
+            if (event.source_name == "auto.spot.node"
+                && event.event == zlink::framework::spot_event_kind_t::subjects_changed
+                && !event.subjects.empty ()) {
+                ++auto_spot_events;
+            }
+        });
+    auto_zlink.add_node ("auto-node");
+    auto_zlink.channel ("auto.channel").enable_server ().bind ("inproc://auto-channel");
+    auto spot_node = auto_zlink.add_spot_node ("auto.spot.node");
+    spot_node.add_spot<monitoring_spot_t> ("auto.spot");
+    zlink::framework::detail::channel_runtime_t::from (auto_zlink.message_bus ())
+      .bind_serializers (auto_serializers);
+    zlink::framework::detail::bind_zlink_monitoring (auto_zlink, auto_monitoring);
+    zlink::framework::detail::channel_runtime_t::from (auto_zlink.message_bus ())
+      .bind_discovery (zlink::framework::discovery_snapshot_t{{"tcp://registry.auto:5551"}});
+    zlink::framework::detail::channel_runtime_t::from (auto_zlink.message_bus ())
+      .set_server_peer_weight ("auto.channel", zlink::peer_weight_t::value (7));
+    auto spot_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (auto_zlink, "auto.spot.node");
+    if (!spot_runtime) {
+        return 14;
+    }
+    auto created_spot = spot_runtime->create_spot ("auto.spot");
+    if (created_spot.state != zlink::framework::spot_create_state_t::created) {
+        return 14;
+    }
+    if (auto_channel_events != 1 || auto_discovery_events != 1 || auto_spot_events != 1) {
+        return 15;
     }
 
     return 0;

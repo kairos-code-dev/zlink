@@ -138,12 +138,14 @@ class serializer_registry_t
           },
           [] (const encoded_payload_t &payload) {
               return payload.to_raw ().template parse_json<T> ();
-          });
+          },
+          "application/json");
     }
 
     template <typename T>
     serializer_registry_t &add (typename serializer_t<T>::serialize_fn_t serialize,
-                                typename serializer_t<T>::deserialize_fn_t deserialize)
+                                typename serializer_t<T>::deserialize_fn_t deserialize,
+                                std::string content_type = "application/octet-stream")
     {
         return add_erased (
           std::type_index (typeid (T)),
@@ -152,7 +154,8 @@ class serializer_registry_t
           },
           [deserialize = std::move (deserialize)] (const encoded_payload_t &payload, void *out) {
               *static_cast<T *> (out) = deserialize (payload);
-          });
+          },
+          std::move (content_type));
     }
 
     template <typename T> serializer_t<T> get () const
@@ -169,11 +172,13 @@ class serializer_registry_t
     encoded_payload_t serialize (std::type_index type, const void *value) const;
     void deserialize (std::type_index type, const encoded_payload_t &payload, void *out) const;
     bool contains (std::type_index type) const;
+    std::string content_type (std::type_index type) const;
 
   private:
     serializer_registry_t &add_erased (std::type_index type,
                                        serialize_any_fn_t serialize,
-                                       deserialize_any_fn_t deserialize);
+                                       deserialize_any_fn_t deserialize,
+                                       std::string content_type);
 
     std::unique_ptr<detail::serializer_registry_state_t> _state;
 };

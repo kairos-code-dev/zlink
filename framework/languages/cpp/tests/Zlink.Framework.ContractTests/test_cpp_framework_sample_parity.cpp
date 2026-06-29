@@ -846,8 +846,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
                std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"),
-               std::string::npos);
+    EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<tictactoe_match_t>"), std::string::npos);
@@ -870,8 +869,9 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
     EXPECT_NE (create_game_handler.find ("channel_client_t"), std::string::npos);
     EXPECT_NE (create_game_handler.find ("sample_names_t::play_channel"), std::string::npos);
-    EXPECT_NE (create_game_handler.find ("const auto create_request = create_game_req_t{game_name}"),
-               std::string::npos);
+    EXPECT_NE (
+      create_game_handler.find ("const auto create_request = create_game_req_t{game_name}"),
+      std::string::npos);
     EXPECT_NE (create_game_handler.find (".request (sample_names_t::play_channel, create_request)"),
                std::string::npos);
     EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t"), std::string::npos);
@@ -901,8 +901,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
                std::string::npos);
     EXPECT_NE (client.find ("client1, client1_auth_request"), std::string::npos);
     EXPECT_NE (client.find (".async<authenticate_res_t> ()"), std::string::npos);
-    EXPECT_NE (client.find ("stream_e2e_client::codecs::wait_for<game_state_notify_t>"),
-               std::string::npos);
+    EXPECT_NE (client.find ("client2.wait_for<game_state_notify_t> ()"), std::string::npos);
     EXPECT_EQ (client.find ("tictactoe-client.log"), std::string::npos);
     EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
 }

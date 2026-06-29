@@ -103,7 +103,12 @@ class message_flow_tracer_t
           },
           [] (const std::function<void (const message_flow_event_t &)> &callback,
               const message_flow_event_t &event) { callback (event); },
-          [] { observer_failure_count ().fetch_add (1, std::memory_order_relaxed); },
+          [logger = _options->diagnostics_logger] {
+              observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
+              diagnostic_event_sink_t::log_or_clog (
+                logger, log_level_t::error, "message flow observer failed",
+                "zlink framework observer error:", {});
+          },
           [] { observer_dropped_count ().fetch_add (1, std::memory_order_relaxed); });
     }
 

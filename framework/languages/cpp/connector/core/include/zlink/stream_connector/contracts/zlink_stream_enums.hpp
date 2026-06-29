@@ -75,6 +75,7 @@ enum class error_code_t
     user_callback_failed,
     observer_failed,
     observer_dropped,
+    received_message_dropped,
     remote_error,
     closed,
     canceled

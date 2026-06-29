@@ -92,11 +92,9 @@
   직접 구성한다. request/lifecycle은 기존 SPOT 공개 표면으로 검증할 수 있지만, 현재 hosted E2E
   런타임에는 public timer 등록 뒤 tick을 앱 handler evidence로 관측하는 연결이 없어
   `detail::timer_runtime_t` 주입 없이 timer 요구까지 검증할 수 없다.
-- `SM-D10`: .NET 시나리오는 `MaxReceivedMessages`로 stream client 수신 큐 한계를 고정한 뒤
-  최신 push만 남는지 검증한다. C++ stream connector의 공개 옵션에는 같은 의미의 수신 메시지 큐
-  한계가 없고, 현재 공개 옵션은 inbound observer 알림 drop 한계만 제공한다. 공통 E2E만 근거로
-  새 public API를 추가하지 않고, C++ connector의 수신 큐 backpressure 계약을 별도 설계로 확정한
-  뒤 같은 시나리오를 추가해야 한다.
+- `SM-D10`: C++ stream connector product에는 `max_received_messages` 수신 메시지 큐 한계와
+  `received_message_dropped` error callback 보고가 있다. 현재 E2E runner는 이 옵션을 실제 stream
+  client scenario에 연결해 공통 marker로 검증하지 않는다.
 - `SM-D13`: heartbeat-enabled stream이 유지된 뒤 request가 성공하는 경로는 구현했다.
   heartbeat 중단을 의도적으로 유도하는 public harness knob은 아직 없어, 중단 감지 검증은
   별도 harness 설계가 필요하다.

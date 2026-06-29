@@ -2,26 +2,22 @@ namespace DeliveryDispatch.Server.Configuration;
 
 public static class SampleNames
 {
-    public const string DispatchRouteChannel = "deliverydispatch.dispatch";
-    public const string CourierAChannel = "deliverydispatch.courier.a";
-    public const string CourierBChannel = "deliverydispatch.courier.b";
+    public const string CourierRouteChannel = "deliverydispatch.courier";
+    public const string CourierSpotRouteChannel = "delivery-couriers.route";
     public const string TrackingRouteChannel = "deliverydispatch.tracking";
-    public const string StatusFanoutChannel = "deliverydispatch.status";
-    public const string DeliverySpotDiscovery = "delivery-spots";
-    public const string TrackingSpotNode = "delivery-tracking-node";
-    public const string SessionSpotNode = "delivery-session-node";
+    public const string CustomerRouteChannel = "deliverydispatch.customer";
+    public const string CustomerActorDiscovery = "delivery-customers";
+    public const string CourierActorDiscovery = "delivery-couriers";
+    public const string CustomerSpotNode = "delivery-customer-node";
+    public const string CourierSessionSpotNode = "delivery-courier-session-node";
+    public const string CourierSpotNode1 = "delivery-courier-node-1";
+    public const string CourierSpotNode2 = "delivery-courier-node-2";
+    public const string CourierEntrySpotNode1 = "delivery-courier-entry-1";
+    public const string CourierEntrySpotNode2 = "delivery-courier-entry-2";
     public const string CustomerStreamNode = "delivery-customer-stream";
+    public const string CourierStreamNode = "delivery-courier-stream";
     public const string CustomerActorType = "delivery-customer";
-
-    public static string CourierChannel(string courierId)
-    {
-        return courierId switch
-        {
-            "courier-a" => CourierAChannel,
-            "courier-b" => CourierBChannel,
-            _ => throw new InvalidOperationException($"Unknown courier '{courierId}'.")
-        };
-    }
+    public const string CourierActorType = "delivery-courier";
 }
 
 public static class SampleTimings

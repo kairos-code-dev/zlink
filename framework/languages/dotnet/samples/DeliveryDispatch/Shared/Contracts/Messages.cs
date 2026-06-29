@@ -27,18 +27,35 @@ public sealed record CustomerActorEnsured(
     string CustomerId,
     ActorRefSnapshot Actor);
 
+public sealed record BindCourier(
+    string CourierId,
+    string SessionRoute);
+
+public sealed record CourierBound(
+    string CourierId,
+    ActorRefSnapshot Actor,
+    string SessionRoute);
+
+public sealed record BindCouriers(
+    string[] CourierIds);
+
+public sealed record CouriersBound(
+    CourierBound[] Couriers);
+
+public sealed record EnsureCourierActor(
+    string CourierId);
+
+public sealed record CourierActorEnsured(
+    string CourierId,
+    ActorRefSnapshot Actor);
+
+public sealed record CourierSessionAttached(
+    string CourierId);
+
 public sealed record SubscribeDelivery(
     string DeliveryId);
 
 public sealed record SubscribeDeliveryAccepted(
-    string DeliveryId);
-
-public sealed record SubscribeCustomerToDelivery(
-    string CustomerId,
-    string DeliveryId);
-
-public sealed record CustomerDeliverySubscribed(
-    string CustomerId,
     string DeliveryId);
 
 public sealed record AssignDelivery(
@@ -47,11 +64,8 @@ public sealed record AssignDelivery(
     string PickupAddress,
     string DropoffAddress);
 
-public sealed record AssignDeliveryResult(
-    string DeliveryId,
-    string CourierId);
-
 public sealed record OfferDelivery(
+    string CourierId,
     string DeliveryId,
     string PickupAddress,
     string DropoffAddress);
@@ -83,20 +97,6 @@ public sealed record DeliveryStatusChanged(
 public sealed record DeliveryStatusAck(
     string DeliveryId,
     DeliveryStatus Status);
-
-public sealed record DeliverySpotCreate(
-    string DeliveryId);
-
-public sealed record DeliverySpotCreated(
-    string DeliveryId);
-
-public sealed record DeliverySpotJoin(
-    string DeliveryId,
-    string CustomerId);
-
-public sealed record DeliverySpotJoined(
-    string DeliveryId,
-    string CustomerId);
 
 public sealed record DeliveryStatusNotify(
     string DeliveryId,

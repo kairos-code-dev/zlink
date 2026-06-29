@@ -10,21 +10,51 @@ internal sealed class DeliveryDispatchClientScenario
     public async ValueTask RunAsync(
         ZLinkHttpClient http,
         IZlinkStreamConnector customer,
+        IZlinkStreamConnector courier,
         CancellationToken cancellationToken = default)
     {
         await customer.Connect.Async(cancellationToken);
+        await courier.Connect.Async(cancellationToken);
 
-        await RunSuccessfulDeliveryAsync(http, customer, cancellationToken);
-        await RunReassignedDeliveryAsync(http, customer, cancellationToken);
+        _ = await BindCouriersAsync(courier, cancellationToken);
+
+        await RunSuccessfulDeliveryAsync(http, customer, courier, cancellationToken);
+        await RunReassignedDeliveryAsync(http, customer, courier, cancellationToken);
         await AssertServerEvidenceAsync(http, cancellationToken);
+    }
+
+    private static async ValueTask<CouriersBound> BindCouriersAsync(
+        IZlinkStreamConnector courier,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastError = null;
+        for (var attempt = 1; attempt <= 40; attempt++)
+        {
+            try
+            {
+                return await courier.Request(new BindCouriers(["courier-a", "courier-b"]))
+                    .Async<CouriersBound>(cancellationToken);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                lastError = error;
+                await Task.Delay(100, cancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException("Courier stream bind failed.", lastError);
     }
 
     private static async ValueTask RunSuccessfulDeliveryAsync(
         ZLinkHttpClient http,
         IZlinkStreamConnector customer,
+        IZlinkStreamConnector courier,
         CancellationToken cancellationToken)
     {
         var deliveryId = "delivery-success";
+        var offer = courier.WaitFor<OfferDelivery>()
+            .Where(message => message.Payload.DeliveryId == deliveryId)
+            .Async(cancellationToken);
         var assigned = customer.WaitFor<DeliveryStatusNotify>()
             .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Assigned)
             .Async(cancellationToken);
@@ -51,6 +81,14 @@ internal sealed class DeliveryDispatchClientScenario
             .Fetch<DeliveryCreated>();
         Ensure(created.DeliveryId == deliveryId);
 
+        var courierOffer = (await offer).Payload;
+        await courier.Send(new CourierDecision(
+                courierOffer.DeliveryId,
+                courierOffer.CourierId,
+                Accepted: true,
+                Reason: null))
+            .Async(cancellationToken);
+
         Ensure((await assigned).Payload.CourierId == "courier-a");
         Ensure((await accepted).Payload.CourierId == "courier-a");
         Ensure((await pickedUp).Payload.CourierId == "courier-a");
@@ -60,9 +98,18 @@ internal sealed class DeliveryDispatchClientScenario
     private static async ValueTask RunReassignedDeliveryAsync(
         ZLinkHttpClient http,
         IZlinkStreamConnector customer,
+        IZlinkStreamConnector courier,
         CancellationToken cancellationToken)
     {
         var deliveryId = "delivery-reassign";
+        var firstOffer = courier.WaitFor<OfferDelivery>()
+            .Where(message => message.Payload.DeliveryId == deliveryId)
+            .Where(message => message.Payload.CourierId == "courier-a")
+            .Async(cancellationToken);
+        var secondOffer = courier.WaitFor<OfferDelivery>()
+            .Where(message => message.Payload.DeliveryId == deliveryId)
+            .Where(message => message.Payload.CourierId == "courier-b")
+            .Async(cancellationToken);
         var assigned = customer.WaitFor<DeliveryStatusNotify>()
             .Where(message => message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Assigned)
             .Async(cancellationToken);
@@ -88,6 +135,15 @@ internal sealed class DeliveryDispatchClientScenario
                 "Customer Lobby"))
             .Fetch<DeliveryCreated>();
         Ensure(created.DeliveryId == deliveryId);
+
+        _ = await firstOffer;
+        var acceptedOffer = (await secondOffer).Payload;
+        await courier.Send(new CourierDecision(
+                acceptedOffer.DeliveryId,
+                acceptedOffer.CourierId,
+                Accepted: true,
+                Reason: null))
+            .Async(cancellationToken);
 
         Ensure((await assigned).Payload.CourierId == "courier-a");
         Ensure((await reassigned).Payload.CourierId == "courier-b");

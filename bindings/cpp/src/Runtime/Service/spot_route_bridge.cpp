@@ -79,6 +79,7 @@ spot_route_bridge_t::spot_route_bridge_t (void *ctx_handle_, spot_node_t &node_)
     zlink_spot_route_bridge_options_t options;
     std::memset (&options, 0, sizeof (options));
     options.struct_size = sizeof (options);
+    options.default_request_timeout_ms = 30000;
     _impl->handle = zlink_spot_route_bridge_new (
       ctx_handle_, zlink::detail::native_handle (node_), &options);
     if (!_impl->handle)

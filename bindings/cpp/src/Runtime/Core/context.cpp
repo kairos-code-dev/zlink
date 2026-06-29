@@ -71,8 +71,9 @@ void context_t::term ()
     if (!_impl || !_impl->ctx)
         return;
     void *ctx = _impl->ctx;
+    const auto result = static_cast<close_result_t> (zlink_ctx_term (ctx));
+    detail::throw_if_failed<close_error_t> (result);
     _impl->ctx = nullptr;
-    detail::throw_if_failed<close_error_t> (static_cast<close_result_t> (zlink_ctx_term (ctx)));
 }
 
 void context_t::recalculate_auto_hwm ()
@@ -88,8 +89,9 @@ void context_t::term_noexcept () noexcept
     if (!_impl || !_impl->ctx)
         return;
     void *ctx = _impl->ctx;
-    _impl->ctx = nullptr;
-    (void) zlink_ctx_term (ctx);
+    if (zlink_ctx_term (ctx) == ZLINK_CLOSE_OK) {
+        _impl->ctx = nullptr;
+    }
 }
 
 int context_t::get_option_raw (int option_, int *error_out_) const

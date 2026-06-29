@@ -15,6 +15,11 @@
 Registry만 띄우는 host는 `@EnableZLinkFramework` 없이도 만들 수 있어야 한다.
 
 ```java
+import java.time.Duration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
+
 @Configuration
 public class RegistryConfig {
     @Bean
@@ -22,6 +27,9 @@ public class RegistryConfig {
         ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
         options.setPubEndpoint("tcp://0.0.0.0:5551");
         options.setRouterEndpoint("tcp://0.0.0.0:5552");
+        options.setHeartbeatInterval(Duration.ofSeconds(5));
+        options.setHeartbeatTimeout(Duration.ofSeconds(15));
+        options.setBroadcastInterval(Duration.ofSeconds(30));
         return options;
     }
 }
@@ -44,9 +52,15 @@ option은 아래와 같다(필수: `pubEndpoint`, `routerEndpoint`).
 | `pubEndpoint` | 필수 | service announcement를 publish하는 endpoint |
 | `routerEndpoint` | 필수 | query request를 받는 endpoint |
 | `registryId` | 선택 | 운영 snapshot과 monitoring event에 표시할 registry id |
+| `heartbeatInterval` | 선택 | provider heartbeat를 확인하는 주기. 기본값은 5초 |
+| `heartbeatTimeout` | 선택 | provider heartbeat가 끊겼다고 판단하는 시간. 기본값은 15초 |
+| `broadcastInterval` | 선택 | peer registry로 service view를 broadcast하는 주기. 기본값은 30초 |
 | `addPeer(...)` | 선택 | 연결할 peer registry 의 pub endpoint 추가 |
 
 `pubEndpoint`나 `routerEndpoint`가 비어 있으면 startup validation 오류다. Registry
+interval과 timeout 값은 0보다 커야 하고, heartbeat timeout은 heartbeat interval보다
+커야 한다. 짧은 장애·복구 E2E처럼 빠른 stale 제거와 peer broadcast가 필요할 때는
+application 설정에서 위 값을 줄인다.
 host와 framework host가 같은 프로세스에 있더라도 registry option bean과
 `@EnableZLinkFramework` framework 설정은 별도로 표현한다.
 

@@ -59,7 +59,6 @@ final class StreamSessionTest {
                 "create.context",
                 "factory.channel",
                 "factory.spot",
-                "create.context",
                 "create.spotNode",
                 "spotNode.setRoutingId",
                 "factory.channel",
@@ -69,7 +68,6 @@ final class StreamSessionTest {
                 "stream.bind.inproc://gateway",
                 "stream.onPacket",
                 "stream.onTransportError",
-                "close.context",
                 "close.stream",
                 "close.context",
                 "close.spotNode",
@@ -99,6 +97,30 @@ final class StreamSessionTest {
     }
 
     @Test
+    void heartbeatControlPingRepliesWithoutSessionDispatch() {
+        GameSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            backendFactory.dispatchStreamPacket("Join", "hello");
+            awaitCondition(() -> GameSession.dispatches.size() == 1);
+
+            backendFactory.dispatchStreamControl("$zlink.heartbeat.ping");
+
+            awaitCondition(() -> backendFactory.calls().stream()
+                .anyMatch(call -> call.contains("send.fake-session.$zlink.heartbeat.pong")));
+            assertEquals(List.of("Join:hello"), GameSession.dispatches);
+            assertEquals(1, GameSession.connectedCount);
+            assertEquals(0, GameSession.disconnectedCount);
+        }
+    }
+
+    @Test
     void sameSessionCallbacks_runSerially() {
         GameSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -116,6 +138,56 @@ final class StreamSessionTest {
             assertEquals(List.of("First:one", "Second:two"), GameSession.dispatches);
             assertEquals(1, GameSession.connectedCount);
             assertEquals(0, GameSession.disconnectedCount);
+        }
+    }
+
+    @Test
+    void streamTlsServerIsAppliedBeforeBind() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:7776");
+            stream.bind("tls://127.0.0.1:7777");
+            stream.setTlsServer("server.crt", "server.key", true);
+            stream.registerSession(GameSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            awaitCondition(() -> backendFactory.calls().contains("stream.bind.tls://127.0.0.1:7777"));
+        }
+
+        int tlsIndex = backendFactory.calls()
+            .indexOf("stream.setTlsServer.server.crt.server.key.true");
+        int plainBindIndex = backendFactory.calls()
+            .indexOf("stream.bind.tcp://127.0.0.1:7776");
+        int bindIndex = backendFactory.calls()
+            .indexOf("stream.bind.tls://127.0.0.1:7777");
+        assertTrue(tlsIndex >= 0, "TLS server setup call was not recorded");
+        assertTrue(plainBindIndex >= 0, "plain stream bind call was not recorded");
+        assertTrue(bindIndex >= 0, "stream bind call was not recorded");
+        assertTrue(tlsIndex < plainBindIndex, "TLS server setup must happen before plain bind");
+        assertTrue(tlsIndex < bindIndex, "TLS server setup must happen before TLS bind");
+    }
+
+    @Test
+    void sessionStateIsRegisteredBeforeOnConnectedCanReenterStreamDispatch() {
+        ReentrantOnConnectedSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.useHandlerExecutor(Runnable::run);
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(ReentrantOnConnectedSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        ReentrantOnConnectedSession.backendFactory = backendFactory;
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            backendFactory.dispatchStreamPacket("Join", "hello");
+
+            awaitCondition(() -> ReentrantOnConnectedSession.dispatches.size() == 2);
+            assertTrue(ReentrantOnConnectedSession.dispatches.contains("Welcome:connected"));
+            assertTrue(ReentrantOnConnectedSession.dispatches.contains("Join:hello"));
+            assertEquals(1, ReentrantOnConnectedSession.connectedCount);
         }
     }
 
@@ -214,6 +286,27 @@ final class StreamSessionTest {
             awaitCondition(() -> GameSession.errors.size() == 1);
             assertEquals(List.of("TRANSPORT_ERROR:222:remote-disconnect"), GameSession.errors);
             assertEquals(1, GameSession.disconnectedCount);
+        }
+
+        assertEquals(1, GameSession.disconnectedCount);
+    }
+
+    @Test
+    void normalPeerDisconnectDoesNotReportTransportError() {
+        GameSession.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            backendFactory.dispatchStreamPacket("Join", "hello");
+            backendFactory.dispatchStreamTransportError(0, "DISCONNECTED");
+
+            awaitCondition(() -> GameSession.disconnectedCount == 1);
+            assertEquals(List.of(), GameSession.errors);
         }
 
         assertEquals(1, GameSession.disconnectedCount);
@@ -415,6 +508,25 @@ final class StreamSessionTest {
         }
     }
 
+    @Test
+    void sessionRequestFailureRepliesWithStreamError() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(FailingRequestSession.class); };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            backendFactory.dispatchStreamRequest("MustFail", "payload", 44);
+
+            awaitCondition(() -> backendFactory.calls().stream()
+                .anyMatch(call -> call.startsWith("stream.reply.fake-session.44.MustFail.")
+                    && call.contains("HAS_REQUEST_SEQUENCE")
+                    && call.endsWith(".public failure")));
+        }
+    }
+
     private static void awaitCondition(java.util.function.BooleanSupplier condition) {
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
@@ -491,6 +603,54 @@ final class StreamSessionTest {
             ZLinkMessage payload) {
             dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
                     }
+    }
+
+    public static final class ReentrantOnConnectedSession implements ZLinkSession {
+        static FakeZLinkBackendAdapterFactory backendFactory;
+        static int connectedCount;
+        static boolean dispatchedFromConnect;
+        static List<String> dispatches = new CopyOnWriteArrayList<>();
+        private final ZLinkSessionContext context;
+
+        public ReentrantOnConnectedSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
+
+        static void reset() {
+            backendFactory = null;
+            connectedCount = 0;
+            dispatchedFromConnect = false;
+            dispatches = new CopyOnWriteArrayList<>();
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public void onConnected() {
+            connectedCount += 1;
+            if (!dispatchedFromConnect) {
+                dispatchedFromConnect = true;
+                backendFactory.dispatchStreamPacket("Welcome", "connected");
+            }
+        }
+
+        @Override
+        public void onDisconnected() {
+        }
+
+        @Override
+        public void onError(ZLinkStreamError error) {
+        }
+
+        @Override
+        public void onDispatch(
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload) {
+            dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
+        }
     }
 
     public static final class ProtobufSession implements ZLinkSession {
@@ -733,6 +893,38 @@ final class StreamSessionTest {
                 })
                 .toCompletableFuture()
                 .join();
+        }
+    }
+
+    public static final class FailingRequestSession implements ZLinkSession {
+        private final ZLinkSessionContext context;
+
+        public FailingRequestSession(ZLinkSessionContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSessionContext context() {
+            return context;
+        }
+
+        @Override
+        public void onConnected() {
+        }
+
+        @Override
+        public void onDisconnected() {
+        }
+
+        @Override
+        public void onError(ZLinkStreamError error) {
+        }
+
+        @Override
+        public void onDispatch(
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload) {
+            throw new IllegalStateException("public failure");
         }
     }
 

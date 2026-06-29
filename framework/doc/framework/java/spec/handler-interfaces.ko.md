@@ -527,6 +527,11 @@ public interface ZLinkEntrySpotOptions {
 
 public interface ZLinkStreamNodeBuilder {
     ZLinkStreamNodeBuilder bind(String endpoint);
+    ZLinkStreamNodeBuilder setTlsServer(String certificatePath, String keyPath);
+    ZLinkStreamNodeBuilder setTlsServer(
+        String certificatePath,
+        String keyPath,
+        boolean requireClientCertificate);
     ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType);
     ZLinkStreamNodeBuilder addSessionPacketHandler(
         Class<? extends ZLinkSessionPacketHandler<?>> handlerType);
@@ -782,9 +787,21 @@ public interface ZLinkRouteClient {
         RoutingId targetNodeRid,
         TMessage message);
 
+    <TMessage> ZLinkSendCall sendToSpot(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        TMessage message);
+
     <TMessage> ZLinkRequestCall requestTo(
         String routerChannelId,
         RoutingId targetNodeRid,
+        TMessage request);
+
+    <TMessage> ZLinkRequestCall requestToSpot(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
         TMessage request);
 }
 
@@ -964,6 +981,10 @@ public record ZLinkTimerTick(
     long skippedTicks) {
 }
 ```
+
+같은 stream node가 평문 endpoint와 TLS endpoint를 함께 열어야 할 때는 `bind(...)`를
+반복 호출한다. 이 경우 하나의 session relay 상태를 공유하므로 같은 session gateway의
+평문 연결과 TLS 연결이 서로 다른 server role처럼 분리되지 않는다.
 
 SPOT handler가 다른 client/server channel로 `sendToChannel` 또는
 `requestToChannel`을 보내려면 `addClientServerChannel(...).enableClient(...)`로

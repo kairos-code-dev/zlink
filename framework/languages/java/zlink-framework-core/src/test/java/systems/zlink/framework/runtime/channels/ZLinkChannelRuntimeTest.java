@@ -17,10 +17,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
+import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -85,6 +87,346 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
+    void routeClientSpotRequestUsesRouteBridge() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.requestReplyParts = List.of(Message.from(
+            "{\"ok\":true,\"response\":{\"value\":\"reply\"}}".getBytes()));
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+
+            TestReply reply = runtime.requestToSpot(
+                    "play.route",
+                    RoutingId.from("play-node"),
+                    RoutingId.from("room-spot"),
+                    new TestRequest("hello"))
+                .packetName("TestRequest")
+                .timeout(Duration.ofMillis(300))
+                .await(TestReply.class);
+
+            assertEquals("reply", reply.value());
+            assertEquals("play.route", backend.bridge.lastChannelName);
+            assertEquals(RoutingId.from("play-node"), backend.bridge.lastTargetNodeRid);
+            assertEquals(RoutingId.from("room-spot"), backend.bridge.lastTargetSpotRid);
+            assertEquals("TestRequest", backend.bridge.lastParts.get(0).toUtf8String());
+        }
+    }
+
+    @Test
+    void routeClientSpotSendUsesRouteBridge() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+
+            runtime.sendToSpot(
+                    "play.route",
+                    RoutingId.from("play-node"),
+                    RoutingId.from("room-spot"),
+                    new TestRequest("hello"))
+                .packetName("TestCommand")
+                .await();
+
+            assertEquals("play.route", backend.bridge.lastChannelName);
+            assertEquals(RoutingId.from("play-node"), backend.bridge.lastTargetNodeRid);
+            assertEquals(RoutingId.from("room-spot"), backend.bridge.lastTargetSpotRid);
+            assertEquals("TestCommand", backend.bridge.lastParts.get(0).toUtf8String());
+        }
+    }
+
+    @Test
+    void routeBridgeRawRequestConsumesNativeReplyEvenWhenRequestSeqIsPresent() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.completeRequests = false;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(Message.from("raw-request".getBytes())),
+                Duration.ofMillis(300));
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.of(7L),
+                List.of(Message.from("{\"ok\":true,\"response\":{\"value\":\"reply\"}}".getBytes()))));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("{\"ok\":true,\"response\":{\"value\":\"reply\"}}", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+            assertFalse(backend.bridge.routerReceivedInvoked);
+            assertEquals(0, backend.router.replyCount);
+        }
+    }
+
+    @Test
+    void routeBridgeRawRequestUnwrapsRoutedSpotEnvelopeReply() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.completeRequests = false;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(
+                    Message.from("StateRequest".getBytes()),
+                    Message.from("{\"op\":\"ping\"}".getBytes())),
+                Duration.ofMillis(300));
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.of(7L),
+                List.of(
+                    Message.from("__zlink.routed_spot.egress.request".getBytes()),
+                    Message.from("StateReply".getBytes()),
+                    Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+            assertFalse(backend.bridge.routerReceivedInvoked);
+            assertEquals(0, backend.router.replyCount);
+        }
+    }
+
+    @Test
+    void routeBridgeNativeCallbackRequestUnwrapsRoutedSpotEnvelopeReply() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.requestReplyParts = List.of(
+            Message.from("__zlink.routed_spot.egress.request".getBytes()),
+            Message.from("StateReply".getBytes()),
+            Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()));
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(
+                    Message.from("StateRequest".getBytes()),
+                    Message.from("{\"op\":\"ping\"}".getBytes())),
+                Duration.ofMillis(300));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+        }
+    }
+
+    @Test
+    void routeBridgeNativeCallbackRequestStripsSpotPacketNameReply() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.requestReplyParts = List.of(
+            Message.from("StateReply".getBytes()),
+            Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()));
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(
+                    Message.from("StateRequest".getBytes()),
+                    Message.from("{\"op\":\"ping\"}".getBytes())),
+                Duration.ofMillis(300));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+        }
+    }
+
+    @Test
+    void routeBridgeRequestIgnoresNativeRequestEchoAndWaitsForRouterReply() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.requestReplyParts = List.of(
+            Message.from("__zlink.routed_spot.egress.request".getBytes()),
+            Message.from("StateRequest".getBytes()));
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(
+                    Message.from("StateRequest".getBytes()),
+                    Message.from("{\"op\":\"ping\"}".getBytes())),
+                Duration.ofMillis(300));
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.of(7L),
+                List.of(
+                    Message.from("__zlink.routed_spot.egress.request".getBytes()),
+                    Message.from("StateReply".getBytes()),
+                    Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+        }
+    }
+
+    @Test
+    void routeBridgeRequestIgnoresRouterRequestEchoAndWaitsForRouterReply() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.completeRequests = false;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(
+                    Message.from("StateRequest".getBytes()),
+                    Message.from("{\"op\":\"ping\"}".getBytes())),
+                Duration.ofMillis(300));
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.of(6L),
+                List.of(
+                    Message.from("__zlink.routed_spot.egress.request".getBytes()),
+                    Message.from("StateRequest".getBytes()))));
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.of(7L),
+                List.of(
+                    Message.from("__zlink.routed_spot.egress.request".getBytes()),
+                    Message.from("StateReply".getBytes()),
+                    Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+        }
+    }
+
+    @Test
+    void routeBridgeLateRawReplyAfterNativeCompletionIsNotRepliedAsMissingRouteHandler()
+        throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            runtime.requestToSpotViaRouterChannel(
+                    "play.route",
+                    RoutingId.from("play-node"),
+                    RoutingId.from("room-spot"),
+                    List.of(Message.from("raw-request".getBytes())),
+                    Duration.ofMillis(300))
+                .toCompletableFuture()
+                .get(1, TimeUnit.SECONDS);
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.of(7L),
+                List.of(
+                    Message.from("StateRequest".getBytes()),
+                    Message.from("{\"op\":\"late\"}".getBytes()))));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (!backend.router.inbound.isEmpty() && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+
+            assertTrue(backend.router.inbound.isEmpty());
+            Thread.sleep(50);
+            assertEquals(0, backend.router.replyCount);
+        }
+    }
+
+    @Test
     void routeBridgeRawRequestCompletesBeforeBridgeConsumesActorJoinReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
@@ -118,6 +460,75 @@ final class ZLinkChannelRuntimeTest {
             } finally {
                 reply.forEach(Message::close);
             }
+            assertFalse(backend.bridge.routerReceivedInvoked);
+        }
+    }
+
+    @Test
+    void routeBridgeRawRequestFailsOnFrameworkErrorReplyWithoutBridgeFeedback() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.completeRequests = false;
+        backend.bridge.consumeRouterReceived = true;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(Message.from("raw-request".getBytes())),
+                Duration.ofMillis(300));
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(
+                    Message.from("ZLinkFrameworkError".getBytes()),
+                    Message.from("missing route handler".getBytes()))));
+
+            ExecutionException error = org.junit.jupiter.api.Assertions.assertThrows(
+                ExecutionException.class,
+                () -> request.toCompletableFuture().get(1, TimeUnit.SECONDS));
+            assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
+            assertEquals("missing route handler", error.getCause().getMessage());
+            assertFalse(backend.bridge.routerReceivedInvoked);
+        }
+    }
+
+    @Test
+    void routeMeshFrameworkErrorRequestIsDroppedWithoutErrorReply() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.of(7L),
+                List.of(
+                    Message.from("ZLinkFrameworkError".getBytes()),
+                    Message.from("missing route handler".getBytes()))));
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (!backend.router.inbound.isEmpty() && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+
+            assertTrue(backend.router.inbound.isEmpty());
+            Thread.sleep(50);
+            assertEquals(0, backend.router.replyCount);
             assertFalse(backend.bridge.routerReceivedInvoked);
         }
     }
@@ -162,6 +573,49 @@ final class ZLinkChannelRuntimeTest {
                 reply.forEach(Message::close);
             }
             assertEquals(0, backend.bridge.drainFailuresRemaining);
+        }
+    }
+
+    @Test
+    void routeBridgeNoDataDrainDoesNotStopLaterRawReplyCompletion() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        options.addRouteMesh("play.route")
+            .enableServer("inproc://play-route");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.completeRequests = false;
+        backend.bridge.noDataDrainsRemaining = 1;
+        backend.bridge.firstDrainFailed = new CountDownLatch(1);
+        backend.bridge.nextDrainAfterFailure = new CountDownLatch(1);
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
+
+            var request = runtime.requestToSpotViaRouterChannel(
+                "play.route",
+                RoutingId.from("play-node"),
+                RoutingId.from("room-spot"),
+                List.of(Message.from("raw-request".getBytes())),
+                Duration.ofMillis(300));
+            assertTrue(backend.bridge.firstDrainFailed.await(1, TimeUnit.SECONDS));
+
+            backend.router.inbound.add(new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("play-node")),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(Message.from("{\"ok\":true}".getBytes()))));
+            assertTrue(backend.bridge.nextDrainAfterFailure.await(1, TimeUnit.SECONDS));
+
+            List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
+            try {
+                assertEquals(1, reply.size());
+                assertEquals("{\"ok\":true}", reply.get(0).toUtf8String());
+            } finally {
+                reply.forEach(Message::close);
+            }
+            assertEquals(0, backend.bridge.noDataDrainsRemaining);
         }
     }
 
@@ -343,6 +797,7 @@ final class ZLinkChannelRuntimeTest {
     private static final class FakeRouterSocket implements ZLinkBackendRouterSocket {
         final ArrayDeque<ZLinkBackendReceived> inbound = new ArrayDeque<>();
         int peerWeight = 100;
+        int replyCount;
 
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
         @Override public void setChannelName(String channelName) { }
@@ -355,7 +810,7 @@ final class ZLinkChannelRuntimeTest {
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return inbound.poll(); }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { return true; }
         @Override public boolean request(RoutingId routingId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { return true; }
-        @Override public void reply(RoutingId routingId, long requestSeq, List<Message> parts) { }
+        @Override public void reply(RoutingId routingId, long requestSeq, List<Message> parts) { replyCount++; }
         @Override public String name() { return "fake-router"; }
         @Override public void close() { }
     }
@@ -367,13 +822,23 @@ final class ZLinkChannelRuntimeTest {
         boolean completeRequests = true;
         boolean consumeRouterReceived;
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
+        List<Message> requestReplyParts = List.of();
+        String lastChannelName;
+        RoutingId lastTargetNodeRid;
+        RoutingId lastTargetSpotRid;
+        List<Message> lastParts = List.of();
         int drainFailuresRemaining;
+        int noDataDrainsRemaining;
         CountDownLatch firstDrainFailed;
         CountDownLatch nextDrainAfterFailure;
 
         @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router) { }
-        @Override public boolean send(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) { return true; }
+        @Override public boolean send(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
+            recordBridgeCall(channelName, targetNodeRid, targetSpotRid, parts);
+            return true;
+        }
         @Override public boolean request(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            recordBridgeCall(channelName, targetNodeRid, targetSpotRid, parts);
             if (!completeRequests) {
                 return true;
             }
@@ -382,8 +847,22 @@ final class ZLinkChannelRuntimeTest {
                 Optional.empty(),
                 Optional.of(targetSpotRid),
                 Optional.empty(),
-                List.of()));
+                requestReplyParts));
             return true;
+        }
+        private void recordBridgeCall(
+            String channelName,
+            RoutingId targetNodeRid,
+            RoutingId targetSpotRid,
+            List<Message> parts) {
+            lastChannelName = channelName;
+            lastTargetNodeRid = targetNodeRid;
+            lastTargetSpotRid = targetSpotRid;
+            lastParts.forEach(Message::close);
+            lastParts = parts.stream()
+                .map(Message::toByteArray)
+                .map(Message::from)
+                .toList();
         }
         @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) {
             routerReceivedInvoked = true;
@@ -391,6 +870,13 @@ final class ZLinkChannelRuntimeTest {
         }
         @Override public int drain() {
             drains++;
+            if (noDataDrainsRemaining > 0) {
+                noDataDrainsRemaining--;
+                if (firstDrainFailed != null) {
+                    firstDrainFailed.countDown();
+                }
+                throw new ZlinkRecvException(RecvResult.NO_DATA);
+            }
             if (drainFailuresRemaining > 0) {
                 drainFailuresRemaining--;
                 if (firstDrainFailed != null) {
@@ -406,7 +892,13 @@ final class ZLinkChannelRuntimeTest {
             return drains;
         }
         @Override public String name() { return "fake-bridge"; }
-        @Override public void close() { }
+        @Override public void close() { lastParts.forEach(Message::close); }
+    }
+
+    private record TestRequest(String value) {
+    }
+
+    private record TestReply(String value) {
     }
 
     private static final class FakeSpotNode implements ZLinkBackendSpotNode {

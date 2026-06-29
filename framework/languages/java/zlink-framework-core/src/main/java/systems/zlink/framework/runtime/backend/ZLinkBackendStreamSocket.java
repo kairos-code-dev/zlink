@@ -7,6 +7,8 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
 public interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
+    void setTlsServer(String certificatePath, String keyPath, boolean requireClientCertificate);
+
     void onPacket(ZLinkBackendStreamPacketHandler handler);
 
     void onTransportError(ZLinkBackendStreamErrorHandler handler);

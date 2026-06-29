@@ -11,6 +11,7 @@ import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import javax.net.ssl.SSLHandshakeException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -94,7 +95,7 @@ final class ZLinkStreamConnectorTest {
             connector.dispatch().await();
 
             assertEquals(0, connector.pendingDispatchCount());
-            assertEquals(1, connector.receivedCount("Ping"));
+            assertEquals(0, connector.receivedCount("Ping"));
             assertEquals(1, handled.get());
         }
     }
@@ -797,6 +798,31 @@ final class ZLinkStreamConnectorTest {
             } finally {
                 reply.payload().close();
             }
+        }
+    }
+
+    @Test
+    void tlsConnectRejectsSelfSignedCertificateWhenValidationIsStrict() throws Exception {
+        try (TlsStreamConnectorTestServer server = new TlsStreamConnectorTestServer()) {
+            ZLinkStreamConnectorOptions strict = new ZLinkStreamConnectorOptions(
+                server.endpoint(),
+                ZLinkStreamDispatchMode.AUTO,
+                Duration.ofSeconds(1),
+                0,
+                Duration.ofSeconds(1),
+                64 * 1024,
+                false,
+                Duration.ofMillis(25),
+                Duration.ofMillis(500),
+                false,
+                Duration.ofMillis(10),
+                Duration.ofMillis(250),
+                2.0,
+                false);
+            ZLinkStreamConnector connector = createConnector(strict);
+
+            assertThrows(SSLHandshakeException.class, () -> connector.connect().await());
+            assertEquals(ZLinkStreamConnectionState.DISCONNECTED, connector.state());
         }
     }
 

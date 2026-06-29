@@ -39,6 +39,8 @@ public final class ZLinkFrameworkRuntime
     private final ZLinkStreamRuntime streams;
     private final ZLinkBackendContext backendContext;
     private final ZLinkFrameworkRegistration registration;
+    private final java.util.concurrent.atomic.AtomicBoolean spotRuntimeStopped =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
     // Shared, runtime-mutable message-flow mode cell, installed into the diagnostics
     // options so every surface observes setMessageFlowMode live.
     private final java.util.concurrent.atomic.AtomicReference<
@@ -287,6 +289,15 @@ public final class ZLinkFrameworkRuntime
         return spots == null ? java.util.Map.of() : spots.nodesByName();
     }
 
+    public boolean stopSpotRuntime() {
+        if (spots == null || !spotRuntimeStopped.compareAndSet(false, true)) {
+            return false;
+        }
+        spots.beginClose();
+        closeRuntimeComponent(spots::close);
+        return true;
+    }
+
     public ZLinkActorManager actorManager() {
         if (actors == null) {
             throw new ZLinkConfigurationException("Actor runtime is not configured");
@@ -303,7 +314,7 @@ public final class ZLinkFrameworkRuntime
 
     @Override
     public void close() {
-        if (spots != null) {
+        if (spots != null && !spotRuntimeStopped.get()) {
             spots.beginClose();
         }
         try {
@@ -320,7 +331,7 @@ public final class ZLinkFrameworkRuntime
                     }
                 } finally {
                     try {
-                        if (spots != null) {
+                        if (spots != null && spotRuntimeStopped.compareAndSet(false, true)) {
                             closeRuntimeComponent(spots::close);
                         }
                     } finally {

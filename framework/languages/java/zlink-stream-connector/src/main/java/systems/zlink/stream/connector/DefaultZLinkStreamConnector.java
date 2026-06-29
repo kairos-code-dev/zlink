@@ -22,7 +22,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -45,8 +44,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         new CopyOnWriteArrayList<>();
     private final List<ZLinkStreamConnectionStateHandler> stateHandlers =
         new CopyOnWriteArrayList<>();
-    private final Map<String, AtomicInteger> receivedCounts = new ConcurrentHashMap<>();
-    private final ZLinkStreamDispatchQueue dispatchQueue = new ZLinkStreamDispatchQueue();
+    private final ZLinkStreamDispatchQueue dispatchQueue;
     private final AtomicLong nextRequestSeq = new AtomicLong();
     // Process-global monotonic correlation id (hex), stamped on every non-control
     // outbound packet so the server can trace/echo it regardless of tracing mode.
@@ -64,6 +62,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     DefaultZLinkStreamConnector(ZLinkStreamConnectorOptions options) {
         this.options = validate(options);
+        this.dispatchQueue = new ZLinkStreamDispatchQueue(this.options.maxReceivedMessages());
     }
 
     @Override
@@ -91,8 +90,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     @Override
     public int receivedCount(String name) {
         requirePacketName(name);
-        AtomicInteger count = receivedCounts.get(name);
-        return count == null ? 0 : count.get();
+        return dispatchQueue.receivedCount(name);
     }
 
     @Override
@@ -431,7 +429,6 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
         if (header.kind() == ZLinkStreamWireProtocol.KIND_SEND
             || header.kind() == ZLinkStreamWireProtocol.KIND_REQUEST) {
-            receivedCounts.computeIfAbsent(header.name(), ignored -> new AtomicInteger()).incrementAndGet();
             dispatchToHandlers(header, decodedPayload);
         }
     }
@@ -471,7 +468,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (options.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
             dispatch.run();
         } else {
-            dispatchQueue.add(dispatch);
+            dispatchQueue.add(header.name(), dispatch);
         }
     }
 
@@ -725,6 +722,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
         if (options.maxReceivePayloadSize() <= 0) {
             throw new IllegalArgumentException("maxReceivePayloadSize must be positive");
+        }
+        if (options.maxReceivedMessages() <= 0) {
+            throw new IllegalArgumentException("maxReceivedMessages must be positive");
         }
         Objects.requireNonNull(options.compression(), "compression");
         return options;

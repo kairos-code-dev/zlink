@@ -93,6 +93,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private final List<FakeSpot> spots = new ArrayList<>();
     private final List<FakeRouterSocket> routers = new ArrayList<>();
     private Message nextActorJoinReply;
+    private List<Message> nextSpotRequestReplyParts;
     private boolean roomsDiscoveryDelaysRoutingId;
 
     public List<String> calls() {
@@ -104,6 +105,15 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             nextActorJoinReply.close();
         }
         nextActorJoinReply = Message.from(reply);
+    }
+
+    public void nextSpotRequestReplyParts(List<Message> parts) {
+        if (nextSpotRequestReplyParts != null) {
+            nextSpotRequestReplyParts.forEach(Message::close);
+        }
+        nextSpotRequestReplyParts = parts.stream()
+            .map(Message::from)
+            .toList();
     }
 
     public void delayRoomsDiscoveryRoutingIdUntilSecondSnapshot() {
@@ -149,6 +159,20 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             RoutingId.from("fake-session"),
             Message.from(encodeStreamHeader(2, 0, packetName, Optional.of(requestSeq), flags)),
             payload);
+    }
+
+    public void dispatchStreamControl(String packetName) {
+        if (streams.isEmpty()) {
+            throw new IllegalStateException("no fake stream socket is available");
+        }
+        streams.get(0).dispatchPacket(
+            RoutingId.from("fake-session"),
+            Message.from(encodeStreamHeader(
+                ZLinkStreamMessageKind.CONTROL.value(),
+                ZLinkStreamCodec.RAW.value(),
+                packetName,
+                Optional.empty())),
+            Message.from(new byte[0]));
     }
 
     public void dispatchStreamTransportError(int nativeCode, String message) {
@@ -738,6 +762,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override public void setId(int registryId) { record("setId." + registryId); }
+        @Override public void setHeartbeat(Duration interval, Duration timeout) {
+            record("setHeartbeat." + interval.toMillis() + "." + timeout.toMillis());
+        }
+        @Override public void setBroadcastInterval(Duration interval) {
+            record("setBroadcastInterval." + interval.toMillis());
+        }
         @Override public void bind(String pubEndpoint, String routerEndpoint) { record("bind." + pubEndpoint + "." + routerEndpoint); }
         @Override public void connectPeer(String pubEndpoint, String routerEndpoint) { record("connectPeer." + pubEndpoint); }
         @Override public ZLinkBackendRegistryStatus status() { record("status"); return new ZLinkBackendRegistryStatus(RegistryState.ACTIVE, 1); }
@@ -1201,11 +1231,14 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) { record("sendToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts)); return true; }
         @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             record("requestToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts));
+            List<Message> replyParts = owner.nextSpotRequestReplyParts == null
+                ? List.of(Message.from("reply".getBytes(StandardCharsets.UTF_8)))
+                : owner.nextSpotRequestReplyParts.stream().map(Message::from).toList();
             callback.handle(new ZLinkBackendReceived(
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                List.of(Message.from("reply".getBytes(StandardCharsets.UTF_8)))));
+                replyParts));
             return true;
         }
         @Override public void onDispatchEvent(ZLinkBackendSpotDispatchHandler handler) {
@@ -1239,6 +1272,13 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             super(calls, "stream");
         }
 
+        @Override public void setTlsServer(
+            String certificatePath,
+            String keyPath,
+            boolean requireClientCertificate) {
+            record("setTlsServer." + certificatePath + "." + keyPath + "."
+                + requireClientCertificate);
+        }
         @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) { packetHandler = handler; record("onPacket"); }
         @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { errorHandler = handler; record("onTransportError"); }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) {

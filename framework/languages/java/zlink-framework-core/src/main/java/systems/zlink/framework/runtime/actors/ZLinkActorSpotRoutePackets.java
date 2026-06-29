@@ -13,6 +13,8 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 public final class ZLinkActorSpotRoutePackets {
     public static final String JOIN_SPOT_PACKET_NAME = "__zlink.actor.joinSpot";
     public static final String BOUND_SESSION_SEND_PACKET_NAME = "__zlink.actor.boundSession.send";
+    public static final String SESSION_DISCONNECTED_PACKET_NAME =
+        "__zlink.actor.sessionDisconnected";
     public static final String ACTOR_PACKET_NAME = "__zlink.actor.packet";
 
     private ZLinkActorSpotRoutePackets() {

@@ -21,6 +21,9 @@ final class RegistryRuntimeFakeBackendTest {
         ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
         options.setPubEndpoint("tcp://127.0.0.1:5551");
         options.setRouterEndpoint("tcp://127.0.0.1:5552");
+        options.setHeartbeatInterval(Duration.ofMillis(250));
+        options.setHeartbeatTimeout(Duration.ofSeconds(2));
+        options.setBroadcastInterval(Duration.ofMillis(500));
         options.addPeer("tcp://127.0.0.1:5553");
 
         try (ZLinkRegistryRuntime runtime = RuntimeTestSupport.startRegistry(
@@ -55,6 +58,8 @@ final class RegistryRuntimeFakeBackendTest {
                 "factory.registry",
                 "create.context",
                 "create.registry",
+                "registry.setHeartbeat.250.2000",
+                "registry.setBroadcastInterval.500",
                 "registry.bind.tcp://127.0.0.1:5551.tcp://127.0.0.1:5552",
                 "registry.connectPeer.tcp://127.0.0.1:5553",
                 "registry.status",

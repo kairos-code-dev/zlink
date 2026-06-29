@@ -147,11 +147,37 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
+    public ZLinkSendCall sendToSpot(
+        String channelName,
+        RoutingId targetNode,
+        RoutingId targetSpot,
+        Object message) {
+        return requireRuntime().route().sendToSpot(
+            channelName,
+            targetNode,
+            targetSpot,
+            message);
+    }
+
+    @Override
     public ZLinkRouteRequestCall requestTo(
         String channelName,
         RoutingId target,
         Object message) {
         return requireRuntime().route().requestTo(channelName, target, message);
+    }
+
+    @Override
+    public ZLinkRouteRequestCall requestToSpot(
+        String channelName,
+        RoutingId targetNode,
+        RoutingId targetSpot,
+        Object message) {
+        return requireRuntime().route().requestToSpot(
+            channelName,
+            targetNode,
+            targetSpot,
+            message);
     }
 
     public ZLinkSpotManager spotManager() {
@@ -192,6 +218,10 @@ public final class ZLinkFrameworkLifecycle
 
     public Map<String, ZLinkBackendSpotNode> monitoringSpotSources() {
         return requireRuntime().monitoringSpotSources();
+    }
+
+    public boolean stopSpotRuntime() {
+        return requireRuntime().stopSpotRuntime();
     }
 
     private ZLinkFrameworkRuntime requireRuntime() {

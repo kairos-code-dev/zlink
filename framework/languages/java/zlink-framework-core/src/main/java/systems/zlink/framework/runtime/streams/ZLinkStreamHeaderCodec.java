@@ -15,6 +15,7 @@ public final class ZLinkStreamHeaderCodec {
     static final int KIND_SEND = 1;
     static final int KIND_REQUEST = 2;
     static final int KIND_RESPONSE = 3;
+    static final int KIND_ERROR = 4;
     static final int KIND_CONTROL = 5;
     private static final int CODEC_RAW = 0;
     private static final int FLAG_HAS_REQUEST_SEQ = 0x01;

@@ -42,8 +42,8 @@ starter, `ZLinkClient`, `ZLinkChannelRuntimeOptions`, registry discovery, regist
 - `RL-A4`: rolling restart를 provider 그룹 단위로 수행하는 orchestration이 아직 없다.
 - `RL-B2`: provider 강제 종료 중 in-flight request를 관측하는 runner는 시도됐지만, Java client가
   종료 시 native context close에서 멈추는 경로가 있어 완료 처리하지 않는다.
-- `RL-C2`: registry heartbeat timeout을 짧게 조정하는 public embedded-registry 옵션이 없어,
-  provider 강제 종료 뒤 TTL stale entry 제거를 빠르고 결정적으로 고정하는 runner가 아직 없다.
+- `RL-C2`: public embedded-registry heartbeat interval/timeout 옵션은 추가됐다. provider 강제 종료 뒤
+  TTL stale entry 제거를 빠르고 결정적으로 고정하는 runner 연결은 아직 없다.
 - `RL-C4`: registry 중단 중 이미 연결된 channel request는 확인됐지만, registry 재기동 뒤 새 client의
   follow-up request가 `NOT_ADMITTED`로 남는 경로가 있어 완료 처리하지 않는다.
 - `RL-D2`: observer 실패 격리를 runtime error sink와 함께 단언하는 scenario가 아직 없다.

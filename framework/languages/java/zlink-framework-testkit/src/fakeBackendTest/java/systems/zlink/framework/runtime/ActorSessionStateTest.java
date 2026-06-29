@@ -13,6 +13,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
+import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
@@ -71,6 +72,31 @@ final class ActorSessionStateTest {
         assertTrue(backend.calls().stream()
             .anyMatch(call -> call.startsWith("stream.send.session-2.Push.")
                 && call.endsWith(".push")));
+    }
+
+    @Test
+    void remoteSessionActorNotifyDisconnected_routesDisconnectPacketBeforeUnbind() {
+        FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(RemoteSessionRelayTest.options(), backend)) {
+            ZLinkSessionActor remoteBinding = runtime.sessionActors(
+                    "gateway",
+                    RoutingId.from("session-1"))
+                .bind(new systems.zlink.framework.actors.ZLinkActorRef(
+                    RoutingId.from("play-node"),
+                    "player-remote",
+                    1))
+                .toCompletableFuture()
+                .join();
+
+            remoteBinding.notifyDisconnected().toCompletableFuture().join();
+        }
+
+        assertTrue(backend.calls().contains(
+            "stream.relayBoundActor.player-remote.JSON."
+                + ZLinkActorSpotRoutePackets.SESSION_DISCONNECTED_PACKET_NAME));
+        assertTrue(backend.calls().contains("stream.unbindActor.player-remote"));
     }
 
     private static ZLinkActor managedActor(

@@ -30,11 +30,18 @@ runtime을 직접 만들거나 `start` 함수로 시작하는 방법은 public c
 않는다.
 
 ```java
+import java.time.Duration;
+import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
+
 @Bean
 ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
     ZLinkEmbeddedRegistryOptions options = new ZLinkEmbeddedRegistryOptions();
     options.setPubEndpoint("tcp://0.0.0.0:5550");
     options.setRouterEndpoint("tcp://0.0.0.0:5551");
+    options.setHeartbeatInterval(Duration.ofSeconds(5));  // provider heartbeat 확인 주기
+    options.setHeartbeatTimeout(Duration.ofSeconds(15));  // stale provider로 판단하는 시간
+    options.setBroadcastInterval(Duration.ofSeconds(30)); // peer registry로 service view를 보내는 주기
     return options;
 }
 ```
@@ -42,6 +49,9 @@ ZLinkEmbeddedRegistryOptions zlinkEmbeddedRegistryOptions() {
 > 포트 관례: PUB=`5550`, ROUTER=`5551`. peer는 PUB을, query client/discovery는
 > ROUTER를 가리킨다(혼동 주의). embedded라도 `useDiscovery().addRegistryEndpoint(...)`가 같은 프로세스의
 > Registry를 자동으로 찾아주지 않는다. Discovery endpoint(`5551`)를 명시해야 한다.
+
+heartbeat와 broadcast interval은 기본값 그대로 두어도 된다. 장애·복구 검증처럼 stale
+provider 제거와 peer 합산 view 전파를 빨리 보고 싶을 때만 짧게 조절한다.
 
 ## 3. 두 가지 배포 모델
 

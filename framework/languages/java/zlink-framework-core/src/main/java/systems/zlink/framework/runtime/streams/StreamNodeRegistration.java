@@ -8,7 +8,8 @@ import systems.zlink.framework.streams.ZLinkSession;
 
 public final class StreamNodeRegistration {
     private final String name;
-    private String bindEndpoint;
+    private final List<String> bindEndpoints = new ArrayList<>();
+    private TlsServerRegistration tlsServer;
     private Class<? extends ZLinkSession> sessionType;
     private final List<Class<?>> sessionPacketHandlers =
         new ArrayList<>();
@@ -22,11 +23,19 @@ public final class StreamNodeRegistration {
     }
 
     public String bindEndpoint() {
-        return bindEndpoint;
+        return bindEndpoints.isEmpty() ? null : bindEndpoints.get(0);
+    }
+
+    public List<String> bindEndpoints() {
+        return List.copyOf(bindEndpoints);
     }
 
     public Class<? extends ZLinkSession> sessionType() {
         return sessionType;
+    }
+
+    public TlsServerRegistration tlsServer() {
+        return tlsServer;
     }
 
     public List<Class<?>> sessionPacketHandlers() {
@@ -46,7 +55,23 @@ public final class StreamNodeRegistration {
         if (endpoint == null || endpoint.isBlank()) {
             throw new ZLinkConfigurationException("stream bind endpoint is required: " + name);
         }
-        bindEndpoint = endpoint;
+        bindEndpoints.add(endpoint);
+    }
+
+    void setTlsServer(
+        String certificatePath,
+        String keyPath,
+        boolean requireClientCertificate) {
+        if (certificatePath == null || certificatePath.isBlank()) {
+            throw new ZLinkConfigurationException("stream TLS certificate path is required: " + name);
+        }
+        if (keyPath == null || keyPath.isBlank()) {
+            throw new ZLinkConfigurationException("stream TLS key path is required: " + name);
+        }
+        tlsServer = new TlsServerRegistration(
+            certificatePath,
+            keyPath,
+            requireClientCertificate);
     }
 
     void registerSession(Class<? extends ZLinkSession> type) {
@@ -72,11 +97,17 @@ public final class StreamNodeRegistration {
     }
 
     public void validate(List<SpotNodeRegistration> spotNodes) {
-        if (bindEndpoint == null) {
+        if (bindEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException("stream node bind endpoint is required: " + name);
         }
         if (sessionType == null) {
             throw new ZLinkConfigurationException("stream node session type is required: " + name);
         }
+    }
+
+    public record TlsServerRegistration(
+        String certificatePath,
+        String keyPath,
+        boolean requireClientCertificate) {
     }
 }

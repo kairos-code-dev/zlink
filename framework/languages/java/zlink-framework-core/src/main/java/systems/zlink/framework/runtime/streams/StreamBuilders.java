@@ -20,6 +20,21 @@ public final class StreamBuilders {
         }
 
         @Override
+        public ZLinkStreamNodeBuilder setTlsServer(String certificatePath, String keyPath) {
+            registration.setTlsServer(certificatePath, keyPath, false);
+            return this;
+        }
+
+        @Override
+        public ZLinkStreamNodeBuilder setTlsServer(
+            String certificatePath,
+            String keyPath,
+            boolean requireClientCertificate) {
+            registration.setTlsServer(certificatePath, keyPath, requireClientCertificate);
+            return this;
+        }
+
+        @Override
         public ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType) {
             registration.registerSession(sessionType);
             return this;

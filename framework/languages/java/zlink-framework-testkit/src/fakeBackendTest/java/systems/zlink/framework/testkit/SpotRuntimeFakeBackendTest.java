@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,6 +35,7 @@ import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
@@ -154,6 +157,44 @@ final class SpotRuntimeFakeBackendTest {
                 .join()
                 .state());
             assertEquals("first", PayloadSpot.lastCreatePayload.get());
+        }
+    }
+
+    @Test
+    void spotManagerListAndCloseCanRunConcurrently() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-router-concurrent");
+                node.addSpotFactory(GameSpot.class); }; };
+        List<RoutingId> rids = java.util.stream.IntStream.range(0, 32)
+            .mapToObj(index -> RoutingId.from("game-concurrent-" + index))
+            .toList();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, new FakeZLinkBackendAdapterFactory())) {
+            for (RoutingId rid : rids) {
+                runtime.spotManager()
+                    .create(GameSpot.class, rid)
+                    .toCompletableFuture()
+                    .join();
+            }
+
+            CountDownLatch start = new CountDownLatch(1);
+            CompletableFuture<Void> closer = CompletableFuture.runAsync(() -> {
+                awaitLatch(start);
+                for (RoutingId rid : rids) {
+                    runtime.spotManager().close(rid).toCompletableFuture().join();
+                }
+            });
+            CompletableFuture<Void> lister = CompletableFuture.runAsync(() -> {
+                awaitLatch(start);
+                while (!closer.isDone()) {
+                    runtime.spotManager().list().toCompletableFuture().join();
+                }
+            });
+
+            start.countDown();
+            CompletableFuture.allOf(closer, lister).get(2, TimeUnit.SECONDS);
+            assertTrue(runtime.spotManager().list().toCompletableFuture().join().isEmpty());
         }
     }
 
@@ -511,6 +552,63 @@ final class SpotRuntimeFakeBackendTest {
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
+    }
+
+    @Test
+    void spotOutboundRequestReplyIgnoresBackendPacketNamePart() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(OutboundSpot.class); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        backendFactory.nextSpotRequestReplyParts(List.of(
+            Message.from("SpotRouteReply".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            Message.from("SpotAnswer".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            Message.from("reply".getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            runtime.spotManager()
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(
+                "reply",
+                OutboundSpot.context.outbound()
+                    .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
+                    .submit(String.class)
+                    .toCompletableFuture()
+                    .join());
+        }
+    }
+
+    @Test
+    void spotOutboundRequestCompletesFrameworkErrorReplyAsFrameworkException() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(OutboundSpot.class); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        backendFactory.nextSpotRequestReplyParts(List.of(
+            Message.from("ZLinkFrameworkError".getBytes(StandardCharsets.UTF_8)),
+            Message.from("missing target spot".getBytes(StandardCharsets.UTF_8))));
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            runtime.spotManager()
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
+                .toCompletableFuture()
+                .join();
+
+            CompletionException error = assertThrows(
+                CompletionException.class,
+                () -> OutboundSpot.context.outbound()
+                    .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
+                    .submit(String.class)
+                    .toCompletableFuture()
+                    .join());
+            assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
+            assertTrue(error.getCause().getMessage().contains("missing target spot"));
+        }
     }
 
     @Test
@@ -1170,6 +1268,56 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
+    void entrySpotActorRequestUsesEntryHandlerWhenUserSpotSharesPacketName() {
+        SharedEntryActorRequestHandler.lastRequest.set(null);
+        SharedUserActorRequestHandler.lastRequest.set(null);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
+                node.addEntrySpot(SharedEntrySpot.class); node.addSpotFactory(SharedUserSpot.class);
+                node.addActorFactory("player", PlayerActorFactory.class); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            managedActor(runtime, "player-1", "player");
+
+            backendFactory.dispatchEntrySpotActorStreamRequest(
+                "player-1",
+                "SharedActorRequest",
+                "entry-request",
+                42);
+            awaitCall(backendFactory, "spotNode.sendActorBoundSession.player-1.");
+        }
+
+        assertEquals("entry:player-1:entry-request", SharedEntryActorRequestHandler.lastRequest.get());
+        assertNull(SharedUserActorRequestHandler.lastRequest.get());
+    }
+
+    @Test
+    void creatingSecondUserSpotOfSameTypeDoesNotDuplicateActorPacketRegistration() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://same-type-router");
+                node.addSpotFactory(SharedUserSpot.class); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
+                .getOrCreate(SharedUserSpot.class, RoutingId.from("same-type-a"))
+                .toCompletableFuture()
+                .join()
+                .state());
+            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
+                .getOrCreate(SharedUserSpot.class, RoutingId.from("same-type-b"))
+                .toCompletableFuture()
+                .join()
+                .state());
+        }
+    }
+
+    @Test
     void userSpotActorJoinReadableInvokesMemberJoinAndLifecycleCallbacks() {
         InterfaceUserSpot.lastJoin.set(null);
         InterfaceUserSpot.lastPostJoin.set(null);
@@ -1414,6 +1562,17 @@ final class SpotRuntimeFakeBackendTest {
                 return;
             }
             Thread.onSpinWait();
+        }
+    }
+
+    private static void awaitLatch(CountDownLatch latch) {
+        try {
+            if (!latch.await(1, TimeUnit.SECONDS)) {
+                throw new AssertionError("latch did not open");
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("latch wait interrupted", error);
         }
     }
 
@@ -1740,6 +1899,72 @@ final class SpotRuntimeFakeBackendTest {
             systems.zlink.framework.CancellationToken cancellationToken) {
             lastRequest.set(actor.actorId() + ":" + request.value());
             return "reply:" + request.value();
+        }
+    }
+
+    public static final class SharedEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
+        private final ZLinkEntrySpotContext context;
+
+        public SharedEntrySpot(ZLinkEntrySpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkEntrySpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addActorRequest(SharedEntryActorRequestHandler.class);
+        }
+    }
+
+    public static final class SharedUserSpot implements ZLinkSpot<ZLinkActor> {
+        private final ZLinkSpotContext context;
+
+        public SharedUserSpot(ZLinkSpotContext context) {
+            this.context = context;
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+
+        @Override
+        public void configure() {
+            context.handlers().addActorRequest(SharedUserActorRequestHandler.class);
+        }
+    }
+
+    public static final class SharedEntryActorRequestHandler {
+        static final AtomicReference<String> lastRequest = new AtomicReference<>();
+
+        @ZLinkSpotActorRequest(packetName = "SharedActorRequest")
+        public String handle(
+            SharedEntrySpot spot,
+            PlayerActor actor,
+            ZLinkSpotActorRequestContext context,
+            String request,
+            CancellationToken cancellationToken) {
+            lastRequest.set("entry:" + actor.actorId() + ":" + request);
+            return "entry-reply:" + request;
+        }
+    }
+
+    public static final class SharedUserActorRequestHandler {
+        static final AtomicReference<String> lastRequest = new AtomicReference<>();
+
+        @ZLinkSpotActorRequest(packetName = "SharedActorRequest")
+        public String handle(
+            SharedUserSpot spot,
+            PlayerActor actor,
+            ZLinkSpotActorRequestContext context,
+            String request,
+            CancellationToken cancellationToken) {
+            lastRequest.set("user:" + actor.actorId() + ":" + request);
+            return "user-reply:" + request;
         }
     }
 

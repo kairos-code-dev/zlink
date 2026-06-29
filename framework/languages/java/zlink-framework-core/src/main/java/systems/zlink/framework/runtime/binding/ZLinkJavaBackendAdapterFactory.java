@@ -124,7 +124,8 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return receive.getAsBoolean();
         } catch (ZlinkRecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA
-                || ex.getResult() == RecvResult.BUSY) {
+                || ex.getResult() == RecvResult.BUSY
+                || ex.getResult() == RecvResult.INTERNAL_ERROR) {
                 return false;
             }
             throw ex;
@@ -349,6 +350,12 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
 
         @Override public Socket nativeSocket() { return socket; }
         @Override public String name() { return "stream"; }
+        @Override public void setTlsServer(
+            String certificatePath,
+            String keyPath,
+            boolean requireClientCertificate) {
+            socket.setTlsServer(certificatePath, keyPath, requireClientCertificate);
+        }
         @Override public void bind(String endpoint) { socket.bind(endpoint); }
         @Override public void onPacket(ZLinkBackendStreamPacketHandler handler) {
             socket.options().notify(true);
@@ -415,6 +422,12 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
     private record JavaRegistry(Registry registry) implements ZLinkBackendRegistry {
         @Override public String name() { return "registry"; }
         @Override public void setId(int registryId) { registry.setId(registryId); }
+        @Override public void setHeartbeat(java.time.Duration interval, java.time.Duration timeout) {
+            registry.setHeartbeat(interval, timeout);
+        }
+        @Override public void setBroadcastInterval(java.time.Duration interval) {
+            registry.setBroadcastInterval(interval);
+        }
         @Override public void bind(String pubEndpoint, String routerEndpoint) { registry.bind(pubEndpoint, routerEndpoint); }
         @Override public void connectPeer(String pubEndpoint, String routerEndpoint) { registry.addPeer(pubEndpoint); }
         @Override public ZLinkBackendRegistryStatus status() {
@@ -871,7 +884,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                replyParts)));
+                replyParts.stream().map(Message::from).toList())));
         } catch (ZlinkSubmitException ex) {
             throw new IllegalStateException(
                 "zlink request submit failed: result=" + ex.getResult()

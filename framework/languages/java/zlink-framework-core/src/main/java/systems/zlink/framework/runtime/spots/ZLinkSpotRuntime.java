@@ -134,6 +134,8 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
+    private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
+
     private static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
         "zlink.framework.actor.bound_session.bind";
 
@@ -161,7 +163,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final Map<String, ZLinkBackendSpotNode> publisherNodesByChannel = new HashMap<>();
     private final Map<String, ZLinkBackendSpot> publisherSpotsByChannel = new HashMap<>();
     private final Set<Class<? extends ZLinkSpot<?>>> registeredSpotTypes = new HashSet<>();
-    private final Map<RoutingId, SpotActivation> spots = new HashMap<>();
+    private final Map<RoutingId, SpotActivation> spots = new ConcurrentHashMap<>();
     private final List<EntrySpotActivation> entrySpots = new ArrayList<>();
     private final ZLinkBackendSpotNode primaryNode;
     private final String primaryNodeSourceName;
@@ -181,7 +183,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final ThreadLocal<DefaultSpotOutbound> currentOutbound = new ThreadLocal<>();
     private ZLinkSpotRemoteAddressResolver remoteAddressResolver;
     private final Map<RoutingId, CompletionStage<ZLinkSpotCreateResult>> pendingSpotCreates =
-        new HashMap<>();
+        new ConcurrentHashMap<>();
     private volatile boolean closing;
     private final ZLinkWorkerPool workerPool;
     private final ScheduledExecutorService timerExecutor = Executors.newScheduledThreadPool(1, task -> {
@@ -446,6 +448,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (existing.spotType() == registration.spotType()
                 && existing.actorType() == registration.actorType()
                 && existing.kind() == registration.kind()) {
+                if (existing.handlerType() == registration.handlerType()) {
+                    return;
+                }
                 throw new ZLinkConfigurationException(
                     "duplicate Spot actor packet handler packet: " + registration.packetName());
             }
@@ -1286,8 +1291,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (handler.kind() != kind) {
                 continue;
             }
-            if (spotType != null && handler.spotType() == spotType) {
-                return handler;
+            if (spotType != null) {
+                if (handler.spotType().isAssignableFrom(spotType)) {
+                    return handler;
+                }
+                continue;
             }
             if (fallback == null) {
                 fallback = handler;
@@ -2133,6 +2141,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         headerPart.actor(),
                         headerPart.sourceNodeRid(),
                         headerPart.sourceSessionRid());
+                    if (pendingHeader) {
+                        headerPart.close();
+                    }
+                    continue;
+                }
+                if (ZLinkActorSpotRoutePackets.SESSION_DISCONNECTED_PACKET_NAME.equals(packetHeader.packetName())) {
+                    notifySpotActorDisconnected(actor).toCompletableFuture().join();
                     if (pendingHeader) {
                         headerPart.close();
                     }
@@ -3260,10 +3275,23 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             }
                             Message emptyReply = null;
                             try {
+                                if (isFrameworkErrorReply(replyParts)) {
+                                    throw new ZLinkFrameworkException(
+                                        frameworkErrorReplyMessage(replyParts));
+                                }
                                 Message firstReply = replyParts.isEmpty()
                                     ? (emptyReply = Message.from(new byte[0]))
-                                    : replyParts.get(0);
-                                return ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType);
+                                    : spotRouteReplyPayload(replyParts);
+                                try {
+                                    return ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType);
+                                } catch (IllegalArgumentException ex) {
+                                    throw new IllegalArgumentException(
+                                        ex.getMessage()
+                                            + " (spot route reply parts="
+                                            + describeMessageParts(replyParts)
+                                            + ")",
+                                        ex);
+                                }
                             } finally {
                                 if (emptyReply != null) {
                                     emptyReply.close();
@@ -3579,10 +3607,24 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     }
                     Message emptyReply = null;
                     try {
+                        if (isFrameworkErrorReply(reply.parts())) {
+                            result.completeExceptionally(new ZLinkFrameworkException(
+                                frameworkErrorReplyMessage(reply.parts())));
+                            return;
+                        }
                         Message firstReply = reply.parts().isEmpty()
                             ? (emptyReply = Message.from(new byte[0]))
-                            : reply.parts().get(0);
-                        result.complete(ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType));
+                            : spotRouteReplyPayload(reply.parts());
+                        try {
+                            result.complete(ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType));
+                        } catch (IllegalArgumentException ex) {
+                            result.completeExceptionally(new IllegalArgumentException(
+                                ex.getMessage()
+                                    + " (spot route reply parts="
+                                    + describeMessageParts(reply.parts())
+                                    + ")",
+                                ex));
+                        }
                     } catch (RuntimeException ex) {
                         result.completeExceptionally(ex);
                     } finally {
@@ -3797,6 +3839,35 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return packetName
             .map(name -> List.of(Message.from(name.getBytes(StandardCharsets.UTF_8)), payload))
             .orElseGet(() -> List.of(payload));
+    }
+
+    private static Message spotRouteReplyPayload(List<Message> parts) {
+        return parts.size() > 1 ? parts.get(parts.size() - 1) : parts.get(0);
+    }
+
+    private static String describeMessageParts(List<Message> parts) {
+        List<String> descriptions = new ArrayList<>(parts.size());
+        for (Message part : parts) {
+            byte[] bytes = part.toByteArray();
+            String text = new String(
+                bytes,
+                0,
+                Math.min(bytes.length, 64),
+                StandardCharsets.UTF_8)
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
+            descriptions.add(bytes.length + ":" + text);
+        }
+        return descriptions.toString();
+    }
+
+    private static boolean isFrameworkErrorReply(List<Message> parts) {
+        return parts.size() >= 2
+            && FRAMEWORK_ERROR_REPLY_MARKER.equals(parts.get(0).toUtf8String());
+    }
+
+    private static String frameworkErrorReplyMessage(List<Message> parts) {
+        return parts.get(1).toUtf8String();
     }
 
     private static ParsedPacket parsePacket(List<Message> parts) {
@@ -4782,6 +4853,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         headerPart.actor(),
                         headerPart.sourceNodeRid(),
                         headerPart.sourceSessionRid());
+                    if (pendingHeader) {
+                        headerPart.close();
+                    }
+                    continue;
+                }
+                if (ZLinkActorSpotRoutePackets.SESSION_DISCONNECTED_PACKET_NAME.equals(packetHeader.packetName())) {
+                    notifySpotActorDisconnected(actor).toCompletableFuture().join();
                     if (pendingHeader) {
                         headerPart.close();
                     }

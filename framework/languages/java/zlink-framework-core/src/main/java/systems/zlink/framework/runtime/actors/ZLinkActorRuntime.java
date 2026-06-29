@@ -694,7 +694,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         return spotNode.destroyActor(actorRef, defaultRequestTimeout)
-            .thenCompose(ignored -> context.disconnectBoundSessionForDestroy())
+            .thenCompose(ignored -> context.disconnectBoundSessionForDestroy()
+                .exceptionally(error -> null))
             .thenRun(() -> {
                 synchronized (this) {
                     context.clearAfterDestroy();

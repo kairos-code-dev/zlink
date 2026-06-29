@@ -1,9 +1,14 @@
 package systems.zlink.framework.runtime.backend;
 
+import java.time.Duration;
 import java.util.List;
 
 public interface ZLinkBackendRegistry extends ZLinkBackendObject {
     void setId(int registryId);
+
+    void setHeartbeat(Duration interval, Duration timeout);
+
+    void setBroadcastInterval(Duration interval);
 
     void bind(String pubEndpoint, String routerEndpoint);
 

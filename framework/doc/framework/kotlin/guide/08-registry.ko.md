@@ -30,17 +30,27 @@ runtime을 직접 만들거나 `start` 함수로 시작하는 방법은 public c
 않는다.
 
 ```kotlin
+import java.time.Duration
+import org.springframework.context.annotation.Bean
+import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions
+
 @Bean
 fun zlinkEmbeddedRegistryOptions(): ZLinkEmbeddedRegistryOptions =
     ZLinkEmbeddedRegistryOptions().apply {
-        pubEndpoint = "tcp://0.0.0.0:5550"
-        routerEndpoint = "tcp://0.0.0.0:5551"
+        setPubEndpoint("tcp://0.0.0.0:5550")
+        setRouterEndpoint("tcp://0.0.0.0:5551")
+        setHeartbeatInterval(Duration.ofSeconds(5))  // provider heartbeat 확인 주기
+        setHeartbeatTimeout(Duration.ofSeconds(15))  // stale provider로 판단하는 시간
+        setBroadcastInterval(Duration.ofSeconds(30)) // peer registry로 service view를 보내는 주기
     }
 ```
 
 > 포트 관례: PUB=`5550`, ROUTER=`5551`. peer는 PUB을, query client/discovery는
 > ROUTER를 가리킨다(혼동 주의). embedded라도 `useDiscovery().addRegistryEndpoint(...)`가 같은 프로세스의
 > Registry를 자동으로 찾아주지 않는다. Discovery endpoint(`5551`)를 명시해야 한다.
+
+Kotlin framework는 Java framework option bean을 그대로 사용한다. 별도 Kotlin DSL 없이도
+같은 public setter로 heartbeat와 broadcast 주기를 조절할 수 있다.
 
 ## 3. 두 가지 배포 모델
 

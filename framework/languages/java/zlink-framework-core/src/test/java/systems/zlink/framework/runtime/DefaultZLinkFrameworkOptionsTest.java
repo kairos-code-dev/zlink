@@ -727,6 +727,18 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void streamNodeRejectsBlankTlsServerPaths() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        assertThrows(ZLinkConfigurationException.class, () ->
+            { var stream = options.addStreamNode("gateway"); stream.bind("tls://127.0.0.1:1");
+                stream.setTlsServer("", "server.key"); });
+        assertThrows(ZLinkConfigurationException.class, () ->
+            { var stream = options.addStreamNode("gateway2"); stream.bind("tls://127.0.0.1:2");
+                stream.setTlsServer("server.crt", ""); });
+    }
+
+    @Test
     void streamNodeWithRouterSpotNodeIsAccepted() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 

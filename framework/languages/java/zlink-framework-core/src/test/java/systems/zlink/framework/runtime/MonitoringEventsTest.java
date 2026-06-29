@@ -4,6 +4,7 @@ import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -245,6 +246,14 @@ final class MonitoringEventsTest {
 
         @Override
         public void setId(int registryId) {
+        }
+
+        @Override
+        public void setHeartbeat(Duration interval, Duration timeout) {
+        }
+
+        @Override
+        public void setBroadcastInterval(Duration interval) {
         }
 
         @Override

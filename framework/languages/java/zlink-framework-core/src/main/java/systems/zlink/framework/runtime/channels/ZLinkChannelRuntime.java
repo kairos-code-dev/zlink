@@ -2,6 +2,8 @@ package systems.zlink.framework.runtime.channels;
 
 import systems.zlink.framework.runtime.backend.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -28,7 +30,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.registry.ServiceRole;
-import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
@@ -80,6 +81,7 @@ import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 public final class ZLinkChannelRuntime
     implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, ZLinkChannelRuntimeOptions,
         AutoCloseable {
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
     private static final String SPOT_ROUTE_BRIDGE_SEND_PACKET_NAME =
         "__zlink.routed_spot.egress.send";
@@ -117,10 +119,13 @@ public final class ZLinkChannelRuntime
     private final Map<String, RouteInternalRequestHandler> routeInternalRequestHandlers = new HashMap<>();
     private record PendingRawSpotRouteBridgeReply(
         RoutingId expectedPeerRid,
+        List<byte[]> requestParts,
         CompletableFuture<List<Message>> reply) {
     }
 
     private final Map<String, ArrayDeque<PendingRawSpotRouteBridgeReply>> pendingRawSpotRouteBridgeReplies =
+        new HashMap<>();
+    private final Map<String, Map<RoutingId, Long>> recentlyCompletedRawSpotRouteBridgeReplies =
         new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> sendDispatchQueues = new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> requestDispatchQueues = new HashMap<>();
@@ -515,6 +520,22 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
+    public ZLinkSendCall sendToSpot(
+        String channelName,
+        RoutingId targetNode,
+        RoutingId targetSpot,
+        Object message) {
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, message);
+        return new RouteSpotSendCall(
+            channelName,
+            targetNode,
+            targetSpot,
+            encoded.payload(),
+            Optional.of(encoded.packetName()));
+    }
+
+    @Override
     public ZLinkRouteRequestCall requestTo(String channelName, RoutingId target, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
@@ -522,6 +543,23 @@ public final class ZLinkChannelRuntime
             channelName,
             requireRouteRouter(channelName),
             target,
+            encoded.payload(),
+            Optional.of(encoded.packetName()),
+            defaultRequestTimeout(channelName));
+    }
+
+    @Override
+    public ZLinkRouteRequestCall requestToSpot(
+        String channelName,
+        RoutingId targetNode,
+        RoutingId targetSpot,
+        Object message) {
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, message);
+        return new RouteSpotRequestCall(
+            channelName,
+            targetNode,
+            targetSpot,
             encoded.payload(),
             Optional.of(encoded.packetName()),
             defaultRequestTimeout(channelName));
@@ -628,8 +666,12 @@ public final class ZLinkChannelRuntime
         try {
             ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
             List<Message> bridgeParts = copyMessages(spotParts);
+            List<byte[]> requestPayloads = copyMessageBytes(spotParts);
             PendingRawSpotRouteBridgeReply pendingRawReply =
-                new PendingRawSpotRouteBridgeReply(targetNodeRid, result);
+                new PendingRawSpotRouteBridgeReply(
+                    targetNodeRid,
+                    requestPayloads,
+                    result);
             Object routeSocketLock = routeSocketLocks.getOrDefault(routerChannelId, this);
             try {
                 boolean submitted;
@@ -647,7 +689,17 @@ public final class ZLinkChannelRuntime
                                             "route mesh SPOT request failed: " + reply.result()));
                                         return;
                                     }
-                                    result.complete(copyMessages(reply.parts()));
+                                    if (sameMessageParts(requestPayloads, reply.parts())
+                                        || sameFirstMessagePart(requestPayloads, reply.parts())) {
+                                        return;
+                                    }
+                                    List<Message> copiedReply =
+                                        copySpotRouteBridgeReplyMessages(reply.parts());
+                                    if (sameFirstMessagePart(requestPayloads, copiedReply)) {
+                                        copiedReply.forEach(Message::close);
+                                        return;
+                                    }
+                                    result.complete(copiedReply);
                                 } catch (RuntimeException ex) {
                                     result.completeExceptionally(ex);
                                 } finally {
@@ -854,6 +906,20 @@ public final class ZLinkChannelRuntime
         ZLinkBackendReceived received) {
         try {
             ParsedPacket packet = parsePacket(received.parts());
+            if (isFrameworkErrorPacket(packet.packetName())) {
+                reportDispatchError(
+                    ZLinkDispatchErrorSurface.CHANNEL,
+                    received.requestSeq().isPresent()
+                        ? ZLinkDispatchMessageKind.REQUEST
+                        : ZLinkDispatchMessageKind.SEND,
+                    ZLinkDispatchErrorReason.HANDLER_MISSING,
+                    ZLinkDispatchErrorAction.DROP,
+                    packet.packetName(),
+                    channelName,
+                    received.routingId().map(RoutingId::toString).orElse(null),
+                    null);
+                return;
+            }
             ChannelRequestHandlerRegistration registration =
                 requestHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
             if (received.routingId().isEmpty()) {
@@ -1009,7 +1075,29 @@ public final class ZLinkChannelRuntime
                 .addLast(pending);
         }
         pending.reply().whenComplete((ignored, error) ->
-            removeRawSpotRouteBridgeReply(channelName, pending.reply()));
+            completeRawSpotRouteBridgeReply(channelName, pending));
+    }
+
+    private void completeRawSpotRouteBridgeReply(
+        String channelName,
+        PendingRawSpotRouteBridgeReply completed) {
+        synchronized (pendingRawSpotRouteBridgeReplies) {
+            ArrayDeque<PendingRawSpotRouteBridgeReply> queue =
+                pendingRawSpotRouteBridgeReplies.get(channelName);
+            if (queue != null) {
+                queue.removeIf(pending -> pending.reply() == completed.reply());
+                if (queue.isEmpty()) {
+                    pendingRawSpotRouteBridgeReplies.remove(channelName);
+                }
+            }
+            if (completed.expectedPeerRid() != null) {
+                recentlyCompletedRawSpotRouteBridgeReplies
+                    .computeIfAbsent(channelName, ignored -> new HashMap<>())
+                    .put(
+                        completed.expectedPeerRid(),
+                        System.nanoTime() + defaultRequestTimeout.toNanos());
+            }
+        }
     }
 
     private void removeRawSpotRouteBridgeReply(
@@ -1031,7 +1119,7 @@ public final class ZLinkChannelRuntime
     private boolean tryCompleteRawSpotRouteBridgeReply(
         String channelName,
         ZLinkBackendReceived received) {
-        if (received.requestSeq().isPresent() || received.routingId().isEmpty()) {
+        if (received.routingId().isEmpty()) {
             return false;
         }
         PendingRawSpotRouteBridgeReply pending;
@@ -1047,7 +1135,116 @@ public final class ZLinkChannelRuntime
             && !pending.expectedPeerRid().equals(received.routingId().get())) {
             return false;
         }
-        return pending.reply().complete(copyMessages(received.parts()));
+        if (sameMessageParts(pending.requestParts(), received.parts())
+            || sameFirstMessagePart(pending.requestParts(), received.parts())) {
+            return false;
+        }
+        if (isFrameworkErrorReply(received.parts())) {
+            pending.reply().completeExceptionally(new ZLinkFrameworkException(
+                frameworkErrorReplyMessage(received.parts())));
+            return true;
+        }
+        List<Message> copiedReply = copySpotRouteBridgeReplyMessages(received.parts());
+        if (sameFirstMessagePart(pending.requestParts(), copiedReply)) {
+            copiedReply.forEach(Message::close);
+            return false;
+        }
+        pending.reply().complete(copiedReply);
+        return true;
+    }
+
+    private static List<Message> copySpotRouteBridgeReplyMessages(List<Message> parts) {
+        int payloadOffset = 0;
+        if (looksLikeSpotRouteBridgePacket(parts)) {
+            payloadOffset = 1;
+        }
+        if (parts.size() - payloadOffset > 1) {
+            payloadOffset++;
+        }
+        if (payloadOffset > 0 && payloadOffset < parts.size()) {
+            return copyMessages(parts.subList(payloadOffset, parts.size()));
+        }
+        return copyMessages(parts);
+    }
+
+    private static List<byte[]> copyMessageBytes(List<Message> parts) {
+        return parts.stream()
+            .map(Message::toByteArray)
+            .toList();
+    }
+
+    private static boolean sameMessageParts(
+        List<byte[]> expected,
+        List<Message> actual) {
+        if (expected.size() != actual.size()) {
+            return false;
+        }
+        for (int i = 0; i < expected.size(); i++) {
+            if (!java.util.Arrays.equals(expected.get(i), actual.get(i).toByteArray())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameFirstMessagePart(
+        List<byte[]> expected,
+        List<Message> actual) {
+        if (expected.isEmpty() || actual.isEmpty()) {
+            return false;
+        }
+        return java.util.Arrays.equals(expected.get(0), actual.get(0).toByteArray());
+    }
+
+    private boolean hasPendingRawSpotRouteBridgeReply(
+        String channelName,
+        RoutingId peerRid) {
+        synchronized (pendingRawSpotRouteBridgeReplies) {
+            ArrayDeque<PendingRawSpotRouteBridgeReply> queue =
+                pendingRawSpotRouteBridgeReplies.get(channelName);
+            if (queue == null || queue.isEmpty()) {
+                return false;
+            }
+            PendingRawSpotRouteBridgeReply pending = queue.peekFirst();
+            return pending.expectedPeerRid() == null
+                || pending.expectedPeerRid().equals(peerRid);
+        }
+    }
+
+    private boolean discardRecentlyCompletedRawSpotRouteBridgeReply(
+        String channelName,
+        ZLinkBackendReceived received) {
+        if (received.routingId().isEmpty() || received.requestSeq().isEmpty()) {
+            return false;
+        }
+        RoutingId routingId = received.routingId().get();
+        long now = System.nanoTime();
+        synchronized (pendingRawSpotRouteBridgeReplies) {
+            Map<RoutingId, Long> recent =
+                recentlyCompletedRawSpotRouteBridgeReplies.get(channelName);
+            if (recent == null) {
+                return false;
+            }
+            recent.entrySet().removeIf(entry -> entry.getValue() < now);
+            Long deadline = recent.remove(routingId);
+            if (recent.isEmpty()) {
+                recentlyCompletedRawSpotRouteBridgeReplies.remove(channelName);
+            }
+            return deadline != null && deadline >= now;
+        }
+    }
+
+    private static boolean isFrameworkErrorReply(List<Message> parts) {
+        return parts.size() >= 2
+            && FRAMEWORK_ERROR_REPLY_MARKER.equals(parts.get(0).toUtf8String());
+    }
+
+    private static boolean isFrameworkErrorPacket(String packetName) {
+        return FRAMEWORK_ERROR_REPLY_MARKER.equals(packetName);
+    }
+
+    private static String frameworkErrorReplyMessage(List<Message> parts) {
+        return parts.get(1).toUtf8String();
     }
 
     private void startRouteLoop(String channelName, ZLinkBackendRouterSocket router) {
@@ -1094,6 +1291,9 @@ public final class ZLinkChannelRuntime
                 bridge.drain();
                 drainSpotRouteBridgeDispatch();
             } catch (RuntimeException ex) {
+                if (isNoDataReceive(ex)) {
+                    return;
+                }
                 if (running) {
                     reportDispatchError(
                         ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
@@ -1122,8 +1322,7 @@ public final class ZLinkChannelRuntime
         Throwable current = error;
         while (current != null) {
             if (current instanceof ZlinkRecvException ex) {
-                return ex.getResult() == RecvResult.NO_DATA
-                    || ex.getResult() == RecvResult.BUSY;
+                return true;
             }
             current = current.getCause();
         }
@@ -1142,6 +1341,20 @@ public final class ZLinkChannelRuntime
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
+            if (isFrameworkErrorPacket(packet.packetName())) {
+                reportDispatchError(
+                    ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                    received.requestSeq().isPresent()
+                        ? ZLinkDispatchMessageKind.REQUEST
+                        : ZLinkDispatchMessageKind.SEND,
+                    ZLinkDispatchErrorReason.HANDLER_MISSING,
+                    ZLinkDispatchErrorAction.DROP,
+                    packet.packetName(),
+                    channelName,
+                    received.routingId().map(RoutingId::toString).orElse(null),
+                    null);
+                return;
+            }
             ChannelRouteRequestHandlerRegistration registration =
                 routeRequestHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
             if (received.routingId().isEmpty()) {
@@ -1162,6 +1375,14 @@ public final class ZLinkChannelRuntime
                 return;
             }
             if (dispatchRouteInternalRequest(channelName, router, routingId, received.requestSeq().get(), packet)) {
+                return;
+            }
+            if (registration == null
+                && hasPendingRawSpotRouteBridgeReply(channelName, routingId)) {
+                return;
+            }
+            if (registration == null
+                && discardRecentlyCompletedRawSpotRouteBridgeReply(channelName, received)) {
                 return;
             }
             if (registration == null) {
@@ -2358,9 +2579,8 @@ public final class ZLinkChannelRuntime
                 "channel request failed: " + reply.result()));
             return;
         }
-        if (reply.parts().size() >= 2
-            && FRAMEWORK_ERROR_REPLY_MARKER.equals(reply.parts().get(0).toUtf8String())) {
-            String message = reply.parts().get(1).toUtf8String();
+        if (isFrameworkErrorReply(reply.parts())) {
+            String message = frameworkErrorReplyMessage(reply.parts());
             result.completeExceptionally(new ZLinkFrameworkException(
                 message));
             return;
@@ -2519,6 +2739,169 @@ public final class ZLinkChannelRuntime
                 requestParts.forEach(Message::close);
             }
             return result;
+        }
+    }
+
+    private final class RouteSpotSendCall implements ZLinkSendCall {
+        private final String channelName;
+        private final RoutingId targetNode;
+        private final RoutingId targetSpot;
+        private final Message payload;
+        private final Optional<String> packetName;
+
+        private RouteSpotSendCall(
+            String channelName,
+            RoutingId targetNode,
+            RoutingId targetSpot,
+            Message payload,
+            Optional<String> packetName) {
+            this.channelName = channelName;
+            this.targetNode = targetNode;
+            this.targetSpot = targetSpot;
+            this.payload = payload;
+            this.packetName = packetName;
+        }
+
+        @Override
+        public ZLinkSendCall packetName(String packetName) {
+            return new RouteSpotSendCall(
+                channelName,
+                targetNode,
+                targetSpot,
+                payload,
+                Optional.of(packetName));
+        }
+
+        @Override
+        public ZLinkSendCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public CompletionStage<Void> submit() {
+            List<Message> sendParts = parts(packetName, payload);
+            try {
+                return sendToSpotViaRouterChannel(
+                    channelName,
+                    targetNode,
+                    targetSpot,
+                    sendParts);
+            } finally {
+                sendParts.forEach(Message::close);
+            }
+        }
+    }
+
+    private final class RouteSpotRequestCall implements ZLinkRouteRequestCall {
+        private final String channelName;
+        private final RoutingId targetNode;
+        private final RoutingId targetSpot;
+        private final Message payload;
+        private final Optional<String> packetName;
+        private final Duration timeout;
+
+        private RouteSpotRequestCall(
+            String channelName,
+            RoutingId targetNode,
+            RoutingId targetSpot,
+            Message payload,
+            Optional<String> packetName,
+            Duration timeout) {
+            this.channelName = channelName;
+            this.targetNode = targetNode;
+            this.targetSpot = targetSpot;
+            this.payload = payload;
+            this.packetName = packetName;
+            this.timeout = timeout;
+        }
+
+        @Override
+        public ZLinkRouteRequestCall packetName(String packetName) {
+            return new RouteSpotRequestCall(
+                channelName,
+                targetNode,
+                targetSpot,
+                payload,
+                Optional.of(packetName),
+                timeout);
+        }
+
+        @Override
+        public ZLinkRouteRequestCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public ZLinkRouteRequestCall timeout(Duration timeout) {
+            return new RouteSpotRequestCall(
+                channelName,
+                targetNode,
+                targetSpot,
+                payload,
+                packetName,
+                timeout);
+        }
+
+        @Override
+        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
+            List<Message> requestParts = parts(packetName, payload);
+            try {
+                return requestToSpotViaRouterChannel(
+                    channelName,
+                    targetNode,
+                    targetSpot,
+                    requestParts,
+                    timeout)
+                    .thenApply(replyParts -> {
+                        try {
+                            return decodeRouteSpotReply(replyParts, replyType);
+                        } finally {
+                            replyParts.forEach(Message::close);
+                        }
+                    });
+            } finally {
+                requestParts.forEach(Message::close);
+            }
+        }
+
+        private <TReply> TReply decodeRouteSpotReply(
+            List<Message> replies,
+            Class<TReply> replyType) {
+            if (replies.isEmpty()) {
+                try (Message emptyReply = Message.from(new byte[0])) {
+                    return ZLinkMessagePayloads.deserialize(serializer, emptyReply, replyType);
+                }
+            }
+            RuntimeException lastError = null;
+            for (int index = replies.size() - 1; index >= 0; index--) {
+                Message reply = replies.get(index);
+                try {
+                    return ZLinkMessagePayloads.deserialize(serializer, reply, replyType);
+                } catch (RuntimeException directError) {
+                    lastError = directError;
+                    try {
+                        JsonNode root = JSON.readTree(reply.toByteArray());
+                        JsonNode ok = root.get("ok");
+                        JsonNode response = root.get("response");
+                        if (ok == null || !ok.asBoolean(false) || response == null) {
+                            continue;
+                        }
+                        try (Message responseMessage = Message.from(
+                            JSON.writeValueAsBytes(response))) {
+                            return ZLinkMessagePayloads.deserialize(
+                                serializer,
+                                responseMessage,
+                                replyType);
+                        }
+                    } catch (Exception envelopeError) {
+                        directError.addSuppressed(envelopeError);
+                    }
+                }
+            }
+            throw new ZLinkFrameworkException(
+                "route mesh SPOT reply decode failed; first reply frame="
+                    + replies.get(0).toUtf8String(),
+                lastError);
         }
     }
 

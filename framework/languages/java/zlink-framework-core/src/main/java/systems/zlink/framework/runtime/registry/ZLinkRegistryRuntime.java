@@ -40,6 +40,10 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
         if (options.registryId() != 0) {
             registry.setId(options.registryId());
         }
+        registry.setHeartbeat(
+            options.heartbeatInterval(),
+            options.heartbeatTimeout());
+        registry.setBroadcastInterval(options.broadcastInterval());
         registry.bind(options.pubEndpoint(), options.routerEndpoint());
         for (String peerPubEndpoint : options.peerPubEndpoints()) {
             registry.connectPeer(peerPubEndpoint, "");

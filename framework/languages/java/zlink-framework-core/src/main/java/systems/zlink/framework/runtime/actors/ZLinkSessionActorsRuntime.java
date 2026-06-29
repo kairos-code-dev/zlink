@@ -196,7 +196,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     0,
                     routeReady,
                     null,
-                    true);
+                    true,
+                    defaultCodec);
                 bound.add(actor);
                 return actor;
             });
@@ -245,7 +246,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     bindingToken,
                     routeReady,
                     localActorDispatcher,
-                    nativeSessionRelayAttached);
+                    nativeSessionRelayAttached,
+                    defaultCodec);
                 boundSession.setUnbindListener(() -> bound.remove(boundActor));
                 bound.add(boundActor);
                 return boundActor;
@@ -289,6 +291,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         private final Predicate<RoutingId> routeReady;
         private final LocalActorDispatcher localActorDispatcher;
         private final boolean nativeSessionRelayAttached;
+        private final ZLinkStreamCodec defaultCodec;
 
         BoundActor(
             ZLinkBackendStreamSocket stream,
@@ -300,7 +303,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             long bindingToken,
             Predicate<RoutingId> routeReady,
             LocalActorDispatcher localActorDispatcher,
-            boolean nativeSessionRelayAttached) {
+            boolean nativeSessionRelayAttached,
+            ZLinkStreamCodec defaultCodec) {
             this.stream = stream;
             this.sessionRid = sessionRid;
             this.ref = ref;
@@ -311,6 +315,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             this.routeReady = routeReady == null ? ignored -> true : routeReady;
             this.localActorDispatcher = localActorDispatcher;
             this.nativeSessionRelayAttached = nativeSessionRelayAttached;
+            this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
         }
 
         @Override
@@ -540,13 +545,29 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
 
         @Override
         public CompletionStage<Void> notifyDisconnected() {
-            return stream.unbindActor(sessionRid, ref.actorId())
-                .submit(Duration.ofSeconds(30))
-                .thenCompose(ignored -> managedActor
-                    .map(actor -> actors.clearSessionBinding(actor, bindingToken)
-                        ? actors.notifyDisconnected(actor)
-                        : CompletableFuture.<Void>completedFuture(null))
-                    .orElseGet(() -> CompletableFuture.completedFuture(null)));
+            CompletionStage<Void> notification = managedActor
+                .map(actor -> actors.clearSessionBinding(actor, bindingToken)
+                    ? actors.notifyDisconnected(actor)
+                    : CompletableFuture.<Void>completedFuture(null))
+                .orElseGet(this::notifyRemoteDisconnected);
+            return notification.thenCompose(ignored -> stream.unbindActor(sessionRid, ref.actorId())
+                .submit(Duration.ofSeconds(30)));
+        }
+
+        private CompletionStage<Void> notifyRemoteDisconnected() {
+            if (!nativeSessionRelayAttached) {
+                return CompletableFuture.completedFuture(null);
+            }
+            ZLinkStreamHeader header = new ZLinkStreamHeader(
+                ZLinkStreamMessageKind.SEND,
+                defaultCodec,
+                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                Optional.empty(),
+                ZLinkActorSpotRoutePackets.SESSION_DISCONNECTED_PACKET_NAME,
+                Map.of());
+            return awaitRouteReady()
+                .thenCompose(ignored -> ensureNativeBinding())
+                .thenCompose(ignored -> relayWithRetry(header, new byte[0]));
         }
     }
 

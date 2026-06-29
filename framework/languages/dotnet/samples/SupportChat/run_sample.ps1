@@ -52,7 +52,8 @@ try {
     Wait-SampleTcpEndpoint "session-router" $env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "session-stream" $env:SUPPORTCHAT_STREAM_ENDPOINT
 
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Probe/SupportChat.Probe.csproj") -Arguments @("--registry-endpoint", $env:SUPPORTCHAT_REGISTRY_ROUTER_ENDPOINT, "--timeout-seconds", "10")
+    $startupDelaySeconds = if ($env:SUPPORTCHAT_STARTUP_DELAY_SECONDS) { [double]$env:SUPPORTCHAT_STARTUP_DELAY_SECONDS } else { 3.0 }
+    Start-Sleep -Seconds $startupDelaySeconds
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/SupportChat.Client.csproj") -Arguments @("--stream-endpoint", $env:SUPPORTCHAT_STREAM_ENDPOINT)
 
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "support conversation: created"

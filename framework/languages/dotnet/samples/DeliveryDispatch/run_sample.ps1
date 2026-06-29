@@ -58,7 +58,8 @@ try {
     Start-SampleDotnetAssembly -Name "dispatch-api" -Project (Join-Path $ScriptDir "Server/DispatchApi/DeliveryDispatch.Server.DispatchApi.csproj") -LogDirectory $LogDir | Out-Null
     Wait-SampleHttpHealth "dispatch-api" $env:DELIVERYDISPATCH_API_HTTP
 
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Probe/DeliveryDispatch.Probe.csproj") -Arguments @("--registry-endpoint", $env:DELIVERYDISPATCH_REGISTRY, "--timeout-seconds", "10")
+    $startupDelaySeconds = if ($env:DELIVERYDISPATCH_STARTUP_DELAY_SECONDS) { [double]$env:DELIVERYDISPATCH_STARTUP_DELAY_SECONDS } else { 3.0 }
+    Start-Sleep -Seconds $startupDelaySeconds
 
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/DeliveryDispatch.Client.csproj") -Arguments @("--api-url", $env:DELIVERYDISPATCH_API_HTTP, "--stream-endpoint", $env:DELIVERYDISPATCH_SESSION_STREAM)
 

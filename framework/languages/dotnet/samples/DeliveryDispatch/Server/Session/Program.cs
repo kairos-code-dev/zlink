@@ -1,60 +1,12 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Server.Session;
-using DeliveryDispatch.Shared.Contracts;
-using Zlink.Framework.Contracts.Codecs.Json;
-using Zlink.Framework.Contracts.Dispatch;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Zlink.Framework.AspNetCore;
 
-var topology = SampleTopology.Create();
-var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddSingleton(topology);
-builder.Services.AddSingleton<CustomerSessionDirectory>();
-builder.Services.AddZLinkFramework(options =>
+internal static class Program
 {
-    options.ConfigureDispatch()
-        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-        .TraceLogFile(SampleFlowLog.Path("session"))
-        .TraceLabel("session");
-    options.AddHandlersFromAssemblyOf(typeof(CustomerSession));
-    options.Codecs.AddJson();
-    options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
+    private static async Task Main()
     {
-        var channel = options.AddClientServerChannel(SampleNames.TrackingRouteChannel);
-        channel.EnableClient();
-
+        var topology = SampleTopology.Create();
+        await SessionServerHostFactory.Build(topology).RunAsync();
     }
-    {
-        var channel = options.AddFanoutChannel(SampleNames.StatusFanoutChannel);
-        channel.EnableSubscriber();
-        channel.AddPublishHandler<DeliveryStatusFanoutHandler, DeliveryStatusNotify>();
-
-    }
-    {
-        var mesh = options.AddSpotMesh(SampleNames.DeliverySpotDiscovery);
-        mesh.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-        {
-            var spot = mesh;
-            {
-                var router = spot.EnableRouter(topology.SessionSpotRouterEndpoint);
-                router.SetRoutingId(topology.SessionSpotNodeRid);
-
-            }
-            {
-                var pubsub = spot.EnablePubSub(topology.SessionSpotEndpoint);
-
-            }
-
-        }
-
-    }
-    {
-        var stream = options.AddStreamNode(SampleNames.CustomerStreamNode);
-        stream.Bind(topology.SessionStreamEndpoint);
-        stream.RegisterSession<CustomerSession>();
-
-    }
-});
-
-await builder.Build().RunAsync();
+}

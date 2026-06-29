@@ -25,8 +25,8 @@
 ./framework/languages/dotnet/samples/run_samples.sh
 ```
 
-러너는 서버 역할을 별도 프로세스로 시작하고, registry readiness와 Tracking channel
-active probe를 확인한 뒤 client scenario를 실행한다.
+러너는 서버 역할을 별도 프로세스로 시작하고, 포트와 HTTP health를 확인한 뒤 짧은
+startup delay를 두고 client scenario를 실행한다.
 
 ## 왜 실시간성이 중요한가
 

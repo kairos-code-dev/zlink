@@ -177,9 +177,7 @@ wait_port dispatch-center "${DELIVERYDISPATCH_CENTER_ROUTE}"
 start_server dispatch-api "${SCRIPT_DIR}/Server/DispatchApi/DeliveryDispatch.Server.DispatchApi.csproj"
 wait_http dispatch-api "${DELIVERYDISPATCH_API_HTTP}"
 
-dotnet run --no-build --project "${SCRIPT_DIR}/Probe/DeliveryDispatch.Probe.csproj" -- \
-  --registry-endpoint "${DELIVERYDISPATCH_REGISTRY}" \
-  --timeout-seconds 10
+sleep "${DELIVERYDISPATCH_STARTUP_DELAY_SECONDS:-3}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \
   --api-url "${DELIVERYDISPATCH_API_HTTP}" \

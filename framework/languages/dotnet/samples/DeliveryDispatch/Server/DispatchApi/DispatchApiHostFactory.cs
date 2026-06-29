@@ -1,0 +1,99 @@
+using DeliveryDispatch.Server.Configuration;
+using DeliveryDispatch.Shared.Contracts;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Dispatch;
+
+namespace DeliveryDispatch.Server.DispatchApi;
+
+public static class DispatchApiHostFactory
+{
+    public static WebApplication Build(SampleTopology topology)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls(topology.DispatchApiHttpUrl);
+        builder.Services.AddSingleton(topology);
+        builder.Services.AddSingleton<EvidenceStore>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.ConfigureDispatch()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path("dispatch-api"))
+                .TraceLabel("dispatch-api");
+            options.Codecs.AddJson();
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
+            options.AddClientServerChannel(SampleNames.DispatchRouteChannel)
+                .EnableClient();
+        });
+
+        var app = builder.Build();
+        app.MapGet("/health", () => Results.Ok(new { ready = true, role = "dispatch-api" }));
+        app.MapPost("/deliveries", async (
+            CreateDeliveryRequest request,
+            IZLinkChannelClient channels,
+            CancellationToken cancellationToken) =>
+        {
+            var assign = new AssignDelivery(
+                request.DeliveryId,
+                request.CustomerId,
+                request.PickupAddress,
+                request.DropoffAddress);
+            var assigned = await RequestDispatchAsync(channels, assign, cancellationToken);
+            Console.Error.WriteLine($"deliverydispatch api: created delivery={assigned.DeliveryId} courier={assigned.CourierId}");
+            return Results.Ok(new DeliveryCreated(assigned.DeliveryId));
+        });
+        app.MapPost("/self-check/assert", (
+            ServerAssertionReq request,
+            EvidenceStore evidence) =>
+        {
+            var success = evidence.HasSequence(
+                request.SuccessfulDeliveryId,
+                DeliveryStatus.Assigned,
+                DeliveryStatus.Accepted,
+                DeliveryStatus.PickedUp,
+                DeliveryStatus.Delivered);
+            var reassigned = evidence.HasSequence(
+                request.ReassignedDeliveryId,
+                DeliveryStatus.Assigned,
+                DeliveryStatus.Reassigned,
+                DeliveryStatus.Accepted,
+                DeliveryStatus.PickedUp,
+                DeliveryStatus.Delivered);
+            var lines = evidence.ReadLines();
+            return Results.Ok(new ServerAssertionRes(success && reassigned, lines));
+        });
+
+        return app;
+    }
+
+    private static async ValueTask<AssignDeliveryResult> RequestDispatchAsync(
+        IZLinkChannelClient channels,
+        AssignDelivery request,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastError = null;
+        for (var attempt = 1; attempt <= 40; attempt++)
+        {
+            try
+            {
+                return await channels.RequestToChannel(
+                        SampleNames.DispatchRouteChannel,
+                        request)
+                    .Async<AssignDeliveryResult>(cancellationToken);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                lastError = error;
+                await Task.Delay(250, cancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"DispatchCenter route was not ready for delivery '{request.DeliveryId}'.",
+            lastError);
+    }
+}

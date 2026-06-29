@@ -1,5 +1,4 @@
 using DeliveryDispatch.Shared.Contracts;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 
 namespace DeliveryDispatch.Server.Courier;

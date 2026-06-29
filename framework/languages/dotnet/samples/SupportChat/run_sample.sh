@@ -154,9 +154,7 @@ wait_port session-route "${SUPPORTCHAT_SESSION_SPOT_ENDPOINT}"
 wait_port session-router "${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT}"
 wait_port session-stream "${SUPPORTCHAT_STREAM_ENDPOINT}"
 
-dotnet run --no-build --project "${SCRIPT_DIR}/Probe/SupportChat.Probe.csproj" -- \
-  --registry-endpoint "${SUPPORTCHAT_REGISTRY_ROUTER_ENDPOINT}" \
-  --timeout-seconds 10
+sleep "${SUPPORTCHAT_STARTUP_DELAY_SECONDS:-3}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/SupportChat.Client.csproj" -- \
   --stream-endpoint "${SUPPORTCHAT_STREAM_ENDPOINT}"

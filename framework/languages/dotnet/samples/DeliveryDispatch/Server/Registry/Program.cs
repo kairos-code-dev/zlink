@@ -1,13 +1,12 @@
 using DeliveryDispatch.Server.Configuration;
+using DeliveryDispatch.Server.Registry;
 using Microsoft.Extensions.Hosting;
-using Zlink.Framework.AspNetCore;
 
-var topology = SampleTopology.Create();
-var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddZLinkRegistry(options =>
+internal static class Program
 {
-    options.PubEndpoint = topology.RegistryPubEndpoint;
-    options.RouterEndpoint = topology.RegistryRouterEndpoint;
-});
-
-await builder.Build().RunAsync();
+    private static async Task Main()
+    {
+        var topology = SampleTopology.Create();
+        await RegistryHostFactory.Build(topology).RunAsync();
+    }
+}

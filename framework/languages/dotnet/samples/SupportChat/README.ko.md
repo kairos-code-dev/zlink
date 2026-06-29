@@ -22,7 +22,6 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 
 - `Shared/`는 대화, 메시지, 알림 계약을 담는다.
 - `Client/`는 고객과 상담원 흐름을 self-check로 검증한다.
-- `Probe/`는 registry와 stream endpoint readiness를 확인한다.
 - `Server/Api/`는 외부 요청을 받고 support 역할로 전달한다.
 - `Server/Session/`은 stream session과 client push를 담당한다.
 - `Server/Support/`는 대화 actor, 상담원 배정, 메시지 상태를 관리한다.

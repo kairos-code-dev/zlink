@@ -7,6 +7,7 @@ event 를 framework event 로 바꾸고, registry 와 Spot 은 snapshot diff 로
 ## 1. event handler
 
 ```ts
+@zlinkRuntimeEventHandler()
 export class RegistryMonitor
   implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
   async handle(event: ZLinkRegistryEvent) {

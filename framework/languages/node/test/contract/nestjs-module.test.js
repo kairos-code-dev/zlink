@@ -73,9 +73,79 @@ test('ZLinkModule.forRoot registers always-available providers for empty options
   assert.equal(tokens.has(nestjs.ZLINK_ROUTE_CLIENT), true);
   assert.equal(tokens.has(nestjs.ZLINK_FANOUT_CLIENT), true);
   assert.equal(tokens.has(nestjs.ZLINK_BOUND_SESSION_FACTORY), true);
+  assert.equal(tokens.has(nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER), true);
   assert.equal(tokens.has(nestjs.ZLINK_MESSAGE_METADATA_POLICY), true);
   assert.equal(tokens.has(nestjs.ZLINK_SPOT_MANAGER), false);
   assert.equal(tokens.has(nestjs.ZLINK_ACTOR_MANAGER), false);
+});
+
+test('ZLinkMonitoringModule.forRoot exposes runtime event publisher provider path', () => {
+  const module = nestjs.ZLinkMonitoringModule.forRoot();
+  const tokens = providerTokens(module);
+
+  assert.equal(tokens.has(nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER), true);
+});
+
+test('ZLinkMonitoringModule.forRoot resolves publisher from framework runtime provider', () => {
+  const module = nestjs.ZLinkMonitoringModule.forRoot();
+  const provider = module.providers.find((candidate) => candidate.provide === nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER);
+  const runtime = {
+    eventPublisher: {
+      register() {},
+      async publish() {}
+    }
+  };
+  const publisher = provider.useFactory({
+    get(token, options) {
+      assert.equal(token, nestjs.ZLINK_FRAMEWORK_RUNTIME);
+      assert.deepEqual(options, { strict: false });
+      return runtime;
+    }
+  });
+
+  assert.equal(publisher, runtime.eventPublisher);
+});
+
+test('ZLinkModule lifecycle registers decorated runtime event handlers with the runtime publisher', async () => {
+  const events = [];
+  class TimerFailureMonitor {
+    async handle(event) {
+      events.push(event);
+    }
+  }
+  nestjs.zlinkRuntimeEventHandler()(TimerFailureMonitor);
+
+  class AppModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot()],
+    providers: [TimerFailureMonitor]
+  })(AppModule);
+
+  const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
+  try {
+    const publisher = app.get(nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER);
+    await publisher.publish({
+      sourceName: 'stage-node',
+      timestamp: new Date(),
+      event: framework.ZLinkSpotEventKind.TimerHandlerFailed,
+      timerDiagnostic: {
+        spotRid: 'stage-node',
+        isEntrySpot: true,
+        timerName: 'idle',
+        handlerType: 'IdleTimerHandler',
+        deliveryIndex: 1n,
+        scheduledIndex: 1n,
+        exceptionType: 'Error',
+        exceptionMessage: 'timer failed'
+      }
+    });
+  } finally {
+    await app.close();
+  }
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].event, framework.ZLinkSpotEventKind.TimerHandlerFailed);
+  assert.equal(events[0].timerDiagnostic.timerName, 'idle');
 });
 
 test('ZLinkModule.forRoot exposes capability providers only when registration enables them', async () => {

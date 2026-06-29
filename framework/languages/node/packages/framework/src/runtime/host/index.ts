@@ -3,6 +3,8 @@ import type {
   ZLinkBackendActorRef,
   ZLinkBackendAdapterFactory,
   ZLinkBackendContext,
+  ZLinkBackendSocketMonitor,
+  ZLinkMonitoringBackendAdapter,
   ZLinkBackendSpotNode
 } from '../backend';
 import type { ZLinkFrameworkRegistration } from '../configuration';
@@ -14,7 +16,9 @@ import type {
   ZLinkBoundSession,
   ZLinkBoundSessionSendCall,
   ZLinkProviderResolver,
+  ZLinkRegistryQuery,
   ZLinkRouteRequestContext,
+  ZLinkRuntimeEventPublisher,
   ZLinkSessionActor,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
@@ -38,6 +42,10 @@ import {
 } from '../execution';
 import {
   createDiagnosticsContext,
+  DefaultZLinkRuntimeEventPublisher,
+  ZLinkRegistryMonitoringSource,
+  ZLinkSocketMonitoringSource,
+  ZLinkSpotMonitoringSource,
   type ZLinkMessageFlowModeCell
 } from '../diagnostics';
 import { DefaultZLinkSpotManager, ZLinkRuntimeSpotPublisherTransport, ZLinkSpotNodeRuntimeManager } from '../spots';
@@ -81,6 +89,8 @@ export interface ZLinkFrameworkRuntimeHostOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly lifecycleSink?: string[];
   readonly providerResolver?: ZLinkProviderResolver;
+  readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
+  readonly monitoringRegistryQueries?: ReadonlyMap<string, ZLinkRegistryQuery>;
 }
 
 export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMessageFlowControl {
@@ -90,8 +100,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private channelRuntime?: ZLinkChannelRuntimeManager;
   private spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   private streamRuntime?: ZLinkStreamRuntimeManager;
+  private monitoringRuntime?: ZLinkMonitoringRuntime;
   private actorManager?: DefaultZLinkActorManager;
   private spotManager?: DefaultZLinkSpotManager;
+  private readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   // Shared, runtime-mutable message-flow mode cell — installed once so
   // setMessageFlowMode flips every surface live. Seeded from config at start().
   private readonly messageFlowModeCell: ZLinkMessageFlowModeCell = {
@@ -112,6 +124,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   constructor(readonly options: ZLinkFrameworkRuntimeHostOptions, internalOptions?: unknown) {
     this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
     this.lifecycleSink = options.lifecycleSink;
+    this.runtimeEventPublisher = options.runtimeEventPublisher ?? new DefaultZLinkRuntimeEventPublisher();
     this.streamBindingRuntime = new ZLinkStreamBindingRuntime({
       streamPayloadCodec: resolveStreamPayloadCodec(options.registration),
       streamCompression: options.registration.streamCompression,
@@ -125,6 +138,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
 
   get isStarted(): boolean {
     return this.state !== undefined;
+  }
+
+  get eventPublisher(): ZLinkRuntimeEventPublisher {
+    return this.runtimeEventPublisher;
   }
 
   /**
@@ -214,6 +231,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         spotPublisherClient: new DefaultZLinkSpotPublisherClient(this.options.registration, this.spotPublisherTransport),
         providerResolver: this.options.providerResolver,
         dispatchErrors,
+        runtimeEventPublisher: this.runtimeEventPublisher,
         messageSerializers: this.options.registration.messageSerializers,
         actorResolver: (actorId) => this.actorManager?.getState(actorId)?.actor,
         entryActorCommitter: (actor) => {
@@ -277,9 +295,21 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       });
       streamRuntime.start();
       this.streamRuntime = streamRuntime;
+      if (this.options.registration.monitoring !== undefined) {
+        this.monitoringRuntime = new ZLinkMonitoringRuntime({
+          registration: this.options.registration,
+          channelRuntime,
+          spotNodes: spotNodeRuntime.nodesByName,
+          registryQueries: this.options.monitoringRegistryQueries,
+          monitoringAdapter: this.backendAdapterFactory.createMonitoringAdapter(),
+          publisher: this.runtimeEventPublisher
+        });
+        this.monitoringRuntime.start(this.state);
+      }
       this.lifecycleSink?.push('framework:started');
     } catch (error) {
       await Promise.allSettled([
+        this.monitoringRuntime?.dispose(),
         streamRuntime?.dispose(),
         spotNodeRuntime?.dispose(),
         channelRuntime?.dispose(),
@@ -298,14 +328,17 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     const channelRuntime = this.channelRuntime;
     const spotNodeRuntime = this.spotNodeRuntime;
     const streamRuntime = this.streamRuntime;
+    const monitoringRuntime = this.monitoringRuntime;
     this.state = undefined;
     this.channelRuntime = undefined;
     this.spotNodeRuntime = undefined;
     this.streamRuntime = undefined;
+    this.monitoringRuntime = undefined;
     this.lifecycleSink?.push('framework:stop');
     state.abortController.abort();
     await Promise.allSettled(state.listenerTasks);
     await new Promise<void>((resolve) => setImmediate(resolve));
+    await monitoringRuntime?.dispose();
     await streamRuntime?.dispose();
     await spotNodeRuntime?.dispose();
     await channelRuntime?.dispose();
@@ -396,6 +429,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.channelTransport),
       spotPublisherClient: new DefaultZLinkSpotPublisherClient(this.options.registration, this.spotPublisherTransport),
       messageSerializers: this.options.registration.messageSerializers,
+      runtimeEventPublisher: this.runtimeEventPublisher,
       createNativeSpot: (spotRid: RoutingId) => this.spotNodeRuntime?.primaryNode?.getOrCreateSpot(spotRid).spot,
       nativeSpotNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       actorResolver: (actorId: string) => this.actorManager?.getState(actorId)?.actor,
@@ -1334,6 +1368,83 @@ class ZLinkLazyNativeJoinCoordinator implements ZLinkActorJoinCoordinator {
     })
       .joinEntrySpot(actor, state, nodeRid, request, timeoutMs, signal);
   }
+}
+
+interface ZLinkMonitoringRuntimeOptions {
+  readonly registration: ZLinkFrameworkRegistration;
+  readonly channelRuntime: ZLinkChannelRuntimeManager;
+  readonly spotNodes: ReadonlyMap<string, ZLinkBackendSpotNode>;
+  readonly registryQueries?: ReadonlyMap<string, ZLinkRegistryQuery>;
+  readonly monitoringAdapter: ZLinkMonitoringBackendAdapter;
+  readonly publisher: ZLinkRuntimeEventPublisher;
+}
+
+class ZLinkMonitoringRuntime {
+  private readonly monitors: ZLinkBackendSocketMonitor[] = [];
+
+  constructor(private readonly options: ZLinkMonitoringRuntimeOptions) {}
+
+  start(state: ZLinkFrameworkRuntimeState): void {
+    const monitoring = this.options.registration.monitoring;
+    if (monitoring === undefined) {
+      return;
+    }
+    for (const registration of monitoring.socket ?? []) {
+      const monitor = this.options.channelRuntime.openMonitoringSource(registration.sourceName, this.options.monitoringAdapter);
+      this.monitors.push(monitor);
+      new ZLinkSocketMonitoringSource(registration, monitor, this.options.publisher).start();
+    }
+    for (const registration of monitoring.registry ?? []) {
+      const query = this.options.registryQueries?.get(registration.sourceName)
+        ?? this.options.registryQueries?.values().next().value;
+      if (query === undefined) {
+        throw new Error(`Monitoring registry source '${registration.sourceName}' does not have a registered query provider.`);
+      }
+      const source = new ZLinkRegistryMonitoringSource(registration, query, this.options.publisher);
+      state.listenerTasks.push(state.taskRunner.run(
+        `monitoring:registry:${registration.sourceName}`,
+        (signal) => runPollingMonitoringSource(registration.intervalMs, signal, () => source.pollOnce(signal))
+      ));
+    }
+    for (const registration of monitoring.spot ?? []) {
+      const spotNode = this.options.spotNodes.get(registration.sourceName);
+      if (spotNode === undefined) {
+        throw new Error(`Monitoring spot source '${registration.sourceName}' is not registered.`);
+      }
+      const source = new ZLinkSpotMonitoringSource(registration, spotNode, this.options.publisher);
+      state.listenerTasks.push(state.taskRunner.run(
+        `monitoring:spot:${registration.sourceName}`,
+        (signal) => runPollingMonitoringSource(registration.intervalMs, signal, () => source.pollOnce())
+      ));
+    }
+  }
+
+  async dispose(): Promise<void> {
+    const monitors = [...this.monitors];
+    this.monitors.length = 0;
+    await Promise.allSettled(monitors.reverse().map((monitor) => monitor.dispose()));
+  }
+}
+
+async function runPollingMonitoringSource(
+  intervalMs: number,
+  signal: AbortSignal,
+  pollOnce: () => Promise<void>
+): Promise<void> {
+  while (!signal.aborted) {
+    await pollOnce();
+    await delayMonitoringPoll(intervalMs, signal);
+  }
+}
+
+function delayMonitoringPoll(intervalMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(resolve, intervalMs);
+    signal.addEventListener('abort', () => {
+      clearTimeout(timeout);
+      resolve();
+    }, { once: true });
+  });
 }
 
 function resolveBackendAdapterFactory(internalOptions: unknown): ZLinkBackendAdapterFactory {

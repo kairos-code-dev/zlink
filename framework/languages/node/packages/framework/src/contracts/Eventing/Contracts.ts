@@ -36,6 +36,7 @@ export interface ZLinkRuntimeEventHandler<TEvent extends ZLinkRuntimeEvent> {
 }
 
 export interface ZLinkRuntimeEventPublisher {
+  register<TEvent extends ZLinkRuntimeEvent>(handler: ZLinkRuntimeEventHandler<TEvent>): void;
   publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): Promise<void>;
 }
 

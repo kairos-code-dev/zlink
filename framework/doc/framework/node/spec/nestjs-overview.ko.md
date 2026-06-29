@@ -138,7 +138,7 @@ export class PricingModule {}
 |------|------|------|
 | `services.AddZLinkRegistry(reg => ...)` | `ZLinkRegistryModule.forRoot(options)` / `forRootFactory(...)` | embedded Registry 를 bind·구동하고 `ZLINK_REGISTRY_QUERY` provider 노출 |
 | `services.AddZLinkRegistryQueryClient(c => ...)` | `ZLinkRegistryQueryClientModule.forRoot(options)` / `forRootFactory(...)` | 원격 Registry 에 connect 해 topology 조회만 하는 client(`ZLINK_REGISTRY_QUERY_CLIENT`) |
-| `services.AddZLinkMonitoring(m => ...)` | `ZLinkMonitoringOptions`(별도 NestJS module 미구현) | runtime/registry/spot/socket 이벤트 source([nestjs-monitoring](nestjs-monitoring.ko.md)) |
+| `services.AddZLinkMonitoring(m => ...)` | `ZLinkMonitoringOptions` + `ZLinkMonitoringModule.forRoot()` | runtime/registry/spot/socket 이벤트 source([nestjs-monitoring](nestjs-monitoring.ko.md)) |
 
 ```ts
 // node — embedded Registry

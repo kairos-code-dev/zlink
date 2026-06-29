@@ -40,7 +40,11 @@ import type {
   ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotActorRequestHandlerRegistration,
   ZLinkRegistryOptions,
+  ZLinkRegistryQuery,
   ZLinkRegistryQueryClientOptions,
+  ZLinkRuntimeEvent,
+  ZLinkRuntimeEventHandler,
+  ZLinkRuntimeEventPublisher,
   ZLinkSpotNodeRegistrationOptions,
   ZLinkSpotNodeOptions,
   ZLinkSpotRemoteAddressResolver,
@@ -66,6 +70,7 @@ interface FrameworkRuntimeHost {
     create(actorId: string): unknown;
   };
   readonly isStarted: boolean;
+  readonly eventPublisher: ZLinkRuntimeEventPublisher;
   start(): Promise<void>;
   stop(): Promise<void>;
   onApplicationBootstrap(): Promise<void>;
@@ -97,6 +102,7 @@ interface FrameworkModule {
   readonly ZLinkFrameworkRuntimeHost: new (options: {
     readonly registration: ZLinkFrameworkRegistration;
     readonly providerResolver?: ZLinkProviderResolver;
+    readonly monitoringRegistryQueries?: ReadonlyMap<string, ZLinkRegistryQuery>;
   }) => FrameworkRuntimeHost;
   readonly DefaultZLinkChannelClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
   readonly DefaultZLinkFanoutClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
@@ -356,6 +362,7 @@ export const ZLINK_SPOT_OUTBOUND = Symbol.for('@zlink-systems/framework:spot-out
 export const ZLINK_SPOT_PUBLISHER_CLIENT = Symbol.for('@zlink-systems/framework:spot-publisher-client');
 export const ZLINK_ACTOR_MANAGER = Symbol.for('@zlink-systems/framework:actor-manager');
 export const ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER = Symbol.for('@zlink-systems/framework:spot-remote-address-resolver');
+export const ZLINK_RUNTIME_EVENT_PUBLISHER = Symbol.for('@zlink-systems/framework:runtime-event-publisher');
 const ZLINK_REGISTRY_RUNTIME = Symbol.for('@zlink-systems/framework:registry-runtime');
 export const ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-query');
 export const ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:registry-query-client');
@@ -364,6 +371,8 @@ const nestHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestHandlerMet
 const nestSpotActorHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotActorHandlerMetadata[]>();
 const nestSpotTimerHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotTimerHandlerMetadata[]>();
 const nestSpotTimerHandlerTokens = new Set<unknown>();
+const nestRuntimeEventHandlerTokens = new Set<unknown>();
+const registeredRuntimeEventHandlers = new WeakMap<ZLinkRuntimeEventPublisher, WeakSet<object>>();
 
 export function zlinkFramework(): ZLinkNestFrameworkOptionsBuilder {
   return new DefaultZLinkNestFrameworkOptionsBuilder();
@@ -391,6 +400,13 @@ export function zlinkPublishHandler(
   options: ZLinkNestHandlerOptions = {}
 ): ClassDecorator {
   return zlinkHandler(groupName, 'publish', packetName, options);
+}
+
+export function zlinkRuntimeEventHandler(): ClassDecorator {
+  return (target: Function) => {
+    Injectable()(target as Type);
+    nestRuntimeEventHandlerTokens.add(target);
+  };
 }
 
 export function zlinkDiscoverProviders(
@@ -1258,6 +1274,23 @@ export class ZLinkRegistryQueryClientModule implements OnModuleDestroy {
           new framework.DefaultZLinkRegistryQueryClient({ registration: await options.useFactory(...args) })
       }],
       exports: [ZLINK_REGISTRY_QUERY_CLIENT]
+    };
+  }
+}
+
+@Module({})
+export class ZLinkMonitoringModule {
+  static forRoot(): DynamicModule {
+    return {
+      module: ZLinkMonitoringModule,
+      imports: [DiscoveryModule],
+      providers: [{
+        provide: ZLINK_RUNTIME_EVENT_PUBLISHER,
+        inject: [ModuleRef],
+        useFactory: (moduleRef: ModuleRef) =>
+          (moduleRef.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as FrameworkRuntimeHost).eventPublisher
+      }],
+      exports: [ZLINK_RUNTIME_EVENT_PUBLISHER]
     };
   }
 }
@@ -2243,6 +2276,10 @@ const ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS: readonly AlwaysAvailableClientProv
   {
     token: ZLINK_BOUND_SESSION_FACTORY,
     create: (_registration, runtime) => runtime.boundSessionFactory
+  },
+  {
+    token: ZLINK_RUNTIME_EVENT_PUBLISHER,
+    create: (_registration, runtime) => runtime.eventPublisher
   }
 ];
 
@@ -2280,6 +2317,7 @@ function alwaysAvailableClientTokens(): InjectionToken[] {
     ZLINK_ROUTE_CLIENT,
     ZLINK_FANOUT_CLIENT,
     ZLINK_BOUND_SESSION_FACTORY,
+    ZLINK_RUNTIME_EVENT_PUBLISHER,
     ZLINK_MESSAGE_METADATA_POLICY
   ];
 }
@@ -2439,12 +2477,14 @@ function createRuntimeHost(
 ): RuntimeHostWithNestLifecycle {
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration,
-    providerResolver: createProviderResolver(moduleRef, discovery)
+    providerResolver: createProviderResolver(moduleRef, discovery),
+    monitoringRegistryQueries: resolveMonitoringRegistryQueries(registration, moduleRef)
   }) as RuntimeHostWithNestLifecycle;
   runtime.onModuleInit = async () => {
     const embeddedRegistryRuntime = resolveEmbeddedRegistryRuntime(moduleRef);
     suppressEmbeddedRegistryLifecycle(embeddedRegistryRuntime);
     await embeddedRegistryRuntime?.start();
+    registerDiscoveredRuntimeEventHandlers(runtime.eventPublisher, discovery);
     await runtime.start();
   };
   runtime.onModuleDestroy = async () => {
@@ -2462,6 +2502,60 @@ function resolveEmbeddedRegistryRuntime(moduleRef: ModuleRef): RegistryRuntime |
   } catch {
     return undefined;
   }
+}
+
+function resolveMonitoringRegistryQueries(
+  registration: ZLinkFrameworkRegistration,
+  moduleRef: ModuleRef
+): ReadonlyMap<string, ZLinkRegistryQuery> | undefined {
+  if ((registration.monitoring?.registry ?? []).length === 0) {
+    return undefined;
+  }
+  let query: ZLinkRegistryQuery | undefined;
+  try {
+    query = moduleRef.get(ZLINK_REGISTRY_QUERY, { strict: false }) as ZLinkRegistryQuery | undefined;
+  } catch {
+    return undefined;
+  }
+  if (query === undefined) {
+    return undefined;
+  }
+  return new Map((registration.monitoring?.registry ?? []).map((source) => [source.sourceName, query]));
+}
+
+function registerDiscoveredRuntimeEventHandlers(
+  publisher: ZLinkRuntimeEventPublisher,
+  discovery: DiscoveryService
+): void {
+  let registered = registeredRuntimeEventHandlers.get(publisher);
+  if (registered === undefined) {
+    registered = new WeakSet<object>();
+    registeredRuntimeEventHandlers.set(publisher, registered);
+  }
+  for (const handler of discoverRuntimeEventHandlers(discovery)) {
+    if (registered.has(handler)) {
+      continue;
+    }
+    publisher.register(handler);
+    registered.add(handler);
+  }
+}
+
+function discoverRuntimeEventHandlers(discovery: DiscoveryService): ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>[] {
+  const handlers: ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>[] = [];
+  for (const wrapper of discovery.getProviders()) {
+    const token = wrapper.metatype ?? wrapper.token;
+    const instance = wrapper.instance;
+    if (
+      instance !== undefined
+      && instance !== null
+      && nestRuntimeEventHandlerTokens.has(token)
+      && typeof (instance as { handle?: unknown }).handle === 'function'
+    ) {
+      handlers.push(instance as ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>);
+    }
+  }
+  return handlers;
 }
 
 function suppressEmbeddedRegistryLifecycle(runtime: RegistryRuntime | undefined): void {

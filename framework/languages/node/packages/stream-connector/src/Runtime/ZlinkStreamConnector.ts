@@ -57,6 +57,9 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   private receiveLoopAbort: AbortController | undefined;
   private lastInboundAt = 0;
   private readonly inboundObservers: ZlinkStreamInboundObservers;
+  private readonly receivedMessages: Array<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> = [];
+  private receivedMessageDrain: Promise<void> | undefined;
+  private receivedMessageDropReportPending = false;
 
   readonly options: RequiredZlinkStreamConnectorOptions;
 
@@ -375,12 +378,55 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Unknown control packet.');
     }
     if (header.kind === ZlinkStreamMessageKind.Send) {
-      await this.handlers.dispatch({
+      this.enqueueReceivedMessage({
         name: header.name,
         metadata: header.metadata,
         payload: { codec: header.codec, payload: this.payloadForHeader(header, payload) }
-      }, signal, (error, handlerSignal) => this.publishError(error, handlerSignal));
+      }, signal);
     }
+  }
+
+  private enqueueReceivedMessage(message: ZlinkStreamMessage<ZlinkStreamEncodedPayload>, signal?: AbortSignal): void {
+    if (this.receivedMessages.length >= this.options.maxReceivedMessages) {
+      this.reportReceivedMessageDropped(signal);
+      return;
+    }
+    this.receivedMessages.push(message);
+    this.scheduleReceivedMessageDrain(signal);
+  }
+
+  private scheduleReceivedMessageDrain(signal?: AbortSignal): void {
+    if (this.receivedMessageDrain !== undefined) {
+      return;
+    }
+    this.receivedMessageDrain = this.drainReceivedMessages(signal).finally(() => {
+      this.receivedMessageDrain = undefined;
+      if (this.receivedMessages.length > 0) {
+        this.scheduleReceivedMessageDrain(signal);
+      }
+    });
+  }
+
+  private async drainReceivedMessages(signal?: AbortSignal): Promise<void> {
+    while (this.receivedMessages.length > 0) {
+      const message = this.receivedMessages.shift()!;
+      await this.handlers.dispatch(message, signal, (error, handlerSignal) => this.publishError(error, handlerSignal));
+    }
+  }
+
+  private reportReceivedMessageDropped(signal?: AbortSignal): void {
+    if (this.receivedMessageDropReportPending) {
+      return;
+    }
+    this.receivedMessageDropReportPending = true;
+    queueMicrotask(() => {
+      void this.publishError({
+        code: ZlinkStreamErrorCode.ReceivedMessageDropped,
+        message: 'Received stream message was dropped because the received-message queue is full.'
+      }, signal).finally(() => {
+        this.receivedMessageDropReportPending = false;
+      }).catch(() => {});
+    });
   }
 
   private async sendControl(name: string, signal?: AbortSignal): Promise<void> {

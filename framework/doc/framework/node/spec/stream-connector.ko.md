@@ -37,6 +37,14 @@ observer callback은 receive 경로에서 직접 실행하지 않는다. callbac
 queue 기본 크기는 1024개 notification이다. 테스트나 제한된 client 환경에서는
 `maxInboundObserverNotifications` option으로 조정할 수 있다.
 
+수신된 user send message 는 observer notification 과 다른 queue 를 사용한다.
+`maxReceivedMessages` 는 `on(...)`, `waitFor(...)` 같은 received-message handler 로
+넘어갈 send frame queue 의 최대 크기를 정한다. 기본값은 1024개 message 다.
+이 queue 가 꽉 차면 해당 send message 는 버리고
+`ZlinkStreamErrorCode.ReceivedMessageDropped` 를 error handler 에 보고한다.
+response, request error, heartbeat control frame 은 request 완료와 연결 상태 유지에
+필요하므로 이 제한에 넣지 않는다.
+
 ## 회귀 테스트
 
 stream connector 문서는 connector 표면이 framework server 표면과 다른 책임을 가진다는 점을

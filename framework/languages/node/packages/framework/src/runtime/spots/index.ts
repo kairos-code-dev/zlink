@@ -53,6 +53,8 @@ import {
   isZLinkMessage,
   ZLinkSpotCreateState,
   ZLinkSpotKind,
+  ZLinkSpotEventKind,
+  ZLinkRuntimeEventPublisher,
   ZLinkTimerOverrunPolicy
 } from '../../contracts';
 import {
@@ -154,6 +156,7 @@ export interface ZLinkSpotManagerOptions {
   readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   // Backs each user Spot with a core-native Spot object (registered for join
@@ -212,6 +215,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly routedActorProvider?: ZLinkSpotManagerOptions['routedActorProvider'];
@@ -377,6 +381,7 @@ export class ZLinkSpotNodeRuntimeManager {
       localActorPacketRouter: this.options.localActorPacketRouter,
       actorResponseSender: this.options.actorResponseSender,
       dispatchErrors: this.options.dispatchErrors,
+      runtimeEventPublisher: this.options.runtimeEventPublisher,
       destroyActor: (nodeRid, actor, signal) => {
         if (this.options.actorDestroyer === undefined) {
           throw new ZLinkConfigurationException('Entry Spot actor destroy runtime is not started.');
@@ -648,6 +653,7 @@ interface ZLinkEntrySpotActivationOptions {
   readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
@@ -2019,7 +2025,16 @@ export class ZLinkEntrySpotActivation {
           handler.handlerType as Type<ZLinkSpotTimerHandler<ZLinkEntrySpot>>,
           this.serial,
           this.entrySpot,
-          this.options.providerResolver
+          this.options.providerResolver,
+          undefined,
+          createTimerDiagnostics(
+            this.options.spotNodeName,
+            this.options.nodeRid,
+            true,
+            handler.name,
+            handler.handlerType,
+            this.options.runtimeEventPublisher
+          )
         );
       }
     }
@@ -2297,7 +2312,15 @@ export class ZLinkEntrySpotActivation {
           activation.serial,
           activation.entrySpot,
           activation.options.providerResolver,
-          signal
+          signal,
+          createTimerDiagnostics(
+            activation.options.spotNodeName,
+            activation.options.nodeRid,
+            true,
+            name,
+            handlerType,
+            activation.options.runtimeEventPublisher
+          )
         );
       },
       runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T> {
@@ -2673,7 +2696,15 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
             serial,
             spot,
             this.options.providerResolver,
-            signal
+            signal,
+            createTimerDiagnostics(
+              String(spotRid),
+              spotRid,
+              false,
+              handler.name,
+              handler.handlerType,
+              this.options.runtimeEventPublisher
+            )
           );
         }
       }
@@ -2752,7 +2783,17 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         if (spot === undefined) {
           throw new ZLinkConfigurationException('Spot timer cannot be registered before spot activation.');
         }
-        return timers.add(name, periodMs, options, handlerType, serial, spot, this.options.providerResolver, signal);
+        return timers.add(
+          name,
+          periodMs,
+          options,
+          handlerType,
+          serial,
+          spot,
+          this.options.providerResolver,
+          signal,
+          createTimerDiagnostics(String(spotRid), spotRid, false, name, handlerType, this.options.runtimeEventPublisher)
+        );
       },
       runWorker: <T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T> =>
         new DefaultZLinkWorkerCall(this.workerRuntime, serial, work)
@@ -3055,6 +3096,7 @@ export class DefaultZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkAc
 }
 
 type ZLinkTimerOwnerSpot = ZLinkSpot | ZLinkEntrySpot;
+type ZLinkTimerFailureReporter = (tick: ZLinkTimerTick, cause: unknown) => Promise<void> | void;
 
 export class ZLinkSpotTimerRegistry {
   private readonly timers = new Set<ZLinkTimer>();
@@ -3067,7 +3109,8 @@ export class ZLinkSpotTimerRegistry {
     serial: ZLinkSpotSerialExecutor,
     spot: TSpot,
     providerResolver?: ZLinkProviderResolver,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    reportFailure?: ZLinkTimerFailureReporter
   ): Promise<ZLinkTimer> {
     validateTimer(name, periodMs, options);
     throwIfAborted(signal);
@@ -3078,7 +3121,8 @@ export class ZLinkSpotTimerRegistry {
       normalizeTimerOptions(options),
       async (tick) => {
         await serial.execute(() => handler.handle(spot, tick));
-      }
+      },
+      reportFailure
     );
     this.timers.add(timer);
     return timer;
@@ -3105,7 +3149,8 @@ export class ZLinkManagedTimer implements ZLinkTimer {
     private readonly name: string,
     private readonly periodMs: number,
     private readonly options: Required<ZLinkTimerOptions>,
-    private readonly onTick: (tick: ZLinkTimerTick) => Promise<void>
+    private readonly onTick: (tick: ZLinkTimerTick) => Promise<void>,
+    private readonly onFailure?: ZLinkTimerFailureReporter
   ) {
     this.scheduleNext();
   }
@@ -3170,7 +3215,8 @@ export class ZLinkManagedTimer implements ZLinkTimer {
     let shouldContinue = true;
     try {
       await this.onTick(tick);
-    } catch {
+    } catch (cause) {
+      await this.onFailure?.(tick, cause);
       shouldContinue = !this.options.stopOnUnhandledException;
     }
 
@@ -3569,6 +3615,47 @@ function validateTimer(name: string, periodMs: number, options: ZLinkTimerOption
   ) {
     throw new ZLinkConfigurationException('SPOT timer MaxCatchUpTicks must be greater than zero.');
   }
+}
+
+function createTimerDiagnostics(
+  sourceName: string,
+  spotRid: RoutingId,
+  isEntrySpot: boolean,
+  timerName: string,
+  handlerType: Type,
+  publisher: ZLinkRuntimeEventPublisher | undefined
+): ZLinkTimerFailureReporter | undefined {
+  if (publisher === undefined) {
+    return undefined;
+  }
+  return async (tick, cause) => {
+    try {
+      await publisher.publish({
+        sourceName,
+        timestamp: new Date(),
+        event: ZLinkSpotEventKind.TimerHandlerFailed,
+        timerDiagnostic: {
+          spotRid,
+          isEntrySpot,
+          timerName,
+          handlerType: handlerType.name,
+          deliveryIndex: tick.deliveryIndex,
+          scheduledIndex: tick.scheduledIndex,
+          exceptionType: exceptionType(cause),
+          exceptionMessage: exceptionMessage(cause)
+        }
+      });
+    } catch {
+    }
+  };
+}
+
+function exceptionType(cause: unknown): string {
+  return cause instanceof Error ? cause.name : typeof cause;
+}
+
+function exceptionMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function normalizeTimerOptions(options: ZLinkTimerOptions | undefined): Required<ZLinkTimerOptions> {

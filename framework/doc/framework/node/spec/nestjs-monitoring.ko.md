@@ -12,9 +12,8 @@
 > `framework/languages/node` 코드이며, 표면은 TypeScript / NestJS 모양이다.
 >
 > **현재 구현 상태:** monitoring 등록 표면(`monitoring: {...}` 옵션, `ZLinkModule`
-> 통합), `ZLinkRuntimeEventHandler<TEvent>` provider 자동 discovery, timer handler
-> failure 의 즉시 event 발행은 **설계 모델 — 미구현**이다. 현재는 `runtime/diagnostics`
-> 의 socket/registry/spot snapshot source 를 직접 쓰는 수준만 구현돼 있다.
+> 통합), `ZLinkRuntimeEventHandler<TEvent>` provider discovery, `ZLinkMonitoringModule`
+> public module path, timer handler failure 의 즉시 event 발행이 구현돼 있다.
 >
 > 번역 규칙은
 > [.NET → Node.js 표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
@@ -85,7 +84,10 @@ endpoint, routing id, snapshot 본문도 함께 필요하기 때문이다.
 ## 3. 등록 모델
 
 framework 등록은 module options 의 `monitoring` 키로 둔다. `.NET` 의
-`AddZLinkMonitoring(monitor => ...)` 람다는 선언적 options 객체로 옮긴다.
+`AddZLinkMonitoring(monitor => ...)` 람다는 선언적 options 객체와
+`ZLinkMonitoringModule.forRoot()` 로 옮긴다. `ZLinkModule` 은 runtime event
+publisher token 도 함께 내보내므로, handler discovery 대신 직접 등록해야 하는
+애플리케이션은 `ZLINK_RUNTIME_EVENT_PUBLISHER` 를 주입해 사용할 수 있다.
 
 ```ts
 @Module({
@@ -113,14 +115,10 @@ framework 등록은 module options 의 `monitoring` 키로 둔다. `.NET` 의
             registry: [{ sourceName: 'registry', intervalMs: 1000 }],
             spot: [{ sourceName: 'stage-node', intervalMs: 1000 }],
           },
-          providers: [
-            ProfileServerSocketMonitor,
-            RegistryMonitor,
-            StageNodeMonitor,
-          ],
         })
         .build()
     ),
+    ZLinkMonitoringModule.forRoot(),
   ],
   providers: [
     ProfileServerSocketMonitor,
@@ -137,10 +135,10 @@ export class AppModule {}
 module) 로 이미 올라와 있어야 한다.
 
 > `.NET` 의 `AddZLinkMonitoring(...)` 은 `AddZLinkFramework(...)` 와 분리된 두 번째
-> 등록 호출이지만, NestJS 에서는 동일 `ZLinkModule.forRoot(...)` options 안의
-> `monitoring` 키로 합친다. 분리가 꼭 필요하면 `forRootFactory` 로 monitoring 만 다른
-> 모듈에서 주입하는 방식도 허용한다. 의미는 동일하다 — source 등록은 framework 등록과
-> 같은 application 에 있어야 한다.
+> 등록 호출이다. NestJS 에서는 source 등록은 동일 `ZLinkModule.forRoot(...)` options
+> 안의 `monitoring` 키로 두고, monitoring publisher 노출은 `ZLinkMonitoringModule.forRoot()`
+> 로 분리한다. 의미는 동일하다 — source 등록은 framework 등록과 같은 application 에
+> 있어야 한다.
 
 여기서 한 가지 짚어 둘 점이 있다. 일반 channel 역할[^capability] 와 SPOT
 mesh 는 각자 자신의 discovery source 를 가진다. 즉 registry endpoint 집합을
@@ -365,14 +363,15 @@ spot node 에서 채널 이름은 `.addSpotMesh(...)` 로 등록한 node 이름(
 
 ## 5. 샘플 코드
 
-handler 는 NestJS provider 로 등록하고, 구현한 event 타입으로 발견한다(`@Injectable()`
-+ `ZLinkRuntimeEventHandler<TEvent>` 구현). framework 는 NestJS `DiscoveryService` 로
-provider 를 훑어 event 타입별로 라우팅한다.
+handler 는 NestJS provider 로 등록하고 `@zlinkRuntimeEventHandler()` 로 runtime event
+handler 임을 표시한다. class 는 `ZLinkRuntimeEventHandler<TEvent>` 를 구현한다.
+framework 는 NestJS `DiscoveryService` 로 표시된 provider 를 찾아 runtime publisher 에
+등록한다.
 
 ### 5.1 socket 이벤트
 
 ```ts
-@Injectable()
+@zlinkRuntimeEventHandler()
 export class ProfileServerSocketMonitor
   implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
   constructor(private readonly logger: Logger) {}
@@ -399,7 +398,7 @@ export class ProfileServerSocketMonitor
 ### 5.2 registry 이벤트
 
 ```ts
-@Injectable()
+@zlinkRuntimeEventHandler()
 export class RegistryMonitor
   implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
   constructor(private readonly logger: Logger) {}
@@ -426,7 +425,7 @@ registry 는 하부에 raw monitor 가 없다. 그래서 framework 가 주기적
 ### 5.3 spot 이벤트
 
 ```ts
-@Injectable()
+@zlinkRuntimeEventHandler()
 export class StageNodeMonitor
   implements ZLinkRuntimeEventHandler<ZLinkSpotEvent> {
   constructor(private readonly logger: Logger) {}

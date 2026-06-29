@@ -591,6 +591,104 @@ test('stream connector inbound observer overflow reports observer-dropped and re
   assert.deepEqual(observedNames, ['JoinReply0', 'JoinReply1']);
 });
 
+test('stream connector received-message queue overflow is separate from inbound observer queue', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    maxReceivedMessages: 1,
+    maxInboundObserverNotifications: 10
+  });
+  const errors = [];
+  instance.onErrorReceived((error) => {
+    errors.push(error);
+  });
+  let releaseHandler;
+  const handlerRelease = new Promise((resolve) => {
+    releaseHandler = resolve;
+  });
+  const received = [];
+  instance.on('Notice', async (message) => {
+    received.push(new TextDecoder().decode(message.payload.payload));
+    await handlerRelease;
+  });
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'first'));
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'second'));
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'third'));
+  await instance.dispatch();
+  await instance.dispatch();
+  await instance.dispatch();
+  await waitFor(() => errors.some((error) => error.code === connector.ZlinkStreamErrorCode.ReceivedMessageDropped), 1000);
+  releaseHandler();
+  await waitFor(() => received.length === 2, 1000);
+
+  assert.deepEqual(received, ['first', 'second']);
+  assert.equal(errors.some((error) => error.code === connector.ZlinkStreamErrorCode.ObserverDropped), false);
+});
+
+test('stream connector received-message cap does not block request response frames', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    maxReceivedMessages: 1
+  });
+  const errors = [];
+  instance.onErrorReceived((error) => {
+    errors.push(error);
+  });
+  let releaseHandler;
+  const handlerRelease = new Promise((resolve) => {
+    releaseHandler = resolve;
+  });
+  const received = [];
+  instance.on('Notice', async (message) => {
+    received.push(new TextDecoder().decode(message.payload.payload));
+    await handlerRelease;
+  });
+
+  await instance.connect();
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'running'));
+  await instance.dispatch();
+  await waitFor(() => received.length === 1, 1000);
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'queued'));
+  await instance.dispatch();
+
+  const pending = instance
+    .request({
+      codec: connector.ZlinkStreamCodec.Json,
+      payload: new TextEncoder().encode('{"request":1}')
+    })
+    .packetName('Lookup')
+    .timeout(1000)
+    .submit();
+  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Response,
+        codec: connector.ZlinkStreamCodec.Json,
+        flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+        requestSeq: requestHeader.requestSeq,
+        name: 'LookupReply',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      new TextEncoder().encode('{"ok":true}')
+    )
+  );
+  await instance.dispatch();
+  const reply = await pending;
+  releaseHandler();
+  await waitFor(() => received.length === 2, 1000);
+
+  assert.equal(new TextDecoder().decode(reply.payload), '{"ok":true}');
+  assert.deepEqual(received, ['running', 'queued']);
+  assert.equal(errors.some((error) => error.code === connector.ZlinkStreamErrorCode.ReceivedMessageDropped), false);
+});
+
 test('stream connector request resolves compressed response payloads', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({

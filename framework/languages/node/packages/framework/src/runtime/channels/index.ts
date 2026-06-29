@@ -62,8 +62,10 @@ import type {
   ZLinkBackendSpot,
   ZLinkBackendSpotNode,
   ZLinkBackendSpotRouteBridge,
+  ZLinkBackendSocketMonitor,
   ZLinkBackendSubscriberSocket,
-  ZLinkChannelBackendAdapter
+  ZLinkChannelBackendAdapter,
+  ZLinkMonitoringBackendAdapter
 } from '../backend/contracts';
 import {
   ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND
@@ -486,6 +488,24 @@ export class ZLinkChannelRuntimeManager {
 
   setSpotNodes(spotNodes: ReadonlyMap<string, ZLinkBackendSpotNode>): void {
     this.spotNodes = spotNodes;
+  }
+
+  openMonitoringSource(sourceName: string, adapter: ZLinkMonitoringBackendAdapter): ZLinkBackendSocketMonitor {
+    const [channelName, role] = splitMonitoringSocketSourceName(sourceName);
+    switch (role) {
+      case 'server':
+        return adapter.openSocketMonitor(this.sockets.channelRouter(channelName));
+      case 'client':
+        return adapter.openSocketMonitor(this.sockets.clientDealer(channelName));
+      case 'publisher':
+        return adapter.openSocketMonitor(this.sockets['publisher'](channelName));
+      case 'subscriber':
+        return adapter.openSocketMonitor(this.sockets['subscriber'](channelName));
+      case 'router':
+        return adapter.openSocketMonitor(this.sockets.routeRouter(channelName));
+      default:
+        throw new ZLinkConfigurationException(`Monitoring socket source '${sourceName}' is not registered.`);
+    }
   }
 
   start(taskRunner?: ZLinkRuntimeTaskRunner): Promise<void>[] {
@@ -1583,6 +1603,14 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
       encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic)
     ).submit();
   }
+}
+
+function splitMonitoringSocketSourceName(sourceName: string): readonly [string, string] {
+  const separator = sourceName.lastIndexOf('.');
+  if (separator <= 0 || separator === sourceName.length - 1) {
+    throw new ZLinkConfigurationException(`Monitoring socket source '${sourceName}' is not registered.`);
+  }
+  return [sourceName.slice(0, separator), sourceName.slice(separator + 1)];
 }
 
 export interface ZLinkChannelRequestDispatcherOptions {

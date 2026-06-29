@@ -139,6 +139,51 @@ test('spot monitoring source publishes status peers and subjects snapshot change
   assert.equal(events[5].subjects[0].readyPeerCount, 2);
 });
 
+test('spot timer reports handler failure immediately through runtime publisher', async () => {
+  const events = [];
+  const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
+  publisher.register({ async handle(event) { events.push(event); } });
+  const timer = new framework.ZLinkManagedTimer(
+    'idle',
+    1,
+    {
+      overrunPolicy: framework.ZLinkTimerOverrunPolicy.DelayNextTick,
+      maxCatchUpTicks: 1,
+      stopOnUnhandledException: true
+    },
+    async () => {
+      throw new TypeError('timer failed');
+    },
+    async (tick, cause) => {
+      await publisher.publish({
+        sourceName: 'stage-node',
+        timestamp: new Date(),
+        event: framework.ZLinkSpotEventKind.TimerHandlerFailed,
+        timerDiagnostic: {
+          spotRid: 'stage-node',
+          isEntrySpot: true,
+          timerName: 'idle',
+          handlerType: 'IdleTimerHandler',
+          deliveryIndex: tick.deliveryIndex,
+          scheduledIndex: tick.scheduledIndex,
+          exceptionType: cause.name,
+          exceptionMessage: cause.message
+        }
+      });
+    }
+  );
+
+  try {
+    await waitFor(() => events.length === 1, 1000);
+  } finally {
+    await timer.dispose();
+  }
+
+  assert.equal(events[0].event, framework.ZLinkSpotEventKind.TimerHandlerFailed);
+  assert.equal(events[0].timerDiagnostic.timerName, 'idle');
+  assert.equal(events[0].timerDiagnostic.exceptionType, 'TypeError');
+});
+
 function fakeSocketMonitor() {
   return {
     nativeInstance: {},
@@ -205,4 +250,15 @@ function spotSubject(readyPeerCount) {
     activePeerCount: readyPeerCount,
     lastChangedMs: BigInt(readyPeerCount)
   };
+}
+
+async function waitFor(predicate, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.fail('Timed out waiting for predicate.');
 }

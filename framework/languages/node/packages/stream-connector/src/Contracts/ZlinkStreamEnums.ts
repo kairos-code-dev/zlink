@@ -53,6 +53,7 @@ export enum ZlinkStreamErrorCode {
   UserCallbackFailed = 'userCallbackFailed',
   ObserverFailed = 'observer-failed',
   ObserverDropped = 'observer-dropped',
+  ReceivedMessageDropped = 'received-message-dropped',
   RemoteError = 'remoteError'
 }
 

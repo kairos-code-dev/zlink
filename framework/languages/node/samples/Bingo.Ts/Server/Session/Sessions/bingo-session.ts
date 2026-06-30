@@ -37,7 +37,7 @@ class BingoSession implements ZLinkSession {
       this.displayName = authContext.displayName;
       this.actor = this.context.actors.find(response.actorId) ?? null;
       console.log(`session-auth reply actor=${response.actorId}`);
-      await this.context.client.reply(response).submit(signal);
+      this.context.client.reply(response).submit(signal);
       console.log(`session-authenticated actor=${response.actorId}`);
       return;
     }

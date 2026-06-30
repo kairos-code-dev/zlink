@@ -24,7 +24,7 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 | `RM-C5` | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm-c5-missing-packet-scenario.ts` | done | missing request/send dispatch error |
 | `RM-C7` | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm-c7-weighted-provider-scenario.ts` | done | build-time provider weight 75/25 분산 검증 |
 | `RM-C8` | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | done | payload length/hash 왕복, max 초과는 .NET feature-map 한계 반영 |
-| `RM-C9` | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | done | low-HWM client socket과 nonblocking async submitter로 bounded failure와 recovery 검증 |
+| `RM-C9` | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | done | one-way send pressure 제출과 recovery 검증 |
 
 ## 파일 매핑
 
@@ -78,7 +78,7 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 | `Server/Consumer/RegistryMessaging.Consumer.csproj` | `Server/Consumer/package.json`, `Server/Consumer/tsconfig.json` | project | done | consumer role build 설정 |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.ts` | server-entry | done | consumer role 실행 진입점 |
 | `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/consumer-host-factory.ts` | server-role | done | client-only profile channel 설정 |
-| `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer-options.ts`, `feature-map.ko.md` | configuration | done | provider endpoint/registry option과 low-HWM client socket option 구현 |
+| `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer-options.ts`, `feature-map.ko.md` | configuration | done | provider endpoint와 registry option을 구현한다. |
 | `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer-endpoints.ts` | endpoints | done | batch, timeout, missing, payload, backpressure HTTP 표면 |
 | 없음 | `logs/.gitignore` | config | done | Node 실행 로그 디렉터리 추적용 |
 
@@ -86,10 +86,9 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 
 - `RM-C7`은 `.NET`에서 `ConfigureServerSocket().Weight`를 사용한다. Node는 같은 의미의
   `configureServerSocket().weight`를 public builder에 추가해 build-time provider weight를 설정한다.
-- `RM-C9`는 `.NET`에서 client socket HWM과 send timeout을 낮춘다. Node public channel builder도
-  `configureClientSocket()`으로 같은 설정을 노출한다. runtime은 nonblocking submit 결과를 async submitter에
-  전달해 backpressure를 bounded failure로 처리한다. `logs/20260630-080014-3192638`에서 `.NET`과 같은
-  32개 slow send 입력으로 bounded failure와 recovery를 확인했다.
+- `RM-C9`는 one-way send pressure 뒤 recovery를 검증한다. send submit은 public 완료 객체나
+  bounded-failure oracle을 노출하지 않으므로, 직접적인 HWM 오류 결과 검증은 binding/runtime 내부
+  테스트 범위로 둔다.
 - `.NET` README에는 `RM-A6`이 빠져 있지만 `.NET feature-map`, `Client/Program.cs`, 공통 문서에는
   존재하므로 Node 포팅 대상에 포함한다.
 
@@ -97,4 +96,4 @@ public contract가 없어 완료하지 못한 범위는 `gap`으로 기록한다
 
 | Scenario | 판정 | 다음 작업 |
 |----------|------|-----------|
-| `RM-C9` | 구현 | public client socket HWM/send-timeout 설정과 nonblocking async submitter 경로로 bounded failure와 recovery를 검증한다. |
+| `RM-C9` | 구현 | public one-way send 제출과 recovery를 검증한다. |

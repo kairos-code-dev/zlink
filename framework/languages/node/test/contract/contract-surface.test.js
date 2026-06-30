@@ -168,7 +168,8 @@ test('actor join call objects expose yield terminators, bound session send does 
   assert.match(actorContracts, /interface ZLinkActorJoinSpotCall[\s\S]*yield<TReply/);
   assert.match(actorContracts, /interface ZLinkActorJoinEntrySpotCall[\s\S]*yield<TReply/);
   const boundSessionSendCall = declarationBody(boundSessionContracts, 'ZLinkBoundSessionSendCall');
-  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): void/);
+  assert.equal(boundSessionSendCall.includes('Promise<void>'), false);
   assert.equal(boundSessionSendCall.includes('yield('), false);
 });
 

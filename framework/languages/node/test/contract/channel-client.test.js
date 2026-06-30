@@ -27,7 +27,7 @@ function fakeSpotRouteBridge() {
 test('ZLinkChannelClient rejects calls to channels without client capability', async () => {
   const client = new framework.DefaultZLinkChannelClient(framework.createFrameworkRegistration());
 
-  await assert.rejects(
+  assert.throws(
     () => client.sendToChannel('missing', { ok: true }).submit(),
     framework.ZLinkConfigurationException
   );
@@ -256,9 +256,9 @@ test('ZLinkChannelClient and fanout client reject pre-aborted submit before tran
   const client = new framework.DefaultZLinkChannelClient(registration, transport);
   const fanout = new framework.DefaultZLinkFanoutClient(registration, transport);
 
-  await assertAborted(() => client.sendToChannel('api', 'hello').packetName('Greeting').submit(controller.signal));
+  assertAbortedSync(() => client.sendToChannel('api', 'hello').packetName('Greeting').submit(controller.signal));
   await assertAborted(() => client.requestToChannel('api', 'ping').packetName('Ping').submit(controller.signal));
-  await assertAborted(() => fanout.publishToChannel('events', 'topic', 'event').packetName('Event').submit(controller.signal));
+  assertAbortedSync(() => fanout.publishToChannel('events', 'topic', 'event').packetName('Event').submit(controller.signal));
   assert.deepEqual(calls, []);
 });
 
@@ -346,7 +346,7 @@ test('ZLinkChannelClient sends through public dealer/router binding sockets', as
       new framework.ZLinkDealerChannelClientTransport(dealer)
     );
 
-    await client.sendToChannel('api', 'hello').packetName('Greeting').submit();
+    client.sendToChannel('api', 'hello').packetName('Greeting').submit();
 
     const received = new zlink.Received();
     assert.equal(router.recv(received), true);
@@ -1248,7 +1248,7 @@ test('DERR-002 ZLinkFrameworkRuntimeHost reports observer for missing channel se
     );
     assert.deepEqual(knownBefore, { value: 'known:before-send-error' });
 
-    await client.sendToChannel('play', { value: 'missing-send' }).packetName('UnknownCommand').submit();
+    client.sendToChannel('play', { value: 'missing-send' }).packetName('UnknownCommand').submit();
 
     await waitUntil(() => dispatchEvents.length === 1, 1000);
     assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.Channel);
@@ -1978,18 +1978,9 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
     remoteRouter.setRoutingId(zlink.RoutingId.from('node-b'));
     remoteRouter.connect(endpoint);
 
-    await submitWhenRouteReachable(() =>
-      routeClient.send('mesh', 'node-b', { value: 'one-way' }).packetName('RouteNotice').submit()
+    const replyPromise = submitWhenReachable(() =>
+      routeClient.request('mesh', 'node-b', { value: 'ping' }).packetName('RoutePing').timeout(1000).submit()
     );
-    const sent = await recvRoutedEnvelopeMessage(remoteRouter);
-    const sentEnvelope = decodeDotnetEnvelope(sent.parts);
-    assert.equal(sentEnvelope.header.kind, 3);
-    assert.equal(sentEnvelope.header.channelName, 'mesh');
-    assert.equal(sentEnvelope.header.messageName, 'RouteNotice');
-    assert.deepEqual(sentEnvelope.body, { value: 'one-way' });
-    sent.close();
-
-    const replyPromise = routeClient.request('mesh', 'node-b', { value: 'ping' }).packetName('RoutePing').timeout(1000).submit();
     const request = await recvRoutedEnvelopeMessage(remoteRouter);
     const envelope = decodeDotnetEnvelope(request.parts);
     assert.equal(envelope.header.kind, 1);
@@ -2012,6 +2003,15 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
     const reply = await withTimeout(replyPromise, 1000, 'DI framework route request reply');
     assert.deepEqual(reply, { value: 'pong' });
     request.close();
+
+    routeClient.send('mesh', 'node-b', { value: 'one-way' }).packetName('RouteNotice').submit();
+    const sent = await recvRoutedEnvelopeMessage(remoteRouter);
+    const sentEnvelope = decodeDotnetEnvelope(sent.parts);
+    assert.equal(sentEnvelope.header.kind, 3);
+    assert.equal(sentEnvelope.header.channelName, 'mesh');
+    assert.equal(sentEnvelope.header.messageName, 'RouteNotice');
+    assert.deepEqual(sentEnvelope.body, { value: 'one-way' });
+    sent.close();
   } finally {
     await runtime.stop();
     remoteRouter.close();
@@ -2891,24 +2891,6 @@ async function recvRoutedEnvelopeMessage(router) {
   assert.fail('router did not receive routed envelope');
 }
 
-async function submitWhenRouteReachable(submit) {
-  const deadline = Date.now() + 15000;
-  let lastError;
-  while (Date.now() < deadline) {
-    try {
-      await submit();
-      return;
-    } catch (error) {
-      if (!isHostUnreachable(error)) {
-        throw error;
-      }
-      lastError = error;
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-  }
-  throw lastError;
-}
-
 async function submitWhenReachable(submit) {
   const deadline = Date.now() + 1000;
   let lastError;
@@ -3200,7 +3182,7 @@ function hasDispatchEvent(events, messageKind, reason, action, packetName, chann
 async function publishUntilSubscribed(fanout, subscriber, received, topic, packetName, payload) {
   const deadline = Date.now() + 1000;
   while (Date.now() < deadline) {
-    await fanout.publishToChannel('events', topic, payload).packetName(packetName).submit();
+    fanout.publishToChannel('events', topic, payload).packetName(packetName).submit();
     try {
       if (subscriber.subscribe(received)) {
         return;
@@ -3331,6 +3313,13 @@ function withTimeout(promise, timeoutMs, label) {
 
 async function assertAborted(action) {
   await assert.rejects(
+    action,
+    (error) => error instanceof Error && error.message === 'The operation was aborted.'
+  );
+}
+
+function assertAbortedSync(action) {
+  assert.throws(
     action,
     (error) => error instanceof Error && error.message === 'The operation was aborted.'
   );

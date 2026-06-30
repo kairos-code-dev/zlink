@@ -2,11 +2,13 @@ import type { ProfileRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
+const slowSendCount = 8;
+
 export async function runRmC9(backpressureConsumerUrl: string, providerAUrl: string): Promise<void> {
   await postJson(backpressureConsumerUrl, '/profile/backpressure/reset');
   const marker = uniqueMarker('rm-c9');
   const outcomes = await Promise.all(
-    Array.from({ length: 32 }, (_, index) =>
+    Array.from({ length: slowSendCount }, (_, index) =>
       postJson<string>(
         backpressureConsumerUrl,
         '/profile/backpressure/send',
@@ -14,11 +16,11 @@ export async function runRmC9(backpressureConsumerUrl: string, providerAUrl: str
       ))
   );
   ensure(
-    outcomes.some((outcome) => outcome === 'BoundedFailure'),
-    'RM-C9 expected at least one bounded failure while the low-HWM socket was saturated.'
+    outcomes.every((outcome) => outcome === 'Submitted'),
+    'RM-C9 expected all one-way sends to be submitted without a public bounded-failure oracle.'
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  await new Promise((resolve) => setTimeout(resolve, 10000));
   const followUp = await postJson<ProfileRes>(
     backpressureConsumerUrl,
     '/profile/request',

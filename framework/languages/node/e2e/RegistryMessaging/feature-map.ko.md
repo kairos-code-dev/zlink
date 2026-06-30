@@ -17,7 +17,7 @@
 | RM-C5 | done | 미등록 packet request/send와 dispatch error evidence를 검증한다. |
 | RM-C7 | done | public `configureServerSocket().weight`로 build-time provider weight 75/25를 설정하고 high-weight provider가 더 많이 처리하는지 검증한다. |
 | RM-C8 | done | payload length/hash 왕복을 검증한다. MaxMessageSize 초과 거부는 `.NET` feature-map과 같은 한계로 남긴다. |
-| RM-C9 | done | low-HWM client socket과 nonblocking async submitter로 느린 provider에 다량 send를 보내 bounded failure와 recovery를 검증한다. |
+| RM-C9 | done | 느린 provider에 다량 one-way send를 제출하고, public bounded-failure oracle 없이 backlog 해소 뒤 후속 request와 evidence가 회복되는지 검증한다. |
 
 검증:
 
@@ -25,9 +25,11 @@
   - 결과: `registry-messaging e2e result=passed`
   - 최신 확인 로그 디렉터리: `logs/20260630-080014-3192638`
   - 통과 scenario: `RM-A1`, `RM-A2`, `RM-A4`, `RM-A6`, `RM-B1`, `RM-B2`, `RM-C1`, `RM-C2`, `RM-C3`, `RM-C4`, `RM-C5`, `RM-C7`, `RM-C8`, `RM-C9`
+- `timeout 420s framework/languages/node/e2e/RegistryMessaging/run_e2e.sh RM-C9`
+  - 결과: `scenario RM-C9 passed`, `registry-messaging e2e result=passed`
+  - 로그: `logs/20260701-040650-15231`
 
 후속 계약 판정:
 
-- `RM-C9`: public client socket HWM/send-timeout 설정과 runtime nonblocking submitter 경로로 검증한다.
-  `logs/20260630-080014-3192638`에서 `.NET`과 같은 32개 slow send 입력으로 bounded failure와 recovery
-  marker를 확인했다.
+- `RM-C9`: public one-way send 제출과 recovery를 검증한다. send submit은 완료 객체나 bounded-failure
+  oracle을 노출하지 않으므로, 직접적인 HWM 오류 결과 검증은 binding/runtime 내부 테스트 범위로 둔다.

@@ -41,11 +41,11 @@ export interface ZLinkSessionSendCall {
   metadata(key: string, value: string): this;
   packetName(packetName: string): this;
   compress(enabled?: boolean): this;
-  submit(signal?: AbortSignal): Promise<void>;
+  submit(signal?: AbortSignal): void;
 }
 
 export interface ZLinkSessionReplyCall {
   metadata(key: string, value: string): this;
   compress(enabled?: boolean): this;
-  submit(signal?: AbortSignal): Promise<void>;
+  submit(signal?: AbortSignal): void;
 }

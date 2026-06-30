@@ -113,7 +113,7 @@ class PlaySession implements ZLinkSession {
       }
     };
     this.sessionActor = await this.context.actors.bind(actorRef);
-    await this.context.client.reply(authenticateRes(authenticated.player)).submit();
+    this.context.client.reply(authenticateRes(authenticated.player)).submit();
   }
 
   async observeMilestone(header: PlaySessionHeader): Promise<void> {
@@ -123,7 +123,7 @@ class PlaySession implements ZLinkSession {
     }
     console.log(`actor: ObserveMilestoneReq received. actor=${this.actor.actorId}`);
     const result = await this.dependencies.entrySpot.observeMilestone(this.actor);
-    await this.context.client.reply(result).submit();
+    this.context.client.reply(result).submit();
     console.log(`actor: ObserveMilestoneReq completed. actor=${this.actor.actorId}`);
   }
 

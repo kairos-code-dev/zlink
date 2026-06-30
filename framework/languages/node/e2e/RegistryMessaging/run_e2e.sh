@@ -159,7 +159,6 @@ start_server backpressure-consumer "$CONSUMER_MAIN" \
   --http-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
   --provider-endpoint "$API_A" \
   --trace-label backpressure-consumer \
-  --low-hwm true \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-consumer
 

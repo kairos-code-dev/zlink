@@ -1728,16 +1728,16 @@ class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCall {
     return this;
   }
 
-  submit(signal?: AbortSignal): Promise<void> {
+  submit(signal?: AbortSignal): void {
     ensureSingleSubmit(this.executed);
     this.executed = true;
-    return this.runtime.sendBoundSession(
+    void this.runtime.sendBoundSession(
       this.actorId,
       this.message,
       this.selectedPacketName,
       this.selectedMetadata,
       signal
-    );
+    ).catch(() => undefined);
   }
 }
 
@@ -1767,7 +1767,7 @@ class DefaultZLinkSessionSendCall implements ZLinkSessionSendCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<void> {
+  submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     ensureSingleSubmit(this.executed);
     this.executed = true;
@@ -1809,7 +1809,7 @@ class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<void> {
+  submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     ensureSingleSubmit(this.executed);
     this.executed = true;

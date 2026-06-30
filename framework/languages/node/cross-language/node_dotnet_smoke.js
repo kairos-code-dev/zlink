@@ -285,7 +285,7 @@ async function dotnetConnectorToNodeStreamServer(tempDir) {
           const value = payload.decode();
           streamEvents.push(`dispatch:${value}`);
           assert.equal(value, 'dotnet-to-node');
-          await sessionContext.client.reply('node-pong').compress().submit();
+          sessionContext.client.reply('node-pong').compress().submit();
           streamEvents.push('reply:sent');
         }
       };

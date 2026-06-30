@@ -8,7 +8,7 @@ type PlayClient = {
   send(message: unknown): {
     packetName(packetName: string): {
       metadata(key: string, value: string): {
-        submit(signal?: AbortSignal): Promise<void>;
+        submit(signal?: AbortSignal): void;
       };
     };
   };

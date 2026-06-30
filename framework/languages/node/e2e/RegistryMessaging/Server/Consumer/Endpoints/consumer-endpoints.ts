@@ -21,7 +21,7 @@ export function createConsumerEndpoints(channel: ZLinkChannelClient, stop: () =>
       method: 'POST',
       path: '/profile/missing-command',
       handle: async (body) => {
-        await channel
+        channel
           .sendToChannel('profile', body as ProfileMsg)
           .packetName(PacketNames.missingProfileMsg)
           .submit();
@@ -30,7 +30,7 @@ export function createConsumerEndpoints(channel: ZLinkChannelClient, stop: () =>
     },
     { method: 'POST', path: '/profile/payload', handle: (body) => requestPayloadWithRetry(channel, body as PayloadReq) },
     { method: 'POST', path: '/profile/backpressure/reset', handle: () => ({ status: 'ready' }) },
-    { method: 'POST', path: '/profile/backpressure/send', handle: (body) => sendProfileWithBoundedFailure(channel, body as ProfileMsg) },
+    { method: 'POST', path: '/profile/backpressure/send', handle: (body) => submitProfileUnderPressure(channel, body as ProfileMsg) },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
   ];
 }
@@ -89,22 +89,12 @@ async function requestMissingProfile(channel: ZLinkChannelClient, request: Profi
   }
 }
 
-async function sendProfileWithBoundedFailure(channel: ZLinkChannelClient, command: ProfileMsg): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 500);
-  try {
-    const send = channel
-      .sendToChannel('profile', command)
-      .packetName(PacketNames.profileMsg)
-      .submit(controller.signal);
-    const timeout = new Promise<string>((resolve) => setTimeout(() => resolve('BoundedFailure'), 750));
-    const result = await Promise.race([send.then(() => 'Accepted'), timeout]);
-    return result;
-  } catch {
-    return 'BoundedFailure';
-  } finally {
-    clearTimeout(timer);
-  }
+function submitProfileUnderPressure(channel: ZLinkChannelClient, command: ProfileMsg): string {
+  channel
+    .sendToChannel('profile', command)
+    .packetName(PacketNames.profileMsg)
+    .submit();
+  return 'Submitted';
 }
 
 async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {

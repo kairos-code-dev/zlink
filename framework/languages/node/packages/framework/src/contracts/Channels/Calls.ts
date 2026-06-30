@@ -1,6 +1,6 @@
 export interface ZLinkSendCall {
   packetName(packetName: string): this;
-  submit(signal?: AbortSignal): Promise<void>;
+  submit(signal?: AbortSignal): void;
 }
 
 export interface ZLinkRequestCall {
@@ -12,5 +12,5 @@ export interface ZLinkRequestCall {
 
 export interface ZLinkPublishCall {
   packetName(packetName: string): this;
-  submit(signal?: AbortSignal): Promise<void>;
+  submit(signal?: AbortSignal): void;
 }

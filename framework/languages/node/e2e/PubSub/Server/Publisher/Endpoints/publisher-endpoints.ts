@@ -19,7 +19,7 @@ export function createPublisherEndpoints(
       handle: async (body) => {
         const request = body as PublishRequest;
         const event: EventMsg = { runId: request.runId, sequence: Number(request.sequence), value: request.value };
-        await fanout.publishToChannel(PubSubNames.channel, request.topic, event)
+        fanout.publishToChannel(PubSubNames.channel, request.topic, event)
           .packetName(PacketNames.eventMsg)
           .submit();
         return { status: 'published', topic: request.topic, runId: request.runId, sequence: event.sequence };
@@ -31,7 +31,7 @@ export function createPublisherEndpoints(
       handle: async (body) => {
         const request = body as PublishRequest;
         const event: MissingEventMsg = { runId: request.runId, sequence: Number(request.sequence), value: request.value };
-        await fanout.publishToChannel(PubSubNames.channel, request.topic, event)
+        fanout.publishToChannel(PubSubNames.channel, request.topic, event)
           .packetName(PacketNames.missingEventMsg)
           .submit();
         return { status: 'published', topic: request.topic, runId: request.runId, sequence: event.sequence };

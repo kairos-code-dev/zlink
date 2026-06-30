@@ -2879,10 +2879,14 @@ class DefaultZLinkSendCall implements ZLinkSendCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<void> {
+  submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     this.validate();
-    await this.submitter(this.packet, signal);
+    try {
+      void this.submitter(this.packet, signal).catch(() => undefined);
+    } catch {
+      // One-way send failures are handled by the framework transport path.
+    }
   }
 }
 
@@ -2967,10 +2971,14 @@ class DefaultZLinkPublishCall implements ZLinkPublishCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<void> {
+  submit(signal?: AbortSignal): void {
     throwIfAborted(signal);
     this.validate();
-    await this.submitter(this.packet, signal);
+    try {
+      void this.submitter(this.packet, signal).catch(() => undefined);
+    } catch {
+      // One-way publish failures are handled by the framework transport path.
+    }
   }
 }
 

@@ -208,7 +208,7 @@ test('ZLinkActorManager wires actor context boundSession through runtime factory
   const actor = await manager.getOrCreateActor('alice', 'player');
   assert.equal(actor.context.boundSession, boundSession);
 
-  await actor.context.boundSession.send({ ready: true }).submit();
+  actor.context.boundSession.send({ ready: true }).submit();
   await actor.context.boundSession.disconnect();
 
   assert.deepEqual(sent, [{ ready: true }, 'disconnect']);

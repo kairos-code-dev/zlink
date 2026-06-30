@@ -66,7 +66,7 @@ class YieldSession implements ZLinkSession {
         .packetName('EnsureSpotReq')
         .timeout(5000)
         .submit<EnsureSpotRes>(signal);
-      await this.context.client.reply(reply).submit(signal);
+      this.context.client.reply(reply).submit(signal);
       return;
     }
 
@@ -84,7 +84,7 @@ class YieldSession implements ZLinkSession {
           generation: BigInt(actor.generation)
         }, signal);
       }
-      await this.context.client.reply(reply).submit(signal);
+      this.context.client.reply(reply).submit(signal);
       return;
     }
 
@@ -96,7 +96,7 @@ class YieldSession implements ZLinkSession {
         .packetName('YieldEvidenceReq')
         .timeout(5000)
         .submit<YieldEvidenceRes>(signal);
-      await this.context.client.reply(reply).submit(signal);
+      this.context.client.reply(reply).submit(signal);
       return;
     }
 
@@ -108,7 +108,7 @@ class YieldSession implements ZLinkSession {
         .packetName('YieldEvidenceWaitReq')
         .timeout(request.timeoutMilliseconds ?? 30000)
         .submit<YieldEvidenceRes>(signal);
-      await this.context.client.reply(reply).submit(signal);
+      this.context.client.reply(reply).submit(signal);
       return;
     }
 
@@ -119,7 +119,7 @@ class YieldSession implements ZLinkSession {
         + `|request=${request.requestId}|spot=${request.spotRid}`
       );
       const result = await this.runShutdownThroughSpotRoute(request, signal);
-      await this.context.client.reply(result).submit(signal);
+      this.context.client.reply(result).submit(signal);
       return;
     }
 
@@ -130,7 +130,7 @@ class YieldSession implements ZLinkSession {
         + `|request=${request.requestId}|spot=${request.spotRid}`
       );
       const result = await this.runShutdownRecoveryThroughSpotRoute(request, signal);
-      await this.context.client.reply(result).submit(signal);
+      this.context.client.reply(result).submit(signal);
       return;
     }
 
@@ -180,7 +180,7 @@ class YieldSession implements ZLinkSession {
         payload.decode<RemoteSpotYieldReq>(Object as never),
         signal
       );
-      await this.context.client.reply(reply).submit(signal);
+      this.context.client.reply(reply).submit(signal);
       return;
     }
 

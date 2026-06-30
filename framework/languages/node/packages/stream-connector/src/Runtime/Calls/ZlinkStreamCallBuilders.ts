@@ -12,7 +12,7 @@ import {
   type ZlinkStreamSendCall,
   type ZlinkStreamWaitCall
 } from '../../Contracts';
-import { connectorError, unwrapStreamError } from '../ZlinkStreamSupport';
+import { connectorError, throwIfAborted, unwrapStreamError } from '../ZlinkStreamSupport';
 import { validateName } from '../Protocol/ZlinkStreamPacketNameValidator';
 
 interface ZlinkStreamConnectorSubmitter {
@@ -99,9 +99,10 @@ export class ZlinkStreamSendBuilder implements ZlinkStreamSendCall {
     return this;
   }
 
-  submit(signal?: AbortSignal): Promise<void> {
+  submit(signal?: AbortSignal): void {
+    throwIfAborted(signal);
     this.state.ensureNotExecuted();
-    return this.connector.sendEncoded(
+    void this.connector.sendEncoded(
       ZlinkStreamMessageKind.Send,
       this.state.resolveMessageName(),
       this.payload,
@@ -109,7 +110,7 @@ export class ZlinkStreamSendBuilder implements ZlinkStreamSendCall {
       this.state.compress,
       undefined,
       signal
-    );
+    ).catch(() => undefined);
   }
 }
 

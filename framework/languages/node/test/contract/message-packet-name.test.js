@@ -30,7 +30,7 @@ test('class instance payload supplies packetName to channel send envelopes', asy
     router.bind(endpoint);
     dealer.connect(endpoint);
 
-    await client.sendToChannel('api', new GetProfileReq(7)).submit();
+    client.sendToChannel('api', new GetProfileReq(7)).submit();
 
     const received = await recvRouterMessage(router);
     const envelope = decodeDotnetEnvelope(received.parts);
@@ -79,7 +79,7 @@ test('class instance payload supplies packetName to stream send calls', async ()
     async close() {}
   });
 
-  await context.client.send(new Ready(true)).submit();
+  context.client.send(new Ready(true)).submit();
 
   assert.equal(written.length, 1);
   const frame = connector.ZlinkStreamFrameCodec.decode(written[0]);

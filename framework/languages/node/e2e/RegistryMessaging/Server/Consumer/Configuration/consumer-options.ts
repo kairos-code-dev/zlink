@@ -4,7 +4,6 @@ export interface ConsumerOptions {
   readonly traceLabel: string;
   readonly providerEndpoints: readonly string[];
   readonly registryRouterEndpoint?: string;
-  readonly lowHighWaterMark: boolean;
 }
 
 export function parseConsumerOptions(args: readonly string[]): ConsumerOptions {
@@ -32,8 +31,7 @@ export function parseConsumerOptions(args: readonly string[]): ConsumerOptions {
     logDir: last(values, 'log-dir') ?? '/tmp/zlink-node-e2e-log',
     traceLabel: last(values, 'trace-label') ?? 'consumer',
     providerEndpoints,
-    registryRouterEndpoint,
-    lowHighWaterMark: (last(values, 'low-hwm') ?? 'false').toLowerCase() === 'true'
+    registryRouterEndpoint
   };
 }
 

@@ -436,7 +436,7 @@ test('stream session node runtime receives framed packets from public binding st
               header: header.packetName,
               payload: payload.decode()
             });
-            await sessionContext.client.reply('NativeReply').submit();
+            sessionContext.client.reply('NativeReply').submit();
           }
         };
       }

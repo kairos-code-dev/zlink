@@ -45,12 +45,6 @@ function createConsumerModule(options: ConsumerOptions): Function {
           } else {
             profile.enableClient(options.providerEndpoints);
           }
-          if (options.lowHighWaterMark) {
-            const socket = profile.configureClientSocket();
-            socket.sendHighWaterMark = 1;
-            socket.receiveHighWaterMark = 1;
-            socket.sendTimeoutMs = 100;
-          }
           return builder.build();
         }
       })

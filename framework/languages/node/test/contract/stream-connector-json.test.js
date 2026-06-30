@@ -33,7 +33,7 @@ test('stream connector json codec writes json payload frame through connector', 
   });
 
   await instance.connect();
-  await instance.send(new Ready()).metadata('trace', 'json-1').submit();
+  instance.send(new Ready()).metadata('trace', 'json-1').submit();
 
   const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);

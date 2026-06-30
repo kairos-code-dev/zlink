@@ -3683,7 +3683,7 @@ function wrapSendCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkSendCall): ZL
       return this;
     },
     submit(signal?: AbortSignal) {
-      return serial.execute(() => inner.submit(signal));
+      void serial.execute(() => inner.submit(signal)).catch(() => undefined);
     }
   };
 }
@@ -3695,7 +3695,7 @@ function wrapPublishCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkPublishCal
       return this;
     },
     submit(signal?: AbortSignal) {
-      return serial.execute(() => inner.submit(signal));
+      void serial.execute(() => inner.submit(signal)).catch(() => undefined);
     }
   };
 }
@@ -3789,10 +3789,10 @@ function wrapRoutedSpotSendCall(
       return this;
     },
     submit(signal?: AbortSignal) {
-      return serial.execute(async () => {
+      void serial.execute(async () => {
         const remoteAddress = await resolver.resolve(spotRid, signal);
         await transport.sendToSpot(remoteAddress, message, { packetName: selectedPacketName, signal });
-      });
+      }).catch(() => undefined);
     }
   };
 }

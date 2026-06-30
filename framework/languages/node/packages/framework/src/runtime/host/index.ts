@@ -611,7 +611,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     for (const [key, value] of metadata) {
       call.metadata(key, value);
     }
-    await call.submit();
+    call.submit();
   }
 
   private async receiveRemoteBoundSessionSend(payload: unknown): Promise<{ readonly ok: boolean }> {
@@ -636,7 +636,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     for (const [key, value] of metadata) {
       call.metadata(key, value);
     }
-    await call.submit();
+    call.submit();
     return { ok: true };
   }
 
@@ -1254,7 +1254,11 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<void> {
+  submit(signal?: AbortSignal): void {
+    void this.submitAsync(signal).catch(() => undefined);
+  }
+
+  private async submitAsync(signal?: AbortSignal): Promise<void> {
     if (this.executed) {
       throw new Error('Bound session send already submitted.');
     }

@@ -42,6 +42,9 @@ public final class Contracts {
     public record YieldTimeoutCommand(String requestId, long delayMillis, long timeoutMillis) {
     }
 
+    public record YieldCancelCommand(String requestId, long delayMillis, long cancelAfterMillis) {
+    }
+
     public record YieldShutdownScenarioRequest(String requestId, String spotRid, long delayMillis) {
     }
 

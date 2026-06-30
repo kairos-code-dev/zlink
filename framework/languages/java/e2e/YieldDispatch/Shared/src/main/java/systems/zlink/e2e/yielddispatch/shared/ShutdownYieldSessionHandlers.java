@@ -10,6 +10,7 @@ import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 public final class ShutdownYieldSessionHandlers {
     private static final Duration ROUTE_REQUEST_TIMEOUT = Duration.ofSeconds(90);
     private static final Duration RECOVERY_REQUEST_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration RECOVERY_PROBE_ATTEMPT_TIMEOUT = Duration.ofSeconds(5);
 
     private ShutdownYieldSessionHandlers() {
     }
@@ -93,19 +94,42 @@ public final class ShutdownYieldSessionHandlers {
                     new Contracts.EnsureSpotRequest(request.spotRid()))
                 .timeout(RECOVERY_REQUEST_TIMEOUT)
                 .await(Contracts.EnsureSpotReply.class);
-            routes.requestToSpot(
-                    Contracts.ROUTE_CHANNEL,
-                    playNode,
-                    spotRid,
-                    new Contracts.ProbeRequest(request.requestId()))
-                .timeout(RECOVERY_REQUEST_TIMEOUT)
-                .await(Contracts.ProbeReply.class);
+            awaitProbeAfterRecovery(routes, playNode, spotRid, request.requestId());
             context.client()
                 .reply(new Contracts.YieldShutdownResult(
                     "yield.e3-shutdown-recovery",
                     request.requestId(),
                     request.spotRid()))
                 .await();
+        }
+
+        private static void awaitProbeAfterRecovery(
+            ZLinkRouteClient routes,
+            RoutingId playNode,
+            RoutingId spotRid,
+            String requestId) {
+            RuntimeException lastError = null;
+            for (int attempt = 0; attempt < 5; attempt++) {
+                try {
+                    routes.requestToSpot(
+                            Contracts.ROUTE_CHANNEL,
+                            playNode,
+                            spotRid,
+                            new Contracts.ProbeRequest(requestId))
+                        .timeout(RECOVERY_PROBE_ATTEMPT_TIMEOUT)
+                        .await(Contracts.ProbeReply.class);
+                    return;
+                } catch (RuntimeException error) {
+                    lastError = error;
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("YD-E3 recovery probe interrupted", interrupted);
+                    }
+                }
+            }
+            throw lastError;
         }
     }
 }

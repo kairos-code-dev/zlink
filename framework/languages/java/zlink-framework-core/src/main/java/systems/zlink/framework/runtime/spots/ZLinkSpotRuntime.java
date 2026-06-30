@@ -3379,6 +3379,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
         }
 
+        @Override
+        public <TReply> TReply yield(Class<TReply> replyType, CancellationToken cancellationToken) {
+            ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType), cancellationToken));
+        }
+
         private ZLinkYieldTurn requireTurn() {
             if (turn == null) {
                 ZLinkYieldTurn current = ZLinkFrameworkTurns.captureCurrent();
@@ -3717,6 +3724,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         public <TReply> TReply yield(Class<TReply> replyType) {
             return ZLinkAwait.await(
                 ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
+        }
+
+        @Override
+        public <TReply> TReply yield(Class<TReply> replyType, CancellationToken cancellationToken) {
+            ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType), cancellationToken));
         }
 
         private ZLinkYieldTurn requireTurn() {

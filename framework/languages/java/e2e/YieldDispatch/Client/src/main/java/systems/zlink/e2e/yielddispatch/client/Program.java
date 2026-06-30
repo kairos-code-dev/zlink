@@ -94,6 +94,8 @@ public final class Program {
             System.out.println("scenario YD-D4 passed");
             runTimeoutCleanup(connector);
             System.out.println("scenario YD-E1 passed");
+            runCancellationCleanup(connector);
+            System.out.println("scenario YD-E2 passed");
             System.out.println("yield-dispatch e2e result=passed");
         } finally {
             connector.close().await();
@@ -154,10 +156,10 @@ public final class Program {
         Map<String, String> metadata = Map.of(
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
-        connector
+        CompletionStage<Void> worker = connector
             .send(new Contracts.WorkerYieldCommand(requestId, 4000))
             .metadata(metadata)
-            .await();
+            .submit();
         assertOrder(playEvidence, requestId, List.of(
             "worker-yield-started",
             "worker-yield-released"));
@@ -165,6 +167,7 @@ public final class Program {
             .send(new Contracts.ProbeCommand(requestId, "worker-probe"))
             .metadata(metadata)
             .await();
+        connector.await(worker);
         assertOrder(playEvidence, requestId, List.of(
             "worker-yield-started",
             "worker-yield-released",
@@ -541,10 +544,10 @@ public final class Program {
         Map<String, String> metadata = Map.of(
             Contracts.SPOT_RID_METADATA, spotRid,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B);
-        connector
+        CompletionStage<Void> yield = connector
             .send(new Contracts.YieldCommand(requestId, 1000, "route-bridge"))
             .metadata(metadata)
-            .await();
+            .submit();
         assertOrder(playBEvidence, requestId, List.of(
             "yield-started",
             "yield-released"));
@@ -552,6 +555,7 @@ public final class Program {
             .send(new Contracts.ProbeCommand(requestId, "route-bridge-probe"))
             .metadata(metadata)
             .await();
+        connector.await(yield);
         assertOrder(playBEvidence, requestId, List.of(
             "yield-started",
             "yield-released",
@@ -667,6 +671,49 @@ public final class Program {
             "timeout-yield-started",
             "timeout-yield-released",
             "timeout-yield-completed"), "spot=" + spotRid);
+        assertAllValuesContain(playEvidence, requestId, List.of(
+            "probe-started",
+            "probe-completed"), spotRid);
+    }
+
+    private static void runCancellationCleanup(ZLinkStreamConnector connector) throws Exception {
+        String requestId = "yde2-" + System.nanoTime();
+        String spotRid = requestId + "-spot";
+        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        Contracts.EnsureSpotReply target = connector
+            .request(new Contracts.EnsureSpotRequest(spotRid))
+            .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.EnsureSpotReply.class);
+        ensure(spotRid.equals(target.spotRid()), "YD-E2 spot mismatch");
+        ensure(Contracts.PLAY_NODE_A.equals(target.nodeRid()), "YD-E2 node mismatch");
+
+        Map<String, String> metadata = Map.of(
+            Contracts.SPOT_RID_METADATA, spotRid,
+            Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A);
+        connector
+            .send(new Contracts.YieldCancelCommand(requestId, 700, 100))
+            .metadata(metadata)
+            .await();
+        assertOrder(playEvidence, requestId, List.of(
+            "cancel-yield-started",
+            "cancel-yield-released",
+            "cancel-yield-completed"));
+        assertNoMarker(playEvidence, requestId, "cancel-yield-unexpected-resumed");
+        connector
+            .send(new Contracts.ProbeCommand(requestId, "cancel-probe"))
+            .metadata(metadata)
+            .await();
+        assertOrder(playEvidence, requestId, List.of(
+            "cancel-yield-started",
+            "cancel-yield-released",
+            "cancel-yield-completed",
+            "probe-started",
+            "probe-completed"));
+        assertAllValuesContain(playEvidence, requestId, List.of(
+            "cancel-yield-started",
+            "cancel-yield-released",
+            "cancel-yield-completed"), "spot=" + spotRid);
         assertAllValuesContain(playEvidence, requestId, List.of(
             "probe-started",
             "probe-completed"), spotRid);

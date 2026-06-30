@@ -16,11 +16,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.errors.ZLinkOperationCanceledException;
 import systems.zlink.framework.errors.ZLinkWorkerFailedException;
 import systems.zlink.framework.errors.ZLinkWorkerQueueFullException;
 import systems.zlink.framework.errors.ZLinkWorkerTimeoutException;
@@ -266,6 +268,52 @@ class DefaultZLinkWorkerCallTest {
             "second-start",
             "first-resumed:42",
             "third-start"), List.copyOf(events));
+    }
+
+    @Test
+    void cancellationAwareYieldReleasesQueueAndDropsLateWorkerResult() throws Exception {
+        pool = new ZLinkWorkerPool(0, 2, Duration.ofSeconds(30), 16);
+        AtomicBoolean canceled = new AtomicBoolean(false);
+        CountDownLatch releaseWork = new CountDownLatch(1);
+        CompletableFuture<Void> workerStarted = new CompletableFuture<>();
+        CompletableFuture<Void> firstCanceled = new CompletableFuture<>();
+        ConcurrentLinkedQueue<String> events = new ConcurrentLinkedQueue<>();
+
+        CompletableFuture<Void> first = spotQueue.enqueue(() -> {
+            events.add("first-start");
+            try {
+                new DefaultZLinkWorkerCall<>(
+                    pool,
+                    token -> {
+                        workerStarted.complete(null);
+                        releaseWork.await();
+                        return 1;
+                    },
+                    postToQueue())
+                    .yield(canceled::get);
+                events.add("first-unexpected-resumed");
+            } catch (CompletionException error) {
+                assertInstanceOf(ZLinkOperationCanceledException.class, error.getCause());
+                events.add("first-canceled");
+                firstCanceled.complete(null);
+            }
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+
+        workerStarted.get(5, TimeUnit.SECONDS);
+        CompletableFuture<Void> second = spotQueue.enqueue(() -> {
+            events.add("second-start");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+        second.get(5, TimeUnit.SECONDS);
+
+        canceled.set(true);
+        firstCanceled.get(5, TimeUnit.SECONDS);
+        releaseWork.countDown();
+        first.get(5, TimeUnit.SECONDS);
+
+        assertEquals(List.of("first-start", "second-start", "first-canceled"), List.copyOf(events));
+        assertFalse(events.contains("first-unexpected-resumed"));
     }
 
     @Test

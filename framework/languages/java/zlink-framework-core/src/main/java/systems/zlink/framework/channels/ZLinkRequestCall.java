@@ -2,6 +2,7 @@ package systems.zlink.framework.channels;
 
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 
 public interface ZLinkRequestCall {
@@ -14,6 +15,11 @@ public interface ZLinkRequestCall {
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 
     default <TReply> TReply yield(Class<TReply> replyType) {
+        throw new UnsupportedOperationException(
+            "yield is not supported by this request call");
+    }
+
+    default <TReply> TReply yield(Class<TReply> replyType, CancellationToken cancellationToken) {
         throw new UnsupportedOperationException(
             "yield is not supported by this request call");
     }

@@ -188,6 +188,7 @@ scenario_prefixes = {
     "YD-D3": ["ydd3-"],
     "YD-D4": ["ydd4-"],
     "YD-E1": ["yde1-"],
+    "YD-E2": ["yde2-"],
 }
 required_markers = {
     "YD-A1": ["hold-started", "hold-resumed", "hold-completed", "probe-started"],
@@ -204,6 +205,7 @@ required_markers = {
     "YD-D3": ["yield-started", "yield-released", "probe-started", "probe-completed", "yield-resumed", "yield-completed"],
     "YD-D4": ["actor-push-yield-started", "actor-push-yield-released", "actor-push-yield-resumed", "actor-push-yield-completed"],
     "YD-E1": ["timeout-yield-started", "timeout-yield-released", "timeout-yield-completed", "probe-started", "probe-completed"],
+    "YD-E2": ["cancel-yield-started", "cancel-yield-released", "cancel-yield-completed", "probe-started", "probe-completed"],
 }
 
 entries = []
@@ -459,9 +461,11 @@ grep -q "scenario YD-D2 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-D3 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-D4 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
+grep -q "scenario YD-E2 passed" "${log_dir}/client.stdout.log"
 grep -q "yield-dispatch e2e result=passed" "${log_dir}/client.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
 grep -q '"YD-E1"' "${log_dir}/yield-dispatch-marker-report.json"
+grep -q '"YD-E2"' "${log_dir}/yield-dispatch-marker-report.json"
 echo "yield-dispatch marker report=${log_dir}/yield-dispatch-marker-report.json"
 
 if [[ "${ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN:-0}" == "1" ]]; then

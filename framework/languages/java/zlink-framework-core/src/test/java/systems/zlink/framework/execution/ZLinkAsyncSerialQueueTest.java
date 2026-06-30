@@ -108,6 +108,59 @@ final class ZLinkAsyncSerialQueueTest {
     }
 
     @Test
+    void yield_reentersQueueWhenOperationFails() throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<String> io = new CompletableFuture<>();
+        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
+        CompletableFuture<Void> firstResumed = new CompletableFuture<>();
+        CompletableFuture<Void> releaseFirstResume = new CompletableFuture<>();
+        List<String> events = new ArrayList<>();
+
+        CompletableFuture<Void> first = queue.enqueue(() -> {
+            events.add("first-start");
+            firstStarted.complete(null);
+            try {
+                ZLinkYieldTurn.current().awaitFrameworkCallBlocking(io);
+                events.add("first-unexpected-success");
+            } catch (RuntimeException error) {
+                events.add("first-failed:" + error.getCause().getClass().getSimpleName());
+            }
+            firstResumed.complete(null);
+            ZLinkAwait.awaitVoid(releaseFirstResume);
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+
+        firstStarted.get(3, TimeUnit.SECONDS);
+
+        CompletableFuture<Void> second = queue.enqueue(() -> {
+            events.add("second-start");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+        second.get(3, TimeUnit.SECONDS);
+
+        assertEquals(List.of("first-start", "second-start"), events);
+
+        io.completeExceptionally(new IllegalStateException("boom"));
+        firstResumed.get(3, TimeUnit.SECONDS);
+
+        CompletableFuture<Void> third = queue.enqueue(() -> {
+            events.add("third-start");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+
+        assertFalse(third.isDone());
+
+        releaseFirstResume.complete(null);
+        third.get(3, TimeUnit.SECONDS);
+        first.get(3, TimeUnit.SECONDS);
+        assertEquals(List.of(
+            "first-start",
+            "second-start",
+            "first-failed:IllegalStateException",
+            "third-start"), events);
+    }
+
+    @Test
     void yield_releasesGateAgainWhenResumedTurnSuspendsAgain() throws Exception {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
         CompletableFuture<String> firstIo = new CompletableFuture<>();

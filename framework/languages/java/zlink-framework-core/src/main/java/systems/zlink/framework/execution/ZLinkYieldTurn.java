@@ -45,8 +45,9 @@ public final class ZLinkYieldTurn {
             return operation;
         }
         signalSuspended();
-        return operation.thenCompose(value ->
-            awaitResumePermit().thenApply(ignored -> value));
+        return operation
+            .handle(YieldOutcome::new)
+            .thenCompose(outcome -> awaitResumePermit().thenCompose(ignored -> outcome.toStage()));
     }
 
     <T> T awaitFrameworkCallBlocking(CompletionStage<T> stage) {
@@ -92,6 +93,15 @@ public final class ZLinkYieldTurn {
             } else {
                 CURRENT.set(previous);
             }
+        }
+    }
+
+    private record YieldOutcome<T>(T value, Throwable error) {
+        CompletionStage<T> toStage() {
+            if (error != null) {
+                return CompletableFuture.failedFuture(error);
+            }
+            return CompletableFuture.completedFuture(value);
         }
     }
 }

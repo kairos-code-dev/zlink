@@ -14,6 +14,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -1082,9 +1083,25 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
+        public ZLinkActorJoinResult<Void> yield(CancellationToken cancellationToken) {
+            ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(), cancellationToken));
+        }
+
+        @Override
         public <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType) {
             return ZLinkAwait.await(
                 ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
+        }
+
+        @Override
+        public <TReply> ZLinkActorJoinResult<TReply> yield(
+            Class<TReply> replyType,
+            CancellationToken cancellationToken) {
+            ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType), cancellationToken));
         }
 
         private ZLinkYieldTurn requireTurn() {
@@ -1399,9 +1416,25 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
+        public ZLinkActorJoinResult<Void> yield(CancellationToken cancellationToken) {
+            ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(), cancellationToken));
+        }
+
+        @Override
         public <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType) {
             return ZLinkAwait.await(
                 ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType)));
+        }
+
+        @Override
+        public <TReply> ZLinkActorJoinResult<TReply> yield(
+            Class<TReply> replyType,
+            CancellationToken cancellationToken) {
+            ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
+            return ZLinkAwait.await(
+                ZLinkFrameworkTurns.awaitManagedCompletion(requireTurn(), submit(replyType), cancellationToken));
         }
 
         private ZLinkYieldTurn requireTurn() {

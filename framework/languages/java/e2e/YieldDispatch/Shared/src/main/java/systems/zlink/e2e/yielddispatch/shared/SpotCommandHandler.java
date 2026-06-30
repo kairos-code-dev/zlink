@@ -88,6 +88,18 @@ public abstract class SpotCommandHandler<TCommand>
         }
     }
 
+    public static final class YieldCancel
+        extends SpotCommandHandler<Contracts.YieldCancelCommand> {
+        public YieldCancel(ZLinkRouteClient routes) {
+            super(routes, Contracts.YieldCancelCommand.class);
+        }
+
+        @Override
+        public String packetName() {
+            return "YieldCancelCommand";
+        }
+    }
+
     public static final class TimerStart
         extends SpotCommandHandler<Contracts.TimerStartCommand> {
         public TimerStart(ZLinkRouteClient routes) {

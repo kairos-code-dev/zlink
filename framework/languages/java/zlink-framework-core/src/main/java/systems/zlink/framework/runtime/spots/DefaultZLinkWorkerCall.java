@@ -72,6 +72,14 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     }
 
     @Override
+    public T yield(CancellationToken cancellationToken) {
+        ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
+        ZLinkYieldTurn capturedTurn = requireTurn();
+        return ZLinkAwait.await(
+            ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, submit(), cancellationToken));
+    }
+
+    @Override
     public void submit(
         BiConsumer<T, CancellationToken> onCompleted,
         BiConsumer<Throwable, CancellationToken> onError) {

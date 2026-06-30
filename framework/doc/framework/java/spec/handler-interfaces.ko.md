@@ -458,7 +458,11 @@ public interface ZLinkActorJoinEntrySpotCall {
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
     <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
+    ZLinkActorJoinResult<Void> yield(CancellationToken cancellationToken);
     <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> yield(
+        Class<TReply> replyType,
+        CancellationToken cancellationToken);
 }
 
 public interface ZLinkActorJoinSpotCall {
@@ -466,7 +470,11 @@ public interface ZLinkActorJoinSpotCall {
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
     <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
+    ZLinkActorJoinResult<Void> yield(CancellationToken cancellationToken);
     <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> yield(
+        Class<TReply> replyType,
+        CancellationToken cancellationToken);
 }
 
 public record ZLinkActorJoinResult<TReply>(
@@ -718,6 +726,10 @@ public interface ZLinkRequestCall {
     ZLinkRequestCall timeout(Duration timeout);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
     <TReply> TReply await(Class<TReply> replyType);
+    <TReply> TReply yield(Class<TReply> replyType);
+    <TReply> TReply yield(
+        Class<TReply> replyType,
+        CancellationToken cancellationToken);
 }
 
 public interface ZLinkSpotOutbound {
@@ -759,6 +771,7 @@ public interface ZLinkSpotContext {
     RoutingId spotRid();
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
+    <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work);
     CompletionStage<Void> leaveActor(ZLinkActor actor);
     CompletionStage<ZLinkTimer> addTimer(
         String name,
@@ -771,12 +784,23 @@ public interface ZLinkEntrySpotContext {
     RoutingId spotRid();
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
+    <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work);
     CompletionStage<Void> destroyActor(ZLinkActor actor);
     CompletionStage<ZLinkTimer> addTimer(
         String name,
         Duration period,
         Class<?> handlerType,
         @Nullable ZLinkTimerOptions options);
+}
+
+public interface ZLinkWorkerCall<T> {
+    ZLinkWorkerCall<T> timeout(Duration timeout);
+    CompletionStage<T> submit();
+    T yield();
+    T yield(CancellationToken cancellationToken);
+    void submit(
+        BiConsumer<T, CancellationToken> onCompleted,
+        BiConsumer<Throwable, CancellationToken> onError);
 }
 
 public interface ZLinkRouteClient {

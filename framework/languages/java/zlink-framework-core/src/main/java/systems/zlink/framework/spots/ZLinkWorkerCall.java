@@ -32,6 +32,8 @@ public interface ZLinkWorkerCall<T> {
 
     T yield();
 
+    T yield(CancellationToken cancellationToken);
+
     void submit(
         BiConsumer<T, CancellationToken> onCompleted,
         BiConsumer<Throwable, CancellationToken> onError);

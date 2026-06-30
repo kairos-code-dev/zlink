@@ -2,6 +2,7 @@ package systems.zlink.framework.actors;
 
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkAwait;
 
 public interface ZLinkActorJoinSpotCall {
@@ -16,7 +17,19 @@ public interface ZLinkActorJoinSpotCall {
             "yield is not supported by this actor join call");
     }
 
+    default ZLinkActorJoinResult<Void> yield(CancellationToken cancellationToken) {
+        throw new UnsupportedOperationException(
+            "yield is not supported by this actor join call");
+    }
+
     default <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType) {
+        throw new UnsupportedOperationException(
+            "yield is not supported by this actor join call");
+    }
+
+    default <TReply> ZLinkActorJoinResult<TReply> yield(
+        Class<TReply> replyType,
+        CancellationToken cancellationToken) {
         throw new UnsupportedOperationException(
             "yield is not supported by this actor join call");
     }

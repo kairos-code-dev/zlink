@@ -143,6 +143,11 @@ public final class Program {
     }
 
     @Bean
+    YieldProbeHandlers.YieldCancelCommandHandler yieldCancelCommandHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.YieldCancelCommandHandler(evidence);
+    }
+
+    @Bean
     YieldProbeHandlers.RemoteSpotYieldHandler remoteSpotYieldHandler(EvidenceStore evidence) {
         return new YieldProbeHandlers.RemoteSpotYieldHandler(evidence);
     }

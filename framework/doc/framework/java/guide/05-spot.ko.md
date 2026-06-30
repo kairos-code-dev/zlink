@@ -69,6 +69,10 @@ Bingo sample의 `MatchBingoActorHandler`는 API channel request와 room `joinSpo
 `yield(...)`를 사용한다. room list, match queue, lobby state 같은 공용 mutable state를
 await 전후로 이어서 판단하는 handler에는 `yield(...)`를 쓰지 않는다.
 
+handler가 받은 `CancellationToken`을 yield 대기에 전달해야 할 때는 token을 받는 overload를
+사용한다. 이 overload는 취소가 먼저 관찰되면 같은 mailbox continuation에서 framework
+cancellation 오류를 내고, 뒤늦은 reply나 worker result로 handler 후속 작업을 다시 실행하지 않는다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../README.ko.md) | [이전: Channel Messaging](04-channel-messaging.ko.md) | [다음: Actor/Session](06-actor-session.ko.md)

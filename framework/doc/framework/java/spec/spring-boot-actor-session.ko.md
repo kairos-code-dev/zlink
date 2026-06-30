@@ -146,7 +146,11 @@ public interface ZLinkActorJoinEntrySpotCall {
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
     <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
+    ZLinkActorJoinResult<Void> yield(CancellationToken cancellationToken);
     <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> yield(
+        Class<TReply> replyType,
+        CancellationToken cancellationToken);
 }
 
 public interface ZLinkActorJoinSpotCall {
@@ -154,7 +158,11 @@ public interface ZLinkActorJoinSpotCall {
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
     <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
+    ZLinkActorJoinResult<Void> yield(CancellationToken cancellationToken);
     <TReply> ZLinkActorJoinResult<TReply> yield(Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> yield(
+        Class<TReply> replyType,
+        CancellationToken cancellationToken);
 }
 
 public record ZLinkActorJoinResult<TReply>(
@@ -173,7 +181,8 @@ public interface ZLinkBoundSession {
 `yield(...)` 는 framework가 만든 actor join call object에서만 사용한다.
 `yield(...)` 는 `CompletionStage.join()`을 직접 노출하는 helper가 아니라
 현재 Spot/Entry Spot turn을 반납하고, join completion 뒤 원래 mailbox에서 handler를
-재개하는 terminator다.
+재개하는 terminator다. `CancellationToken` overload는 token이 이미 취소되었거나
+join 대기 중 취소되면 `ZLinkOperationCanceledException`으로 끝난다.
 
 `joinSpot(...)`은 actor가 Entry Spot 이후 실제 user Spot으로 들어가는 요청이다. 호출은
 `CompletionStage`로 완료되며 framework는 backend `SpotNode.joinActor(...)` 결과를

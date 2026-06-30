@@ -1,6 +1,7 @@
 package systems.zlink.e2e.yielddispatch.shared;
 
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.contracts.core.RoutingId;
@@ -204,6 +205,46 @@ public final class YieldProbeHandlers {
             } catch (RuntimeException error) {
                 evidence.record(
                     "timeout-yield-completed",
+                    request.requestId(),
+                    value + ";error=" + error.getClass().getSimpleName());
+            }
+        }
+    }
+
+    public static final class YieldCancelCommandHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.YieldCancelCommand> {
+        private final EvidenceStore evidence;
+
+        public YieldCancelCommandHandler(EvidenceStore evidence) {
+            this.evidence = evidence;
+        }
+
+        @Override
+        public void handle(
+            YieldProbeSpot spot,
+            Contracts.YieldCancelCommand request) {
+            String value = "spot=" + spot.context().spotRid() + ";handler=spot";
+            AtomicBoolean canceled = new AtomicBoolean(false);
+            evidence.record("cancel-yield-started", request.requestId(), value);
+            try {
+                evidence.record("cancel-yield-released", request.requestId(), value);
+                spot.context().runWorker(token -> {
+                        Thread.sleep(request.cancelAfterMillis());
+                        canceled.set(true);
+                        return request.requestId();
+                    })
+                    .timeout(Duration.ofSeconds(5))
+                    .submit();
+                spot.context().outbound()
+                    .requestToChannel(
+                        Contracts.DELAY_CHANNEL,
+                        new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                    .timeout(Duration.ofSeconds(5))
+                    .yield(Contracts.DelayReply.class, canceled::get);
+                evidence.record("cancel-yield-unexpected-resumed", request.requestId(), value);
+            } catch (RuntimeException error) {
+                evidence.record(
+                    "cancel-yield-completed",
                     request.requestId(),
                     value + ";error=" + error.getClass().getSimpleName());
             }

@@ -185,8 +185,11 @@ transport error callback public API가 추가되어야 한다.
 | 항목 | 계층 | 테스트 또는 명령 | 통과 기준 |
 |------|------|------------------|-----------|
 | Java serial queue yield | unit | `ZLinkAsyncSerialQueueTest.yield_releasesGateUntilOperationCompletes` | `yield(...)`가 current turn을 반납하고 completion 뒤 continuation을 재개한다. |
+| Java exceptional yield resume | unit | `ZLinkAsyncSerialQueueTest.yield_reentersQueueWhenOperationFails` | 실패한 yield completion도 원래 serial queue resume permit을 거친 뒤 handler continuation으로 돌아온다. |
 | Java worker yield | unit | `DefaultZLinkWorkerCallTest.yieldAllowsOtherSpotQueueWorkWhileWorkerRuns` | worker completion을 기다리는 동안 다른 Spot 작업이 실행될 수 있다. |
+| Java cancellation-aware worker yield | unit | `DefaultZLinkWorkerCallTest.cancellationAwareYieldReleasesQueueAndDropsLateWorkerResult` | cancellation-aware `yield(...)`가 Spot queue를 반납하고, 취소 뒤 늦은 worker result로 handler 후속 작업을 재개하지 않는다. |
 | actor join yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | actor `JoinSpot`/`JoinEntrySpot` call object가 `yield(...)`를 public contract로 제공한다. |
+| cancellation-aware yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | request, actor join, worker call object가 `CancellationToken`을 받는 `yield(...)` overload를 public contract로 제공한다. |
 | bound session yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | bound session send call object가 `yield()`를 public contract로 제공한다. |
 | excluded route request surface | contract | `HandlerContractTest` route request 항목 | route request에는 `yield(...)`가 노출되지 않는다. |
 | Bingo Java/Kotlin sample compile | sample build | `:java:Bingo:Server:Play:compileJava`, `:kotlin:Bingo:Server:Play:compileKotlin` | Java sample은 member `yield(...)`, Kotlin sample은 top-level `yield(call, ...)` helper로 compile된다. |

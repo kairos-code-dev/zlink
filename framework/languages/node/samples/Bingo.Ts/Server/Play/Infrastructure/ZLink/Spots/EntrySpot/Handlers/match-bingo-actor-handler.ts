@@ -45,13 +45,13 @@ class MatchBingoActorHandler
         )
         .packetName(PacketNames.matchBingoApiReq)
         .timeout(SampleTimings.requestTimeout)
-        .yield<MatchBingoApiRes>());
+        .submit<MatchBingoApiRes>());
 
     const roomId = matched.roomId;
     const joined = await actor.context
       .joinSpot(roomId, bingoRoomJoinReq(roomId, actorId, displayName))
       .timeout(SampleTimings.requestTimeout)
-      .yield<BingoRoomJoinRes>();
+      .submit<BingoRoomJoinRes>();
     if (joined.resultCode !== 0 || joined.reply === undefined) {
       throw new Error(`Room ${roomId} rejected actor '${actorId}'.`);
     }

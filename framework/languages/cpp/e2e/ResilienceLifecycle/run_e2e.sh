@@ -132,7 +132,8 @@ start_registry() {
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_REGISTRY" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$REGISTRY" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
-  PIDS+=("$!")
+  LAST_PID="$!"
+  PIDS+=("$LAST_PID")
   wait_port registry-router "$REGISTRY_ROUTER"
   wait_port registry-http "$HTTP_REGISTRY"
 }
@@ -201,6 +202,7 @@ run_client() {
 }
 
 start_registry
+REGISTRY_PID="$LAST_PID"
 
 start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
@@ -366,6 +368,32 @@ sleep 1
 run_client quick rl-c3-up env
 grep -q "scenario quick passed" "$LOG_DIR/client-rl-c3-up.stdout.log"
 echo "scenario RL-C3 passed"
+stop_pid "$API_B_PID"
+stop_pid "$API_A_PID"
+
+start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+API_A_PID="$LAST_PID"
+start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
+API_B_PID="$LAST_PID"
+READY="$LOG_DIR/rl-c4-ready"
+CONTINUE="$LOG_DIR/rl-c4-continue"
+OUTAGE_VERIFIED="$LOG_DIR/rl-c4-outage-verified"
+run_client registry-outage rl-c4 env \
+  ZLINK_CPP_E2E_READY_FILE="$READY" \
+  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
+  ZLINK_CPP_E2E_DRAINED_FILE="$OUTAGE_VERIFIED" &
+C4_CLIENT_PID="$!"
+wait_marker "$READY"
+stop_pid "$REGISTRY_PID"
+sleep 1
+touch "$CONTINUE"
+wait_marker "$OUTAGE_VERIFIED"
+start_registry
+REGISTRY_PID="$LAST_PID"
+sleep 5
+wait "$C4_CLIENT_PID"
+grep -q "scenario RL-C4 passed" "$LOG_DIR/client-rl-c4.stdout.log"
+echo "scenario RL-C4 passed"
 stop_pid "$API_B_PID"
 stop_pid "$API_A_PID"
 

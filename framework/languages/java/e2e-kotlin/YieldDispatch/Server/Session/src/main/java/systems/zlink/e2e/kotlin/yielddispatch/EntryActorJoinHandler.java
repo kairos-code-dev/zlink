@@ -15,7 +15,7 @@ public final class EntryActorJoinHandler {
         CancellationToken cancellationToken) {
         return actor.context()
             .joinSpot(RoutingId.from(request.spotRid()), request)
-            .yield(Contracts.ActorJoinReply.class)
+            .await(Contracts.ActorJoinReply.class)
             .reply();
     }
 }

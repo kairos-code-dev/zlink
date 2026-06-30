@@ -116,6 +116,7 @@ import {
 } from '../execution';
 import {
   ZLinkActorPacketKind,
+  ZLinkActorDispatchMailboxSet,
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
   ZLinkSpotActorDispatcher,
@@ -2001,6 +2002,7 @@ function closeReceivedQuietly(received: BindingReceived): void {
 
 export class ZLinkEntrySpotActivation {
   private readonly serial = new ZLinkSpotSerialExecutor();
+  private readonly actorPacketMailboxes = new ZLinkActorDispatchMailboxSet();
   private readonly timers = new ZLinkSpotTimerRegistry();
   private readonly actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
   private readonly handlers = new DefaultZLinkSpotHandlerRegistry(this.actorHandlers);
@@ -2012,8 +2014,8 @@ export class ZLinkEntrySpotActivation {
   readonly context: ZLinkEntrySpotContext;
 
   constructor(private readonly options: ZLinkEntrySpotActivationOptions) {
-    // Entry Spot follows the user Spot rule: outbound, timers, lifecycle and
-    // actor packet dispatch all share the one per-activation serial executor.
+    // Entry Spot lifecycle, timers and detached continuations use this serial
+    // executor. Actor packets use the target actor mailbox.
     this.outbound = new DefaultZLinkSpotOutbound(
       this.serial,
       options.channelClient,
@@ -2048,9 +2050,9 @@ export class ZLinkEntrySpotActivation {
   }
 
   /**
-   * The Entry Spot serial dispatch line. All Entry Spot application
-   * callbacks (lifecycle, actor packets, timers, request continuations,
-   * worker completions) run through this executor one at a time.
+   * The Entry Spot serial dispatch line for Entry Spot-owned callbacks such as
+   * lifecycle, timers, request continuations and worker completions. Actor
+   * packets use the target actor mailbox instead.
    */
   get serialExecutor(): ZLinkSpotSerialExecutor {
     return this.serial;
@@ -2170,6 +2172,23 @@ export class ZLinkEntrySpotActivation {
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef
   ): Promise<unknown> {
+    return this.actorPacketMailboxes.submit(actorId, () =>
+      this.dispatchActorPacketInsideMailbox(
+        actorId,
+        parts,
+        returnResponse,
+        remoteBoundSessionTarget,
+        fallbackActorRef
+      ));
+  }
+
+  private async dispatchActorPacketInsideMailbox(
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse = false,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
+  ): Promise<unknown> {
     if (parts.length < 2) {
       this.options.dispatchErrors?.report({
         surface: ZLinkDispatchErrorSurface.SpotActor,
@@ -2278,7 +2297,7 @@ export class ZLinkEntrySpotActivation {
       registry: this.actorHandlers,
       spot: this.entrySpot as unknown as ZLinkSpot,
       providerResolver: this.options.providerResolver,
-      serial: this.serial
+      messageSerializers: this.options.messageSerializers
     });
     try {
       if (header.kind === ZLinkStreamMessageKind.Send) {

@@ -22,7 +22,7 @@ Client target으로 실행한다. client scenario 구현은 ResilienceLifecycle 
 | `RL-C1` | 구현 | 반복 client request 뒤 follow-up request가 성공하고 client process가 정상 종료되는지 검증한다. |
 | `RL-C2` | 구현 | provider B를 `SIGKILL`한 뒤 follow-up request가 public retry window 안에서 살아 있는 provider로 성공하는지 검증한다. |
 | `RL-C3` | 구현 | provider B 정지/복구 뒤 각각 follow-up request가 성공하는지 검증한다. split-brain topology DTO 단언은 아직 없다. |
-| `RL-C4` | gap | registry outage 중 established channel timeout/public behavior가 아직 정리되지 않았다. |
+| `RL-C4` | 부분 구현 | `registry-outage` client가 registry 종료 전 manual channel request를 보낸 뒤, runner가 registry를 중지한 상태에서도 같은 client의 established channel request가 성공하고 provider evidence가 남는지 검증한다. registry 재시작 뒤 기존 provider heartbeat 재등록과 새 discovery client 복구는 현재 C++ runner에서 확인되지 않아 gap으로 남긴다. |
 | `RL-D1` | 구현 | `resilience-stress` client가 다수 request를 보내고 모두 reply를 받는지 검증한다. |
 | `RL-D2` | gap | observer failure event를 수집하는 C++ public harness 연결이 없다. |
 | `RL-D3` | 구현 | 전용 runner가 missing packet flow를 실행하고 provider flow log의 `handler_missing`/`drop` marker를 검증한다. |
@@ -35,5 +35,6 @@ Client target으로 실행한다. client scenario 구현은 ResilienceLifecycle 
   검토한다. 현재는 같은 public recovery 동작을 여러 scenario가 함께 사용한다.
 - 현재 구현 slice는 RegistryMessaging contract와 handler 이름을 내부적으로 재사용한다. 다음 단계에서는
   public 동작을 유지하면서 ResilienceLifecycle 전용 contract/support 이름으로 정리한다.
-- public API로 구현할 수 없는 registry outage와 observer failure 항목은 runner-only adapter로 메우지
-  않고 gap으로 유지한다.
+- registry outage는 established channel 유지 slice만 검증한다. registry 재시작 뒤 provider heartbeat
+  재등록과 새 discovery client 복구는 runner-only adapter로 메우지 않고 gap으로 유지한다.
+- observer failure 항목도 public harness 연결이 생기기 전까지 gap으로 유지한다.

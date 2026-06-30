@@ -135,7 +135,7 @@ Spot queue 가 반드시 필요한 직렬화 경계다.
 | 입력 경로 | 실행 위치 |
 | --- | --- |
 | stream session → Entry/local actor | actor별로 순서를 보존한 뒤 현재 actor 위치로 dispatch |
-| Entry Spot actor packet | Entry Spot 실행 queue |
+| Entry Spot actor packet | 대상 actor mailbox |
 | stream session → user Spot actor | user Spot 실행 queue |
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
@@ -1475,7 +1475,7 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 | `RemoteProxyDisconnectTests.BoundSessionDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 `boundSession.disconnect(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
 | `entry spot callbacks from mixed setImmediate/queueMicrotask backend callbacks keep enqueue order without overlap` | backend callback 이 서로 다른 task 문맥에서 도착해도 Entry Spot 실행 줄에서 등록 순서대로 겹치지 않고 실행된다. |
 | `entry spot does not start the next callback before the previous handler promise settles` | handler Promise 가 끝나기 전에는 같은 Entry Spot 의 다음 callback 이 시작되지 않는다. |
-| `entry spot timer ticks and actor packets share one serial line` | Entry Spot timer 와 actor packet 이 같은 Entry Spot 실행 줄을 사용한다. |
+| `entry spot actor packets use actor mailboxes without entry-wide serial dispatch` | Entry Spot actor packet 은 대상 actor mailbox 를 사용하고, 서로 다른 actor 는 Entry Spot 전체 실행 줄 때문에 서로 기다리지 않는다. |
 | `LocalActorMailboxExecutionTests.LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | user Spot에 들어가지 않은 actor packet도 actor별 순서를 지키되 서로 다른 actor 사이에서는 병렬로 실행될 수 있다. |
 | `ActorRegistryExecutionTests.ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox` | 같은 actor의 앞 packet이 join을 마치고 나면, 대기 중이던 다음 packet이 새 user Spot 위치로 dispatch된다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 이후의 dispatch가 현재 spot 실행 문맥에서 실행된다. |

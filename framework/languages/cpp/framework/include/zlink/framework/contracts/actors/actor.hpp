@@ -598,9 +598,8 @@ class session_actor_manager_t
     create (std::string actor_type, std::string actor_id, const TRequest &request)
     {
         try {
-            return create_erased (std::move (actor_type), std::move (actor_id),
-                                  serialize_request (std::type_index (typeid (TRequest)),
-                                                     &request));
+            return create (std::move (actor_type), std::move (actor_id),
+                           message_t::from (request));
         }
         catch (const framework_exception_t &error) {
             return result_t<session_actor_t>::failure (error.kind (), error.what (),
@@ -620,9 +619,8 @@ class session_actor_manager_t
     get_or_create (std::string actor_type, std::string actor_id, const TRequest &request)
     {
         try {
-            return get_or_create_erased (
-              std::move (actor_type), std::move (actor_id),
-              serialize_request (std::type_index (typeid (TRequest)), &request));
+            return get_or_create (std::move (actor_type), std::move (actor_id),
+                                  message_t::from (request));
         }
         catch (const framework_exception_t &error) {
             return result_t<session_actor_t>::failure (error.kind (), error.what (),

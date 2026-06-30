@@ -54,9 +54,32 @@ codec extension을 사용해 실제 E2E로 검증한다.
 | `Server/Main/Endpoints/OperationalEndpoints.cs` | `Server/Endpoints/operational_endpoints.hpp` | endpoint | done | `/health`와 `/evidence`가 대응한다. |
 | `Server/Main/Endpoints/RegistrationScenarioEndpoints.cs` | not-needed | endpoint | not-needed | C++ client가 framework channel/route public API를 직접 호출한다. |
 | `Server/Main/RegistrationCodec.Server.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registration_codec_server` target이 대응한다. |
-| `Server/InvalidDuplicate/*` | `Server/InvalidDuplicate/main.cpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | invalid-role | done | invalid role executable이 startup failure modes를 실행한다. |
-| `Server/JsonOnlyPeer/*` | `Server/JsonOnlyPeer/main.cpp`; `Server/Support/server_host.hpp`; `run_e2e.sh` | codec-role | done | JSON-only peer executable이 binary codec을 등록하지 않는 peer로 실행된다. |
-| `Server/CodecRequester/*` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `Client/main.cpp`; `run_e2e.sh` | codec-role | done | `ZLINK_CPP_E2E_SCENARIO=b5` client가 codec mismatch requester 역할을 수행한다. |
+| `Server/InvalidDuplicate/Program.cs` | `Server/InvalidDuplicate/main.cpp` | server-entry | done | invalid role 전용 executable entry가 대응한다. |
+| `Server/InvalidDuplicate/RegistrationCodecServerHostFactory.cs` | `Server/Support/server_host.hpp` | invalid-role | done | invalid mode별 startup failure 구성을 공통 host support에서 선택한다. |
+| `Server/InvalidDuplicate/ServerOptions.cs` | `Server/Configuration/server_options.hpp`; `run_e2e.sh` | configuration | done | invalid mode와 endpoint option을 env로 전달한다. |
+| `Server/InvalidDuplicate/DispatchFilters.cs` | `Server/Handlers/filter_order_handlers.hpp` | filter | done | invalid role은 같은 filter type을 재사용한다. |
+| `Server/InvalidDuplicate/Handlers/RegistrationHandlers.cs` | `Server/Handlers/registration_handlers.hpp`; `Server/Support/server_host.hpp` | handler | done | duplicate/wrong-group/unsupported-channel startup failure를 만들 때 같은 handler type을 사용한다. |
+| `Server/InvalidDuplicate/Handlers/CodecHandlers.cs` | `Server/Handlers/codec_handlers.hpp` | handler | done | invalid role과 정상 role이 같은 codec handler type을 공유한다. |
+| `Server/InvalidDuplicate/Handlers/DiEchoRequestHandler.cs` | `Server/Handlers/di_lifecycle_handlers.hpp` | handler | done | invalid role과 정상 role이 같은 DI handler type을 공유한다. |
+| `Server/InvalidDuplicate/Infrastructure/EvidenceStore.cs` | `Server/Infrastructure/scenario_state.hpp` | infrastructure | done | invalid role은 정상 role과 같은 state type을 공유하지만 startup failure에서는 evidence를 판정에 쓰지 않는다. |
+| `Server/InvalidDuplicate/Infrastructure/Probes.cs` | `Server/Support/server_host.hpp`; `run_e2e.sh` | infrastructure | done | startup failure probe는 runner의 invalid executable exit code와 stderr 확인으로 수행한다. |
+| `Server/InvalidDuplicate/OperationalEndpoints.cs` | `Server/Endpoints/operational_endpoints.hpp` | endpoint | done | invalid role이 정상 기동하지 않아 endpoint 판정에는 쓰이지 않지만 같은 endpoint handler가 대응한다. |
+| `Server/InvalidDuplicate/RegistrationCodec.InvalidDuplicate.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registration_codec_invalid_duplicate` target이 대응한다. |
+| `Server/JsonOnlyPeer/Program.cs` | `Server/JsonOnlyPeer/main.cpp` | server-entry | done | JSON-only peer 전용 executable entry가 대응한다. |
+| `Server/JsonOnlyPeer/RegistrationCodecServerHostFactory.cs` | `Server/Support/server_host.hpp` | codec-role | done | `json-only-peer` mode는 binary codec을 등록하지 않는 peer로 실행된다. |
+| `Server/JsonOnlyPeer/ServerOptions.cs` | `Server/Configuration/server_options.hpp`; `run_e2e.sh` | configuration | done | JSON-only peer endpoint/log option을 env로 전달한다. |
+| `Server/JsonOnlyPeer/DispatchFilters.cs` | `Server/Handlers/filter_order_handlers.hpp` | filter | done | JSON-only peer는 정상 role과 같은 filter type을 공유한다. |
+| `Server/JsonOnlyPeer/Handlers/RegistrationHandlers.cs` | `Server/Handlers/registration_handlers.hpp` | handler | done | JSON-only peer는 normal JSON recovery 검증에 필요한 registration handler를 공유한다. |
+| `Server/JsonOnlyPeer/Handlers/CodecHandlers.cs` | `Server/Handlers/codec_handlers.hpp`; `Server/Support/server_host.hpp` | handler | done | mismatch handler와 JSON codec handler가 JSON-only peer에서 실행된다. |
+| `Server/JsonOnlyPeer/Handlers/DiEchoRequestHandler.cs` | `Server/Handlers/di_lifecycle_handlers.hpp` | handler | done | JSON-only peer와 정상 role이 같은 DI handler type을 공유한다. |
+| `Server/JsonOnlyPeer/Infrastructure/EvidenceStore.cs` | `Server/Infrastructure/scenario_state.hpp` | infrastructure | done | mismatch content-type evidence와 JSON recovery evidence가 대응한다. |
+| `Server/JsonOnlyPeer/Infrastructure/Probes.cs` | `Client/Scenarios/codec_mismatch_scenario.hpp`; `run_e2e.sh` | infrastructure | done | C++ client가 JSON-only peer에 직접 request를 보내 probe를 수행한다. |
+| `Server/JsonOnlyPeer/OperationalEndpoints.cs` | `Server/Endpoints/operational_endpoints.hpp` | endpoint | done | `/health`와 `/evidence` endpoint가 대응한다. |
+| `Server/JsonOnlyPeer/RegistrationCodec.JsonOnlyPeer.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registration_codec_json_only_peer` target이 대응한다. |
+| `Server/CodecRequester/Program.cs` | `Client/main.cpp` | codec-role | done | `ZLINK_CPP_E2E_SCENARIO=b5` client mode가 codec requester 역할을 수행한다. |
+| `Server/CodecRequester/CodecRequesterHostFactory.cs` | `Client/main.cpp`; `Client/Scenarios/codec_mismatch_scenario.hpp` | codec-role | done | requester framework setup은 C++ client entry와 scenario header에 합쳐져 있다. |
+| `Server/CodecRequester/CodecRequesterOptions.cs` | `Client/Support/client_support.hpp`; `run_e2e.sh` | configuration | done | codec requester endpoint/log option을 env로 전달한다. |
+| `Server/CodecRequester/RegistrationCodec.CodecRequester.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | 별도 requester executable 대신 `zlink_cpp_e2e_registration_codec_client` target의 `b5` mode가 대응한다. |
 
 ## 공통 scenario ID 대응
 
@@ -82,3 +105,8 @@ codec extension을 사용해 실제 E2E로 검증한다.
   - 결과: 통과
   - 로그: `logs/20260630-082445-3267605`
   - 의미: 정상 server, JSON-only peer executable, invalid role executable, client가 같은 gate에서 검증된다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-163722-417936`
+  - 의미: 최신 checkout에서 RC-A1, RC-A3, RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3,
+    RC-B4, RC-B5가 통과했다. RC-A2는 C++ public attribute discovery 계약이 없어 gap으로 유지한다.

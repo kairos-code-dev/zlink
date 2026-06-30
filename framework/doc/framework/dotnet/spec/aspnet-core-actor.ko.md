@@ -356,10 +356,10 @@ Entry 단계와 user Spot 단계는 같은 actor 객체를 보더라도 의미�
 - **session 초기 상태 설정** -- session metadata, profile lookup 같은 초기
   작업이 여기 들어간다.
 
-Entry Spot 의 actor packet 은 Entry Spot 전체 직렬 실행 줄에서 처리된다. native
-batch 의 arrival order 대로 하나씩 await 되어, 서로 다른 actor 의 packet 도 같은 Entry
-Spot 실행 줄에서 순서대로 직렬 실행된다. enqueue 순서는 native batch 순서와 동일하게
-유지된다.
+Entry Spot 의 actor packet 은 대상 actor mailbox 에서 처리된다. 같은 actor 로 들어온
+packet 은 순서대로 실행되지만, 서로 다른 actor 의 packet 은 Entry Spot 전체 직렬 실행 줄
+하나에 묶이지 않는다. native batch 의 arrival order 는 actor별 mailbox enqueue 순서의
+입력으로 쓰이며, actor 가 다르면 handler 시작이 서로를 기다리지 않을 수 있다.
 
 반면 Entry Spot 자체의 registry 나 lifecycle 상태를 다루는 작업은 Entry Spot
 실행 문맥에서 직렬화해도 된다. 예를 들어 `OnInitializeAsync(...)`,
@@ -625,6 +625,11 @@ public interface IZLinkActorContext
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
 | `JoinSpot(spotRid, request)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). `Async(...)` 는 기본 serial terminator이고, `Yield(...)` 는 admission 대기 동안 현재 turn을 반납한다. request는 DTO 또는 `ZLinkMessage`이고 reply는 `ZLinkMessage` 또는 typed reply로 돌아온다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
 | `JoinEntrySpot(spotNodeRid, request)` | target SpotNode 의 Entry Spot 으로 이동. `Async(...)` 와 `Yield(...)` 의 serial/yield 의미는 `JoinSpot(...)` 과 같다. 빈 요청은 `ZLinkMessage.Empty` 또는 빈 DTO로 넘기며, 결과는 `Accepted`, `ActorRef`, reply를 담는다 |
+
+`Yield(...)` 는 Spot 실행 줄을 가진 handler에서만 turn을 반납한다. Entry Spot actor
+handler는 actor별 mailbox에서 실행되므로 반납할 Entry Spot turn이 없다. 이 handler 안에서
+만든 actor join call object에 `Yield(...)` 를 호출하면 framework는 timeout을 기다리지 않고
+즉시 `InvalidOperationException` 계열 계약 오류를 낸다.
 
 `JoinSpot`/`JoinEntrySpot` 도 channel `Request` 처럼 reply 대기 `Timeout(...)` override 를
 갖는다. 생략하면 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은
@@ -1139,8 +1144,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
 | --- | --- |
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated` | actor factory 이름이 중복되면 startup validation에서 예외로 막는다. |
 | `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 user Spot의 actor packet handler와 lifecycle callback이 정상적으로 dispatch된다. |
-| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Across_Actors` | Entry Spot에서 모든 actor packet은 Entry Spot 직렬 실행 줄에서 순서대로 실행된다. |
-| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_Serially` | native Entry Spot dispatch batch가 batch 순서를 보존하며 직렬로 실행된다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 actor별 mailbox 순서를 따르며, 서로 다른 actor handler 시작은 Entry Spot 직렬 실행 줄에 막히지 않는다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |
 | `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | stream session에서 bound actor로 request가 전달되고, sequence별 reply 순서가 맞는다. |
 | `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |

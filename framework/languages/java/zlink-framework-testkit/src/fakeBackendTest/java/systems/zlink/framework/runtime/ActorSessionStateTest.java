@@ -71,7 +71,7 @@ final class ActorSessionStateTest {
         assertTrue(backend.calls().contains("stream.unbindActor.player-1"));
         assertTrue(backend.calls().stream()
             .anyMatch(call -> call.startsWith("stream.send.session-2.Push.")
-                && call.endsWith(".push")));
+                && call.endsWith(".\"push\"")));
     }
 
     @Test

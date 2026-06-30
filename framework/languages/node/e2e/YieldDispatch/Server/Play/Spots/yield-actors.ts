@@ -69,7 +69,7 @@ export class EntryActorYieldHandler
     request: ActorYieldReq
   ): Promise<ActorYieldReply> {
     void context;
-    await recordActorYieldEvidence(this.evidence, entrySpot, actor, request);
+    await recordActorYieldEvidence(this.evidence, entrySpot, actor, request, false);
     return actorReply('YD-B', request.requestId, actor, entrySpot, 'actor-yield-completed');
   }
 }
@@ -86,7 +86,7 @@ export class SpotActorYieldHandler
     request: ActorYieldReq
   ): Promise<ActorYieldReply> {
     void context;
-    await recordActorYieldEvidence(this.evidence, spot, actor, request);
+    await recordActorYieldEvidence(this.evidence, spot, actor, request, true);
     return actorReply('YD-B', request.requestId, actor, spot, 'actor-yield-completed');
   }
 }
@@ -169,7 +169,7 @@ export class EntryActorPushYieldHandler
     request: ActorPushYieldReq
   ): Promise<ActorYieldReply> {
     void context;
-    await recordActorPushYieldEvidence(this.evidence, entrySpot, actor, request);
+    await recordActorPushYieldEvidence(this.evidence, entrySpot, actor, request, false);
     return actorReply('YD-D4', request.requestId, actor, entrySpot, 'actor-push-yield-completed');
   }
 }
@@ -186,7 +186,7 @@ export class SpotActorPushYieldHandler
     request: ActorPushYieldReq
   ): Promise<ActorYieldReply> {
     void context;
-    await recordActorPushYieldEvidence(this.evidence, spot, actor, request);
+    await recordActorPushYieldEvidence(this.evidence, spot, actor, request, true);
     return actorReply('YD-D4', request.requestId, actor, spot, 'actor-push-yield-completed');
   }
 }
@@ -217,7 +217,7 @@ export class EntryActorJoinYieldHandler
       `actor-join-yield-released|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
       + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotRid}`
     );
-    const joined = await call.yield<DelayReply>();
+    const joined = await call.submit<DelayReply>();
     this.evidence.add(
       `actor-join-yield-resumed|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
       + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|accepted=${joined.resultCode === 0}`
@@ -238,7 +238,8 @@ async function recordActorYieldEvidence(
   evidence: EvidenceStore,
   target: ActorEvidenceTarget,
   actor: YieldActor,
-  request: ActorYieldReq
+  request: ActorYieldReq,
+  useYield: boolean
 ): Promise<void> {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
@@ -257,7 +258,11 @@ async function recordActorYieldEvidence(
     `actor-yield-released|rid=${evidence.rid}|spot=${target.context.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
-  await call.yield<DelayReply>();
+  if (useYield) {
+    await call.yield<DelayReply>();
+  } else {
+    await call.submit<DelayReply>();
+  }
   evidence.add(
     `actor-yield-resumed|rid=${evidence.rid}|spot=${target.context.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
@@ -272,7 +277,8 @@ async function recordActorPushYieldEvidence(
   evidence: EvidenceStore,
   target: ActorEvidenceTarget,
   actor: YieldActor,
-  request: ActorPushYieldReq
+  request: ActorPushYieldReq,
+  useYield: boolean
 ): Promise<void> {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
@@ -291,7 +297,11 @@ async function recordActorPushYieldEvidence(
     `actor-push-yield-released|rid=${evidence.rid}|spot=${target.context.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
-  await call.yield<DelayReply>();
+  if (useYield) {
+    await call.yield<DelayReply>();
+  } else {
+    await call.submit<DelayReply>();
+  }
   evidence.add(
     `actor-push-yield-resumed|rid=${evidence.rid}|spot=${target.context.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`

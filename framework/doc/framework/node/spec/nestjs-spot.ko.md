@@ -266,9 +266,9 @@ routing id 같은 native 설정을 적용한다. 이 설정은 actor 생성과 r
 
 Entry Spot 클래스는 `ZLinkEntrySpot` 을 구현한다. `configure()` 안에서 Entry
 단계의 handler 를 등록한다. Entry Spot 과 user Spot 은 등록할 수 있는 기능
-표면이 같다. 실행 정책도 Spot 단위 직렬 실행을 따른다. Entry Spot 으로 들어온
-actor packet, 일반 packet, lifecycle callback, timer callback 은 하나의 실행 줄에서
-순서대로 처리된다.
+표면이 같다. Entry Spot actor packet 은 대상 actor 의 mailbox 에서 처리되며,
+같은 actor 의 packet 끼리만 순서가 보장된다. Entry Spot lifecycle callback 은
+Entry Spot 자체 실행 문맥에서 처리한다.
 
 ```ts
 @Injectable()
@@ -377,15 +377,16 @@ dotnet 의 `ZLinkSpotSerialExecutor`(직렬 실행 큐) 에 대응한다. 여기
 Spot 인스턴스의 상태를 일일이 별도 lock 으로 보호하지 않아도 된다.
 
 Entry Spot 은 특정 room 상태를 소유하는 곳이 아니라, 모든 actor 가 처음 거쳐 가는
-공용 입구다. 그래도 Entry Spot application callback 은 같은 Entry Spot 실행 줄에서
-직렬로 실행된다. 같은 actor 의 packet 뿐 아니라 서로 다른 actor 의 packet 도 앞선
-Entry Spot callback 이 끝난 뒤 시작한다.
+공용 입구다. Entry Spot lifecycle callback 은 같은 Entry Spot 실행 줄에서 직렬로
+실행된다. Entry Spot actor packet 은 Entry Spot 전체 실행 줄에 세우지 않고 대상
+actor 의 mailbox 로 보낸다. 서로 다른 actor 의 Entry Spot actor packet 은 한 Entry
+Spot 실행 줄 때문에 서로 기다리지 않는다.
 
 정리하면 다음과 같다.
 
 | 대상 | 실행 줄 |
 | --- | --- |
-| Entry Spot actor packet | Entry Spot 실행 queue |
+| Entry Spot actor packet | 대상 actor mailbox |
 | Entry Spot initialize / closing / lifecycle callback | Entry Spot 실행 queue |
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
@@ -496,8 +497,9 @@ ZLinkModule.forRoot(
   timer 를 사용한다.
 - managed timer tick 은 user Spot 에서는 routed, subscribe, channel reply 와
   동일한 직렬 실행 경로로 들어온다.
-- Entry Spot timer callback 은 Entry Spot actor packet, lifecycle callback, channel
-  reply completion 과 같은 직렬 실행 줄에서 실행된다. 단일 timer instance 안에서도
+- Entry Spot timer callback 은 Entry Spot lifecycle callback, channel reply completion 과
+  같은 Entry Spot 실행 문맥에서 실행된다. actor packet 은 대상 actor mailbox 로 들어간다.
+  단일 timer instance 안에서도
   이전 callback 이 끝나기 전에 다음 callback 을 겹쳐 실행하지 않는다.
 
 여기서 핵심은 channel reply completion 과 timer callback 이 모두 같은 spot 실행
@@ -527,8 +529,8 @@ dispatch event 종류와 drain 대상은 아래처럼 정리된다(하부 dispat
 
 timer 는 이 low-level dispatch table 에 직접 기대지 않는다. 대신 framework
 runtime 이 만든 managed timer tick 을 Spot 문맥에서는 같은 spot queue 로 enqueue
-해서 처리한다. Entry Spot timer 도 Entry Spot actor packet, lifecycle callback,
-request continuation 과 같은 실행 줄에서 처리한다.
+해서 처리한다. Entry Spot actor packet 은 이 timer 실행 줄에 합류하지 않고 대상
+actor mailbox 에서 처리된다.
 
 framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
 정의하는 작업이 아니다. 기존 core 계약과 framework 가 소유한 timer dispatch 를
@@ -1061,17 +1063,19 @@ join 문맥이 함께 검증되어야 한다. 또한 spot 클래스와 id 를 �
 | `spot timer cancel stops managed timer loop` | `cancel()` 뒤 managed timer loop 가 추가 callback 을 실행하지 않는다. |
 | `outbound-only spot publisher client publishes to target channel` | 외부 publisher client 가 target SPOT channel 로 publish 한다. |
 | `spot actor join/move/submit run through spot execution context` | actor join, 이동, packet dispatch 가 현재 spot 실행 문맥에서 실행된다. |
-| `entrySpot actor packets share entry serial execution` | Entry Spot actor packet 이 같은 Entry Spot 실행 줄에서 순서대로 실행된다. |
+| `entry spot actor packets use actor mailboxes without entry-wide serial dispatch` | Entry Spot actor packet 은 대상 actor mailbox 를 사용하고, 서로 다른 actor 는 Entry Spot 전체 실행 줄 때문에 서로 기다리지 않는다. |
 | `entrySpot packet handlers use entrySpot serialization` | Entry Spot 일반 packet handler 가 user Spot 처럼 Spot 단위 직렬 실행 줄을 사용한다. |
 | `entrySpot timer waits for entrySpot callbacks` | Entry Spot timer callback 이 같은 Entry Spot의 다른 callback 과 동시에 실행되지 않는다. |
 | `entrySpot timer does not reenter same timer` | Entry Spot timer 는 같은 timer callback 을 겹쳐 실행하지 않는다. |
 
-기본 `submit(...)` 경로는 Spot/Entry Spot handler completion까지 같은 실행 줄을 유지한다.
+기본 `submit(...)` 경로는 user Spot handler completion까지 같은 실행 줄을 유지한다.
 `yield(...)`은 request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`,
-bound session send completion, `runWorker` completion에서만 현재 mailbox turn을 반납하고
-completion 뒤 원래 mailbox에서 재개한다. `yield(...)` 중에도 같은 actor와 같은 timer는
+bound session send completion, `runWorker` completion에서만 현재 Spot turn을 반납하고
+completion 뒤 원래 mailbox에서 재개한다. Entry Spot actor handler에는 반납할 Entry Spot
+전체 실행 turn이 없으므로 `yield(...)` 호출은 시간 초과가 아니라 즉시 계약 오류가 난다.
+`yield(...)` 중에도 같은 actor와 같은 timer는
 재진입하지 않는다. 다른 actor나 다른 timer 작업은 interleave될 수 있으므로, await 전후에 공용
-mutable state를 이어 판단하는 handler는 기본 `submit(...)`을 사용해야 한다.
+가변 상태를 이어 판단하는 handler는 기본 `submit(...)`을 사용해야 한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

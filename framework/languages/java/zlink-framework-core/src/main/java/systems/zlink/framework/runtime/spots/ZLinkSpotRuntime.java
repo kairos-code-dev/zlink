@@ -1037,8 +1037,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private <T> CompletionStage<T> withCurrentOutbound(
         DefaultSpotOutbound outbound,
         Supplier<CompletionStage<T>> action) {
+        return withCurrentOutbound(outbound, true, action);
+    }
+
+    private <T> CompletionStage<T> withCurrentOutbound(
+        DefaultSpotOutbound outbound,
+        boolean preserveYieldTurn,
+        Supplier<CompletionStage<T>> action) {
         CompletableFuture<T> result = new CompletableFuture<>();
-        ZLinkYieldTurn turn = ZLinkFrameworkTurns.captureCurrent();
+        ZLinkYieldTurn turn = preserveYieldTurn ? ZLinkFrameworkTurns.captureCurrent() : null;
         try {
             handlerExecutor.execute(() -> {
                 ZLinkFrameworkTurns.runWithTurn(turn, () -> {
@@ -1072,6 +1079,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
     private CompletionStage<Void> dispatchActorPacketToHandler(
         DefaultSpotOutbound outbound,
+        boolean preserveYieldTurn,
         SpotActorPacketHandlerRegistration handler,
         Object spotSurface,
         ZLinkActor actor,
@@ -1104,6 +1112,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
         CompletionStage<Optional<Message>> stage = withCurrentOutbound(
             outbound,
+            preserveYieldTurn,
             () -> actorIsRequest
                 ? invokeActorRequestHandler(handler, spotSurface, actor, payload)
                 : invokeActorSendHandler(handler, spotSurface, actor, payload)
@@ -1345,6 +1354,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         SpotActorPacketHandlerRegistration fallback = null;
         for (SpotActorPacketHandlerRegistration handler : handlers) {
             if (handler.kind() != kind) {
+                continue;
+            }
+            if (handler.spotType() == null) {
+                if (fallback == null) {
+                    fallback = handler;
+                }
                 continue;
             }
             if (spotType != null) {
@@ -2299,18 +2314,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 Message payloadCopy = bodyPart == null
                     ? Message.from(new byte[0])
                     : Message.from(bodyPart.message());
-                context.enqueueDispatch(() -> {
-                    actorRuntime.submitActorDispatch(
-                        actor.actorId(),
-                        () -> dispatchActorPacket(
-                            handler,
-                            spotSurface,
-                            actor,
-                            packetHeader,
-                            headerCopy,
-                            payloadCopy));
-                    return CompletableFuture.completedFuture(null);
-                });
+                actorRuntime.submitActorDispatch(
+                    actor.actorId(),
+                    () -> dispatchActorPacket(
+                        handler,
+                        spotSurface,
+                        actor,
+                        packetHeader,
+                        headerCopy,
+                        payloadCopy));
             }
         }
 
@@ -2364,6 +2376,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             Message payload) {
             return dispatchActorPacketToHandler(
                 context.outbound,
+                false,
                 handler,
                 spotSurface,
                 actor,
@@ -5084,6 +5097,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             Message payload) {
             return dispatchActorPacketToHandler(
                 context.outbound,
+                true,
                 handler,
                 spot,
                 actor,

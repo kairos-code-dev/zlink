@@ -511,4 +511,14 @@ inline void from_json (const nlohmann::json &json, server_assertion_res_t &value
     value.evidence = json.value ("evidence", std::vector<std::string>{});
 }
 
+template <typename T> zlink::message_t to_stream_payload (const T &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+template <typename T> void from_stream_payload (const zlink::message_t &payload, T &value)
+{
+    value = payload.parse_json<T> ();
+}
+
 } // namespace zlink::samples::deliverydispatch

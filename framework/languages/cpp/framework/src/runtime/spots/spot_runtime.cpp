@@ -998,7 +998,8 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                                         service_provider_t &services,
                                         serializer_registry_t &serializers,
                                         const zlink::message_t &message,
-                                        spot_actor_message_metadata_t metadata) const
+                                        spot_actor_message_metadata_t metadata,
+                                        bool serial_dispatch) const
 {
     for (std::size_t index = 0; index < _state->handlers.size (); ++index) {
         const auto &descriptor = _state->handlers[index];
@@ -1009,6 +1010,45 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
             detail::task_completion_source_t<zlink::message_t> completion;
             auto task = completion.task ();
             auto state = _state;
+            if (!serial_dispatch) {
+                auto direct_message = std::move (owned_message);
+                state->enter_callback ();
+                try {
+                    auto handler_task = state->handler_invokers[handler_index](
+                      spot, actor, services, serializers, direct_message, std::move (metadata));
+                    detail::observe_task_completion (
+                      handler_task,
+                      [state, completion] (const result_t<zlink::message_t> &result) mutable {
+                          state->leave_callback ();
+                          if (result) {
+                              completion.complete (
+                                result_t<zlink::message_t>::success (result.value ()));
+                              return;
+                          }
+                          completion.complete (result_t<zlink::message_t>::failure (
+                            result.error_kind (),
+                            result.error () != nullptr ? result.error ()->what ()
+                                                       : "spot handler failed",
+                            result.error () != nullptr && result.error ()->is_retriable ()));
+                      });
+                }
+                catch (const framework_exception_t &error) {
+                    state->leave_callback ();
+                    completion.complete (result_t<zlink::message_t>::failure (
+                      error.kind (), error.what (), error.is_retriable ()));
+                }
+                catch (const std::exception &error) {
+                    state->leave_callback ();
+                    completion.complete (result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::request_failed, error.what ()));
+                }
+                catch (...) {
+                    state->leave_callback ();
+                    completion.complete (result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::request_failed, "spot handler threw an exception"));
+                }
+                return task;
+            }
             const auto posted = state->try_post_serial_async (
               "spot-handler",
               [state, handler_index, spot, actor, &services, &serializers,
@@ -1551,10 +1591,9 @@ spot_publisher_client_t::spot_publisher_client_t (spot_node_manager_t manager,
 {
 }
 
-task_t<void> spot_publisher_client_t::publish_erased (std::string channel_name,
-                                                      std::string topic,
-                                                      std::type_index event_type,
-                                                      const void *event) const
+task_t<void> spot_publisher_client_t::publish_raw (std::string channel_name,
+                                                   std::string topic,
+                                                   zlink::message_t payload) const
 {
     if (!_serializers) {
         return task_t<void> (
@@ -1582,9 +1621,7 @@ task_t<void> spot_publisher_client_t::publish_erased (std::string channel_name,
     }
 
     try {
-        std::vector<zlink::message_t> parts{
-          detail::encoded_payload_to_raw (_serializers->serialize (event_type, event)),
-        };
+        std::vector<zlink::message_t> parts{std::move (payload)};
         auto publisher = native_node->create_publisher ();
         if (!publisher.valid ()) {
             return task_t<void> (result_t<void>::failure (
@@ -2007,6 +2044,12 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
             + ", actor=" + std::string (actor_ref.actor_id ())
             + ", spot=" + std::string (found_location->second.value ()));
     }
+    bool dispatch_on_spot_serial = true;
+    if (_state->snapshot.entry_spot_name) {
+        const auto entry_rid = _state->spot_rids_by_name.find (*_state->snapshot.entry_spot_name);
+        dispatch_on_spot_serial = entry_rid == _state->spot_rids_by_name.end ()
+                                  || entry_rid->second.value () != found_location->second.value ();
+    }
 
     report_spot_dispatch_trace (_state, message_flow_outcome_t::received,
                                 dispatch_error_surface_t::spot_actor,
@@ -2017,7 +2060,8 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
       spot_handler_registry_t (context->_state)
         .invoke_erased (spot_handler_kind_t::actor_packet, packet_name, {},
                         found_factory->second.actor_type, context->_state->spot_instance.get (),
-                        actor_instance.get (), services, serializers, message, std::move (metadata))
+                        actor_instance.get (), services, serializers, message, std::move (metadata),
+                        dispatch_on_spot_serial)
         .result ();
     if (!reply) {
         const auto *error = reply.error ();

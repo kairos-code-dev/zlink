@@ -337,16 +337,17 @@ user Spot 은 room, game, stage 같은 하나의 상태 객체로 본다. 따라
 Spot 인스턴스의 상태를 일일이 별도 lock 으로 보호하지 않아도 된다.
 
 Entry Spot 은 특정 room 상태를 소유하는 곳이 아니라, 모든 actor 가 처음 거쳐 가는
-공용 입구다. 그래도 admission registry 와 lifecycle 상태는 Entry Spot application
-상태이므로, Entry Spot actor packet 도 Entry Spot 실행 queue 에서 직렬로 처리한다.
-같은 actor 의 packet 순서는 actor mailbox 가 먼저 보존하고, handler 실행은 Entry
-Spot 실행 줄에서 다시 직렬화된다.
+공용 입구다. admission registry 와 lifecycle 상태는 Entry Spot application 상태이므로
+Entry Spot initialize, closing, actor lifecycle callback 은 Entry Spot 실행 문맥에서
+순서대로 처리한다. 반면 Entry Spot actor packet 은 대상 actor mailbox 에서 순서를
+보존한다. 같은 actor 의 packet 은 순서대로 실행되지만, 서로 다른 actor 의 packet 은
+Entry Spot 실행 queue 하나 때문에 서로 기다리지 않는다.
 
 정리하면 다음과 같다.
 
 | 대상 | 실행 줄 |
 | --- | --- |
-| Entry Spot actor packet | Entry Spot 실행 queue |
+| Entry Spot actor packet | actor별 mailbox |
 | Entry Spot initialize / closing / lifecycle callback | Entry Spot 실행 문맥 |
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
@@ -1016,6 +1017,9 @@ SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경
   유지한다. `Yield(...)`는 request, Spot outbound request, actor `JoinSpot` /
   `JoinEntrySpot`, bound session send completion, `RunWorker` completion에서만 현재
   mailbox turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다.
+- Entry Spot actor handler는 actor별 mailbox에서 실행되므로 반납할 Entry Spot turn이 없다.
+  이 handler 안에서 만든 call object에 `Yield(...)` 를 호출하면 timeout이 아니라 즉시
+  계약 오류가 난다.
 - `Yield(...)` 중에도 같은 actor와 같은 timer는 재진입하지 않는다. 다른 actor나 다른
   timer 작업은 interleave될 수 있으므로, await 전후에 공용 mutable state를 이어서 판단하는
   handler는 기본 `Async(...)`를 사용해야 한다.
@@ -1118,11 +1122,10 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 | `TimerTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다. |
 | `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 publisher client가 target SPOT channel로 publish한다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join, 이동, packet dispatch가 현재 spot 실행 문맥에서 실행된다. |
-| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Across_Actors` | Entry Spot actor packet은 actor가 달라도 Entry Spot 직렬 실행 줄에서 순서대로 실행된다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 같은 actor 순서를 보존하지만, 서로 다른 actor는 Entry Spot 직렬 실행 줄 때문에 시작이 막히지 않는다. native actor readable 경로와 같은 actor dispatch 경계에서도 actor별 mailbox 가 실행 순서의 기준이다. |
 | `EntryMailboxExecutionTests.EntrySpot_PacketHandlers_Are_Serialized_On_EntrySpot_Line` | Entry Spot 일반 packet handler가 user Spot과 같은 방식으로 등록되며 Entry Spot 직렬 실행 줄에서 실행된다. |
 | `TimerTests.EntrySpotTimer_Waits_For_EntrySpot_Callbacks` | Entry Spot timer callback이 같은 Entry Spot의 앞선 callback 완료 뒤 실행된다. |
 | `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 같은 timer callback을 겹쳐 실행하지 않는다. |
-| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_Serially` | native `ActorReadable` batch 안의 Entry Spot actor packet이 batch 순서 그대로 직렬 실행된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.

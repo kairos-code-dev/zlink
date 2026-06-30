@@ -27,7 +27,7 @@ public final class EntryActorYieldHandler {
                 Contracts.DELAY_CHANNEL,
                 new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
             .timeout(Duration.ofSeconds(5))
-            .yield(Contracts.DelayReply.class);
+            .await(Contracts.DelayReply.class);
         evidence.record(request.requestId(), "actor-yield-resumed", value);
         evidence.record(request.requestId(), "actor-yield-completed", value);
         return new Contracts.ActorReply(

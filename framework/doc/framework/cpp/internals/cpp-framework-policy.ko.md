@@ -757,8 +757,9 @@ struct timer_options_t {
 
 - user Spot timer callback은 같은 user Spot의 packet, actor packet, subscription,
   channel reply와 같은 CAPI SPOT dispatch event 후 recv 경계에서 순서 정책을 따른다.
-- Entry Spot timer callback은 Entry Spot actor packet, lifecycle callback, request
-  continuation과 같은 Entry Spot 실행 줄에서 처리한다.
+- Entry Spot timer callback은 Entry Spot lifecycle callback, request continuation과 같은
+  Entry Spot 실행 줄에서 처리한다. Entry Spot actor packet은 대상 actor mailbox에서
+  처리한다.
 - 같은 timer instance의 callback은 겹쳐 실행하지 않는다.
 - CAPI `fire_count`와 framework가 보관하는 이전 fire count를 비교해 `skipped_ticks`,
   `scheduled_index`, catch-up 실행 대상을 계산한다.
@@ -929,7 +930,7 @@ spot, stream session 같은 의미 단위의 직렬화 정책으로 닫는다. �
 | STREAM session lifecycle/packet | registered stream session handler | 같은 session의 connected, packet, disconnected callback은 직렬 |
 | Entry Spot actor packet | registered Entry Spot actor handler | 같은 actor id는 core actor ordering을 따른다 |
 | user Spot packet/actor packet/subscription/timer | registered Spot handler | 같은 user Spot 안에서는 core SPOT dispatch boundary를 따른다 |
-| Entry Spot timer | registered Entry Spot timer handler | Entry Spot actor packet, lifecycle callback, request continuation과 같은 실행 줄에서 처리하고, 같은 timer instance도 재진입 금지 |
+| Entry Spot timer | registered Entry Spot timer handler | Entry Spot lifecycle callback, request continuation과 같은 실행 줄에서 처리하고, 같은 timer instance도 재진입 금지. Entry Spot actor packet은 대상 actor mailbox에서 처리 |
 | network operation resume | `co_await call.async()` | 성공 값 또는 `framework_exception_t`로 완료한다 |
 | CPU-bound handler | `handler_options_t::execution = handler_execution_t::offload` | framework core offload executor에서 실행한다 |
 

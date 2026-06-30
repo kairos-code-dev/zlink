@@ -101,9 +101,10 @@ actor를 지원하려면 SpotNode에는 Entry Spot과 user Spot factory가 함�
 Entry Spot은 actor 생성 직후의 기본 위치이며, 인증이나 target user Spot 선택 같은
 입구 로직을 맡는다. user Spot은 room, stage, zone 같은 도메인 상태를 보관한다.
 
-Entry Spot timer는 Entry Spot의 actor packet, actor lifecycle callback, request
-continuation과 같은 직렬 실행 줄에서 실행된다. user Spot timer도 같은 Spot의 packet,
-subscription, actor handler와 같은 실행 문맥 안에서 직렬화한다.
+Entry Spot actor packet은 대상 actor의 mailbox에서 순서대로 처리된다. 같은 actor의
+packet은 겹치지 않지만, 서로 다른 actor의 Entry Spot actor packet은 Entry Spot 하나의
+실행 줄 때문에 서로 기다리지 않는다. Entry Spot lifecycle callback은 Entry Spot 자체의
+입구 정책을 다루므로 actor mailbox로 옮기지 않는다.
 
 user Spot의 message dispatch는 Spot 단위 실행 문맥 하나를 기준으로 직렬화한다.
 route packet, subscription packet, user Spot actor packet, actor lifecycle callback,
@@ -113,19 +114,19 @@ framework managed timer callback은 같은 Spot 안에서 동시에 실행되지
 적용된다. Kotlin handler는 framework 소유 coroutine adapter에서 실행되고, adapter가
 반환한 `CompletionStage`가 Spot serial queue의 완료 기준이 된다.
 
-Entry Spot은 user Spot처럼 Spot 단위 직렬 실행 줄을 가진다. Entry Spot의 actor packet
-handler, actor lifecycle member callback, timer callback은 같은 Entry Spot 안에서 동시에
-실행되지 않는다. handler가 `CompletionStage`를 반환하면 framework는 그 stage가 끝난 뒤
-같은 Entry Spot의 다음 dispatch를 시작한다. 이 구분은 Entry Spot이 actor 입구 역할을 하고,
-user Spot이 room, stage, zone 같은 도메인 상태를 보관한다는 실행 모델을 유지하기 위한
-것이다.
+Entry Spot actor handler는 Entry Spot 인자를 받지만 Entry Spot 전체 실행 줄에 들어가지
+않는다. handler는 actor별 상태를 다루는 곳이며, Entry Spot 객체의 가변 필드를 여러
+actor가 공유하는 동기화 수단으로 쓰면 안 된다. Entry Spot lifecycle callback과 route 같은
+Entry Spot 자체 상태 흐름은 별도 Entry Spot 실행 문맥에서 처리한다.
 
-기본 `submit(...)`/`await(...)` 경로는 이 serial 의미를 유지한다. `yield(...)`는
+기본 `submit(...)`/`await(...)` 경로는 actor별 순서를 유지한다. `yield(...)`는
 request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`, bound session send
 completion, worker completion에서만 현재 mailbox turn을 반납하고 completion 뒤 원래
 mailbox에서 재개한다. `yield(...)` 중에도 같은 actor와 같은 timer는 재진입하지 않는다.
-다른 actor나 다른 timer 작업은 interleave될 수 있으므로, await 전후에 공용 mutable state를
+다른 actor나 다른 timer 작업은 interleave될 수 있으므로, await 전후에 공용 가변 상태를
 이어 판단하는 handler는 기본 `await(...)`를 사용해야 한다.
+Entry Spot actor handler 안에서 만든 call object의 `yield(...)`는 허용하지 않는다.
+호출하면 시간 초과가 아니라 즉시 `IllegalStateException` 같은 계약 오류가 나야 한다.
 request, actor join, worker completion의 cancellation-aware overload는 handler가 받은
 `CancellationToken`을 대기 작업에 전달한다. token이 이미 취소되었거나 대기 중 취소되면
 operation은 `ZLinkOperationCanceledException`을 cause로 둔 실패로 끝나고, handler continuation은

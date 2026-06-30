@@ -18,7 +18,7 @@ class PlayerFactory {
   }
 }
 
-async function createEntryFixture(entrySpotType, packetHandlers = []) {
+async function createEntryFixture(entrySpotType, packetHandlers = [], options = {}) {
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', PlayerFactory]])
   });
@@ -26,7 +26,8 @@ async function createEntryFixture(entrySpotType, packetHandlers = []) {
     entrySpotType,
     nativeSpot: { routingId: 'entry-test', async dispose() {} },
     nodeRid: 'node-test',
-    spotNodeName: 'node-test'
+    spotNodeName: 'node-test',
+    ...options
   });
   await activation.create();
   const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime();
@@ -35,8 +36,7 @@ async function createEntryFixture(entrySpotType, packetHandlers = []) {
   }
   const dispatcher = new framework.ZLinkSpotActorDispatcher({
     registry,
-    spot: activation.entrySpot,
-    serial: activation.serialExecutor
+    spot: activation.entrySpot
   });
   const router = new framework.ZLinkActorDispatchRouter(manager, {
     entryExecutor: activation.serialExecutor
@@ -69,7 +69,7 @@ function delay(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
-test('entry spot callbacks from mixed setImmediate/queueMicrotask backend callbacks keep enqueue order without overlap', async () => {
+test('entry spot lifecycle callbacks from mixed setImmediate/queueMicrotask backend callbacks keep enqueue order without overlap', async () => {
   const events = [];
   const tracker = overlapTracker(events);
   class AdmissionEntrySpot {
@@ -77,17 +77,7 @@ test('entry spot callbacks from mixed setImmediate/queueMicrotask backend callba
       return tracker.run(`create:${actor.actorId}`, () => delay(2));
     }
   }
-  class MovePacketHandler {
-    handle(_spot, actor, _context, message) {
-      return tracker.run(`packet:${actor.actorId}:${message}`, () => delay(1));
-    }
-  }
-  const fixture = await createEntryFixture(AdmissionEntrySpot, [{
-    kind: framework.ZLinkActorPacketKind.Send,
-    packetName: 'move',
-    actorType: PlayerActor,
-    handlerType: MovePacketHandler
-  }]);
+  const fixture = await createEntryFixture(AdmissionEntrySpot);
   const alice = await fixture.manager.getOrCreateActor('alice', 'player');
   const bob = await fixture.manager.getOrCreateActor('bob', 'player');
 
@@ -103,17 +93,10 @@ test('entry spot callbacks from mixed setImmediate/queueMicrotask backend callba
       resolve();
     });
   });
-  await fromBackend(queueMicrotask, 'packet:alice:m1', () =>
-    fixture.router.submit('alice', (snapshot) =>
-      fixture.dispatcher.dispatchSend(snapshot.actor, 'move', 'm1')));
+  await fromBackend(queueMicrotask, 'create:alice', () =>
+    fixture.activation.notifyCreateActor(alice, framework.ZLinkMessage.from({})));
   await fromBackend(setImmediate, 'create:bob', () =>
     fixture.activation.notifyCreateActor(bob, framework.ZLinkMessage.from({})));
-  await fromBackend(queueMicrotask, 'packet:bob:m2', () =>
-    fixture.router.submit('bob', (snapshot) =>
-      fixture.dispatcher.dispatchSend(snapshot.actor, 'move', 'm2')));
-  await fromBackend(setImmediate, 'packet:alice:m3', () =>
-    fixture.router.submit('alice', (snapshot) =>
-      fixture.dispatcher.dispatchSend(snapshot.actor, 'move', 'm3')));
   await Promise.all(submissions);
 
   assert.equal(tracker.overlapped, false);
@@ -141,61 +124,93 @@ test('entry spot does not start the next callback before the previous handler pr
       events.push(`create:${actor.actorId}:settled`);
     }
   }
-  class PingHandler {
-    async handle(_spot, actor) {
-      events.push(`packet:${actor.actorId}`);
-    }
-  }
-  const fixture = await createEntryFixture(GatedEntrySpot, [{
-    kind: framework.ZLinkActorPacketKind.Send,
-    packetName: 'ping',
-    actorType: PlayerActor,
-    handlerType: PingHandler
-  }]);
+  const fixture = await createEntryFixture(GatedEntrySpot);
   const alice = await fixture.manager.getOrCreateActor('alice', 'player');
+  const bob = await fixture.manager.getOrCreateActor('bob', 'player');
 
   const first = fixture.activation.notifyCreateActor(alice, framework.ZLinkMessage.from({}));
-  const second = fixture.router.submit('alice', (snapshot) =>
-    fixture.dispatcher.dispatchSend(snapshot.actor, 'ping', 'p'));
+  const second = fixture.activation.notifyCreateActor(bob, framework.ZLinkMessage.from({}));
   await delay(10);
   assert.deepEqual(events, ['create:alice:start']);
 
   releaseFirst();
   await Promise.all([first, second]);
-  assert.deepEqual(events, ['create:alice:start', 'create:alice:settled', 'packet:alice']);
+  assert.deepEqual(events, ['create:alice:start', 'create:alice:settled', 'create:bob:start', 'create:bob:settled']);
 });
 
-test('entry spot timer ticks and actor packets share one serial line', async () => {
+test('entry spot actor packets use actor mailboxes without entry-wide serial dispatch', async () => {
   const events = [];
-  const tracker = overlapTracker(events);
-  class TimerEntrySpot {}
-  class TickHandler {
-    handle() {
-      return tracker.run('tick');
-    }
-  }
+  class EntrySpot {}
   class SlowPacketHandler {
-    handle() {
-      return tracker.run('packet', () => delay(40));
+    async handle(_spot, actor, _context, message) {
+      events.push(`${actor.actorId}:${message}:start`);
+      if (message === 'block') {
+        await delay(40);
+      }
+      events.push(`${actor.actorId}:${message}:end`);
     }
   }
-  const fixture = await createEntryFixture(TimerEntrySpot, [{
+  const fixture = await createEntryFixture(EntrySpot, [{
     kind: framework.ZLinkActorPacketKind.Send,
-    packetName: 'slow',
+    packetName: 'packet',
     actorType: PlayerActor,
     handlerType: SlowPacketHandler
   }]);
-  await fixture.manager.create('alice', 'player');
+  await fixture.manager.create('actor-a', 'player');
+  await fixture.manager.create('actor-b', 'player');
 
-  const timer = await fixture.activation.context.addTimer('entry-tick', 5, TickHandler);
-  const packet = fixture.router.submit('alice', (snapshot) =>
-    fixture.dispatcher.dispatchSend(snapshot.actor, 'slow', 's'));
-  await packet;
-  await delay(15);
-  await timer.cancel();
+  const firstA = fixture.router.submit('actor-a', (snapshot) =>
+    fixture.dispatcher.dispatchSend(snapshot.actor, 'packet', 'block'));
+  await delay(5);
+  const firstB = fixture.router.submit('actor-b', (snapshot) =>
+    fixture.dispatcher.dispatchSend(snapshot.actor, 'packet', 'fast'));
+  const secondA = fixture.router.submit('actor-a', (snapshot) =>
+    fixture.dispatcher.dispatchSend(snapshot.actor, 'packet', 'second'));
+  await Promise.all([firstA, firstB, secondA]);
 
-  assert.equal(tracker.overlapped, false);
-  assert.equal(events.filter((event) => event === 'tick:start').length > 0, true);
+  assert.equal(events.indexOf('actor-b:fast:start') < events.indexOf('actor-a:block:end'), true);
+  assert.equal(events.indexOf('actor-a:second:start') > events.indexOf('actor-a:block:end'), true);
+});
+
+test('entry spot actor handler yield fails immediately instead of timing out', async () => {
+  let observed;
+  const channelClient = {
+    requestToChannel() {
+      return {
+        packetName() { return this; },
+        timeout() { return this; },
+        submit() {
+          throw new Error('yield must fail before starting the outbound request');
+        }
+      };
+    },
+    sendToChannel() { throw new Error('not used'); }
+  };
+  class EntrySpot {}
+  class YieldPacketHandler {
+    async handle(spot) {
+      try {
+        await spot.context.outbound.requestToChannel('delay', { value: 'ping' }).yield();
+      } catch (error) {
+        observed = error;
+        return;
+      }
+      throw new Error('yield unexpectedly completed inside an Entry Spot actor handler');
+    }
+  }
+  const fixture = await createEntryFixture(EntrySpot, [{
+    kind: framework.ZLinkActorPacketKind.Send,
+    packetName: 'yield',
+    actorType: PlayerActor,
+    handlerType: YieldPacketHandler
+  }], { channelClient });
+  await fixture.manager.create('actor-yield', 'player');
+
+  await fixture.router.submit('actor-yield', (snapshot) =>
+    fixture.dispatcher.dispatchSend(snapshot.actor, 'yield', 'run'));
+
+  assert.equal(observed instanceof framework.ZLinkConfigurationException, true);
+  assert.match(observed.message, /yield requires a framework Spot handler turn/);
 });
 
 test('joined user spot actors keep per-actor mailbox dispatch off the entry line', async () => {

@@ -145,11 +145,11 @@ actor 또는 `Spot` callback 안에서 task 기반 request를 `await`하면 현�
 `Spot`의 다음 dispatch, join, timer, subscription 처리는 현재 callback task가 끝난
 뒤에 실행된다. 명시 timeout이 없으면 framework default timeout을 사용한다.
 
-이 직렬화 규칙은 user Spot 과 Entry Spot 에 모두 적용된다. Entry Spot 은 여러 actor 가
-공유하는 입구이지만, Entry Spot application callback 은 같은 Entry Spot 실행 줄에서
-순서대로 실행된다. Entry Spot timer callback 도 actor packet, lifecycle callback,
-request continuation 과 동시에 실행되지 않는다. room, stage, match 같은 권위 상태를
-바꾸는 주기 작업은 그 상태를 소유하는 user Spot timer 로 등록해야 한다.
+이 직렬화 규칙은 user Spot 과 Entry Spot 의 lifecycle, route, subscription callback 에
+적용된다. Entry Spot actor packet 은 대상 actor 의 mailbox 에서 처리하므로, 서로 다른
+actor 의 packet 이 Entry Spot 하나의 실행 줄에 묶이지 않는다. Entry Spot timer 정합성은
+actor packet mailbox 계약과 분리해서 다룬다. room, stage, match 같은 권위 상태를 바꾸는
+주기 작업은 그 상태를 소유하는 user Spot timer 로 등록해야 한다.
 
 ### 3.5 worker-dispatch
 

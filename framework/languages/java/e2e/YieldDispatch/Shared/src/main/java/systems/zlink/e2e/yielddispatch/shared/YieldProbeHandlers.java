@@ -173,7 +173,7 @@ public final class YieldProbeHandlers {
                     Contracts.DELAY_CHANNEL,
                     new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .yield(Contracts.DelayReply.class);
+                .await(Contracts.DelayReply.class);
             evidence.record("yield-resumed", request.requestId(), value);
             evidence.record("yield-completed", request.requestId(), value);
         }
@@ -372,7 +372,7 @@ public final class YieldProbeHandlers {
                     Contracts.DELAY_CHANNEL,
                     new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .yield(Contracts.DelayReply.class);
+                .await(Contracts.DelayReply.class);
             evidence.record("actor-yield-resumed", request.requestId(), value);
             evidence.record("actor-yield-completed", request.requestId(), value);
             return new Contracts.ActorReply("YD-B", request.requestId(), actor.actorId(), "actor-yield-completed");
@@ -436,7 +436,7 @@ public final class YieldProbeHandlers {
                     systems.zlink.contracts.core.RoutingId.from(request.targetSpotRid()),
                     new Contracts.DelayRequest(request.requestId(), 350))
                 .timeout(Duration.ofSeconds(5))
-                .yield();
+                .await();
             evidence.record("actor-join-yield-resumed", request.requestId(),
                 value + ";joined=" + joined.actor().actorId());
             evidence.record("actor-join-yield-completed", request.requestId(),
@@ -477,7 +477,7 @@ public final class YieldProbeHandlers {
                     Contracts.DELAY_CHANNEL,
                     new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .yield(Contracts.DelayReply.class);
+                .await(Contracts.DelayReply.class);
             evidence.record("actor-push-yield-resumed", request.requestId(), value);
             actor.context()
                 .boundSession()

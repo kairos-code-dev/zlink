@@ -1178,13 +1178,6 @@ export interface ZLinkActorDispatchSnapshot {
 }
 
 export interface ZLinkActorDispatchRouterOptions {
-  /**
-   * The Entry Spot serial executor. When provided, packets for actors that
-   * have not joined a user Spot (the entry path) run through this executor,
-   * so Entry Spot actor packet dispatch shares the one Entry Spot serial
-   * line with lifecycle, timer and continuation callbacks. User-Spot-joined
-   * actors keep the per-actor mailbox dispatch behavior.
-   */
   readonly entryExecutor?: {
     execute<T>(operation: () => Promise<T> | T): Promise<T>;
   };
@@ -1204,9 +1197,6 @@ export class ZLinkActorDispatchRouter {
   ): Promise<T> {
     return this.mailboxes.submit(actorId, () => {
       const snapshot = this.createSnapshot(actorId);
-      if (!snapshot.isJoined && this.options.entryExecutor !== undefined) {
-        return this.options.entryExecutor.execute(() => operation(snapshot));
-      }
       return operation(snapshot);
     });
   }

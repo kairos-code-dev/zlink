@@ -12,6 +12,7 @@
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -250,6 +251,111 @@ struct relay_spot_t : public zlink::framework::spot_t
     }
 
     static inline int left_count{};
+};
+
+struct entry_dispatch_probe_actor_t
+{
+    std::string actor_id;
+    zlink::framework::actor_context_t context;
+    int handled{};
+
+    void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref)
+    {
+        actor_id = std::string (actor_ref.actor_id ());
+    }
+
+    void set_actor_context (const zlink::framework::actor_context_t &actor_context)
+    {
+        context = actor_context;
+    }
+};
+
+struct entry_dispatch_probe_actor_factory_t
+{
+    entry_dispatch_probe_actor_t create (std::string actor_id) const
+    {
+        return {std::move (actor_id)};
+    }
+};
+
+struct entry_dispatch_probe_spot_t : public zlink::framework::entry_spot_t
+{
+    void configure (zlink::framework::entry_spot_context_t &context)
+    {
+        context.handlers ()
+          .add_actor_packet<&entry_dispatch_probe_spot_t::on_block> ("entry.block")
+          .add_actor_packet<&entry_dispatch_probe_spot_t::on_yield> ("entry.yield");
+    }
+
+    void onCreateActor (entry_dispatch_probe_actor_t &, const zlink::framework::message_t &)
+    {
+        ++created_count;
+    }
+
+    void on_actor_joined (entry_dispatch_probe_actor_t &) { ++joined_count; }
+
+    relay_reply_t on_block (entry_dispatch_probe_actor_t &actor,
+                            zlink::framework::spot_actor_request_context_t &,
+                            const relay_request_t &request)
+    {
+        {
+            std::unique_lock lock (mutex);
+            ++running;
+            max_running = std::max (max_running, running);
+            starts.push_back (actor.actor_id + ":" + std::to_string (request.value));
+            changed.notify_all ();
+            if (request.value == 1) {
+                changed.wait (lock, [this] { return release_first; });
+            }
+        }
+        actor.handled += 1;
+        {
+            std::lock_guard lock (mutex);
+            --running;
+            changed.notify_all ();
+        }
+        return {actor.actor_id + ":" + std::to_string (actor.handled)};
+    }
+
+    zlink::framework::task_t<relay_reply_t>
+    on_yield (entry_dispatch_probe_actor_t &,
+              zlink::framework::spot_actor_request_context_t &,
+              const relay_request_t &)
+    {
+        zlink::framework::request_call_t<int> call (
+          "entry.yield",
+          [] (const std::string &, std::chrono::milliseconds,
+              const zlink::framework::request_call_t<int>::metadata_map_t &) {
+              return zlink::framework::task_t<int> (
+                zlink::framework::result_t<int>::failure (
+                  zlink::framework::framework_error_kind_t::request_failed, "should not submit"));
+          });
+        const auto value = co_await call.yield ();
+        co_return relay_reply_t{std::to_string (value)};
+    }
+
+    bool wait_starts (std::size_t expected)
+    {
+        std::unique_lock lock (mutex);
+        return changed.wait_for (lock, std::chrono::milliseconds (500),
+                                 [&] { return starts.size () >= expected; });
+    }
+
+    void release ()
+    {
+        std::lock_guard lock (mutex);
+        release_first = true;
+        changed.notify_all ();
+    }
+
+    mutable std::mutex mutex;
+    std::condition_variable changed;
+    std::vector<std::string> starts;
+    bool release_first = false;
+    int running = 0;
+    int max_running = 0;
+    int created_count = 0;
+    int joined_count = 0;
 };
 
 struct stage_spot_t : public zlink::framework::spot_t
@@ -1586,6 +1692,103 @@ int main ()
     if (!lazy_relay_dispatch_again || relay_entry_spot->created_count != 1
         || relay_entry_spot->joined_count != 1) {
         return 109;
+    }
+
+    auto entry_dispatch_spot = std::make_shared<entry_dispatch_probe_spot_t> ();
+    zlink::framework::zlink_builder_t entry_dispatch_host;
+    zlink::framework::detail::channel_runtime_t::from (entry_dispatch_host.message_bus ())
+      .bind_serializers (relay_serializers);
+    auto entry_dispatch_builder = entry_dispatch_host.add_spot_node ("entry-dispatch-stage");
+    entry_dispatch_builder
+      .add_entry_spot<entry_dispatch_probe_spot_t> (
+        [entry_dispatch_spot] { return entry_dispatch_spot; })
+      .add_actor_factory<entry_dispatch_probe_actor_factory_t> ("entry-dispatch-player");
+    (void) entry_dispatch_builder.create_spot ("entry");
+    auto entry_dispatch_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (entry_dispatch_builder);
+    zlink::framework::detail::actor_gateway_runtime_t entry_dispatch_gateway;
+    entry_dispatch_gateway.bind_serializers (relay_serializers);
+    auto dispatch_actor_a =
+      entry_dispatch_gateway.manager ()
+        .create ("entry-dispatch-player", "actor-a", std::string ("create-a"))
+        .value ();
+    auto dispatch_actor_b =
+      entry_dispatch_gateway.manager ()
+        .create ("entry-dispatch-player", "actor-b", std::string ("create-b"))
+        .value ();
+    auto relay_entry_dispatch = [&] (const zlink::framework::session_actor_t &actor,
+                                     int value) {
+        return entry_dispatch_runtime.relay_actor_packet (
+          actor.ref (), actor.context (), "entry.block",
+          zlink::message_t::from (std::to_string (value)), relay_provider, relay_serializers);
+    };
+    std::optional<zlink::framework::result_t<std::optional<zlink::message_t>>>
+      dispatch_a_first;
+    std::optional<zlink::framework::result_t<std::optional<zlink::message_t>>>
+      dispatch_b_first;
+    std::optional<zlink::framework::result_t<std::optional<zlink::message_t>>>
+      dispatch_a_second;
+    std::thread dispatch_a_thread (
+      [&] { dispatch_a_first = relay_entry_dispatch (dispatch_actor_a, 1); });
+    if (!entry_dispatch_spot->wait_starts (1)) {
+        entry_dispatch_spot->release ();
+        dispatch_a_thread.join ();
+        return 120;
+    }
+    std::thread dispatch_b_thread (
+      [&] { dispatch_b_first = relay_entry_dispatch (dispatch_actor_b, 10); });
+    if (!entry_dispatch_spot->wait_starts (2)) {
+        entry_dispatch_spot->release ();
+        dispatch_a_thread.join ();
+        dispatch_b_thread.join ();
+        return 121;
+    }
+    std::thread dispatch_a_second_thread (
+      [&] { dispatch_a_second = relay_entry_dispatch (dispatch_actor_a, 2); });
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    {
+        std::lock_guard lock (entry_dispatch_spot->mutex);
+        if (std::find (entry_dispatch_spot->starts.begin (),
+                       entry_dispatch_spot->starts.end (),
+                       std::string ("actor-a:2")) != entry_dispatch_spot->starts.end ()) {
+            entry_dispatch_spot->release ();
+            dispatch_a_thread.join ();
+            dispatch_b_thread.join ();
+            dispatch_a_second_thread.join ();
+            return 122;
+        }
+    }
+    entry_dispatch_spot->release ();
+    dispatch_a_thread.join ();
+    dispatch_b_thread.join ();
+    dispatch_a_second_thread.join ();
+    if (!dispatch_a_first || !*dispatch_a_first || !dispatch_a_first->value ()
+        || dispatch_a_first->value ()->to_string () != "actor-a:1" || !dispatch_b_first
+        || !*dispatch_b_first || !dispatch_b_first->value ()
+        || dispatch_b_first->value ()->to_string () != "actor-b:1" || !dispatch_a_second
+        || !*dispatch_a_second || !dispatch_a_second->value ()
+        || dispatch_a_second->value ()->to_string () != "actor-a:2") {
+        return 123;
+    }
+    if (entry_dispatch_spot->max_running < 2 || entry_dispatch_spot->created_count != 2
+        || entry_dispatch_spot->joined_count != 2) {
+        return 124;
+    }
+    auto yield_actor =
+      entry_dispatch_gateway.manager ()
+        .create ("entry-dispatch-player", "actor-yield", std::string ("create-yield"))
+        .value ();
+    auto yield_dispatch = entry_dispatch_runtime.relay_actor_packet (
+      yield_actor.ref (), yield_actor.context (), "entry.yield",
+      zlink::message_t::from (std::string ("3")), relay_provider, relay_serializers);
+    if (yield_dispatch) {
+        return 125;
+    }
+    if (!yield_dispatch.error ()
+        || std::string (yield_dispatch.error ()->what ()).find (
+             "yield requires a framework Spot handler turn")
+             == std::string::npos) {
+        return 126;
     }
 
     auto close_after_actor_left = lifecycle_stage.context.close ().result ();

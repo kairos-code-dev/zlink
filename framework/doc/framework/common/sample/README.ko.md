@@ -26,6 +26,28 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [ShoppingMall](event/shoppingmall.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `OrderWorkflow`, `Registry` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
 | [GameQuest](event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
 
+## 메시지 이름 원칙
+
+샘플 메시지 이름은 도메인 사건 이름보다 framework 호출 방식이 먼저 드러나야 한다. 같은 업무
+흐름이라도 request/reply인지, 단방향 send인지, client push인지에 따라 호출자가 기다리는 값과
+handler 계약이 달라지기 때문이다. 언어별 샘플과 e2e는 아래 접미어를 같은 뜻으로 사용한다.
+
+| 호출 방식 | 접미어 | 기준 |
+|-----------|--------|------|
+| request/reply | `Req` / `Res` | `Request(...)`, `RequestToChannel(...)`, route request, stream request, HTTP request처럼 응답을 기다리는 호출 |
+| send | `Msg` | `Send(...)`처럼 응답 없이 전달하는 단방향 메시지 |
+| client push | `Notify` | server가 stream/session으로 client에 밀어 주고 client가 기다려 받는 알림 |
+
+request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Created`처럼 보여도 `Req`와
+`Res` 쌍으로 이름 붙인다. 예를 들어 상태 변경을 요청하고 ack를 기다리는 흐름은
+`DeliveryStatusChangedReq`와 `DeliveryStatusChangedRes`가 맞다. 반대로 server가 고객 client에
+상태 변경을 밀어 주는 흐름은 `DeliveryStatusNotify`처럼 `Notify`를 사용한다.
+
+`Event`, `Command`, `Result`, `Ack` 같은 접미어는 샘플의 wire message 이름으로 새로 늘리지
+않는다. 이런 이름은 내부 도메인 event, 업무 명령, 처리 결과, transport 응답을 서로 섞어 보이게
+할 수 있다. 이미 존재하는 샘플 메시지를 손볼 때도 호출 방식 기준으로 `Req`/`Res`, `Msg`,
+`Notify` 중 하나로 정리한다.
+
 ## 언어별 구현 수준
 
 공통 시나리오는 샘플이 최종적으로 보여 주어야 하는 역할과 흐름을 정의한다. 다만 언어별 샘플은

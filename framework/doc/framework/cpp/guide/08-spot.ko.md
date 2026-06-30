@@ -21,8 +21,8 @@ spot은 두 종류이며 **직렬화 범위가 다르다** — 이 차이가 상
 | | `spot_t` (room spot) | `entry_spot_t` (entry spot) |
 |--|--|--|
 | 개수 | 상태 단위마다 1개 | 노드당 1개 |
-| 직렬화 | **spot callback** — actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) | **Entry Spot callback** — actor 패킷·join/leave는 Entry Spot 단일 큐. timer는 예외([§5](#5-timer)) |
-| 공유 상태 접근 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 | Entry Spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 |
+| 직렬화 | **spot callback** — actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) | **Entry Spot callback** — lifecycle은 Entry Spot 큐, actor 패킷은 대상 actor mailbox |
+| 공유 상태 접근 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 | lifecycle callback은 Entry Spot 큐 안에서 안전. actor 패킷 handler는 actor별 상태만 락 없이 안전 |
 | 역할 | 도메인 상태 소유·처리 | 배정·매칭·할당 |
 
 ## 1.1 room spot 직렬화 — 큐 하나, 한 번에 하나
@@ -205,10 +205,16 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 entry spot은 룸에 들어가기 **전** 단계 — 매칭, 룸 생성/배정 — 를 담당한다.
 `entry_spot_t`를 상속하며 **노드당 1개**만 생성된다.
 
-entry spot의 actor 패킷도 Entry Spot 실행 큐에서 직렬로 처리된다. 같은 actor의
-연속 요청 순서는 actor mailbox가 먼저 보존하고, 실제 application handler 실행은
-Entry Spot 실행 줄에서 한 번에 하나씩 진행된다. 따라서 entry spot 안의 admission
-상태는 handler 안에서 별도 lock 없이 갱신할 수 있다.
+entry spot의 actor 패킷은 Entry Spot 실행 큐가 아니라 대상 actor mailbox에서 처리된다.
+같은 actor의 연속 요청은 순서대로 실행되지만, 서로 다른 actor의 handler는 같은 Entry
+Spot 안에서도 동시에 진행될 수 있다. 따라서 entry spot actor handler에서는 actor별
+상태만 락 없이 다루고, 여러 actor가 공유하는 admission 상태는 lifecycle callback이나
+별도 동기화가 있는 도메인 서비스에서 다룬다.
+
+Entry Spot actor handler는 Entry Spot 실행 줄을 소유하지 않는다. 이 handler 안에서
+request, worker, actor join 같은 call object에 `yield()`를 호출하면 timeout을 기다리지
+않고 즉시 계약 오류가 난다. Entry Spot actor handler에서는 일반 `co_await call.async()`
+또는 동기 반환을 사용한다.
 
 ```cpp
 class bingo_entry_spot_t : public zlink::framework::entry_spot_t
@@ -237,8 +243,8 @@ room spot(`spot_t`)과의 차이:
 |--|--|--|
 | 개수 | 노드당 1개 | 상태 단위마다 1개 |
 | 역할 | 배정·매칭 (라우팅 전) | 도메인 상태 소유·처리 |
-| 직렬화 범위 | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) |
-| 공유 상태 접근 | Entry Spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 |
+| 직렬화 범위 | lifecycle은 Entry Spot 큐, actor 패킷은 대상 actor mailbox | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) |
+| 공유 상태 접근 | lifecycle callback은 Entry Spot 큐 안에서 안전. actor 패킷 handler는 actor별 상태만 락 없이 안전 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 |
 | actor lifecycle | Entry Spot은 기본 accept. 훅 `onCreateActor(actor[, request])`/`on_actor_joined`/`onLeaveActor`/`onDisconnectActor` | `on_actor_join`으로 수락/거부 + lifecycle 훅 |
 
 ## 5. Timer

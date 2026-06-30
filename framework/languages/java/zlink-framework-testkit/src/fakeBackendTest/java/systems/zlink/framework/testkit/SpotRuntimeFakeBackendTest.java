@@ -1203,7 +1203,8 @@ final class SpotRuntimeFakeBackendTest {
             backendFactory.dispatchEntrySpotActorMessage(
                 "player-1",
                 "String",
-                "mark-x");
+                "\"mark-x\"");
+            awaitCondition(() -> "player-1:mark-x".equals(ActorSendHandler.lastMessage.get()));
         }
 
         assertEquals("player-1:mark-x", ActorSendHandler.lastMessage.get());
@@ -1285,9 +1286,11 @@ final class SpotRuntimeFakeBackendTest {
             backendFactory.dispatchEntrySpotActorStreamRequest(
                 "player-1",
                 "SharedActorRequest",
-                "entry-request",
+                "\"entry-request\"",
                 42);
             awaitCall(backendFactory, "spotNode.sendActorBoundSession.player-1.");
+            awaitCondition(() ->
+                "entry:player-1:entry-request".equals(SharedEntryActorRequestHandler.lastRequest.get()));
         }
 
         assertEquals("entry:player-1:entry-request", SharedEntryActorRequestHandler.lastRequest.get());

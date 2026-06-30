@@ -25,7 +25,7 @@ public final class PlayActorJoinGameHandler {
         TicTacToeGameJoinRes result = actor.context()
             .joinSpot(RoutingId.from(request.roomId()),
                 new TicTacToeGameJoinReq(request.roomId(), actor.requirePlayer()))
-            .yield(TicTacToeGameJoinRes.class)
+            .await(TicTacToeGameJoinRes.class)
             .reply();
         actor.joinGame(request.roomId());
         return new JoinGameRes(result.state());

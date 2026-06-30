@@ -120,6 +120,10 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         roomsDiscoveryDelaysRoutingId = true;
     }
 
+    private static Message jsonStringMessage(String value) {
+        return Message.from(("\"" + value + "\"").getBytes(StandardCharsets.UTF_8));
+    }
+
     public void dispatchStreamPacket(String packetName, String payload) {
         if (streams.isEmpty()) {
             throw new IllegalStateException("no fake stream socket is available");
@@ -684,7 +688,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 ZLinkActorSpotRoutePackets.JoinRequest request =
                     ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(1));
                 List<Message> routeReply;
-                Message joinedPayload = Message.from("joined".getBytes(StandardCharsets.UTF_8));
+                Message joinedPayload = jsonStringMessage("joined");
                 Message rejectedPayload = Message.from(new byte[0]);
                 Message joinReply = null;
                 try {
@@ -902,7 +906,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 ? RoutingId.from("native-remote-node")
                 : targetNodeRid;
             Message reply = owner.nextActorJoinReply == null
-                ? Message.from("joined".getBytes(StandardCharsets.UTF_8))
+                ? jsonStringMessage("joined")
                 : Message.from(owner.nextActorJoinReply);
             if (owner.nextActorJoinReply != null) {
                 owner.nextActorJoinReply.close();
@@ -1006,7 +1010,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             if (isRoutedActorJoinRequest(parts)) {
                 ZLinkActorSpotRoutePackets.JoinRequest request =
                     ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(1));
-                Message joinedPayload = Message.from("joined".getBytes(StandardCharsets.UTF_8));
+                Message joinedPayload = jsonStringMessage("joined");
                 Message rejectedPayload = Message.from(new byte[0]);
                 Message joinReply = null;
                 try {

@@ -1036,7 +1036,8 @@ class spot_handler_registry_t
                                             service_provider_t &services,
                                             serializer_registry_t &serializers,
                                             const zlink::message_t &message,
-                                            spot_actor_message_metadata_t metadata = {}) const;
+                                            spot_actor_message_metadata_t metadata = {},
+                                            bool serial_dispatch = true) const;
 
     void register_actor_admission_erased (std::type_index actor_type,
                                           detail::spot_actor_admission_callbacks_t callbacks);
@@ -1062,8 +1063,7 @@ class spot_node_manager_t
               && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) spot_create_result_t
       create_spot (std::string spot_name, const TRequest &request)
     {
-        return create_spot_raw (std::move (spot_name),
-                                serialize_request (std::type_index (typeid (TRequest)), &request));
+        return create_spot (std::move (spot_name), message_t::from (request));
     }
 
     spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
@@ -1074,9 +1074,8 @@ class spot_node_manager_t
               && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) spot_create_result_t
       get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const TRequest &request)
     {
-        return get_or_create_spot_raw (
-          std::move (spot_name), std::move (spot_rid),
-          serialize_request (std::type_index (typeid (TRequest)), &request));
+        return get_or_create_spot (std::move (spot_name), std::move (spot_rid),
+                                   message_t::from (request));
     }
 
     std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
@@ -1115,15 +1114,26 @@ class spot_publisher_client_t
     template <typename TEvent>
     task_t<void> publish (std::string channel_name, std::string topic, const TEvent &event) const
     {
-        return publish_erased (std::move (channel_name), std::move (topic),
-                               std::type_index (typeid (TEvent)), &event);
+        if (!_serializers) {
+            return task_t<void> (
+              result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                       "spot publisher client has no serializer registry"));
+        }
+        try {
+            auto payload =
+              detail::encoded_payload_to_raw (_serializers->get<TEvent> ().serialize (event));
+            return publish_raw (std::move (channel_name), std::move (topic), std::move (payload));
+        }
+        catch (const framework_exception_t &error) {
+            return task_t<void> (
+              result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+        }
     }
 
   private:
-    task_t<void> publish_erased (std::string channel_name,
-                                 std::string topic,
-                                 std::type_index event_type,
-                                 const void *event) const;
+    task_t<void> publish_raw (std::string channel_name,
+                              std::string topic,
+                              zlink::message_t payload) const;
 
     spot_node_manager_t _manager;
     serializer_registry_t *_serializers = nullptr;

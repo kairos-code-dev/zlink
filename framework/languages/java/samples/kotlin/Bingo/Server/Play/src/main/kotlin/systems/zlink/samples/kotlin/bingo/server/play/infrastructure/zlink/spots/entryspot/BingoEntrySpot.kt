@@ -5,7 +5,6 @@ import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.ZLinkAwait.await
-import systems.zlink.framework.kotlin.yield
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
@@ -78,18 +77,15 @@ class BingoEntrySpot(
             SampleTimings.DrawPeriod.toMillis(),
         )
         spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), settings).await()
-        val joined = yield(
-            actor.context().joinSpot(
-                RoutingId.from(observerRid),
-                BingoRoomJoinReq(
-                    request.roomId,
-                    actor.actorId(),
-                    actor.displayName,
-                    true,
-                ),
+        val joined = actor.context().joinSpot(
+            RoutingId.from(observerRid),
+            BingoRoomJoinReq(
+                request.roomId,
+                actor.actorId(),
+                actor.displayName,
+                true,
             ),
-            BingoRoomJoinRes::class.java,
-        )
+        ).await(BingoRoomJoinRes::class.java)
         return ObserveBingoEventsRes(
             joined.reply().state.status == "Running",
             joined.actor().nodeRid().toString(),

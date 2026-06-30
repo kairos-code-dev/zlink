@@ -100,11 +100,18 @@ class PlayerEntrySpot(
 
 | 대상 | 실행 라인 |
 |------|-----------|
-| Entry Spot actor packet / lifecycle / timer | Entry Spot의 단일 실행 큐(직렬) |
+| Entry Spot actor packet | 대상 actor의 mailbox(같은 actor만 직렬) |
+| Entry Spot lifecycle | Entry Spot 자체 실행 문맥 |
 | user Spot actor packet / packet / timer / subscription | 그 user Spot의 단일 실행 큐(직렬) |
 
-그래서 Entry Spot의 actor admission 상태와 user Spot 안의 room 상태 같은 가변 상태는
-각 Spot 실행 큐 안에서 lock 없이 만질 수 있다.
+그래서 Entry Spot actor handler는 actor별 상태만 다룬다. 여러 actor가 공유하는 Entry Spot
+가변 상태에 의존하면 서로 다른 actor packet이 동시에 진행될 때 race가 생긴다. user Spot
+안의 room 상태 같은 가변 상태는 그 Spot 실행 큐 안에서 lock 없이 만질 수 있다.
+
+Entry Spot actor handler에서는 `yield(...)` helper를 사용하지 않는다. 이 handler에는 반납할
+Entry Spot 전체 실행 turn이 없으므로, handler 안에서 만든 call object의 `yield(...)`를 호출하면
+시간 초과가 아니라 즉시 계약 오류가 난다. Entry Spot actor handler의 대기 작업은
+`submit(...).await()` 또는 call object의 `await(...)`로 표현한다.
 
 짧은 local 작업을 Spot 실행 큐 밖에서 처리해야 하면 `context.runWorker(...)`를 사용한다.
 worker 함수는 Spot 상태를 직접 만지지 않고, 완료 후 Spot 큐로 돌아온 자리에서 상태를

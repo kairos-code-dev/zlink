@@ -31,7 +31,7 @@ internal sealed class EntryActorYieldHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-yield-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        await call.Yield<DelayReply>(cancellationToken);
+        await call.Async<DelayReply>(cancellationToken);
         evidence.Add(
             $"actor-yield-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
@@ -90,7 +90,7 @@ internal sealed class EntryActorJoinYieldHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-join-yield-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|target={request.TargetSpotRid}");
-        var joined = await call.Yield(cancellationToken);
+        var joined = await call.Async(cancellationToken);
         evidence.Add(
             $"actor-join-yield-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|accepted={joined.Accepted}");
@@ -125,7 +125,7 @@ internal sealed class EntryActorPushYieldHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-yield-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        await call.Yield<DelayReply>(cancellationToken);
+        await call.Async<DelayReply>(cancellationToken);
         evidence.Add(
             $"actor-push-yield-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");

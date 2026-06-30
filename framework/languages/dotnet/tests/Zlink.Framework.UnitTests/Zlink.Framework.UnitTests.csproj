@@ -48,6 +48,7 @@
         <Compile Include="Runtime/BackendMonitorWrapperTests.cs"/>
         <Compile Include="Runtime/CoverageCriticalRuntimeTests.cs"/>
         <Compile Include="Runtime/CustomSerializerEnvelopeTests.cs"/>
+        <Compile Include="Runtime/EntrySpotActorDispatchTests.cs"/>
         <Compile Include="Runtime/EnvelopeCodecTests.cs"/>
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>

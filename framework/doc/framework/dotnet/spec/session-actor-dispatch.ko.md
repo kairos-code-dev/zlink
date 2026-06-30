@@ -129,7 +129,7 @@ Spot queue 가 반드시 필요한 직렬화 경계다.
 | 입력 경로 | 실행 위치 |
 | --- | --- |
 | stream session → Entry/local actor | actor별로 순서를 보존한 뒤 현재 actor 위치로 dispatch |
-| Entry Spot actor packet | Entry Spot 실행 queue |
+| Entry Spot actor packet | actor별 mailbox |
 | stream session → user Spot actor | user Spot 실행 queue |
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
@@ -1084,6 +1084,8 @@ public interface IZLinkBoundSessionSendCall
 `Async(...)` 는 bound session send의 기본 serial terminator다. `Yield(...)` 는
 framework가 만든 send call object에서만 사용할 수 있으며, send completion을 기다리는 동안
 현재 Spot/Entry Spot turn을 반납하고 completion 뒤 원래 handler continuation을 재개한다.
+Entry Spot actor handler에는 반납할 Entry Spot turn이 없으므로, 그 handler 안에서 만든
+bound session send call object의 `Yield(...)` 호출은 timeout이 아니라 즉시 계약 오류가 된다.
 
 호출 모양은 아래와 같다.
 
@@ -1545,9 +1547,8 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 | `ActorBindingTests.BindActorAsync_DoesNot_Create_LocalActor` | logical actor binding 은 session attach 중 local actor 를 새로 만들지 않는다. |
 | `ActorBindingTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | route 없는 bind overload 는 local actor 에만 붙고 remote fallback 을 수행하지 않는다. |
 | `RemoteProxyDisconnectTests.BoundSessionDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 `BoundSession.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
-| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Across_Actors` | Entry Spot actor packet이 Entry Spot 직렬 실행 줄에서 순서대로 실행된다. |
-| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_Serially` | native Entry Spot actor batch도 Entry Spot 직렬 실행 줄을 거쳐 batch 순서대로 dispatch된다. |
-| `LocalActorMailboxExecutionTests.LocalActorPackets_Are_Serialized_On_The_EntrySpot_Line` | user Spot에 들어가지 않은 actor packet도 Entry Spot 직렬 실행 줄에서 순서대로 실행된다. |
+| `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet은 같은 actor 순서를 보존하고, 서로 다른 actor handler 시작은 Entry Spot 직렬 실행 줄에 막히지 않는다. |
+| `LocalActorMailboxExecutionTests.LocalActorPackets_Are_Serialized_On_The_EntrySpot_Line` | user Spot에 들어가지 않은 actor packet도 actor별 mailbox 순서를 따른다. |
 | `ActorRegistryExecutionTests.ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox` | 같은 actor의 앞 packet이 join을 마치고 나면, 대기 중이던 다음 packet이 새 user Spot 위치로 dispatch된다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 이후의 dispatch가 현재 spot 실행 문맥에서 실행된다. |
 | `ActorSessionStateTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream의 늦은 disconnect가 현재 actor-session 연결을 끊지 않는다. |

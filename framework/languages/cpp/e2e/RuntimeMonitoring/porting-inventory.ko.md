@@ -68,10 +68,8 @@
 
 ## 검증
 
-- 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_runtime_monitoring_service zlink_cpp_e2e_runtime_monitoring_filtered_service zlink_cpp_e2e_runtime_monitoring_throwing_service zlink_cpp_e2e_runtime_monitoring_registry zlink_cpp_e2e_runtime_monitoring_trigger zlink_cpp_e2e_runtime_monitoring_client`
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
   - 결과: 통과
-- 2026-06-30: `./framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
-  - 결과: 통과
-  - 로그: `logs/20260630-083319-3292697`
+  - 로그: `logs/20260630-173613-574152`
   - 의미: registry, service, filtered service, throwing service, trigger, client role target이 같은 gate에서
     MON-A1, MON-A2, MON-A3, MON-A4, MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을 검증한다.

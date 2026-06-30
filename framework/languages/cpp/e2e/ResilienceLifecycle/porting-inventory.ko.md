@@ -12,7 +12,7 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 실행 로그 제외 규칙만 있다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 현재 gap 상태를 과장 없이 기록한다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | partial | 전용 role target을 빌드하고 RL-A1/A2/A3/A4/A5, RL-B1/B2/B3/B4/B5/B6, RL-C1/C2/C3, RL-D1/D3/D4/D5 slice를 실행한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | partial | 전용 role target을 빌드하고 RL-A1/A2/A3/A4/A5, RL-B1/B2/B3/B4/B5/B6, RL-C1/C2/C3/C4, RL-D1/D3/D4/D5 slice를 실행한다. |
 | `Shared/ResilienceLifecycle.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | ResilienceLifecycle 전용 C++ target 묶음이 추가됐다. |
 | `Shared/Messages.cs` | `Shared/registry_messaging_contracts.hpp` | shared | partial | 현재 slice는 RegistryMessaging contract를 재사용한다. 전용 contract 이름 정리는 남아 있다. |
 | `Client/ResilienceLifecycle.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | 전용 client target이 추가됐다. |
@@ -36,7 +36,7 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | scenario | partial | 반복 client 실행 뒤 follow-up request 성공과 정상 종료를 검증한다. C1 전용 header 분리는 남아 있다. |
 | `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | scenario | partial | provider crash 뒤 public retry window 안의 follow-up request 성공을 검증한다. topology DTO 단언은 남아 있다. |
 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | scenario | partial | provider 정지/복구 뒤 각각 follow-up request 성공을 검증한다. split-brain topology 단언은 남아 있다. |
-| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp` | scenario | gap | registry outage public behavior가 정리되어야 한다. |
+| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp`; `run_e2e.sh` | scenario | partial | registry outage 중 established manual channel request가 계속 성공하는지 검증한다. registry 재시작 뒤 provider heartbeat 재등록과 새 discovery client 복구는 남아 있다. |
 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `Client/Scenarios/rl_d1_high_fanout_scenario.hpp` | scenario | partial | burst request workload를 검증한다. 장시간 high fanout soak는 남아 있다. |
 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | scenario | gap | observer failure event 수집 harness가 필요하다. |
 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp`; `run_e2e.sh` | scenario | partial | missing send 뒤 provider flow log의 dispatch error marker를 검증한다. |
@@ -80,7 +80,7 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 | `RL-C1` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | partial |
 | `RL-C2` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | partial |
 | `RL-C3` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | partial |
-| `RL-C4` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp` | gap |
+| `RL-C4` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp`; `run_e2e.sh` | partial |
 | `RL-D1` | `Client/Scenarios/rl_d1_high_fanout_scenario.hpp` | partial |
 | `RL-D2` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | gap |
 | `RL-D3` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp`; `run_e2e.sh` | partial |
@@ -89,9 +89,10 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 
 ## 검증
 
-- 2026-06-30: `./framework/languages/cpp/e2e/ResilienceLifecycle/run_e2e.sh all`
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/ResilienceLifecycle/run_e2e.sh`
   - 결과: 통과
-  - 로그: `logs/20260630-082753-3275795`
+  - 로그: `logs/20260630-165805-488960`
   - 의미: 현재 runner에 포함된 RL-A1, RL-A2, RL-A3, RL-A4, RL-A5, RL-B1, RL-B2, RL-B3,
-    RL-B4, RL-B5, RL-B6, RL-C1, RL-C2, RL-C3, RL-D1, RL-D3, RL-D4, RL-D5 slice는 통과한다.
-    RL-C4 registry outage와 RL-D2 observer fault는 public harness gap으로 남긴다.
+    RL-B4, RL-B5, RL-B6, RL-C1, RL-C2, RL-C3, RL-C4, RL-D1, RL-D3, RL-D4, RL-D5 slice는
+    통과한다. RL-C4는 registry outage 중 established channel 유지까지만 검증한다. registry 재시작 뒤
+    provider heartbeat 재등록과 새 discovery client 복구, RL-D2 observer fault는 gap으로 남긴다.

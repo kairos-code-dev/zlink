@@ -72,6 +72,21 @@ e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 
   조작하는 우회로 메우지 않는다. feature-map에 public contract gap으로 남기고, 필요한 draft/spec/guide
   검토를 별도 작업으로 분리한다.
 
+### 메시지 이름 원칙
+
+e2e 메시지 이름도 공통 샘플의 메시지 이름 원칙을 따른다. e2e는 샘플보다 검증 범위가 넓지만,
+client와 server가 주고받는 payload는 사용자가 보는 공개 예시와 같은 기준으로 읽혀야 한다.
+
+request로 호출하고 응답을 기다리는 payload는 `Req`와 `Res`를 쌍으로 사용한다. 이 기준은
+channel request, route request, stream request, HTTP request에 모두 적용한다. 응답이 없는
+단방향 send payload는 `Msg`를 사용하고, server가 client stream/session으로 밀어 주는 payload는
+`Notify`를 사용한다.
+
+업무 이름이 event처럼 보이더라도 호출 방식이 request/reply이면 `Req`/`Res`가 맞다. 예를 들어
+상태 변경을 요청하고 처리 결과를 기다리는 e2e payload는 `StatusChangedReq`와 `StatusChangedRes`
+처럼 이름 붙인다. 반대로 client가 server push로 받는 상태 변경 알림은 `StatusNotify`처럼
+이름 붙인다.
+
 ## 2. 표준 프로젝트 구조
 
 각 config는 언어별 표준 위치에 sample과 분리된 e2e 앱으로 둔다. 서버와 client는 실제 프로세스

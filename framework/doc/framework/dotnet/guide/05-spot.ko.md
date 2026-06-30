@@ -634,9 +634,9 @@ public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
 ```
 
 user Spot timer 는 같은 spot 실행 큐에서 처리된다. 그래서 같은 spot 의 packet
-handler 와 timer handler 는 동시에 같은 spot 상태를 변경하지 않는다. Entry Spot
-timer 도 Entry Spot actor packet, lifecycle callback, request continuation 과 같은
-실행 큐에서 처리된다. 같은 timer instance 의 callback 역시 겹쳐 실행되지 않는다.
+handler 와 timer handler 는 동시에 같은 spot 상태를 변경하지 않는다. Entry Spot actor
+packet 은 대상 actor mailbox 에서 처리하므로 Entry Spot timer 설명과 섞지 않는다.
+Entry Spot timer 실행 줄 정합성은 actor packet dispatch 계약과 분리해서 다룬다.
 
 짧은 local 계산을 Spot 실행 큐 밖에서 처리해야 하면 `RunWorker(...)` 를 사용한다. worker
 함수 안에서는 Spot 상태를 직접 바꾸지 않고, 완료 뒤 Spot 실행 큐로 돌아온 callback에서

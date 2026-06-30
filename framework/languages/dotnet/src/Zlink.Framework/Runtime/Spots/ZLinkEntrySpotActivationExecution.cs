@@ -28,13 +28,10 @@ internal sealed partial class ZLinkEntrySpotActivation
     }
 
     /// <summary>
-    ///     Runs the operation on the Entry Spot serial execution line. Every
-    ///     application callback of this Entry Spot (lifecycle, actor packets,
-    ///     route packets, subscriptions, timers, worker completions) goes through
-    ///     this single line, one at a time, and each handler is awaited to
-    ///     completion before the next callback starts. Calls that already run on
-    ///     the line execute inline so gated callbacks can nest without
-    ///     deadlocking.
+    ///     Runs Entry Spot-owned callbacks on the Entry Spot serial execution
+    ///     line. Lifecycle, route packets, subscriptions, timers, and worker
+    ///     completions go through this line. Entry Spot actor packets are
+    ///     serialized by the target actor mailbox instead.
     /// </summary>
     private async ValueTask ExecuteAsync(
         Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation,
@@ -86,8 +83,27 @@ internal sealed partial class ZLinkEntrySpotActivation
                 ct => RunOnLineAsync(
                     (activation, innerCt) => capturedOperation(activation, capturedState, innerCt),
                     ct),
-                cancellationToken)
+            cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask ExecuteActorPacketAsync<TState>(
+        Func<ZLinkEntrySpotActivation, TState, CancellationToken, ValueTask> operation,
+        TState state,
+        CancellationToken cancellationToken)
+    {
+        var previous = Current.Value;
+        Current.Value = this;
+        try
+        {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
+            using var turn = ZLinkSerialTurn.Suppress();
+            await operation(this, state, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Current.Value = previous;
+        }
     }
 
     private void QueueSerialized(

@@ -86,8 +86,8 @@ actor 안에서의 spot join 과 현재 상태 조회는 주입된 `IZLinkActorC
 |---------------------------|------|
 | `SpotRid?`, `IsJoined` | 현재 Spot join 상태 조회 |
 | `BoundSession` | 자기 client 로 push ([07-actor-session §3](07-actor-session.ko.md)) |
-| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. 기본은 `.Async(ct)` 로 종결하고, admission I/O 동안 현재 turn을 반납해야 하는 제한된 흐름에서는 `.Yield(ct)` 또는 `.Yield<TReply>(ct)` 를 쓴다 |
-| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 기본은 `.Async(ct)` 이며, `Yield(...)` 의 의미는 `JoinSpot(...)` 과 같다 |
+| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. 기본은 `.Async(ct)` 로 종결한다. user Spot handler 처럼 Spot 실행 줄을 반납해야 하는 제한된 흐름에서는 `.Yield(ct)` 또는 `.Yield<TReply>(ct)` 를 쓸 수 있지만, Entry Spot actor handler 안에서는 사용하지 않는다 |
+| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 기본은 `.Async(ct)` 이며, `Yield(...)` 의 제한은 `JoinSpot(...)` 과 같다 |
 
 `JoinSpot`/`JoinEntrySpot` 도 `Request` 처럼 reply 대기 `Timeout(...)` override 를 받는다. 생략하면
 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
@@ -257,12 +257,15 @@ internal sealed class SubmitBingoCardHandler
 
 | 대상 | 실행 라인 |
 |------|-----------|
-| Entry Spot actor packet · lifecycle 콜백 | Entry Spot 의 단일 실행 큐(직렬) |
+| Entry Spot actor packet | actor별 mailbox |
+| Entry Spot lifecycle 콜백 | Entry Spot 의 단일 실행 큐(직렬) |
 | user Spot actor packet / packet / timer / subscription · lifecycle 콜백 | 그 user Spot 의 단일 실행 큐(직렬) |
 
-그래서 Entry Spot 의 admission 상태와 user Spot 안의 room board 같은 가변 상태는 각 Spot 실행 큐
-안에서 lock 없이 만질 수 있다. join 직후 들어온 packet 이 옛 Entry Spot handler 로 가지 않도록,
-dispatch 는 actor 의 현재 위치를 다시 읽어 큐를 atomic 하게 고른다.
+그래서 Entry Spot 의 admission lifecycle 상태와 user Spot 안의 room board 같은 가변 상태는 각자
+소유한 실행 큐 안에서 lock 없이 만질 수 있다. Entry Spot actor handler 는 actor별 mailbox 에서
+실행되므로 Entry Spot 인스턴스의 공유 mutable state 를 actor 간 순서 보장 수단으로 쓰지 않는다.
+join 직후 들어온 packet 이 옛 Entry Spot handler 로 가지 않도록, dispatch 는 actor 의 현재 위치를
+다시 읽어 큐를 atomic 하게 고른다.
 
 ## 4. 예제 — Bingo 로 따라가는 actor 생애 (콜백이 불리는 순서)
 
@@ -313,15 +316,15 @@ internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> log
         BingoEntrySpot entrySpot, PlayerActor actor,
         ZLinkSpotActorRequestContext context, MatchBingoReq message, CancellationToken ct)
     {
-        // Entry Spot handler 는 spot context 로 일반 channel 호출 가능 (room 배정 API)
+        // Entry Spot actor handler 에서는 일반 async 대기로 외부 API 결과를 기다린다.
         var matched = await entrySpot.Context.Outbound
             .RequestToChannel(SampleNames.ApiChannel, new MatchBingoApiReq { ActorId = actor.ActorId, Mode = message.Mode })
-            .Yield<MatchBingoApiRes>(ct); // admission I/O 동안 Entry Spot turn을 반납한다.
+            .Async<MatchBingoApiRes>(ct);
 
         // 배정된 room 의 user Spot 으로 join → BingoRoom.OnActorJoinAsync 가 admission 판정
         var joined = await actor.Context
             .JoinSpot(RoutingId.From(matched.RoomId), new BingoRoomJoinReq { RoomId = matched.RoomId, ActorId = actor.ActorId })
-            .Yield<BingoRoomJoinRes>(ct); // join 완료 뒤 같은 handler 줄에서 재개한다.
+            .Async<BingoRoomJoinRes>(ct); // Entry Spot actor handler 에서는 Yield terminator 를 쓰지 않는다.
         // joined.Accepted / joined.Reply 로 결과 처리 …
         return new MatchBingoRes { RoomId = matched.RoomId };
     }

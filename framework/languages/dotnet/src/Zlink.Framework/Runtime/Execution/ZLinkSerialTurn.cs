@@ -43,6 +43,13 @@ internal sealed class ZLinkSerialTurn
         return new Scope(previous);
     }
 
+    public static Scope Suppress()
+    {
+        var previous = CurrentTurn.Value;
+        CurrentTurn.Value = null;
+        return new Scope(previous);
+    }
+
     public async ValueTask<T> YieldFrameworkCallAsync<T>(
         Func<CancellationToken, ValueTask<T>> submit,
         CancellationToken cancellationToken)

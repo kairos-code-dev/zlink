@@ -276,7 +276,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         Message body,
         CancellationToken cancellationToken)
     {
-        await ExecuteAsync(
+        await ExecuteActorPacketAsync(
             static (activation, state, ct) => activation._handlerExecutor.InvokeActorPacketAsync(
                 state.Descriptor,
                 state.Actor,
@@ -295,7 +295,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         CancellationToken cancellationToken)
     {
         var call = new ActorPacketReplyCallState(descriptor, actor, header, body);
-        await ExecuteAsync(
+        await ExecuteActorPacketAsync(
             static async (activation, state, ct) =>
             {
                 state.Reply = await activation._handlerExecutor.InvokeActorPacketForReplyAsync(

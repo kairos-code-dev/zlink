@@ -19,7 +19,7 @@ public final class EntryActorProbeHandler {
         Contracts.DelayReply delayed = spot.context().outbound()
             .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayRequest(request.op(), request.millis()))
             .timeout(Duration.ofSeconds(5))
-            .yield(Contracts.DelayReply.class);
+            .await(Contracts.DelayReply.class);
         return reply(spot, request, delayed.value());
     }
 

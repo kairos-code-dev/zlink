@@ -17,6 +17,7 @@
 #include "Scenarios/rl_a3_reconnect_storm_scenario.hpp"
 #include "Scenarios/rl_b2_crash_during_inflight_scenario.hpp"
 #include "Scenarios/rl_b4_runtime_drain_scenario.hpp"
+#include "Scenarios/rl_c4_registry_outage_scenario.hpp"
 #include "Scenarios/rl_d1_high_fanout_scenario.hpp"
 
 #include <iostream>
@@ -87,6 +88,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 rm_client::run_inflight_crash_scenario (channels);
             } else if (scenario == "drain-restore") {
                 rm_client::run_drain_restore_scenario (channels);
+            } else if (scenario == "registry-outage") {
+                rm_client::run_registry_outage_scenario (channels);
             } else if (scenario == "resilience-stress") {
                 rm_client::run_resilience_stress_scenario (channels);
             } else {

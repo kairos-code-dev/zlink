@@ -3,7 +3,6 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spot
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
-import systems.zlink.framework.kotlin.yield
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot
@@ -30,8 +29,7 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
         request: MatchBingoReq,
         cancellationToken: CancellationToken,
     ): MatchBingoRes {
-        val matched = yield(
-            entrySpot.context().outbound().requestToChannel(
+        val matched = entrySpot.context().outbound().requestToChannel(
             SampleNames.ApiChannel,
             MatchBingoApiReq(
                 actor.actorId(),
@@ -40,25 +38,22 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
                 SampleTopology.selectedPlayNodeRid(),
             ),
         )
-                .timeout(SampleTimings.RequestTimeout),
-            MatchBingoApiRes::class.java,
-        )
+            .timeout(SampleTimings.RequestTimeout)
+            .await(MatchBingoApiRes::class.java)
         if (cancellationToken.isCancellationRequested) {
             throw IllegalStateException("MatchBingoReq was cancelled")
         }
-        val joined = yield(
-            actor.context().joinSpot(
-                RoutingId.from(matched.roomId),
-                BingoRoomJoinReq(
-                    matched.roomId,
-                    actor.actorId(),
-                    actor.displayName,
-                    false,
-                ),
-            )
-                .timeout(SampleTimings.RequestTimeout),
-            BingoRoomJoinRes::class.java,
+        val joined = actor.context().joinSpot(
+            RoutingId.from(matched.roomId),
+            BingoRoomJoinReq(
+                matched.roomId,
+                actor.actorId(),
+                actor.displayName,
+                false,
+            ),
         )
+            .timeout(SampleTimings.RequestTimeout)
+            .await(BingoRoomJoinRes::class.java)
         if (cancellationToken.isCancellationRequested) {
             throw IllegalStateException("MatchBingoReq was cancelled")
         }

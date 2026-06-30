@@ -711,7 +711,8 @@ export interface ZLinkActorJoinEntrySpotCall {
 
 `submit(...)` 은 actor handler의 기본 serial 의미를 유지한다. `yield(...)` 은
 framework가 만든 actor join call object에서만 사용할 수 있으며, join admission을 기다리는
-동안 현재 Spot/Entry Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다.
+동안 현재 Spot turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다. Entry Spot actor
+handler에는 반납할 Entry Spot 전체 실행 turn이 없으므로 `yield(...)` 호출은 즉시 계약 오류가 난다.
 
 각 표면의 의미는 다음과 같다.
 
@@ -1021,7 +1022,8 @@ export interface ZLinkBoundSessionSendCall {
 
 `submit(...)` 은 bound session send의 기본 serial terminator다. `yield(...)` 은
 framework가 만든 send call object에서만 사용할 수 있으며, send completion을 기다리는 동안
-현재 Spot/Entry Spot turn을 반납하고 completion 뒤 같은 handler continuation을 재개한다.
+현재 Spot turn을 반납하고 completion 뒤 같은 handler continuation을 재개한다. Entry Spot actor
+handler에서 호출하면 즉시 계약 오류가 난다.
 
 `ZLinkBoundSession` 은 server-to-client request API 를 제공하지 않는다.
 client request 에 대한 응답은 actor request handler 의 반환값으로 처리한다.

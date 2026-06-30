@@ -200,7 +200,8 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | SPOT timer metadata | `integration-single-process` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다 |
 | SPOT timer overrun policy | `integration-single-process` | `SkipLateTicks`, `CatchUpBounded`, `DelayNextTick` 정책이 각각 skip, bounded catch-up, fixed-delay 의미를 지킨다 |
 | SPOT timer exception policy | `integration-single-process` | handler 예외가 monitoring event로 기록되고, `stopOnUnhandledException`이 켜진 timer는 중단된다 |
-| Entry Spot timer execution context | `integration-single-process` | Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과 같은 실행 queue에서 처리되고, 같은 timer callback도 겹쳐 실행하지 않는다 |
+| Entry Spot actor packet dispatch | `contract` | `entry spot actor packets use actor mailboxes without entry-wide serial dispatch` 와 `entry spot actor handler yield fails immediately instead of timing out` 으로 대상 actor mailbox, 같은 actor 순서, 서로 다른 actor 진행, yield 계약 오류를 검증한다 |
+| Entry Spot timer execution context | `integration-single-process` | Entry Spot timer는 Entry Spot lifecycle callback, request continuation과 같은 Entry Spot 실행 queue에서 처리되고, 같은 timer callback도 겹쳐 실행하지 않는다. actor packet은 대상 actor mailbox에서 처리한다 |
 | SPOT timer cancel | `integration-single-process` | `cancel()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
 | Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |

@@ -170,8 +170,8 @@ public:
 
 - user Spot timer는 같은 user Spot의 packet, actor packet, subscription과 같은 CAPI
   SPOT dispatch event 후 recv 경계에서 순서 정책을 따른다.
-- Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
-  같은 Entry Spot 실행 줄에서 처리한다.
+- Entry Spot timer는 Entry Spot lifecycle callback, request continuation과 같은 Entry
+  Spot 실행 줄에서 처리한다. Entry Spot actor packet은 대상 actor mailbox에서 처리한다.
 - 같은 timer instance는 callback을 겹쳐 실행하지 않는다.
 - `skip_late_ticks`, `catch_up_bounded`, `delay_next_tick` 정책을 제공한다.
 - `fire_count` 누적값으로 missed tick을 계산하고 `skipped_ticks`와 `scheduled_index`에
@@ -189,7 +189,7 @@ Entry Spot과 user Spot의 actor packet 등록 표면은 같아도 실행 위치
 
 | 입력 경로 | 실행 위치 |
 |-----------|-----------|
-| Entry Spot actor packet | core actor ordering |
+| Entry Spot actor packet | 대상 actor mailbox |
 | user Spot actor packet | CAPI SPOT dispatch event 후 recv 경계 |
 | user Spot packet / timer / subscription | CAPI SPOT dispatch event 후 recv 경계 |
 | Entry Spot timer | Entry Spot 실행 queue |
@@ -290,12 +290,15 @@ SPOT 회귀 테스트는 `.NET` framework의 Spot, actor, timer 기대값을 C++
 - user Spot create/destroy, join/leave, actor join/left handler가 순서대로 호출된다.
 - 같은 user Spot 안의 packet, actor packet, subscription, timer callback은 CAPI SPOT
   dispatch event 후 recv 경계 기준 ordering을 따른다.
-- Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
-  같은 Entry Spot 실행 줄에서 처리하고, 같은 timer instance의 재진입도 막는다.
+- Entry Spot timer는 Entry Spot lifecycle callback, request continuation과 같은 Entry
+  Spot 실행 줄에서 처리하고, 같은 timer instance의 재진입도 막는다. Entry Spot actor
+  packet은 대상 actor mailbox에서 처리한다.
 - 기본 `async()` terminator는 Spot/Entry Spot handler completion까지 같은 실행 줄을
   유지한다. `yield()`는 request, Spot outbound request, actor `join_spot` /
   `join_entry_spot`, bound session send completion, `run_worker` completion에서만 현재
   mailbox turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다.
+- Entry Spot actor handler는 Entry Spot 실행 줄을 소유하지 않는다. 이 handler 안에서
+  만든 call object에 `yield()`를 호출하면 timeout을 기다리지 않고 즉시 계약 오류가 난다.
 - `yield()` 중에도 같은 actor와 같은 timer는 재진입하지 않는다. 다른 actor나 다른
   timer 작업은 interleave될 수 있으므로, await 전후에 공용 mutable state를 이어 판단하는
   handler는 기본 `async()`를 사용해야 한다.

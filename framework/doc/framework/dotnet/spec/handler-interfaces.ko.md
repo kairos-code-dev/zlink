@@ -1046,8 +1046,8 @@ framework 의 `Context.AddTimer<THandler>(...)` 는 low-level native timer 를
 현재 잡혀 있는 방향은 다음과 같다. framework runtime 이 policy-aware managed
 timer 를 만든다. user Spot timer 는 그 tick 을 **같은 spot execution context**
 안으로 enqueue 해서 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
-Entry Spot timer 도 Entry Spot actor packet, lifecycle callback, request continuation 과
-같은 Entry Spot 실행 queue 에 enqueue 해서 handler 를 호출한다.
+Entry Spot actor packet 은 대상 actor mailbox 에서 처리하므로 timer 실행 줄 설명에
+포함하지 않는다. Entry Spot timer 정합성은 actor packet dispatch 계약과 분리해서 다룬다.
 
 `IZLinkTimer.CancelAsync()` 는 이 managed timer loop 를 중단하고 정리하는
 고수준 handle 로 이해하면 된다.
@@ -1600,6 +1600,11 @@ public sealed record ZLinkActorJoinResult<TReply>(
     bool Accepted,
     ActorRef Actor,
     TReply Reply);
+
+actor join call object의 `Async(...)` 는 기본 terminator다. `Yield(...)` 는 Spot 실행
+줄을 가진 handler에서만 turn을 반납한다. Entry Spot actor handler 안에서 만든
+`JoinSpot(...)` 또는 `JoinEntrySpot(...)` call object에 `Yield(...)` 를 호출하면
+timeout이 아니라 즉시 계약 오류가 난다.
 
 public interface IZLinkActorFactory
 {
@@ -2403,6 +2408,9 @@ public interface IZLinkBoundSessionSendCall
 `Yield(...)` 는 framework가 만든 bound session send call object에서만 사용할 수
 있으며, send completion을 기다리는 동안 현재 turn을 반납하고 completion 뒤 같은 handler
 continuation을 원래 mailbox에서 재개한다.
+Entry Spot actor handler는 actor별 mailbox에서 실행되므로 반납할 Entry Spot turn이 없다.
+이 handler 안에서 만든 bound session send call object에 `Yield(...)` 를 호출하면 timeout이
+아니라 즉시 계약 오류가 난다.
 
 ### 5.7 actor/spot remote address resolver와 actor-session binding
 

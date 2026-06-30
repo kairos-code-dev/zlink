@@ -90,18 +90,19 @@ monitoring event로 관찰된다([09-monitoring](09-monitoring.ko.md)).
 
 ## 6. yield dispatch
 
-기본 `submit(...).await()`는 Java core의 기본 serial 의미를 따른다. handler가 기다리는
-동안 같은 Spot 또는 Entry Spot 실행 큐의 다음 작업은 시작되지 않는다. 공용 상태를 await
-전후로 이어 쓰는 handler는 이 기본 동작을 사용한다.
+기본 `submit(...).await()`는 Java core의 기본 serial 의미를 따른다. user Spot handler가
+기다리는 동안 같은 Spot 실행 큐의 다음 작업은 시작되지 않는다. 공용 상태를 await 전후로
+이어 쓰는 handler는 이 기본 동작을 사용한다.
 
-player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
-흐름에서는 `yield(call, ReplyType::class.java)` helper를 사용한다. 이 helper는
+user Spot handler처럼 반납할 Spot turn이 있는 흐름에서는 await 전후에 actor-local 값과
+reply 값만 쓰는 경우 `yield(call, ReplyType::class.java)` helper를 사용할 수 있다. 이 helper는
 Java call object의 yield terminator를 호출한다. coroutine context를 turn, mailbox,
 actor 상태의 소유권 저장소로 쓰지 않는다.
 
-Bingo Kotlin sample의 `MatchBingoActorHandler`는 API channel request와 room `joinSpot(...)`
-대기에 `yield(...)`를 사용한다. room list, match queue, lobby state 같은 공용 mutable
-state를 await 전후로 이어서 판단하는 handler에는 `yield(...)`를 쓰지 않는다.
+Entry Spot actor handler에는 반납할 Entry Spot 전체 실행 turn이 없으므로 `yield(...)`를
+사용하지 않는다. API channel request와 room `joinSpot(...)` 대기는 `await(...)`로 표현한다.
+room list, match queue, lobby state 같은 공용 가변 상태를 await 전후로 이어서 판단하는 handler에도
+`yield(...)`를 쓰지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

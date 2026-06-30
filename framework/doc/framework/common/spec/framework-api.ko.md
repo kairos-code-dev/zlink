@@ -104,7 +104,7 @@
   정보 순), 추론할 수 없을 때만 `.packetName(...)` override를 쓴다.
 - gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
   삼는다.
-- send는 기본적으로 async submit으로 둔다. backpressure 처리는 호출자가
+- send는 기본적으로 one-way submit으로 둔다. backpressure 처리는 호출자가
   `DontWait` 같은 옵션으로 고르지 않고 framework 내부의 nonblocking send와 ready
   notification이 맡는다.
 - framework runtime은 등록한 outbound channel마다 별도 outbound runtime을 관리할
@@ -383,19 +383,19 @@ public sealed class ProfileHandlers
 자연스럽다. 하부 `DEALER(client)`가 connect된 peer 집합으로 요청을 보내는
 모델이므로, startup과 런타임 제어 모두 endpoint 집합만 관리하면 된다.
 
-또한 send는 기본 async submit으로 둔다. 구현은 blocking send를 task로 감싸지
+또한 send는 기본 one-way submit으로 둔다. 구현은 blocking send를 task로 감싸지
 않고, 먼저 nonblocking send를 시도한 뒤 temporary backpressure가 발생하면 pending
-send queue와 ready notification으로 이어서 처리한다. send 대기 한계는 call
-builder가 아니라 framework 기본값 또는 socket의 `SendTimeout` 옵션을 따른다.
+send queue와 ready notification으로 이어서 처리한다. send 대기 한계는 application
+호출부가 아니라 framework 기본값 또는 socket의 `SendTimeout` 옵션을 따른다.
 framework 기본값은 core socket 기본 send timeout과 같은 1000ms로 맞춘다.
 각 binding은 개별 socket option이 있으면 그 값을 우선 사용하고, 없으면
 framework 기본값을 async pending deadline으로 사용한다. framework 기본 send
 timeout을 명시적으로 비우는 언어에서는 무한 대기로 본다.
-publish도 send와 같은 submit 규칙을 따른다. subscriber 처리 완료를 기다리지 않고,
+publish도 send와 같은 내부 submit 규칙을 따른다. subscriber 처리 완료를 기다리지 않고,
 local publish transport에 메시지를 맡길 수 있을 때까지 비동기로 기다린다.
 
 request도 reply를 기다리는 async 호출로 설명한다. 다만 request packet을 보내는
-단계는 send와 같은 async submit 경로를 사용해야 한다. `Timeout(...)`은 reply
+단계는 send와 같은 내부 submit 경로를 사용해야 한다. `Timeout(...)`은 reply
 대기 시간만 정하고, 전송 backpressure는 `SendTimeout` 정책이 처리한다.
 request/reply 기본 대기 시간은 framework 전역 기본값 30초다. 호출별 timeout이
 있으면 가장 먼저 적용하고, 없으면 channel별 기본 request timeout을 적용하며,

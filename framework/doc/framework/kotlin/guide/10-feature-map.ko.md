@@ -25,7 +25,7 @@
 | Spot 내부 timer | 중간 | 주기 tick, heartbeat, 정리 작업 | `ZLinkSuspendingSpotTimerHandler` | [05](05-spot.ko.md) |
 | actor 생성/재사용 | 높음 | session과 묶인 상태 보유 객체로 packet dispatch | `actors.getOrCreate(...).await()` | [06](06-actor-session.ko.md) |
 | client session binding | 높음 | STREAM session을 actor에 묶기 | `context.actors().bind(...).await()` | [06](06-actor-session.ko.md) |
-| actor에서 client push | 높음 | actor가 자기 client로 one-way push | `boundSession().send(...).submit().await()` | [06](06-actor-session.ko.md) |
+| actor에서 client push | 높음 | actor가 자기 client로 one-way push | `boundSession().send(...).submit()` | [06](06-actor-session.ko.md) |
 | 외부 client STREAM (서버) | 중간 | 외부 client(TCP/WS)를 framework로 받기 | `ZLinkSuspendingSession` | [07](07-stream.ko.md) |
 | Stream Connector (client) | 중간 | client 측에서 STREAM 서버에 접속 | `connector.kotlin()` + `Flow` | [07](07-stream.ko.md) |
 | topology 조회 | 중간 | 클러스터 topology snapshot/query | `registry.topology().await()` | [08](08-registry.ko.md) |

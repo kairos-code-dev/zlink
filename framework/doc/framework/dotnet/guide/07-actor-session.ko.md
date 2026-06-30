@@ -257,14 +257,17 @@ public sealed class PlayerNotifyHandler
         ZLinkSpotActorSendContext context,
         GameStateNotify message,
         CancellationToken ct)
+    {
         // 다른 actor 가 이 actor 앞으로 보낸 메시지를 받아, 자기 BoundSession 으로 client 에 push 하는 끝점.
-        => actor.Context.BoundSession.Send(message).Async(ct);
+        actor.Context.BoundSession.Send(message).Submit(ct);
+        return ValueTask.CompletedTask;
+    }
 }
 ```
 
 - `IZLinkBoundSession` 의 표면은 **`Send<TMessage>(message)`** 와 **`DisconnectAsync(...)`** 둘뿐이다.
-  client 로의 push 는 단방향이며 별도의 `Request` 표면은 없다. `Send(...).Async(...)` 은
-  fire-and-forget(route 위임 완료이지 client app ack 이 아님)이다.
+  client 로의 push 는 단방향이며 별도의 `Request` 표면은 없다. `Send(...).Submit(...)` 은
+  호출자가 응답이나 송신 수락 완료를 기다리지 않는 push 호출이다.
 - `DisconnectAsync(...)` 는 응용이 거는 것이라 session 의 `OnDisconnectedAsync` 를 다시 일으키지
   않는다(stream 만 닫고 binding 정리).
 
@@ -302,24 +305,20 @@ public ValueTask OnDisconnectedAsync(CancellationToken ct)
 ```csharp
 if (sessions.TryGet(playerId, out var session))
 {
-    await session.Client.Send(new QuestProgressNotify(playerId, progress))
+    session.Client.Send(new QuestProgressNotify(playerId, progress))
         .PacketName("QuestProgress")    // client 가 이 이름으로 받는다
-        .Async();
+        .Submit();
 }
 ```
 
-**(3) push 실패로 죽은 session 정리(선택)** — 이미 끊긴 session 으로의 push 는 실패로 나타날 수
-있다. GameQuest 는 push 를 `ZlinkSubmitException` 으로 감싸 잡고, 잡히면 directory 에서 빼서 stale
-entry 가 쌓이지 않게 한다(`OnDisconnectedAsync` 정리와 더불어 보강하는 안전망).
+**(3) 죽은 session 정리** — 이미 끊긴 session 은 `OnDisconnectedAsync` 에서 directory 에서 뺀다.
+push 호출부가 송신 수락 결과를 기다려 stale entry 를 정리하는 패턴을 만들지 않는다.
 
 ```csharp
-try
+public ValueTask OnDisconnectedAsync(CancellationToken ct)
 {
-    await session.Client.Send(notify).PacketName("QuestProgress").Async();
-}
-catch (ZlinkSubmitException)
-{
-    sessions.Remove(session);   // 끊긴 session — directory 에서 제거
+    sessions.Remove(Context);   // 끊긴 session — directory 에서 제거
+    return ValueTask.CompletedTask;
 }
 ```
 

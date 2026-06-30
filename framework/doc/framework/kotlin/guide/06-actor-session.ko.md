@@ -227,12 +227,12 @@ Spot actor handler는 stream을 직접 들지 않는다. 자기 client로 보내
 받은 actor의 `context().boundSession()`을 쓴다.
 
 ```kotlin
-context.boundSession().send(MatchFound(roomId)).submit().await()
+context.boundSession().send(MatchFound(roomId)).submit()
 ```
 
 `ZLinkBoundSession`의 표면은 **`send(message)`** 와 **`disconnect()`** 둘뿐이다.
-client로의 push는 단방향이며 별도 request 표면은 없다. `send(...).submit().await()`는
-fire-and-forget(route 위임 완료이지 client app ack이 아님)이다. 다른 actor의
+client로의 push는 단방향이며 별도 request 표면은 없다. `send(...).submit()`은
+호출자가 응답이나 송신 수락 완료를 기다리지 않는 push 호출이다. 다른 actor의
 client로 보내야 하면 먼저 그 actor에게 메시지를 보낸 뒤, 해당 actor가 자기
 `boundSession()`으로 push한다.
 

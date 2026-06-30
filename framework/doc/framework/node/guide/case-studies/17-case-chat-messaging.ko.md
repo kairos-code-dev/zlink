@@ -92,7 +92,7 @@ export class SayHandler
     const chat = new ChatMessage(spot.roomId, actor.actorId, msg.text);
     await this.db.append(chat);
     for (const member of spot.members()) {
-      await member.pushChat(chat);
+      member.pushChat(chat);
     }
   }
 }
@@ -103,8 +103,8 @@ export class UserActor implements ZLinkActor {
     readonly context: ZLinkActorContext,
   ) {}
 
-  pushChat(chat: ChatMessage): Promise<void> {
-    return this.context.boundSession.send(chat).submit();
+  pushChat(chat: ChatMessage): void {
+    void this.context.boundSession.send(chat).submit();
   }
 }
 ```

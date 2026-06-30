@@ -208,13 +208,13 @@ public sealed class SendLiveMessageHandler(
         var decision = await moderation.CheckAsync(stream.StreamId, viewer.ActorId, req.Text, ct);
         if (!decision.Allowed)
         {
-            await viewer.Context.BoundSession.Send(new ChatRejected(decision.Reason)).Async(ct);
+            viewer.Context.BoundSession.Send(new ChatRejected(decision.Reason)).Submit(ct);
             return;
         }
 
         var message = await recent.AppendAsync(stream.StreamId, viewer.ActorId, req.Text, ct);
         foreach (var watching in stream.ActiveViewers)
-            await watching.Context.BoundSession.Send(message).Async(ct);
+            watching.Context.BoundSession.Send(message).Submit(ct);
     }
 }
 ```
@@ -234,7 +234,7 @@ public sealed class PinMessageHandler
         stream.RequireModerator(moderator.ActorId);
         stream.Pin(req.MessageId);
         foreach (var watching in stream.ActiveViewers)
-            await watching.Context.BoundSession.Send(new MessagePinned(req.MessageId)).Async(ct);
+            watching.Context.BoundSession.Send(new MessagePinned(req.MessageId)).Submit(ct);
     }
 }
 ```

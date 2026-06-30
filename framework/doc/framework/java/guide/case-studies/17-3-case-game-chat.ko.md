@@ -201,7 +201,7 @@ public final class PlayerActor implements ZLinkActor {
     public PlayerActor(String actorId, ZLinkActorContext context) { this.actorId = actorId; this.context = context; }
     @Override public String actorId() { return actorId; }
     @Override public ZLinkActorContext context() { return context; }
-    public CompletionStage<Void> pushChat(GameChatMessage message) { return context.boundSession().send(message).submit(); }
+    public void pushChat(GameChatMessage message) { context.boundSession().send(message).submit(); }
 }
 ```
 

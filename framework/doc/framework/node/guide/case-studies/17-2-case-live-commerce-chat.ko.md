@@ -198,12 +198,12 @@ export class SendLiveMessageHandler
     stream.rateLimit().requireAllowed(viewer.actorId);
     const decision = await this.moderation.check(stream.streamId, viewer.actorId, req.text);
     if (!decision.allowed) {
-      await viewer.push(new ChatRejected(decision.reason));
+      viewer.push(new ChatRejected(decision.reason));
       return;
     }
     const message = await this.recent.append(stream.streamId, viewer.actorId, req.text);
     for (const watching of stream.activeViewers()) {
-      await watching.push(message);
+      watching.push(message);
     }
   }
 }
@@ -226,7 +226,7 @@ export class PinMessageHandler
     stream.requireModerator(moderator.actorId);
     stream.pin(req.messageId);
     for (const watching of stream.activeViewers()) {
-      await watching.push(new MessagePinned(req.messageId));
+      watching.push(new MessagePinned(req.messageId));
     }
   }
 }

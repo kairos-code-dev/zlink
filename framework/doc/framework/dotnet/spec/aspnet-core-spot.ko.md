@@ -1015,7 +1015,7 @@ SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경
   actor handler 등록 표면을 맞춘다. 실행 직렬화 정책만 서로 다르다.
 - 기본 `Async(...)` terminator는 Spot/Entry Spot handler completion까지 같은 실행 줄을
   유지한다. `Yield(...)`는 request, Spot outbound request, actor `JoinSpot` /
-  `JoinEntrySpot`, bound session send completion, `RunWorker` completion에서만 현재
+  `JoinEntrySpot`, `RunWorker` completion에서만 현재
   mailbox turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다.
 - Entry Spot actor handler는 actor별 mailbox에서 실행되므로 반납할 Entry Spot turn이 없다.
   이 handler 안에서 만든 call object에 `Yield(...)` 를 호출하면 timeout이 아니라 즉시

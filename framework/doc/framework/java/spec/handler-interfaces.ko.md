@@ -20,8 +20,9 @@
   유지한다.
 - blocking과 non-blocking을 별도 동사 이름으로 나누지 않는다.
 - Java handler는 일반 Java 메서드처럼 값을 반환하거나 `void`로 끝난다.
-  `CompletionStage`는 request, send, manager, connector처럼 호출자가 완료를 기다려야
-  하는 API에서만 사용한다.
+  `CompletionStage`는 request, manager, connector처럼 호출자가 결과를 기다릴 수
+  있는 API에서 사용한다. one-way send/push는 호출자가 송신 수락 완료를 기다리는
+  흐름으로 설명하지 않는다.
 - Kotlin `suspend fun`에 Java와 같은 ZLink annotation을 붙인 handler도 같은 계약으로
   본다. Spring bean scanner는 Kotlin suspend method를 별도 수동 등록 없이 발견해야
   하며, framework가 소유하는 coroutine adapter를 통해 실행해야 한다.
@@ -399,7 +400,6 @@ public interface ZLinkSessionSendCall {
     ZLinkSessionSendCall packetName(String messageName);
     ZLinkSessionSendCall compress();
     CompletionStage<Void> submit();
-    void await();
 }
 
 public interface ZLinkSessionReplyCall {
@@ -492,7 +492,6 @@ public interface ZLinkBoundSessionSendCall {
     ZLinkBoundSessionSendCall packetName(String packetName);
     ZLinkBoundSessionSendCall metadata(String key, String value);
     CompletionStage<Void> submit();
-    void await();
     void yield();
 }
 ```
@@ -720,7 +719,6 @@ public interface ZLinkClient {
 public interface ZLinkSendCall {
     ZLinkSendCall packetName(String messageName);
     CompletionStage<Void> submit();
-    void await();
 }
 
 public interface ZLinkRequestCall {
@@ -1152,8 +1150,9 @@ public record ZLinkSpotEvent(
 표면에서 `spotRid`를 다시 볼 수 있게 한다. 같은 `SpotNode` 안에서 이미 등록된
 Spot type을 다시 등록하면 조용히 덮어쓰지 않고 예외를 던지는 편을 기본으로 본다.
 
-send/publish는 기본 async submit이다. async submit과 backpressure의 공통 의미는
-[framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따른다.
+send/publish는 one-way submit이다. 송신 수락과 backpressure 처리는 framework
+내부 책임이며, 호출자가 완료값을 기다리는 흐름으로 설명하지 않는다.
+공통 의미는 [framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따른다.
 request도 request packet을 보내는 단계에서는 같은 async submit 경로를 사용하고,
 reply 대기는 request timeout이 따로 정한다.
 호출별 `timeout(...)`이 가장 먼저 적용되고, 그 다음 채널별

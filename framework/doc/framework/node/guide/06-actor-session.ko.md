@@ -12,7 +12,7 @@ actor 는 `context.boundSession` 으로 현재 session 에 메시지를 보낼 �
 class GameStarted {
 }
 
-await actor.context.boundSession
+void actor.context.boundSession
   .send(new GameStarted())
   .submit();
 ```

@@ -1023,21 +1023,18 @@ interface ZLinkBoundSessionSendCall {
 
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
 
-  submit(signal?: AbortSignal): Promise<void>;
-
-  yield(signal?: AbortSignal): Promise<void>;
+  submit(signal?: AbortSignal): void;
 }
 ```
 
-`submit(...)` 은 현재 actor handler turn을 유지하는 기본 terminator다.
-`yield(...)` 은 framework가 만든 bound session send call object에서만 사용할 수
-있으며, send completion을 기다리는 동안 현재 turn을 반납하고 completion 뒤 원래 mailbox에서
-재개한다.
+`submit(...)` 은 bound session send의 one-way terminator다. client push는 호출자가
+송신 수락 완료를 기다리는 흐름으로 만들지 않는다. 송신 수락과 backpressure 처리는
+framework 내부 책임이다.
 
 호출 모양은 아래와 같다.
 
 ```ts
-await context.boundSession
+context.boundSession
   .send(new GameStateChangedMsg(gameId, board))
   .submit(signal);
 ```

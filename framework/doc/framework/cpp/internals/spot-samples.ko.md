@@ -131,9 +131,9 @@ public:
     {
     }
 
-    task_t<void> notify_turn_changed(turn_changed_t event)
+    void notify_turn_changed(turn_changed_t event)
     {
-        co_await context_.bound_session().send(event).async();
+        context_.bound_session().send(event).submit(); // client push는 대기하지 않는다.
     }
 
 private:

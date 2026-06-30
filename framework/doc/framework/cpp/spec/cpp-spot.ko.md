@@ -295,7 +295,7 @@ SPOT 회귀 테스트는 `.NET` framework의 Spot, actor, timer 기대값을 C++
   packet은 대상 actor mailbox에서 처리한다.
 - 기본 `async()` terminator는 Spot/Entry Spot handler completion까지 같은 실행 줄을
   유지한다. `yield()`는 request, Spot outbound request, actor `join_spot` /
-  `join_entry_spot`, bound session send completion, `run_worker` completion에서만 현재
+  `join_entry_spot`, `run_worker` completion에서만 현재
   mailbox turn을 반납하고 completion 뒤 원래 mailbox에서 재개한다.
 - Entry Spot actor handler는 Entry Spot 실행 줄을 소유하지 않는다. 이 handler 안에서
   만든 call object에 `yield()`를 호출하면 timeout을 기다리지 않고 즉시 계약 오류가 난다.

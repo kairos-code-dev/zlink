@@ -78,14 +78,14 @@ class ProfileChangedHandler : ZLinkSuspendingPublishHandler<ProfileChanged> {
 }
 ```
 
-one-way send는 `client.sendToChannel("audit", AuditEvent(...)).submit().await()` 또는
+one-way send는 `client.sendToChannel("audit", AuditEvent(...)).submit()` 또는
 `ZLinkSuspendingSendHandler<TMessage>` 수신 handler를 쓴다.
 
 ## 4. Route mesh
 
 route mesh는 target node `RoutingId`를 application이 직접 알고 있을 때만 쓴다.
 `ZLinkRouteClient`의 `requestTo(channel, target, request).submit(TReply::class.java).await()` /
-`sendTo(channel, target, message).submit().await()`로 호출한다. `ZLinkRouteClient`는 특정
+`sendTo(channel, target, message).submit()`으로 호출한다. `ZLinkRouteClient`는 특정
 channel 하나에 묶인 client가 아니며, 호출할 때 route channel 이름과 target `RoutingId`를
 함께 받는다. route mesh channel이 여러 개 있어도 호출 인자의 channel 이름으로 어느 경로를
 쓸지 분명하게 정한다.

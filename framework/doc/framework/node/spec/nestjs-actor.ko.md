@@ -1015,15 +1015,12 @@ export interface ZLinkBoundSession {
 export interface ZLinkBoundSessionSendCall {
   packetName(packetName: string): ZLinkBoundSessionSendCall;
   metadata(key: string, value: string): ZLinkBoundSessionSendCall;
-  submit(): Promise<void>;
-  yield(): Promise<void>;
+  submit(): void;
 }
 ```
 
-`submit(...)` 은 bound session send의 기본 serial terminator다. `yield(...)` 은
-framework가 만든 send call object에서만 사용할 수 있으며, send completion을 기다리는 동안
-현재 Spot turn을 반납하고 completion 뒤 같은 handler continuation을 재개한다. Entry Spot actor
-handler에서 호출하면 즉시 계약 오류가 난다.
+`submit(...)` 은 bound session send의 one-way terminator다. client push는 호출자가
+송신 수락 완료를 기다리는 흐름으로 만들지 않는다.
 
 `ZLinkBoundSession` 은 server-to-client request API 를 제공하지 않는다.
 client request 에 대한 응답은 actor request handler 의 반환값으로 처리한다.

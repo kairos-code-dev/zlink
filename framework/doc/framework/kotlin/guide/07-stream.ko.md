@@ -56,7 +56,7 @@ class GameSession(
         when (dispatch.packetName()) {
             "ClientInput" -> {
                 val input = payload.decode(ClientInput::class.java)
-                channels.sendToChannel("play", ForwardInputCommand(input)).submit().await()
+                channels.sendToChannel("play", ForwardInputCommand(input)).submit()
             }
             "Ping" -> context.client().reply(Pong()).submit().await()
             else -> return
@@ -69,7 +69,7 @@ class GameSession(
 
 | 표면 | 용도 |
 |------|------|
-| `client().send(msg).submit().await()` / `client().reply(msg).submit().await()` | client로 push / 요청에 응답 |
+| `client().send(msg).submit()` / `client().reply(msg).submit().await()` | client로 push / 요청에 응답 |
 | `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([06-actor-session](06-actor-session.ko.md)) |
 | `close()` | session context의 close hook (현재 구현은 완료된 future를 반환하는 no-op) |
 
@@ -93,8 +93,9 @@ class GameSession(
 ## 2. client 측 — Stream Connector
 
 connector는 만들고(연결 안 함) -> `.kotlin()`으로 coroutine view를 얻고 -> 이벤트
-`Flow`를 collect -> `connect()` 순서로 쓴다. lifecycle/send 호출은 `suspend fun await()`로
-완료를 기다린다.
+`Flow`를 collect -> `connect()` 순서로 쓴다. lifecycle과 request 호출은
+`suspend fun await()`로 결과를 기다릴 수 있지만, client push인 send는 `submit()`으로
+제출하고 송신 수락 완료를 기다리지 않는다.
 
 ```kotlin
 import kotlinx.coroutines.flow.collect
@@ -111,7 +112,7 @@ launch {
 }
 
 connector.connect().await()           // suspend, non-blocking
-connector.send(payload).await()
+	connector.send(payload).submit()
 ```
 
 connector 쪽도 같은 codec을 설정한다. Kotlin 확장은 기존 Java options를 복사해 compression 설정만

@@ -162,22 +162,20 @@ framework runtime 을 내리는 세부 순서는 `ZLinkFrameworkRuntimeHost.stop
 | 동작 | 실패 의미 |
 | ---- | --------- |
 | `request(...).submit(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외(reject)로 본다 |
-| `send(...).submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외(reject)로 본다 |
+| `send(...).submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 framework 내부 전송 상태로 처리한다 |
 | `publish(...).submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외(reject)로 본다 |
 
-TypeScript 표면에서 이들 `submit(...)` 은 모두 `Promise` 를 반환하는 async
-submit 이다. 위 실패 의미는 그 `Promise` 의 reject 로 나타난다.
+TypeScript 표면에서 request와 publish의 `submit(...)` 은 `Promise` 를 반환하는 async
+submit 이다. send/push는 application 흐름에서 그 완료를 기다리는 표면으로 설명하지 않는다.
 
 `send(...).submit(...)` 과 `publish(...).submit(...)` 은 원격 peer 의 handler
-처리가 끝나기를 기다리지 않는다. framework 가 메시지를 transport 에 넘길 수
-있게 될 때까지만 기다리는 비동기 submit 이다. 일시적인
+처리가 끝나기를 기다리지 않는다. send/push의 송신 수락 대기는 caller 표면으로
+노출하지 않는다. 일시적인
 backpressure[^backpressure] 는 `false` 반환값으로 노출하지 않는다. 대신
 nonblocking send, pending queue, ready notification 조합으로 내부에서 처리한다.
 
-이 대기는 thread 를 블로킹하는 대기가 아니다. caller 가 `await` 하면 application
-흐름은 submit 이 끝날 때까지 기다린다. 다만 runtime 은 Node 의 event loop 나
-worker 를 backpressure 대기용으로 잡아 두지 않는다. pending queue 의 동작
-약속은 두 가지다.
+runtime 은 Node 의 event loop 나 worker 를 backpressure 대기용으로 잡아 두지 않는다.
+pending queue 의 동작 약속은 두 가지다.
 
 - 크기는 high water mark[^high-water-mark] 와 timeout 정책으로 제한해야 한다.
 - runtime stop 이나 cancellation(`AbortSignal`)이 들어오면, 대기 중이던 submit
@@ -276,7 +274,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 | `Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry 와 framework runtime 사이의 시작 순서(registry 먼저)가 유지된다. |
 | `runtime task runner observes detached task exceptions without unhandled rejection` | detached runtime task 예외가 unhandled rejection 으로 새지 않고 runtime error sink 로 보고된다. |
 | `framework runtime state aborts listener tasks before disposing backend context` | shutdown 시 listener task 가 stop signal 을 먼저 보고 종료한 뒤 backend context 가 정리된다. |
-| `pending submit fails when send timeout expires` | pending submit 은 submitter timeout 정책에 따라 reject 되고, event loop 를 묶지 않는다. |
+| `pending submit fails when send timeout expires` | 내부 pending submit 은 submitter timeout 정책에 따라 정리되고, event loop 를 묶지 않는다. |
 | `RequestTimeoutRemovesPendingRequest` | stream connector 의 request timeout 이 끝나면 pending request 가 정리된다. |
 | `StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 는 stream session 의 transport error 콜백(`onError`)으로 보고된다. |
 

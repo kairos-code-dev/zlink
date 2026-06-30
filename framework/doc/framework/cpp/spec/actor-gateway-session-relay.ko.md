@@ -129,9 +129,9 @@ actor가 자기 client로 push할 때는 `bound_session_t`를 사용한다.
 ```cpp
 class player_actor_t final {
 public:
-    task_t<void> notify_turn_changed(turn_changed_t event)
+    void notify_turn_changed(turn_changed_t event)
     {
-        co_await context_.bound_session().send(event).async();
+        context_.bound_session().send(event).submit(); // client push는 대기하지 않는다.
     }
 
 private:

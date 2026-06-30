@@ -277,8 +277,8 @@ client 역할에 Discovery·수동 연결 둘 다 없음, 허용되지 않는 ha
 ### 6.2 실행 모델 — `async`/`await`, `ValueTask`
 
 프레임워크 전반의 비동기 값은 `ValueTask` / `ValueTask<T>` 로 표현된다. handler 와
-outbound 호출은 모두 비동기다 — send/publish 의 `Async(...)` 완료는 **transport 위임까지**만
-보장하고(remote handler 완료나 subscriber 수신을 보장하지 않는다), request 의
+outbound 호출은 비동기 경계를 가진다. send/push는 one-way `Submit(...)` 호출로 표현하고,
+송신 수락과 backpressure 처리는 framework 내부 책임으로 둔다. request 의
 `Async<TReply>(...)` 는 **remote reply 가 도착할 때까지 기다려** 그 reply 를 돌려준다.
 `RequestToChannel(...).Timeout(...)` 은 그 **reply 대기 시간**의 상한을 정한다. 규칙은 하나다 —
 **런타임(핸들러) 스레드에서는 `await`, blocking(`.Result`/`.GetAwaiter().GetResult()`)은

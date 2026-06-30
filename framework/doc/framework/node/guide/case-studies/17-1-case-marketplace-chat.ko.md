@@ -181,8 +181,8 @@ export class UserActor implements ZLinkActor {
     readonly context: ZLinkActorContext,
   ) {}
 
-  push(message: ChatMessage): Promise<void> {
-    return this.context.boundSession.send(message).submit();
+  push(message: ChatMessage): void {
+    void this.context.boundSession.send(message).submit();
   }
 }
 ```

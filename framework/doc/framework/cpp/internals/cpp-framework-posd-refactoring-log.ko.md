@@ -7559,14 +7559,14 @@ exporter, label schema, backend adapter는 extension이 맡을 수 있게 남겨
 
 ### 적용한 리팩토링
 
-- `test_cpp_stream_connector`에 `co_await connector.send(...).submit()` helper와
+- `test_cpp_stream_connector`에 `connector.send(...).submit()` helper와
   `co_await connector.request(...).submit<T>()` helper를 추가했다.
 - loopback stream socket이 coroutine send와 request frame을 모두 수신하고 request reply를
   반환하는지 검증했다.
 
 ### 수정 후 점검
 
-- Stream Connector send/request submit await 경로가 깨지면 `test_cpp_stream_connector`가
+- Stream Connector send submit 또는 request submit await 경로가 깨지면 `test_cpp_stream_connector`가
   실패한다.
 
 ## 반복 POSD 재리뷰. Goal 21 sample parity 회귀 테스트 보강

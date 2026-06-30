@@ -16,10 +16,9 @@ thread, event loop, handler dispatcher에 연결한다.
 
 ## 1. 공통 의미
 
-send, publish, request packet submit, connect, close, dispatch 같은 network 또는
-runtime 상태 전이 호출은 기본적으로 비동기 실행 단위다. 응답 payload가 없더라도
-전송 가능 상태, backpressure, timeout, cancellation, runtime stop 같은 완료 조건이
-있으므로 호출자가 즉시 완료된 동기 함수로 가정하면 안 된다.
+publish, request packet submit, connect, close, dispatch 같은 network 또는
+runtime 상태 전이 호출은 기본적으로 비동기 실행 단위다. send는 one-way 호출이며,
+전송 가능 상태와 backpressure 처리는 framework 내부 전송 경로가 맡는다.
 
 send와 publish의 backpressure는 public blocking/nonblocking 옵션으로 나누지 않는다.
 framework는 내부에서 nonblocking send, pending queue, ready notification을 사용해
@@ -28,7 +27,7 @@ virtual thread, coroutine worker로 감싸서 async처럼 보이게 만들지 �
 
 request는 두 단계로 본다.
 
-- request packet submit은 send와 같은 비동기 submit 경로를 사용한다.
+- request packet submit은 send와 같은 내부 submit 경로를 사용한다.
 - reply 대기는 request timeout 정책을 따른다.
 
 Spot과 Entry Spot application callback은 Spot 단위 직렬 실행 줄에서 시작한다. handler가
@@ -50,8 +49,8 @@ continuation 뒤에 실행되지만, 다른 actor나 다른 timer 작업은 그 
 
 지원 대상은 framework가 reply, timeout, cancellation, cleanup을 관리하는 call object로
 제한한다. channel request, Spot outbound request, actor `JoinSpot`/`JoinEntrySpot`,
-bound session send completion, `RunWorker` completion이 대상이다. channel send/publish,
-route mesh send/request, 사용자 코드가 만든 임의 `Task`/`Promise`/`CompletionStage`,
+`RunWorker` completion이 대상이다. channel send/publish, bound session send,
+route mesh send, 사용자 코드가 만든 임의 `Task`/`Promise`/`CompletionStage`,
 외부 HTTP client async 호출에는 yield surface를 제공하지 않는다.
 
 짧고 빠른 local 작업을 callback 밖으로 넘겨야 할 때는 언어별 `RunWorker(...)`,
@@ -66,9 +65,9 @@ framework public API는 각 언어의 표준 비동기 표현을 사용하되, f
 "operation 선택 + 실행 방식 terminator" 형태로 맞춘다. 같은 의미를 가진 blocking
 대안 terminator를 별도로 만들지 않는다.
 
-- `.NET`은 fluent operation builder의 awaitable terminator를 `Async(...)`로 둔다.
+- `.NET`은 request, connect, close 같은 awaitable terminator를 `Async(...)`로 둔다.
   `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를 반환하지만, `SubmitAsync`처럼
-  submit 동사를 반복하지 않는다. 예: `Connect.Async()`, `Send(...).Async()`.
+  submit 동사를 반복하지 않는다. 예: `Connect.Async()`, `Request(...).Async<TReply>()`.
 - Java는 `CompletionStage<T>`를 공식 async 결과로 사용한다. 필요한 경우 Java 전용
   `submit(...)`은 같은 작업의 async 시작, `await(...)`는 같은 async 작업의 완료를
   현재 thread에서 기다리는 adapter다.
@@ -225,7 +224,8 @@ client connector 표면:
 
 | 영역 | callback/result connector 표면 | coroutine adapter |
 |------|------------------------------|-------------------|
-| lifecycle / send / request | framework connector가 소유하는 callback 또는 result 기반 표면. 예외와 coroutine에 의존하지 않음 | `connect().async()`, `close().async()`, `send(...).async()`, `request(...).async()`, `wait_for(...).async()` (`connector.dispatch()`는 별도) |
+| lifecycle / request / wait | framework connector가 소유하는 callback 또는 result 기반 표면. 예외와 coroutine에 의존하지 않음 | `connect().async()`, `close().async()`, `request(...).async()`, `wait_for(...).async()` (`connector.dispatch()`는 별도) |
+| one-way send | 호출자가 송신 수락이나 backpressure 완료를 기다리지 않도록 framework 내부 submitter가 처리 | `send(...).submit()` |
 | callback completion | core connector의 `submit(callback)` | callback 기반 completion이 필요할 때 사용 |
 | coroutine completion | bindings나 낮은 수준 connector 표면에는 직접 섞지 않음 | `co_await` 가능한 `task_t<T>` 반환 |
 

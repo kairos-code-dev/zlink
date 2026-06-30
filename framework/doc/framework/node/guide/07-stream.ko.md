@@ -82,7 +82,7 @@ const connector = zlinkStreamConnectorFactory.create({
 });
 
 await connector.connect();
-await connector.send(new Join('p1')).submit();
+void connector.send(new Join('p1')).submit();
 ```
 
 JSON은 connector core의 기본 codec이다. 기본 예시는

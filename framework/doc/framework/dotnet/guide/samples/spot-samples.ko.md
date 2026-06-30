@@ -1070,7 +1070,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
 
         foreach (SampleActor actor in _actors.Values)
         {
-            await actor.PushChatAsync(pushed, cancellationToken);
+            actor.PushChat(pushed, cancellationToken);
         }
     }
 
@@ -1148,12 +1148,12 @@ public sealed class SampleActor : IZLinkActor
 
     public DateTimeOffset? DisconnectedAt { get; private set; }
 
-    public async ValueTask SendSnapshotAsync(
+    public void SendSnapshot(
         CancellationToken cancellationToken)
     {
         LastSeenAt = DateTimeOffset.UtcNow;
 
-        await _context.BoundSession
+        _context.BoundSession
             .Send(new SampleActorSnapshot
             {
                 ActorId = ActorId,
@@ -1161,15 +1161,15 @@ public sealed class SampleActor : IZLinkActor
                 X = X,
                 Y = Y
             })
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
     }
 
-    public ValueTask PushChatAsync(
+    public void PushChat(
         SampleRoomChatPushed pushed,
         CancellationToken cancellationToken)
         => _context.BoundSession
             .Send(pushed)
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
 
     public void ClearStream()
     {
@@ -1793,7 +1793,7 @@ dispatch key 로 등록한다.
 - 명시적 `spotRid`가 있고 없으면 만들고 있으면 가져오고 싶다
   - `IZLinkSpotManager.GetOrCreateAsync<StageSpot>(spotRid, request, ...)`
 - attach된 다른 channel로 send packet을 보내고 싶다
-  - `SendToChannel(...).Async(...)`
+  - `SendToChannel(...).Submit(...)`
 - attach된 다른 channel로 request packet을 보내고 싶다
   - `RequestToChannel(...).Timeout(...).Async<TReply>(...)`
   - 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다

@@ -780,13 +780,13 @@ public sealed class StageNoticeHandler
         await outbound.Publish("stage.notice", new StageNoticeEvent(request.Text)).Async(ct);
 
         // 일반 channel — attach 된 비-spot channel 로 send/request
-        await outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text)).Async(ct);
+        outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);
         var state = await outbound
             .RequestToChannel("orders", new GetOrderStateRequest())
             .Async<GetOrderStateReply>(ct);
 
         // spot packet — 다른 Spot 으로 (spotRid)
-        await outbound.SendToSpot(peerSpotRid, new StageNoticeEvent(request.Text)).Async(ct);
+        outbound.SendToSpot(peerSpotRid, new StageNoticeEvent(request.Text)).Submit(ct);
 
         return new BroadcastReply(state.Count);
     }

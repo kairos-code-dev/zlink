@@ -75,19 +75,16 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 | 동작 | 실패 의미 |
 | ---- | --------- |
 | `RequestToChannel(...).Async<TReply>(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외로 본다 |
-| `SendToChannel(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
+| `SendToChannel(...).Submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 framework 내부 전송 상태로 처리한다 |
 | `Publish(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
 
-`Send(...).Async(...)` 과 `Publish(...).Async(...)` 은 원격 peer 의 handler
-처리가 끝나기를 기다리지 않는다. framework 가 메시지를 transport 에 넘길 수
-있게 될 때까지만 기다리는 비동기 submit 이다. 일시적인
+`Send(...).Submit(...)` 과 `Publish(...).Async(...)` 은 원격 peer 의 handler
+처리가 끝나기를 기다리지 않는다. send 의 송신 수락 대기는 호출자에게 노출하지 않는다. 일시적인
 backpressure[^backpressure] 는 `false` 반환값으로 노출하지 않는다. 대신
 nonblocking send, pending queue, ready notification 조합으로 내부에서 처리한다.
 
-이 대기는 thread 를 블로킹하는 대기가 아니다. caller 가 `await` 하면 application
-흐름은 submit 이 끝날 때까지 기다린다. 다만 runtime 은 thread pool 의 worker
-를 backpressure 대기용으로 잡아 두지 않는다. pending queue 의 동작 약속은 두
-가지다.
+이 내부 대기는 thread 를 블로킹하는 대기가 아니다. runtime 은 thread pool 의 worker
+를 backpressure 대기용으로 잡아 두지 않는다. pending queue 의 동작 약속은 두 가지다.
 
 - 크기는 high water mark[^high-water-mark] 와 timeout 정책으로 제한해야 한다.
 - runtime stop 이나 cancellation 이 들어오면, 대기 중이던 submit 을 깨워서
@@ -95,7 +92,7 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
 
 `Request(...).Async<TReply>(...)` 은 두 단계로 나눠서 본다.
 
-- request packet 의 submit 자체는 `Send(...).Async(...)` 과 같은 전송 경로를
+- request packet 의 submit 자체는 `Send(...).Submit(...)` 과 같은 전송 경로를
   타고 `SendTimeout` 정책을 따른다.
 - 그 뒤의 reply 대기는 `Timeout(...)` 으로 정한 request timeout 정책을 따른다.
 

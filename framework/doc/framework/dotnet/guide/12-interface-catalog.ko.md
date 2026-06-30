@@ -187,7 +187,7 @@ await events
 | gRPC 패턴 | ZLink 대체 | 표면 / 챕터 |
 |-----------|------------|-------------|
 | Unary RPC | request/response | `IZLinkChannelClient.RequestToChannel(...).Async<TReply>` ([4](04-channel-messaging.ko.md)) |
-| Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).Async` ([4](04-channel-messaging.ko.md)) |
+| Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).Submit` ([4](04-channel-messaging.ko.md)) |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutClient.Publish` + `IZLinkPublishHandler<T>` ([4](04-channel-messaging.ko.md)) |
 | Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([7](08-stream.ko.md), §5) |
 | Service discovery(DNS/xDS) | Registry + Discovery | `UseDiscovery` + `IZLinkRegistryQuery` ([8](09-registry.ko.md), §6) |
@@ -401,10 +401,10 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
     public async ValueTask OnInitializeAsync(CancellationToken ct)
     {
         await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
-        await Context.Outbound.SendToSpot(RoutingId.From("room-2"), new RoomEvent("opened")).Async(ct);            // send: reply 없음
+        Context.Outbound.SendToSpot(RoutingId.From("room-2"), new RoomEvent("opened")).Submit(ct);                // send: reply 없음
         await Context.Outbound.RequestToSpot(RoutingId.From("room-2"), new JoinRoom("room-2")).Async<JoinedRoom>(ct); // request: reply 대기
         await Context.Outbound.Publish("room.events", new RoomEvent("opened")).Async(ct);
-        await Context.Outbound.SendToChannel("api", new RoomEvent("opened")).Async(ct);
+        Context.Outbound.SendToChannel("api", new RoomEvent("opened")).Submit(ct);
         await Context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>(ct);
     }
 }
@@ -429,7 +429,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 
 ```csharp
 // 현재 노드의 spot API
-await localClient.SendToSpot(spotRid, new RoomEvent("opened")).Async();            // IZLinkSpotOutbound
+localClient.SendToSpot(spotRid, new RoomEvent("opened")).Submit();                 // IZLinkSpotOutbound
 var reply = await localClient.RequestToSpot(spotRid, new JoinRoom("room-1")).Async<JoinedRoom>();
 
 // current Spot callback 안에서 outbound 호출
@@ -561,8 +561,8 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
             await boundActor.RelayAsync(payload, ct);   // framework ZLinkMessage 를 그대로 넘긴다
         }
 
-        await context.Client.Send(new PlayerJoined("player-1"))      // IZLinkSessionSendCall
-            .PacketName("player.joined").Metadata("trace-id", "abc").Compress().Async();
+        context.Client.Send(new PlayerJoined("player-1"))            // IZLinkSessionSendCall: 단방향 push
+            .PacketName("player.joined").Metadata("trace-id", "abc").Compress().Submit();
         await context.Client.Reply(new AuthenticateReply("player-1")) // IZLinkSessionReplyCall
             .Metadata("trace-id", "abc").Compress().Async();
         await context.CloseAsync();                             // Lifecycle
@@ -592,7 +592,7 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 | `IZLinkSessionActor` | session-bound actor handle. `RelayAsync`, `NotifyDisconnectedAsync` 로 대상 actor 에게 명시 동작을 보냄 |
 | `IZLinkSessionPacketHandler<TSessionContext>` | session 이 직접 처리할 packet handler. payload 는 session callback 과 같은 framework `ZLinkMessage` |
 | `IZLinkSessionPacketDispatcher<TSessionContext>` | 등록된 session packet handler 만 호출하고 미등록 packet 은 `false` 반환 |
-| `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Async()`) |
+| `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Submit()`) |
 | `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Async()`) |
 | `IZLinkSessionActor` | session relay 용 actor handle(`ActorId`, `Ref`, `RelayAsync`, `NotifyDisconnectedAsync`) |
 | `IZLinkStream` | `Send(ZLinkMessage)` / `Reply(ZLinkMessage)` / `CloseAsync`. 보통은 send/reply call에서 metadata와 compression을 지정한다 |
@@ -603,8 +603,8 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 
 ```csharp
 // bound session 은 단방향 push 만 한다(request 표면 없음 → reply 를 받지 않는다).
-await boundSession.Send(new PlayerJoined("player-1"))    // IZLinkBoundSessionSendCall
-    .PacketName("player.joined").Metadata("trace-id", "abc").Async();
+boundSession.Send(new PlayerJoined("player-1"))          // IZLinkBoundSessionSendCall: 단방향 push
+    .PacketName("player.joined").Metadata("trace-id", "abc").Submit();
 await boundSession.DisconnectAsync();
 
 // 전달 가능한 metadata key 정책 — 허용된 key 만 다운스트림으로 전파한다.
@@ -618,7 +618,7 @@ var traceId = metadata.Find("trace-id");        // 없으면 null
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkBoundSession` | actor 에 묶인 client 로의 단방향 push. `Send<TMessage>(message)` + `DisconnectAsync`. (요청 표면 없음 — push 는 단방향) |
-| `IZLinkBoundSessionSendCall` | bound session push 종결자(`PacketName`/`Metadata` → `Async(ct)`/`Yield(ct)`) |
+| `IZLinkBoundSessionSendCall` | bound session push 종결자(`PacketName`/`Metadata` → `Submit(ct)`) |
 | `IZLinkMessageMetadataPolicy` | metadata key 전달 허용 여부(`CanForward`) |
 
 검증: `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport`.

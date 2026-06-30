@@ -193,8 +193,8 @@ export class PlayerActor implements ZLinkActor {
     readonly context: ZLinkActorContext,
   ) {}
 
-  pushChat(message: GameChatMessage): Promise<void> {
-    return this.context.boundSession.send(message).submit();
+  pushChat(message: GameChatMessage): void {
+    void this.context.boundSession.send(message).submit();
   }
 }
 ```
@@ -215,7 +215,7 @@ export class SendPartyChatHandler
   ): Promise<void> {
     party.requireMember(req.senderId);
     for (const member of party.members()) {
-      await member.pushChat(new PartyChatMessage(req.senderId, req.text));
+      member.pushChat(new PartyChatMessage(req.senderId, req.text));
     }
   }
 }

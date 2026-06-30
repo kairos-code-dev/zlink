@@ -2016,9 +2016,8 @@ timeout 은 request 와 send 간에 다르게 다룬다.
 - `RequestToChannel(...)` 는 reply 를 기다리므로 `Timeout(...)` 을 둘 수 있다.
 - `SendToChannel(...)` 는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Publish(...)` 도 같은 이유로 timeout 설정을 두지 않는다.
-- `SendToChannel(...).Async(...)` 는 handler 완료를 기다리는 호출이 아니다.
-  framework 가 메시지를 transport 에 위임할 수 있을 때까지 기다리는,
-  비동기 submit 이다.
+- `SendToChannel(...).Submit(...)` 는 handler 완료를 기다리는 호출이 아니다.
+  framework 가 메시지를 transport 에 위임하는 과정은 내부에서 처리한다.
 - `Publish(...).Async(...)` 도 동일한 의미다. subscriber 의 handler
   완료나 subscriber 수신을 기다리지 않는다. local publish transport 에
   submit 되는 시점까지만 대기한다.
@@ -2030,15 +2029,14 @@ timeout 은 request 와 send 간에 다르게 다룬다.
   사용자가 `DefaultSocketSendTimeout = null` 로 명시한 경우에 한해 무한
   대기로 본다.
 - `RequestToChannel(...).Async<TReply>(...)` 도 마찬가지다. request packet 을
-  내보내는 단계에서는, `SendToChannel(...).Async(...)` 와 동일한 nonblocking
+  내보내는 단계에서는, `SendToChannel(...).Submit(...)` 와 동일한 nonblocking
   submit 경로를 사용한다.
 - `RequestToChannel(...).Timeout(...)` 은 reply 대기 시간만을 결정한다.
 - 이 문서는 별도의 public no-wait 옵션을 제공하지 않는다. temporary
   backpressure 는 public `false` 반환값이 아니라, framework 내부의 queue
   와 ready notification 으로 처리한다.
 
-호출자가 `await` 하면, 호출 흐름은 submit 완료 시점까지 멈춘다. 다만 구현
-은 thread 를 점유해서는 안 된다.
+send 호출자는 submit 완료 시점을 기다리지 않는다. 구현은 thread 를 점유해서는 안 된다.
 
 backpressure 가 걸려 있는 동안에는 현재 thread 나 thread pool worker
 를 잡지 않는다. socket ready callback 이나 poller wakeup 이 도달하면,
@@ -2398,19 +2396,12 @@ public interface IZLinkBoundSessionSendCall
         string key,
         string value);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
-
-    ValueTask Yield(CancellationToken cancellationToken = default);
+    void Submit(CancellationToken cancellationToken = default);
 }
 ```
 
-`Async(...)` 는 현재 Spot/Entry Spot handler turn을 끝까지 점유하는 기본 terminator다.
-`Yield(...)` 는 framework가 만든 bound session send call object에서만 사용할 수
-있으며, send completion을 기다리는 동안 현재 turn을 반납하고 completion 뒤 같은 handler
-continuation을 원래 mailbox에서 재개한다.
-Entry Spot actor handler는 actor별 mailbox에서 실행되므로 반납할 Entry Spot turn이 없다.
-이 handler 안에서 만든 bound session send call object에 `Yield(...)` 를 호출하면 timeout이
-아니라 즉시 계약 오류가 난다.
+`Submit(...)` 은 bound session send의 one-way terminator다. 호출자는 client push의
+송신 수락 완료를 기다리지 않는다. Entry Spot actor handler에서도 같은 규칙을 사용한다.
 
 ### 5.7 actor/spot remote address resolver와 actor-session binding
 

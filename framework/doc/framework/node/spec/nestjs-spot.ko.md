@@ -703,7 +703,7 @@ framework application 문서에서는 backend / internal transport helper 로만
 예를 들면 다음과 같이 사용할 수 있다.
 
 ```ts
-await spot.context.outbound.sendToChannel('orders', new RoomNoticeMessage());
+void spot.context.outbound.sendToChannel('orders', new RoomNoticeMessage());
 
 const reply = await spot.context.outbound.requestToChannel<GetStageStateReply>(
   'orders',
@@ -711,7 +711,7 @@ const reply = await spot.context.outbound.requestToChannel<GetStageStateReply>(
   { timeoutMs: 200 },
 );
 
-await spot.context.outbound.sendToSpot(stage.spotRid, new StageNoticeMessage());
+void spot.context.outbound.sendToSpot(stage.spotRid, new StageNoticeMessage());
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer 도 함께 필요하다. 다만 현재
@@ -766,7 +766,7 @@ const reply = await spot.context.outbound.requestToChannel<GetStageStateReply>(
   { timeoutMs: 200 },
 );
 
-await spot.context.outbound.sendToSpot(stage.spotRid, new StageNoticeMessage());
+void spot.context.outbound.sendToSpot(stage.spotRid, new StageNoticeMessage());
 
 await spot.context.outbound.publish('stage.state.updated', new StageStateUpdatedEvent());
 ```
@@ -1070,7 +1070,7 @@ join 문맥이 함께 검증되어야 한다. 또한 spot 클래스와 id 를 �
 
 기본 `submit(...)` 경로는 user Spot handler completion까지 같은 실행 줄을 유지한다.
 `yield(...)`은 request, Spot outbound request, actor `joinSpot` / `joinEntrySpot`,
-bound session send completion, `runWorker` completion에서만 현재 Spot turn을 반납하고
+`runWorker` completion에서만 현재 Spot turn을 반납하고
 completion 뒤 원래 mailbox에서 재개한다. Entry Spot actor handler에는 반납할 Entry Spot
 전체 실행 turn이 없으므로 `yield(...)` 호출은 시간 초과가 아니라 즉시 계약 오류가 난다.
 `yield(...)` 중에도 같은 actor와 같은 timer는

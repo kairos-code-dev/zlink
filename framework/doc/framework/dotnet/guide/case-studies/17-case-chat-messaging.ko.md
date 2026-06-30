@@ -109,7 +109,7 @@ public sealed class SayHandler(IMessageDb db)
         await db.AppendAsync(chat, ct);                              // durable 이력 — 그대로
         foreach (var member in spot.Members)
         {
-            await member.PushChatAsync(chat, ct);                    // 각 actor 의 BoundSession push
+            member.PushChat(chat, ct);                               // 각 actor 의 BoundSession 단방향 push
         }
     }
 }
@@ -119,8 +119,8 @@ public sealed class UserActor(string actorId, IZLinkActorContext context) : IZLi
     public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
 
-    public ValueTask PushChatAsync(ChatMessage chat, CancellationToken ct)
-        => Context.BoundSession.Send(chat).Async(ct);
+    public void PushChat(ChatMessage chat, CancellationToken ct)
+        => Context.BoundSession.Send(chat).Submit(ct);
 }
 ```
 

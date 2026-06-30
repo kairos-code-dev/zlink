@@ -200,8 +200,8 @@ public sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZ
     public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
 
-    public ValueTask PushChatAsync(GameChatMessage message, CancellationToken ct)
-        => Context.BoundSession.Send(message).Async(ct);
+    public void PushChat(GameChatMessage message, CancellationToken ct)
+        => Context.BoundSession.Send(message).Submit(ct);
 }
 ```
 
@@ -226,13 +226,13 @@ public sealed class SendGuildChatHandler(
         var decision = await moderation.CheckAsync(player.ActorId, req.Text, ct);
         if (!decision.Allowed)
         {
-            await player.PushChatAsync(GameChatMessage.Rejected(decision.Reason), ct);
+            player.PushChat(GameChatMessage.Rejected(decision.Reason), ct);
             return;
         }
 
         var saved = await history.AppendGuildAsync(guild.GuildId, player.ActorId, req.Text, ct);
         foreach (var member in guild.OnlineMembers)
-            await member.PushChatAsync(saved, ct);
+            member.PushChat(saved, ct);
     }
 }
 ```
@@ -253,7 +253,7 @@ public sealed class SendPartyChatHandler
         _ = context;
         party.RequireMember(req.SenderId);
         foreach (var member in party.Members)
-            await member.PushChatAsync(new PartyChatMessage(req.SenderId, req.Text), ct);
+            member.PushChat(new PartyChatMessage(req.SenderId, req.Text), ct);
     }
 }
 ```

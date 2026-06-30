@@ -531,11 +531,11 @@ connector 는 이 문서에서 정의한 helper header 만 decode 한다. 수신
 오류만 `ErrorReceived` 로 전달한다. packet payload 를 raw 상태 그대로 사용자에게
 넘겨주지는 않는다.
 
-`Send(...).Async(...)` 은 응답을 기다리지 않는 submit API 다.
+`Send(...).Submit(...)` 은 응답을 기다리지 않는 submit API 다.
 
 submit 시점의 동작은 두 갈래로 나뉜다.
 
-- async API 는 validation 실패와 transport write 실패를 예외로 반환한다.
+- send API 는 validation 실패와 transport write 실패를 framework 내부 전송 상태로 처리한다.
 - send 중 transport 오류가 발생하면 같은 오류를 `ErrorReceived` 로도 알리고,
   connector lifecycle은 연결 끊김 처리로 들어간다.
 - callback 기반 request API 는 실패를 callback result로 전달한다.
@@ -916,7 +916,7 @@ Unity 사용 예제와 lifecycle 처리 방식은
 `.NET` 구현의 완료 기준은 다음과 같다.
 
 - `tcp://`, `tls://`, `ws://`, `wss://` endpoint에 모두 연결할 수 있다.
-- `Send(...).Async(...)`로 보낸 packet을 framework STREAM 서버가 정상적으로 받는다.
+- `Send(...).Submit(...)`로 보낸 packet을 framework STREAM 서버가 정상적으로 받는다.
 - 서버가 helper header로 만든 packet을 client가 typed handler로 받는다.
 - callback request와 `Request(...).Async<TReply>(...)`이 각각 정상 동작한다.
 - request timeout, close 중 pending request 실패, disconnected 상태에서의 send 동작을

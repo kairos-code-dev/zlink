@@ -89,7 +89,7 @@ public sealed class ClientHeaderSession(
         {
             case "ClientInput":
                 var input = payload.Decode<ClientInput>();
-                await channels.SendToChannel("play", new ForwardInputCommand(input)).Async(ct);
+                channels.SendToChannel("play", new ForwardInputCommand(input)).Submit(ct);
                 break;
 
             case "Ping":
@@ -106,7 +106,7 @@ public sealed class ClientHeaderSession(
 
 | 표면 | 용도 |
 |------|------|
-| `Client.Send(msg).Async()` / `Client.Reply(msg).Async()` | client 로 push / 요청에 응답 |
+| `Client.Send(msg).Submit()` / `Client.Reply(msg).Async()` | client 로 push / 요청에 응답 |
 | `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-spot](06-actor-spot.ko.md)) |
 | `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
@@ -253,10 +253,10 @@ STREAM client 는 서버의 session 으로 메시지를 보낸다. session 은 �
 
 ```csharp
 // 특정 spot(room) 으로 보내기 — key 이름은 애플리케이션이 정한 상수
-await client.Send(new TimerStartCommand(requestId))
+client.Send(new TimerStartCommand(requestId))
     .PacketName("TimerStartCommand")
     .Metadata("spot-rid", spotRid)            // 이 명령을 받을 room 의 spotRid
-    .Async();
+    .Submit();
 
 // 특정 actor 로 보내기
 var reply = await client.Request(new ActorYieldReq(requestId))
@@ -274,9 +274,9 @@ if (string.IsNullOrWhiteSpace(spotRid))
 
 // "spot.route" = spot 으로 가는 RouteMesh channel 이름(앱이 등록한 이름).
 // 운영 코드는 보통 이 호출을 discovery 경합 대비 재시도로 감싼다.
-await routes.Send("spot.route", RoutingId.From(spotRid), command)
+routes.Send("spot.route", RoutingId.From(spotRid), command)
     .PacketName(dispatch.PacketName)
-    .Async(ct);
+    .Submit(ct);
 ```
 
 - **key 는 애플리케이션 규약**이다. framework 가 `"spot-rid"` 같은 이름을 강제하지

@@ -191,7 +191,7 @@ public final class UserActor implements ZLinkActor {
     public UserActor(String actorId, ZLinkActorContext context) { this.actorId = actorId; this.context = context; }
     @Override public String actorId() { return actorId; }
     @Override public ZLinkActorContext context() { return context; }
-    public CompletionStage<Void> push(ChatMessage message) { return context.boundSession().send(message).submit(); }
+    public void push(ChatMessage message) { context.boundSession().send(message).submit(); }
 }
 ```
 
@@ -202,7 +202,7 @@ public final class UserActor implements ZLinkActor {
     public UserActor(String actorId, ZLinkActorContext context) { this.actorId = actorId; this.context = context; }
     @Override public String actorId() { return actorId; }
     @Override public ZLinkActorContext context() { return context; }
-    public CompletionStage<Void> push(ChatMessage message) { return context.boundSession().send(message).submit(); }
+    public void push(ChatMessage message) { context.boundSession().send(message).submit(); }
 }
 ```
 

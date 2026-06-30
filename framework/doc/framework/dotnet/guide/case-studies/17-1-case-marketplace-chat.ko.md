@@ -188,8 +188,8 @@ public sealed class UserActor(string actorId, IZLinkActorContext context) : IZLi
     public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
 
-    public ValueTask PushAsync(ChatMessage message, CancellationToken ct)
-        => Context.BoundSession.Send(message).Async(ct);
+    public void Push(ChatMessage message, CancellationToken ct)
+        => Context.BoundSession.Send(message).Submit(ct);
 }
 ```
 
@@ -216,7 +216,7 @@ public sealed class SendMarketplaceMessageHandler(
             ct);
 
         foreach (var participant in conversation.OnlineParticipants)
-            await participant.PushAsync(saved, ct);
+            participant.Push(saved, ct);
 
         foreach (var offline in conversation.OfflineParticipantIds)
             await notifications.EnqueueAsync(offline, saved, ct);

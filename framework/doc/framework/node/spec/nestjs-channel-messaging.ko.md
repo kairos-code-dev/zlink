@@ -747,8 +747,8 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 | --- | --- |
 | `client.RequestToChannel(ch, req).Async<T>(ct)` | `await client.requestToChannel(ch, req).submit<T>()` |
 | `client.RequestToChannel(ch, req).Timeout(t).Async<T>(ct)` | `await client.requestToChannel(ch, req).timeout(timeoutMs).submit<T>()` |
-| `client.SendToChannel(ch, msg).Submit(ct)` | `await client.sendToChannel(ch, msg).submit()` |
-| `client.SendToChannel(ch, msg).PacketName(n).Submit(ct)` | `await client.sendToChannel(ch, msg).packetName(n).submit()` |
+| `client.SendToChannel(ch, msg).Submit(ct)` | `void client.sendToChannel(ch, msg).submit()` |
+| `client.SendToChannel(ch, msg).PacketName(n).Submit(ct)` | `void client.sendToChannel(ch, msg).packetName(n).submit()` |
 | `publisher.Publish(ch, topic, evt).Submit(ct)` | `await publisher.publishToChannel(ch, topic, evt).submit()` |
 
 ### 5.2 ZLinkChannelClient

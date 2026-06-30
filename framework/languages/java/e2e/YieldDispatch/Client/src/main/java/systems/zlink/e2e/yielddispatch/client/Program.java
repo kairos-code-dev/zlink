@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import systems.zlink.e2e.yielddispatch.shared.Contracts;
 import systems.zlink.e2e.yielddispatch.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -35,6 +36,14 @@ public final class Program {
             if (args.length > 0 && "--readiness".equals(args[0])) {
                 runReadinessProbe(connector);
                 System.out.println("yield-dispatch readiness=ready");
+                return;
+            }
+            if (args.length > 0 && "--shutdown-wait".equals(args[0])) {
+                runShutdownWait(connector);
+                return;
+            }
+            if (args.length > 0 && "--shutdown-recovery".equals(args[0])) {
+                runShutdownRecovery(connector);
                 return;
             }
             runScenario(connector, "YD-A1", List.of(
@@ -661,6 +670,41 @@ public final class Program {
         assertAllValuesContain(playEvidence, requestId, List.of(
             "probe-started",
             "probe-completed"), spotRid);
+    }
+
+    private static void runShutdownWait(ZLinkStreamConnector connector) throws Exception {
+        String requestId = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID");
+        String spotRid = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID");
+        try {
+            Contracts.YieldShutdownResult result = connector
+                .request(new Contracts.YieldShutdownScenarioRequest(requestId, spotRid, 30_000))
+                .timeout(Duration.ofSeconds(90))
+                .await(Contracts.YieldShutdownResult.class);
+            throw new IllegalStateException(
+                "YD-E3 expected play-a shutdown while yield was pending, but request completed as "
+                    + result.operation());
+        } catch (TimeoutException error) {
+            throw new IllegalStateException("YD-E3 shutdown wait timed out instead of receiving a public error", error);
+        } catch (IllegalStateException error) {
+            ensure(!error.getMessage().contains("unexpected-completion"), error.getMessage());
+            System.out.println("yield-dispatch shutdown wait result=passed");
+        }
+    }
+
+    private static void runShutdownRecovery(ZLinkStreamConnector connector) throws Exception {
+        String requestId = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID");
+        String spotRid = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID");
+        Contracts.YieldShutdownResult result = connector
+            .request(new Contracts.YieldShutdownRecoveryRequest(requestId, spotRid))
+            .timeout(REQUEST_TIMEOUT)
+            .await(Contracts.YieldShutdownResult.class);
+        ensure("yield.e3-shutdown-recovery".equals(result.operation()), "YD-E3 recovery operation mismatch");
+        ensure(requestId.equals(result.requestId()), "YD-E3 recovery request mismatch");
+        ensure(spotRid.equals(result.spotRid()), "YD-E3 recovery spot mismatch");
+        assertOrder(Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence", requestId, List.of(
+            "probe-started",
+            "probe-completed"));
+        System.out.println("yield-dispatch shutdown recovery result=passed");
     }
 
     private static void runReadinessProbe(ZLinkStreamConnector connector) throws Exception {

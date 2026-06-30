@@ -27,7 +27,10 @@ handler에 들어간 request가 `yield` 중일 때 bound session push를 원래 
 post-timeout probe를 처리하는지 검증한다.
 
 최근 full runner는 `logs/20260630-111601-3718472`에서 YD-A/B/C/D/E1과 E4 정적 검증을 통과했다.
-아직 cancellation, shutdown recovery, cross-language marker report 비교 scenario는 구현하지 않았다.
+shutdown recovery diagnostic은 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 실행할 수 있지만,
+`logs/20260630-113136-3782250`에서 pending yield 중 play-a가 SIGTERM으로 내려가지 않고 client가
+closed/cancelled public error 대신 request timeout을 받는 gap을 확인했다. 아직 cancellation,
+shutdown recovery, cross-language marker report 비교 scenario는 완료하지 않았다.
 남은 gap은 `feature-map.ko.md`와 `porting-inventory.ko.md`에 기록한다.
 
 ## 목표 역할
@@ -55,5 +58,5 @@ play/session evidence JSON을 남긴다. 성공 기준은 `scenario YD-A1 passed
 `scenario YD-C2 passed`, `scenario YD-C3 passed`, `scenario YD-D2 passed`,
 `scenario YD-D3 passed`, `scenario YD-D4 passed`,
 `scenario YD-E1 passed`, `yield-dispatch e2e result=passed` 출력과 message flow 로그 생성이다.
-최근 재실행 로그는 `logs/20260630-111601-3718472`이며, 현재 runner 범위는 통과한다. 전체 Config 8
+최근 재실행 로그는 `logs/20260630-111601-3718472`이며, 현재 기본 runner 범위는 통과한다. 전체 Config 8
 포팅 완료에는 아직 YD-E2, YD-E3, YD-E5 gap 처리가 남아 있다.

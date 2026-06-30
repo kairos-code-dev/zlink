@@ -121,6 +121,33 @@ PY
   return 1
 }
 
+wait_evidence_contains() {
+  local endpoint="$1"
+  local marker="$2"
+  local subject="$3"
+  local message="$4"
+  for _ in $(seq 1 600); do
+    if python3 - "${endpoint}/evidence" "${marker}" "${subject}" >/dev/null 2>&1 <<'PY'
+import json
+import sys
+import urllib.request
+
+with urllib.request.urlopen(sys.argv[1], timeout=1) as response:
+    snapshot = json.loads(response.read().decode("utf-8"))
+for entry in snapshot.get("entries", []):
+    if entry.get("marker") == sys.argv[2] and entry.get("subject") == sys.argv[3]:
+        sys.exit(0)
+sys.exit(1)
+PY
+    then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "${message}" >&2
+  return 1
+}
+
 fetch_evidence() {
   local endpoint="$1"
   local output="$2"
@@ -130,6 +157,22 @@ import urllib.request
 with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
     sys.stdout.write(response.read().decode("utf-8"))
 PY
+}
+
+terminate_gracefully() {
+  local name="$1"
+  local pid="$2"
+  kill -TERM "${pid}" >/dev/null 2>&1 || return 0
+  for _ in $(seq 1 100); do
+    if ! kill -0 "${pid}" >/dev/null 2>&1; then
+      wait "${pid}" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "${name} did not stop after SIGTERM; sending SIGKILL" >&2
+  kill -KILL "${pid}" >/dev/null 2>&1 || true
+  wait "${pid}" >/dev/null 2>&1 || true
 }
 
 static_checks() {
@@ -307,3 +350,58 @@ grep -q "scenario YD-D4 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario YD-E1 passed" "${log_dir}/client.stdout.log"
 grep -q "yield-dispatch e2e result=passed" "${log_dir}/client.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log
+
+if [[ "${ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN:-0}" == "1" ]]; then
+  SHUTDOWN_ID="yde3-$(date +%s)-$$"
+  SHUTDOWN_SPOT="yield-shutdown-${run_id//[^a-zA-Z0-9]/}"
+  ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
+  ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
+  ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
+  ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID="${SHUTDOWN_ID}" \
+  ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID="${SHUTDOWN_SPOT}" \
+    timeout -k 5s 120s "$(client_bin)" --shutdown-wait \
+      >"${log_dir}/client-shutdown-wait.stdout.log" 2>"${log_dir}/client-shutdown-wait.stderr.log" &
+  SHUTDOWN_CLIENT_PID=$!
+  wait_evidence_contains \
+    "${PLAY_A_HTTP}" \
+    "yield-released" \
+    "${SHUTDOWN_ID}" \
+    "YD-E3 pending yield marker was not observed before shutdown."
+  fetch_evidence "${PLAY_A_HTTP}" "${log_dir}/play-a-shutdown-before-stop-evidence.json"
+  terminate_gracefully play-a "${pids[2]}"
+  wait "${SHUTDOWN_CLIENT_PID}"
+  cat "${log_dir}/client-shutdown-wait.stdout.log"
+  grep -q "yield-dispatch shutdown wait result=passed" "${log_dir}/client-shutdown-wait.stdout.log"
+
+  ZLINK_JAVA_E2E_NODE_RID="play-a" \
+  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
+  ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" \
+  ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" \
+  ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    "$(play_bin)" >"${log_dir}/play-a-restart.stdout.log" 2>"${log_dir}/play-a-restart.stderr.log" &
+  pids+=("$!")
+  wait_port play-a-route "${ROUTE_A_ENDPOINT}"
+  wait_port play-a-spot "${SPOT_A_ENDPOINT}"
+  wait_http play-a-http "${PLAY_A_HTTP}"
+  wait_readiness
+
+  ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
+  ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
+  ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
+  ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+  ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID="${SHUTDOWN_ID}" \
+  ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID="${SHUTDOWN_SPOT}" \
+    timeout -k 5s 90s "$(client_bin)" --shutdown-recovery \
+      >"${log_dir}/client-shutdown-recovery.stdout.log" 2>"${log_dir}/client-shutdown-recovery.stderr.log"
+  cat "${log_dir}/client-shutdown-recovery.stdout.log"
+  grep -q "yield-dispatch shutdown recovery result=passed" "${log_dir}/client-shutdown-recovery.stdout.log"
+  fetch_evidence "${PLAY_A_HTTP}" "${log_dir}/play-a-restart-evidence.json"
+  grep -q "yield-dispatch shutdown recovery result=passed" "${log_dir}/client-shutdown-recovery.stdout.log"
+  echo "scenario YD-E3 passed"
+fi

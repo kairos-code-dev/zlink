@@ -21,7 +21,10 @@ session gateway가 route mesh로 보낸 packet이 `play-b` target spot handler�
 먼저 처리되는지 검증한다. `YD-D4`는 stream session relay로 bound actor handler에 들어간 request가
 yield 중일 때 bound session push를 원래 stream connector로 보내고, 다른 actor의 push wait는 진행되지
 않는지 검증한다. `YD-E1`은 timeout 뒤 같은 Spot mailbox가 probe를 처리하는 cleanup을 검증한다.
-현재 proof log는 `logs/20260630-111601-3718472`다. 아직 `YD-E2`, `YD-E3`, `YD-E5`는 gap으로 남아 있다.
+현재 proof log는 `logs/20260630-111601-3718472`다. `YD-E3` diagnostic runner는
+`logs/20260630-113136-3782250`에서 play-a가 pending yield 중 SIGTERM으로 내려가지 않고 client가
+closed/cancelled public error 대신 request timeout을 받는 것을 확인했다. 아직 `YD-E2`, `YD-E3`,
+`YD-E5`는 gap으로 남아 있다.
 이 inventory는
 `.NET` 기준 파일과 Java 대응 위치를 고정하고, 남은 scenario를
 internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지한다.
@@ -38,10 +41,10 @@ internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지�
 | .NET 기준 파일 | Java 대응 파일 | 분류 | 상태 | 비고 |
 |----------------|----------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 목표 build/log 산출물 제외 |
-| `run_e2e.sh` | `run_e2e.sh` | runner | done | registry, delay, play-a, play-b, session, client process를 띄우고 YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-C3, YD-D2, YD-D3, YD-D4, YD-E1 marker와 E4 정적 검증을 수행한다. `logs/20260630-111601-3718472`에서 통과했다 |
+| `run_e2e.sh` | `run_e2e.sh` | runner | partial | 기본 실행은 registry, delay, play-a, play-b, session, client process를 띄우고 YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-C3, YD-D2, YD-D3, YD-D4, YD-E1 marker와 E4 정적 검증을 수행한다. `logs/20260630-111601-3718472`에서 통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` diagnostic gate는 `logs/20260630-113136-3782250`에서 Java shutdown cleanup gap을 재현했다 |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 구현된 YD-A1/YD-A2와 남은 gap을 구분 |
 | `Shared/YieldDispatch.Shared.csproj` | `Shared/build.gradle.kts` | build | done | shared project 구성 |
-| `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/yielddispatch/shared/Contracts.java` | shared | partial | YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-C3, YD-D2, YD-D3, YD-D4, YD-E1 scenario packet/evidence 타입 구현. E2/E3 packet은 아직 없다 |
+| `Shared/Messages.cs` | `Shared/src/main/java/systems/zlink/e2e/yielddispatch/shared/Contracts.java` | shared | partial | YD-A1/YD-A2/YD-A3/YD-A4, YD-B1, YD-B2, YD-B3, YD-C1, YD-C2, YD-D2, YD-D3, YD-D4, YD-E1 scenario packet/evidence 타입과 YD-E3 diagnostic packet을 구현했다. E2 packet은 아직 없다 |
 | `Client/YieldDispatch.Client.csproj` | `Client/build.gradle.kts` | build | done | client project 구성 |
 | `Client/Program.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | client | partial | stream connector consumer와 A1/A2/A3/A4, B1, B2, B3, C1, C2, C3, D2, D3, D4, E1 marker 검증을 구현했다. E2/E3/E5는 아직 없다 |
 | `Client/GlobalUsings.cs` | `not-needed` | client | not-needed | Java에는 전역 using이 없다 |
@@ -63,11 +66,11 @@ internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지�
 | `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 stream session relay actor yield와 bound session push reply 흐름을 검증한다. `logs/20260630-111601-3718472`에서 통과했다 |
 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | `YieldTimeoutCommand`와 post-timeout probe marker 검증을 구현했다. `logs/20260630-111601-3718472`에서 통과했다 |
 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/scenarios/YdE2CancellationScenario.java` | scenario | gap | 미구현 |
-| `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/scenarios/ShutdownYieldScenario.java` | scenario | gap | YD-E3 미구현 |
+| `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | gap | YD-E3 diagnostic client mode를 추가했지만 현재 Java framework가 pending yield 중 shutdown을 closed/cancelled public error로 정리하지 못해 기본 통과 gate로 올리지 않았다 |
 | `Server/Registry/*` | `Server/Registry/src/main/java/systems/zlink/e2e/yielddispatch/registry/` | server-role | done | embedded registry role 구현 |
 | `Server/Delay/*` | `Server/Delay/src/main/java/systems/zlink/e2e/yielddispatch/delay/` | server-role | done | delay service role 구현 |
 | `Server/Play/*` | `Server/Play/src/main/java/systems/zlink/e2e/yielddispatch/play/` | server-role | partial | route mesh, spot mesh, YD-A1/A2/A3/A4 probe spot, B1/B2 target actor handler, YD-B3 handler bean, C1/C2/C3 timer start/stop/tick handler, D2 remote spot owner/target handler, D3 route bridge target spot handler, D4 actor push yield handler, E1 timeout handler bean 구현. E2/E3 role work는 남아 있다 |
-| `Server/Session/*` | `Server/Session/src/main/java/systems/zlink/e2e/yielddispatch/session/` | server-role | partial | stream session gateway, routed spot egress bridge, actor bind/relay entry path, timer command relay, D2 ensure-spot/remote spot request relay, D3 YieldCommand relay, D4 bound actor relay, E1 YieldTimeoutCommand relay 구현. E2/E3 relay work는 남아 있다 |
+| `Server/Session/*` | `Server/Session/src/main/java/systems/zlink/e2e/yielddispatch/session/` | server-role | partial | stream session gateway, routed spot egress bridge, actor bind/relay entry path, timer command relay, D2 ensure-spot/remote spot request relay, D3 YieldCommand relay, D4 bound actor relay, E1 YieldTimeoutCommand relay, E3 diagnostic relay를 구현했다. E2 relay와 E3 framework cleanup은 남아 있다 |
 
 ## 구현 전 확인한 public surface
 
@@ -91,5 +94,7 @@ YD-E1에서 검증했다. Java Config 8 전체는 E2/E3/E5 gap 때문에 아직 
 최근 재실행 로그: `logs/20260630-111601-3718472`
 
 현재 runner는 YD-A1/A2/A3/A4, YD-B1/B2/B3, YD-C1/C2/C3, YD-D2/D3/D4, YD-E1과 E4 정적 검증을
-통과했다. 아직 YD-E2 cancellation cleanup, YD-E3 shutdown/restart recovery, YD-E5 cross-language
-marker report 비교는 구현하지 않았다.
+통과했다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`는 `logs/20260630-113136-3782250`에서
+play-a SIGTERM shutdown이 pending yield를 정리하지 못하고 client request timeout으로 끝나는 gap을
+재현했다. 아직 YD-E2 cancellation cleanup, YD-E3 shutdown/restart recovery, YD-E5 cross-language
+marker report 비교는 완료하지 않았다.

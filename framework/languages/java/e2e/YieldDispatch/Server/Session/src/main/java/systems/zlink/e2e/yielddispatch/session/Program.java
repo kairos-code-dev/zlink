@@ -13,6 +13,7 @@ import systems.zlink.e2e.yielddispatch.shared.Env;
 import systems.zlink.e2e.yielddispatch.shared.EvidenceHttpServer;
 import systems.zlink.e2e.yielddispatch.shared.EvidenceStore;
 import systems.zlink.e2e.yielddispatch.shared.ScenarioRequestHandler;
+import systems.zlink.e2e.yielddispatch.shared.ShutdownYieldSessionHandlers;
 import systems.zlink.e2e.yielddispatch.shared.SpotCommandHandler;
 import systems.zlink.e2e.yielddispatch.shared.RemoteSpotYieldSessionHandler;
 import systems.zlink.e2e.yielddispatch.shared.YieldActorFactory;
@@ -86,6 +87,8 @@ public final class Program {
                 .bind(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))
                 .registerSession(YieldSession.class)
                 .addSessionPacketHandler(ScenarioRequestHandler.class)
+                .addSessionPacketHandler(ShutdownYieldSessionHandlers.Wait.class)
+                .addSessionPacketHandler(ShutdownYieldSessionHandlers.Recovery.class)
                 .addSessionPacketHandler(SpotCommandHandler.Yield.class)
                 .addSessionPacketHandler(SpotCommandHandler.YieldTimeout.class)
                 .addSessionPacketHandler(SpotCommandHandler.WorkerYield.class)
@@ -103,6 +106,18 @@ public final class Program {
         systems.zlink.framework.channels.ZLinkRouteClient routes,
         EvidenceStore evidence) {
         return new ScenarioRequestHandler(routes, evidence);
+    }
+
+    @Bean
+    ShutdownYieldSessionHandlers.Wait shutdownYieldWaitHandler(
+        systems.zlink.framework.channels.ZLinkRouteClient routes) {
+        return new ShutdownYieldSessionHandlers.Wait(routes);
+    }
+
+    @Bean
+    ShutdownYieldSessionHandlers.Recovery shutdownYieldRecoveryHandler(
+        systems.zlink.framework.channels.ZLinkRouteClient routes) {
+        return new ShutdownYieldSessionHandlers.Recovery(routes);
     }
 
     @Bean

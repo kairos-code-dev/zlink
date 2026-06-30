@@ -96,7 +96,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
       if (joined.actorId === actor.actorId) {
         continue;
       }
-      await joined.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+      joined.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
     }
     await this.publishWinMilestone(actor, before, state);
     return placeMarkRes(state);
@@ -107,7 +107,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     const change = match.tick();
     if (change.changed) {
       for (const player of match.players.values()) {
-        await player.actor.push(
+        player.actor.push(
           PacketNames.gameStateNotify,
           gameStateNotify(change.state)
         );
@@ -174,7 +174,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
         if (player.actorId === result.joined.actorId) {
           continue;
         }
-        await player.actor.push(
+        player.actor.push(
           PacketNames.playerJoinedNotify,
           playerJoinedNotify(
             roomId,
@@ -185,7 +185,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
             state
           )
         );
-        await player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+        player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
       }
     }
     return joinGameRes(state);

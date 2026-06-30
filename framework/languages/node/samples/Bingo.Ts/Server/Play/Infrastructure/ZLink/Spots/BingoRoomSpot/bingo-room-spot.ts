@@ -157,13 +157,13 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
       return this.snapshot();
     }
     const state = this.snapshot();
-    await this.pushPlayers(
+    this.pushPlayers(
       this.playerActors(),
       PacketNames.numberDrawnNotify,
       numberDrawnNotify(this.roomId, drawn.drawSeq, drawn.number, state)
     );
     if (drawn.finished) {
-      await this.pushPlayers(
+      this.pushPlayers(
         this.playerActors(),
         PacketNames.gameEndedNotify,
         stateEnvelope(state)
@@ -183,7 +183,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
       return;
     }
     for (const observer of [...this.observerActors.values()]) {
-      await observer.push(
+      observer.push(
         PacketNames.rewardAnnouncedNotify,
         bingoRewardAnnouncedNotify(event, String(this.context.nodeRid))
       );
@@ -223,8 +223,10 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     return this.game.players.map((player) => player.actor as PlayerActorType);
   }
 
-  private async pushPlayers(players: PlayerActorType[], packetName: string, payload: unknown): Promise<void> {
-    await Promise.all(players.map((player) => player.push(packetName, payload)));
+  private pushPlayers(players: PlayerActorType[], packetName: string, payload: unknown): void {
+    for (const player of players) {
+      player.push(packetName, payload);
+    }
   }
 
   private async notifyPlayerJoined(
@@ -233,7 +235,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     isHost: boolean,
     state: BingoRoomSnapshot
   ): Promise<void> {
-    await this.pushPlayers(
+    this.pushPlayers(
       this.playerActors().filter((entry) => entry.actorId !== actor.actorId),
       PacketNames.playerJoinedNotify,
       playerJoinedNotify(this.roomId, actor, seat, isHost, state)
@@ -241,7 +243,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   }
 
   private async notifyGameStarted(): Promise<void> {
-    await this.pushPlayers(
+    this.pushPlayers(
       this.playerActors(),
       PacketNames.gameStartedNotify,
       stateEnvelope(this.snapshot())

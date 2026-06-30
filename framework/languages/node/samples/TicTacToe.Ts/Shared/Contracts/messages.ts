@@ -204,7 +204,7 @@ export interface TicTacToeActor {
   markDisconnected(): void;
   markForDestroyAfterRoomLeave(): void;
   destroyAfterEntrySpotJoin: boolean;
-  push(packetName: string, payload: unknown): Promise<void>;
+  push(packetName: string, payload: unknown): void;
 }
 
 export interface TicTacToeActorClient {

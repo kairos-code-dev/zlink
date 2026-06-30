@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
   ActorFastMsg,
+  ActorFastReq,
   ActorJoinYieldReq,
   ActorPushYieldReq,
   ActorYieldReq,
@@ -196,6 +197,12 @@ class YieldSession implements ZLinkSession {
 
     if (dispatch.packetName === 'ActorFastMsg') {
       payload.decode<ActorFastMsg>(Object as never);
+      await this.relayToActor(dispatch, payload, signal);
+      return;
+    }
+
+    if (dispatch.packetName === 'ActorFastReq') {
+      payload.decode<ActorFastReq>(Object as never);
       await this.relayToActor(dispatch, payload, signal);
       return;
     }

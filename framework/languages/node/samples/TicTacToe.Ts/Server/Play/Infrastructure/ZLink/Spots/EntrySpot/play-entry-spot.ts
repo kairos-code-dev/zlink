@@ -34,7 +34,7 @@ class MilestoneObserverRegistry {
   async notify(event: PlayerWinMilestoneMsg, receivingSpotNodeRid: string): Promise<void> {
     const payload = winMilestoneNotify(event, receivingSpotNodeRid);
     for (const actor of [...this.observers.values()]) {
-      await actor.push(PacketNames.winMilestoneNotify, payload);
+      actor.push(PacketNames.winMilestoneNotify, payload);
     }
   }
 }

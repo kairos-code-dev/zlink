@@ -40,6 +40,7 @@ function createPeerModule(options: MessagePackOptions, evidence: EvidenceStore):
         useFactory: () => {
           const builder = zlinkFramework();
           builder
+            .codecs()
               .use(zlinkMessagePackCodec())
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

@@ -37,6 +37,7 @@ function createCodecRequesterModule(options: CodecRequesterOptions): Function {
         useFactory: () => {
           const builder = zlinkFramework();
           builder
+            .codecs()
               .use(zlinkProtobufCodec())
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

@@ -40,6 +40,7 @@ function createPeerModule(options: ProtobufOptions, evidence: EvidenceStore): Fu
         useFactory: () => {
           const builder = zlinkFramework();
           builder
+            .codecs()
               .use(zlinkProtobufCodec())
             .configureDispatch()
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

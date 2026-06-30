@@ -15,14 +15,17 @@ public final class YdA4WorkerYieldScenario {
         String requestId = "YD-A4-" + UUID.randomUUID();
         ClientStreamSupport.send(
             connector.send(new Contracts.WorkerYieldMsg(requestId, 1200))
+                .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
-        ClientStreamSupport.waitForEvidence(connector, requestId, "worker-yield-released");
+        ClientStreamSupport.waitForEvidence(connector, requestId, "room-a", "worker-yield-released");
         ClientStreamSupport.send(
             connector.send(new Contracts.ProbeMsg(requestId, "worker-probe"))
+                .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
         Contracts.EvidenceRes evidence = ClientStreamSupport.waitForEvidence(
             connector,
             requestId,
+            "room-a",
             "worker-yield-completed");
         ScenarioAssert.containsMarkersInOrder(
             evidence.markers(),

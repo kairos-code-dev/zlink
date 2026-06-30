@@ -91,7 +91,7 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
         for (PlayActor observer : java.util.List.copyOf(milestoneObservers)) {
             observer.context().boundSession()
                 .send(payload)
-                .await();
+                .submit();
         }
     }
 

@@ -66,9 +66,19 @@ public final class ClientStreamSupport {
         String actorId,
         String op,
         long millis) {
+        return request(connector, actorId, "room-a", op, millis);
+    }
+
+    public static Contracts.ProbeRes request(
+        ZLinkStreamConnector connector,
+        String actorId,
+        String spotRid,
+        String op,
+        long millis) {
         return await(
             connector.request(new Contracts.ProbeReq(op, millis))
                 .metadata("actor-id", actorId)
+                .metadata(Contracts.SPOT_RID_METADATA, spotRid)
                 .timeout(REQUEST_TIMEOUT),
             Contracts.ProbeRes.class);
     }
@@ -90,10 +100,17 @@ public final class ClientStreamSupport {
     public static Contracts.EvidenceRes evidence(
         ZLinkStreamConnector connector,
         String requestId) {
+        return evidence(connector, requestId, "room-a");
+    }
+
+    public static Contracts.EvidenceRes evidence(
+        ZLinkStreamConnector connector,
+        String requestId,
+        String spotRid) {
         return await(
             connector.request(new Contracts.EvidenceReq(requestId))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
-                .metadata(Contracts.SPOT_RID_METADATA, "room-a")
+                .metadata(Contracts.SPOT_RID_METADATA, spotRid)
                 .timeout(REQUEST_TIMEOUT),
             Contracts.EvidenceRes.class);
     }
@@ -102,10 +119,18 @@ public final class ClientStreamSupport {
         ZLinkStreamConnector connector,
         String requestId,
         String marker) {
+        return waitForEvidence(connector, requestId, "room-a", marker);
+    }
+
+    public static Contracts.EvidenceRes waitForEvidence(
+        ZLinkStreamConnector connector,
+        String requestId,
+        String spotRid,
+        String marker) {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         Contracts.EvidenceRes latest = new Contracts.EvidenceRes(requestId, java.util.List.of());
         while (System.nanoTime() < deadline) {
-            latest = evidence(connector, requestId);
+            latest = evidence(connector, requestId, spotRid);
             if (latest.markers().stream().anyMatch(entry -> entry.startsWith(marker + "|"))) {
                 return latest;
             }

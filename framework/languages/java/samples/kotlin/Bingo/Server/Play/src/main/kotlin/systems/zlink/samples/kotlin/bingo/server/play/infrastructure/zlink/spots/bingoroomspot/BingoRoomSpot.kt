@@ -17,6 +17,8 @@ import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actor
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSpotCreatedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomTimerHandler
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerMsgHandler
+import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.StopObservingBingoEventsHandler
+import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.SubmitBingoCardHandler
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoGame
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEvent
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEventKind
@@ -60,6 +62,8 @@ class BingoRoomSpot(
     }
 
     override fun configure() {
+        context.handlers().addHandler(SubmitBingoCardHandler::class.java)
+        context.handlers().addHandler(StopObservingBingoEventsHandler::class.java)
         context.handlers().addSubscribe(
             SampleNames.WinnerTopic,
             BingoWinnerMsgHandler::class.java,

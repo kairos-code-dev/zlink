@@ -56,14 +56,14 @@ final class KotlinConnectorWrapperTest {
     }
 
     @Test
-    fun suspendWrapperPreservesConnectorSemantics() = runBlocking {
+    fun kotlinWrapperPreservesConnectorSemantics() = runBlocking {
         TcpServer().use { server ->
             val connector = ZLinkStreamConnectorFactory.create(options(server.endpoint())).kotlin()
             try {
                 connector.connect().await()
                 assertTrue(connector.isConnected)
 
-                connector.send(payload("Echo", "send")).await()
+                connector.send(payload("Echo", "send")).submit()
                 val sent = server.readApplicationFrame()
                 assertEquals(1, sent.kind)
                 assertEquals("Echo", sent.name)

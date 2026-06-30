@@ -21,6 +21,8 @@ import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.Playe
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomTimerHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerMsgHandler;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.StopObservingBingoEventsHandler;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.SubmitBingoCardHandler;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoGame;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomGame;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
@@ -55,6 +57,8 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
 
     @Override
     public void configure() {
+        context.handlers().addHandler(SubmitBingoCardHandler.class);
+        context.handlers().addHandler(StopObservingBingoEventsHandler.class);
         context.handlers().addSubscribe(
             SampleNames.WinnerTopic,
             BingoWinnerMsgHandler.class);

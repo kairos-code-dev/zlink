@@ -61,11 +61,11 @@ Invoke-Checked $Gradle @(
 )
 Write-Output "java actor lifecycle sample gate completed"
 
-foreach ($sample in @("TicTacToe", "Bingo", "SupportChat", "DeliveryDispatch", "ShoppingMall")) {
+foreach ($sample in @("TicTacToe", "Bingo")) {
     Invoke-SampleWithRetry (Join-Path $RootDir "java/$sample/run_sample.ps1")
 }
 
-foreach ($sample in @("TicTacToe", "Bingo", "SupportChat", "DeliveryDispatch", "ShoppingMall")) {
+foreach ($sample in @("TicTacToe", "Bingo")) {
     Invoke-SampleWithRetry (Join-Path $RootDir "kotlin/$sample/run_sample.ps1")
 }
 

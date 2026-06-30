@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors
 
-import kotlinx.coroutines.future.await
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
 
@@ -37,10 +36,9 @@ class PlayerActor(
         disconnected = true
     }
 
-    suspend fun push(message: Any) {
+    fun push(message: Any) {
         context.boundSession()
             .send(message)
             .submit()
-            .await()
     }
 }

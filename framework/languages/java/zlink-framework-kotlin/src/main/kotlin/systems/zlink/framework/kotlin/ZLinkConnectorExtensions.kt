@@ -124,8 +124,8 @@ class ZLinkKotlinLifecycleCall(
 class ZLinkKotlinSendCall(
     private val inner: ZLinkStreamSendCall,
 ) {
-    suspend fun await() {
-        inner.submit().await()
+    fun submit() {
+        inner.submit()
     }
 }
 

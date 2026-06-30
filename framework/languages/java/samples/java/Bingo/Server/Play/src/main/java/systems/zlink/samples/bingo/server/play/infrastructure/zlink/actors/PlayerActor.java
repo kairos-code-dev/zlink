@@ -62,6 +62,6 @@ public final class PlayerActor implements ZLinkActor {
     public void push(Object message) {
         context.boundSession()
             .send(message)
-            .await();
+            .submit();
     }
 }

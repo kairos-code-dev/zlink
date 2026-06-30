@@ -173,7 +173,7 @@ public final class YieldProbeHandlers {
                     Contracts.DELAY_CHANNEL,
                     new Contracts.DelayReq(request.requestId(), request.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.DelayRes.class);
+                .yield(Contracts.DelayRes.class);
             evidence.record("yield-resumed", request.requestId(), value);
             evidence.record("yield-completed", request.requestId(), value);
         }

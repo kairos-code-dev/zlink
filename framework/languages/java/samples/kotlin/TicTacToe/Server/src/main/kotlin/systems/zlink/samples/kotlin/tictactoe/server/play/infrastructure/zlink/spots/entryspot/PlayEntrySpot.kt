@@ -82,7 +82,7 @@ class PlayEntrySpot(
         milestoneObservers.toList().forEach { observer ->
             observer.context().boundSession()
                 .send(payload)
-                .await()
+                .submit()
         }
     }
 

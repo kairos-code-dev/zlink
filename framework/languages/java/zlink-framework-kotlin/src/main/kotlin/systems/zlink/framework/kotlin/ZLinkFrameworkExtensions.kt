@@ -74,11 +74,11 @@ inline suspend fun <reified TReply> yield(
 suspend fun <T> yield(call: ZLinkWorkerCall<T>): T =
     call.yield()
 
-suspend fun ZLinkClient.send(
+fun ZLinkClient.send(
     channelName: String,
     message: Message,
 ) {
-    sendToChannel(channelName, message).submit().await()
+    sendToChannel(channelName, message).submit()
 }
 
 suspend inline fun <reified TReply> ZLinkClient.request(
@@ -95,12 +95,12 @@ suspend fun ZLinkFanoutClient.publishToTopic(
     publish(channelName, topic, message).submit().await()
 }
 
-suspend fun ZLinkRouteClient.send(
+fun ZLinkRouteClient.send(
     channelName: String,
     target: RoutingId,
     message: Message,
 ) {
-    sendTo(channelName, target, message).submit().await()
+    sendTo(channelName, target, message).submit()
 }
 
 suspend inline fun <reified TReply> ZLinkRouteClient.request(

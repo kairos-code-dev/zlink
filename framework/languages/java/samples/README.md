@@ -3,10 +3,8 @@
 This directory contains executable Java and Kotlin sample checks for the sample
 gate. Java samples live under `java/`, and Kotlin samples live under `kotlin/`.
 Each language directory carries the executable scenario samples that are part of
-the aggregate sample gate: `Bingo`, `TicTacToe`, `SupportChat`,
-`DeliveryDispatch`, and `ShoppingMall`. `GameQuest` is also present as a
-standalone scenario sample, but the aggregate gate does not run it yet. Each
-sample exits with a non-zero status when its scenario invariant fails.
+the aggregate sample gate: `Bingo` and `TicTacToe`. Other samples are rewrite
+targets and are not kept in this directory.
 
 Open `framework/languages/java` in IntelliJ IDEA to work on the framework and
 samples together. The framework root includes this directory as the
@@ -26,17 +24,9 @@ samples/
   java/
     TicTacToe/
     Bingo/
-	    SupportChat/
-	    DeliveryDispatch/
-	    ShoppingMall/
-	    GameQuest/
-	  kotlin/
-	    TicTacToe/
-	    Bingo/
-	    SupportChat/
-	    DeliveryDispatch/
-	    ShoppingMall/
-	    GameQuest/
+  kotlin/
+    TicTacToe/
+    Bingo/
 ```
 
 The framework parity samples mirror the .NET sample role layout. Java and
@@ -77,9 +67,7 @@ names, packet names, and timing settings live under `server/configuration`.
 Client-only settings live under `client/configuration`.
 
 Bingo uses Protobuf payloads for Java and Kotlin STREAM traffic. TicTacToe uses
-MessagePack payloads for Java and Kotlin STREAM traffic. The other ported
-samples use JSON payloads, Registry/Discovery automatic connection, and Spring
-component scanning for handler registration.
+MessagePack payloads for Java and Kotlin STREAM traffic.
 
 Java TicTacToe keeps only the common direct API/Play sample. Session gateway and
 reconnect variants are not maintained as separate Java TicTacToe samples.
@@ -96,8 +84,7 @@ On Windows:
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_samples.ps1
 ```
 
-`run_samples.sh` and `run_samples.ps1` delegate to the aggregate gate samples:
-`TicTacToe`, `Bingo`, `SupportChat`, `DeliveryDispatch`, and `ShoppingMall`.
+`run_samples.sh` and `run_samples.ps1` delegate to `TicTacToe` and `Bingo`.
 Each sample runner starts the server roles as separate processes, waits for
 readiness, runs the probe or client scenario, and cleans up the processes.
 Application role code should not start the other sample roles for the test.

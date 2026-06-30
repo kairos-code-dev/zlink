@@ -221,8 +221,8 @@ public final class TicTacToeClientScenario {
                 + " wins=" + milestone.wins()
                 + " receivingSpotNodeRid=" + milestone.receivingSpotNodeRid());
 
-            host.send(new LeaveGameMsg(game.roomId())).await();
-            guest.send(new LeaveGameMsg(game.roomId())).await();
+            host.send(new LeaveGameMsg(game.roomId())).submit();
+            guest.send(new LeaveGameMsg(game.roomId())).submit();
             System.out.println("tictactoe completed");
         } finally {
             host.close().await();

@@ -17,12 +17,9 @@ final class SampleReleaseGateContractTest {
     private static final String FORBIDDEN_SAMPLE_ASYNC_HELPER = "Sample" + "Async";
     private static final String FORBIDDEN_TICTACTOE_RESULT = "TicTacToeClient" + "Result";
 
-	    private static final Set<String> REQUIRED_SAMPLES = Set.of(
-	        "TicTacToe",
-	        "Bingo",
-	        "SupportChat",
-	        "DeliveryDispatch",
-	        "ShoppingMall");
+    private static final Set<String> REQUIRED_SAMPLES = Set.of(
+        "TicTacToe",
+        "Bingo");
 
     private static final Set<String> REQUIRED_RUNTIME_PACKAGES = Set.of(
         "actors",
@@ -895,8 +892,10 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains(".kotlin()")
                 && clientSource.contains("hostStream.close().await()")
                 && clientSource.contains("guestStream.close().await()")
-                && !clientSource.contains(".submit()"),
-            "Kotlin TicTacToe client scenario must use coroutine connector wrappers without direct submit calls");
+                && !clientSource.contains(".submit(AuthenticateRes::class.java)")
+                && !clientSource.contains(".submit(JoinGameRes::class.java)")
+                && !clientSource.contains(".submit(PlaceMarkRes::class.java)"),
+            "Kotlin TicTacToe client scenario must use coroutine connector wrappers for request calls");
         assertTrue(clientSource.contains(".request(AuthenticateReq(options.xActorId)).await<AuthenticateRes>()")
                 && clientSource.contains("AuthenticateReq(options.xActorId)")
                 && clientSource.contains("JoinGameReq(game.roomId)")

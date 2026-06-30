@@ -545,7 +545,7 @@ public final class Program {
             Contracts.SPOT_RID_METADATA, spotRid,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B);
         CompletionStage<Void> yield = connector
-            .send(new Contracts.YieldMsg(requestId, 1000, "route-bridge"))
+            .send(new Contracts.YieldMsg(requestId, ISOLATION_DELAY_MILLIS, "route-bridge"))
             .metadata(metadata)
             .submit();
         assertOrder(playBEvidence, requestId, List.of(

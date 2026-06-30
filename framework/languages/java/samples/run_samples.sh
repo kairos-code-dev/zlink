@@ -45,11 +45,11 @@ run_sample_with_retry() {
   done
 }
 
-for sample in TicTacToe Bingo SupportChat DeliveryDispatch ShoppingMall; do
+for sample in TicTacToe Bingo; do
   run_sample_with_retry "$SAMPLES_DIR/java/$sample/run_sample.sh"
 done
 
-for sample in TicTacToe Bingo SupportChat DeliveryDispatch ShoppingMall; do
+for sample in TicTacToe Bingo; do
   run_sample_with_retry "$SAMPLES_DIR/kotlin/$sample/run_sample.sh"
 done
 

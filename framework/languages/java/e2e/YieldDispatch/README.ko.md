@@ -27,10 +27,10 @@ handler에 들어간 request가 `yield` 중일 때 bound session push를 원래 
 post-timeout probe를 처리하는지 검증한다. `YD-E2`는 cancellation-aware `yield(...)`가 취소를
 관찰한 뒤 같은 Spot mailbox의 다음 probe를 처리하는지 검증한다.
 
-최근 full runner는 `logs/20260630-143134-168514`에서 YD-A/B/C/D/E, E4 정적 검증,
+최근 full runner는 `logs/20260630-150024-227561`에서 YD-A/B/C/D/E, E4 정적 검증,
 E5 marker report 생성을 통과했다.
 shutdown recovery diagnostic은 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 실행하며,
-`logs/20260630-143134-168514`에서 pending yield 중 play-a SIGTERM shutdown, public framework error
+`logs/20260630-150024-227561`에서 pending yield 중 play-a SIGTERM shutdown, public framework error
 reply, 같은 endpoint 재시작 뒤 recovery request를 통과했다.
 현재 Java Config 8 안에서 남은 scenario 누락은 없다.
 
@@ -59,8 +59,8 @@ play/session evidence JSON을 남긴다. 성공 기준은 `scenario YD-A1 passed
 `scenario YD-C2 passed`, `scenario YD-C3 passed`, `scenario YD-D2 passed`,
 `scenario YD-D3 passed`, `scenario YD-D4 passed`,
 `scenario YD-E1 passed`, `scenario YD-E2 passed`, `yield-dispatch e2e result=passed` 출력, message flow 로그,
-`yield-dispatch-marker-report.json` 생성이다. 최근 재실행 로그는 `logs/20260630-143134-168514`이며,
+`yield-dispatch-marker-report.json` 생성이다. 최근 재실행 로그는 `logs/20260630-150024-227561`이며,
 현재 기본 runner 범위는 통과한다.
-`ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260630-143134-168514`에서
+`ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260630-150024-227561`에서
 `yield-dispatch shutdown wait result=passed`, `yield-dispatch shutdown recovery result=passed`,
 `scenario YD-E3 passed`를 출력했다.

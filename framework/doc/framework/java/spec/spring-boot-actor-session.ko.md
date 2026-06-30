@@ -182,7 +182,9 @@ public interface ZLinkBoundSession {
 `yield(...)` 는 `CompletionStage.join()`을 직접 노출하는 helper가 아니라
 현재 Spot/Entry Spot turn을 반납하고, join completion 뒤 원래 mailbox에서 handler를
 재개하는 terminator다. `CancellationToken` overload는 token이 이미 취소되었거나
-join 대기 중 취소되면 `ZLinkOperationCanceledException`으로 끝난다.
+join 대기 중 취소되면 `ZLinkOperationCanceledException`을 cause로 둔 실패로 끝난다.
+동기 terminator 호출자는 Java `CompletableFuture.join()` 규칙에 따라 `CompletionException`으로
+감싼 오류를 볼 수 있다.
 
 `joinSpot(...)`은 actor가 Entry Spot 이후 실제 user Spot으로 들어가는 요청이다. 호출은
 `CompletionStage`로 완료되며 framework는 backend `SpotNode.joinActor(...)` 결과를

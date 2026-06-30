@@ -60,7 +60,7 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     public CompletionStage<T> submit() {
         ensureSingleTerminator();
         CompletableFuture<T> result = new CompletableFuture<>();
-        start(result::complete, result::completeExceptionally);
+        start(result::complete, result::completeExceptionally, () -> false);
         return result;
     }
 
@@ -75,8 +75,9 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     public T yield(CancellationToken cancellationToken) {
         ZLinkFrameworkTurns.throwIfCancellationRequested(cancellationToken);
         ZLinkYieldTurn capturedTurn = requireTurn();
+        CompletionStage<T> result = submit(cancellationToken);
         return ZLinkAwait.await(
-            ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, submit(), cancellationToken));
+            ZLinkFrameworkTurns.awaitManagedCompletion(capturedTurn, result, cancellationToken));
     }
 
     @Override
@@ -92,17 +93,30 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
             value -> postToSpotQueue.apply(() ->
                 ZLinkHandlerStages.fromRunnable(() -> onCompleted.accept(value, callbackToken))),
             error -> postToSpotQueue.apply(() ->
-                ZLinkHandlerStages.fromRunnable(() -> onError.accept(error, callbackToken))));
+                ZLinkHandlerStages.fromRunnable(() -> onError.accept(error, callbackToken))),
+            () -> false);
     }
 
-    private void start(Consumer<T> complete, Consumer<Throwable> fail) {
+    private CompletionStage<T> submit(CancellationToken cancellationToken) {
+        ensureSingleTerminator();
+        CompletableFuture<T> result = new CompletableFuture<>();
+        start(result::complete, result::completeExceptionally, cancellationToken);
+        return result;
+    }
+
+    private void start(
+        Consumer<T> complete,
+        Consumer<Throwable> fail,
+        CancellationToken cancellationToken) {
+        Objects.requireNonNull(cancellationToken, "cancellationToken");
         AtomicBoolean settled = new AtomicBoolean();
-        AtomicBoolean cancelled = new AtomicBoolean();
-        CancellationToken token = cancelled::get;
+        AtomicBoolean timeoutCancelled = new AtomicBoolean();
+        CancellationToken token = () ->
+            timeoutCancelled.get() || cancellationToken.isCancellationRequested();
         ScheduledFuture<?> timeoutFuture = timeout == null
             ? null
             : pool.scheduleTimeout(() -> {
-                cancelled.set(true);
+                timeoutCancelled.set(true);
                 if (settled.compareAndSet(false, true)) {
                     fail.accept(new ZLinkWorkerTimeoutException(
                         "worker call timed out after " + timeout));

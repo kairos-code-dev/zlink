@@ -72,6 +72,7 @@ await 전후로 이어서 판단하는 handler에는 `yield(...)`를 쓰지 않�
 handler가 받은 `CancellationToken`을 yield 대기에 전달해야 할 때는 token을 받는 overload를
 사용한다. 이 overload는 취소가 먼저 관찰되면 같은 mailbox continuation에서 framework
 cancellation 오류를 내고, 뒤늦은 reply나 worker result로 handler 후속 작업을 다시 실행하지 않는다.
+동기 terminator에서는 이 오류가 `CompletionException`으로 감싸질 수 있으므로 cause를 확인한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

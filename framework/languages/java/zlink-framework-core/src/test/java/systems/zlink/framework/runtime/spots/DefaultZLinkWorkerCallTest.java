@@ -276,6 +276,7 @@ class DefaultZLinkWorkerCallTest {
         AtomicBoolean canceled = new AtomicBoolean(false);
         CountDownLatch releaseWork = new CountDownLatch(1);
         CompletableFuture<Void> workerStarted = new CompletableFuture<>();
+        CompletableFuture<Void> workerObservedCancellation = new CompletableFuture<>();
         CompletableFuture<Void> firstCanceled = new CompletableFuture<>();
         ConcurrentLinkedQueue<String> events = new ConcurrentLinkedQueue<>();
 
@@ -286,6 +287,10 @@ class DefaultZLinkWorkerCallTest {
                     pool,
                     token -> {
                         workerStarted.complete(null);
+                        while (!token.isCancellationRequested()) {
+                            Thread.sleep(10);
+                        }
+                        workerObservedCancellation.complete(null);
                         releaseWork.await();
                         return 1;
                     },
@@ -309,6 +314,7 @@ class DefaultZLinkWorkerCallTest {
 
         canceled.set(true);
         firstCanceled.get(5, TimeUnit.SECONDS);
+        workerObservedCancellation.get(5, TimeUnit.SECONDS);
         releaseWork.countDown();
         first.get(5, TimeUnit.SECONDS);
 

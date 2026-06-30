@@ -128,8 +128,9 @@ mailbox에서 재개한다. `yield(...)` 중에도 같은 actor와 같은 timer�
 이어 판단하는 handler는 기본 `await(...)`를 사용해야 한다.
 request, actor join, worker completion의 cancellation-aware overload는 handler가 받은
 `CancellationToken`을 대기 작업에 전달한다. token이 이미 취소되었거나 대기 중 취소되면
-operation은 `ZLinkOperationCanceledException`으로 끝나고, handler continuation은 같은 mailbox
-경로에서 그 오류를 관찰한다.
+operation은 `ZLinkOperationCanceledException`을 cause로 둔 실패로 끝나고, handler continuation은
+같은 mailbox 경로에서 그 오류를 관찰한다. `yield(...)` 같은 동기 terminator는 Java
+`CompletableFuture.join()` 규칙에 따라 이 오류를 `CompletionException`으로 감싸서 던질 수 있다.
 
 SPOT route request 에 handler 가 없거나 payload decode, handler 예외, invalid frame 이 발생하면 reply
 path 가 있는 경우 error reply 를 반환한다. actor request 도 같은 원칙을 따른다. 같은 process 안의

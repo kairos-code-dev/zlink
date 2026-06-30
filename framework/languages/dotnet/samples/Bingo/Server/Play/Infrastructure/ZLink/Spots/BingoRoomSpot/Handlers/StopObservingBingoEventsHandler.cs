@@ -16,7 +16,6 @@ internal sealed class StopObservingBingoEventsHandler
         StopObservingBingoEventsReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var observerNodeRid = spot.Context.NodeRid.ToString();
         var stopped = await spot.StopObservingAsync(actor, message.RoomId, cancellationToken);
         return new StopObservingBingoEventsRes

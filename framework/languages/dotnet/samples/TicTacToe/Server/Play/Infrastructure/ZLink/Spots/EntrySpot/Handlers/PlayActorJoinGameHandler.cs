@@ -15,8 +15,6 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
         JoinGameReq message,
         CancellationToken cancellationToken)
     {
-        _ = entrySpot;
-        _ = context;
         logger.LogInformation(
             "actor: JoinGameReq received. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
@@ -26,7 +24,7 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
         var joined = await actor.Context.JoinSpot(
                 spotRid,
                 new TicTacToeGameJoinReq(message.RoomId, actor.RequirePlayer()))
-            .Yield(cancellationToken);
+            .Async(cancellationToken);
 
         var joinReply = joined.Reply.Decode<TicTacToeGameJoinRes>();
         var reply = new JoinGameRes(joinReply.State);

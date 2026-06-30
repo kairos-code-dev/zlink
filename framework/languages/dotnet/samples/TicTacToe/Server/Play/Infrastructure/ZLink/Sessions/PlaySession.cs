@@ -13,7 +13,6 @@ internal sealed class PlaySession(
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         logger.LogInformation(
             "client -> play stream: connected. sessionId={SessionId}",
             Context.SessionId);
@@ -40,7 +39,6 @@ internal sealed class PlaySession(
             error.Error,
             error.Diagnostic?.Message,
             Context.SessionId);
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 

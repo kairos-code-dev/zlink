@@ -27,7 +27,6 @@ internal sealed class SupportEntrySpot(
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         var request = createRequest.Decode<EnsureSupportUserActorReq>();
         actor.SetIdentity(request.DisplayName, request.Role);
         var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
@@ -45,8 +44,6 @@ internal sealed class SupportEntrySpot(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = actor;
-        _ = cancellationToken;
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
@@ -54,7 +51,6 @@ internal sealed class SupportEntrySpot(
         SupportUserActor actor,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         logger.LogInformation(
             "support entry: actor joined. actor={ActorId}, role={Role}",
             actor.ActorId,
@@ -66,7 +62,6 @@ internal sealed class SupportEntrySpot(
         SupportUserActor actor,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         logger.LogInformation(
             "support entry: actor left. actor={ActorId}",
             actor.ActorId);

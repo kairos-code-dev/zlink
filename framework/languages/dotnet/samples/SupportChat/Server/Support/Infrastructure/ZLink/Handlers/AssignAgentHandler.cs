@@ -17,7 +17,6 @@ internal sealed class AssignAgentHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         logger.LogInformation(
             "support assign: request conversation={ConversationId} requested={RequestedAgentActorId}",
             request.ConversationId,
@@ -28,8 +27,6 @@ internal sealed class AssignAgentHandler(
                 request.ConversationId,
                 ConversationStatuses.WaitingForAgent,
                 null));
-
-        _ = cancellationToken;
         logger.LogInformation(
             "support assign: assigned conversation={ConversationId} agent={AgentActorId}",
             request.ConversationId,

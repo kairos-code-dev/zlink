@@ -24,7 +24,6 @@ internal sealed class OrderWorkflowSpot(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "shoppingmall order spot: ready. order={OrderId}, spot={SpotRid}",
             Context.SpotRid.ToString(),
@@ -34,7 +33,6 @@ internal sealed class OrderWorkflowSpot(
 
     public ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 

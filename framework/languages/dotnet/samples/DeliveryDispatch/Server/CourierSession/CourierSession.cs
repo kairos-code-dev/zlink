@@ -11,7 +11,6 @@ internal sealed class CourierSession(
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
     }
 
@@ -27,8 +26,6 @@ internal sealed class CourierSession(
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
-        _ = error;
-        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
     }
 

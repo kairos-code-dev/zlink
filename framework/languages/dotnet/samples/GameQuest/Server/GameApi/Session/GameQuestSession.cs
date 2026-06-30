@@ -14,7 +14,6 @@ internal sealed class GameQuestSession(
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 
@@ -25,8 +24,6 @@ internal sealed class GameQuestSession(
 
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)
     {
-        _ = error;
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 

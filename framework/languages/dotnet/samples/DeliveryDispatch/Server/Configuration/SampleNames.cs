@@ -23,6 +23,7 @@ public static class SampleNames
 public static class SampleTimings
 {
     public static readonly TimeSpan FrameworkTimeout = TimeSpan.FromSeconds(5);
-    public static readonly TimeSpan DispatchTimeout = TimeSpan.FromMilliseconds(700);
+    public static readonly TimeSpan CourierDecisionTimeout = TimeSpan.FromMilliseconds(700);
+    public static readonly TimeSpan OfferRequestTimeout = TimeSpan.FromSeconds(2);
     public static readonly TimeSpan ClientTimeout = TimeSpan.FromSeconds(12);
 }

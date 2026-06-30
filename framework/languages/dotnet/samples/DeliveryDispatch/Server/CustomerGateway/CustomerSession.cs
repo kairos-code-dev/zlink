@@ -10,7 +10,6 @@ internal sealed class CustomerSession(
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
     }
 
@@ -26,8 +25,6 @@ internal sealed class CustomerSession(
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
-        _ = error;
-        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
     }
 

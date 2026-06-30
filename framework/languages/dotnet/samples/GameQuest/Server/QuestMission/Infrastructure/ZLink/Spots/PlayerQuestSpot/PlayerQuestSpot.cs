@@ -18,7 +18,6 @@ internal sealed class PlayerQuestSpot(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         PlayerId = request.Decode<PlayerQuestSpotCreateReq>().PlayerId;
         logger.LogInformation(
             "gamequest player quest spot ready player={PlayerId} spot={SpotRid}",
@@ -29,7 +28,6 @@ internal sealed class PlayerQuestSpot(
 
     public ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 }

@@ -24,8 +24,6 @@ internal sealed class CourierEntrySpot(
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        _ = createRequest;
-        cancellationToken.ThrowIfCancellationRequested();
         actors.Register(actor);
         logger.LogInformation(
             "deliverydispatch courier-entry: actor created courier={CourierId} node={NodeRid}",
@@ -39,9 +37,6 @@ internal sealed class CourierEntrySpot(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = actor;
-        _ = request;
-        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
     }
 }

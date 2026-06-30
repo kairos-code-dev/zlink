@@ -20,10 +20,8 @@ internal sealed class BindCourierSessionHandler(
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = dispatch;
         var request = payload.Decode<BindCourierSession>();
-        var sessionRoute = context.RoutingId?.ToString()
-            ?? throw new InvalidOperationException("Courier stream session has no routing id.");
+        var sessionRoute = context.SessionId;
         var bound = await channels.RequestToChannel(
                 SampleNames.CourierRouteChannel,
                 new BindCourier(request.CourierId, sessionRoute))

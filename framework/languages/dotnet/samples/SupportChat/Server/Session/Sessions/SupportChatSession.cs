@@ -11,13 +11,11 @@ internal sealed class SupportChatSession(
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 
@@ -25,8 +23,6 @@ internal sealed class SupportChatSession(
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
-        _ = error;
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 
@@ -42,7 +38,6 @@ internal sealed class SupportChatSession(
                 cancellationToken))
             return;
 
-        cancellationToken.ThrowIfCancellationRequested();
         var actor = RequireSingleBoundActor($"relaying packet '{dispatch.PacketName}'");
         await actor.RelayAsync(
             payload,

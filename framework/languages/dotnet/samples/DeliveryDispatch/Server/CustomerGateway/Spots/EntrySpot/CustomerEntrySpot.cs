@@ -35,8 +35,6 @@ internal sealed class CustomerEntrySpot(
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        _ = createRequest;
-        cancellationToken.ThrowIfCancellationRequested();
         actors.Register(actor);
         logger.LogInformation(
             "deliverydispatch customer-entry: actor created customer={ActorId}",
@@ -49,9 +47,6 @@ internal sealed class CustomerEntrySpot(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = actor;
-        _ = request;
-        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
     }
 }

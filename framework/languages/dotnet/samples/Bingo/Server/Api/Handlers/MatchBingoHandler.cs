@@ -18,7 +18,6 @@ internal sealed class MatchBingoHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         logger.LogInformation("api match: request. actor={ActorId}, mode={Mode}, actorNode={ActorNodeRid}",
             request.ActorId, request.Mode, request.ActorNodeRid);
         var allocated = await routes.Request(

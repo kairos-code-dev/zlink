@@ -16,21 +16,7 @@ internal sealed class DispatchWorker(
     {
         await foreach (var request in queue.ReadAllAsync(stoppingToken))
         {
-            try
-            {
-                await DispatchAsync(request, stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception error)
-            {
-                logger.LogError(
-                    error,
-                    "deliverydispatch dispatch: failed delivery={DeliveryId}",
-                    request.DeliveryId);
-            }
+            await DispatchAsync(request, stoppingToken);
         }
     }
 
@@ -73,7 +59,7 @@ internal sealed class DispatchWorker(
                 SampleNames.CourierRouteChannel,
                 new OfferDelivery(courierId, request.DeliveryId, request.PickupAddress, request.DropoffAddress),
                 cancellationToken,
-                SampleTimings.DispatchTimeout,
+                SampleTimings.OfferRequestTimeout,
                 maxAttempts: 8);
         }
         catch (Exception error) when (error is not OperationCanceledException)

@@ -13,8 +13,6 @@ internal sealed class SubscribeDeliveryActorHandler
         SubscribeDelivery message,
         CancellationToken cancellationToken)
     {
-        _ = context;
-        cancellationToken.ThrowIfCancellationRequested();
         var subscribed = entrySpot.SubscribeCustomer(actor.ActorId, message.DeliveryId);
         return ValueTask.FromResult(new SubscribeDeliveryAccepted(subscribed.DeliveryId));
     }

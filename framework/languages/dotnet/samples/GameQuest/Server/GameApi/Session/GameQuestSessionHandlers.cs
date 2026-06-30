@@ -17,7 +17,6 @@ internal sealed class SubscribeQuestHandler(GameQuestStore store, GameQuestSessi
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = dispatch;
         var request = payload.Decode<SubscribeQuestReq>();
         await store.BindSessionAsync(registry.Bind(request.PlayerId, context), cancellationToken);
         var projection = await store.ReadProjectionAsync(request.PlayerId, cancellationToken);
@@ -36,7 +35,6 @@ internal sealed class GetQuestProgressHandler(GameQuestStore store)
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = dispatch;
         var request = payload.Decode<GetQuestProgressReq>();
         await context.Client.Reply(new GetQuestProgressRes(
                 await store.ReadProjectionAsync(request.PlayerId, cancellationToken)))
@@ -55,7 +53,6 @@ internal sealed class SyncQuestProgressHandler(GameplayActionService actions)
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = dispatch;
         var request = payload.Decode<SyncQuestProgressReq>();
         await context.Client.Reply(await actions.SyncAsync(request.PlayerId, cancellationToken))
             .Async();

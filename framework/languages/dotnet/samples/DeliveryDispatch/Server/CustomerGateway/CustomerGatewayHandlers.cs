@@ -14,7 +14,6 @@ internal sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var actor = await actors.GetOrCreateAsync(
             request.CustomerId,
             SampleNames.CustomerActorType,
@@ -36,7 +35,6 @@ internal sealed class CustomerStatusPushHandler(CustomerActorDirectory customers
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         await customers.PushAsync(request, cancellationToken);
         return new DeliveryStatusAck(request.DeliveryId, request.Status);
     }

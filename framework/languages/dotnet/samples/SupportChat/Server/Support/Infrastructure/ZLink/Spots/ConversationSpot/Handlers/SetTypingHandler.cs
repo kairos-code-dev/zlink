@@ -14,7 +14,6 @@ internal sealed class SetTypingHandler
         SetTypingReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         return await spot.SetTypingAsync(actor, message, cancellationToken);
     }
 }

@@ -35,7 +35,6 @@ internal sealed class BingoRoom(
 
     public ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 
@@ -60,7 +59,6 @@ internal sealed class BingoRoom(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         _actors.Remove(actor.ActorId);
         if (_observerActor is not null
             && string.Equals(_observerActor.ActorId, actor.ActorId, StringComparison.Ordinal))
@@ -76,7 +74,6 @@ internal sealed class BingoRoom(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         actor.MarkDisconnected();
         logger.LogInformation(
             "bingo room: actor disconnected. room={RoomId}, actor={ActorId}",
@@ -98,7 +95,6 @@ internal sealed class BingoRoom(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         var settings = BingoRoomSettingsPayloadMapper.FromMessage(request, DefaultSettings);
         ApplySettings(settings);
         logger.LogInformation(

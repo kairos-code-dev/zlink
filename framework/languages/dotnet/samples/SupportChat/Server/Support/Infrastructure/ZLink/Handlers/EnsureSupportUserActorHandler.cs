@@ -16,7 +16,6 @@ internal sealed class EnsureSupportUserActorHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         if (await actors.FindAsync(request.ActorId, cancellationToken) is { } existing) return ToResponse(existing);
 
         var actor = await actors.GetOrCreateAsync(

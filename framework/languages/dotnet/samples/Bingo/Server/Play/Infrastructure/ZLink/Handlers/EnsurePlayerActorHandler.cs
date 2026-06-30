@@ -16,7 +16,6 @@ internal sealed class EnsurePlayerActorHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SampleNames.PlayerActorType,

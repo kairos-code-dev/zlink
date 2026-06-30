@@ -11,7 +11,6 @@ internal sealed class BingoSession(
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 
@@ -24,8 +23,6 @@ internal sealed class BingoSession(
         ZLinkStreamError error,
         CancellationToken cancellationToken)
     {
-        _ = error;
-        _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
 
@@ -41,7 +38,6 @@ internal sealed class BingoSession(
                 cancellationToken))
             return;
 
-        cancellationToken.ThrowIfCancellationRequested();
         var actor = RequireSingleBoundActor($"relaying packet '{dispatch.PacketName}'");
         await actor.RelayAsync(
                 payload,

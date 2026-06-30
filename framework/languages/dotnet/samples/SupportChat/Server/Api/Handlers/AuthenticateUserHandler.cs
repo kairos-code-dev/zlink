@@ -12,8 +12,6 @@ internal sealed class AuthenticateUserHandler : IZLinkRequestHandler<Authenticat
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
-        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(request.AccessToken switch
         {
             "customer-1" => Accepted("customer-1", "Customer 1", SupportChatRoles.Customer),

@@ -17,7 +17,6 @@ internal sealed class AllocateConversationHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         logger.LogInformation(
             "support allocate: request customer={CustomerActorId} subject={Subject}",
             request.CustomerActorId,

@@ -35,7 +35,6 @@ internal sealed class TicTacToeGame(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "game spot: actor joined. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
@@ -47,7 +46,6 @@ internal sealed class TicTacToeGame(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "game spot: actor left. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
@@ -60,7 +58,6 @@ internal sealed class TicTacToeGame(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         actor.MarkDisconnected();
         logger.LogInformation(
             "game spot: actor disconnected. actor={ActorId}, roomId={RoomId}",
@@ -89,7 +86,6 @@ internal sealed class TicTacToeGame(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "game spot: created. roomId={RoomId}, createPayloadEmpty={CreatePayloadEmpty}",
             _roomId,
@@ -107,7 +103,6 @@ internal sealed class TicTacToeGame(
 
     public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         if (_gameTick is not null) await _gameTick.CancelAsync();
     }
 
@@ -181,7 +176,6 @@ internal sealed class TicTacToeGame(
         string? excludedActorId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         var message = new GameStateNotify(state);
         var recipients = _actors.Values
             .Where(actor => !string.Equals(actor.ActorId, excludedActorId, StringComparison.Ordinal))
@@ -197,7 +191,6 @@ internal sealed class TicTacToeGame(
         GameState state,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         var player = joinedActor.RequirePlayer();
         var message = new PlayerJoinedNotify(
             state.RoomId,

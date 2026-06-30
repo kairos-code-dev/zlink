@@ -14,7 +14,6 @@ internal sealed class SendChatMessageHandler
         SendChatMessageReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         return await spot.SendMessageAsync(actor, message, cancellationToken);
     }
 }

@@ -18,7 +18,6 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = dispatch;
         var request = payload.Decode<AuthenticateReq>();
         var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,

@@ -22,7 +22,6 @@ internal sealed class SubscribeDeliverySessionHandler(
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = dispatch;
         var ensured = await channels.RequestToChannel(
                 SampleNames.CustomerRouteChannel,
                 new EnsureCustomerActor(CustomerId))

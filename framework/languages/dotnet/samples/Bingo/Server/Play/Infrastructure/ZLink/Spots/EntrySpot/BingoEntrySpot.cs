@@ -21,7 +21,6 @@ internal sealed class BingoEntrySpot(
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         var request = createRequest.Decode<EnsurePlayerActorReq>();
         actor.SetDisplayName(request.DisplayName);
         logger.LogInformation(
@@ -36,8 +35,6 @@ internal sealed class BingoEntrySpot(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        _ = actor;
-        _ = cancellationToken;
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
@@ -63,7 +60,6 @@ internal sealed class BingoEntrySpot(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         logger.LogInformation(
             "entry spot: actor left. actor={ActorId}",
             actor.ActorId);
@@ -74,7 +70,6 @@ internal sealed class BingoEntrySpot(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         actor.MarkDisconnected();
         logger.LogInformation(
             "entry spot: actor disconnected. actor={ActorId}",

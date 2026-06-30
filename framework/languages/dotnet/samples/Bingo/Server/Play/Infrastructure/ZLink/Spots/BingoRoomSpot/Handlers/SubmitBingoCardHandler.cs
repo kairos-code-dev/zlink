@@ -17,7 +17,6 @@ internal sealed class SubmitBingoCardHandler
         SubmitBingoCardReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         spot.EnsureRoomId(message.RoomId);
         var card = BingoCard.FromSubmittedNumbers(message.Card);
         var change = spot.SubmitCard(actor.ActorId, card);

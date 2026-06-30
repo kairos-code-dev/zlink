@@ -21,7 +21,6 @@ internal sealed class OpenConversationActorHandler(
         OpenConversationReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         if (!string.Equals(actor.Role, SupportChatRoles.Customer, StringComparison.Ordinal))
             throw new InvalidOperationException("Only customer actors can open a conversation.");
 

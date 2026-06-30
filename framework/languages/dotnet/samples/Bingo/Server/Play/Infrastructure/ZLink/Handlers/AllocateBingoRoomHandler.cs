@@ -21,7 +21,6 @@ internal sealed class AllocateBingoRoomHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         logger.LogInformation(
             "play allocate: request. actor={ActorId}, mode={Mode}, preferredOwner={PreferredOwnerNodeRid}",
             request.ActorId,

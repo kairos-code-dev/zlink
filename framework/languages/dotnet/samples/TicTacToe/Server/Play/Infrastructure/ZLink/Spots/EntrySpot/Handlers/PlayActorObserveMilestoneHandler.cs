@@ -15,7 +15,6 @@ internal sealed class PlayActorObserveMilestoneHandler(
         ObserveMilestoneReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         _ = message;
 
         logger.LogInformation(

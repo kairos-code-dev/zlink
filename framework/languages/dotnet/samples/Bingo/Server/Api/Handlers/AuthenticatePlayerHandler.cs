@@ -12,7 +12,6 @@ internal sealed class AuthenticatePlayerHandler
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         if (!request.AccessToken.StartsWith("player-", StringComparison.Ordinal)
             && !string.Equals(request.AccessToken, BingoSamplePlayers.Observer, StringComparison.Ordinal))
             return ValueTask.FromResult(new AuthenticatePlayerRes

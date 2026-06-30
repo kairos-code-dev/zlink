@@ -14,7 +14,6 @@ internal sealed class CreateGameHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         logger.LogInformation(
             "api -> play: CreateGameReq received. game={GameName}",
             request.GameName);

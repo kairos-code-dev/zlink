@@ -18,7 +18,6 @@ internal sealed class CustomerActorFactory : IZLinkActorFactory
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<IZLinkActor>(new CustomerActor(actorId, context));
     }
 }

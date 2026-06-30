@@ -20,7 +20,6 @@ internal sealed class MatchBingoActorHandler(
         MatchBingoReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         logger.LogInformation("match: actor request. actor={ActorId}, mode={Mode}", actor.ActorId, message.Mode);
         var apiRequest = new MatchBingoApiReq
         {
@@ -32,7 +31,7 @@ internal sealed class MatchBingoActorHandler(
         var matched = await entrySpot.Context.Outbound
             .RequestToChannel(SampleNames.ApiChannel, apiRequest)
             .Timeout(TimeSpan.FromSeconds(5))
-            .Yield<MatchBingoApiRes>(cancellationToken);
+            .Async<MatchBingoApiRes>(cancellationToken);
         logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
         var roomRid = RoutingId.From(matched.RoomId);
@@ -45,7 +44,7 @@ internal sealed class MatchBingoActorHandler(
                     DisplayName = actor.DisplayName,
                     ObserveOnly = false
                 })
-            .Yield<BingoRoomJoinRes>(cancellationToken);
+            .Async<BingoRoomJoinRes>(cancellationToken);
         logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId,
             matched.RoomId);
         var joinedState = joined.Reply.State;

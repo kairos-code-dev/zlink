@@ -20,9 +20,6 @@ internal sealed class SetAgentAvailableHandler(
         SetAgentAvailableReq message,
         CancellationToken cancellationToken)
     {
-        _ = entrySpot;
-        _ = context;
-        cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(actor.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
             throw new InvalidOperationException("Only agent actors can set availability.");
 

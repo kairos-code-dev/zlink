@@ -27,7 +27,6 @@ internal sealed class PlayEntrySpot(
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         actor.ApplyPlayer(createRequest.Decode<PlayerInfo>());
         logger.LogInformation(
             "entry spot: actor created. actor={ActorId}",
@@ -40,8 +39,6 @@ internal sealed class PlayEntrySpot(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        _ = actor;
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
@@ -49,7 +46,6 @@ internal sealed class PlayEntrySpot(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "entry spot: actor joined. actor={ActorId}",
             actor.ActorId);
@@ -68,7 +64,6 @@ internal sealed class PlayEntrySpot(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "entry spot: actor left. actor={ActorId}",
             actor.ActorId);
@@ -80,7 +75,6 @@ internal sealed class PlayEntrySpot(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         actor.MarkDisconnected();
         _milestoneObservers.Remove(actor);
         logger.LogInformation(
@@ -93,7 +87,6 @@ internal sealed class PlayEntrySpot(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         _milestoneObservers.Subscribe(actor);
         logger.LogInformation(
             "entry spot: milestone observer subscribed. actor={ActorId}, nodeRid={NodeRid}",

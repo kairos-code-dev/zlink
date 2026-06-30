@@ -18,7 +18,6 @@ internal sealed class DeliveryStatusChangedHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         evidence.Append(request);
         _ = await channels.RequestToChannel(SampleNames.CustomerRouteChannel, request)
             .Async<DeliveryStatusAck>(cancellationToken);

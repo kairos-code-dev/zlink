@@ -45,7 +45,6 @@ internal sealed class ConversationSpot(
                 SampleTimings.IdleTimeout,
                 SampleTimings.CloseGraceTimeout,
                 500));
-        _ = cancellationToken;
         logger.LogInformation(
             "support conversation: created. conversation={ConversationId}, customer={CustomerActorId}",
             conversationId,
@@ -55,7 +54,6 @@ internal sealed class ConversationSpot(
 
     public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         await ValueTask.CompletedTask;
     }
 
@@ -77,7 +75,6 @@ internal sealed class ConversationSpot(
 
         actor.JoinConversation(join.ConversationId);
         _actors[actor.ActorId] = actor;
-        _ = cancellationToken;
 
         logger.LogInformation(
             "support conversation: actor joined. conversation={ConversationId}, actor={ActorId}, role={Role}",
@@ -95,7 +92,6 @@ internal sealed class ConversationSpot(
         var change = conversation.JoinAgent(agent.ActorId, agent.DisplayName, NowUnixMs());
         agent.JoinConversation(conversation.ConversationId);
         _actors[agent.ActorId] = agent;
-        _ = cancellationToken;
         return ValueTask.FromResult(change.State);
     }
 

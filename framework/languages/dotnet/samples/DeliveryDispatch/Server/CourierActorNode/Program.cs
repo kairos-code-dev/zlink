@@ -8,7 +8,6 @@ internal static class Program
     {
         var node = ReadOption(args, "--node")
             ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE")
-            ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE")
             ?? "node1";
         var topology = SampleTopology.Create();
         await NodeHostFactory.Build(topology, node).RunAsync();

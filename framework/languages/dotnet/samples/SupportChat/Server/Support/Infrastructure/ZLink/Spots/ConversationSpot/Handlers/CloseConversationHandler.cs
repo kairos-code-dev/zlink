@@ -14,7 +14,6 @@ internal sealed class CloseConversationHandler
         CloseConversationReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         return await spot.CloseAsync(actor, message, cancellationToken);
     }
 }

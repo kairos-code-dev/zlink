@@ -14,7 +14,6 @@ internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandle
         PlaceMarkReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var roomId = actor.RequireJoinedRoom();
         logger.LogInformation(
             "actor: PlaceMarkReq received. actor={ActorId}, roomId={RoomId}, cell={Cell}",

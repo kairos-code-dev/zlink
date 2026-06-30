@@ -14,9 +14,6 @@ internal sealed class CourierDecisionActorHandler(ILogger<CourierDecisionActorHa
         CourierDecision message,
         CancellationToken cancellationToken)
     {
-        _ = entrySpot;
-        _ = context;
-        cancellationToken.ThrowIfCancellationRequested();
         actor.Complete(message);
         logger.LogInformation(
             "deliverydispatch courier-actor: decision delivery={DeliveryId} courier={CourierId} accepted={Accepted}",

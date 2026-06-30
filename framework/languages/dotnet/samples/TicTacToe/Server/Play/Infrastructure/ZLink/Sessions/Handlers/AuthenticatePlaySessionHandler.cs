@@ -22,7 +22,6 @@ internal sealed class AuthenticatePlaySessionHandler(
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = dispatch;
 
         var authenticate = payload.Decode<AuthenticateReq>();
 

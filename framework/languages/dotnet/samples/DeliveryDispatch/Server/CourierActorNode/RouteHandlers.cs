@@ -18,7 +18,6 @@ internal sealed class EnsureCourierActorRouteHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var actor = await actorManager.GetOrCreateAsync(
             request.CourierId,
             SampleNames.CourierActorType,
@@ -45,7 +44,6 @@ internal sealed class OfferDeliveryRouteHandler(
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var actorRef = await actorManager.GetOrCreateAsync(
             request.CourierId,
             SampleNames.CourierActorType,
@@ -53,7 +51,7 @@ internal sealed class OfferDeliveryRouteHandler(
             cancellationToken);
         var actor = actors.Require(actorRef.ActorId);
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(SampleTimings.DispatchTimeout);
+        timeoutSource.CancelAfter(SampleTimings.CourierDecisionTimeout);
         try
         {
             return await actor.OfferAsync(request, timeoutSource.Token);

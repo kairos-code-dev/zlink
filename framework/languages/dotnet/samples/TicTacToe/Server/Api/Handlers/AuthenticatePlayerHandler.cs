@@ -11,8 +11,6 @@ internal sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandle
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
-        _ = cancellationToken;
 
         var actorId = request.AccessToken.Trim();
         if (string.IsNullOrWhiteSpace(actorId)) throw new InvalidOperationException("Authentication token is empty.");

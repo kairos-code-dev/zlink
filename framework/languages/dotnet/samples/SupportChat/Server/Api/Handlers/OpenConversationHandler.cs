@@ -17,7 +17,6 @@ internal sealed class OpenConversationHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         logger.LogInformation(
             "support api open: allocate request customer={CustomerActorId} subject={Subject}",
             request.CustomerActorId,

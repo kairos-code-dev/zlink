@@ -19,7 +19,6 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
         ObserveBingoEventsReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var observerRid = ObserverRoomRid(message.RoomId, entrySpot.Context.NodeRid);
         var settings = BingoRoomSettings.CreateObserver(message.RoomId, entrySpot.Context.NodeRid.ToString());
         await spots.GetOrCreateAsync<BingoRoom>(
@@ -36,7 +35,7 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
                     DisplayName = actor.DisplayName,
                     ObserveOnly = true
                 })
-            .Yield<BingoRoomJoinRes>(cancellationToken);
+            .Async<BingoRoomJoinRes>(cancellationToken);
 
         if (!joined.Accepted)
             return new ObserveBingoEventsRes

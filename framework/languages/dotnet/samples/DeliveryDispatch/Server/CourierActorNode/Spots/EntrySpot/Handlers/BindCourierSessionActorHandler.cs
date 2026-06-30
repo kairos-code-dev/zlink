@@ -14,9 +14,6 @@ internal sealed class BindCourierSessionActorHandler(ILogger<BindCourierSessionA
         BindCourierSession message,
         CancellationToken cancellationToken)
     {
-        _ = entrySpot;
-        _ = context;
-        cancellationToken.ThrowIfCancellationRequested();
         var actorRef = message.Actor
             ?? throw new InvalidOperationException("Courier bind relay requires actor ref.");
         var sessionRoute = message.SessionRoute

@@ -18,7 +18,6 @@ internal sealed class BindCourierHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var placement = directory.ChoosePlacement(request.CourierId);
         var ensured = await routes.Request(
                 SampleNames.CourierActorNodeRouteChannel,
@@ -47,14 +46,13 @@ internal sealed class OfferDeliveryHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var binding = directory.Require(request.CourierId);
         return await routes.Request(
                 SampleNames.CourierActorNodeRouteChannel,
                 Systems.Zlink.RoutingId.From(binding.Actor.NodeRid),
                 request)
             .PacketName(nameof(OfferDelivery))
-            .Timeout(SampleTimings.DispatchTimeout)
+            .Timeout(SampleTimings.OfferRequestTimeout)
             .Async<OfferDeliveryResult>(cancellationToken);
     }
 }

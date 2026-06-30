@@ -14,7 +14,6 @@ internal sealed class PlayActorLeaveGameHandler(ILogger<PlayActorLeaveGameHandle
         LeaveGameReq message,
         CancellationToken cancellationToken)
     {
-        _ = context;
         var roomId = actor.RequireJoinedRoom();
         if (!string.Equals(roomId, message.RoomId, StringComparison.Ordinal))
             throw new InvalidOperationException($"Actor is joined to '{roomId}', not '{message.RoomId}'.");

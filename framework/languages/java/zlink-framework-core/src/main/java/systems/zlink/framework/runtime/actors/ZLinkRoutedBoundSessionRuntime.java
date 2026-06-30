@@ -199,7 +199,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             byte[] frameBytes;
             try {
                 ZLinkStreamHeader header = new ZLinkStreamHeader(
@@ -214,7 +214,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 payload.close();
             }
             try (Message frame = Message.from(frameBytes)) {
-                return ZLinkRoutedBoundSessionRuntime.sendFrame(
+                ZLinkRoutedBoundSessionRuntime.sendFrame(
                     sourceEntrySpot,
                     routedTransport,
                     routeChannelName,

@@ -68,3 +68,7 @@ data class RequestFailureRes(
     var failed: Boolean = false,
     var failureType: String = "",
 )
+
+data class BackpressureRes(
+    var outcome: String = "",
+)

@@ -3212,7 +3212,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -3221,21 +3221,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     packetName.orElse(null), egressChannelName, null, null, null,
                     spotRid.toString(), null, null));
             }
-            return resolveSpotRemoteAddressAsync(egressChannelName, spotRid)
-                .thenCompose(address -> {
+            resolveSpotRemoteAddressAsync(egressChannelName, spotRid)
+                .thenAccept(address -> {
                 ZLinkBackendSpotNode routerNode = nodesByName.get(address.routerChannelId());
                 if (routerNode != null) {
-                    return new SpotToSpotSendCall(
+                    new SpotToSpotSendCall(
                         routerNode.entrySpot(),
                         address.targetNodeRid(),
                         address.spotRid(),
                         payload,
                         packetName)
                         .submit();
+                    return;
                 }
                 List<Message> spotParts = parts(packetName, payload);
                 try {
-                    return channels.sendToSpotViaRouterChannel(
+                    channels.sendToSpotViaRouterChannel(
                         address.routerChannelId(),
                         address.targetNodeRid(),
                         address.spotRid(),
@@ -3503,7 +3504,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -3511,7 +3512,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), channelName, topic, null, null, null, null, null));
             }
-            return CompletableFuture.runAsync(() -> {
+            CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
                     publisherSpot(channelName).publish(topic, parts, SendFlags.NONE);
@@ -3586,7 +3587,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -3595,7 +3596,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     packetName.orElse(null), null, null, null,
                     targetNodeRid.toString(), spotRid.toString(), null, null));
             }
-            return CompletableFuture.runAsync(() -> {
+            CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
                     spot.sendToSpot(targetNodeRid, spotRid, parts, SendFlags.NONE);
@@ -3911,7 +3912,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -3919,7 +3920,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), null, topic, null, null, null, null, null));
             }
-            return CompletableFuture.runAsync(() -> {
+            CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
                     spot.publish(topic, parts, SendFlags.NONE);

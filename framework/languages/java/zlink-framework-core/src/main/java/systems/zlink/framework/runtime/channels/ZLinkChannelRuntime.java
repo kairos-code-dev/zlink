@@ -2431,7 +2431,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -2439,7 +2439,7 @@ public final class ZLinkChannelRuntime
                     ZLinkDispatchMessageKind.PUBLISH,
                     packetName.orElse(null), null, topic, null, null, null, null, null));
             }
-            return CompletableFuture.runAsync(() -> {
+            CompletableFuture.runAsync(() -> {
                 List<Message> publishParts = parts(packetName, payload);
                 try {
                     publisher.publish(topic, publishParts, SendFlags.NONE);
@@ -2476,7 +2476,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -2484,7 +2484,7 @@ public final class ZLinkChannelRuntime
                     ZLinkDispatchMessageKind.SEND,
                     packetName.orElse(null), null, null, null, null, null, null, null));
             }
-            return CompletableFuture.runAsync(() -> {
+            CompletableFuture.runAsync(() -> {
                 try {
                     client.send(parts(packetName, payload), SendFlags.NONE);
                 } finally {
@@ -2661,7 +2661,7 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowOutcome.SENT,
@@ -2669,7 +2669,7 @@ public final class ZLinkChannelRuntime
                     ZLinkDispatchMessageKind.SEND,
                     packetName.orElse(null), null, null, null, target.toString(), null, null, null));
             }
-            return CompletableFuture.runAsync(() -> {
+            CompletableFuture.runAsync(() -> {
                 List<Message> sendParts = parts(packetName, payload);
                 try {
                     router.send(target, sendParts, SendFlags.NONE);
@@ -2809,10 +2809,10 @@ public final class ZLinkChannelRuntime
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             List<Message> sendParts = parts(packetName, payload);
             try {
-                return sendToSpotViaRouterChannel(
+                sendToSpotViaRouterChannel(
                     channelName,
                     targetNode,
                     targetSpot,

@@ -39,12 +39,11 @@ public HTTP client만 사용한다.
   거부는 framework channel runtime의 max message size 적용이 public typed channel 경로에 배선된
   뒤 같은 scenario의 추가 marker로 확장한다.
 
-## Gap
+## Backpressure 범위
 
-- `RM-C9`: Java는 느린 handler에 다량 send를 동시에 제출해 bounded timeout/public error와 recovery를
-  관측하는 smoke 검증만 수행한다. `.NET` 기준의 `SendHighWaterMark=1`, `ReceiveHighWaterMark=1`,
-  `SendTimeout=100ms` 설정은 현재 Java framework public channel API에 client socket HWM/timeout
-  설정 표면이 없어 같은 수준으로 포팅하지 않았다. private API나 raw socket 우회는 사용하지 않는다.
+- `RM-C9`: Java는 느린 handler에 다량 one-way send를 동시에 제출하고, public bounded-failure
+  oracle 없이 후속 request와 evidence가 회복되는지 검증한다. 직접적인 HWM 오류 결과 검증은
+  binding/runtime 내부 테스트 범위로 둔다.
 
 ## 검증
 
@@ -54,3 +53,6 @@ public HTTP client만 사용한다.
   - 결과: common, weighted, scale-out, scale-in, failover 단계가 모두
     `registry-messaging e2e result=passed` 출력
   - 로그: `logs/20260629-121604-457425/`
+- `timeout 420s framework/languages/java/e2e/RegistryMessaging/run_e2e.sh RM-C9`
+  - 결과: `scenario RM-C9 passed`, `registry-messaging e2e result=passed`
+  - 로그: `logs/20260701-035750-1917120`

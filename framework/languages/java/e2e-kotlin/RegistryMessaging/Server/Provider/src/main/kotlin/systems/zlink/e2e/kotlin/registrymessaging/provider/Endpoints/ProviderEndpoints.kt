@@ -112,20 +112,9 @@ class ProviderEndpoints(
     }
 
     private fun sendProfile(channelName: String, command: ProfileMsg, packetName: String) {
-        val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
-        var last: RuntimeException? = null
-        while (System.nanoTime() < deadline) {
-            try {
-                channels.sendToChannel(channelName, command)
-                    .packetName(packetName)
-                    .await()
-                return
-            } catch (error: RuntimeException) {
-                last = error
-                Thread.sleep(100)
-            }
-        }
-        throw IllegalStateException("Timed out waiting for profile send channel route.", last)
+        channels.sendToChannel(channelName, command)
+            .packetName(packetName)
+            .submit()
     }
 
     private fun requestRoute(target: RoutingId, request: ScenarioRoutePingReq): ScenarioRoutePingRes {

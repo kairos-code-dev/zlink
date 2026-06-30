@@ -22,7 +22,7 @@ server role을 하나의 application에서 role 옵션으로 바꾸는 방식을
 |----------------|------------------|------|------|------|
 | `.gitignore` | `.gitignore` | config-root | done | 기존 파일은 있으나 목표 구조의 `logs/`, Gradle 산출물 제외를 재확인한다. |
 | `README.ko.md` | `README.ko.md` | docs | done | Kotlin RegistryMessaging 보충 설명을 새로 작성한다. |
-| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | RM-C9 public contract gap과 구현된 scenario를 분리해 기록한다. |
+| `feature-map.ko.md` | `feature-map.ko.md` | docs | done | RM-C9를 one-way send pressure/recovery scenario로 기록한다. |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | 기존 runner는 단일 application role 분기 실행이다. 목표는 별도 role project 시작, readiness, cleanup, 실패 로그 출력이다. |
 | `Shared/RegistryMessaging.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Kotlin Shared project로 분리한다. |
 | `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/shared/Messages.kt` | shared | done | 기존 `Contracts.kt`의 message 타입을 Shared로 이동하고 `Payload*`, `Workflow*`, failure result를 보강한다. |
@@ -44,7 +44,7 @@ server role을 하나의 application에서 role 옵션으로 바꾸는 방식을
 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Scenarios/RmC5MissingPacketScenario.kt` | scenario | done | RM-C5. missing packet request/send와 dispatch-error evidence를 검증한다. |
 | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Scenarios/RmC7WeightedProviderScenario.kt` | scenario | done | RM-C7. weighted provider 동적 cluster 검증으로 포팅한다. |
 | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Scenarios/RmC8PayloadRoundTripScenario.kt` | scenario | done | RM-C8. length/hash 기반 payload 왕복 검증으로 보강한다. |
-| `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Scenarios/RmC9BackpressureScenario.kt` | scenario | gap | Kotlin/Java public channel builder에 low-HWM socket setup 표면이 없어 internal socket access 없이 완료 구현하지 않는다. |
+| `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/client/Scenarios/RmC9BackpressureScenario.kt` | scenario | done | one-way send pressure 제출과 recovery를 검증한다. public send는 bounded-failure oracle을 노출하지 않는다. |
 | `Server/Registry/RegistryMessaging.Registry.csproj` | `Server/Registry/build.gradle.kts` | build | done | Registry role application project로 분리한다. |
 | `Server/Registry/Program.cs` | `Server/Registry/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/registry/Program.kt` | server-entry | done | 별도 registry 실행 진입점으로 포팅한다. |
 | `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/registry/Program.kt` (`RegistryApplication`) | server-role | done | Spring Boot registry host 구성은 같은 파일의 `RegistryApplication` class에 둔다. |
@@ -60,7 +60,7 @@ server role을 하나의 application에서 role 옵션으로 바꾸는 방식을
 | `Server/Provider/Infrastructure/EvidenceStore.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/provider/Infrastructure/EvidenceStore.kt` | infrastructure | done | wait 가능한 provider evidence store. |
 | `Server/Consumer/RegistryMessaging.Consumer.csproj` | `Server/Consumer/build.gradle.kts` | build | done | Consumer role application project로 분리한다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Program.kt` | server-entry | done | 별도 consumer 실행 진입점으로 포팅한다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Program.kt` (`ConsumerApplication`) | server-role | done | direct/single/discovery consumer 구성은 같은 파일의 `ConsumerApplication` class에 둔다. RM-C9는 public contract gap이라 low-HWM consumer를 만들지 않는다. |
+| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Program.kt` (`ConsumerApplication`) | server-role | done | direct/single/discovery consumer 구성은 같은 파일의 `ConsumerApplication` class에 둔다. RM-C9 pressure endpoint는 consumer endpoint에 함께 둔다. |
 | `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Configuration/ConsumerOptions.kt` | configuration | done | provider endpoint 목록과 registry endpoint를 파싱한다. |
 | `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Endpoints/ConsumerEndpoints.kt` | endpoints | done | `/profile/*` consumer endpoint로 framework 호출을 role server 안에 둔다. |
 | `Server/Workflow/RegistryMessaging.Workflow.csproj` | `Server/Workflow/build.gradle.kts` | build | done | Workflow role application project로 분리한다. |
@@ -114,4 +114,4 @@ Gradle multi-project와 HTTP helper는 `.NET` 파일과 일대일로 대응되�
 | `RM-C5` | P0 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/.../Scenarios/RmC5MissingPacketScenario.kt` | done |
 | `RM-C7` | P1 | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/.../Scenarios/RmC7WeightedProviderScenario.kt` | done |
 | `RM-C8` | P1 | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/.../Scenarios/RmC8PayloadRoundTripScenario.kt` | done |
-| `RM-C9` | P2 | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/.../Scenarios/RmC9BackpressureScenario.kt` | gap |
+| `RM-C9` | P2 | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/.../Scenarios/RmC9BackpressureScenario.kt` | done |

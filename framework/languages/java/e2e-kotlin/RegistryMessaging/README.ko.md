@@ -12,8 +12,8 @@ Registry messaging E2E 앱이다.
 - `Server/Workflow`: workflow channel provider endpoint.
 - `Client`: role server HTTP endpoint를 호출하는 scenario runner.
 
-구현된 scenario는 `feature-map.ko.md`에 기록한다. `RM-C9`는 Kotlin/Java public channel builder에
-low-HWM socket setup 표면이 없어 gap으로 남긴다. 내부 socket 접근이나 raw frame 주입으로 메우지 않는다.
+구현된 scenario는 `feature-map.ko.md`에 기록한다. `RM-C9`는 one-way send가 public 완료 객체나
+bounded-failure oracle을 노출하지 않는다는 공통 계약에 맞춰 send pressure와 recovery를 검증한다.
 
 실행:
 

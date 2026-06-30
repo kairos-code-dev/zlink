@@ -47,7 +47,5 @@ class ConsumerApplication {
                 }
             }
 
-            // Java/Kotlin public channel builder does not expose low-HWM socket setup here.
-            // RM-C9 records this as a public contract gap instead of using internal socket access.
         }
 }

@@ -11,6 +11,7 @@ import java.util.concurrent.Executors
 import org.springframework.context.ConfigurableApplicationContext
 import systems.zlink.e2e.kotlin.registrymessaging.consumer.Configuration.ConsumerOptions
 import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
+import systems.zlink.e2e.kotlin.registrymessaging.shared.BackpressureRes
 import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadRes
 import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileMsg
@@ -65,11 +66,21 @@ class ConsumerEndpoints(
             val command = exchange.readJson<ProfileMsg>()
             channels.sendToChannel(Contracts.PROFILE_CHANNEL, command)
                 .packetName("MissingProfileMsg")
-                .await()
+                .submit()
             exchange.writeJson(mapOf("status" to "sent"))
         }
         server.createContext("/profile/payload") { exchange ->
             exchange.writeJson(requestPayload(exchange.readJson()))
+        }
+        server.createContext("/profile/backpressure/reset") { exchange ->
+            exchange.writeJson(mapOf("status" to "ready"))
+        }
+        server.createContext("/profile/backpressure/send") { exchange ->
+            val command = exchange.readJson<ProfileMsg>()
+            channels.sendToChannel(Contracts.PROFILE_CHANNEL, command)
+                .packetName(Contracts.PROFILE_COMMAND_PACKET)
+                .submit()
+            exchange.writeJson(BackpressureRes("Submitted"))
         }
         server.createContext("/shutdown") { exchange ->
             exchange.writeJson(mapOf("status" to "stopping"))

@@ -303,7 +303,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         return () -> stateHandlers.remove(handler);
     }
 
-    private CompletionStage<Void> submit(ZLinkStreamEncodedPayload payload, boolean compress) {
+    private void submit(ZLinkStreamEncodedPayload payload, boolean compress) {
         ensureConnected();
         byte[] body = encodePayload(payload, compress);
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
@@ -315,7 +315,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             payload.packetName(),
             payload.metadata(),
             nextCorrelationId());
-        return sendFrame(header, body);
+        sendFrame(header, body);
     }
 
     private CompletionStage<ZLinkStreamEncodedPayload> submitRequest(
@@ -916,8 +916,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
-            return connector.submit(payload, compressed);
+        public void submit() {
+            connector.submit(payload, compressed);
         }
     }
 

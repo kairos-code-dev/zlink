@@ -16,7 +16,6 @@ endpoint를 호출한다. Consumer role은 discovery, direct, single-provider, b
 
 성공하면 각 client 단계가 `registry-messaging e2e result=passed`를 출력한다.
 
-참고: `RM-C9`는 Java public channel API에서 client socket low-HWM/send-timeout 설정 표면이 아직 없어
-`.NET`과 같은 low-HWM 포화 검증까지는 수행하지 않는다. 현재 Java scenario는 public API만 사용해
-bounded timeout/backpressure smoke와 recovery를 검증하고, 이 차이는 `feature-map.ko.md`와
-`porting-inventory.ko.md`에 gap으로 남긴다.
+참고: `RM-C9`는 one-way send가 public 완료 객체나 bounded-failure oracle을 노출하지 않는다는
+공통 계약을 따른다. Java scenario는 public API만 사용해 다량 send 제출과 recovery를 검증하고,
+직접적인 HWM 오류 결과 검증은 binding/runtime 내부 테스트 범위로 둔다.

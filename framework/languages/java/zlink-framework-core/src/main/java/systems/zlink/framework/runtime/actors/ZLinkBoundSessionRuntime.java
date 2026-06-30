@@ -286,7 +286,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             byte[] payloadBytes;
             try {
                 payloadBytes = payload.toByteArray();
@@ -300,7 +300,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 Optional.empty(),
                 packetName.orElse(defaultPacketName),
                 metadata);
-            return sendWithRetry(stream, sessionRid, header, payloadBytes, actorId);
+            sendWithRetry(stream, sessionRid, header, payloadBytes, actorId);
         }
 
         private ZLinkYieldTurn requireTurn() {

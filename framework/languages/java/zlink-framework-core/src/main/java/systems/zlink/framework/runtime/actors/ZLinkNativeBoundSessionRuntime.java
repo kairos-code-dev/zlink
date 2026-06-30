@@ -179,7 +179,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public CompletionStage<Void> submit() {
+        public void submit() {
             ZLinkBackendActorRef currentActorRef = actorRuntime.actorRef(actor);
             byte[] frameBytes;
             try {
@@ -194,7 +194,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
             } finally {
                 payload.close();
             }
-            return sendWithRetry(
+            sendWithRetry(
                 spotNode,
                 currentActorRef,
                 sourceNodeRid,

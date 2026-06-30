@@ -92,7 +92,7 @@ suspend fun ZLinkFanoutClient.publishToTopic(
     topic: String,
     message: Message,
 ) {
-    publish(channelName, topic, message).submit().await()
+    publish(channelName, topic, message).submit()
 }
 
 fun ZLinkRouteClient.send(

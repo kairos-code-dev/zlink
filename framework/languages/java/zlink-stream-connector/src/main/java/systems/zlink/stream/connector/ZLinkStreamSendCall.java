@@ -1,7 +1,6 @@
 package systems.zlink.stream.connector;
 
 import java.util.Map;
-import java.util.concurrent.CompletionStage;
 
 public interface ZLinkStreamSendCall {
     ZLinkStreamSendCall packetName(String packetName);
@@ -12,9 +11,5 @@ public interface ZLinkStreamSendCall {
 
     ZLinkStreamSendCall compress();
 
-    CompletionStage<Void> submit();
-
-    default void await() throws Exception {
-        ZLinkStreamCompletions.await(submit());
-    }
+    void submit();
 }

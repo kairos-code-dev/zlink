@@ -63,7 +63,7 @@ public final class ProviderEndpoints {
     public java.util.Map<String, String> profileCommand(@RequestBody Contracts.ProfileMsg command) {
         client.sendToChannel(Contracts.API_CHANNEL, command)
             .packetName("ProfileMsg")
-            .await();
+            .submit();
         return java.util.Map.of("status", "sent");
     }
 

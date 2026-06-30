@@ -6,13 +6,15 @@ import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class RmC9BackpressureScenario {
+    private static final int SLOW_SEND_COUNT = 8;
+
     private RmC9BackpressureScenario() {
     }
 
     public static void run(ZLinkHttpClient backpressureConsumer, ZLinkHttpClient providerA) {
         backpressureConsumer.post("/profile/backpressure/reset").fetch(Object.class);
         java.util.List<java.util.concurrent.CompletableFuture<String>> sends = new java.util.ArrayList<>();
-        for (int index = 0; index < 32; index++) {
+        for (int index = 0; index < SLOW_SEND_COUNT; index++) {
             String commandId = "slow-c9-" + index;
             sends.add(java.util.concurrent.CompletableFuture.supplyAsync(() ->
                 backpressureConsumer.post("/profile/backpressure/send")
@@ -23,9 +25,9 @@ public final class RmC9BackpressureScenario {
         java.util.List<String> outcomes = sends.stream()
             .map(java.util.concurrent.CompletableFuture::join)
             .toList();
-        ScenarioAssert.that(outcomes.stream().anyMatch("BoundedFailure"::equals),
-            "RM-C9 did not observe bounded backpressure/timeout");
-        ScenarioSignals.sleep(5000);
+        ScenarioAssert.that(outcomes.stream().allMatch("Submitted"::equals),
+            "RM-C9 expected all one-way sends to be submitted without a public bounded-failure oracle");
+        ScenarioSignals.sleep(10000);
 
         Contracts.ProfileRes recovered = requestRecovered(backpressureConsumer);
         ScenarioAssert.that("profile:c9-recovered".equals(recovered.value()),

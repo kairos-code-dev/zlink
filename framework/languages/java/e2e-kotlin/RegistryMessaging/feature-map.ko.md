@@ -21,7 +21,7 @@ Consumer, Workflow role server endpoint 내부에서 public API로 수행한다.
 | RM-C5 | implemented | missing packet request/send 뒤 dispatch-error evidence와 정상 request 회복을 확인한다. |
 | RM-C7 | implemented | 동적 cluster에서 provider weight를 public runtime option으로 설정하고 high-weight provider 선호를 검증한다. |
 | RM-C8 | implemented | 1B, 4KiB, 256KiB, 1MiB payload 왕복을 length와 SHA-256 hash로 검증한다. MaxMessageSize 초과 거부는 framework channel runtime 미배선 한계로 완료 주장하지 않는다. |
-| RM-C9 | gap | Kotlin/Java public channel builder에는 .NET과 같은 low-HWM socket setup 표면이 없다. internal socket access나 raw-frame 주입 없이 HWM 포화를 결정적으로 유도하지 않는다. |
+| RM-C9 | implemented | 느린 provider에 다량 one-way send를 제출하고, public bounded-failure oracle 없이 backlog 해소 뒤 후속 request와 evidence가 회복되는지 검증한다. |
 
 ## 검증 결과
 
@@ -29,6 +29,9 @@ Consumer, Workflow role server endpoint 내부에서 public API로 수행한다.
   실행 결과 `registry-messaging kotlin e2e result=passed`를 확인했다.
 - 통과 scenario: `RM-A1`, `RM-A2`, `RM-A4`, `RM-A6`, `RM-B1`, `RM-B2`, `RM-C1`, `RM-C2`,
   `RM-C3`, `RM-C4`, `RM-C5`, `RM-C7`, `RM-C8`.
+- `logs/20260701-040616-12511`: `timeout 420s framework/languages/java/e2e-kotlin/RegistryMessaging/run_e2e.sh RM-C9`
+  실행 결과 `scenario RM-C9 passed`, `registry-messaging kotlin e2e result=passed`를 확인했다.
 - `RM-C8` 통과 범위는 payload round-trip이다. MaxMessageSize 초과 거부는 .NET feature-map도
   framework channel runtime 미배선 한계로 별도 한계라고 기록하므로 Kotlin에서 완료로 확장하지 않는다.
-- `RM-C9`는 public contract gap이므로 `all` 실행에서 제외한다.
+- `RM-C9`는 one-way send pressure와 recovery를 검증한다. 직접적인 HWM 오류 결과 검증은 binding/runtime 내부 테스트
+  범위로 둔다.

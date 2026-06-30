@@ -3,7 +3,6 @@ package systems.zlink.e2e.registrymessaging.consumer.Endpoints;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -60,7 +59,7 @@ public final class ConsumerEndpoints {
     public java.util.Map<String, String> missingCommand(@RequestBody Contracts.ProfileMsg command) {
         client.sendToChannel(Contracts.API_CHANNEL, command)
             .packetName("MissingProfileMsg")
-            .await();
+            .submit();
         return java.util.Map.of("status", "sent");
     }
 
@@ -79,16 +78,10 @@ public final class ConsumerEndpoints {
 
     @PostMapping("/profile/backpressure/send")
     public Contracts.BackpressureRes backpressureSend(@RequestBody Contracts.ProfileMsg command) {
-        try {
-            client.sendToChannel(Contracts.API_CHANNEL, command)
-                .packetName("ProfileMsg")
-                .submit()
-                .toCompletableFuture()
-                .get(750, TimeUnit.MILLISECONDS);
-            return new Contracts.BackpressureRes("Accepted");
-        } catch (Exception expected) {
-            return new Contracts.BackpressureRes("BoundedFailure");
-        }
+        client.sendToChannel(Contracts.API_CHANNEL, command)
+            .packetName("ProfileMsg")
+            .submit();
+        return new Contracts.BackpressureRes("Submitted");
     }
 
     private Contracts.ProfileRes requestProfile(

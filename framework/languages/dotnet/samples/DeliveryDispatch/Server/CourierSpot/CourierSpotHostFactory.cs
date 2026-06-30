@@ -33,13 +33,12 @@ public static class CourierSpotHostFactory
             route.EnableServer(nodeConfig.RouteEndpoint);
             route.EnableClient();
 
-            var mesh = options.AddSpotMesh(SampleNames.CourierActorDiscovery);
+            var mesh = options.AddSpotMesh(SampleNames.CourierActorDiscovery)
+                .UseRegistrySpotResolver();
             mesh.EnableRouter(nodeConfig.SpotRouterEndpoint)
                 .SetRoutingId(nodeConfig.Rid);
             mesh.ConfigureEntrySpot().RoutingId = nodeConfig.EntrySpotRid;
             mesh.EnablePubSub(nodeConfig.SpotEndpoint);
-            mesh.ConnectRouter(topology.CourierSessionSpotNodeRid, topology.CourierSessionSpotRouterEndpoint);
-            mesh.ConnectPeerPub(topology.CourierSessionSpotEndpoint);
             mesh.AddEntrySpot<CourierEntrySpot>();
             mesh.AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
         });

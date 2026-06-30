@@ -21,6 +21,27 @@ public sealed class RegressionTests
     }
 
     [Fact]
+    public void DotNet_Samples_Use_Discovery_Except_TicTacToe()
+    {
+        var samplesRoot = ResolveSamplesRoot();
+        var offenders = Directory
+            .EnumerateDirectories(samplesRoot)
+            .Where(static path => !string.Equals(Path.GetFileName(path), "TicTacToe", StringComparison.Ordinal))
+            .SelectMany(EnumerateSourceFiles)
+            .Select(path => (Path: path, Text: File.ReadAllText(path)))
+            .Where(static source =>
+                source.Text.Contains("EnableClient(topology.", StringComparison.Ordinal)
+                || source.Text.Contains("EnableClient(settings.", StringComparison.Ordinal)
+                || source.Text.Contains("ConnectRouter(", StringComparison.Ordinal)
+                || source.Text.Contains("ConnectPeerPub(", StringComparison.Ordinal))
+            .Select(source => Path.GetRelativePath(samplesRoot, source.Path))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
     public void Bingo_And_TicTacToe_Samples_Implement_Actor_Lifecycle_Spec()
     {
         AssertActorLifecycleSpec(
@@ -158,8 +179,8 @@ public sealed class RegressionTests
         Assert.NotEmpty(protoFiles);
         Assert.Contains("Google.Protobuf", sharedProjectText, StringComparison.Ordinal);
         Assert.Contains("Grpc.Tools", sharedProjectText, StringComparison.Ordinal);
-        Assert.Contains("<Protobuf Include=\"Contracts\\bingo_messages.proto\" GrpcServices=\"None\" />",
-            sharedProjectText, StringComparison.Ordinal);
+        Assert.Contains("Protobuf Include=\"Contracts\\bingo_messages.proto\"", sharedProjectText, StringComparison.Ordinal);
+        Assert.Contains("GrpcServices=\"None\"", sharedProjectText, StringComparison.Ordinal);
         Assert.DoesNotContain("record ", sharedContractSourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("class AuthenticateReq", sharedContractSourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("class BingoRoomJoinReq", sharedContractSourceText, StringComparison.Ordinal);

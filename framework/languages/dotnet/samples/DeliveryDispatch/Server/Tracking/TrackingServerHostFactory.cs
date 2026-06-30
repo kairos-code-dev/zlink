@@ -32,7 +32,7 @@ public static class TrackingServerHostFactory
                 .SetRoutingId(RoutingId.From("delivery-tracking-server"))
                 .AddHandlerGroup(SampleNames.TrackingRouteChannel);
             options.AddClientServerChannel(SampleNames.CustomerRouteChannel)
-                .EnableClient(topology.CustomerRouteEndpoint)
+                .EnableClient()
                 .SetRoutingId(RoutingId.From("delivery-tracking-customer-client"));
         });
 

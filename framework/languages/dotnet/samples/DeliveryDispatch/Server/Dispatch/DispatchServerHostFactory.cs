@@ -30,10 +30,10 @@ public static class DispatchServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
-                .EnableClient(topology.CourierRouteEndpoint)
+                .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
-                .EnableClient(topology.TrackingRouteEndpoint)
+                .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-tracking-client"));
         });
 

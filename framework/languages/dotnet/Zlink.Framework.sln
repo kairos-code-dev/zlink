@@ -339,6 +339,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "CourierActorNode", "Courier
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeliveryDispatch.Server.CourierActorNode", "samples\DeliveryDispatch\Server\CourierActorNode\DeliveryDispatch.Server.CourierActorNode.csproj", "{C9CE2C81-E554-430A-986F-DEEFCFB5104C}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Configuration", "Configuration", "{AAEDA497-D8F2-1C57-8E80-F14095D69688}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameQuest.Server.Configuration", "samples\GameQuest\Server\Configuration\GameQuest.Server.Configuration.csproj", "{4993843D-EDB5-432B-BB55-A8C04CD19F3C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1429,6 +1433,18 @@ Global
 		{2948B1EE-45FC-47D7-AF10-43C68AF2FD0B}.Release|x64.Build.0 = Release|Any CPU
 		{2948B1EE-45FC-47D7-AF10-43C68AF2FD0B}.Release|x86.ActiveCfg = Release|Any CPU
 		{2948B1EE-45FC-47D7-AF10-43C68AF2FD0B}.Release|x86.Build.0 = Release|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Debug|x64.Build.0 = Debug|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Debug|x86.Build.0 = Debug|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Release|x64.ActiveCfg = Release|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Release|x64.Build.0 = Release|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Release|x86.ActiveCfg = Release|Any CPU
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1596,5 +1612,7 @@ Global
 		{C9CE2C81-E554-430A-986F-DEEFCFB5104C} = {5F4757D8-EBAA-3040-30BC-6C7FC2A5C0B1}
 		{4A6FF137-0DE1-F3D4-FDAD-8BBEC5352B45} = {59877BB9-78C3-7748-D869-EB933D6E51EB}
 		{2948B1EE-45FC-47D7-AF10-43C68AF2FD0B} = {4A6FF137-0DE1-F3D4-FDAD-8BBEC5352B45}
+		{AAEDA497-D8F2-1C57-8E80-F14095D69688} = {A0651F36-DD3F-4C91-404A-F4659517F2B1}
+		{4993843D-EDB5-432B-BB55-A8C04CD19F3C} = {AAEDA497-D8F2-1C57-8E80-F14095D69688}
 	EndGlobalSection
 EndGlobal

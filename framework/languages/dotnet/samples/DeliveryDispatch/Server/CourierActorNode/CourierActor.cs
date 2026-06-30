@@ -1,7 +1,7 @@
 using DeliveryDispatch.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 
-namespace DeliveryDispatch.Server.CourierSpot;
+namespace DeliveryDispatch.Server.CourierActorNode;
 
 internal sealed class CourierActor(
     string actorId,

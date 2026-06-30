@@ -5,9 +5,9 @@ using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 
-namespace DeliveryDispatch.Server.CourierSpot;
+namespace DeliveryDispatch.Server.CourierActorNode;
 
-[ZLinkHandlerGroup(SampleNames.CourierSpotRouteChannel)]
+[ZLinkHandlerGroup(SampleNames.CourierActorNodeRouteChannel)]
 internal sealed class EnsureCourierActorRouteHandler(
     IZLinkActorManager actorManager,
     ILogger<EnsureCourierActorRouteHandler> logger)
@@ -34,10 +34,10 @@ internal sealed class EnsureCourierActorRouteHandler(
     }
 }
 
-[ZLinkHandlerGroup(SampleNames.CourierSpotRouteChannel)]
+[ZLinkHandlerGroup(SampleNames.CourierActorNodeRouteChannel)]
 internal sealed class OfferDeliveryRouteHandler(
     IZLinkActorManager actorManager,
-    CourierActorDirectory actors)
+    ActorDirectory actors)
     : IZLinkRouteRequestHandler<OfferDelivery, OfferDeliveryResult>
 {
     public async ValueTask<OfferDeliveryResult> HandleAsync(
@@ -56,7 +56,6 @@ internal sealed class OfferDeliveryRouteHandler(
         timeoutSource.CancelAfter(SampleTimings.DispatchTimeout);
         try
         {
-            await Task.Yield();
             return await actor.OfferAsync(request, timeoutSource.Token);
         }
         catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested

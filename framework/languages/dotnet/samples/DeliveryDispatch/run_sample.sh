@@ -82,7 +82,7 @@ export DELIVERYDISPATCH_REGISTRY_PUB="tcp://127.0.0.1:${PORTS[0]}"
 export DELIVERYDISPATCH_REGISTRY="tcp://127.0.0.1:${PORTS[1]}"
 export DELIVERYDISPATCH_DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"
 export DELIVERYDISPATCH_COURIER_ROUTE="tcp://127.0.0.1:${PORTS[3]}"
-export DELIVERYDISPATCH_COURIER_SPOT_NODE1_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE="tcp://127.0.0.1:${PORTS[4]}"
 export DELIVERYDISPATCH_TRACKING_ROUTE="tcp://127.0.0.1:${PORTS[5]}"
 export DELIVERYDISPATCH_CUSTOMER_ROUTE="tcp://127.0.0.1:${PORTS[6]}"
 export DELIVERYDISPATCH_CUSTOMER_STREAM="tcp://127.0.0.1:${PORTS[7]}"
@@ -91,11 +91,11 @@ export DELIVERYDISPATCH_CUSTOMER_SPOT="tcp://127.0.0.1:${PORTS[9]}"
 export DELIVERYDISPATCH_COURIER_STREAM="tcp://127.0.0.1:${PORTS[10]}"
 export DELIVERYDISPATCH_COURIER_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[11]}"
 export DELIVERYDISPATCH_COURIER_SESSION_SPOT="tcp://127.0.0.1:${PORTS[12]}"
-export DELIVERYDISPATCH_COURIER_SPOT_NODE1_ROUTER="tcp://127.0.0.1:${PORTS[13]}"
-export DELIVERYDISPATCH_COURIER_SPOT_NODE1="tcp://127.0.0.1:${PORTS[14]}"
-export DELIVERYDISPATCH_COURIER_SPOT_NODE2_ROUTE="tcp://127.0.0.1:${PORTS[15]}"
-export DELIVERYDISPATCH_COURIER_SPOT_NODE2_ROUTER="tcp://127.0.0.1:${PORTS[16]}"
-export DELIVERYDISPATCH_COURIER_SPOT_NODE2="tcp://127.0.0.1:${PORTS[17]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER="tcp://127.0.0.1:${PORTS[13]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE1="tcp://127.0.0.1:${PORTS[14]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE="tcp://127.0.0.1:${PORTS[15]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER="tcp://127.0.0.1:${PORTS[16]}"
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2="tcp://127.0.0.1:${PORTS[17]}"
 export DELIVERYDISPATCH_WORK_DIR="${WORK_DIR}"
 
 endpoint_host() {
@@ -173,13 +173,13 @@ wait_port customer-stream "${DELIVERYDISPATCH_CUSTOMER_STREAM}"
 start_server courier-session "${SCRIPT_DIR}/Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj"
 wait_port courier-session-stream "${DELIVERYDISPATCH_COURIER_STREAM}"
 
-start_server courier-spot-node1 "${SCRIPT_DIR}/Server/CourierSpot/DeliveryDispatch.Server.CourierSpot.csproj" --node node1
-wait_port courier-spot-node1-route "${DELIVERYDISPATCH_COURIER_SPOT_NODE1_ROUTE}"
-wait_port courier-spot-node1-router "${DELIVERYDISPATCH_COURIER_SPOT_NODE1_ROUTER}"
+start_server courier-actor-node1 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --node node1
+wait_port courier-actor-node1-route "${DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE}"
+wait_port courier-actor-node1-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER}"
 
-start_server courier-spot-node2 "${SCRIPT_DIR}/Server/CourierSpot/DeliveryDispatch.Server.CourierSpot.csproj" --node node2
-wait_port courier-spot-node2-route "${DELIVERYDISPATCH_COURIER_SPOT_NODE2_ROUTE}"
-wait_port courier-spot-node2-router "${DELIVERYDISPATCH_COURIER_SPOT_NODE2_ROUTER}"
+start_server courier-actor-node2 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --node node2
+wait_port courier-actor-node2-route "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE}"
+wait_port courier-actor-node2-router "${DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER}"
 
 start_server courier-gateway "${SCRIPT_DIR}/Server/CourierGateway/DeliveryDispatch.Server.CourierGateway.csproj"
 wait_port courier-route "${DELIVERYDISPATCH_COURIER_ROUTE}"

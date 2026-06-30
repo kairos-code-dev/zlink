@@ -17,15 +17,15 @@ public sealed record SampleTopology(
     string CourierSessionSpotRouterEndpoint,
     string CourierSessionSpotEndpoint,
     RoutingId CourierSessionSpotNodeRid,
-    string CourierSpotNode1RouteEndpoint,
-    string CourierSpotNode1RouterEndpoint,
-    string CourierSpotNode1Endpoint,
-    RoutingId CourierSpotNode1Rid,
+    string CourierActorNode1RouteEndpoint,
+    string CourierActorNode1RouterEndpoint,
+    string CourierActorNode1Endpoint,
+    RoutingId CourierActorNode1Rid,
     RoutingId CourierEntrySpotNode1Rid,
-    string CourierSpotNode2RouteEndpoint,
-    string CourierSpotNode2RouterEndpoint,
-    string CourierSpotNode2Endpoint,
-    RoutingId CourierSpotNode2Rid,
+    string CourierActorNode2RouteEndpoint,
+    string CourierActorNode2RouterEndpoint,
+    string CourierActorNode2Endpoint,
+    RoutingId CourierActorNode2Rid,
     RoutingId CourierEntrySpotNode2Rid)
 {
     public static SampleTopology Create()
@@ -58,17 +58,17 @@ public sealed record SampleTopology(
             ?? "tcp://127.0.0.1:7403";
         var courierSessionSpot = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SESSION_SPOT")
                                  ?? "tcp://127.0.0.1:7404";
-        var courierSpotNode1Route = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SPOT_NODE1_ROUTE")
+        var courierSpotNode1Route = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE")
                                     ?? "tcp://127.0.0.1:7405";
-        var courierSpotNode1Router = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SPOT_NODE1_ROUTER")
+        var courierSpotNode1Router = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTER")
                                      ?? "tcp://127.0.0.1:7406";
-        var courierSpotNode1 = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SPOT_NODE1")
+        var courierSpotNode1 = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE1")
                                ?? "tcp://127.0.0.1:7407";
-        var courierSpotNode2Route = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SPOT_NODE2_ROUTE")
+        var courierSpotNode2Route = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE")
                                     ?? "tcp://127.0.0.1:7408";
-        var courierSpotNode2Router = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SPOT_NODE2_ROUTER")
+        var courierSpotNode2Router = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTER")
                                      ?? "tcp://127.0.0.1:7409";
-        var courierSpotNode2 = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SPOT_NODE2")
+        var courierSpotNode2 = Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE2")
                                ?? "tcp://127.0.0.1:7410";
 
         return new SampleTopology(
@@ -89,25 +89,25 @@ public sealed record SampleTopology(
             courierSpotNode1Route,
             courierSpotNode1Router,
             courierSpotNode1,
-            RoutingId.From(SampleNames.CourierSpotNode1),
+            RoutingId.From(SampleNames.CourierActorNode1),
             RoutingId.From(SampleNames.CourierEntrySpotNode1),
             courierSpotNode2Route,
             courierSpotNode2Router,
             courierSpotNode2,
-            RoutingId.From(SampleNames.CourierSpotNode2),
+            RoutingId.From(SampleNames.CourierActorNode2),
             RoutingId.From(SampleNames.CourierEntrySpotNode2));
     }
 
-    public CourierSpotPlacement CourierPlacement(string courierId)
+    public CourierActorNodePlacement CourierPlacement(string courierId)
     {
         return courierId switch
         {
-            "courier-a" => new CourierSpotPlacement(CourierSpotNode1Rid),
-            "courier-b" => new CourierSpotPlacement(CourierSpotNode2Rid),
+            "courier-a" => new CourierActorNodePlacement(CourierActorNode1Rid),
+            "courier-b" => new CourierActorNodePlacement(CourierActorNode2Rid),
             _ => throw new InvalidOperationException($"Unknown courier '{courierId}'.")
         };
     }
 }
 
-public sealed record CourierSpotPlacement(
+public sealed record CourierActorNodePlacement(
     RoutingId NodeRid);

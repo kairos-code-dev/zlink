@@ -1,5 +1,5 @@
 using DeliveryDispatch.Server.Configuration;
-using DeliveryDispatch.Server.CourierSpot;
+using DeliveryDispatch.Server.CourierActorNode;
 using Microsoft.Extensions.Hosting;
 
 internal static class Program
@@ -7,10 +7,11 @@ internal static class Program
     private static async Task Main(string[] args)
     {
         var node = ReadOption(args, "--node")
-            ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_SPOT_NODE")
+            ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE")
+            ?? Environment.GetEnvironmentVariable("DELIVERYDISPATCH_COURIER_ACTOR_NODE")
             ?? "node1";
         var topology = SampleTopology.Create();
-        await CourierSpotHostFactory.Build(topology, node).RunAsync();
+        await NodeHostFactory.Build(topology, node).RunAsync();
     }
 
     private static string? ReadOption(string[] args, string name)

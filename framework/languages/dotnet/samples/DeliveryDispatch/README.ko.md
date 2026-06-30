@@ -139,7 +139,7 @@ ZLink 역할 메시지로 구성한다.
 | 기존 웹 시스템 구성 | ZLink 샘플의 대응 | 설명 |
 |--------------------|------------------|------|
 | Delivery API + dispatch worker | `Dispatch server` | 고객 HTTP 요청을 받고, 같은 server 안의 worker가 후보 배송원을 고른 뒤 단일 courier channel로 제안을 보낸다. |
-| Courier API 또는 worker | `CourierGateway server` + `CourierSession server` + `Courier spot server node` | Gateway server의 handler와 directory module이 배송원 id를 actor 위치와 session route로 해석하고, spot server의 actor가 session route로 제안을 push한다. |
+| Courier API 또는 worker | `CourierGateway server` + `CourierSession server` + `Courier actor node server` | Gateway server의 handler와 directory module이 배송원 id를 actor 위치와 session route로 해석하고, spot server의 actor가 session route로 제안을 push한다. |
 | Delivery event table | `Tracking` + `EvidenceStore` | 상태 이벤트를 기록하고 고객에게 보낼 알림을 만든다. |
 | Session map 또는 socket registry | `CustomerActor` + bound session | 고객 actor와 현재 stream session을 연결해 특정 고객에게만 status를 push한다. |
 | WebSocket/SSE server | `Session` | 고객 WebSocket 연결을 받고, 고객 actor를 session과 bind한다. |
@@ -163,8 +163,8 @@ flowchart LR
         DispatchServer["Dispatch<br/>server"]
         CourierGatewayServer["CourierGateway<br/>server"]
         CourierSessionServer["CourierSession<br/>server"]
-        CourierSpotServer1["Courier spot node 1<br/>server"]
-        CourierSpotServer2["Courier spot node 2<br/>server"]
+        CourierActorNodeServer1["Courier actor node 1<br/>server"]
+        CourierActorNodeServer2["Courier actor node 2<br/>server"]
         CustomerGatewayServer["CustomerGateway<br/>server"]
         TrackingServer["Tracking<br/>server"]
         Evidence[(Evidence log)]
@@ -178,11 +178,11 @@ flowchart LR
     DispatchServer -->|DispatchWorker module uses courier channel| CourierGatewayServer
     DispatchServer -->|DispatchWorker module emits status| TrackingServer
 
-    CourierGatewayServer -->|handler and directory target entry spot| CourierSpotServer1
-    CourierGatewayServer -->|handler and directory target entry spot| CourierSpotServer2
+    CourierGatewayServer -->|handler and directory target entry spot| CourierActorNodeServer1
+    CourierGatewayServer -->|handler and directory target entry spot| CourierActorNodeServer2
     CourierSessionServer -->|session bind request| CourierGatewayServer
-    CourierSpotServer1 -->|actor pushes through session route| CourierSessionServer
-    CourierSpotServer2 -->|actor pushes through session route| CourierSessionServer
+    CourierActorNodeServer1 -->|actor pushes through session route| CourierSessionServer
+    CourierActorNodeServer2 -->|actor pushes through session route| CourierSessionServer
 
     TrackingServer -->|EvidenceStore module writes| Evidence
     TrackingServer -->|Tracking module notifies customer actor| CustomerGatewayServer
@@ -260,7 +260,7 @@ sequenceDiagram
         participant CourierDirectory as CourierDirectory module
     end
 
-    box Courier spot server node 1
+    box Courier actor node server 1
         participant CourierRoute as Courier node handler module
         participant CourierEntry as CourierEntrySpot module
         participant CourierActor as CourierActor module courier-a
@@ -381,7 +381,7 @@ yield 전에 상태 변경을 확정하지 않는 방식으로 작성한다. 이
 | `Dispatch server` | ASP.NET HTTP API, `AddClientServerChannel` server/client, `DispatchWorker` module | 고객 HTTP 요청을 받고, courier 후보 선택과 timeout 재시도를 처리한다. |
 | `CourierGateway server` | `CourierChannel` handler module, `CourierDirectory` module | offer 요청을 받고, courier id를 actor node rid와 session route로 해석한다. |
 | `CourierSession server` | `AddStreamNode`, `CourierSession` | 배송원 stream 연결을 받고, courier id와 session route를 gateway에 bind 요청한다. |
-| `Courier spot server node 1/2` | `CourierEntrySpot`, `CourierActor` | 선택된 node에서 actor를 만들고 actor 메시지 진입점을 제공한다. |
+| `Courier actor node server 1/2` | `CourierEntrySpot`, `CourierActor` | 선택된 node에서 actor를 만들고 actor 메시지 진입점을 제공한다. |
 | `Tracking server` | `AddClientServerChannel` server, `EvidenceStore` module | 배송 상태 이벤트를 기록하고 고객 알림을 만든다. |
 | `CustomerGateway server` | `AddStreamNode`, `CustomerSession`, `CustomerEntrySpot`, `CustomerActor` | 고객 stream 연결을 받고, 고객 actor와 session을 bind한다. |
 | Client | HTTP client + stream connector typed wait | 샘플 검증 시나리오를 실행한다. |

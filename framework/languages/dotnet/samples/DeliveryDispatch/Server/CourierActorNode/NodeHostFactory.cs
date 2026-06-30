@@ -1,13 +1,14 @@
 using DeliveryDispatch.Server.Configuration;
+using DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
 
-namespace DeliveryDispatch.Server.CourierSpot;
+namespace DeliveryDispatch.Server.CourierActorNode;
 
-public static class CourierSpotHostFactory
+public static class NodeHostFactory
 {
     public static IHost Build(SampleTopology topology, string node)
     {
@@ -16,20 +17,20 @@ public static class CourierSpotHostFactory
         SampleLogging.Configure(
             builder.Logging,
             SampleLogging.DirectoryFromEnvironment("DELIVERYDISPATCH_LOG_DIR"),
-            $"courier-spot-{nodeConfig.Name}");
+            $"courier-actor-{nodeConfig.Name}");
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton<CourierActorDirectory>();
+        builder.Services.AddSingleton<ActorDirectory>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path($"courier-spot-{nodeConfig.Name}"))
-                .TraceLabel($"courier-spot-{nodeConfig.Name}");
-            options.AddHandlersFromAssemblyOf(typeof(CourierSpotHostFactory));
+                .TraceLogFile(SampleFlowLog.Path($"courier-actor-{nodeConfig.Name}"))
+                .TraceLabel($"courier-actor-{nodeConfig.Name}");
+            options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-            var route = options.AddRouteMesh(SampleNames.CourierSpotRouteChannel)
+            var route = options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
                 .SetRoutingId(nodeConfig.Rid)
-                .AddHandlerGroup(SampleNames.CourierSpotRouteChannel);
+                .AddHandlerGroup(SampleNames.CourierActorNodeRouteChannel);
             route.EnableServer(nodeConfig.RouteEndpoint);
             route.EnableClient();
 
@@ -46,29 +47,29 @@ public static class CourierSpotHostFactory
         return builder.Build();
     }
 
-    private static CourierSpotNodeOptions ResolveNode(SampleTopology topology, string node)
+    private static NodeOptions ResolveNode(SampleTopology topology, string node)
     {
         return node switch
         {
-            "node1" => new CourierSpotNodeOptions(
+            "node1" => new NodeOptions(
                 "node1",
-                topology.CourierSpotNode1Rid,
+                topology.CourierActorNode1Rid,
                 topology.CourierEntrySpotNode1Rid,
-                topology.CourierSpotNode1RouteEndpoint,
-                topology.CourierSpotNode1RouterEndpoint,
-                topology.CourierSpotNode1Endpoint),
-            "node2" => new CourierSpotNodeOptions(
+                topology.CourierActorNode1RouteEndpoint,
+                topology.CourierActorNode1RouterEndpoint,
+                topology.CourierActorNode1Endpoint),
+            "node2" => new NodeOptions(
                 "node2",
-                topology.CourierSpotNode2Rid,
+                topology.CourierActorNode2Rid,
                 topology.CourierEntrySpotNode2Rid,
-                topology.CourierSpotNode2RouteEndpoint,
-                topology.CourierSpotNode2RouterEndpoint,
-                topology.CourierSpotNode2Endpoint),
-            _ => throw new InvalidOperationException($"Unknown courier spot node '{node}'.")
+                topology.CourierActorNode2RouteEndpoint,
+                topology.CourierActorNode2RouterEndpoint,
+                topology.CourierActorNode2Endpoint),
+            _ => throw new InvalidOperationException($"Unknown courier actor node '{node}'.")
         };
     }
 
-    private sealed record CourierSpotNodeOptions(
+    private sealed record NodeOptions(
         string Name,
         Systems.Zlink.RoutingId Rid,
         Systems.Zlink.RoutingId EntrySpotRid,

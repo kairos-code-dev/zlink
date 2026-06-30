@@ -23,7 +23,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeliveryDispatch.Server.Cou
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeliveryDispatch.Server.CourierSession", "Server\CourierSession\DeliveryDispatch.Server.CourierSession.csproj", "{73F5C4EE-09D2-4A24-99B2-E742B389360A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeliveryDispatch.Server.CourierSpot", "Server\CourierSpot\DeliveryDispatch.Server.CourierSpot.csproj", "{111C582D-9F72-4B95-9C68-BED6F8E3915E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeliveryDispatch.Server.CourierActorNode", "Server\CourierActorNode\DeliveryDispatch.Server.CourierActorNode.csproj", "{111C582D-9F72-4B95-9C68-BED6F8E3915E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeliveryDispatch.Server.CustomerGateway", "Server\CustomerGateway\DeliveryDispatch.Server.CustomerGateway.csproj", "{E005B507-4393-4AD5-AA75-4D916E27A5DE}"
 EndProject

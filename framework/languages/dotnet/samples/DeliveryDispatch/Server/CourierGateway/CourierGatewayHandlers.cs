@@ -21,7 +21,7 @@ internal sealed class BindCourierHandler(
         _ = context;
         var placement = directory.ChoosePlacement(request.CourierId);
         var ensured = await routes.Request(
-                SampleNames.CourierSpotRouteChannel,
+                SampleNames.CourierActorNodeRouteChannel,
                 placement.NodeRid,
                 new EnsureCourierActor(request.CourierId))
             .PacketName(nameof(EnsureCourierActor))
@@ -50,7 +50,7 @@ internal sealed class OfferDeliveryHandler(
         _ = context;
         var binding = directory.Require(request.CourierId);
         return await routes.Request(
-                SampleNames.CourierSpotRouteChannel,
+                SampleNames.CourierActorNodeRouteChannel,
                 Systems.Zlink.RoutingId.From(binding.Actor.NodeRid),
                 request)
             .PacketName(nameof(OfferDelivery))

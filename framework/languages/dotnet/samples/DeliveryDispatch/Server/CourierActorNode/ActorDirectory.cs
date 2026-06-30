@@ -1,6 +1,6 @@
-namespace DeliveryDispatch.Server.CourierSpot;
+namespace DeliveryDispatch.Server.CourierActorNode;
 
-internal sealed class CourierActorDirectory
+internal sealed class ActorDirectory
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, CourierActor> _actors = new(StringComparer.Ordinal);

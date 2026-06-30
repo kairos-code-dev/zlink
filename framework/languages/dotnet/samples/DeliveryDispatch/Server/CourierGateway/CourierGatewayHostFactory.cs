@@ -31,7 +31,7 @@ public static class CourierGatewayHostFactory
                 .EnableServer(topology.CourierRouteEndpoint)
                 .SetRoutingId(RoutingId.From("delivery-courier-gateway-server"))
                 .AddHandlerGroup(SampleNames.CourierRouteChannel);
-            options.AddRouteMesh(SampleNames.CourierSpotRouteChannel)
+            options.AddRouteMesh(SampleNames.CourierActorNodeRouteChannel)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From("delivery-courier-gateway"));
         });

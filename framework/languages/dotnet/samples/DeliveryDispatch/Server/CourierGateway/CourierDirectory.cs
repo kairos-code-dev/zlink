@@ -9,7 +9,7 @@ internal sealed class CourierDirectory(SampleTopology topology)
     private readonly object _gate = new();
     private readonly Dictionary<string, CourierBinding> _actors = new(StringComparer.Ordinal);
 
-    public CourierSpotPlacement ChoosePlacement(string courierId)
+    public CourierActorNodePlacement ChoosePlacement(string courierId)
     {
         return topology.CourierPlacement(courierId);
     }

@@ -56,7 +56,7 @@ server role을 하나의 application에서 role 옵션으로 바꾸는 방식을
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/provider/Program.kt` (`ProviderApplication`) | server-role | done | discovery, profile/manual, route mesh, weight 설정은 같은 파일의 `ProviderApplication` class에 둔다. |
 | `Server/Provider/Configuration/ServerOptions.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/provider/Configuration/ServerOptions.kt` | configuration | done | provider CLI 옵션과 route peer 목록 파싱. |
 | `Server/Provider/Endpoints/ProviderEndpoints.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/provider/Endpoints/ProviderEndpoints.kt` | endpoints | done | 실제 role server HTTP endpoint와 evidence wait/shutdown endpoint. |
-| `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/provider/Handlers/ProviderHandlers.kt` | handlers | done | `ProfileRequest`, `PayloadRequest`, `ProfileCommand`, route handler, dispatch observer. |
+| `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/provider/Handlers/ProviderHandlers.kt` | handlers | done | `ProfileReq`, `PayloadReq`, `ProfileMsg`, route handler, dispatch observer. |
 | `Server/Provider/Infrastructure/EvidenceStore.cs` | `Server/Provider/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/provider/Infrastructure/EvidenceStore.kt` | infrastructure | done | wait 가능한 provider evidence store. |
 | `Server/Consumer/RegistryMessaging.Consumer.csproj` | `Server/Consumer/build.gradle.kts` | build | done | Consumer role application project로 분리한다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/consumer/Program.kt` | server-entry | done | 별도 consumer 실행 진입점으로 포팅한다. |
@@ -68,7 +68,7 @@ server role을 하나의 application에서 role 옵션으로 바꾸는 방식을
 | `Server/Workflow/WorkflowHostFactory.cs` | `Server/Workflow/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/workflow/Program.kt` (`WorkflowApplication`) | server-role | done | workflow channel provider와 client 설정은 같은 파일의 `WorkflowApplication` class에 둔다. |
 | `Server/Workflow/Configuration/ServerOptions.cs` | `Server/Workflow/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/workflow/Configuration/ServerOptions.kt` | configuration | done | workflow CLI 옵션과 weight 파싱. |
 | `Server/Workflow/Endpoints/WorkflowEndpoints.cs` | `Server/Workflow/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/workflow/Endpoints/WorkflowEndpoints.kt` | endpoints | done | workflow request endpoint, evidence wait, shutdown endpoint. |
-| `Server/Workflow/Handlers/WorkflowHandlers.cs` | `Server/Workflow/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/workflow/Handlers/WorkflowHandlers.kt` | handlers | done | `WorkflowRequest` handler와 dispatch observer. |
+| `Server/Workflow/Handlers/WorkflowHandlers.cs` | `Server/Workflow/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/workflow/Handlers/WorkflowHandlers.kt` | handlers | done | `WorkflowReq` handler와 dispatch observer. |
 | `Server/Workflow/Infrastructure/EvidenceStore.cs` | `Server/Workflow/src/main/kotlin/systems/zlink/e2e/kotlin/registrymessaging/workflow/Infrastructure/EvidenceStore.kt` | infrastructure | done | wait 가능한 workflow evidence store. |
 
 ## Kotlin 전용 파일

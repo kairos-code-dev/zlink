@@ -21,16 +21,16 @@ internal static class RmC8PayloadRoundTripScenario
             var payload = BuildPayload(size);
             var expectedHash = HashPayload(payload);
             var reply = (await singleConsumer.Post("/profile/payload")
-                .Body(new PayloadRequest(marker, payload))
-                .SubmitAsync<PayloadReply>()).Body;
+                .Body(new PayloadReq(marker, payload))
+                .SubmitAsync<PayloadRes>()).Body;
             ScenarioAssert.That(reply.Marker == marker, "RM-C8 marker mismatch.");
             ScenarioAssert.That(reply.Length == payload.Length, "RM-C8 payload length mismatch.");
             ScenarioAssert.That(reply.Sha256 == expectedHash, "RM-C8 payload hash mismatch.");
         }
 
         var followUp = (await singleConsumer.Post("/profile/request")
-            .Body(new ProfileRequest("rm-c8-after"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("rm-c8-after"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:rm-c8-after", "RM-C8 follow-up request failed.");
 
         var after = providerA.Get("/evidence").Fetch<string[]>();

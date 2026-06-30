@@ -14,9 +14,9 @@ internal sealed class EnsureActorHandler(
     IZLinkActorManager actors,
     NodeOptions node,
     EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<EnsureActorReq, EnsureActorReply>
+    : IZLinkRouteRequestHandler<EnsureActorReq, EnsureActorRes>
 {
-    public async ValueTask<EnsureActorReply> HandleAsync(
+    public async ValueTask<EnsureActorRes> HandleAsync(
         EnsureActorReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -25,12 +25,12 @@ internal sealed class EnsureActorHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
-            new ScenarioActorCreateRequest(request.DisplayName),
+            new ScenarioActorCreateReq(request.DisplayName),
             cancellationToken);
 
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         evidence.Add($"entry-joined|rid={node.Rid}|actor={request.ActorId}");
-        return new EnsureActorReply(
+        return new EnsureActorRes(
             actor.ActorId,
             actor.NodeRid.ToString(),
             actor.Generation);
@@ -39,9 +39,9 @@ internal sealed class EnsureActorHandler(
 
 [ZLinkHandlerGroup("play")]
 internal sealed class ControlPingHandler(NodeOptions node, EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<ControlPingReq, ControlPingReply>
+    : IZLinkRouteRequestHandler<ControlPingReq, ControlPingRes>
 {
-    public ValueTask<ControlPingReply> HandleAsync(
+    public ValueTask<ControlPingRes> HandleAsync(
         ControlPingReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -49,7 +49,7 @@ internal sealed class ControlPingHandler(NodeOptions node, EvidenceStore evidenc
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"control-ping|rid={node.Rid}|value={request.Value}");
-        return ValueTask.FromResult(new ControlPingReply(request.Value, node.Rid));
+        return ValueTask.FromResult(new ControlPingRes(request.Value, node.Rid));
     }
 }
 
@@ -58,9 +58,9 @@ internal sealed class CreateSpotHandler(
     IZLinkSpotManager spots,
     NodeOptions node,
     EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<CreateSpotReq, CreateSpotReply>
+    : IZLinkRouteRequestHandler<CreateSpotReq, CreateSpotRes>
 {
-    public async ValueTask<CreateSpotReply> HandleAsync(
+    public async ValueTask<CreateSpotRes> HandleAsync(
         CreateSpotReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -70,7 +70,7 @@ internal sealed class CreateSpotHandler(
             RoutingId.From(request.SpotRid),
             cancellationToken);
         evidence.Add($"create-spot|rid={node.Rid}|spot={result.SpotRid}|state={result.State}");
-        return new CreateSpotReply(result.SpotRid.ToString(), node.Rid, result.State.ToString());
+        return new CreateSpotRes(result.SpotRid.ToString(), node.Rid, result.State.ToString());
     }
 }
 
@@ -78,9 +78,9 @@ internal sealed class CreateSpotHandler(
 internal sealed class CloseSpotHandler(
     IZLinkSpotManager spots,
     EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<CloseSpotReq, CloseSpotReply>
+    : IZLinkRouteRequestHandler<CloseSpotReq, CloseSpotRes>
 {
-    public async ValueTask<CloseSpotReply> HandleAsync(
+    public async ValueTask<CloseSpotRes> HandleAsync(
         CloseSpotReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -88,7 +88,7 @@ internal sealed class CloseSpotHandler(
         _ = context;
         var closed = await spots.CloseAsync(RoutingId.From(request.SpotRid), cancellationToken);
         evidence.Add($"close-spot|rid={evidence.Rid}|spot={request.SpotRid}|closed={closed}");
-        return new CloseSpotReply(request.SpotRid, closed);
+        return new CloseSpotRes(request.SpotRid, closed);
     }
 }
 
@@ -96,9 +96,9 @@ internal sealed class CloseSpotHandler(
 internal sealed class SpotTypeMismatchHandler(
     IZLinkSpotManager spots,
     EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<SpotTypeMismatchReq, SpotTypeMismatchReply>
+    : IZLinkRouteRequestHandler<SpotTypeMismatchReq, SpotTypeMismatchRes>
 {
-    public async ValueTask<SpotTypeMismatchReply> HandleAsync(
+    public async ValueTask<SpotTypeMismatchRes> HandleAsync(
         SpotTypeMismatchReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -113,7 +113,7 @@ internal sealed class SpotTypeMismatchHandler(
         catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.SpotTypeMismatch)
         {
             evidence.Add($"spot-type-mismatch|rid={evidence.Rid}|spot={request.SpotRid}|kind={ex.Kind}");
-            return new SpotTypeMismatchReply(request.SpotRid, true, ex.Kind.ToString(), first.State.ToString());
+            return new SpotTypeMismatchRes(request.SpotRid, true, ex.Kind.ToString(), first.State.ToString());
         }
 
         throw new InvalidOperationException("Expected SpotTypeMismatch for reused spot rid.");
@@ -124,9 +124,9 @@ internal sealed class SpotTypeMismatchHandler(
 internal sealed class JoinUserSpotActorHandler(
     IZLinkActorManager actors,
     EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorReply>
+    : IZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorRes>
 {
-    public async ValueTask<JoinUserSpotActorReply> HandleAsync(
+    public async ValueTask<JoinUserSpotActorRes> HandleAsync(
         JoinUserSpotActorReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -135,13 +135,13 @@ internal sealed class JoinUserSpotActorHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
-            new ScenarioActorCreateRequest(request.SpotRid),
+            new ScenarioActorCreateReq(request.SpotRid),
             cancellationToken);
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
             + $"|actor={request.ActorId}|accepted=True");
         evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={request.SpotRid}|actor={request.ActorId}");
-        return new JoinUserSpotActorReply(
+        return new JoinUserSpotActorRes(
             request.SpotRid,
             actor.ActorId,
             true,

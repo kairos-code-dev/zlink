@@ -48,8 +48,8 @@ function createPeerModule(options: ProtobufOptions, evidence: EvidenceStore): Fu
           builder.addClientServerChannel(RegistrationCodecNames.channel)
             .enableServer(options.channelEndpoint)
             .enableClient(options.channelEndpoint)
-            .addRequestHandler(PacketNames.echoProtobuf, ProtobufEchoRequestHandler)
-            .addSendHandler(PacketNames.echoProtobufCommand, ProtobufEchoCommandHandler);
+            .addRequestHandler(PacketNames.echoProtobufReq, ProtobufEchoRequestHandler)
+            .addSendHandler(PacketNames.echoProtobufMsg, ProtobufEchoCommandHandler);
           return builder.build();
         }
       })

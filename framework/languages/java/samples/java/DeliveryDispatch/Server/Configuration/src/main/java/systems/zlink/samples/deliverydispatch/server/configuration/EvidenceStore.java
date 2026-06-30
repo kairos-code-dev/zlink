@@ -31,7 +31,7 @@ public final class EvidenceStore {
         this.path = dir.resolve("events.log");
     }
 
-    public void append(Messages.DeliveryStatusChanged status) {
+    public void append(Messages.DeliveryStatusReq status) {
         String line = String.join(
             "|",
             status.deliveryId(),

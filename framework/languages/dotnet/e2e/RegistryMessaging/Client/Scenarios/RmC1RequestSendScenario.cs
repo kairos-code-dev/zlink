@@ -11,13 +11,13 @@ internal static class RmC1RequestSendScenario
     public static async Task RunAsync(ZLinkHttpClient providerA, ZLinkHttpClient providerB)
     {
         var reply = (await providerA.Post("/profile/request")
-            .Body(new ProfileRequest("rm-c1-request"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("rm-c1-request"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:rm-c1-request", "RM-C1 request reply mismatch.");
 
         var commandId = $"cmd-{Guid.NewGuid():N}";
         await providerA.Post("/profile/command")
-            .Body(new ProfileCommand(commandId))
+            .Body(new ProfileMsg(commandId))
             .SubmitAsync<object>();
 
         var evidence = await WaitForProviderEvidenceAsync(providerA, providerB, commandId);
@@ -36,7 +36,7 @@ internal static class RmC1RequestSendScenario
         ZLinkHttpClient providerB,
         string commandId)
     {
-        var wait = new EvidenceWaitRequest($"command={commandId}");
+        var wait = new EvidenceWaitReq($"command={commandId}");
         var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).SubmitAsync<string[]>().AsTask();
         var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).SubmitAsync<string[]>().AsTask();
         await Task.WhenAll(providerAEvidence, providerBEvidence);

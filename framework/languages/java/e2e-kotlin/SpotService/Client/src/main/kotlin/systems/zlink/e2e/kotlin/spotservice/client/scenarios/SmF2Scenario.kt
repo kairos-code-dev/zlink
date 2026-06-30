@@ -12,10 +12,10 @@ internal object SmF2Scenario {
         val reply = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("route-mesh"),
+                Contracts.StateReq("route-mesh"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         ensure(reply.nodeRid == "play-a", "SM-F2 route mesh target mismatch")
         println("scenario SM-F2 passed")

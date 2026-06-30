@@ -1,10 +1,10 @@
-import type { RouteMissingResult, ScenarioRoutePong } from '../../Shared/messages';
+import type { RouteMissingRes, ScenarioRouteRes } from '../../Shared/messages';
 import { getJson, postJson } from '../Support/http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
 export async function runRmC2(providerAUrl: string, providerBUrl: string): Promise<void> {
   const marker = uniqueMarker('rm-c2');
-  const reply = await postJson<ScenarioRoutePong>(providerAUrl, '/profile/route/request', { value: marker });
+  const reply = await postJson<ScenarioRouteRes>(providerAUrl, '/profile/route/request', { value: marker });
   ensure(reply.providerRid === 'api-b', 'RM-C2 targeted route request should reach api-b.');
   ensure(reply.value === `route:${marker}`, 'RM-C2 route reply value mismatch.');
 
@@ -16,7 +16,7 @@ export async function runRmC2(providerAUrl: string, providerBUrl: string): Promi
     'RM-C2 targeted route evidence did not match api-b only.'
   );
 
-  const missing = await postJson<RouteMissingResult>(providerAUrl, '/profile/route/missing', { value: 'missing' });
+  const missing = await postJson<RouteMissingRes>(providerAUrl, '/profile/route/missing', { value: 'missing' });
   ensure(missing.failed, 'RM-C2 missing rid request should fail.');
   console.log('scenario RM-C2 passed');
 }

@@ -106,30 +106,30 @@ public final class Program {
         String requestId = "ydb1-" + System.nanoTime();
         String actorA = requestId + "-actor-a";
         String actorB = requestId + "-actor-b";
-        Contracts.BindActorsReply bind = connector
-            .request(new Contracts.BindActorsRequest(Contracts.TARGET_SPOT, actorA, actorB))
+        Contracts.BindActorsRes bind = connector
+            .request(new Contracts.BindActorsReq(Contracts.TARGET_SPOT, actorA, actorB))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.BindActorsReply.class);
+            .await(Contracts.BindActorsRes.class);
         ensure(actorA.equals(bind.actorA()), "YD-B1 actor A bind mismatch");
         ensure(actorB.equals(bind.actorB()), "YD-B1 actor B bind mismatch");
 
         joinActor(connector, requestId + "-join-a", actorA);
         joinActor(connector, requestId + "-join-b", actorB);
 
-        CompletionStage<Contracts.ActorReply> yield = connector
-            .request(new Contracts.ActorYieldRequest(requestId, 800))
+        CompletionStage<Contracts.ActorYieldRes> yield = connector
+            .request(new Contracts.ActorYieldReq(requestId, 800))
             .metadata(Contracts.ACTOR_ID_METADATA, actorA)
             .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorReply.class);
+            .submit(Contracts.ActorYieldRes.class);
         Thread.sleep(150);
-        CompletionStage<Contracts.ActorReply> fast = connector
-            .request(new Contracts.ActorFastRequest(requestId, "b1-fast"))
+        CompletionStage<Contracts.ActorFastRes> fast = connector
+            .request(new Contracts.ActorFastReq(requestId, "b1-fast"))
             .metadata(Contracts.ACTOR_ID_METADATA, actorB)
             .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorReply.class);
+            .submit(Contracts.ActorFastRes.class);
 
-        Contracts.ActorReply fastReply = connector.await(fast);
-        Contracts.ActorReply yieldReply = connector.await(yield);
+        Contracts.ActorFastRes fastReply = connector.await(fast);
+        Contracts.ActorYieldRes yieldReply = connector.await(yield);
         ensure(actorA.equals(yieldReply.actorId()), "YD-B1 yield actor mismatch");
         ensure(actorB.equals(fastReply.actorId()), "YD-B1 fast actor mismatch");
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
@@ -157,14 +157,14 @@ public final class Program {
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
         CompletionStage<Void> worker = connector
-            .send(new Contracts.WorkerYieldCommand(requestId, 4000))
+            .send(new Contracts.WorkerYieldMsg(requestId, 4000))
             .metadata(metadata)
             .submit();
         assertOrder(playEvidence, requestId, List.of(
             "worker-yield-started",
             "worker-yield-released"));
         connector
-            .send(new Contracts.ProbeCommand(requestId, "worker-probe"))
+            .send(new Contracts.ProbeMsg(requestId, "worker-probe"))
             .metadata(metadata)
             .await();
         connector.await(worker);
@@ -181,29 +181,29 @@ public final class Program {
         String requestId = "ydb2-" + System.nanoTime();
         String actorA = requestId + "-actor-a";
         String actorB = requestId + "-actor-b";
-        Contracts.BindActorsReply bind = connector
-            .request(new Contracts.BindActorsRequest(Contracts.TARGET_SPOT, actorA, actorB))
+        Contracts.BindActorsRes bind = connector
+            .request(new Contracts.BindActorsReq(Contracts.TARGET_SPOT, actorA, actorB))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.BindActorsReply.class);
+            .await(Contracts.BindActorsRes.class);
         ensure(actorA.equals(bind.actorA()), "YD-B2 actor A bind mismatch");
         ensure(actorB.equals(bind.actorB()), "YD-B2 actor B bind mismatch");
 
         joinActor(connector, requestId + "-join-a", actorA);
 
-        CompletionStage<Contracts.ActorReply> yield = connector
-            .request(new Contracts.ActorYieldRequest(requestId, 350))
+        CompletionStage<Contracts.ActorYieldRes> yield = connector
+            .request(new Contracts.ActorYieldReq(requestId, 350))
             .metadata(Contracts.ACTOR_ID_METADATA, actorA)
             .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorReply.class);
+            .submit(Contracts.ActorYieldRes.class);
         Thread.sleep(75);
-        CompletionStage<Contracts.ActorReply> fast = connector
-            .request(new Contracts.ActorFastRequest(requestId, "b2-fast"))
+        CompletionStage<Contracts.ActorFastRes> fast = connector
+            .request(new Contracts.ActorFastReq(requestId, "b2-fast"))
             .metadata(Contracts.ACTOR_ID_METADATA, actorA)
             .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorReply.class);
+            .submit(Contracts.ActorFastRes.class);
 
-        Contracts.ActorReply yieldReply = connector.await(yield);
-        Contracts.ActorReply fastReply = connector.await(fast);
+        Contracts.ActorYieldRes yieldReply = connector.await(yield);
+        Contracts.ActorFastRes fastReply = connector.await(fast);
         ensure(actorA.equals(yieldReply.actorId()), "YD-B2 yield actor mismatch");
         ensure(actorA.equals(fastReply.actorId()), "YD-B2 fast actor mismatch");
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
@@ -227,27 +227,27 @@ public final class Program {
         String requestId = "ydb3-" + System.nanoTime();
         String actorA = requestId + "-actor-a";
         String actorB = requestId + "-actor-b";
-        Contracts.BindActorsReply bind = connector
-            .request(new Contracts.BindActorsRequest(Contracts.TARGET_SPOT, actorA, actorB))
+        Contracts.BindActorsRes bind = connector
+            .request(new Contracts.BindActorsReq(Contracts.TARGET_SPOT, actorA, actorB))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.BindActorsReply.class);
+            .await(Contracts.BindActorsRes.class);
         ensure(actorA.equals(bind.actorA()), "YD-B3 actor A bind mismatch");
         ensure(actorB.equals(bind.actorB()), "YD-B3 actor B bind mismatch");
 
-        CompletionStage<Contracts.ActorReply> join = connector
-            .request(new Contracts.ActorJoinYieldRequest(requestId, Contracts.TARGET_SPOT))
+        CompletionStage<Contracts.ActorJoinYieldRes> join = connector
+            .request(new Contracts.ActorJoinYieldReq(requestId, Contracts.TARGET_SPOT))
             .metadata(Contracts.ACTOR_ID_METADATA, actorA)
             .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorReply.class);
+            .submit(Contracts.ActorJoinYieldRes.class);
         Thread.sleep(75);
-        CompletionStage<Contracts.ActorReply> fast = connector
-            .request(new Contracts.ActorFastRequest(requestId, "b3-fast"))
+        CompletionStage<Contracts.ActorFastRes> fast = connector
+            .request(new Contracts.ActorFastReq(requestId, "b3-fast"))
             .metadata(Contracts.ACTOR_ID_METADATA, actorB)
             .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorReply.class);
+            .submit(Contracts.ActorFastRes.class);
 
-        Contracts.ActorReply fastReply = connector.await(fast);
-        Contracts.ActorReply joinReply = connector.await(join);
+        Contracts.ActorFastRes fastReply = connector.await(fast);
+        Contracts.ActorJoinYieldRes joinReply = connector.await(join);
         ensure(actorA.equals(joinReply.actorId()), "YD-B3 join actor mismatch");
         ensure(actorB.equals(fastReply.actorId()), "YD-B3 fast actor mismatch");
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
@@ -275,7 +275,7 @@ public final class Program {
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
         connector
-            .send(new Contracts.TimerStartCommand(
+            .send(new Contracts.TimerStartMsg(
                 requestId,
                 requestId + "-yield",
                 "yield-on-first",
@@ -287,7 +287,7 @@ public final class Program {
             "timer-yield-started",
             "timer-yield-released"));
         connector
-            .send(new Contracts.TimerStartCommand(
+            .send(new Contracts.TimerStartMsg(
                 requestId,
                 requestId + "-fast",
                 "fast",
@@ -303,7 +303,7 @@ public final class Program {
             "timer-yield-resumed",
             "timer-yield-completed"));
         connector
-            .send(new Contracts.TimerStopCommand(requestId))
+            .send(new Contracts.TimerStopMsg(requestId))
             .metadata(metadata)
             .await();
         assertAllValuesContain(playEvidence, requestId, List.of(
@@ -324,7 +324,7 @@ public final class Program {
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
         connector
-            .send(new Contracts.TimerStartCommand(
+            .send(new Contracts.TimerStartMsg(
                 requestId,
                 timerName,
                 "yield-then-next",
@@ -340,7 +340,7 @@ public final class Program {
             "timer-next-started",
             "timer-next-completed"));
         connector
-            .send(new Contracts.TimerStopCommand(requestId))
+            .send(new Contracts.TimerStopMsg(requestId))
             .metadata(metadata)
             .await();
         assertAllValuesContain(playEvidence, requestId, List.of(
@@ -356,10 +356,10 @@ public final class Program {
         String scenarioId = "ydc3-" + System.nanoTime();
         String actorA = scenarioId + "-actor-a";
         String actorB = scenarioId + "-actor-b";
-        Contracts.BindActorsReply bind = connector
-            .request(new Contracts.BindActorsRequest(Contracts.TARGET_SPOT, actorA, actorB))
+        Contracts.BindActorsRes bind = connector
+            .request(new Contracts.BindActorsReq(Contracts.TARGET_SPOT, actorA, actorB))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.BindActorsReply.class);
+            .await(Contracts.BindActorsRes.class);
         ensure(actorA.equals(bind.actorA()), "YD-C3 actor A bind mismatch");
         ensure(actorB.equals(bind.actorB()), "YD-C3 actor B bind mismatch");
 
@@ -379,16 +379,16 @@ public final class Program {
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
         String timerName = requestId + "-fast";
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
-        CompletionStage<Contracts.ActorReply> actorYield = connector
-            .request(new Contracts.ActorYieldRequest(requestId, ISOLATION_DELAY_MILLIS))
+        CompletionStage<Contracts.ActorYieldRes> actorYield = connector
+            .request(new Contracts.ActorYieldReq(requestId, ISOLATION_DELAY_MILLIS))
             .metadata(Contracts.ACTOR_ID_METADATA, actorId)
             .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorReply.class);
+            .submit(Contracts.ActorYieldRes.class);
         assertOrder(playEvidence, requestId, List.of(
             "actor-yield-started",
             "actor-yield-released"));
         connector
-            .send(new Contracts.TimerStartCommand(
+            .send(new Contracts.TimerStartMsg(
                 requestId,
                 timerName,
                 "fast",
@@ -402,10 +402,10 @@ public final class Program {
             "timer-fast-started",
             "timer-fast-completed"));
         connector
-            .send(new Contracts.TimerStopCommand(requestId))
+            .send(new Contracts.TimerStopMsg(requestId))
             .metadata(timerMetadata)
             .await();
-        Contracts.ActorReply reply = connector.await(actorYield);
+        Contracts.ActorYieldRes reply = connector.await(actorYield);
         ensure(actorId.equals(reply.actorId()), "YD-C3 actor yield reply mismatch");
         assertOrder(playEvidence, requestId, List.of(
             "actor-yield-started",
@@ -434,7 +434,7 @@ public final class Program {
         String timerName = requestId + "-yield";
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
         connector
-            .send(new Contracts.TimerStartCommand(
+            .send(new Contracts.TimerStartMsg(
                 requestId,
                 timerName,
                 "yield-on-first",
@@ -445,11 +445,11 @@ public final class Program {
         assertOrder(playEvidence, requestId, List.of(
             "timer-yield-started",
             "timer-yield-released"));
-        Contracts.ActorReply reply = connector
-            .request(new Contracts.ActorFastRequest(requestId, "c3-actor-fast"))
+        Contracts.ActorFastRes reply = connector
+            .request(new Contracts.ActorFastReq(requestId, "c3-actor-fast"))
             .metadata(Contracts.ACTOR_ID_METADATA, actorId)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.ActorReply.class);
+            .await(Contracts.ActorFastRes.class);
         ensure(actorId.equals(reply.actorId()), "YD-C3 actor fast reply mismatch");
         assertOrder(playEvidence, requestId, List.of(
             "timer-yield-started",
@@ -459,7 +459,7 @@ public final class Program {
             "timer-yield-resumed",
             "timer-yield-completed"));
         connector
-            .send(new Contracts.TimerStopCommand(requestId))
+            .send(new Contracts.TimerStopMsg(requestId))
             .metadata(timerMetadata)
             .await();
         assertAllValuesContain(playEvidence, requestId, List.of(
@@ -478,27 +478,27 @@ public final class Program {
         String targetSpot = requestId + "-target";
         String playAEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
         String playBEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_B_HTTP") + "/evidence";
-        Contracts.EnsureSpotReply owner = connector
-            .request(new Contracts.EnsureSpotRequest(ownerSpot))
+        Contracts.EnsureSpotRes owner = connector
+            .request(new Contracts.EnsureSpotReq(ownerSpot))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EnsureSpotReply.class);
+            .await(Contracts.EnsureSpotRes.class);
         ensure(ownerSpot.equals(owner.spotRid()), "YD-D2 owner spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(owner.nodeRid()), "YD-D2 owner node mismatch");
-        Contracts.EnsureSpotReply target = connector
-            .request(new Contracts.EnsureSpotRequest(targetSpot))
+        Contracts.EnsureSpotRes target = connector
+            .request(new Contracts.EnsureSpotReq(targetSpot))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EnsureSpotReply.class);
+            .await(Contracts.EnsureSpotRes.class);
         ensure(targetSpot.equals(target.spotRid()), "YD-D2 target spot mismatch");
         ensure(Contracts.PLAY_NODE_B.equals(target.nodeRid()), "YD-D2 target node mismatch");
 
-        Contracts.ScenarioReply reply = connector
-            .request(new Contracts.RemoteSpotYieldRequest(requestId, targetSpot, 350))
+        Contracts.ScenarioRes reply = connector
+            .request(new Contracts.RemoteSpotYieldReq(requestId, targetSpot, 350))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .metadata(Contracts.SPOT_RID_METADATA, ownerSpot)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.ScenarioReply.class);
+            .await(Contracts.ScenarioRes.class);
         ensure("YD-D2".equals(reply.scenarioId()), "YD-D2 reply scenario mismatch");
         ensure(requestId.equals(reply.requestId()), "YD-D2 reply request mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(reply.result()), "YD-D2 owner continuation node mismatch");
@@ -533,11 +533,11 @@ public final class Program {
         String requestId = "ydd3-" + System.nanoTime();
         String spotRid = requestId + "-spot";
         String playBEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_B_HTTP") + "/evidence";
-        Contracts.EnsureSpotReply target = connector
-            .request(new Contracts.EnsureSpotRequest(spotRid))
+        Contracts.EnsureSpotRes target = connector
+            .request(new Contracts.EnsureSpotReq(spotRid))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EnsureSpotReply.class);
+            .await(Contracts.EnsureSpotRes.class);
         ensure(spotRid.equals(target.spotRid()), "YD-D3 target spot mismatch");
         ensure(Contracts.PLAY_NODE_B.equals(target.nodeRid()), "YD-D3 target node mismatch");
 
@@ -545,14 +545,14 @@ public final class Program {
             Contracts.SPOT_RID_METADATA, spotRid,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B);
         CompletionStage<Void> yield = connector
-            .send(new Contracts.YieldCommand(requestId, 1000, "route-bridge"))
+            .send(new Contracts.YieldMsg(requestId, 1000, "route-bridge"))
             .metadata(metadata)
             .submit();
         assertOrder(playBEvidence, requestId, List.of(
             "yield-started",
             "yield-released"));
         connector
-            .send(new Contracts.ProbeCommand(requestId, "route-bridge-probe"))
+            .send(new Contracts.ProbeMsg(requestId, "route-bridge-probe"))
             .metadata(metadata)
             .await();
         connector.await(yield);
@@ -583,10 +583,10 @@ public final class Program {
         String actorA = requestId + "-actor-a";
         String actorB = requestId + "-actor-b";
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
-        Contracts.BindActorsReply bind = connector
-            .request(new Contracts.BindActorsRequest(Contracts.TARGET_SPOT, actorA, actorB))
+        Contracts.BindActorsRes bind = connector
+            .request(new Contracts.BindActorsReq(Contracts.TARGET_SPOT, actorA, actorB))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.BindActorsReply.class);
+            .await(Contracts.BindActorsRes.class);
         ensure(actorA.equals(bind.actorA()), "YD-D4 actor A bind mismatch");
 
         ZLinkStreamConnector unbound = ZLinkStreamConnectorFactory.create(
@@ -597,11 +597,11 @@ public final class Program {
                 .waitFor(Contracts.ActorPushNotify.class)
                 .timeout(REQUEST_TIMEOUT)
                 .submit(Contracts.ActorPushNotify.class);
-            Contracts.ActorReply reply = connector
-                .request(new Contracts.ActorPushYieldRequest(requestId, 350, "bound-session-push"))
+            Contracts.ActorPushYieldRes reply = connector
+                .request(new Contracts.ActorPushYieldReq(requestId, 350, "bound-session-push"))
                 .metadata(Contracts.ACTOR_ID_METADATA, actorA)
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.ActorReply.class);
+                .await(Contracts.ActorPushYieldRes.class);
             connector.dispatch().await();
             Contracts.ActorPushNotify notify = connector.await(push).payload();
             ensure("YD-D4".equals(reply.scenarioId()), "YD-D4 reply scenario mismatch");
@@ -637,11 +637,11 @@ public final class Program {
         String requestId = "yde1-" + System.nanoTime();
         String spotRid = requestId + "-spot";
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
-        Contracts.EnsureSpotReply target = connector
-            .request(new Contracts.EnsureSpotRequest(spotRid))
+        Contracts.EnsureSpotRes target = connector
+            .request(new Contracts.EnsureSpotReq(spotRid))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EnsureSpotReply.class);
+            .await(Contracts.EnsureSpotRes.class);
         ensure(spotRid.equals(target.spotRid()), "YD-E1 spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(target.nodeRid()), "YD-E1 node mismatch");
 
@@ -649,7 +649,7 @@ public final class Program {
             Contracts.SPOT_RID_METADATA, spotRid,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A);
         connector
-            .send(new Contracts.YieldTimeoutCommand(requestId, 700, 100))
+            .send(new Contracts.YieldTimeoutMsg(requestId, 700, 100))
             .metadata(metadata)
             .await();
         assertOrder(playEvidence, requestId, List.of(
@@ -658,7 +658,7 @@ public final class Program {
             "timeout-yield-completed"));
         assertNoMarker(playEvidence, requestId, "timeout-yield-unexpected-resumed");
         connector
-            .send(new Contracts.ProbeCommand(requestId, "timeout-probe"))
+            .send(new Contracts.ProbeMsg(requestId, "timeout-probe"))
             .metadata(metadata)
             .await();
         assertOrder(playEvidence, requestId, List.of(
@@ -680,11 +680,11 @@ public final class Program {
         String requestId = "yde2-" + System.nanoTime();
         String spotRid = requestId + "-spot";
         String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
-        Contracts.EnsureSpotReply target = connector
-            .request(new Contracts.EnsureSpotRequest(spotRid))
+        Contracts.EnsureSpotRes target = connector
+            .request(new Contracts.EnsureSpotReq(spotRid))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EnsureSpotReply.class);
+            .await(Contracts.EnsureSpotRes.class);
         ensure(spotRid.equals(target.spotRid()), "YD-E2 spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(target.nodeRid()), "YD-E2 node mismatch");
 
@@ -692,7 +692,7 @@ public final class Program {
             Contracts.SPOT_RID_METADATA, spotRid,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A);
         connector
-            .send(new Contracts.YieldCancelCommand(requestId, 700, 100))
+            .send(new Contracts.YieldCancelMsg(requestId, 700, 100))
             .metadata(metadata)
             .await();
         assertOrder(playEvidence, requestId, List.of(
@@ -701,7 +701,7 @@ public final class Program {
             "cancel-yield-completed"));
         assertNoMarker(playEvidence, requestId, "cancel-yield-unexpected-resumed");
         connector
-            .send(new Contracts.ProbeCommand(requestId, "cancel-probe"))
+            .send(new Contracts.ProbeMsg(requestId, "cancel-probe"))
             .metadata(metadata)
             .await();
         assertOrder(playEvidence, requestId, List.of(
@@ -723,10 +723,10 @@ public final class Program {
         String requestId = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID");
         String spotRid = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID");
         try {
-            Contracts.YieldShutdownResult result = connector
-                .request(new Contracts.YieldShutdownScenarioRequest(requestId, spotRid, 30_000))
+            Contracts.YieldShutdownRes result = connector
+                .request(new Contracts.YieldShutdownScenarioReq(requestId, spotRid, 30_000))
                 .timeout(Duration.ofSeconds(90))
-                .await(Contracts.YieldShutdownResult.class);
+                .await(Contracts.YieldShutdownRes.class);
             throw new IllegalStateException(
                 "YD-E3 expected play-a shutdown while yield was pending, but request completed as "
                     + result.operation());
@@ -741,10 +741,10 @@ public final class Program {
     private static void runShutdownRecovery(ZLinkStreamConnector connector) throws Exception {
         String requestId = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID");
         String spotRid = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID");
-        Contracts.YieldShutdownResult result = connector
-            .request(new Contracts.YieldShutdownRecoveryRequest(requestId, spotRid))
+        Contracts.YieldShutdownRes result = connector
+            .request(new Contracts.YieldShutdownRecoveryReq(requestId, spotRid))
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.YieldShutdownResult.class);
+            .await(Contracts.YieldShutdownRes.class);
         ensure("yield.e3-shutdown-recovery".equals(result.operation()), "YD-E3 recovery operation mismatch");
         ensure(requestId.equals(result.requestId()), "YD-E3 recovery request mismatch");
         ensure(spotRid.equals(result.spotRid()), "YD-E3 recovery spot mismatch");
@@ -755,19 +755,19 @@ public final class Program {
     }
 
     private static void runReadinessProbe(ZLinkStreamConnector connector) throws Exception {
-        Contracts.EnsureSpotReply playA = connector
-            .request(new Contracts.EnsureSpotRequest(Contracts.TARGET_SPOT))
+        Contracts.EnsureSpotRes playA = connector
+            .request(new Contracts.EnsureSpotReq(Contracts.TARGET_SPOT))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EnsureSpotReply.class);
+            .await(Contracts.EnsureSpotRes.class);
         ensure(Contracts.TARGET_SPOT.equals(playA.spotRid()), "readiness play-a spot mismatch");
         ensure(Contracts.PLAY_NODE_A.equals(playA.nodeRid()), "readiness play-a node mismatch");
 
-        Contracts.EnsureSpotReply playB = connector
-            .request(new Contracts.EnsureSpotRequest(Contracts.TARGET_SPOT))
+        Contracts.EnsureSpotRes playB = connector
+            .request(new Contracts.EnsureSpotReq(Contracts.TARGET_SPOT))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EnsureSpotReply.class);
+            .await(Contracts.EnsureSpotRes.class);
         ensure(Contracts.TARGET_SPOT.equals(playB.spotRid()), "readiness play-b spot mismatch");
         ensure(Contracts.PLAY_NODE_B.equals(playB.nodeRid()), "readiness play-b node mismatch");
     }
@@ -776,11 +776,11 @@ public final class Program {
         ZLinkStreamConnector connector,
         String requestId,
         String actorId) throws Exception {
-        Contracts.ActorReply reply = connector
-            .request(new Contracts.ActorJoinRequest(requestId, Contracts.TARGET_SPOT))
+        Contracts.ActorJoinRes reply = connector
+            .request(new Contracts.ActorJoinReq(requestId, Contracts.TARGET_SPOT))
             .metadata(Contracts.ACTOR_ID_METADATA, actorId)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.ActorReply.class);
+            .await(Contracts.ActorJoinRes.class);
         ensure(actorId.equals(reply.actorId()), "YD-B1 join actor mismatch");
         ensure("joined".equals(reply.marker()), "YD-B1 join marker mismatch");
     }
@@ -799,11 +799,11 @@ public final class Program {
         Map<String, String> metadata,
         List<String> expectedValueFragments) throws Exception {
         String requestId = scenarioId.toLowerCase().replace("-", "") + "-" + System.nanoTime();
-        Contracts.ScenarioReply reply = connector
-            .request(new Contracts.ScenarioRequest(scenarioId, requestId))
+        Contracts.ScenarioRes reply = connector
+            .request(new Contracts.ScenarioReq(scenarioId, requestId))
             .metadata(metadata)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.ScenarioReply.class);
+            .await(Contracts.ScenarioRes.class);
         ensure(scenarioId.equals(reply.scenarioId()), scenarioId + " reply scenario mismatch");
         ensure(requestId.equals(reply.requestId()), scenarioId + " reply request id mismatch");
         assertOrder(requestId, expectedOrder);

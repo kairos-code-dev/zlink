@@ -13,13 +13,13 @@ inline void run_di_lifecycle_scenario (zlink::framework::channel_client_t &chann
     auto first =
       channels.request (api_channel, scoped_lifecycle_req_t{.value = "first"})
         .timeout (std::chrono::milliseconds (2000))
-        .async<scoped_lifecycle_reply_t> ();
+        .async<scoped_lifecycle_res_t> ();
     ensure (first.result ().has_value (), "RC-A4 first request failed");
 
     auto second =
       channels.request (api_channel, scoped_lifecycle_req_t{.value = "second"})
         .timeout (std::chrono::milliseconds (2000))
-        .async<scoped_lifecycle_reply_t> ();
+        .async<scoped_lifecycle_res_t> ();
     ensure (second.result ().has_value (), "RC-A4 second request failed");
 
     const auto first_reply = first.result ().value ();
@@ -34,7 +34,7 @@ inline void run_di_lifecycle_scenario (zlink::framework::channel_client_t &chann
     auto stats =
       channels.request (api_channel, scoped_lifecycle_stats_req_t{.value = "stats"})
         .timeout (std::chrono::milliseconds (2000))
-        .async<scoped_lifecycle_stats_reply_t> ();
+        .async<scoped_lifecycle_stats_res_t> ();
     ensure (stats.result ().has_value (), "RC-A4 stats request failed");
     ensure (stats.result ().value ().destroyed_count >= 2,
             "RC-A4 scoped dependency destruction count mismatch");

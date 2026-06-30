@@ -5,7 +5,7 @@ import {
   ZlinkStreamErrorCode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
   ActorPushNotify,
   ActorPushReq,
@@ -55,7 +55,7 @@ export async function runSmD10(options: ClientOptions): Promise<void> {
       .submit();
 
     for (let index = 0; index < 8; index += 1) {
-      const reply = decodeStreamReply<ActorPingReply>(await congested
+      const reply = decodeStreamReply<ActorPingRes>(await congested
         .request({ value: `burst-${index}` } satisfies ActorPushReq)
         .packetName('ActorPushReq')
         .timeout(5000)
@@ -67,7 +67,7 @@ export async function runSmD10(options: ClientOptions): Promise<void> {
     ensure(droppedCount > 0, 'SM-D10 expected received-message drop notification.');
     ensure(congestedPushCount < 8, 'SM-D10 expected bounded received-message queue for congested session.');
 
-    const stillAlive = decodeStreamReply<ActorPingReply>(await congested
+    const stillAlive = decodeStreamReply<ActorPingRes>(await congested
       .request({ value: 'after-backpressure' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
@@ -80,7 +80,7 @@ export async function runSmD10(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === 'actor-sm-d10-isolated')
       .timeout(10000)
       .submit();
-    const isolatedReply = decodeStreamReply<ActorPingReply>(await isolated
+    const isolatedReply = decodeStreamReply<ActorPingRes>(await isolated
       .request({ value: 'isolated-push' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)

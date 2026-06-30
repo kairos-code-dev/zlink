@@ -1,22 +1,22 @@
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import type { ProfileReply, ProfileRequest } from '../../../Shared/messages';
+import type { ProfileRes, ProfileReq } from '../../../Shared/messages';
 import { ChannelNames, PacketNames } from '../../../Shared/messages';
 import type { HttpRoute } from '../Support/http-server';
 
 export function createConsumerEndpoints(channel: ZLinkChannelClient, stop: () => void): readonly HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'consumer' }) },
-    { method: 'POST', path: '/profile/request', handle: (body) => requestProfileWithRetry(channel, body as ProfileRequest) },
+    { method: 'POST', path: '/profile/request', handle: (body) => requestProfileWithRetry(channel, body as ProfileReq) },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
   ];
 }
 
-async function requestProfileWithRetry(channel: ZLinkChannelClient, request: ProfileRequest): Promise<ProfileReply> {
+async function requestProfileWithRetry(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
   return retryUntil(async () => channel
     .requestToChannel(ChannelNames.profile, request)
-    .packetName(PacketNames.profileRequest)
+    .packetName(PacketNames.profileReq)
     .timeout(5000)
-    .submit<ProfileReply>(), 'discovered profile provider');
+    .submit<ProfileRes>(), 'discovered profile provider');
 }
 
 async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {

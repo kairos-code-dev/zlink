@@ -14,7 +14,7 @@ internal sealed class CourierDirectory(SampleTopology topology)
         return topology.CourierPlacement(courierId);
     }
 
-    public CourierBinding Remember(CourierActorEnsured ensured, string sessionRoute)
+    public CourierBinding Remember(EnsureCourierActorRes ensured, string sessionRoute)
     {
         var binding = new CourierBinding(ensured.CourierId, ensured.Actor, sessionRoute);
         lock (_gate)

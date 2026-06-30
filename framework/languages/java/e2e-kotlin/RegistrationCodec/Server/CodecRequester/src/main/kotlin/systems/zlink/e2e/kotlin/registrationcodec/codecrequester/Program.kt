@@ -7,9 +7,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.e2e.kotlin.registrationcodec.Contracts
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoCommand
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReply
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoRequest
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoMsg
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoRes
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReq
 import systems.zlink.e2e.kotlin.registrationcodec.codecrequester.configuration.CodecRequesterOptions
 import systems.zlink.e2e.kotlin.registrationcodec.codecrequester.endpoints.CodecRequesterHttpServer
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
@@ -37,9 +37,9 @@ class CodecRequesterApplication {
             framework.codecs().use(ZLinkProtobufCodec.defaultCodec())
             framework.codecs().use(
                 ZLinkMessagePackCodec.forPayloadTypes { type ->
-                    type == PackedEchoRequest::class.java ||
-                        type == PackedEchoReply::class.java ||
-                        type == PackedEchoCommand::class.java
+                    type == PackedEchoReq::class.java ||
+                        type == PackedEchoRes::class.java ||
+                        type == PackedEchoMsg::class.java
                 },
             )
             framework.configureDispatch()

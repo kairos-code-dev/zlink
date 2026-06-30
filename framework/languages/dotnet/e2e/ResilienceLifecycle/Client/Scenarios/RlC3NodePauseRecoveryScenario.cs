@@ -19,27 +19,27 @@ internal static class RlC3NodePauseRecoveryScenario
             "RL-C3 expected api-b simulated node pause/down.");
 
         var during = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("fast", "rl-c3-during-down"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("fast", "rl-c3-during-down"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(during.ProviderRid == "api-a", "RL-C3 did not use surviving provider during node down.");
 
         await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryRes[]>();
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-c3-recovered-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-c3-recovered-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-C3 recovered request returned an unexpected value.");
         }
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c3-during-down"], []))
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-c3-during-down"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c3-during-down"], []))
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-c3-during-down"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
@@ -51,10 +51,10 @@ internal static class RlC3NodePauseRecoveryScenario
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c3-recovered-"], []))
+                .Body(new EvidenceWaitReq(["profile-request|rid=api-b|marker=rl-c3-recovered-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c3-recovered-"], []))
+                .Body(new EvidenceWaitReq(["profile-request|rid=api-b|marker=rl-c3-recovered-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;

@@ -1,10 +1,10 @@
 import type {
-  CloseSpotReply,
+  CloseSpotRes,
   CloseSpotReq,
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
-  SpotTimerStartReply,
+  EvidenceWaitReq,
+  SpotTimerStartRes,
   SpotTimerStartReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -13,20 +13,20 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmE2(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-e2-${Date.now().toString(36)}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(created.spotRid === spotRid, 'SM-E2 timer spot was not created.');
   ensure(created.nodeRid === 'play-a', 'SM-E2 timer spot was created on the wrong node.');
 
-  const timer = await postJson<SpotTimerStartReply>(options.playAUrl, '/spot/timer/start', {
+  const timer = await postJson<SpotTimerStartRes>(options.playAUrl, '/spot/timer/start', {
     spotRid,
     name: 'sm-e2-basic',
     periodMs: 50
   } satisfies SpotTimerStartReq);
   ensure(timer.started, 'SM-E2 timer did not start.');
 
-  const closeReply = await postJson<CloseSpotReply>(options.playAUrl, '/spot/close', {
+  const closeReply = await postJson<CloseSpotRes>(options.playAUrl, '/spot/close', {
     spotRid
   } satisfies CloseSpotReq);
   ensure(closeReply.closed, 'SM-E2 timer spot close reply mismatch.');
@@ -35,7 +35,7 @@ export async function runSmE2(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: [marker],
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     evidence.filter((line) => line.includes(marker)).length >= 2,
     'SM-E2 evidence mismatch.'

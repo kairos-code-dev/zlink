@@ -8,6 +8,7 @@
 
 #include <map>
 #include <mutex>
+#include <condition_variable>
 #include <iostream>
 #include <chrono>
 #include <stdexcept>
@@ -47,9 +48,64 @@ class customer_session_directory_t
         }
     }
 
+    void bind_courier (const std::string &courier_id, stream_t stream)
+    {
+        const std::lock_guard lock (_mutex);
+        _streams_by_courier[courier_id] = std::move (stream);
+    }
+
+    task_t<offer_delivery_res_t> offer_to_courier (const offer_delivery_req_t &offer)
+    {
+        stream_t stream;
+        {
+            const std::lock_guard lock (_mutex);
+            const auto found = _streams_by_courier.find (offer.courier_id);
+            if (found == _streams_by_courier.end ()) {
+                co_return offer_delivery_res_t{offer.delivery_id, offer.courier_id, false,
+                                               "courier session is not bound"};
+            }
+            stream = found->second;
+        }
+
+        const auto notify =
+          zlink::message_t::from_json (offer_delivery_notify_t{offer.courier_id, offer.delivery_id,
+                                                               offer.pickup_address,
+                                                               offer.dropoff_address});
+        co_await stream.write_packet (notify)
+          .packet_name (offer_delivery_notify_t::packet_name)
+          .async ();
+
+        std::unique_lock lock (_mutex);
+        const auto key = offer.courier_id + "|" + offer.delivery_id;
+        const auto ready = _condition.wait_for (lock, std::chrono::seconds (5), [&] {
+            return _decisions.contains (key);
+        });
+        if (!ready) {
+            co_return offer_delivery_res_t{offer.delivery_id, offer.courier_id, false,
+                                           "courier decision timed out"};
+        }
+        auto decision = _decisions.at (key);
+        _decisions.erase (key);
+        co_return offer_delivery_res_t{decision.delivery_id, decision.courier_id,
+                                       decision.accepted, decision.reason};
+    }
+
+    void decide (courier_decision_msg_t decision)
+    {
+        {
+            const std::lock_guard lock (_mutex);
+            const auto key = decision.courier_id + "|" + decision.delivery_id;
+            _decisions[key] = std::move (decision);
+        }
+        _condition.notify_all ();
+    }
+
   private:
     std::mutex _mutex;
+    std::condition_variable _condition;
     std::map<std::string, std::vector<stream_t>> _streams_by_delivery;
+    std::map<std::string, stream_t> _streams_by_courier;
+    std::map<std::string, courier_decision_msg_t> _decisions;
 };
 
 class customer_session_t final : public packet_stream_session_t
@@ -84,23 +140,39 @@ class customer_session_t final : public packet_stream_session_t
         std::cerr << "deliverydispatch session: dispatch packet=" << dispatch.packet_name ()
                   << "\n";
         try {
+            if (dispatch.packet_name () == bind_courier_session_req_t::packet_name) {
+                const auto request = payload.parse_json<bind_courier_session_req_t> ();
+                _sessions.bind_courier (request.courier_id, stream);
+                const auto reply = zlink::message_t::from_json (bind_courier_session_res_t{
+                  request.courier_id,
+                  actor_ref_snapshot_t{"courier-session", request.courier_id, 1},
+                  "courier-session:" + request.courier_id});
+                co_await stream.reply_packet (reply).async ();
+                std::cerr << "deliverydispatch session: courier bound courier="
+                          << request.courier_id << "\n";
+                co_return;
+            }
+            if (dispatch.packet_name () == courier_decision_msg_t::packet_name) {
+                _sessions.decide (payload.parse_json<courier_decision_msg_t> ());
+                co_return;
+            }
             if (dispatch.packet_name () != subscribe_delivery_req_t::packet_name) {
                 co_return;
             }
             const auto request = payload.parse_json<subscribe_delivery_req_t> ();
             std::cerr << "deliverydispatch session: ensure customer delivery="
                       << request.delivery_id << "\n";
-            auto ensured = request_tracking<ensure_customer_actor_t, customer_actor_ensured_t> (
-              ensure_customer_actor_t{sample_names_t::customer_id});
+            auto ensured = request_tracking<ensure_customer_actor_req_t, ensure_customer_actor_res_t> (
+              ensure_customer_actor_req_t{sample_names_t::customer_id});
             (void) ensured;
             std::cerr << "deliverydispatch session: subscribe delivery=" << request.delivery_id
                       << "\n";
             auto subscribed =
-              request_tracking<subscribe_customer_to_delivery_t, customer_delivery_subscribed_t> (
-                subscribe_customer_to_delivery_t{sample_names_t::customer_id, request.delivery_id});
+              request_tracking<subscribe_customer_to_delivery_req_t, subscribe_customer_to_delivery_res_t> (
+                subscribe_customer_to_delivery_req_t{sample_names_t::customer_id, request.delivery_id});
             _sessions.subscribe (subscribed.delivery_id, stream);
             const auto reply =
-              zlink::message_t::from_json (subscribe_delivery_accepted_t{subscribed.delivery_id});
+              zlink::message_t::from_json (subscribe_delivery_res_t{subscribed.delivery_id});
             co_await stream.reply_packet (reply).async ();
             std::cerr << "deliverydispatch session: reply subscribed delivery="
                       << subscribed.delivery_id << "\n";
@@ -154,6 +226,28 @@ class delivery_status_fanout_handler_t
     customer_session_directory_t &_sessions;
 };
 
+class stream_offer_delivery_handler_t
+{
+  public:
+    using dependency_types = dependency_list_t<customer_session_directory_t>;
+    using request_type = offer_delivery_req_t;
+    using reply_type = offer_delivery_res_t;
+    static constexpr const char *topic_name = offer_delivery_req_t::packet_name;
+
+    explicit stream_offer_delivery_handler_t (customer_session_directory_t &sessions) :
+        _sessions (sessions)
+    {
+    }
+
+    task_t<offer_delivery_res_t> handle (const offer_delivery_req_t &request)
+    {
+        co_return co_await _sessions.offer_to_courier (request);
+    }
+
+  private:
+    customer_session_directory_t &_sessions;
+};
+
 } // namespace zlink::samples::deliverydispatch
 
 int main (int argc, char **argv)
@@ -172,10 +266,17 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
         options.add_client_server_channel (sample_names_t::tracking_route_channel).enable_client ();
+        options.add_client_server_channel (sample_names_t::courier_a_channel)
+          .enable_server (topology.courier_a_endpoint)
+          .use_handler_group ("courier");
+        options.add_client_server_channel (sample_names_t::courier_b_channel)
+          .enable_server (topology.courier_b_endpoint)
+          .use_handler_group ("courier");
         options.add_fanout_channel (sample_names_t::status_fanout_channel)
           .enable_subscriber (topology.status_fanout_endpoint)
           .use_handler_group ("status");
         options.handlers ().group ("status").add_publish<delivery_status_fanout_handler_t> ();
+        options.handlers ().group ("courier").add<stream_offer_delivery_handler_t> ();
         options.add_stream_node (sample_names_t::customer_stream_node)
           .bind (topology.session_stream_endpoint)
           .register_session<customer_session_t> ();

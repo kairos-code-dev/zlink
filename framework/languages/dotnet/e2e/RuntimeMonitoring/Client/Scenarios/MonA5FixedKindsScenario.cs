@@ -42,7 +42,7 @@ internal static class MonA5FixedKindsScenario
         ZLinkHttpClient registry)
     {
         var serviceEvidenceTask = service.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 [],
                 [
                     ["kind=HandshakeFailed", "kind=Internal"],
@@ -52,7 +52,7 @@ internal static class MonA5FixedKindsScenario
                 ]))
             .SubmitAsync<string[]>();
         var registryEvidenceTask = registry.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["monitor-registry|source=registry"],
                 [["kind=StatusChanged"]]))
             .SubmitAsync<string[]>();

@@ -16,9 +16,9 @@ inline void run_quick_resilience_scenario (zlink::framework::channel_client_t &c
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (6);
     while (std::chrono::steady_clock::now () < deadline) {
-        auto task = channels.request (api_channel, profile_request_t{.value = "rl-quick"})
+        auto task = channels.request (api_channel, profile_req_t{.value = "rl-quick"})
                       .timeout (std::chrono::milliseconds (1000))
-                      .async<profile_reply_t> ();
+                      .async<profile_res_t> ();
         if (task.result ().has_value () && !task.result ().value ().provider_rid.empty ()) {
             std::cout << "scenario quick passed\n";
             return;

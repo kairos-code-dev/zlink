@@ -27,7 +27,7 @@ std::string run_yd_a2_yield_terminator_scenario (TConnector &connector,
           .packet_name (yield_req_t::packet_name)
           .metadata (spot_rid_metadata, spot_rid)
           .timeout (std::chrono::milliseconds (10000))
-          .template submit<yield_dispatch_reply_t> ();
+          .template submit<yield_dispatch_res_t> ();
     });
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
     auto released =
@@ -38,15 +38,15 @@ std::string run_yd_a2_yield_terminator_scenario (TConnector &connector,
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (released), "YD-A2 yield-released wait failed");
     auto yield_probe =
       observer.request (probe_req_t{.request_id = request_id, .marker = "yield-probe"})
         .packet_name (probe_req_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .timeout (std::chrono::milliseconds (10000))
-        .template submit<yield_dispatch_reply_t> ();
-    ensure (static_cast<bool> (yield_probe), "YD-A2 ProbeCommand send failed");
+        .template submit<yield_dispatch_res_t> ();
+    ensure (static_cast<bool> (yield_probe), "YD-A2 ProbeMsg send failed");
     auto yield_reply = yielded.get ();
     ensure (static_cast<bool> (yield_reply), "YD-A2 YieldReq failed");
     auto evidence =
@@ -57,7 +57,7 @@ std::string run_yd_a2_yield_terminator_scenario (TConnector &connector,
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (evidence), "YD-A2 evidence wait failed");
     ensure (contains_in_order (evidence.value ().evidence, request_id,
                                {"yield-started", "yield-released", "probe-started",

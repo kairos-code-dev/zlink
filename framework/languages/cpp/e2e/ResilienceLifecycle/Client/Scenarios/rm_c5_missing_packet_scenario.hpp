@@ -11,18 +11,18 @@ namespace zlink::framework::e2e::registry_messaging::client
 
 inline void run_rm_c5_missing_packet_scenario (zlink::framework::channel_client_t &channels)
 {
-    auto missing = channels.request (api_channel, profile_request_t{.value = "missing"})
-                     .packet_name ("MissingProfileRequest")
+    auto missing = channels.request (api_channel, profile_req_t{.value = "missing"})
+                     .packet_name ("MissingProfileReq")
                      .timeout (std::chrono::milliseconds (2000))
-                     .async<profile_reply_t> ();
+                     .async<profile_res_t> ();
     ensure (!missing.result ().has_value (), "RM-C5 missing request unexpectedly succeeded");
-    auto dropped = channels.send (api_channel, profile_command_t{.command_id = "missing-send"})
-                     .packet_name ("MissingProfileCommand")
+    auto dropped = channels.send (api_channel, profile_msg_t{.command_id = "missing-send"})
+                     .packet_name ("MissingProfileMsg")
                      .async ();
     ensure (dropped.result ().has_value (), "RM-C5 missing send should complete as drop");
-    auto normal = channels.request (api_channel, profile_request_t{.value = "normal"})
+    auto normal = channels.request (api_channel, profile_req_t{.value = "normal"})
                     .timeout (std::chrono::milliseconds (2000))
-                    .async<profile_reply_t> ();
+                    .async<profile_res_t> ();
     ensure (normal.result ().has_value (), "RM-C5 normal request after missing packet failed");
 
     std::this_thread::sleep_for (std::chrono::milliseconds (200));

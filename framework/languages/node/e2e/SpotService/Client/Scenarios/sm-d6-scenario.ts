@@ -4,10 +4,10 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPushNotify,
   ActorPushReq,
-  AuthReply,
+  AuthRes,
   AuthReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -35,7 +35,7 @@ export async function runSmD6(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
     await unbound
       .request({
         actorId: 'actor-sm-d6-shadow',
@@ -44,7 +44,7 @@ export async function runSmD6(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
     const pushed = bound.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === 'actor-sm-d6')
@@ -54,7 +54,7 @@ export async function runSmD6(options: ClientOptions): Promise<void> {
       .request({ value: 'push-bound-only' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
-      .submit<ActorPingReply>();
+      .submit<ActorPingRes>();
     const notify = await pushed;
     ensure(notify.payload.actorId === 'actor-sm-d6', 'SM-D6 push actor mismatch.');
     ensure(notify.payload.value === 'push-bound-only', 'SM-D6 push value mismatch.');

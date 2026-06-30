@@ -78,12 +78,12 @@ class evidence_wait_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
-    using request_type = evidence_wait_request_t;
+    using request_type = evidence_wait_req_t;
     using reply_type = std::vector<std::string>;
 
     explicit evidence_wait_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
 
-    std::vector<std::string> handle (const evidence_wait_request_t &request)
+    std::vector<std::string> handle (const evidence_wait_req_t &request)
     {
         const auto timeout = std::chrono::milliseconds (
           request.timeout_milliseconds > 0 ? request.timeout_milliseconds : 1);
@@ -117,7 +117,7 @@ class evidence_wait_handler_t
     }
 
     static bool matches (const std::vector<std::string> &entries,
-                         const evidence_wait_request_t &request)
+                         const evidence_wait_req_t &request)
     {
         for (const auto &required : request.contains_all) {
             if (!any_entry_contains (entries, required)) {

@@ -19,53 +19,53 @@ inline constexpr const char *route_channel = "registry.messaging.route";
 inline constexpr const char *dealer_channel = "registry.messaging.dealer";
 inline constexpr const char *handler_group = "registry-messaging";
 
-struct profile_request_t
+struct profile_req_t
 {
     std::string value;
 };
 
-struct profile_reply_t
+struct profile_res_t
 {
     std::string value;
     std::string provider_rid;
     std::string instance_id;
 };
 
-struct profile_command_t
+struct profile_msg_t
 {
     std::string command_id;
 };
 
-struct payload_request_t
+struct payload_req_t
 {
     std::string marker;
     std::string payload;
 };
 
-struct payload_reply_t
+struct payload_res_t
 {
     std::string marker;
     int length = 0;
     std::string sha256;
 };
 
-struct workflow_request_t
+struct workflow_req_t
 {
     std::string value;
 };
 
-struct workflow_reply_t
+struct workflow_res_t
 {
     std::string value;
     std::string provider_rid;
 };
 
-struct route_ping_t
+struct scenario_route_req_t
 {
     std::string value;
 };
 
-struct route_pong_t
+struct scenario_route_res_t
 {
     std::string value;
     std::string target_rid;
@@ -97,24 +97,24 @@ inline std::string sha256_hex (const std::string &value)
     return output.str ();
 }
 
-inline void to_json (nlohmann::json &json, const profile_request_t &value)
+inline void to_json (nlohmann::json &json, const profile_req_t &value)
 {
     json = nlohmann::json{{"value", value.value}};
 }
 
-inline void from_json (const nlohmann::json &json, profile_request_t &value)
+inline void from_json (const nlohmann::json &json, profile_req_t &value)
 {
     json.at ("value").get_to (value.value);
 }
 
-inline void to_json (nlohmann::json &json, const profile_reply_t &value)
+inline void to_json (nlohmann::json &json, const profile_res_t &value)
 {
     json = nlohmann::json{{"value", value.value},
                           {"provider_rid", value.provider_rid},
                           {"instance_id", value.instance_id}};
 }
 
-inline void from_json (const nlohmann::json &json, profile_reply_t &value)
+inline void from_json (const nlohmann::json &json, profile_res_t &value)
 {
     json.at ("value").get_to (value.value);
     json.at ("provider_rid").get_to (value.provider_rid);
@@ -123,78 +123,78 @@ inline void from_json (const nlohmann::json &json, profile_reply_t &value)
     }
 }
 
-inline void to_json (nlohmann::json &json, const profile_command_t &value)
+inline void to_json (nlohmann::json &json, const profile_msg_t &value)
 {
     json = nlohmann::json{{"command_id", value.command_id}};
 }
 
-inline void from_json (const nlohmann::json &json, profile_command_t &value)
+inline void from_json (const nlohmann::json &json, profile_msg_t &value)
 {
     json.at ("command_id").get_to (value.command_id);
 }
 
-inline void to_json (nlohmann::json &json, const payload_request_t &value)
+inline void to_json (nlohmann::json &json, const payload_req_t &value)
 {
     json = nlohmann::json{{"marker", value.marker}, {"payload", value.payload}};
 }
 
-inline void from_json (const nlohmann::json &json, payload_request_t &value)
+inline void from_json (const nlohmann::json &json, payload_req_t &value)
 {
     json.at ("marker").get_to (value.marker);
     json.at ("payload").get_to (value.payload);
 }
 
-inline void to_json (nlohmann::json &json, const payload_reply_t &value)
+inline void to_json (nlohmann::json &json, const payload_res_t &value)
 {
     json = nlohmann::json{
       {"marker", value.marker}, {"length", value.length}, {"sha256", value.sha256}};
 }
 
-inline void from_json (const nlohmann::json &json, payload_reply_t &value)
+inline void from_json (const nlohmann::json &json, payload_res_t &value)
 {
     json.at ("marker").get_to (value.marker);
     json.at ("length").get_to (value.length);
     json.at ("sha256").get_to (value.sha256);
 }
 
-inline void to_json (nlohmann::json &json, const workflow_request_t &value)
+inline void to_json (nlohmann::json &json, const workflow_req_t &value)
 {
     json = nlohmann::json{{"value", value.value}};
 }
 
-inline void from_json (const nlohmann::json &json, workflow_request_t &value)
+inline void from_json (const nlohmann::json &json, workflow_req_t &value)
 {
     json.at ("value").get_to (value.value);
 }
 
-inline void to_json (nlohmann::json &json, const workflow_reply_t &value)
+inline void to_json (nlohmann::json &json, const workflow_res_t &value)
 {
     json = nlohmann::json{{"value", value.value}, {"provider_rid", value.provider_rid}};
 }
 
-inline void from_json (const nlohmann::json &json, workflow_reply_t &value)
+inline void from_json (const nlohmann::json &json, workflow_res_t &value)
 {
     json.at ("value").get_to (value.value);
     json.at ("provider_rid").get_to (value.provider_rid);
 }
 
-inline void to_json (nlohmann::json &json, const route_ping_t &value)
+inline void to_json (nlohmann::json &json, const scenario_route_req_t &value)
 {
     json = nlohmann::json{{"value", value.value}};
 }
 
-inline void from_json (const nlohmann::json &json, route_ping_t &value)
+inline void from_json (const nlohmann::json &json, scenario_route_req_t &value)
 {
     json.at ("value").get_to (value.value);
 }
 
-inline void to_json (nlohmann::json &json, const route_pong_t &value)
+inline void to_json (nlohmann::json &json, const scenario_route_res_t &value)
 {
     json = nlohmann::json{
       {"value", value.value}, {"target_rid", value.target_rid}, {"source_rid", value.source_rid}};
 }
 
-inline void from_json (const nlohmann::json &json, route_pong_t &value)
+inline void from_json (const nlohmann::json &json, scenario_route_res_t &value)
 {
     json.at ("value").get_to (value.value);
     json.at ("target_rid").get_to (value.target_rid);

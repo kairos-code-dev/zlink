@@ -1,5 +1,5 @@
 import type { ZLinkFanoutClient } from '@zlink-systems/framework';
-import { PacketNames, PubSubNames, type EventNotify, type MissingEventNotify } from '../../../Shared/messages';
+import { PacketNames, PubSubNames, type EventMsg, type MissingEventMsg } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
@@ -18,9 +18,9 @@ export function createPublisherEndpoints(
       path: '/publish/event',
       handle: async (body) => {
         const request = body as PublishRequest;
-        const event: EventNotify = { runId: request.runId, sequence: Number(request.sequence), value: request.value };
+        const event: EventMsg = { runId: request.runId, sequence: Number(request.sequence), value: request.value };
         await fanout.publishToChannel(PubSubNames.channel, request.topic, event)
-          .packetName(PacketNames.eventNotify)
+          .packetName(PacketNames.eventMsg)
           .submit();
         return { status: 'published', topic: request.topic, runId: request.runId, sequence: event.sequence };
       }
@@ -30,9 +30,9 @@ export function createPublisherEndpoints(
       path: '/publish/missing',
       handle: async (body) => {
         const request = body as PublishRequest;
-        const event: MissingEventNotify = { runId: request.runId, sequence: Number(request.sequence), value: request.value };
+        const event: MissingEventMsg = { runId: request.runId, sequence: Number(request.sequence), value: request.value };
         await fanout.publishToChannel(PubSubNames.channel, request.topic, event)
-          .packetName(PacketNames.missingEventNotify)
+          .packetName(PacketNames.missingEventMsg)
           .submit();
         return { status: 'published', topic: request.topic, runId: request.runId, sequence: event.sequence };
       }

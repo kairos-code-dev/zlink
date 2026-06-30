@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.e2e.pubsub.shared.Contracts;
 import systems.zlink.e2e.pubsub.subscriber.Configuration.SubscriberOptions;
 import systems.zlink.e2e.pubsub.subscriber.Endpoints.OperationalEndpoints;
-import systems.zlink.e2e.pubsub.subscriber.Handlers.EventNotifyHandler;
+import systems.zlink.e2e.pubsub.subscriber.Handlers.EventMsgHandler;
 import systems.zlink.e2e.pubsub.subscriber.Handlers.EvidenceDispatchErrorObserver;
 import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -66,7 +66,7 @@ public final class SubscriberApplication {
                 .traceLogFile(options.logDir() + "/" + evidence.subscriberRid() + "-flow.log")
                 .traceLabel("java-ps-" + evidence.subscriberRid())
                 .setMessageFlowObserver(observer::observe);
-            framework.addHandlersFromPackageOf(EventNotifyHandler.class);
+            framework.addHandlersFromPackageOf(EventMsgHandler.class);
             framework.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint());
             framework.addFanoutChannel(Contracts.EVENT_CHANNEL)
                 .enableSubscriber()
@@ -75,7 +75,7 @@ public final class SubscriberApplication {
     }
 
     @Bean
-    EventNotifyHandler eventNotifyHandler(EvidenceStore evidence) {
-        return new EventNotifyHandler(evidence);
+    EventMsgHandler eventMsgHandler(EvidenceStore evidence) {
+        return new EventMsgHandler(evidence);
     }
 }

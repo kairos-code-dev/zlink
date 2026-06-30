@@ -110,3 +110,9 @@ codec extension을 사용해 실제 E2E로 검증한다.
   - 로그: `logs/20260630-163722-417936`
   - 의미: 최신 checkout에서 RC-A1, RC-A3, RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3,
     RC-B4, RC-B5가 통과했다. RC-A2는 C++ public attribute discovery 계약이 없어 gap으로 유지한다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/RegistrationCodec/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-182337-725659`
+  - 의미: 현재 트리에서 정상 server, JSON-only peer, invalid role, client runner가 모두 통과했다.
+    RC-A1, RC-A3, RC-A4, RC-A5, RC-A6, RC-B1, RC-B2, RC-B3, RC-B4, RC-B5를 검증했고,
+    RC-A2는 C++ public attribute discovery 계약이 없어 gap으로 유지한다.

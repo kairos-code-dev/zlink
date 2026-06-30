@@ -2,7 +2,7 @@ import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
-  profileRequest,
+  profileReq,
   sendRequestBatch,
   waitTopologyReady,
   waitUntilAvailable,
@@ -10,7 +10,7 @@ import {
 } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 import type { ScenarioState } from '../Support/scenario-state';
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 
 export async function runRlA5(options: ClientOptions, state: ScenarioState): Promise<void> {
   for (let cycle = 0; cycle < 3; cycle += 1) {
@@ -20,7 +20,7 @@ export async function runRlA5(options: ClientOptions, state: ScenarioState): Pro
 
     for (let i = 0; i < 4; i += 1) {
       const marker = `rl-a5-down-${cycle}-${i}`;
-      const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', profileRequest(marker));
+      const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', profileReq(marker));
       ensure(reply.providerRid === 'api-a', 'RL-A5 down window did not converge to api-a.');
     }
     await postJson<string[]>(options.providerAUrl, '/evidence/wait', { contains: `marker=rl-a5-down-${cycle}-` });
@@ -66,7 +66,7 @@ async function waitForSurvivingProvider(consumerUrl: string, cycle: number): Pro
   let attempt = 0;
   while (Date.now() < deadline) {
     const marker = `rl-a5-converge-${cycle}-${attempt++}`;
-    const reply = await postJson<ProfileReply>(consumerUrl, '/profile/request', profileRequest(marker));
+    const reply = await postJson<ProfileRes>(consumerUrl, '/profile/request', profileReq(marker));
     ensure(reply.value === 'profile:fast', 'RL-A5 convergence probe returned an unexpected value.');
     consecutiveApiA = reply.providerRid === 'api-a' ? consecutiveApiA + 1 : 0;
     if (consecutiveApiA >= 4) {

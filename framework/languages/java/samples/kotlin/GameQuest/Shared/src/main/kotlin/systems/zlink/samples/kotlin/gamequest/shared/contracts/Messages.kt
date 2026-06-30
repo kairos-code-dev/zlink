@@ -130,8 +130,8 @@ data class QuestProgress(
     val updatedAtUnixMs: Long,
 )
 
-@ZLinkPacket("GameplayEventEnvelope")
-data class GameplayEventEnvelope(
+@ZLinkPacket("GameplayEventMsg")
+data class GameplayEventMsg(
     val eventId: String,
     val playerId: String,
     val idempotencyKey: String,

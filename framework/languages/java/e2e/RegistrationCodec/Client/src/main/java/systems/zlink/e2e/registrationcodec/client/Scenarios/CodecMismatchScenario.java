@@ -12,22 +12,22 @@ public final class CodecMismatchScenario {
     }
 
     public static void run(ScenarioContext context) {
-        Contracts.EchoReply jsonReply = context.client().requestToChannel(
+        Contracts.EchoRes jsonReply = context.client().requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.JsonEchoRequest("json-after-mismatch"))
+                new Contracts.JsonEchoReq("json-after-mismatch"))
             .packetName("JsonEcho")
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EchoReply.class);
+            .await(Contracts.EchoRes.class);
         ScenarioAssert.ensure("echo:json-after-mismatch".equals(jsonReply.value()),
             "RC-B5 JSON baseline failed");
 
         try {
-            Contracts.PackedEchoReply mismatchReply = context.client().requestToChannel(
+            Contracts.PackedEchoRes mismatchReply = context.client().requestToChannel(
                     Contracts.CHANNEL,
-                    new Contracts.PackedEchoRequest("msgpack-mismatch"))
+                    new Contracts.PackedEchoReq("msgpack-mismatch"))
                 .packetName("MsgpackEcho")
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.PackedEchoReply.class);
+                .await(Contracts.PackedEchoRes.class);
             ScenarioAssert.ensure("echo:msgpack-mismatch".equals(mismatchReply.value()),
                 "RC-B5 fallback reply mismatch: " + mismatchReply.value());
         } catch (RuntimeException expected) {
@@ -35,12 +35,12 @@ public final class CodecMismatchScenario {
                 + expected.getClass().getSimpleName());
         }
 
-        Contracts.EchoReply secondJson = context.client().requestToChannel(
+        Contracts.EchoRes secondJson = context.client().requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.JsonEchoRequest("json-still-ok"))
+                new Contracts.JsonEchoReq("json-still-ok"))
             .packetName("JsonEcho")
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EchoReply.class);
+            .await(Contracts.EchoRes.class);
         ScenarioAssert.ensure("echo:json-still-ok".equals(secondJson.value()),
             "RC-B5 JSON traffic did not recover after mismatch");
         System.out.println("scenario RC-B5 passed");

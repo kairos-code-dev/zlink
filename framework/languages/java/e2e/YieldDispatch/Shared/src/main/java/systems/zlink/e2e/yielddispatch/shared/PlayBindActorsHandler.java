@@ -9,7 +9,7 @@ import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class PlayBindActorsHandler
-    implements ZLinkRouteRequestHandler<Contracts.BindActorsRequest, Contracts.BindActorsReply> {
+    implements ZLinkRouteRequestHandler<Contracts.BindActorsReq, Contracts.BindActorsRes> {
     private final ZLinkActorManager actors;
     private final ZLinkSpotManager spots;
     private final EvidenceStore evidence;
@@ -24,8 +24,8 @@ public final class PlayBindActorsHandler
     }
 
     @Override
-    public Contracts.BindActorsReply handle(
-        Contracts.BindActorsRequest request,
+    public Contracts.BindActorsRes handle(
+        Contracts.BindActorsReq request,
         ZLinkRouteRequestContext context) {
         spots.getOrCreate(
                 YieldProbeSpot.class,
@@ -35,7 +35,7 @@ public final class PlayBindActorsHandler
             .join();
         ZLinkActorRef actorA = bind(request.spotRid(), request.actorA());
         ZLinkActorRef actorB = bind(request.spotRid(), request.actorB());
-        return new Contracts.BindActorsReply(
+        return new Contracts.BindActorsRes(
             request.spotRid(),
             request.actorA(),
             request.actorB(),

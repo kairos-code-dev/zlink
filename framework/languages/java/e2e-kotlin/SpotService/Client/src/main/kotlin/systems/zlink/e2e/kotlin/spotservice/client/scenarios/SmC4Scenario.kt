@@ -33,7 +33,7 @@ internal object SmC4Scenario {
         val snapshot = postJson(
             playA,
             "/evidence/wait",
-            Contracts.EvidenceWaitRequest(
+            Contracts.EvidenceWaitReq(
                 listOf("SpotMeshEvent|play-a|$spotRid|$marker"),
                 10_000
             ),

@@ -23,11 +23,13 @@ class offer_delivery_handler_t
 
     offer_delivery_res_t handle (const offer_delivery_req_t &request)
     {
-        const auto courier_id = env_or ("DELIVERYDISPATCH_COURIER_ID", "courier-a");
         const auto mode = env_or ("DELIVERYDISPATCH_COURIER_MODE", "accept");
         const bool accepted = mode == "timeout-reassign"
           ? request.delivery_id.find ("reassign") == std::string::npos
           : mode != "reject";
+        const auto courier_id = request.courier_id.empty ()
+          ? env_or ("DELIVERYDISPATCH_COURIER_ID", "courier-a")
+          : request.courier_id;
         std::cerr << "deliverydispatch courier: offer delivery=" << request.delivery_id
                   << " courier=" << courier_id << " accepted=" << accepted << "\n";
         return {request.delivery_id, courier_id, accepted, accepted ? "" : "rejected"};

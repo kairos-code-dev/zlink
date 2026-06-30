@@ -29,8 +29,8 @@ function createInvalidDuplicateModule(options: InvalidDuplicateOptions): Functio
               .traceLabel(options.rid);
           const channel = builder.addClientServerChannel(RegistrationCodecNames.channel)
             .enableServer(options.channelEndpoint);
-          channel.addRequestHandler(PacketNames.echoManual, DuplicateEchoRequestHandler);
-          channel.addRequestHandler(PacketNames.echoManual, DuplicateEchoRequestHandler);
+          channel.addRequestHandler(PacketNames.echoManualReq, DuplicateEchoRequestHandler);
+          channel.addRequestHandler(PacketNames.echoManualReq, DuplicateEchoRequestHandler);
           return builder.build();
         }
       })

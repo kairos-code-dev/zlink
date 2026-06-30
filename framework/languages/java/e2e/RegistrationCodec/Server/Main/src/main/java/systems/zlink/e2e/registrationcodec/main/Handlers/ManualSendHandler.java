@@ -6,7 +6,7 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 
 public final class ManualSendHandler
-    implements ZLinkSendHandler<Contracts.EchoManualCommand> {
+    implements ZLinkSendHandler<Contracts.EchoManualMsg> {
     private final EvidenceStore state;
 
     public ManualSendHandler(EvidenceStore state) {
@@ -15,7 +15,7 @@ public final class ManualSendHandler
 
     @Override
     public void handle(
-        Contracts.EchoManualCommand message,
+        Contracts.EchoManualMsg message,
         ZLinkSendContext context) {
         state.record("Send", context.packetName().orElse("EchoManual"), message.value());
     }

@@ -1,16 +1,16 @@
-import type { ProfileReply, RequestFailureResult } from '../../Shared/messages';
+import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRmC4(discoveryConsumerUrl: string, providerAUrl: string, providerBUrl: string): Promise<void> {
-  const timeout = await postJson<RequestFailureResult>(discoveryConsumerUrl, '/profile/slow-request', { value: 'slow' });
+  const timeout = await postJson<RequestFailureRes>(discoveryConsumerUrl, '/profile/slow-request', { value: 'slow' });
   ensure(timeout.failed, 'RM-C4 expected the slow request to time out.');
 
-  const immediate = await postJson<ProfileReply>(discoveryConsumerUrl, '/profile/request', { value: 'rm-c4-after-timeout' });
+  const immediate = await postJson<ProfileRes>(discoveryConsumerUrl, '/profile/request', { value: 'rm-c4-after-timeout' });
   ensure(immediate.value === 'profile:rm-c4-after-timeout', 'RM-C4 follow-up reply mismatch.');
 
   await new Promise((resolve) => setTimeout(resolve, 1200));
-  const later = await postJson<ProfileReply>(discoveryConsumerUrl, '/profile/request', { value: 'rm-c4-later' });
+  const later = await postJson<ProfileRes>(discoveryConsumerUrl, '/profile/request', { value: 'rm-c4-later' });
   ensure(later.value === 'profile:rm-c4-later', 'RM-C4 later reply mismatch.');
 
   const afterTimeout = await firstEvidence(providerAUrl, providerBUrl, 'rm-c4-after-timeout');

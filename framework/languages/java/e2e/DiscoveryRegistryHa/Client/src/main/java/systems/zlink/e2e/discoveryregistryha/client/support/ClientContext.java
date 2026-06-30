@@ -80,11 +80,11 @@ public final class ClientContext {
         List<String> expected = options.expectedRids();
         Set<String> providers = new HashSet<>();
         for (int index = 0; index < 120 && !providers.containsAll(expected); index++) {
-            Contracts.ProfileRequest request =
-                new Contracts.ProfileRequest("msg-" + index, "marker-" + index);
+            Contracts.ProfileReq request =
+                new Contracts.ProfileReq("msg-" + index, "marker-" + index);
             try {
                 String body = HttpSupport.postJson(consumerEndpoint, "/profile/request/wait", request, JSON);
-                Contracts.ProfileReply reply = JSON.readValue(body, Contracts.ProfileReply.class);
+                Contracts.ProfileRes reply = JSON.readValue(body, Contracts.ProfileRes.class);
                 ScenarioAssert.that(reply.value().equals("profile:msg-" + index), "reply payload mismatch");
                 providers.add(reply.providerRid());
             } catch (Exception error) {

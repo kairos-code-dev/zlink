@@ -1,4 +1,4 @@
-import type { EvidenceWaitRequest } from '../../../Shared/messages';
+import type { EvidenceWaitReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
@@ -10,7 +10,7 @@ export function createSubscriberEndpoints(evidence: EvidenceStore, stop: () => v
       method: 'POST',
       path: '/evidence/wait',
       handle: async (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         const timeout = clamp(request.timeoutMilliseconds ?? 10_000, 1, 30_000);
         return await evidence.waitUntil((entries) => matches(entries, request), timeout);
       }
@@ -20,7 +20,7 @@ export function createSubscriberEndpoints(evidence: EvidenceStore, stop: () => v
   ];
 }
 
-function matches(entries: readonly string[], request: EvidenceWaitRequest): boolean {
+function matches(entries: readonly string[], request: EvidenceWaitReq): boolean {
   const containsAll = request.containsAll ?? [];
   const containsAnyGroups = request.containsAnyGroups ?? [];
   const containsAllLineGroups = request.containsAllLineGroups ?? [];

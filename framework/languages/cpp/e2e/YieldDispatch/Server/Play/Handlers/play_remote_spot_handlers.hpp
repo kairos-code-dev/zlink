@@ -15,7 +15,7 @@ namespace zlink::framework::e2e::yield_dispatch::server::play {
 
 namespace yd = zlink::framework::e2e::yield_dispatch;
 
-inline zlink::framework::task_t<yd::yield_dispatch_reply_t>
+inline zlink::framework::task_t<yd::yield_dispatch_res_t>
 handle_remote_spot_yield (zlink::framework::spot_context_t &context,
                           evidence_store_t &evidence,
                           const yd::remote_spot_yield_req_t &request)
@@ -26,7 +26,7 @@ handle_remote_spot_yield (zlink::framework::spot_context_t &context,
                   + request.target_spot_rid + "|handler=spot");
     auto call =
       context
-        .request_to<yd::yield_dispatch_reply_t> (
+        .request_to<yd::yield_dispatch_res_t> (
           zlink::framework::node_rid_t::from_string ("play-b"),
           zlink::framework::spot_rid_t::from_string (request.target_spot_rid),
           yd::yield_req_t{.request_id = request.request_id,

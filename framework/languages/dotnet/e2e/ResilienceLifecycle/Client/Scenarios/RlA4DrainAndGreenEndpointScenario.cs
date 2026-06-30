@@ -23,8 +23,8 @@ internal static class RlA4DrainAndGreenEndpointScenario
         {
             var marker = $"rl-a4-rolling-{i}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", marker))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", marker))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 rolling request returned an unexpected value.");
             ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b",
                 "RL-A4 rolling request used an unexpected provider.");
@@ -47,19 +47,19 @@ internal static class RlA4DrainAndGreenEndpointScenario
         }
 
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryRes[]>();
         for (var i = 0; i < 32; i++)
         {
             var marker = $"rl-a4-green-{i}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", marker))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", marker))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 green request returned an unexpected value.");
         }
 
         await greenProvider.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["marker=rl-a4-green-"], []))
+            .Body(new EvidenceWaitReq(["marker=rl-a4-green-"], []))
             .SubmitAsync<string[]>();
 
         await greenProvider.Post("/shutdown").SubmitRawAsync();
@@ -81,19 +81,19 @@ internal static class RlA4DrainAndGreenEndpointScenario
         }
 
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryRes[]>();
         for (var i = 0; i < 32; i++)
         {
             var marker = $"rl-a4-restored-{i}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", marker))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", marker))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 restored request returned an unexpected value.");
         }
 
         await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["marker=rl-a4-restored-"], []))
+            .Body(new EvidenceWaitReq(["marker=rl-a4-restored-"], []))
             .SubmitAsync<string[]>();
 
         Console.WriteLine("scenario RL-A4 passed");
@@ -102,7 +102,7 @@ internal static class RlA4DrainAndGreenEndpointScenario
     private static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
     {
         await provider.Post("/admin/weight/wait")
-            .Body(new WeightWaitRequest(expected))
+            .Body(new WeightWaitReq(expected))
             .SubmitRawAsync();
     }
 }

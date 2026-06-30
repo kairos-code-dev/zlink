@@ -1,9 +1,9 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
+  EvidenceWaitReq,
   SpotStateRouteReq,
-  StateReply
+  StateRes
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -11,12 +11,12 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmA2(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-a2-${Date.now()}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(created.spotRid === spotRid, 'SM-A2 did not create the requested spot.');
 
-  const reply = await postJson<StateReply>(options.playAUrl, '/spot/state/request', {
+  const reply = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
     spotRid,
     operation: 'add',
     delta: 1
@@ -28,7 +28,7 @@ export async function runSmA2(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: [`spot-state-request|rid=play-a|spot=${spotRid}|value=1`],
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     evidence.some((line) => line.includes(`spot-state-request|rid=play-a|spot=${spotRid}|value=1`)),
     'SM-A2 state mutation evidence missing.'

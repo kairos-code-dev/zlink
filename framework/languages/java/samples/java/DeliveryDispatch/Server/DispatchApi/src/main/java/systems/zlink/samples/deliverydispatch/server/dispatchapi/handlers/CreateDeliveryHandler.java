@@ -23,27 +23,27 @@ public final class CreateDeliveryHandler {
     }
 
     @PostMapping("/deliveries")
-    public Messages.DeliveryCreated handle(@RequestBody Messages.CreateDeliveryRequest request) {
+    public Messages.CreateDeliveryRes handle(@RequestBody Messages.CreateDeliveryReq request) {
         Messages.AssignDelivery assign = new Messages.AssignDelivery(
             request.deliveryId(),
             request.customerId(),
             request.pickupAddress(),
             request.dropoffAddress());
-        Messages.AssignDeliveryResult assigned = requestDispatch(assign);
+        Messages.AssignDeliveryRes assigned = requestDispatch(assign);
         System.err.printf(
             "deliverydispatch api: created delivery=%s courier=%s%n",
             assigned.deliveryId(),
             assigned.courierId());
-        return new Messages.DeliveryCreated(assigned.deliveryId());
+        return new Messages.CreateDeliveryRes(assigned.deliveryId());
     }
 
-    private Messages.AssignDeliveryResult requestDispatch(Messages.AssignDelivery request) {
+    private Messages.AssignDeliveryRes requestDispatch(Messages.AssignDelivery request) {
         RuntimeException lastError = null;
         for (int attempt = 1; attempt <= SampleTimings.MaxChannelAttempts; attempt++) {
             try {
                 return channels.requestToChannel(SampleNames.DispatchChannel, request)
                     .timeout(SampleTimings.RequestTimeout)
-                    .await(Messages.AssignDeliveryResult.class);
+                    .await(Messages.AssignDeliveryRes.class);
             } catch (RuntimeException error) {
                 lastError = error;
                 pause();

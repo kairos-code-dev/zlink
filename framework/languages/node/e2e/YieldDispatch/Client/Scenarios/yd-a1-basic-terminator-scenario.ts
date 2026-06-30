@@ -1,9 +1,9 @@
 import type {
-  EnsureSpotReply,
+  EnsureSpotRes,
   EnsureSpotReq,
-  HoldCommand,
-  ProbeCommand,
-  YieldEvidenceReply,
+  HoldMsg,
+  ProbeMsg,
+  YieldEvidenceRes,
   YieldEvidenceWaitReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -13,7 +13,7 @@ import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 export async function runYdA1(client: ZlinkStreamConnector): Promise<{ spotRid: string; requestId: string }> {
   const spotRid = `yield-track-a-${uniqueId()}`;
-  const spot = decodeStreamReply<EnsureSpotReply>(await client
+  const spot = decodeStreamReply<EnsureSpotRes>(await client
     .request({ spotRid } satisfies EnsureSpotReq)
     .packetName('EnsureSpotReq')
     .timeout(30000)
@@ -22,18 +22,18 @@ export async function runYdA1(client: ZlinkStreamConnector): Promise<{ spotRid: 
 
   const requestId = `YD-A1-${uniqueId()}`;
   await client
-    .send({ requestId, delayMs: 350 } satisfies HoldCommand)
-    .packetName('HoldCommand')
+    .send({ requestId, delayMs: 350 } satisfies HoldMsg)
+    .packetName('HoldMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
   await new Promise((resolve) => setTimeout(resolve, 75));
   await client
-    .send({ requestId, marker: 'hold-probe' } satisfies ProbeCommand)
-    .packetName('ProbeCommand')
+    .send({ requestId, marker: 'hold-probe' } satisfies ProbeMsg)
+    .packetName('ProbeMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
 
-  const evidence = decodeStreamReply<YieldEvidenceReply>(await client
+  const evidence = decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId, marker: 'probe-completed', timeoutMilliseconds: 30000 } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')

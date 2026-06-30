@@ -6,21 +6,21 @@ using Zlink.Framework.Contracts.Handlers;
 namespace RegistrationCodec.Server.InvalidDuplicate.Handlers;
 
 internal sealed class JsonEchoRequestHandler(EvidenceStore evidence)
-    : IZLinkRequestHandler<JsonEchoReq, EchoReply>
+    : IZLinkRequestHandler<JsonEchoReq, EchoRes>
 {
-    public ValueTask<EchoReply> HandleAsync(JsonEchoReq request, ZLinkRequestContext context,
+    public ValueTask<EchoRes> HandleAsync(JsonEchoReq request, ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"codec-request|codec=json|value={request.Value}|content={context.ContentType}");
-        return ValueTask.FromResult(new EchoReply($"echo:{request.Value}", context.ContentType ?? "<null>"));
+        return ValueTask.FromResult(new EchoRes($"echo:{request.Value}", context.ContentType ?? "<null>"));
     }
 }
 
 internal sealed class JsonEchoCommandHandler(EvidenceStore evidence)
-    : IZLinkSendHandler<JsonEchoCommand>
+    : IZLinkSendHandler<JsonEchoMsg>
 {
-    public ValueTask HandleAsync(JsonEchoCommand message, ZLinkSendContext context, CancellationToken cancellationToken)
+    public ValueTask HandleAsync(JsonEchoMsg message, ZLinkSendContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
@@ -66,9 +66,9 @@ internal sealed class MessagePackEchoRequestHandler(EvidenceStore evidence)
 }
 
 internal sealed class MessagePackEchoCommandHandler(EvidenceStore evidence)
-    : IZLinkSendHandler<PackedEchoCommand>
+    : IZLinkSendHandler<PackedEchoMsg>
 {
-    public ValueTask HandleAsync(PackedEchoCommand message, ZLinkSendContext context,
+    public ValueTask HandleAsync(PackedEchoMsg message, ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

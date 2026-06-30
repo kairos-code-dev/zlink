@@ -28,7 +28,7 @@ internal static class TopicFilterScenario
         // Each subscriber records both the accepted event and the ignored marker for the other topic.
         var snapshots = await WaitForAllSubscribersAsync(
             subscribers,
-            new EvidenceWaitRequest(
+            new EvidenceWaitReq(
                 ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
                 [])
             {
@@ -54,7 +54,7 @@ internal static class TopicFilterScenario
 
     private static async Task<string[][]> WaitForAllSubscribersAsync(
         IReadOnlyList<ZLinkHttpClient> subscribers,
-        EvidenceWaitRequest request)
+        EvidenceWaitReq request)
     {
         var waits = subscribers
             .Select(subscriber => subscriber.Post("/evidence/wait").Body(request).SubmitAsync<string[]>().AsTask())

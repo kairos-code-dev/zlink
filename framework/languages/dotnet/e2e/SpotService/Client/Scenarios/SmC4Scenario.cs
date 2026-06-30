@@ -11,22 +11,22 @@ internal static class SmC4Scenario
         var spotRid = $"spot-sm-c4-{Guid.NewGuid():N}";
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
-            .SubmitAsync<CreateSpotReply>()).Body;
+            .SubmitAsync<CreateSpotRes>()).Body;
         ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
             "SM-C4 publish spot was not created on play-a.");
         var unsubscribedSpotRid = $"spot-sm-c4-unsubscribed-{Guid.NewGuid():N}";
         var unsubscribedSpot = (await playA.Post("/spot/create-alternate")
             .Body(new CreateSpotReq(unsubscribedSpotRid))
-            .SubmitAsync<CreateSpotReply>()).Body;
+            .SubmitAsync<CreateSpotRes>()).Body;
         ScenarioAssert.That(unsubscribedSpot.SpotRid == unsubscribedSpotRid && unsubscribedSpot.NodeRid == "play-a",
             "SM-C4 unsubscribed spot was not created on play-a.");
         var marker = "sm-c4-publish";
         var waitTask = playA.Post("/spot/publish/wait")
             .Body(new SpotPublishReq(spotRid, marker))
-            .SubmitAsync<SpotPublishObserveReply>();
+            .SubmitAsync<SpotPublishObserveRes>();
         var publish = (await gateway.Post("/spot/publish")
             .Body(new SpotPublishReq(spotRid, marker))
-            .SubmitAsync<SpotPublishReply>()).Body;
+            .SubmitAsync<SpotPublishRes>()).Body;
         var observe = (await waitTask).Body;
         ScenarioAssert.That(publish.Operation == "spot.sm-c4-publish", "SM-C4 publish operation mismatch.");
         ScenarioAssert.That(publish.PublisherRid == "gateway", "SM-C4 publisher was not the publish-only gateway.");
@@ -39,11 +39,11 @@ internal static class SmC4Scenario
             "SM-C4 gateway evidence did not include publish marker.");
         ScenarioAssert.That(
             observe.Evidence.Any(line =>
-                line.Contains($"spot-event|rid=play-a|spot={spotRid}|marker={marker}", StringComparison.Ordinal)),
+                line.Contains($"spot-msg|rid=play-a|spot={spotRid}|marker={marker}", StringComparison.Ordinal)),
             "SM-C4 evidence did not include spot event publish.");
         ScenarioAssert.That(
             observe.Evidence.All(line =>
-                !line.Contains($"spot-event|rid=play-a|spot={unsubscribedSpotRid}|marker={marker}",
+                !line.Contains($"spot-msg|rid=play-a|spot={unsubscribedSpotRid}|marker={marker}",
                     StringComparison.Ordinal)),
             "SM-C4 unsubscribed spot received publish event.");
         Console.WriteLine("operation SpotService.sm-c4 passed");

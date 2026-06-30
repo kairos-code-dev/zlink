@@ -41,7 +41,7 @@ internal static class RegistryHostFactory
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {

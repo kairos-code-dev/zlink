@@ -1,8 +1,8 @@
 import type {
   ActorPushNotify,
   ActorPushYieldReq,
-  ActorYieldReply,
-  YieldEvidenceReply,
+  ActorYieldRes,
+  YieldEvidenceRes,
   YieldEvidenceReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -30,7 +30,7 @@ export async function runYdD4(
       .where((message) => message.payload.actorId === actors.actorA && message.payload.requestId === requestId)
       .timeout(30000)
       .submit();
-    const reply = decodeStreamReply<ActorYieldReply>(await client
+    const reply = decodeStreamReply<ActorYieldRes>(await client
       .request({ requestId, delayMs: 250, value: 'bound-session-push' } satisfies ActorPushYieldReq)
       .packetName('ActorPushYieldReq')
       .metadata(YieldDispatchNames.actorIdMetadata, actors.actorA)
@@ -44,7 +44,7 @@ export async function runYdD4(
     await new Promise((resolve) => setTimeout(resolve, 150));
     ensure(unboundPushCount === 0, 'YD-D4 unbound session received actor push.');
 
-    const evidence = decodeStreamReply<YieldEvidenceReply>(await client
+    const evidence = decodeStreamReply<YieldEvidenceRes>(await client
       .request({ requestId } satisfies YieldEvidenceReq)
       .packetName('YieldEvidenceReq')
       .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')

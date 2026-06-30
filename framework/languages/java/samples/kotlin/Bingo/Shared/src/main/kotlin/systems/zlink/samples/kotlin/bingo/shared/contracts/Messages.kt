@@ -103,7 +103,7 @@ data class StopObservingBingoEventsReq(val roomId: String)
 
 data class StopObservingBingoEventsRes(val stopped: Boolean, val observerNodeRid: String)
 
-data class BingoWinnerEvent(
+data class BingoWinnerMsg(
     val roomId: String,
     val actorId: String,
     val drawSeq: Int,

@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringEventHandlers;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringSpot;
-import systems.zlink.e2e.runtimemonitoring.service.handlers.WorkRequestHandler;
+import systems.zlink.e2e.runtimemonitoring.service.handlers.WorkReqHandler;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceHttpServer;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceState;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
@@ -67,18 +67,18 @@ public final class Program {
                 .enableServer(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"))
                 .setRoutingId(RoutingId.from("svc-a"))
                 .addRequestHandler(
-                    WorkRequestHandler.class,
-                    Contracts.WorkRequest.class,
-                    Contracts.WorkReply.class,
-                    "WorkRequest");
+                    WorkReqHandler.class,
+                    Contracts.WorkReq.class,
+                    Contracts.WorkRes.class,
+                    "WorkReq");
             options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT"))
                 .setRoutingId(RoutingId.from("svc-a-handshake"))
                 .addRequestHandler(
-                    WorkRequestHandler.class,
-                    Contracts.WorkRequest.class,
-                    Contracts.WorkReply.class,
-                    "HandshakeWorkRequest");
+                    WorkReqHandler.class,
+                    Contracts.WorkReq.class,
+                    Contracts.WorkRes.class,
+                    "HandshakeWorkReq");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH)
                 ;
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
@@ -98,8 +98,8 @@ public final class Program {
     }
 
     @Bean
-    WorkRequestHandler workRequestHandler() {
-        return new WorkRequestHandler();
+    WorkReqHandler workRequestHandler() {
+        return new WorkReqHandler();
     }
 
     @Bean

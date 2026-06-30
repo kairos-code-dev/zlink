@@ -11,11 +11,11 @@ fun ClientScenarioContext.runMixedBurstScenarioBody() {
         repeat(40) { index ->
             val value = "d5-soak-$window-$index"
             if (index % 5 == 0) {
-                client.sendToChannel(Contracts.CHANNEL, Contracts.WorkCommand(value)).await()
+                client.sendToChannel(Contracts.CHANNEL, Contracts.WorkMsg(value)).await()
             } else {
-                val reply = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkRequest(value))
+                val reply = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq(value))
                     .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkReply::class.java)
+                    .await(Contracts.WorkRes::class.java)
                 ensure(reply.value() == "work:$value", "RL-D5 reply payload mismatch for $value")
                 providers.add(reply.providerRid())
             }

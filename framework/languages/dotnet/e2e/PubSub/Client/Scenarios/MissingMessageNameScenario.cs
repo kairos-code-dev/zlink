@@ -19,13 +19,13 @@ internal static class MissingMessageNameScenario
             .SubmitRawAsync();
 
         // The drop is observed on subscriber evidence because publisher submit only reaches transport.
-        await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
+        await WaitForSubscribersAsync(subscribers, new EvidenceWaitReq(
             [],
             [])
         {
             ContainsAllLineGroups =
             [
-                ["dispatch-error|", "packet=MissingEventNotify", $"topic={PubSubNames.MainTopic}"]
+                ["dispatch-error|", "packet=MissingEventMsg", $"topic={PubSubNames.MainTopic}"]
             ]
         });
 
@@ -36,7 +36,7 @@ internal static class MissingMessageNameScenario
             .Query("sequence", "2")
             .Query("value", "after-missing")
             .SubmitRawAsync();
-        await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
+        await WaitForSubscribersAsync(subscribers, new EvidenceWaitReq(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
             []));
 
@@ -45,7 +45,7 @@ internal static class MissingMessageNameScenario
 
     private static async Task WaitForSubscribersAsync(
         IReadOnlyList<ZLinkHttpClient> subscribers,
-        EvidenceWaitRequest request)
+        EvidenceWaitReq request)
     {
         var waits = subscribers
             .Select(subscriber => subscriber.Post("/evidence/wait").Body(request).SubmitAsync<string[]>().AsTask())

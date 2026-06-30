@@ -29,18 +29,18 @@ internal static class SmG1Scenario
         await playB.Connect.Async();
         await playA.Request(new AuthReq("actor-sm-g1-crash", "crash-owner", "play-a"))
             .PacketName("AuthReq")
-            .Async<AuthReply>();
+            .Async<AuthRes>();
         await playB.Request(new AuthReq("actor-sm-g1-survivor", "survivor", "play-b"))
             .PacketName("AuthReq")
-            .Async<AuthReply>();
+            .Async<AuthRes>();
 
         var beforeCrash = await playA.Request(new ActorPingReq("before-crash"))
             .PacketName("ActorPingReq")
-            .Async<ActorPingReply>();
+            .Async<ActorPingRes>();
         ScenarioAssert.That(beforeCrash.NodeRid == "play-a", "SM-G1 play-a actor setup mismatch.");
         var beforeSurvivor = await playB.Request(new ActorPingReq("before-crash"))
             .PacketName("ActorPingReq")
-            .Async<ActorPingReply>();
+            .Async<ActorPingRes>();
         ScenarioAssert.That(beforeSurvivor.NodeRid == "play-b", "SM-G1 play-b actor setup mismatch.");
 
         using var http = ZLinkHttpClient.Create(playAUrl)
@@ -58,7 +58,7 @@ internal static class SmG1Scenario
             await playA.Request(new ActorPingReq("after-crash"))
                 .PacketName("ActorPingReq")
                 .Timeout(TimeSpan.FromSeconds(1))
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
         }
         catch
         {
@@ -69,7 +69,7 @@ internal static class SmG1Scenario
 
         var survivor = await playB.Request(new ActorPingReq("after-crash"))
             .PacketName("ActorPingReq")
-            .Async<ActorPingReply>();
+            .Async<ActorPingRes>();
         ScenarioAssert.That(survivor.ActorId == "actor-sm-g1-survivor", "SM-G1 survivor actor mismatch.");
         ScenarioAssert.That(survivor.NodeRid == "play-b", "SM-G1 survivor node mismatch.");
 
@@ -82,10 +82,10 @@ internal static class SmG1Scenario
         await recovered.Connect.Async();
         await recovered.Request(new AuthReq("actor-sm-g1-crash", "recovered-on-play-b", "play-b"))
             .PacketName("AuthReq")
-            .Async<AuthReply>();
+            .Async<AuthRes>();
         var rebound = await recovered.Request(new ActorPingReq("rebound"))
             .PacketName("ActorPingReq")
-            .Async<ActorPingReply>();
+            .Async<ActorPingRes>();
         ScenarioAssert.That(rebound.ActorId == "actor-sm-g1-crash", "SM-G1 rebound actor mismatch.");
         ScenarioAssert.That(rebound.NodeRid == "play-b", "SM-G1 rebound node mismatch.");
 

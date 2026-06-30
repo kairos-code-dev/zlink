@@ -22,7 +22,7 @@ import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestStatuses
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.BindQuestSessionReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.BindQuestSessionRes
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventMsg
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.ItemCountSnapshot
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.KillCountSnapshot
@@ -57,10 +57,10 @@ class GameQuestStore : GameplayActionService.GameplayEventStore {
 
     // ----- gameplay events -----
 
-    override fun getOrAddGameplayEvent(candidate: GameplayEventEnvelope): GameplayEventEnvelope =
+    override fun getOrAddGameplayEvent(candidate: GameplayEventMsg): GameplayEventMsg =
         update(
             "gameplay-events.json",
-            object : TypeReference<MutableList<GameplayEventEnvelope>>() {},
+            object : TypeReference<MutableList<GameplayEventMsg>>() {},
         ) { events ->
             val existing = events.firstOrNull {
                 it.playerId == candidate.playerId && it.idempotencyKey == candidate.idempotencyKey
@@ -84,7 +84,7 @@ class GameQuestStore : GameplayActionService.GameplayEventStore {
     }
 
     fun readSnapshot(playerId: String): GetGameplaySnapshotRes {
-        val events = read("gameplay-events.json", object : TypeReference<MutableList<GameplayEventEnvelope>>() {})
+        val events = read("gameplay-events.json", object : TypeReference<MutableList<GameplayEventMsg>>() {})
         val unpublishedKills = read("unpublished-kills.json", object : TypeReference<MutableMap<String, Int>>() {})
 
         val killByMonster = LinkedHashMap<String, Int>()
@@ -117,7 +117,7 @@ class GameQuestStore : GameplayActionService.GameplayEventStore {
         )
     }
 
-    private fun itemCounts(events: List<GameplayEventEnvelope>, playerId: String): List<ItemCountSnapshot> {
+    private fun itemCounts(events: List<GameplayEventMsg>, playerId: String): List<ItemCountSnapshot> {
         val byItem = LinkedHashMap<String, Int>()
         for (event in events) {
             if (event.playerId == playerId && event.eventType == "ItemCollected") {
@@ -128,7 +128,7 @@ class GameQuestStore : GameplayActionService.GameplayEventStore {
     }
 
     private fun distinctSortedValues(
-        events: List<GameplayEventEnvelope>,
+        events: List<GameplayEventMsg>,
         playerId: String,
         eventType: String,
     ): List<String> {

@@ -29,7 +29,7 @@ internal static class SmD7Scenario
                     await candidate.Connect.Async();
                     var authReply = await candidate.Request(new AuthReq("actor-sm-d7", "stream auth", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     ScenarioAssert.That(authReply.ActorId == "actor-sm-d7", "SM-D7 auth reply actor mismatch.");
                     client = candidate;
                     break;
@@ -51,7 +51,7 @@ internal static class SmD7Scenario
 
             var reply = await client.Request(new ActorPingReq("auth-ok"))
                 .PacketName("ActorPingReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             ScenarioAssert.That(reply.ActorId == "actor-sm-d7", "SM-D7 relay actor mismatch.");
             ScenarioAssert.That(reply.Value == "auth-ok", "SM-D7 relay value mismatch.");
         }

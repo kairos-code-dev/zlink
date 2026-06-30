@@ -18,13 +18,13 @@ std::string run_yd_a3_continuation_context_scenario (TConnector &connector,
 {
     const auto request_id = unique_id ("YD-A3");
     auto context_send =
-      connector.send (yield_command_t{.request_id = request_id,
+      connector.send (yield_msg_t{.request_id = request_id,
                                       .delay_ms = 50,
                                       .correlation_id = "corr-a3"})
-        .packet_name (yield_command_t::packet_name)
+        .packet_name (yield_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (context_send), "YD-A3 YieldCommand send failed");
+    ensure (static_cast<bool> (context_send), "YD-A3 YieldMsg send failed");
     auto evidence =
       observer.request (
                   yield_evidence_wait_req_t{.request_id = request_id,
@@ -33,7 +33,7 @@ std::string run_yd_a3_continuation_context_scenario (TConnector &connector,
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (evidence), "YD-A3 evidence wait failed");
     ensure (contains_in_order (evidence.value ().evidence, request_id,
                                {"yield-started", "yield-released", "yield-resumed",

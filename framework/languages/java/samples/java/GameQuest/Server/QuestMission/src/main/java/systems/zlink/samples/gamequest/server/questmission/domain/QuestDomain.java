@@ -31,7 +31,7 @@ public final class QuestDomain {
         new QuestDefinition(QuestIds.ClearTutorial, "MissionCompleted", "tutorial", 1),
         new QuestDefinition(QuestIds.VisitRuins, "AreaEntered", "ruins", 1));
 
-    public static QuestDefinition match(Messages.GameplayEventEnvelope event) {
+    public static QuestDefinition match(Messages.GameplayEventMsg event) {
         for (QuestDefinition definition : CATALOG) {
             if (definition.eventType().equals(event.eventType())
                 && ("*".equals(definition.value()) || definition.value().equals(event.value()))) {
@@ -49,7 +49,7 @@ public final class QuestDomain {
     }
 
     public static Messages.QuestProgress apply(
-        QuestDefinition definition, Messages.QuestProgress current, Messages.GameplayEventEnvelope event) {
+        QuestDefinition definition, Messages.QuestProgress current, Messages.GameplayEventMsg event) {
         int currentCount = current == null ? 0 : current.currentCount();
         int nextCount = "SnapshotKillCount".equals(event.eventType())
             ? Math.max(currentCount, event.count())
@@ -69,7 +69,7 @@ public final class QuestDomain {
         QuestDefinition definition,
         Messages.QuestProgress before,
         Messages.QuestProgress after,
-        Messages.GameplayEventEnvelope source) {
+        Messages.GameplayEventMsg source) {
         if (before != null && source.eventId().equals(before.lastEventId())) {
             return List.of();
         }
@@ -99,7 +99,7 @@ public final class QuestDomain {
         QuestDefinition definition,
         Messages.QuestProgress before,
         Messages.QuestProgress after,
-        Messages.GameplayEventEnvelope source) {
+        Messages.GameplayEventMsg source) {
         long now = System.currentTimeMillis();
         String eventId = after.playerId() + "-" + definition.questId() + "-" + source.eventId() + "-" + eventType;
         Object payload = switch (eventType) {

@@ -24,7 +24,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.GameStateNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerJoinedNotify;
-import systems.zlink.samples.tictactoe.shared.contracts.PlayerWinMilestoneEvent;
+import systems.zlink.samples.tictactoe.shared.contracts.PlayerWinMilestoneMsg;
 import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinReq;
 import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinRes;
 
@@ -266,7 +266,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
             return;
         }
         context.outbound()
-            .publish(SampleNames.PlayerMilestoneTopic, new PlayerWinMilestoneEvent(
+            .publish(SampleNames.PlayerMilestoneTopic, new PlayerWinMilestoneMsg(
                 after.roomId(),
                 actor.actorId(),
                 player.displayName(),

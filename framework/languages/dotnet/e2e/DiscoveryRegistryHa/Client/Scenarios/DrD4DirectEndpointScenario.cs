@@ -19,10 +19,10 @@ internal static class DrD4DirectEndpointScenario
             .Build();
 
         await registry.Post("/registry/topology/wait")
-            .Body(new TopologyReadyWaitRequest(1))
+            .Body(new TopologyReadyWaitReq(1))
             .SubmitRawAsync();
         await probe.Post("/registry/topology/wait")
-            .Body(new TopologyReadyWaitRequest(1))
+            .Body(new TopologyReadyWaitReq(1))
             .SubmitRawAsync();
 
         var local = Normalize(await ReadJsonArrayAsync(registry, "/registry/topology"));

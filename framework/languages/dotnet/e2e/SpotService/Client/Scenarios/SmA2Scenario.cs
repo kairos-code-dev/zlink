@@ -11,7 +11,7 @@ internal static class SmA2Scenario
         var expectedEvidence = new[]
             { $"spot-state-request|rid=play-a|spot={context.SpotRid}|value={context.CurrentValue}" };
         var evidence = (await api.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

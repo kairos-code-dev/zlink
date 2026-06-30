@@ -11,10 +11,10 @@ internal sealed class BindCourierHandler(
     CourierDirectory directory,
     IZLinkRouteClient routes,
     ILogger<BindCourierHandler> logger)
-    : IZLinkRequestHandler<BindCourier, CourierBound>
+    : IZLinkRequestHandler<BindCourierReq, BindCourierRes>
 {
-    public async ValueTask<CourierBound> HandleAsync(
-        BindCourier request,
+    public async ValueTask<BindCourierRes> HandleAsync(
+        BindCourierReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -22,16 +22,16 @@ internal sealed class BindCourierHandler(
         var ensured = await routes.Request(
                 SampleNames.CourierActorNodeRouteChannel,
                 placement.NodeRid,
-                new EnsureCourierActor(request.CourierId))
-            .PacketName(nameof(EnsureCourierActor))
-            .Async<CourierActorEnsured>(cancellationToken);
+                new EnsureCourierActorReq(request.CourierId))
+            .PacketName(nameof(EnsureCourierActorReq))
+            .Async<EnsureCourierActorRes>(cancellationToken);
         var binding = directory.Remember(ensured, request.SessionRoute);
         logger.LogInformation(
             "deliverydispatch courier-gateway: bound courier={CourierId} node={NodeRid} session={SessionRoute}",
             request.CourierId,
             binding.Actor.NodeRid,
             binding.SessionRoute);
-        return new CourierBound(request.CourierId, binding.Actor, binding.SessionRoute);
+        return new BindCourierRes(request.CourierId, binding.Actor, binding.SessionRoute);
     }
 }
 
@@ -39,10 +39,10 @@ internal sealed class BindCourierHandler(
 internal sealed class OfferDeliveryHandler(
     CourierDirectory directory,
     IZLinkRouteClient routes)
-    : IZLinkRequestHandler<OfferDelivery, OfferDeliveryResult>
+    : IZLinkRequestHandler<OfferDeliveryReq, OfferDeliveryRes>
 {
-    public async ValueTask<OfferDeliveryResult> HandleAsync(
-        OfferDelivery request,
+    public async ValueTask<OfferDeliveryRes> HandleAsync(
+        OfferDeliveryReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -51,8 +51,8 @@ internal sealed class OfferDeliveryHandler(
                 SampleNames.CourierActorNodeRouteChannel,
                 Systems.Zlink.RoutingId.From(binding.Actor.NodeRid),
                 request)
-            .PacketName(nameof(OfferDelivery))
+            .PacketName(nameof(OfferDeliveryReq))
             .Timeout(SampleTimings.OfferRequestTimeout)
-            .Async<OfferDeliveryResult>(cancellationToken);
+            .Async<OfferDeliveryRes>(cancellationToken);
     }
 }

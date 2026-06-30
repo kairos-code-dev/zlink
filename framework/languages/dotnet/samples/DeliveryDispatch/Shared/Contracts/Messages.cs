@@ -11,47 +11,52 @@ public enum DeliveryStatus
     Failed
 }
 
-public sealed record CreateDeliveryRequest(
+public sealed record CreateDeliveryReq(
     string DeliveryId,
     string CustomerId,
     string PickupAddress,
     string DropoffAddress);
 
-public sealed record DeliveryCreated(
+public sealed record CreateDeliveryRes(
     string DeliveryId);
 
-public sealed record EnsureCustomerActor(
+public sealed record EnsureCustomerActorReq(
     string CustomerId);
 
-public sealed record CustomerActorEnsured(
+public sealed record EnsureCustomerActorRes(
     string CustomerId,
     ActorRefSnapshot Actor);
 
-public sealed record BindCourier(
+public sealed record BindCourierReq(
     string CourierId,
     string SessionRoute);
 
-public sealed record CourierBound(
+public sealed record BindCourierRes(
     string CourierId,
     ActorRefSnapshot Actor,
     string SessionRoute);
 
-public sealed record BindCourierSession(
+public sealed record BindCourierSessionReq(
     string CourierId,
     ActorRefSnapshot? Actor = null,
     string? SessionRoute = null);
 
-public sealed record EnsureCourierActor(
+public sealed record BindCourierSessionRes(
+    string CourierId,
+    ActorRefSnapshot Actor,
+    string SessionRoute);
+
+public sealed record EnsureCourierActorReq(
     string CourierId);
 
-public sealed record CourierActorEnsured(
+public sealed record EnsureCourierActorRes(
     string CourierId,
     ActorRefSnapshot Actor);
 
-public sealed record SubscribeDelivery(
+public sealed record SubscribeDeliveryReq(
     string DeliveryId);
 
-public sealed record SubscribeDeliveryAccepted(
+public sealed record SubscribeDeliveryRes(
     string DeliveryId);
 
 public sealed record AssignDelivery(
@@ -60,19 +65,25 @@ public sealed record AssignDelivery(
     string PickupAddress,
     string DropoffAddress);
 
-public sealed record OfferDelivery(
+public sealed record OfferDeliveryReq(
     string CourierId,
     string DeliveryId,
     string PickupAddress,
     string DropoffAddress);
 
-public sealed record OfferDeliveryResult(
+public sealed record OfferDeliveryNotify(
+    string CourierId,
+    string DeliveryId,
+    string PickupAddress,
+    string DropoffAddress);
+
+public sealed record OfferDeliveryRes(
     string DeliveryId,
     string CourierId,
     bool Accepted,
     string? Reason);
 
-public sealed record CourierDecision(
+public sealed record CourierDecisionMsg(
     string DeliveryId,
     string CourierId,
     bool Accepted,
@@ -84,13 +95,13 @@ public sealed record ReassignDelivery(
     string NextCourierId,
     string Reason);
 
-public sealed record DeliveryStatusChanged(
+public sealed record DeliveryStatusChangedReq(
     string DeliveryId,
     DeliveryStatus Status,
     string? CourierId,
     DateTimeOffset OccurredAt);
 
-public sealed record DeliveryStatusAck(
+public sealed record DeliveryStatusChangedRes(
     string DeliveryId,
     DeliveryStatus Status);
 

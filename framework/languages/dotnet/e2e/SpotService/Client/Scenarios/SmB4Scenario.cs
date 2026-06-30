@@ -12,7 +12,7 @@ internal static class SmB4Scenario
         var actorId = $"actor-sm-b4-remote-{Guid.NewGuid():N}";
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
         Exception? last = null;
-        ActorPingReply? reply = null;
+        ActorPingRes? reply = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
             await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -29,10 +29,10 @@ internal static class SmB4Scenario
                 await client.Connect.Async();
                 await client.Request(new AuthReq(actorId, "remote actor request", "play-b"))
                     .PacketName("AuthReq")
-                    .Async<AuthReply>();
+                    .Async<AuthRes>();
                 reply = await client.Request(new ActorPingReq("sm-b4"))
                     .PacketName("ActorPingReq")
-                    .Async<ActorPingReply>();
+                    .Async<ActorPingRes>();
                 break;
             }
             catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
@@ -52,7 +52,7 @@ internal static class SmB4Scenario
         ScenarioAssert.That(reply.NodeRid == "play-b", "SM-B4 remote actor request reached the wrong node.");
         var expectedEvidence = new[] { $"actor-ping|rid=play-b|actor={actorId}" };
         var evidence = (await playB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

@@ -30,8 +30,8 @@ public final class Program {
             publisher.publishSpot(
                     Contracts.SPOT_MESH,
                     "spot.events",
-                    new Contracts.MeshEvent("c4-publisher"))
-                .packetName("MeshEvent")
+                    new Contracts.MeshMsg("c4-publisher"))
+                .packetName("MeshMsg")
                 .await();
             System.out.println("scenario SM-C4 passed");
         } finally {

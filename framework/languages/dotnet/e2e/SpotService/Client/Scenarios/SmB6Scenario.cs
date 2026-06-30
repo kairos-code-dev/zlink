@@ -16,7 +16,7 @@ internal static class SmB6Scenario
         var leaveActorId = $"actor-sm-b6-left-{Guid.NewGuid():N}";
         var disconnectActorId = $"actor-sm-b6-disconnected-{Guid.NewGuid():N}";
 
-        LeaveReply? left = null;
+        LeaveRes? left = null;
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
@@ -36,12 +36,12 @@ internal static class SmB6Scenario
                 await client.Connect.Async();
                 await client.Request(new UserSpotAuthReq(spotRid, leaveActorId, leaveActorId, "play-a"))
                     .PacketName("UserSpotAuthReq")
-                    .Async<AuthReply>();
+                    .Async<AuthRes>();
 
                 leaveStarted = true;
                 left = await client.Request(new LeaveReq(leaveActorId))
                     .PacketName("LeaveReq")
-                    .Async<LeaveReply>();
+                    .Async<LeaveRes>();
                 break;
             }
             catch (Exception ex) when (!leaveStarted && ex is ZlinkStreamException or TimeoutException)
@@ -61,7 +61,7 @@ internal static class SmB6Scenario
         ScenarioAssert.That(left.Accepted && left.ActorId == leaveActorId, "SM-B6 leave reply mismatch.");
         var expectedLeaveEvidence = new[] { $"spot-actor-left|rid=play-a|spot={spotRid}|actor={leaveActorId}" };
         var playAAfterLeave = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedLeaveEvidence))
+            .Body(new EvidenceWaitReq(expectedLeaveEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedLeaveEvidence.All(expected =>
@@ -91,12 +91,12 @@ internal static class SmB6Scenario
             await disconnectClient.Connect.Async();
             await disconnectClient.Request(new AuthReq(disconnectActorId, "disconnect", "session-a"))
                 .PacketName("AuthReq")
-                .Async<AuthReply>();
+                .Async<AuthRes>();
             await disconnectClient.Close.Async();
         }
 
         var sessionAfterDisconnect = (await sessionA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"entry-disconnected|rid=session-a|actor={disconnectActorId}"]))
+            .Body(new EvidenceWaitReq([$"entry-disconnected|rid=session-a|actor={disconnectActorId}"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             sessionAfterDisconnect.Any(line => line.Contains(

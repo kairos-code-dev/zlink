@@ -1,11 +1,11 @@
-import type { EchoReply } from '../../Shared/messages';
+import type { EchoRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { expectStartupFailure } from '../Support/process-support';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRcA1(serverUrl: string): Promise<void> {
-  const reply = await postJson<EchoReply>(serverUrl, '/registration/auto');
+  const reply = await postJson<EchoRes>(serverUrl, '/registration/auto');
   ensure(reply.value === 'echo:rc-a1', 'RC-A1 reply value mismatch.');
   ensure(reply.contentType === 'application/json', 'RC-A1 expected JSON content type.');
   const evidence = await postJson<readonly string[]>(serverUrl, '/evidence/wait', {
@@ -18,7 +18,7 @@ export async function runRcA1(serverUrl: string): Promise<void> {
 }
 
 export async function runRcA2(serverUrl: string): Promise<void> {
-  const reply = await postJson<EchoReply>(serverUrl, '/registration/attribute');
+  const reply = await postJson<EchoRes>(serverUrl, '/registration/attribute');
   ensure(reply.value === 'echo:rc-a2', 'RC-A2 reply value mismatch.');
   const evidence = await postJson<readonly string[]>(serverUrl, '/evidence/wait', {
     containsAll: ['variant=attr', 'rc-a2-send'],
@@ -30,7 +30,7 @@ export async function runRcA2(serverUrl: string): Promise<void> {
 }
 
 export async function runRcA3(serverUrl: string): Promise<void> {
-  const reply = await postJson<EchoReply>(serverUrl, '/registration/manual');
+  const reply = await postJson<EchoRes>(serverUrl, '/registration/manual');
   ensure(reply.value === 'echo:rc-a3', 'RC-A3 reply value mismatch.');
   const evidence = await postJson<readonly string[]>(serverUrl, '/evidence/wait', {
     containsAll: ['variant=manual', 'rc-a3-send'],
@@ -42,7 +42,7 @@ export async function runRcA3(serverUrl: string): Promise<void> {
 }
 
 export async function runRcA4(serverUrl: string): Promise<void> {
-  const replies = await postJson<readonly EchoReply[]>(serverUrl, '/registration/di-filter-order');
+  const replies = await postJson<readonly EchoRes[]>(serverUrl, '/registration/di-filter-order');
   ensure(replies.length === 2, 'RC-A4 expected two replies.');
   ensure(replies[0]?.value === 'echo:rc-a4-1', 'RC-A4 first reply mismatch.');
   ensure(replies[1]?.value === 'echo:rc-a4-2', 'RC-A4 second reply mismatch.');
@@ -60,20 +60,20 @@ export async function runRcA4(serverUrl: string): Promise<void> {
 }
 
 export async function runRcA5(serverUrl: string): Promise<void> {
-  const reply = await postJson<EchoReply>(serverUrl, '/registration/filter-order');
+  const reply = await postJson<EchoRes>(serverUrl, '/registration/filter-order');
   ensure(reply.value === 'echo:rc-a5', 'RC-A5 reply value mismatch.');
   const evidence = await postJson<readonly string[]>(serverUrl, '/evidence/wait', {
     containsAll: [
-      'filter|name=first|phase=before|packet=EchoManual',
-      'filter|name=second|phase=before|packet=EchoManual',
-      'filter|name=second|phase=after|packet=EchoManual',
-      'filter|name=first|phase=after|packet=EchoManual',
+      'filter|name=first|phase=before|packet=EchoManualReq',
+      'filter|name=second|phase=before|packet=EchoManualReq',
+      'filter|name=second|phase=after|packet=EchoManualReq',
+      'filter|name=first|phase=after|packet=EchoManualReq',
       'filter-reply|value=echo:rc-a5'
     ],
     timeoutMilliseconds: 10_000
   });
   const order = evidence
-    .filter((line) => line.includes('filter|') && line.includes('packet=EchoManual'))
+    .filter((line) => line.includes('filter|') && line.includes('packet=EchoManualReq'))
     .slice(-4)
     .map((line) => {
       const name = line.includes('name=first') ? 'first' : 'second';

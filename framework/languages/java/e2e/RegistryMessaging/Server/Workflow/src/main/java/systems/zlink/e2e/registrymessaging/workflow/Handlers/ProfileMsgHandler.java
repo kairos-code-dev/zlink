@@ -1,0 +1,24 @@
+package systems.zlink.e2e.registrymessaging.workflow.Handlers;
+
+import systems.zlink.e2e.registrymessaging.workflow.Infrastructure.ScenarioState;
+import systems.zlink.e2e.registrymessaging.shared.Contracts;
+import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.channels.ZLinkSendHandler;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+
+@ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
+public final class ProfileMsgHandler
+    implements ZLinkSendHandler<Contracts.ProfileMsg> {
+    private final ScenarioState state;
+
+    public ProfileMsgHandler(ScenarioState state) {
+        this.state = state;
+    }
+
+    @Override
+    public void handle(
+        Contracts.ProfileMsg message,
+        ZLinkSendContext context) {
+        state.record("ProfileMsg", message.commandId());
+    }
+}

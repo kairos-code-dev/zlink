@@ -6,16 +6,16 @@ using Zlink.Framework.Contracts.Handlers;
 namespace RegistryMessaging.Server.Workflow.Handlers;
 
 internal sealed class WorkflowRequestHandler(EvidenceStore evidence)
-    : IZLinkRequestHandler<WorkflowRequest, WorkflowReply>
+    : IZLinkRequestHandler<WorkflowReq, WorkflowRes>
 {
-    public ValueTask<WorkflowReply> HandleAsync(
-        WorkflowRequest request,
+    public ValueTask<WorkflowRes> HandleAsync(
+        WorkflowReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"workflow-request|rid={evidence.Rid}|value={request.Value}|packet={context.PacketName}");
-        return ValueTask.FromResult(new WorkflowReply($"workflow:{request.Value}", evidence.Rid));
+        return ValueTask.FromResult(new WorkflowRes($"workflow:{request.Value}", evidence.Rid));
     }
 }
 

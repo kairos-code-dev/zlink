@@ -54,8 +54,8 @@ public final class RegistryEndpoints implements SmartLifecycle {
             server.createContext("/topology-rids", exchange ->
                 HttpSupport.writeJson(exchange, json, topologyRids()));
             server.createContext("/registry/members/wait", exchange -> {
-                Contracts.MemberEndpointWaitRequest request =
-                    HttpSupport.readJson(exchange, json, Contracts.MemberEndpointWaitRequest.class);
+                Contracts.MemberEndpointWaitReq request =
+                    HttpSupport.readJson(exchange, json, Contracts.MemberEndpointWaitReq.class);
                 Wait.until(Duration.ofMillis(Math.max(1, request.timeoutMilliseconds())),
                     "timed out waiting for member endpoint " + request.endpoint(),
                     () -> await(query.memberPeers(Contracts.CHANNEL)).stream()

@@ -10,9 +10,9 @@ Gradle project로 실행 process를 나눴다. client scenario/support 파일과
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| RC-A1 | 구현 완료 | `AutoRegistrationScenario`가 `EchoAuto` request/send를 자동 스캔 등록 handler로 처리하고 evidence를 확인한다. |
-| RC-A2 | 구현 완료 | `AttributeRegistrationScenario`가 `@ZLinkHandlerGroup` + `@ZLinkRequest`/`@ZLinkSend` annotation 등록 handler로 `EchoAttr` request/send를 처리한다. |
-| RC-A3 | 구현 완료 | `ManualRegistrationScenario`가 channel builder의 명시적 request/send handler 등록으로 `EchoManual` request/send를 처리한다. |
+| RC-A1 | 구현 완료 | `AutoRegistrationScenario`가 `EchoAutoReq` request와 `EchoAutoMsg` send를 자동 스캔 등록 handler로 처리하고 evidence를 확인한다. |
+| RC-A2 | 구현 완료 | `AttributeRegistrationScenario`가 `@ZLinkHandlerGroup` + `@ZLinkRequest`/`@ZLinkSend` annotation 등록 handler로 `EchoAttrReq` request와 `EchoAttrMsg` send를 처리한다. |
+| RC-A3 | 구현 완료 | `ManualRegistrationScenario`가 channel builder의 명시적 request/send handler 등록으로 `EchoManualReq` request와 `EchoManualMsg` send를 처리한다. |
 | RC-A4 | 구현 완료 | `RcA4DiLifecycleScenario`가 Spring DI prototype dependency와 singleton dependency evidence를 확인한다. |
 | RC-A5 | 구현 완료 | `RcA5FilterOrderingScenario`가 `FirstOrderFilter`와 `SecondOrderFilter` 순서 evidence를 확인한다. |
 | RC-A6 | 구현 완료 | `Server/InvalidDuplicate` process가 duplicate packet registration startup failure를 내는지 runner가 확인한다. |

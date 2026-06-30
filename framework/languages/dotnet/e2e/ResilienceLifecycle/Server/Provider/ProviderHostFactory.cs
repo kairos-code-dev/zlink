@@ -37,8 +37,8 @@ internal static class ProviderHostFactory
                 .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
             channel.ConfigureServerSocket().Weight = options.Weight;
-            channel.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
-            channel.AddSendHandler<ProfileCommandHandler, ProfileCommand>("ProfileCommand");
+            channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
+            channel.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");
         });
 
         var app = builder.Build();

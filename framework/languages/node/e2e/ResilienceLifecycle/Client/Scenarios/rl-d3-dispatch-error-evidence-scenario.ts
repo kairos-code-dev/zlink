@@ -1,19 +1,19 @@
-import type { RequestFailureResult } from '../../Shared/messages';
+import type { RequestFailureRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
-import { profileRequest } from '../Support/resilience-helpers';
+import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlD3(options: ClientOptions): Promise<void> {
-  const failed = await postJson<RequestFailureResult>(
+  const failed = await postJson<RequestFailureRes>(
     options.consumerUrl,
     '/profile/missing-request',
-    profileRequest('rl-d3-missing')
+    profileReq('rl-d3-missing')
   );
   ensure(failed.failed, 'RL-D3 expected missing request handler failure.');
 
   const line = await waitForDispatchError(options);
-  ensure(line.includes('packet=MissingProfileRequest'), 'RL-D3 dispatch-error evidence did not include MissingProfileRequest.');
+  ensure(line.includes('packet=MissingProfileReq'), 'RL-D3 dispatch-error evidence did not include MissingProfileReq.');
 
   console.log('scenario RL-D3 passed');
 }
@@ -30,7 +30,7 @@ async function waitForDispatchError(options: ClientOptions): Promise<string> {
         continue;
       }
       const line = snapshot.value.find((entry) =>
-        entry.includes('dispatch-error|') && entry.includes('packet=MissingProfileRequest'));
+        entry.includes('dispatch-error|') && entry.includes('packet=MissingProfileReq'));
       if (line !== undefined) {
         return line;
       }

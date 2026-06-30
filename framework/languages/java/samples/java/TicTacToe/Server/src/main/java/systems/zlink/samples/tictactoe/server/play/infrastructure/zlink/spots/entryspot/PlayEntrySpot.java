@@ -10,10 +10,10 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
-import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayerWinMilestoneEventHandler;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayerWinMilestoneMsgHandler;
 import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
-import systems.zlink.samples.tictactoe.shared.contracts.PlayerWinMilestoneEvent;
+import systems.zlink.samples.tictactoe.shared.contracts.PlayerWinMilestoneMsg;
 import systems.zlink.samples.tictactoe.shared.contracts.WinMilestoneNotify;
 
 public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
@@ -37,7 +37,7 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     public void configure() {
         context.handlers().addSubscribe(
             SampleNames.PlayerMilestoneTopic,
-            PlayerWinMilestoneEventHandler.class);
+            PlayerWinMilestoneMsgHandler.class);
     }
 
     @Override
@@ -81,7 +81,7 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
         return new ObserveMilestoneRes(true);
     }
 
-    public void notifyMilestone(PlayerWinMilestoneEvent event) {
+    public void notifyMilestone(PlayerWinMilestoneMsg event) {
         WinMilestoneNotify payload = new WinMilestoneNotify(
             event.roomId(),
             event.actorId(),

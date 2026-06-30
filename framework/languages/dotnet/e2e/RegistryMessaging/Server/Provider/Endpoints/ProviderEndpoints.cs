@@ -14,21 +14,21 @@ internal static class ProviderEndpoints
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/profile/request", async (
-            ProfileRequest request,
+            ProfileReq request,
             IZLinkChannelClient channel) =>
         {
             var reply = await RequestProfileWithRetryAsync(channel, "profile", request);
             return Results.Ok(reply);
         });
         app.MapPost("/profile/manual", async (
-            ProfileRequest request,
+            ProfileReq request,
             IZLinkChannelClient channel) =>
         {
             var reply = await RequestProfileWithRetryAsync(channel, "profile.manual", request);
             return Results.Ok(reply);
         });
         app.MapPost("/profile/command", async (
-            ProfileCommand command,
+            ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
             await SendProfileWithRetryAsync(channel, "profile", command);
@@ -58,7 +58,7 @@ internal static class ProviderEndpoints
                 failed = true;
             }
 
-            return Results.Ok(new RouteMissingResult(failed));
+            return Results.Ok(new RouteMissingRes(failed));
         });
         app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
         {
@@ -66,7 +66,7 @@ internal static class ProviderEndpoints
             return Results.Ok(new { status = "cleared" });
         });
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {
@@ -84,10 +84,10 @@ internal static class ProviderEndpoints
         });
     }
 
-    private static async Task<ProfileReply> RequestProfileWithRetryAsync(
+    private static async Task<ProfileRes> RequestProfileWithRetryAsync(
         IZLinkChannelClient channel,
         string channelName,
-        ProfileRequest request)
+        ProfileReq request)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         Exception? last = null;
@@ -95,9 +95,9 @@ internal static class ProviderEndpoints
             try
             {
                 return await channel.RequestToChannel(channelName, request)
-                    .PacketName("ProfileRequest")
+                    .PacketName("ProfileReq")
                     .Timeout(TimeSpan.FromSeconds(5))
-                    .Async<ProfileReply>();
+                    .Async<ProfileRes>();
             }
             catch (ZLinkFrameworkException ex) when (IsRetriableRequestStartupFailure(ex))
             {
@@ -111,7 +111,7 @@ internal static class ProviderEndpoints
     private static async Task SendProfileWithRetryAsync(
         IZLinkChannelClient channel,
         string channelName,
-        ProfileCommand command)
+        ProfileMsg command)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         Exception? last = null;
@@ -119,7 +119,7 @@ internal static class ProviderEndpoints
             try
             {
                 await channel.SendToChannel(channelName, command)
-                    .PacketName("ProfileCommand")
+                    .PacketName("ProfileMsg")
                     .Async();
                 return;
             }

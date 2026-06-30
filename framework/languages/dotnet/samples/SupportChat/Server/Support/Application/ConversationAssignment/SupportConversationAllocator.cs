@@ -17,7 +17,7 @@ internal sealed class SupportConversationAllocator(IConversationStarter conversa
             var conversationId = $"supportchat-conversation-{Interlocked.Increment(ref _conversationSeq)}";
             await conversations.StartAsync(
                 conversationId,
-                new ConversationStartRequest(
+                new ConversationStartReq(
                     customerActorId,
                     customerDisplayName,
                     subject,
@@ -33,7 +33,7 @@ internal sealed class SupportConversationAllocator(IConversationStarter conversa
     }
 }
 
-internal sealed record ConversationStartRequest(
+internal sealed record ConversationStartReq(
     string CustomerActorId,
     string CustomerDisplayName,
     string Subject,
@@ -43,6 +43,6 @@ internal interface IConversationStarter
 {
     ValueTask StartAsync(
         string conversationId,
-        ConversationStartRequest request,
+        ConversationStartReq request,
         CancellationToken cancellationToken);
 }

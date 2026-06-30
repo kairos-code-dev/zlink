@@ -14,13 +14,13 @@ internal static class SmG2Scenario
         var secondOwnerSpotRid = $"spot-{key}-b";
         var firstCreated = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(firstOwnerSpotRid))
-            .SubmitAsync<CreateSpotReply>()).Body;
+            .SubmitAsync<CreateSpotRes>()).Body;
         var firstReply = (await playA.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(firstOwnerSpotRid, "add", 1))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         var firstExpectedEvidence = new[] { $"spot-state-request|rid=play-a|spot={firstOwnerSpotRid}|value=1" };
         var firstEvidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(firstExpectedEvidence))
+            .Body(new EvidenceWaitReq(firstExpectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             firstExpectedEvidence.All(expected =>
@@ -29,13 +29,13 @@ internal static class SmG2Scenario
 
         var secondCreated = (await playB.Post("/spot/create")
             .Body(new CreateSpotReq(secondOwnerSpotRid))
-            .SubmitAsync<CreateSpotReply>()).Body;
+            .SubmitAsync<CreateSpotRes>()).Body;
         var secondReply = (await playB.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(secondOwnerSpotRid, "add", 1))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         var secondExpectedEvidence = new[] { $"spot-state-request|rid=play-b|spot={secondOwnerSpotRid}|value=1" };
         var secondEvidence = (await playB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(secondExpectedEvidence))
+            .Body(new EvidenceWaitReq(secondExpectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             secondExpectedEvidence.All(expected =>

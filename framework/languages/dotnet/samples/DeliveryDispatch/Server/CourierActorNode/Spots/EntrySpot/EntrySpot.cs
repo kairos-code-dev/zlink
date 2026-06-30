@@ -15,8 +15,8 @@ internal sealed class CourierEntrySpot(
 
     public void Configure()
     {
-        Context.Handlers.AddActorRequest<BindCourierSessionActorHandler, CourierActor>(nameof(BindCourierSession));
-        Context.Handlers.AddActorPacket<CourierDecisionActorHandler, CourierActor>(nameof(CourierDecision));
+        Context.Handlers.AddActorRequest<BindCourierSessionActorHandler, CourierActor>(nameof(BindCourierSessionReq));
+        Context.Handlers.AddActorPacket<CourierDecisionActorHandler, CourierActor>(nameof(CourierDecisionMsg));
     }
 
     public ValueTask OnCreateActorAsync(

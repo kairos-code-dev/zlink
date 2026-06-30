@@ -23,7 +23,7 @@ inline std::string timeout_error_name (const zlink::framework::framework_excepti
     return error.what ();
 }
 
-inline yd::yield_timeout_reply_t
+inline yd::yield_timeout_res_t
 timeout_reply (const zlink::framework::spot_context_t &context,
                const evidence_store_t &evidence,
                const yd::yield_timeout_req_t &request,
@@ -38,7 +38,7 @@ timeout_reply (const zlink::framework::spot_context_t &context,
             .error = std::move (error)};
 }
 
-inline zlink::framework::task_t<yd::yield_timeout_reply_t>
+inline zlink::framework::task_t<yd::yield_timeout_res_t>
 handle_yield_timeout (zlink::framework::spot_context_t &context,
                       evidence_store_t &evidence,
                       const yd::yield_timeout_req_t &request)
@@ -57,7 +57,7 @@ handle_yield_timeout (zlink::framework::spot_context_t &context,
             .timeout (std::chrono::milliseconds (request.timeout_ms));
         evidence.add ("timeout-yield-released|rid=" + evidence.node_rid + "|spot=" + spot_rid
                       + "|request=" + request.request_id + "|handler=spot");
-        co_await call.yield<yd::delay_reply_t> ();
+        co_await call.yield<yd::delay_res_t> ();
         evidence.add ("timeout-yield-unexpected-resumed|rid=" + evidence.node_rid
                       + "|spot=" + spot_rid + "|request=" + request.request_id
                       + "|handler=spot");
@@ -75,7 +75,7 @@ handle_yield_timeout (zlink::framework::spot_context_t &context,
 inline zlink::framework::task_t<void>
 handle_yield_timeout_command (zlink::framework::spot_context_t &context,
                               evidence_store_t &evidence,
-                              const yd::yield_timeout_command_t &request)
+                              const yd::yield_timeout_msg_t &request)
 {
     const yd::yield_timeout_req_t as_request{.request_id = request.request_id,
                                              .delay_ms = request.delay_ms,

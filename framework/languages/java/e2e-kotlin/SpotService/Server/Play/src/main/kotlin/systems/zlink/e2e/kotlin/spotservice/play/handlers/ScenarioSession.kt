@@ -52,7 +52,7 @@ class ScenarioSession(
         }
         return when (context.actors().bound().size) {
             1 -> context.actors().bound()[0]
-            0 -> throw IllegalStateException("ActorAuthRequest is required before actor packet")
+            0 -> throw IllegalStateException("ActorAuthReq is required before actor packet")
             else -> throw IllegalStateException("actor-id metadata is required for multiple bound actors")
         }
     }

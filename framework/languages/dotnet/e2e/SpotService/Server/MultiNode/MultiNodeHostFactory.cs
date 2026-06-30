@@ -44,7 +44,7 @@ internal static class MultiNodeHostFactory
                     .EnableServer(routeEndpoint)
                     .EnableClient(routeEndpoint)
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
-                    .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>(
+                    .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
                         "MultiNodeCreateSpotReq");
                 framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeA)
                     .UseRegistrySpotResolver()
@@ -60,7 +60,7 @@ internal static class MultiNodeHostFactory
                     .EnableServer(routeEndpoint)
                     .EnableClient(routeEndpoint)
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
-                    .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>(
+                    .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
                         "MultiNodeCreateSpotReq");
                 framework.AddSpotMesh(SpotServiceNames.MultiSpotNodeB)
                     .UseRegistrySpotResolver()
@@ -74,7 +74,7 @@ internal static class MultiNodeHostFactory
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {
@@ -143,7 +143,7 @@ internal static class MultiNodeHostFactory
             : value;
     }
 
-    private static async Task<MultiNodeCreateSpotReply> CreateLocalMultiNodeSpotAsync<TSpot>(
+    private static async Task<MultiNodeCreateSpotRes> CreateLocalMultiNodeSpotAsync<TSpot>(
         IZLinkSpotManager spots,
         EvidenceStore evidence,
         string nodeRid,
@@ -153,7 +153,7 @@ internal static class MultiNodeHostFactory
     {
         var created = await spots.GetOrCreateAsync<TSpot>(RoutingId.From(spotRid), cancellationToken);
         evidence.Add($"multi-create-spot|node={nodeRid}|spot={created.SpotRid}|state={created.State}");
-        return new MultiNodeCreateSpotReply(
+        return new MultiNodeCreateSpotRes(
             created.SpotRid.ToString(),
             nodeRid,
             created.State.ToString(),

@@ -12,7 +12,7 @@ import type {
 import type {
   JoinGameRes,
   PlayerInfo,
-  PlayerWinMilestoneEvent,
+  PlayerWinMilestoneMsg,
   TicTacToeGameJoinReq,
   TicTacToeActor
 } from '../../../../../../Shared/Contracts/messages';
@@ -31,7 +31,7 @@ class MilestoneObserverRegistry {
     this.observers.delete(actor.actorId);
   }
 
-  async notify(event: PlayerWinMilestoneEvent, receivingSpotNodeRid: string): Promise<void> {
+  async notify(event: PlayerWinMilestoneMsg, receivingSpotNodeRid: string): Promise<void> {
     const payload = winMilestoneNotify(event, receivingSpotNodeRid);
     for (const actor of [...this.observers.values()]) {
       await actor.push(PacketNames.winMilestoneNotify, payload);
@@ -75,7 +75,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
     return observeMilestoneRes(true);
   }
 
-  async notifyMilestone(event: PlayerWinMilestoneEvent): Promise<void> {
+  async notifyMilestone(event: PlayerWinMilestoneMsg): Promise<void> {
     await this.milestoneObservers.notify(event, String(this.context.nodeRid));
   }
 

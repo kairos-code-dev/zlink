@@ -9,9 +9,9 @@ internal static class RcB4CodecCoexistenceScenario
 {
     public static async Task RunAsync(ZLinkHttpClient server)
     {
-        await server.Post("/codec/roundtrip").SubmitAsync<CodecScenarioResult>();
+        await server.Post("/codec/roundtrip").SubmitAsync<CodecScenarioRes>();
         var evidence = (await server.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([
+            .Body(new EvidenceWaitReq([
                 "codec-request|codec=json", "codec-request|codec=protobuf", "codec-request|codec=msgpack"
             ]))
             .SubmitAsync<string[]>()).Body;

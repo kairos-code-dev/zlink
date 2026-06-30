@@ -60,7 +60,7 @@ class gateway_publish_handler_t
         auto published =
           _publisher
             .publish (e2e::publisher_channel, e2e::mesh_topic,
-                      e2e::mesh_event_t{"evt-sm-c4", request.marker})
+                      e2e::mesh_msg_t{"evt-sm-c4", request.marker})
             .result ();
         if (!published) {
             throw zlink::framework::framework_exception_t (

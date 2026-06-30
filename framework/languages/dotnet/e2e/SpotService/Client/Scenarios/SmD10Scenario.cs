@@ -30,7 +30,7 @@ internal static class SmD10Scenario
                     await candidate.Connect.Async();
                     await candidate.Request(new AuthReq("actor-sm-d10-congested", "stream backpressure", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     congested = candidate;
                     break;
                 }
@@ -67,7 +67,7 @@ internal static class SmD10Scenario
                     await candidate.Connect.Async();
                     await candidate.Request(new AuthReq("actor-sm-d10-isolated", "stream backpressure peer", "play-b"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     isolated = candidate;
                     break;
                 }
@@ -90,7 +90,7 @@ internal static class SmD10Scenario
             {
                 var reply = await congested.Request(new ActorPushReq($"burst-{index}"))
                     .PacketName("ActorPushReq")
-                    .Async<ActorPingReply>();
+                    .Async<ActorPingRes>();
                 ScenarioAssert.That(reply.ActorId == "actor-sm-d10-congested",
                     "SM-D10 congested reply actor mismatch.");
             }
@@ -107,7 +107,7 @@ internal static class SmD10Scenario
 
             var stillAlive = await congested.Request(new ActorPingReq("after-backpressure"))
                 .PacketName("ActorPingReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             ScenarioAssert.That(stillAlive.ActorId == "actor-sm-d10-congested",
                 "SM-D10 congested session stopped routing.");
             ScenarioAssert.That(stillAlive.Value == "after-backpressure", "SM-D10 congested session reply mismatch.");
@@ -115,7 +115,7 @@ internal static class SmD10Scenario
             var isolatedPush = isolated.WaitFor<ActorPushNotify>().Async().AsTask();
             var isolatedReply = await isolated.Request(new ActorPushReq("isolated-push"))
                 .PacketName("ActorPushReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var isolatedNotify = await isolatedPush;
             ScenarioAssert.That(isolatedReply.ActorId == "actor-sm-d10-isolated",
                 "SM-D10 isolated reply actor mismatch.");

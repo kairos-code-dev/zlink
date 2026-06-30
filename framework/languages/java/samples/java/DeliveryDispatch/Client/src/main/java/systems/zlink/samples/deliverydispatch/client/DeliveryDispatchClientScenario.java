@@ -28,12 +28,12 @@ public final class DeliveryDispatchClientScenario {
         var pickedUp = awaitStatus(customer, deliveryId, Status.PickedUp);
         var delivered = awaitStatus(customer, deliveryId, Status.Delivered);
 
-        Messages.SubscribeDeliveryAccepted subscribed = customer
-            .request(new Messages.SubscribeDelivery(deliveryId))
-            .await(Messages.SubscribeDeliveryAccepted.class);
+        Messages.SubscribeDeliveryReqRes subscribed = customer
+            .request(new Messages.SubscribeDeliveryReq(deliveryId))
+            .await(Messages.SubscribeDeliveryReqRes.class);
         ensure(subscribed.deliveryId().equals(deliveryId));
 
-        Messages.DeliveryCreated created = createDelivery(deliveryId);
+        Messages.CreateDeliveryRes created = createDelivery(deliveryId);
         ensure(created.deliveryId().equals(deliveryId));
 
         ensure(customer.await(assigned).payload().courierId().equals(SampleNames.CourierA));
@@ -49,12 +49,12 @@ public final class DeliveryDispatchClientScenario {
         var accepted = awaitStatus(customer, deliveryId, Status.Accepted);
         var delivered = awaitStatus(customer, deliveryId, Status.Delivered);
 
-        Messages.SubscribeDeliveryAccepted subscribed = customer
-            .request(new Messages.SubscribeDelivery(deliveryId))
-            .await(Messages.SubscribeDeliveryAccepted.class);
+        Messages.SubscribeDeliveryReqRes subscribed = customer
+            .request(new Messages.SubscribeDeliveryReq(deliveryId))
+            .await(Messages.SubscribeDeliveryReqRes.class);
         ensure(subscribed.deliveryId().equals(deliveryId));
 
-        Messages.DeliveryCreated created = createDelivery(deliveryId);
+        Messages.CreateDeliveryRes created = createDelivery(deliveryId);
         ensure(created.deliveryId().equals(deliveryId));
 
         ensure(customer.await(assigned).payload().courierId().equals(SampleNames.CourierA));
@@ -76,15 +76,15 @@ public final class DeliveryDispatchClientScenario {
             .submit(Messages.DeliveryStatusNotify.class);
     }
 
-    private Messages.DeliveryCreated createDelivery(String deliveryId) {
+    private Messages.CreateDeliveryRes createDelivery(String deliveryId) {
         return api
             .post("/deliveries")
-            .body(new Messages.CreateDeliveryRequest(
+            .body(new Messages.CreateDeliveryReq(
                     deliveryId,
                     "customer-1",
                     "Kitchen 12",
                     "Customer Lobby"))
-            .fetch(Messages.DeliveryCreated.class);
+            .fetch(Messages.CreateDeliveryRes.class);
     }
 
     private void assertServerEvidence() {

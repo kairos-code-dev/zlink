@@ -7,9 +7,9 @@ namespace YieldDispatch.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("HoldReq")]
 internal sealed class HoldHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<YieldProbeSpot, HoldReq, YieldDispatchReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, HoldReq, YieldDispatchRes>
 {
-    public async ValueTask<YieldDispatchReply> HandleAsync(
+    public async ValueTask<YieldDispatchRes> HandleAsync(
         YieldProbeSpot spot,
         HoldReq request,
         CancellationToken cancellationToken)
@@ -21,7 +21,7 @@ internal sealed class HoldHandler(EvidenceStore evidence)
                 new DelayReq(request.RequestId, request.DelayMs, "hold"))
             .PacketName("DelayReq")
             .Timeout(TimeSpan.FromSeconds(5))
-            .Async<DelayReply>(cancellationToken);
+            .Async<DelayRes>(cancellationToken);
         evidence.Add(
             $"hold-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         evidence.Add(
@@ -30,13 +30,13 @@ internal sealed class HoldHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("HoldCommand")]
+[ZLinkSpotPacketHandler("HoldMsg")]
 internal sealed class HoldCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<YieldProbeSpot, HoldCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, HoldMsg>
 {
     public async ValueTask HandleAsync(
         YieldProbeSpot spot,
-        HoldCommand request,
+        HoldMsg request,
         CancellationToken cancellationToken)
     {
         evidence.Add(
@@ -46,7 +46,7 @@ internal sealed class HoldCommandHandler(EvidenceStore evidence)
                 new DelayReq(request.RequestId, request.DelayMs, "hold"))
             .PacketName("DelayReq")
             .Timeout(TimeSpan.FromSeconds(5))
-            .Async<DelayReply>(cancellationToken);
+            .Async<DelayRes>(cancellationToken);
         evidence.Add(
             $"hold-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         evidence.Add(
@@ -56,9 +56,9 @@ internal sealed class HoldCommandHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("YieldReq")]
 internal sealed class YieldHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<YieldProbeSpot, YieldReq, YieldDispatchReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, YieldReq, YieldDispatchRes>
 {
-    public async ValueTask<YieldDispatchReply> HandleAsync(
+    public async ValueTask<YieldDispatchRes> HandleAsync(
         YieldProbeSpot spot,
         YieldReq request,
         CancellationToken cancellationToken)
@@ -74,7 +74,7 @@ internal sealed class YieldHandler(EvidenceStore evidence)
         evidence.Add(
             $"yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
-        await call.Yield<DelayReply>(cancellationToken);
+        await call.Yield<DelayRes>(cancellationToken);
         evidence.Add(
             $"yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
@@ -85,13 +85,13 @@ internal sealed class YieldHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("YieldCommand")]
+[ZLinkSpotPacketHandler("YieldMsg")]
 internal sealed class YieldCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<YieldProbeSpot, YieldCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, YieldMsg>
 {
     public async ValueTask HandleAsync(
         YieldProbeSpot spot,
-        YieldCommand request,
+        YieldMsg request,
         CancellationToken cancellationToken)
     {
         evidence.Add(
@@ -105,7 +105,7 @@ internal sealed class YieldCommandHandler(EvidenceStore evidence)
         evidence.Add(
             $"yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
-        await call.Yield<DelayReply>(cancellationToken);
+        await call.Yield<DelayRes>(cancellationToken);
         evidence.Add(
             $"yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
@@ -117,9 +117,9 @@ internal sealed class YieldCommandHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("WorkerYieldReq")]
 internal sealed class WorkerYieldHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<YieldProbeSpot, WorkerYieldReq, YieldDispatchReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, WorkerYieldReq, YieldDispatchRes>
 {
-    public async ValueTask<YieldDispatchReply> HandleAsync(
+    public async ValueTask<YieldDispatchRes> HandleAsync(
         YieldProbeSpot spot,
         WorkerYieldReq request,
         CancellationToken cancellationToken)
@@ -143,13 +143,13 @@ internal sealed class WorkerYieldHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("WorkerYieldCommand")]
+[ZLinkSpotPacketHandler("WorkerYieldMsg")]
 internal sealed class WorkerYieldCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<YieldProbeSpot, WorkerYieldCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, WorkerYieldMsg>
 {
     public async ValueTask HandleAsync(
         YieldProbeSpot spot,
-        WorkerYieldCommand request,
+        WorkerYieldMsg request,
         CancellationToken cancellationToken)
     {
         evidence.Add(
@@ -172,9 +172,9 @@ internal sealed class WorkerYieldCommandHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("ProbeReq")]
 internal sealed class ProbeHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<YieldProbeSpot, ProbeReq, YieldDispatchReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, ProbeReq, YieldDispatchRes>
 {
-    public ValueTask<YieldDispatchReply> HandleAsync(
+    public ValueTask<YieldDispatchRes> HandleAsync(
         YieldProbeSpot spot,
         ProbeReq request,
         CancellationToken cancellationToken)
@@ -190,13 +190,13 @@ internal sealed class ProbeHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("ProbeCommand")]
+[ZLinkSpotPacketHandler("ProbeMsg")]
 internal sealed class ProbeCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<YieldProbeSpot, ProbeCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, ProbeMsg>
 {
     public ValueTask HandleAsync(
         YieldProbeSpot spot,
-        ProbeCommand request,
+        ProbeMsg request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

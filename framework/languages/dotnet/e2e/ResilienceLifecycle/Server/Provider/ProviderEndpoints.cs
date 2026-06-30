@@ -11,7 +11,7 @@ internal static class ProviderEndpoints
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {
@@ -77,7 +77,7 @@ internal static class ProviderEndpoints
             return Results.Ok(new { weight });
         });
         app.MapPost("/admin/weight/wait", async (
-            WeightWaitRequest request,
+            WeightWaitReq request,
             [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
             CancellationToken cancellationToken) =>
         {

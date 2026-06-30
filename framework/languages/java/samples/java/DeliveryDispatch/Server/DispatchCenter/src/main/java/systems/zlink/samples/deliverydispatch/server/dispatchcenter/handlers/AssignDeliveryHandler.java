@@ -8,7 +8,7 @@ import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("dispatch")
 public final class AssignDeliveryHandler
-    implements ZLinkRequestHandler<Messages.AssignDelivery, Messages.AssignDeliveryResult> {
+    implements ZLinkRequestHandler<Messages.AssignDelivery, Messages.AssignDeliveryRes> {
     private final DispatchWorkQueue queue;
 
     public AssignDeliveryHandler(DispatchWorkQueue queue) {
@@ -16,7 +16,7 @@ public final class AssignDeliveryHandler
     }
 
     @Override
-    public Messages.AssignDeliveryResult handle(
+    public Messages.AssignDeliveryRes handle(
         Messages.AssignDelivery request,
         ZLinkRequestContext context) {
         queue.enqueue(request);
@@ -24,6 +24,6 @@ public final class AssignDeliveryHandler
             "deliverydispatch dispatch: queued delivery=%s customer=%s%n",
             request.deliveryId(),
             request.customerId());
-        return new Messages.AssignDeliveryResult(request.deliveryId(), "pending");
+        return new Messages.AssignDeliveryRes(request.deliveryId(), "pending");
     }
 }

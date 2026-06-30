@@ -22,7 +22,7 @@ inline zlink::framework::http_response_t publish_from_query (
         return response;
     }
 
-    auto call = publisher.publish (event_channel, topic->second, event_notify_t{value->second});
+    auto call = publisher.publish (event_channel, topic->second, event_msg_t{value->second});
     if (packet_name != nullptr) {
         call.packet_name (packet_name);
     }
@@ -74,7 +74,7 @@ class publish_missing_handler_t
 
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &request)
     {
-        return publish_from_query (_publisher, request, "MissingEventNotify");
+        return publish_from_query (_publisher, request, "MissingEventMsg");
     }
 
   private:

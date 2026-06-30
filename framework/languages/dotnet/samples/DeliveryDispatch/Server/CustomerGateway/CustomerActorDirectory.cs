@@ -26,7 +26,7 @@ internal sealed class CustomerActorDirectory(ILogger<CustomerActorDirectory> log
     }
 
     public async ValueTask PushAsync(
-        DeliveryStatusChanged status,
+        DeliveryStatusChangedReq status,
         CancellationToken cancellationToken)
     {
         CustomerActor? actor = null;

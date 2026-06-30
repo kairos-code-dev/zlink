@@ -54,24 +54,24 @@ internal object SmQ9Scenario {
         endpoint: String,
         spotRid: String,
         delta: Int
-    ): Contracts.MultiNodeCreateSpotReply =
+    ): Contracts.MultiNodeCreateSpotRes =
         postJson(
             endpoint,
             "/spot/create-local",
-            Contracts.MultiNodeCreateSpotRequest(spotRid, delta),
-            Contracts.MultiNodeCreateSpotReply::class.java
+            Contracts.MultiNodeCreateSpotReq(spotRid, delta),
+            Contracts.MultiNodeCreateSpotRes::class.java
         )
 
     private fun requestState(
         endpoint: String,
         spotRid: String,
         delta: Int
-    ): Contracts.MultiNodeStateReply =
+    ): Contracts.MultiNodeStateRes =
         postJson(
             endpoint,
             "/spot/state/request",
-            Contracts.MultiNodeStateRouteRequest(spotRid, delta),
-            Contracts.MultiNodeStateReply::class.java
+            Contracts.MultiNodeStateRouteReq(spotRid, delta),
+            Contracts.MultiNodeStateRes::class.java
         )
 
     private fun waitEvidence(
@@ -81,6 +81,6 @@ internal object SmQ9Scenario {
         postJsonArray(
             endpoint,
             "/evidence/wait",
-            Contracts.EvidenceWaitRequest(listOf(expected), 10_000)
+            Contracts.EvidenceWaitReq(listOf(expected), 10_000)
         )
 }

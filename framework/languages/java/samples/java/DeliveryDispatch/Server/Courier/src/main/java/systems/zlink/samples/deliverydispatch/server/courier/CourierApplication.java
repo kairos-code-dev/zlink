@@ -46,7 +46,7 @@ public final class CourierApplication {
                 .addRequestHandler(
                     OfferDeliveryHandler.class,
                     Messages.OfferDelivery.class,
-                    Messages.OfferDeliveryResult.class);
+                    Messages.OfferDeliveryRes.class);
         };
     }
 }

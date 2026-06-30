@@ -45,9 +45,9 @@ internal static class ProviderHostFactory
                     .EnableClient()
                     .SetRoutingId(RoutingId.From(options.Rid));
                 clientServer.ConfigureServerSocket().Weight = options.Weight;
-                clientServer.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
-                clientServer.AddRequestHandler<PayloadRequestHandler, PayloadRequest, PayloadReply>("PayloadRequest");
-                clientServer.AddSendHandler<ProfileCommandHandler, ProfileCommand>("ProfileCommand");
+                clientServer.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
+                clientServer.AddRequestHandler<PayloadRequestHandler, PayloadReq, PayloadRes>("PayloadReq");
+                clientServer.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");
             }
 
             if (!string.IsNullOrWhiteSpace(options.ManualClientEndpoint))

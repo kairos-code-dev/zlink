@@ -3,7 +3,7 @@ package systems.zlink.e2e.kotlin.spotservice
 class Contracts private constructor() {
     companion object {
         const val ROUTE_CHANNEL: String = "spot.service.route"
-        const val ROUTE_PACKET: String = "RoutePing"
+        const val ROUTE_PACKET: String = "RoutePingReq"
         const val EGRESS_CHANNEL: String = "spot.service.egress"
         const val INGRESS_CHANNEL: String = "spot.service.ingress"
         const val SPOT_MESH: String = "spot.service.mesh"
@@ -15,64 +15,70 @@ class Contracts private constructor() {
     }
 
     @JvmRecord
-    data class StateRequest(val op: String)
+    data class StateReq(val op: String)
 
     @JvmRecord
-    data class StateReply(
+    data class StateRes(
         val spotRid: String,
         val nodeRid: String,
         val value: String
     )
 
     @JvmRecord
-    data class StateCommand(val value: String)
+    data class StateMsg(val value: String)
 
     @JvmRecord
-    data class SlowRequest(val value: String)
+    data class SlowReq(val value: String)
 
     @JvmRecord
-    data class OutboundRequest(val value: String)
+    data class OutboundReq(val value: String)
 
     @JvmRecord
-    data class OutboundReply(
+    data class OutboundRes(
         val spotRid: String,
         val nodeRid: String,
         val channelReply: String
     )
 
     @JvmRecord
-    data class OutboundCommand(val value: String)
+    data class OutboundMsg(val value: String)
 
     @JvmRecord
-    data class MeshEvent(val value: String)
+    data class MeshMsg(val value: String)
 
     @JvmRecord
-    data class TimerActivity(val value: String)
+    data class TimerActivityReq(val value: String)
 
     @JvmRecord
-    data class TimerStatus(
+    data class TimerActivityRes(
         val spotRid: String,
         val value: String
     )
 
     @JvmRecord
-    data class RoutePing(val value: String)
+    data class TimerStatusRes(
+        val spotRid: String,
+        val value: String
+    )
 
     @JvmRecord
-    data class RoutePong(
+    data class RoutePingReq(val value: String)
+
+    @JvmRecord
+    data class RoutePingRes(
         val value: String,
         val nodeRid: String,
         val routeRid: String
     )
 
     @JvmRecord
-    data class MultiNodeCreateSpotRequest(
+    data class MultiNodeCreateSpotReq(
         val spotRid: String,
         val delta: Int
     )
 
     @JvmRecord
-    data class MultiNodeCreateSpotReply(
+    data class MultiNodeCreateSpotRes(
         val spotRid: String,
         val nodeRid: String,
         val state: String,
@@ -80,26 +86,26 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
-    data class MultiNodeStateRouteRequest(
+    data class MultiNodeStateRouteReq(
         val spotRid: String,
         val delta: Int
     )
 
     @JvmRecord
-    data class MultiNodeStateRequest(
+    data class MultiNodeStateReq(
         val operation: String,
         val delta: Int
     )
 
     @JvmRecord
-    data class MultiNodeStateReply(
+    data class MultiNodeStateRes(
         val spotRid: String,
         val nodeRid: String,
         val value: Int
     )
 
     @JvmRecord
-    data class EvidenceWaitRequest(
+    data class EvidenceWaitReq(
         val containsAll: List<String>,
         val timeoutMilliseconds: Int = 10_000
     )
@@ -112,13 +118,13 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
-    data class ActorAuthRequest(
+    data class ActorAuthReq(
         val actorId: String,
         val profile: ActorProfile
     )
 
     @JvmRecord
-    data class ActorAuthReply(
+    data class ActorAuthRes(
         val actorId: String,
         val nodeRid: String,
         val boundCount: Int,
@@ -128,48 +134,48 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
-    data class MultiBindRequest(
+    data class MultiBindReq(
         val firstActorId: String,
         val secondActorId: String,
         val profile: ActorProfile
     )
 
     @JvmRecord
-    data class MultiBindReply(
+    data class MultiBindRes(
         val boundCount: Int
     )
 
     @JvmRecord
-    data class DestroyActorRequest(
+    data class DestroyActorReq(
         val actorId: String
     )
 
     @JvmRecord
-    data class DestroyActorReply(
+    data class DestroyActorRes(
         val actorId: String,
         val destroyed: Boolean
     )
 
     @JvmRecord
-    data class LeaveActorRequest(
+    data class LeaveActorReq(
         val actorId: String
     )
 
     @JvmRecord
-    data class LeaveActorReply(
+    data class LeaveActorRes(
         val actorId: String,
         val accepted: Boolean
     )
 
     @JvmRecord
-    data class ActorJoinRequest(
+    data class ActorJoinReq(
         val spotRid: String,
         val profile: ActorProfile,
         val tags: List<String>
     )
 
     @JvmRecord
-    data class ActorJoinReply(
+    data class ActorJoinRes(
         val actorId: String,
         val spotRid: String,
         val nodeRid: String,
@@ -179,25 +185,25 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
-    data class ActorEchoRequest(
+    data class ActorEchoReq(
         val value: String,
         val seq: Int,
         val profile: ActorProfile
     )
 
     @JvmRecord
-    data class SlowSessionRequest(
+    data class SlowSessionReq(
         val value: String,
         val delayMilliseconds: Int
     )
 
     @JvmRecord
-    data class SlowSessionReply(
+    data class SlowSessionRes(
         val value: String
     )
 
     @JvmRecord
-    data class ActorEchoReply(
+    data class ActorEchoRes(
         val actorId: String,
         val spotRid: String,
         val nodeRid: String,
@@ -210,7 +216,7 @@ class Contracts private constructor() {
     )
 
     @JvmRecord
-    data class ActorPush(
+    data class ActorPushNotify(
         val actorId: String,
         val spotRid: String,
         val value: String,

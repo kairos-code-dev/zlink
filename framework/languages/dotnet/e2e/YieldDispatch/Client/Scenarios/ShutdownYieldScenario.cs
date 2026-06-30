@@ -23,7 +23,7 @@ internal static class ShutdownYieldScenario
             var result = await client.Request(new YieldShutdownScenarioReq(options.RequestId, options.SpotRid, 30_000))
                 .PacketName("YieldShutdownScenarioReq")
                 .Timeout(TimeSpan.FromSeconds(90))
-                .Async<YieldScenarioResult>();
+                .Async<YieldShutdownScenarioRes>();
             throw new InvalidOperationException(
                 $"YD-E3 expected play-a shutdown while yield was pending, but request completed as {result.Operation}.");
         }
@@ -49,7 +49,7 @@ internal static class ShutdownYieldScenario
         var result = await client.Request(new YieldShutdownRecoveryReq(options.RequestId, options.SpotRid))
             .PacketName("YieldShutdownRecoveryReq")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldScenarioResult>();
+            .Async<YieldShutdownRecoveryRes>();
         ScenarioAssert.That(result.Operation == "yield.e3-shutdown-recovery", "YD-E3 recovery operation mismatch.");
         ScenarioAssert.That(result.SpotRid == options.SpotRid, "YD-E3 recovery spot rid mismatch.");
         ScenarioAssert.That(

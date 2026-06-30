@@ -29,11 +29,11 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
 
     @Override
     public void configure() {
-        context.handlers().addPacket(StateRequestHandler.class);
-        context.handlers().addPacket(StateCommandHandler.class);
-        context.handlers().addPacket(SlowRequestHandler.class);
-        context.handlers().addPacket(OutboundRequestHandler.class);
-        context.handlers().addPacket(OutboundCommandHandler.class);
+        context.handlers().addPacket(StateReqHandler.class);
+        context.handlers().addPacket(StateMsgHandler.class);
+        context.handlers().addPacket(SlowReqHandler.class);
+        context.handlers().addPacket(OutboundReqHandler.class);
+        context.handlers().addPacket(OutboundMsgHandler.class);
         context.handlers().addSubscribe("spot.events", SpotEventHandler.class);
         context.handlers().addActorRequest(UserActorEchoHandler.class);
     }
@@ -61,11 +61,11 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         ScenarioActor actor,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
-        Contracts.ActorJoinRequest join = request.decode(Contracts.ActorJoinRequest.class);
+        Contracts.ActorJoinReq join = request.decode(Contracts.ActorJoinReq.class);
         actor.applyProfile(join.profile());
         evidence.record("ActorUserJoinRequested", context.spotRid().toString(),
             actor.actorId() + "/" + join.profile().displayName() + "/" + String.join(",", join.tags()));
-        return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinReply(
+        return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
             actor.actorId(),
             context.spotRid().toString(),
             evidence.nodeRid(),
@@ -98,7 +98,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
 
     public String apply(String op) {
         state = state.isBlank() ? op : state + "," + op;
-        evidence.record("StateRequest", context.spotRid().toString(), state);
+        evidence.record("StateReq", context.spotRid().toString(), state);
         if (op.equals("worker-follow-up") && !workerDone) {
             evidence.record("WorkerFollowUpBeforeComplete", context.spotRid().toString(), state);
         }
@@ -125,7 +125,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     }
 
     public void command(String value) {
-        evidence.record("StateCommand", context.spotRid().toString(), value);
+        evidence.record("StateMsg", context.spotRid().toString(), value);
     }
 
     public void record(String marker, String value) {

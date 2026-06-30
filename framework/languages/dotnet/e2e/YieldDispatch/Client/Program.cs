@@ -36,7 +36,7 @@ switch (options.Scenario)
         var bound = await client.Request(new BindYieldActorsReq(spotRid, [actorA, actorB]))
             .PacketName("BindYieldActorsReq")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<BindYieldActorsReply>();
+            .Async<BindYieldActorsRes>();
         ScenarioAssert.That(bound.Actors.Length == 2, "YD-B bind actor count mismatch.");
 
         var actors = new YieldActorScenarioContext(spotRid, actorA, actorB);

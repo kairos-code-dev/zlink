@@ -164,9 +164,9 @@ with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
 PY
 
 grep -Rq "message flow" "${log_dir}"/*-flow.log
-grep -q "EchoAuto" "${log_dir}/server-evidence.json"
+grep -q "EchoAutoReq" "${log_dir}/server-evidence.json"
 grep -q "ProtobufEcho" "${log_dir}/server-evidence.json"
-grep -q "MsgpackEcho" "${log_dir}/server-evidence.json"
+grep -q "PackedEchoReq" "${log_dir}/server-evidence.json"
 
 stop_current() {
   set +e

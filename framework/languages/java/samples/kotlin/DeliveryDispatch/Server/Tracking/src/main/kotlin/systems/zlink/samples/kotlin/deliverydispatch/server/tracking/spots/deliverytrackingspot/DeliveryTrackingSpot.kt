@@ -8,27 +8,27 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.actors.CustomerActor
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreate
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreated
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotJoin
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotJoined
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChanged
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreateReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreateRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotJoinReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotJoinRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedReq
 
 class DeliveryTrackingSpot(
     private val context: ZLinkSpotContext,
     private val directory: DeliverySpotDirectory,
     private val json: ObjectMapper,) : ZLinkSuspendingSpot<CustomerActor>() {
     private val customers = LinkedHashMap<String, CustomerActor>()
-    private val history = mutableListOf<DeliveryStatusChanged>()
+    private val history = mutableListOf<DeliveryStatusChangedReq>()
     private var deliveryId: String = ""
 
     override fun context(): ZLinkSpotContext = context
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
-        val create = request.decode(DeliverySpotCreate::class.java)
+        val create = request.decode(DeliverySpotCreateReq::class.java)
         deliveryId = create.deliveryId
         directory.add(deliveryId, this)
-        return ZLinkSpotCreateResponse.accept(DeliverySpotCreated(deliveryId))
+        return ZLinkSpotCreateResponse.accept(DeliverySpotCreateRes(deliveryId))
     }
 
     override suspend fun onActorJoinSuspending(
@@ -36,7 +36,7 @@ class DeliveryTrackingSpot(
         request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
-        val join = request.decode(DeliverySpotJoin::class.java)
+        val join = request.decode(DeliverySpotJoinReq::class.java)
         if (join.deliveryId != deliveryId) {
             return ZLinkSpotActorJoinResponse.reject()
         }
@@ -44,14 +44,14 @@ class DeliveryTrackingSpot(
         System.err.println(
             "deliverydispatch tracking spot: joined delivery=${join.deliveryId} customer=${actor.actorId()}",
         )
-        return ZLinkSpotActorJoinResponse.accept(DeliverySpotJoined(join.deliveryId, actor.actorId()))
+        return ZLinkSpotActorJoinResponse.accept(DeliverySpotJoinRes(join.deliveryId, actor.actorId()))
     }
 
     override fun onLeaveActor(actor: CustomerActor, cancellationToken: CancellationToken) {
         customers.remove(actor.actorId())
     }
 
-    fun record(status: DeliveryStatusChanged) {
+    fun record(status: DeliveryStatusChangedReq) {
         history.add(status)
     }
 }

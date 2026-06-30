@@ -34,9 +34,9 @@ public final class DelayApplication {
                 .setRoutingId(RoutingId.from(nodeRid));
             delay.addRequestHandler(
                 DelayHandler.class,
-                Contracts.DelayRequest.class,
-                Contracts.DelayReply.class,
-                "DelayRequest");
+                Contracts.DelayReq.class,
+                Contracts.DelayRes.class,
+                "DelayReq");
         };
     }
 }

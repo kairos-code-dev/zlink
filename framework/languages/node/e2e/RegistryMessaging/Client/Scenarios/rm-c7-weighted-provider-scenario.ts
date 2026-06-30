@@ -2,7 +2,7 @@ import type { ClientOptions } from '../Support/client-options';
 import { DynamicClusterLauncher } from '../Support/dynamic-cluster-launcher';
 import { getJson, postJson } from '../Support/http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 
 export async function runRmC7(options: ClientOptions): Promise<void> {
   const cluster = await DynamicClusterLauncher.start(options, 'rm-c7');
@@ -13,10 +13,10 @@ export async function runRmC7(options: ClientOptions): Promise<void> {
     const beforeB = await getJson<string[]>(providerB.httpUrl, '/evidence');
     const marker = uniqueMarker('rm-c7');
     const values = Array.from({ length: 240 }, (_, index) => `${marker}-${index}`);
-    const replies: ProfileReply[] = [];
+    const replies: ProfileRes[] = [];
 
     for (const value of values) {
-      replies.push(await postJson<ProfileReply>(providerA.httpUrl, '/profile/request', { value }));
+      replies.push(await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value }));
     }
 
     ensure(replies.length === values.length, 'RM-C7 reply count mismatch.');

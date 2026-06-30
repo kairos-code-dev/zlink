@@ -20,8 +20,8 @@ internal static class RlB4RuntimeDrainScenario
         {
             var marker = $"rl-b4-drained-{i}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", marker))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", marker))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-B4 drained api-b received a new request.");
         }
 
@@ -31,7 +31,7 @@ internal static class RlB4RuntimeDrainScenario
             "RL-B4 api-b evidence changed after drain.");
 
         await providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["profile-request|rid=api-a|marker=rl-b4-drained-"], []))
+            .Body(new EvidenceWaitReq(["profile-request|rid=api-a|marker=rl-b4-drained-"], []))
             .SubmitAsync<string[]>();
 
         await providerB.Post("/admin/restore").SubmitRawAsync();
@@ -40,13 +40,13 @@ internal static class RlB4RuntimeDrainScenario
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-b4-restored-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-b4-restored-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-B4 restored request returned an unexpected value.");
         }
 
         await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-b4-restored-"], []))
+            .Body(new EvidenceWaitReq(["profile-request|rid=api-b|marker=rl-b4-restored-"], []))
             .SubmitAsync<string[]>();
 
         Console.WriteLine("scenario RL-B4 passed");
@@ -55,7 +55,7 @@ internal static class RlB4RuntimeDrainScenario
     private static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
     {
         await provider.Post("/admin/weight/wait")
-            .Body(new WeightWaitRequest(expected))
+            .Body(new WeightWaitReq(expected))
             .SubmitRawAsync();
     }
 

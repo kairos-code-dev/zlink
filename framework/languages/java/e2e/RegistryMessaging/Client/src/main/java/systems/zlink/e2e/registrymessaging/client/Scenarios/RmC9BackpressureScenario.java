@@ -16,8 +16,8 @@ public final class RmC9BackpressureScenario {
             String commandId = "slow-c9-" + index;
             sends.add(java.util.concurrent.CompletableFuture.supplyAsync(() ->
                 backpressureConsumer.post("/profile/backpressure/send")
-                    .body(new Contracts.ProfileCommand(commandId))
-                    .fetch(Contracts.BackpressureResult.class)
+                    .body(new Contracts.ProfileMsg(commandId))
+                    .fetch(Contracts.BackpressureRes.class)
                     .outcome()));
         }
         java.util.List<String> outcomes = sends.stream()
@@ -27,25 +27,25 @@ public final class RmC9BackpressureScenario {
             "RM-C9 did not observe bounded backpressure/timeout");
         ScenarioSignals.sleep(5000);
 
-        Contracts.ProfileReply recovered = requestRecovered(backpressureConsumer);
+        Contracts.ProfileRes recovered = requestRecovered(backpressureConsumer);
         ScenarioAssert.that("profile:c9-recovered".equals(recovered.value()),
             "RM-C9 connection did not recover after pressure");
         String[] evidence = providerA.post("/evidence/wait")
-            .body(new Contracts.EvidenceWaitRequest("c9-recovered", 20000))
+            .body(new Contracts.EvidenceWaitReq("c9-recovered", 20000))
             .fetch(String[].class);
         ScenarioAssert.that(java.util.Arrays.stream(evidence).anyMatch(line -> line.contains("c9-recovered")),
             "RM-C9 recovery evidence missing");
         System.out.println("scenario RM-C9 passed");
     }
 
-    private static Contracts.ProfileReply requestRecovered(ZLinkHttpClient backpressureConsumer) {
+    private static Contracts.ProfileRes requestRecovered(ZLinkHttpClient backpressureConsumer) {
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
         RuntimeException lastFailure = null;
         while (System.nanoTime() < deadline) {
             try {
                 return backpressureConsumer.post("/profile/request")
-                    .body(new Contracts.ProfileRequest("c9-recovered"))
-                    .fetch(Contracts.ProfileReply.class);
+                    .body(new Contracts.ProfileReq("c9-recovered"))
+                    .fetch(Contracts.ProfileRes.class);
             } catch (RuntimeException error) {
                 lastFailure = error;
                 ScenarioSignals.sleep(500);

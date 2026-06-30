@@ -29,7 +29,7 @@ internal static class SmD4Scenario
                     await candidate.Connect.Async();
                     var bound = await candidate.Request(new MultiBindReq("actor-sm-d4-x", "actor-sm-d4-y", "play-a"))
                         .PacketName("MultiBindReq")
-                        .Async<MultiBindReply>();
+                        .Async<MultiBindRes>();
                     ScenarioAssert.That(bound.BoundCount == 2, "SM-D4 expected two bound actors.");
                     client = candidate;
                     break;
@@ -52,11 +52,11 @@ internal static class SmD4Scenario
             var x = await client.Request(new ActorPingReq("to-x"))
                 .PacketName("ActorPingReq")
                 .Metadata(SpotServiceNames.ActorIdMetadata, "actor-sm-d4-x")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var y = await client.Request(new ActorPingReq("to-y"))
                 .PacketName("ActorPingReq")
                 .Metadata(SpotServiceNames.ActorIdMetadata, "actor-sm-d4-y")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             ScenarioAssert.That(x.ActorId == "actor-sm-d4-x" && x.Value == "to-x", "SM-D4 x relay mismatch.");
             ScenarioAssert.That(y.ActorId == "actor-sm-d4-y" && y.Value == "to-y", "SM-D4 y relay mismatch.");
 
@@ -66,7 +66,7 @@ internal static class SmD4Scenario
             var xPushReply = await client.Request(new ActorPushReq("push-x"))
                 .PacketName("ActorPushReq")
                 .Metadata(SpotServiceNames.ActorIdMetadata, "actor-sm-d4-x")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var xNotify = await xPushed;
             ScenarioAssert.That(xPushReply.ActorId == "actor-sm-d4-x", "SM-D4 x push reply actor mismatch.");
             ScenarioAssert.That(xNotify.Payload.Value == "push-x", "SM-D4 x push payload mismatch.");
@@ -77,7 +77,7 @@ internal static class SmD4Scenario
             var yPushReply = await client.Request(new ActorPushReq("push-y"))
                 .PacketName("ActorPushReq")
                 .Metadata(SpotServiceNames.ActorIdMetadata, "actor-sm-d4-y")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var yNotify = await yPushed;
             ScenarioAssert.That(yPushReply.ActorId == "actor-sm-d4-y", "SM-D4 y push reply actor mismatch.");
             ScenarioAssert.That(yNotify.Payload.Value == "push-y", "SM-D4 y push payload mismatch.");
@@ -88,7 +88,7 @@ internal static class SmD4Scenario
                 await client.Request(new ActorPingReq("missing-actor-id"))
                     .PacketName("ActorPingReq")
                     .Timeout(TimeSpan.FromSeconds(2))
-                    .Async<ActorPingReply>();
+                    .Async<ActorPingRes>();
             }
             catch
             {

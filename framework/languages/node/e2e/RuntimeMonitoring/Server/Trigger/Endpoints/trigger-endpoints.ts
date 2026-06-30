@@ -1,7 +1,7 @@
 import net from 'node:net';
 import fs from 'node:fs';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import type { EvidenceWaitRequest, ProfileReply, ProfileRequest } from '../../../Shared/messages';
+import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../../Shared/messages';
 import { PacketNames, RuntimeMonitoringNames } from '../../../Shared/messages';
 import type { TriggerOptions } from '../Configuration/trigger-options';
 import type { HttpRoute } from '../Support/http-server';
@@ -17,7 +17,7 @@ export function createTriggerEndpoints(
   options: TriggerOptions,
   channel: ZLinkChannelClient,
   evidence: EvidenceStore,
-  requestWithTransientHost: (request: ProfileRequest, endpoint?: string) => Promise<ProfileReply>,
+  requestWithTransientHost: (request: ProfileReq, endpoint?: string) => Promise<ProfileRes>,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -27,7 +27,7 @@ export function createTriggerEndpoints(
       method: 'POST',
       path: '/evidence/wait',
       handle: (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
         return evidence.waitUntil((entries) =>
           request.containsAll.every((expected) => entries.some((entry) => entry.includes(expected)))
@@ -35,17 +35,17 @@ export function createTriggerEndpoints(
             entries.some((entry) => entry.includes(expected)))), timeout);
       }
     },
-    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, body as ProfileRequest) },
-    { method: 'POST', path: '/profile/request/disconnect', handle: (body) => requestWithTransientHost(body as ProfileRequest) },
+    { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, body as ProfileReq) },
+    { method: 'POST', path: '/profile/request/disconnect', handle: (body) => requestWithTransientHost(body as ProfileReq) },
     {
       method: 'POST',
       path: '/profile/request/service-b',
-      handle: (body) => requestWithTransientHost(body as ProfileRequest, options.serviceBChannelEndpoint)
+      handle: (body) => requestWithTransientHost(body as ProfileReq, options.serviceBChannelEndpoint)
     },
     {
       method: 'POST',
       path: '/profile/request/throw',
-      handle: (body) => requestWithTransientHost(body as ProfileRequest, options.throwChannelEndpoint)
+      handle: (body) => requestWithTransientHost(body as ProfileReq, options.throwChannelEndpoint)
     },
     { method: 'POST', path: '/socket/handshake-failure', handle: async () => {
       await sendInvalidHandshake(options.serviceChannelEndpoint);
@@ -59,18 +59,18 @@ export function createTriggerEndpoints(
     {
       method: 'POST',
       path: '/logs/throw-stderr/wait',
-      handle: (body) => waitForLines(`${options.logDir}/svc-throw.stderr.log`, body as EvidenceWaitRequest)
+      handle: (body) => waitForLines(`${options.logDir}/svc-throw.stderr.log`, body as EvidenceWaitReq)
     },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping', logDir: options.logDir }; } }
   ];
 }
 
-export async function requestProfile(channel: ZLinkChannelClient, request: ProfileRequest): Promise<ProfileReply> {
+export async function requestProfile(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
   return await channel
     .requestToChannel(RuntimeMonitoringNames.channel, request)
-    .packetName(PacketNames.profileRequest)
+    .packetName(PacketNames.profileReq)
     .timeout(3000)
-    .submit<ProfileReply>();
+    .submit<ProfileRes>();
 }
 
 async function sendInvalidHandshake(endpoint: string): Promise<void> {
@@ -101,7 +101,7 @@ function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
   return { host: url.hostname, port: Number(url.port) };
 }
 
-async function waitForLines(path: string, request: EvidenceWaitRequest): Promise<string[]> {
+async function waitForLines(path: string, request: EvidenceWaitReq): Promise<string[]> {
   const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
   const deadline = Date.now() + timeout;
   while (Date.now() <= deadline) {

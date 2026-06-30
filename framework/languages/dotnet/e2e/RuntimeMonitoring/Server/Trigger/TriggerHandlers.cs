@@ -30,15 +30,15 @@ internal sealed class SocketEventRecorder(EvidenceStore evidence) : IZLinkRuntim
     }
 }
 
-internal sealed class ValidationRequestHandler : IZLinkRequestHandler<ProfileRequest, ProfileReply>
+internal sealed class ValidationRequestHandler : IZLinkRequestHandler<ProfileReq, ProfileRes>
 {
-    public ValueTask<ProfileReply> HandleAsync(
-        ProfileRequest request,
+    public ValueTask<ProfileRes> HandleAsync(
+        ProfileReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new ProfileReply(request.Value, "validation", request.Marker));
+        return ValueTask.FromResult(new ProfileRes(request.Value, "validation", request.Marker));
     }
 }

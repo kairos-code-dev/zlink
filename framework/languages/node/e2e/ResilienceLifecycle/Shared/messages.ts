@@ -1,58 +1,58 @@
 import { createHash } from 'node:crypto';
 
 export const PacketNames = {
-  profileRequest: 'ProfileRequest',
-  profileCommand: 'ProfileCommand',
-  payloadRequest: 'PayloadRequest',
-  missingProfileRequest: 'MissingProfileRequest',
-  missingProfileCommand: 'MissingProfileCommand'
+  profileReq: 'ProfileReq',
+  profileMsg: 'ProfileMsg',
+  payloadReq: 'PayloadReq',
+  missingProfileReq: 'MissingProfileReq',
+  missingProfileMsg: 'MissingProfileMsg'
 } as const;
 
-export interface ProfileRequest {
+export interface ProfileReq {
   readonly value: string;
   readonly marker?: string;
 }
 
-export interface ProfileReply {
+export interface ProfileRes {
   readonly value: string;
   readonly providerRid: string;
 }
 
-export interface ProfileCommand {
+export interface ProfileMsg {
   readonly commandId: string;
 }
 
-export interface EvidenceWaitRequest {
+export interface EvidenceWaitReq {
   readonly contains: string;
   readonly timeoutMilliseconds?: number;
 }
 
-export interface WeightWaitRequest {
+export interface WeightWaitReq {
   readonly expected: number;
   readonly timeoutMilliseconds?: number;
 }
 
-export interface PayloadRequest {
+export interface PayloadReq {
   readonly marker: string;
   readonly payload: string;
 }
 
-export interface PayloadReply {
+export interface PayloadRes {
   readonly marker: string;
   readonly length: number;
   readonly sha256: string;
 }
 
-export interface RouteMissingResult {
+export interface RouteMissingRes {
   readonly failed: boolean;
 }
 
-export interface RequestFailureResult {
+export interface RequestFailureRes {
   readonly failed: boolean;
   readonly failureType: string;
 }
 
-export interface TimeoutRequestResult {
+export interface TimeoutRes {
   readonly status: number;
   readonly timedOut: boolean;
 }

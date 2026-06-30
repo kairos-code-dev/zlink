@@ -120,7 +120,7 @@ class MultiNodeHttpServer(
         }
         nextServer.createContext("/evidence/wait") { exchange ->
             requireMethod(exchange, "POST")
-            val request = readJson(exchange, Contracts.EvidenceWaitRequest::class.java)
+            val request = readJson(exchange, Contracts.EvidenceWaitReq::class.java)
             val snapshot = evidence.waitUntil(
                 request.containsAll,
                 Duration.ofMillis(request.timeoutMilliseconds.coerceIn(1, 30_000).toLong())
@@ -129,13 +129,13 @@ class MultiNodeHttpServer(
         }
         nextServer.createContext("/spot/create-local") { exchange ->
             requireMethod(exchange, "POST")
-            val request = readJson(exchange, Contracts.MultiNodeCreateSpotRequest::class.java)
+            val request = readJson(exchange, Contracts.MultiNodeCreateSpotReq::class.java)
             val created = createLocalSpot(request)
             writeJson(exchange, 200, created)
         }
         nextServer.createContext("/spot/state/request") { exchange ->
             requireMethod(exchange, "POST")
-            val request = readJson(exchange, Contracts.MultiNodeStateRouteRequest::class.java)
+            val request = readJson(exchange, Contracts.MultiNodeStateRouteReq::class.java)
             writeJson(exchange, 200, requestState(request))
         }
         nextServer.createContext("/shutdown") { exchange ->
@@ -163,7 +163,7 @@ class MultiNodeHttpServer(
     override fun isRunning(): Boolean =
         running
 
-    private fun createLocalSpot(request: Contracts.MultiNodeCreateSpotRequest): Contracts.MultiNodeCreateSpotReply {
+    private fun createLocalSpot(request: Contracts.MultiNodeCreateSpotReq): Contracts.MultiNodeCreateSpotRes {
         val node = MultiNodeKind.fromRid(options.rid)
         val spot = if (node == MultiNodeKind.NODE_A) {
             spots.getOrCreate(MultiNodeSpotA::class.java, RoutingId.from(request.spotRid))
@@ -172,9 +172,9 @@ class MultiNodeHttpServer(
         }
             .toCompletableFuture()
             .join()
-        val state = requestState(Contracts.MultiNodeStateRouteRequest(request.spotRid, request.delta))
+        val state = requestState(Contracts.MultiNodeStateRouteReq(request.spotRid, request.delta))
         evidence.add("multi-create-spot|node=${node.rid}|spot=${request.spotRid}|state=active")
-        return Contracts.MultiNodeCreateSpotReply(
+        return Contracts.MultiNodeCreateSpotRes(
             request.spotRid,
             node.rid,
             "active",
@@ -182,17 +182,17 @@ class MultiNodeHttpServer(
         )
     }
 
-    private fun requestState(request: Contracts.MultiNodeStateRouteRequest): Contracts.MultiNodeStateReply {
+    private fun requestState(request: Contracts.MultiNodeStateRouteReq): Contracts.MultiNodeStateRes {
         val node = MultiNodeKind.fromRid(options.rid)
         return routes.requestToSpot(
             node.routeChannel,
             RoutingId.from(node.rid),
             RoutingId.from(request.spotRid),
-            Contracts.MultiNodeStateRequest("add", request.delta)
+            Contracts.MultiNodeStateReq("add", request.delta)
         )
             .packetName("StateReq")
             .timeout(Duration.ofSeconds(2))
-            .await(Contracts.MultiNodeStateReply::class.java)
+            .await(Contracts.MultiNodeStateRes::class.java)
     }
 
     private fun <T> readJson(exchange: HttpExchange, type: Class<T>): T =

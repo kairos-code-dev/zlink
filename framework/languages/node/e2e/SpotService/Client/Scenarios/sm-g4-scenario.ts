@@ -5,7 +5,7 @@ import {
 } from '@zlink-systems/stream-connector';
 import type { ZlinkStreamMessage } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPushNotify,
   ActorPushReq,
   AuthReq
@@ -58,7 +58,7 @@ export async function runSmG4(options: ClientOptions): Promise<void> {
 
     const results: Array<{
       readonly entry: BoundClient;
-      readonly reply: ActorPingReply;
+      readonly reply: ActorPingRes;
       readonly notify: ZlinkStreamMessage<ActorPushNotify>;
     }> = [];
     for (const entry of clients) {
@@ -66,7 +66,7 @@ export async function runSmG4(options: ClientOptions): Promise<void> {
         .where((message) => message.payload.actorId === entry.actorId)
         .timeout(10000)
         .submit();
-      const reply = decodeStreamReply<ActorPingReply>(await entry.client
+      const reply = decodeStreamReply<ActorPingRes>(await entry.client
         .request({ value: entry.value } satisfies ActorPushReq)
         .packetName('ActorPushReq')
         .timeout(5000)

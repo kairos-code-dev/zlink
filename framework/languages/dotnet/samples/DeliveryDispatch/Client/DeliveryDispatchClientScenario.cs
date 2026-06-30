@@ -38,15 +38,15 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         await AssertServerEvidenceAsync(http, cancellationToken);
     }
 
-    private static async ValueTask<CourierBound> BindCourierAsync(
+    private static async ValueTask<BindCourierSessionRes> BindCourierAsync(
         IZlinkStreamConnector courier,
         string courierId,
         CancellationToken cancellationToken)
     {
         // The client only identifies the courier. The server attaches the current stream session
         // to the courier actor and replies with the actor/session binding evidence.
-        return await courier.Request(new BindCourierSession(courierId))
-            .Async<CourierBound>(cancellationToken);
+        return await courier.Request(new BindCourierSessionReq(courierId))
+            .Async<BindCourierSessionRes>(cancellationToken);
     }
 
     private static async ValueTask RunSuccessfulDeliveryAsync(
@@ -60,7 +60,7 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var deliveryId = "delivery-success";
 
         // Register waits before creating the delivery so push messages cannot race past the client.
-        var offer = courier.WaitFor<OfferDelivery>()
+        var offer = courier.WaitFor<OfferDeliveryNotify>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Async(cancellationToken);
         var assigned = customer.WaitFor<DeliveryStatusNotify>()
@@ -80,22 +80,22 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Delivered)
             .Async(cancellationToken);
 
-        var subscribed = await customer.Request(new SubscribeDelivery(deliveryId))
-            .Async<SubscribeDeliveryAccepted>(cancellationToken);
+        var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
+            .Async<SubscribeDeliveryRes>(cancellationToken);
         Ensure(subscribed.DeliveryId == deliveryId);
 
         var created = http.Post("/deliveries")
-            .Body(new CreateDeliveryRequest(
+            .Body(new CreateDeliveryReq(
                 deliveryId,
                 "customer-1",
                 "Kitchen 12",
                 "Customer Lobby"))
-            .Fetch<DeliveryCreated>();
+            .Fetch<CreateDeliveryRes>();
         Ensure(created.DeliveryId == deliveryId);
 
         // courier-a receives the offer through its bound stream session and accepts it.
         var courierOffer = (await offer).Payload;
-        await courier.Send(new CourierDecision(
+        await courier.Send(new CourierDecisionMsg(
                 courierOffer.DeliveryId,
                 courierOffer.CourierId,
                 true,
@@ -120,11 +120,11 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var deliveryId = "delivery-reassign";
 
         // courier-a and courier-b are different stream sessions, so each waits on its own connector.
-        var firstOffer = courierA.WaitFor<OfferDelivery>()
+        var firstOffer = courierA.WaitFor<OfferDeliveryNotify>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Where(message => message.Payload.CourierId == "courier-a")
             .Async(cancellationToken);
-        var secondOffer = courierB.WaitFor<OfferDelivery>()
+        var secondOffer = courierB.WaitFor<OfferDeliveryNotify>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Where(message => message.Payload.CourierId == "courier-b")
             .Async(cancellationToken);
@@ -145,24 +145,24 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 message.Payload.DeliveryId == deliveryId && message.Payload.Status == DeliveryStatus.Delivered)
             .Async(cancellationToken);
 
-        var subscribed = await customer.Request(new SubscribeDelivery(deliveryId))
-            .Async<SubscribeDeliveryAccepted>(cancellationToken);
+        var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
+            .Async<SubscribeDeliveryRes>(cancellationToken);
         Ensure(subscribed.DeliveryId == deliveryId);
 
         var created = http.Post("/deliveries")
-            .Body(new CreateDeliveryRequest(
+            .Body(new CreateDeliveryReq(
                 deliveryId,
                 "customer-1",
                 "Kitchen 12",
                 "Customer Lobby"))
-            .Fetch<DeliveryCreated>();
+            .Fetch<CreateDeliveryRes>();
         Ensure(created.DeliveryId == deliveryId);
 
         // courier-a intentionally does not answer. The dispatch server times out and offers the
         // same delivery to courier-b, which accepts through its own bound stream session.
         _ = await firstOffer;
         var acceptedOffer = (await secondOffer).Payload;
-        await courierB.Send(new CourierDecision(
+        await courierB.Send(new CourierDecisionMsg(
                 acceptedOffer.DeliveryId,
                 acceptedOffer.CourierId,
                 true,

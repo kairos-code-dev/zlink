@@ -12,31 +12,31 @@ internal static class SmA5Scenario
         var spotRid = $"spot-sm-a5-{Guid.NewGuid():N}";
         var created = (await api.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
-            .SubmitAsync<CreateSpotReply>()).Body;
+            .SubmitAsync<CreateSpotRes>()).Body;
         ScenarioAssert.That(created.SpotRid == spotRid, "SM-A5 did not create the requested spot.");
         ScenarioAssert.That(created.NodeRid == "play-a", "SM-A5 created spot on the wrong node.");
 
         var ready = (await api.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(spotRid, "noop", 0))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
             "SM-A5 spot route did not become ready.");
 
         var probeReply = (await api.Post("/spot/stage/request")
             .Body(new SpotStageProbeReq(spotRid, "sm-a5-stage", 9))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         ScenarioAssert.That(probeReply.SpotRid == spotRid, "SM-A5 stage request reached the wrong spot.");
         ScenarioAssert.That(probeReply.NodeRid == "play-a", "SM-A5 stage request reached the wrong node.");
         ScenarioAssert.That(probeReply.Value == 9, "SM-A5 stage request state mismatch.");
 
         var timer = (await api.Post("/spot/stage/timer")
             .Body(new SpotStageTimerReq(spotRid, "sm-a5-stage-timer", 50))
-            .SubmitAsync<SpotStageTimerReply>()).Body;
+            .SubmitAsync<SpotStageTimerRes>()).Body;
         ScenarioAssert.That(timer.SpotRid == spotRid && timer.Started, "SM-A5 stage timer was not started.");
 
         var closeReply = (await api.Post("/spot/close")
             .Body(new CloseSpotReq(spotRid))
-            .SubmitAsync<CloseSpotReply>()).Body;
+            .SubmitAsync<CloseSpotRes>()).Body;
         ScenarioAssert.That(closeReply.Closed, "SM-A5 did not close the spot.");
 
         var expectedEvidence = new[]
@@ -47,7 +47,7 @@ internal static class SmA5Scenario
             $"spot-closing|rid=play-a|spot={spotRid}"
         };
         var evidence = (await api.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

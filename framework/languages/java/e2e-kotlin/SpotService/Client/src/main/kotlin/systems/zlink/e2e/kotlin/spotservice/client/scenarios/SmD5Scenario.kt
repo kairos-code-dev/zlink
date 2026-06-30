@@ -14,8 +14,8 @@ internal object SmD5Scenario {
             val profile = Contracts.ActorProfile("Disconnect", 5, listOf("disconnect"))
             connector.connect().await()
             val auth = connector
-                .request(Contracts.ActorAuthRequest(actorId, profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(actorId, profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-D5 auth actor mismatch")
             connector.close().await()
         } finally {
@@ -28,7 +28,7 @@ internal object SmD5Scenario {
         val evidence = postJson(
             Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
             "/evidence/wait",
-            Contracts.EvidenceWaitRequest(
+            Contracts.EvidenceWaitReq(
                 listOf(
                     "ActorDisconnectNotified",
                     "ActorEntryDisconnected|session-a|entry|$actorId",

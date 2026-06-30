@@ -4,10 +4,10 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPushNotify,
   ActorPushReq,
-  AuthReply,
+  AuthRes,
   AuthReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -50,7 +50,7 @@ export async function runSmD14(options: ClientOptions): Promise<void> {
   });
   await tls.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await tls
+    const auth = decodeStreamReply<AuthRes>(await tls
       .request({
         actorId,
         displayName: 'stream tls',
@@ -65,7 +65,7 @@ export async function runSmD14(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === actorId)
       .timeout(10000)
       .submit();
-    const reply = decodeStreamReply<ActorPingReply>(await tls
+    const reply = decodeStreamReply<ActorPingRes>(await tls
       .request({ value: 'tls-push' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)

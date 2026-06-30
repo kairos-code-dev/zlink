@@ -37,16 +37,16 @@ public final class WorkflowEndpoints {
     }
 
     @PostMapping("/evidence/wait")
-    public List<String> waitEvidence(@RequestBody Contracts.EvidenceWaitRequest request) {
+    public List<String> waitEvidence(@RequestBody Contracts.EvidenceWaitReq request) {
         long timeout = Math.max(1, Math.min(30000, request.timeoutMilliseconds()));
         return state.waitUntil(line -> line.contains(request.contains()), timeout);
     }
 
     @PostMapping("/workflow/request")
-    public Contracts.WorkflowReply workflowRequest(@RequestBody Contracts.WorkflowRequest request) {
+    public Contracts.WorkflowRes workflowRequest(@RequestBody Contracts.WorkflowReq request) {
         return client.requestToChannel(Contracts.WORKFLOW_CHANNEL, request)
-            .packetName("WorkflowRequest")
+            .packetName("WorkflowReq")
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.WorkflowReply.class);
+            .await(Contracts.WorkflowRes.class);
     }
 }

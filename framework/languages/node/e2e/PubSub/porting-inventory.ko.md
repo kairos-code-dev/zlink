@@ -64,8 +64,8 @@
 | `Server/Subscriber/Configuration/SubscriberOptions.cs` | `Server/Subscriber/Configuration/subscriber-options.ts` | configuration | done | subscriber endpoint, evidence file, handler delay 옵션 |
 | `Server/Subscriber/OperationalEndpoints.cs` | `Server/Subscriber/Endpoints/operational-endpoints.ts` | endpoints | done | health, evidence, wait, clear, shutdown endpoint |
 | `Server/Subscriber/EvidenceStore.cs` | `Server/Subscriber/Infrastructure/evidence-store.ts` | infrastructure | done | subscriber evidence 저장과 bounded wait |
-| `Server/Subscriber/Handlers/EventNotifyHandler.cs` | `Server/Subscriber/Handlers/event-notify-handler.ts` | handler | done | topic filter, slow handler evidence |
-| `Server/Subscriber/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Subscriber/Handlers/event-notify-handler.ts` | observer | done | missing packet dispatch error evidence |
+| `Server/Subscriber/Handlers/EventMsgHandler.cs` | `Server/Subscriber/Handlers/event-msg-handler.ts` | handler | done | topic filter, slow handler evidence |
+| `Server/Subscriber/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Subscriber/Handlers/event-msg-handler.ts` | observer | done | missing packet dispatch error evidence |
 
 ## 검증 경로 판정
 

@@ -14,7 +14,7 @@ internal sealed class SubscribeDeliverySessionHandler(
 {
     private const string CustomerId = "customer-1";
 
-    public string PacketName => nameof(SubscribeDelivery);
+    public string PacketName => nameof(SubscribeDeliveryReq);
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
@@ -24,8 +24,8 @@ internal sealed class SubscribeDeliverySessionHandler(
     {
         var ensured = await channels.RequestToChannel(
                 SampleNames.CustomerRouteChannel,
-                new EnsureCustomerActor(CustomerId))
-            .Async<CustomerActorEnsured>(cancellationToken);
+                new EnsureCustomerActorReq(CustomerId))
+            .Async<EnsureCustomerActorRes>(cancellationToken);
 
         var boundActor = context.Actors.Find(ensured.Actor.ActorId);
         if (boundActor is null)

@@ -11,11 +11,11 @@ internal object SmF3Scenario {
         val routeReply = routes.requestTo(
             Contracts.ROUTE_CHANNEL,
             RoutingId.from("play-a"),
-            Contracts.RoutePing("route-mesh-normal"),
+            Contracts.RoutePingReq("route-mesh-normal"),
         )
             .packetName(Contracts.ROUTE_PACKET)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.RoutePong::class.java)
+            .await(Contracts.RoutePingRes::class.java)
         ensure(routeReply.nodeRid == "play-a", "SM-F3 route-channel target node mismatch")
         ensure(routeReply.routeRid == "client-route-mesh", "SM-F3 route-channel source routing id mismatch")
         ensure(routeReply.value == "route:route-mesh-normal", "SM-F3 route-channel reply mismatch")

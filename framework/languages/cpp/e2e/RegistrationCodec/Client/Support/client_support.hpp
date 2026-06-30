@@ -60,17 +60,17 @@ struct binary_codecs_t
     template <typename TRegistrar> void register_framework_codecs (TRegistrar &registrar) const
     {
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_roundtrip_t> (registrar);
+          protobuf_roundtrip_req_t> (registrar);
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_roundtrip_reply_t> (registrar);
+          protobuf_roundtrip_res_t> (registrar);
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_codec_send_t> (registrar);
+          protobuf_codec_msg_t> (registrar);
         zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-          messagepack_roundtrip_t> (registrar);
+          messagepack_roundtrip_req_t> (registrar);
         zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-          messagepack_roundtrip_reply_t> (registrar);
+          messagepack_roundtrip_res_t> (registrar);
         zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-          messagepack_codec_send_t> (registrar);
+          messagepack_codec_msg_t> (registrar);
     }
 };
 
@@ -79,33 +79,33 @@ struct custom_codecs_t
     template <typename TRegistrar> void register_framework_codecs (TRegistrar &registrar) const
     {
         registrar
-          .template add_serializer<custom_roundtrip_t> (
-            [] (const custom_roundtrip_t &value) {
+          .template add_serializer<custom_roundtrip_req_t> (
+            [] (const custom_roundtrip_req_t &value) {
                 return encode_text ("custom-request", value.value);
             },
             [] (const zlink::framework::encoded_payload_t &payload) {
-                return custom_roundtrip_t{.value = decode_text (payload, "custom-request")};
+                return custom_roundtrip_req_t{.value = decode_text (payload, "custom-request")};
             })
-          .template add_serializer<custom_roundtrip_reply_t> (
-            [] (const custom_roundtrip_reply_t &value) {
+          .template add_serializer<custom_roundtrip_res_t> (
+            [] (const custom_roundtrip_res_t &value) {
                 return encode_text ("custom-reply", value.value);
             },
             [] (const zlink::framework::encoded_payload_t &payload) {
-                return custom_roundtrip_reply_t{.value = decode_text (payload, "custom-reply")};
+                return custom_roundtrip_res_t{.value = decode_text (payload, "custom-reply")};
             })
-          .template add_serializer<mismatch_roundtrip_t> (
-            [] (const mismatch_roundtrip_t &value) {
+          .template add_serializer<mismatch_roundtrip_req_t> (
+            [] (const mismatch_roundtrip_req_t &value) {
                 return encode_text ("mismatch-request", value.value);
             },
             [] (const zlink::framework::encoded_payload_t &payload) {
-                return mismatch_roundtrip_t{.value = decode_text (payload, "mismatch-request")};
+                return mismatch_roundtrip_req_t{.value = decode_text (payload, "mismatch-request")};
             })
-          .template add_serializer<mismatch_roundtrip_reply_t> (
-            [] (const mismatch_roundtrip_reply_t &value) {
+          .template add_serializer<mismatch_roundtrip_res_t> (
+            [] (const mismatch_roundtrip_res_t &value) {
                 return encode_text ("client-wrong-reply", value.value);
             },
             [] (const zlink::framework::encoded_payload_t &payload) {
-                return mismatch_roundtrip_reply_t{
+                return mismatch_roundtrip_res_t{
                   .value = decode_text (payload, "client-wrong-reply")};
             });
     }

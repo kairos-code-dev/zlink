@@ -37,19 +37,19 @@ public final class YieldProbeSpot implements ZLinkSpot<YieldActor> {
         context.handlers().addPacket(YieldProbeHandlers.YieldHandler.class);
         context.handlers().addPacket(YieldProbeHandlers.WorkerYieldHandler.class);
         context.handlers().addPacket(YieldProbeHandlers.ProbeHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.WorkerYieldCommandHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.ProbeCommandHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.YieldCommandHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.YieldTimeoutCommandHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.YieldCancelCommandHandler.class);
+        context.handlers().addPacket(YieldProbeHandlers.WorkerYieldMsgHandler.class);
+        context.handlers().addPacket(YieldProbeHandlers.ProbeMsgHandler.class);
+        context.handlers().addPacket(YieldProbeHandlers.YieldMsgHandler.class);
+        context.handlers().addPacket(YieldProbeHandlers.YieldTimeoutMsgHandler.class);
+        context.handlers().addPacket(YieldProbeHandlers.YieldCancelMsgHandler.class);
         context.handlers().addPacket(YieldProbeHandlers.RemoteSpotYieldHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.TimerStartCommandHandler.class);
-        context.handlers().addPacket(YieldProbeHandlers.TimerStopCommandHandler.class);
+        context.handlers().addPacket(YieldProbeHandlers.TimerStartMsgHandler.class);
+        context.handlers().addPacket(YieldProbeHandlers.TimerStopMsgHandler.class);
         context.handlers().addActorRequest(YieldProbeHandlers.SpotActorYieldHandler.class);
         context.handlers().addActorRequest(YieldProbeHandlers.SpotActorFastHandler.class);
     }
 
-    public synchronized void startTimer(Contracts.TimerStartCommand command) {
+    public synchronized void startTimer(Contracts.TimerStartMsg command) {
         ZLinkTimer previous = timers.remove(command.timerName());
         if (previous != null) {
             previous.close();
@@ -109,7 +109,7 @@ public final class YieldProbeSpot implements ZLinkSpot<YieldActor> {
         ZLinkMessage request,
         CancellationToken cancellationToken) {
         if (actor.actorId().startsWith("ydb3-")) {
-            Contracts.DelayRequest delay = request.decode(Contracts.DelayRequest.class);
+            Contracts.DelayReq delay = request.decode(Contracts.DelayReq.class);
             try {
                 Thread.sleep(delay.delayMillis());
             } catch (InterruptedException error) {

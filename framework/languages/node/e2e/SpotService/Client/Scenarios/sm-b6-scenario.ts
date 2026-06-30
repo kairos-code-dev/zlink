@@ -4,10 +4,10 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  AuthReply,
+  AuthRes,
   AuthReq,
-  EvidenceWaitRequest,
-  LeaveReply,
+  EvidenceWaitReq,
+  LeaveRes,
   LeaveReq,
   UserSpotAuthReq
 } from '../../Shared/messages';
@@ -34,9 +34,9 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
       } satisfies UserSpotAuthReq)
       .packetName('UserSpotAuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
-    const left = decodeStreamReply<LeaveReply>(await leaveClient
+    const left = decodeStreamReply<LeaveRes>(await leaveClient
       .request({ actorId: leaveActorId } satisfies LeaveReq)
       .packetName('LeaveReq')
       .timeout(5000)
@@ -50,7 +50,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
   const playAAfterLeave = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedLeaveEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedLeaveEvidence.every((expected) => playAAfterLeave.some((line) => line.includes(expected))),
     'SM-B6 expected explicit leave evidence.'
@@ -72,7 +72,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
   } finally {
     await disconnectClient.close();
   }
@@ -81,7 +81,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
   const sessionAfterDisconnect = await postJson<string[]>(options.sessionAUrl, '/evidence/wait', {
     containsAll: expectedDisconnectEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedDisconnectEvidence.every((expected) => sessionAfterDisconnect.some((line) => line.includes(expected))),
     'SM-B6 expected disconnect evidence.'

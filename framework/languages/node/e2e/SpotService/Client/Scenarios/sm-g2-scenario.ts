@@ -1,9 +1,9 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
+  EvidenceWaitReq,
   SpotStateRouteReq,
-  StateReply
+  StateRes
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -14,10 +14,10 @@ export async function runSmG2(options: ClientOptions): Promise<void> {
   const firstOwnerSpotRid = `spot-${key}-a`;
   const secondOwnerSpotRid = `spot-${key}-b`;
 
-  const firstCreated = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const firstCreated = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid: firstOwnerSpotRid
   } satisfies CreateSpotReq);
-  const firstReply = await postJson<StateReply>(options.playAUrl, '/spot/state/request', {
+  const firstReply = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
     spotRid: firstOwnerSpotRid,
     operation: 'add',
     delta: 1
@@ -26,16 +26,16 @@ export async function runSmG2(options: ClientOptions): Promise<void> {
   const firstEvidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: firstExpectedEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     firstExpectedEvidence.every((expected) => firstEvidence.some((line) => line.includes(expected))),
     'SM-G2 play-a evidence did not include the first owner request.'
   );
 
-  const secondCreated = await postJson<CreateSpotReply>(options.playBUrl, '/spot/create', {
+  const secondCreated = await postJson<CreateSpotRes>(options.playBUrl, '/spot/create', {
     spotRid: secondOwnerSpotRid
   } satisfies CreateSpotReq);
-  const secondReply = await postJson<StateReply>(options.playBUrl, '/spot/state/request', {
+  const secondReply = await postJson<StateRes>(options.playBUrl, '/spot/state/request', {
     spotRid: secondOwnerSpotRid,
     operation: 'add',
     delta: 1
@@ -44,7 +44,7 @@ export async function runSmG2(options: ClientOptions): Promise<void> {
   const secondEvidence = await postJson<string[]>(options.playBUrl, '/evidence/wait', {
     containsAll: secondExpectedEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     secondExpectedEvidence.every((expected) => secondEvidence.some((line) => line.includes(expected))),
     'SM-G2 play-b evidence did not include the remapped owner request.'

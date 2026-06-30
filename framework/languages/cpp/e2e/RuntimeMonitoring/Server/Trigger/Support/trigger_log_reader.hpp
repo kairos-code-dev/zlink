@@ -41,7 +41,7 @@ inline bool any_line_contains (const std::vector<std::string> &lines, const std:
 }
 
 inline bool matches_wait_request (const std::vector<std::string> &lines,
-                                  const evidence_wait_request_t &request)
+                                  const evidence_wait_req_t &request)
 {
     for (const auto &required : request.contains_all) {
         if (!any_line_contains (lines, required)) {
@@ -64,7 +64,7 @@ inline bool matches_wait_request (const std::vector<std::string> &lines,
 }
 
 inline std::vector<std::string> wait_for_log_lines (const std::string &path,
-                                                    const evidence_wait_request_t &request)
+                                                    const evidence_wait_req_t &request)
 {
     const auto timeout = std::chrono::milliseconds (
       request.timeout_milliseconds > 0 ? request.timeout_milliseconds : 1);

@@ -18,7 +18,7 @@ internal sealed class OrderAggregate
 
     public bool IsTerminal => Status is OrderStatuses.Confirmed or OrderStatuses.Failed;
 
-    public bool HasProcessedCommand(string sourceCommandId)
+    public bool HasProcessedMsg(string sourceCommandId)
     {
         return _sourceCommands.Contains(sourceCommandId);
     }

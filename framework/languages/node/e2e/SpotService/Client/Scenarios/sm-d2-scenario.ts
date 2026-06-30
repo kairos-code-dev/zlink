@@ -4,12 +4,12 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPushNotify,
   ActorPushReq,
-  AuthReply,
+  AuthRes,
   AuthReq,
-  ControlPingReply,
+  ControlPingRes,
   ControlPingReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -30,7 +30,7 @@ export async function runSmD2(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await client
+    const auth = decodeStreamReply<AuthRes>(await client
       .request({
         actorId,
         displayName: 'remote relay',
@@ -45,7 +45,7 @@ export async function runSmD2(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === actorId)
       .timeout(10000)
       .submit();
-    const reply = decodeStreamReply<ActorPingReply>(await client
+    const reply = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'push-remote' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
@@ -68,7 +68,7 @@ async function waitForControlRoute(sessionUrl: string, targetRid: string): Promi
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
-      const reply = await postJson<ControlPingReply>(sessionUrl, `/channel/control-ping/${targetRid}`, {
+      const reply = await postJson<ControlPingRes>(sessionUrl, `/channel/control-pingMsg/${targetRid}`, {
         value: `sm-d2-${targetRid}-ready`
       } satisfies ControlPingReq);
       if (reply.nodeRid === targetRid) {

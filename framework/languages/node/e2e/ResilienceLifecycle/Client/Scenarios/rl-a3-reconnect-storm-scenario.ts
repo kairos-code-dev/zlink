@@ -1,13 +1,13 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
-import { profileRequest } from '../Support/resilience-helpers';
+import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlA3(options: ClientOptions): Promise<void> {
   for (let i = 0; i < 24; i += 1) {
     const marker = `rl-a3-${i}`;
-    const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request/new-client', profileRequest(marker));
+    const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request/new-client', profileReq(marker));
     ensure(
       reply.value === 'profile:fast' && (reply.providerRid === 'api-a' || reply.providerRid === 'api-b'),
       'RL-A3 storm request returned an unexpected reply.'

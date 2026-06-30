@@ -11,14 +11,14 @@ internal object SmE1Scenario {
         expectFailure {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("missing"),
+                Contracts.StateReq("missing"),
             )
                 .packetName("MissingSpotPacket")
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
-        outbound.sendToSpot(RoutingId.from("room-a"), Contracts.StateCommand("missing-send"))
-            .packetName("MissingSpotCommand")
+        outbound.sendToSpot(RoutingId.from("room-a"), Contracts.StateMsg("missing-send"))
+            .packetName("MissingSpotMsg")
             .await()
         println("scenario SM-C1-negative passed")
         println("scenario SM-E1 passed")

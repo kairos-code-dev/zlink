@@ -4,11 +4,11 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
-  AuthReply,
+  AuthRes,
   AuthReq,
-  EvidenceWaitRequest
+  EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -26,7 +26,7 @@ export async function runSmB7(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await client
+    const auth = decodeStreamReply<AuthRes>(await client
       .request({
         actorId,
         displayName: 'order',
@@ -37,12 +37,12 @@ export async function runSmB7(options: ClientOptions): Promise<void> {
       .submit());
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-B7 auth reply mismatch.');
 
-    const first = decodeStreamReply<ActorPingReply>(await client
+    const first = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'order-1' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
       .submit());
-    const second = decodeStreamReply<ActorPingReply>(await client
+    const second = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'order-2' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
@@ -58,16 +58,16 @@ export async function runSmB7(options: ClientOptions): Promise<void> {
     );
 
     const expectedEvidence = [
-      `actor-ping|rid=play-a|actor=${actorId}`,
+      `actor-pingMsg|rid=play-a|actor=${actorId}`,
       'value=order-2|seen=2'
     ];
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       evidence.some((line) =>
-        line.includes(`actor-ping|rid=play-a|actor=${actorId}`)
+        line.includes(`actor-pingMsg|rid=play-a|actor=${actorId}`)
         && line.includes('value=order-2|seen=2')
       ),
       'SM-B7 evidence did not include ordered second request.'

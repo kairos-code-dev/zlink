@@ -13,11 +13,11 @@ class filter_order_handler_t
   public:
     using dependency_types = zlink::framework::dependency_list_t<filter_order_state_t>;
     using request_type = filter_order_req_t;
-    using reply_type = filter_order_reply_t;
+    using reply_type = filter_order_res_t;
 
     explicit filter_order_handler_t (filter_order_state_t &state) : _state (state) {}
 
-    filter_order_reply_t handle (const filter_order_req_t &request)
+    filter_order_res_t handle (const filter_order_req_t &request)
     {
         _state.add ("handler");
         return {.value = request.value, .order = _state.snapshot ()};

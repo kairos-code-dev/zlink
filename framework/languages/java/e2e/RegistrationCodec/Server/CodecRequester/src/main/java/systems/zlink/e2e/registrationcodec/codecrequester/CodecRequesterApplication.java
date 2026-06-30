@@ -68,8 +68,8 @@ public final class CodecRequesterApplication {
 
     private static boolean isPackedType(Class<?> type) {
         return Set.of(
-            Contracts.PackedEchoRequest.class,
-            Contracts.PackedEchoReply.class,
-            Contracts.PackedEchoCommand.class).contains(type);
+            Contracts.PackedEchoReq.class,
+            Contracts.PackedEchoRes.class,
+            Contracts.PackedEchoMsg.class).contains(type);
     }
 }

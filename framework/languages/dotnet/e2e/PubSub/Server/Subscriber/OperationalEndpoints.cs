@@ -9,7 +9,7 @@ public static class OperationalEndpoints
         app.MapGet("/health", () => Results.Ok(new { status = "ready", role, rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {

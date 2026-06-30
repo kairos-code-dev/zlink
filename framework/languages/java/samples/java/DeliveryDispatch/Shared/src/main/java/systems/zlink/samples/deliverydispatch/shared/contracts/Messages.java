@@ -20,15 +20,15 @@ public final class Messages {
         }
     }
 
-    @ZLinkPacket("CreateDeliveryRequest")
-    public record CreateDeliveryRequest(
+    @ZLinkPacket("CreateDeliveryReq")
+    public record CreateDeliveryReq(
         String deliveryId,
         String customerId,
         String pickupAddress,
         String dropoffAddress) {
     }
 
-    public record DeliveryCreated(String deliveryId) {
+    public record CreateDeliveryRes(String deliveryId) {
     }
 
     @ZLinkPacket("AssignDelivery")
@@ -39,7 +39,7 @@ public final class Messages {
         String dropoffAddress) {
     }
 
-    public record AssignDeliveryResult(String deliveryId, String courierId) {
+    public record AssignDeliveryRes(String deliveryId, String courierId) {
     }
 
     @ZLinkPacket("OfferDelivery")
@@ -49,59 +49,59 @@ public final class Messages {
         String dropoffAddress) {
     }
 
-    public record OfferDeliveryResult(
+    public record OfferDeliveryRes(
         String deliveryId,
         String courierId,
         boolean accepted,
         String reason) {
     }
 
-    @ZLinkPacket("DeliveryStatusChanged")
-    public record DeliveryStatusChanged(
+    @ZLinkPacket("DeliveryStatusReq")
+    public record DeliveryStatusReq(
         String deliveryId,
         String status,
         String courierId,
         long occurredAtUnixMs) {
     }
 
-    public record DeliveryStatusAck(String deliveryId, String status) {
+    public record DeliveryStatusRes(String deliveryId, String status) {
     }
 
-    @ZLinkPacket("EnsureCustomerActor")
-    public record EnsureCustomerActor(String customerId) {
+    @ZLinkPacket("EnsureCustomerActorReq")
+    public record EnsureCustomerActorReq(String customerId) {
     }
 
     public record ActorRefSnapshot(byte[] nodeRid, String actorId, long generation) {
     }
 
-    public record CustomerActorEnsured(String customerId, ActorRefSnapshot actor) {
+    public record EnsureCustomerActorRes(String customerId, ActorRefSnapshot actor) {
     }
 
-    @ZLinkPacket("SubscribeCustomerToDelivery")
-    public record SubscribeCustomerToDelivery(String customerId, String deliveryId) {
+    @ZLinkPacket("SubscribeCustomerToDeliveryReq")
+    public record SubscribeCustomerToDeliveryReq(String customerId, String deliveryId) {
     }
 
-    public record CustomerDeliverySubscribed(String customerId, String deliveryId) {
+    public record SubscribeCustomerToDeliveryRes(String customerId, String deliveryId) {
     }
 
-    public record DeliverySpotCreate(String deliveryId) {
+    public record DeliverySpotCreateReq(String deliveryId) {
     }
 
-    public record DeliverySpotCreated(String deliveryId) {
+    public record DeliverySpotCreateReqd(String deliveryId) {
     }
 
-    public record DeliverySpotJoin(String deliveryId, String customerId) {
+    public record DeliverySpotJoinReq(String deliveryId, String customerId) {
     }
 
-    public record DeliverySpotJoined(String deliveryId, String customerId) {
+    public record DeliverySpotJoinReqed(String deliveryId, String customerId) {
     }
 
-    @ZLinkPacket("SubscribeDelivery")
-    public record SubscribeDelivery(String deliveryId) {
+    @ZLinkPacket("SubscribeDeliveryReq")
+    public record SubscribeDeliveryReq(String deliveryId) {
     }
 
-    @ZLinkPacket("SubscribeDeliveryAccepted")
-    public record SubscribeDeliveryAccepted(String deliveryId) {
+    @ZLinkPacket("SubscribeDeliveryReqRes")
+    public record SubscribeDeliveryReqRes(String deliveryId) {
     }
 
     @ZLinkPacket("DeliveryStatusNotify")

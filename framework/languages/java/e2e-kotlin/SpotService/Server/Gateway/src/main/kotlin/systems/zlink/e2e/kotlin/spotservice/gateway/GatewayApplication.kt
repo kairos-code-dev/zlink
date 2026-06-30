@@ -117,9 +117,9 @@ class GatewayHttpServer(
             publisher.publishSpot(
                 Contracts.SPOT_MESH,
                 "spot.events",
-                Contracts.MeshEvent(request.marker)
+                Contracts.MeshMsg(request.marker)
             )
-                .packetName("MeshEvent")
+                .packetName("MeshMsg")
                 .await()
             evidence.add("spot-publish|rid=${options.rid}|spot=${request.spotRid}|marker=${request.marker}")
             writeJson(
@@ -152,13 +152,13 @@ class GatewayHttpServer(
     override fun isRunning(): Boolean =
         running
 
-    private fun readPublishRequest(exchange: HttpExchange): SpotPublishRequest {
+    private fun readPublishRequest(exchange: HttpExchange): SpotPublishReq {
         val body = exchange.requestBody.readBytes()
         val value = json.readValue(body, Map::class.java)
         val marker = value["marker"]?.toString().orEmpty()
         require(marker.isNotBlank()) { "marker is required." }
         val spotRid = value["spotRid"]?.toString().orEmpty()
-        return SpotPublishRequest(marker, spotRid)
+        return SpotPublishReq(marker, spotRid)
     }
 
     private fun writeJson(exchange: HttpExchange, status: Int, value: Any) {
@@ -177,7 +177,7 @@ class GatewayHttpServer(
     }
 }
 
-data class SpotPublishRequest(
+data class SpotPublishReq(
     val marker: String,
     val spotRid: String
 )

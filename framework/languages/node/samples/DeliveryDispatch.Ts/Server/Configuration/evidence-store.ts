@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { DeliveryStatus, DeliveryStatusChanged } from '../../Shared/Contracts/messages';
+import type { DeliveryStatus, DeliveryStatusReq } from '../../Shared/Contracts/messages';
 
 class EvidenceStore {
-  private readonly events: DeliveryStatusChanged[] = [];
+  private readonly events: DeliveryStatusReq[] = [];
   private readonly filePath: string | undefined;
 
   constructor() {
@@ -14,7 +14,7 @@ class EvidenceStore {
     }
   }
 
-  append(event: DeliveryStatusChanged): void {
+  append(event: DeliveryStatusReq): void {
     this.events.push(event);
     if (this.filePath !== undefined) {
       fs.appendFileSync(this.filePath, `${JSON.stringify(event)}\n`);
@@ -43,14 +43,14 @@ class EvidenceStore {
     );
   }
 
-  private readEvents(): DeliveryStatusChanged[] {
+  private readEvents(): DeliveryStatusReq[] {
     if (this.filePath === undefined || !fs.existsSync(this.filePath)) {
       return this.events;
     }
     return fs.readFileSync(this.filePath, 'utf8')
       .split('\n')
       .filter((line) => line.length > 0)
-      .map((line) => JSON.parse(line) as DeliveryStatusChanged);
+      .map((line) => JSON.parse(line) as DeliveryStatusReq);
   }
 }
 

@@ -15,7 +15,7 @@ public sealed class EvidenceStore
         _path = Path.Combine(directory, "events.log");
     }
 
-    public void Append(DeliveryStatusChanged status)
+    public void Append(DeliveryStatusChangedReq status)
     {
         var line = string.Join(
             "|",
@@ -49,10 +49,10 @@ public sealed class EvidenceStore
         return statuses.SequenceEqual(expected);
     }
 
-    private static DeliveryStatusChanged Parse(string line)
+    private static DeliveryStatusChangedReq Parse(string line)
     {
         var parts = line.Split('|');
-        return new DeliveryStatusChanged(
+        return new DeliveryStatusChangedReq(
             parts[0],
             Enum.Parse<DeliveryStatus>(parts[1]),
             string.IsNullOrEmpty(parts[2]) ? null : parts[2],

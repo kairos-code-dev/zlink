@@ -9,7 +9,7 @@ import {
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
-import type { ProfileReply, ProfileRequest } from '../../Shared/messages';
+import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { RuntimeMonitoringNames } from '../../Shared/messages';
 import { parseTriggerOptions } from './Configuration/trigger-options';
 import type { TriggerOptions } from './Configuration/trigger-options';
@@ -41,9 +41,9 @@ export async function startTriggerHost(args: readonly string[]): Promise<void> {
 
 async function requestWithTransientHost(
   options: TriggerOptions,
-  request: ProfileRequest,
+  request: ProfileReq,
   channelEndpoint = options.serviceChannelEndpoint
-): Promise<ProfileReply> {
+): Promise<ProfileRes> {
   const traceLabel = `trigger-${request.marker}`;
   const evidence = new EvidenceStore(path.join(options.logDir, `${traceLabel}.evidence.log`));
   const TriggerModule = createTriggerModule(options, evidence, traceLabel, channelEndpoint);

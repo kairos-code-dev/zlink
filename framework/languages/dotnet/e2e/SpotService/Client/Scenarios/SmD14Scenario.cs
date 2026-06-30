@@ -45,12 +45,12 @@ internal static class SmD14Scenario
         await tls.Connect.Async();
         await tls.Request(new AuthReq("actor-sm-d14-tls", "stream tls", "play-a"))
             .PacketName("AuthReq")
-            .Async<AuthReply>();
+            .Async<AuthRes>();
 
         var pushed = tls.WaitFor<ActorPushNotify>().Async().AsTask();
         var reply = await tls.Request(new ActorPushReq("tls-push"))
             .PacketName("ActorPushReq")
-            .Async<ActorPingReply>();
+            .Async<ActorPingRes>();
         var notify = await pushed;
         ScenarioAssert.That(reply.ActorId == "actor-sm-d14-tls", "SM-D14 TLS actor reply mismatch.");
         ScenarioAssert.That(reply.NodeRid == "play-a", "SM-D14 TLS actor node mismatch.");

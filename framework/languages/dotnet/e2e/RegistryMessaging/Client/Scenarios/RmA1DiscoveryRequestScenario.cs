@@ -15,8 +15,8 @@ internal static class RmA1DiscoveryRequestScenario
         ZLinkHttpClient registry)
     {
         var reply = (await providerA.Post("/profile/request")
-            .Body(new ProfileRequest("rm-a1"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("rm-a1"))
+            .SubmitAsync<ProfileRes>()).Body;
 
         ScenarioAssert.That(reply.Value == "profile:rm-a1", "RM-A1 reply value mismatch.");
         ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b", "RM-A1 provider rid was not api-a/api-b.");

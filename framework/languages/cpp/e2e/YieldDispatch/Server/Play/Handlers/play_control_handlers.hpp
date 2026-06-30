@@ -18,7 +18,7 @@ class ensure_spot_handler_t
       zlink::framework::dependency_list_t<evidence_store_t,
                                           zlink::framework::spot_node_manager_t>;
     using request_type = ensure_spot_req_t;
-    using reply_type = ensure_spot_reply_t;
+    using reply_type = ensure_spot_res_t;
 
     ensure_spot_handler_t (evidence_store_t &evidence,
                            zlink::framework::spot_node_manager_t &spots) :
@@ -26,7 +26,7 @@ class ensure_spot_handler_t
     {
     }
 
-    ensure_spot_reply_t handle (const ensure_spot_req_t &request,
+    ensure_spot_res_t handle (const ensure_spot_req_t &request,
                                 const zlink::framework::route_handler_context_t &)
     {
         try {
@@ -60,7 +60,7 @@ class bind_yield_actors_handler_t
       zlink::framework::dependency_list_t<evidence_store_t,
                                           zlink::framework::spot_node_manager_t>;
     using request_type = bind_yield_actors_req_t;
-    using reply_type = bind_yield_actors_reply_t;
+    using reply_type = bind_yield_actors_res_t;
 
     bind_yield_actors_handler_t (evidence_store_t &evidence,
                                  zlink::framework::spot_node_manager_t &spots) :
@@ -68,13 +68,13 @@ class bind_yield_actors_handler_t
     {
     }
 
-    bind_yield_actors_reply_t handle (
+    bind_yield_actors_res_t handle (
       const bind_yield_actors_req_t &request,
       const zlink::framework::route_handler_context_t &)
     {
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
         (void) _spots.get_or_create_spot (probe_spot_name, spot_rid);
-        bind_yield_actors_reply_t reply{.spot_rid = request.spot_rid};
+        bind_yield_actors_res_t reply{.spot_rid = request.spot_rid};
         for (const auto &actor_id : request.actor_ids) {
             auto actor_ref = zlink::framework::actor_ref_t (
               zlink::framework::node_rid_t::from_string (_evidence.node_rid), actor_type,
@@ -108,11 +108,11 @@ class evidence_handler_t
   public:
     using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
     using request_type = yield_evidence_req_t;
-    using reply_type = yield_evidence_reply_t;
+    using reply_type = yield_evidence_res_t;
 
     explicit evidence_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
 
-    yield_evidence_reply_t handle (const yield_evidence_req_t &request,
+    yield_evidence_res_t handle (const yield_evidence_req_t &request,
                                    const zlink::framework::route_handler_context_t &)
     {
         return _evidence.snapshot (request.request_id);
@@ -127,11 +127,11 @@ class evidence_wait_handler_t
   public:
     using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
     using request_type = yield_evidence_wait_req_t;
-    using reply_type = yield_evidence_reply_t;
+    using reply_type = yield_evidence_res_t;
 
     explicit evidence_wait_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
 
-    yield_evidence_reply_t handle (const yield_evidence_wait_req_t &request,
+    yield_evidence_res_t handle (const yield_evidence_wait_req_t &request,
                                    const zlink::framework::route_handler_context_t &)
     {
         return _evidence.wait (request);

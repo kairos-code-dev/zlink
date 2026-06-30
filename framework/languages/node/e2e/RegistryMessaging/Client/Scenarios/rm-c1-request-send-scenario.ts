@@ -1,9 +1,9 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
 export async function runRmC1(providerAUrl: string, providerBUrl: string): Promise<void> {
-  const reply = await postJson<ProfileReply>(providerAUrl, '/profile/request', { value: 'rm-c1-request' });
+  const reply = await postJson<ProfileRes>(providerAUrl, '/profile/request', { value: 'rm-c1-request' });
   ensure(reply.value === 'profile:rm-c1-request', 'RM-C1 request reply mismatch.');
 
   const commandId = uniqueMarker('cmd');

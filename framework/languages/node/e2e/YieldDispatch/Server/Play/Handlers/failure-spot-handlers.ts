@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotPacketHandler } from '@zlink-systems/framework';
-import type { DelayReply, DelayReq, YieldCancelCommand, YieldTimeoutCommand } from '../../../Shared/messages';
+import type { DelayRes, DelayReq, YieldCancelMsg, YieldTimeoutMsg } from '../../../Shared/messages';
 import { YieldDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../../Support/evidence-store';
 import type { YieldProbeSpot } from '../Spots/yield-probe-spot';
 
 @Injectable()
-export class YieldTimeoutCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, YieldTimeoutCommand> {
+export class YieldTimeoutCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, YieldTimeoutMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: YieldProbeSpot, request: YieldTimeoutCommand, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: YieldProbeSpot, request: YieldTimeoutMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(
       `timeout-yield-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
@@ -28,7 +28,7 @@ export class YieldTimeoutCommandHandler implements ZLinkSpotPacketHandler<YieldP
         `timeout-yield-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${request.requestId}|handler=spot`
       );
-      await call.yield<DelayReply>();
+      await call.yield<DelayRes>();
       this.evidence.add(
         `timeout-yield-unexpected-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${request.requestId}|handler=spot`
@@ -44,10 +44,10 @@ export class YieldTimeoutCommandHandler implements ZLinkSpotPacketHandler<YieldP
 }
 
 @Injectable()
-export class YieldCancelCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, YieldCancelCommand> {
+export class YieldCancelCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, YieldCancelMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: YieldProbeSpot, request: YieldCancelCommand, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: YieldProbeSpot, request: YieldCancelMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(
       `cancel-yield-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
@@ -68,7 +68,7 @@ export class YieldCancelCommandHandler implements ZLinkSpotPacketHandler<YieldPr
         `cancel-yield-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${request.requestId}|handler=spot`
       );
-      await call.yield<DelayReply>(controller.signal);
+      await call.yield<DelayRes>(controller.signal);
       this.evidence.add(
         `cancel-yield-unexpected-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${request.requestId}|handler=spot`

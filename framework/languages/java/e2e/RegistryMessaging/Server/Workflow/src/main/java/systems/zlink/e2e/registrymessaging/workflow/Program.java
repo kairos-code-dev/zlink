@@ -9,10 +9,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.registrymessaging.workflow.Configuration.ServerOptions;
-import systems.zlink.e2e.registrymessaging.workflow.Handlers.ProfileCommandHandler;
-import systems.zlink.e2e.registrymessaging.workflow.Handlers.ProfileRequestHandler;
-import systems.zlink.e2e.registrymessaging.workflow.Handlers.RoutePingHandler;
-import systems.zlink.e2e.registrymessaging.workflow.Handlers.WorkflowRequestHandler;
+import systems.zlink.e2e.registrymessaging.workflow.Handlers.ProfileMsgHandler;
+import systems.zlink.e2e.registrymessaging.workflow.Handlers.ProfileReqHandler;
+import systems.zlink.e2e.registrymessaging.workflow.Handlers.RouteReqHandler;
+import systems.zlink.e2e.registrymessaging.workflow.Handlers.WorkflowReqHandler;
 import systems.zlink.e2e.registrymessaging.workflow.Infrastructure.ScenarioState;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
@@ -60,7 +60,7 @@ public final class Program {
                         error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return CompletableFuture.completedFuture(null);
                 });
-            options.addHandlersFromPackageOf(ProfileRequestHandler.class);
+            options.addHandlersFromPackageOf(ProfileReqHandler.class);
             options.useDiscovery().addRegistryEndpoint(ServerOptions.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
 
             String apiEndpoint = ServerOptions.get("ZLINK_JAVA_E2E_API_ENDPOINT");
@@ -86,9 +86,9 @@ public final class Program {
                     .enableServer(routeEndpoint)
                     .setRoutingId(RoutingId.from(state.providerRid()))
                     .addRequestHandler(
-                        RoutePingHandler.class,
-                        Contracts.RoutePing.class,
-                        Contracts.RoutePong.class,
+                        RouteReqHandler.class,
+                        Contracts.RouteReq.class,
+                        Contracts.RouteRes.class,
                         Contracts.ROUTE_PACKET);
             }
         };
@@ -108,22 +108,22 @@ public final class Program {
     }
 
     @Bean
-    ProfileRequestHandler profileRequestHandler(ScenarioState state) {
-        return new ProfileRequestHandler(state);
+    ProfileReqHandler profileRequestHandler(ScenarioState state) {
+        return new ProfileReqHandler(state);
     }
 
     @Bean
-    ProfileCommandHandler profileCommandHandler(ScenarioState state) {
-        return new ProfileCommandHandler(state);
+    ProfileMsgHandler profileCommandHandler(ScenarioState state) {
+        return new ProfileMsgHandler(state);
     }
 
     @Bean
-    RoutePingHandler routePingHandler(ScenarioState state) {
-        return new RoutePingHandler(state);
+    RouteReqHandler routePingHandler(ScenarioState state) {
+        return new RouteReqHandler(state);
     }
 
     @Bean
-    WorkflowRequestHandler workflowRequestHandler(ScenarioState state) {
-        return new WorkflowRequestHandler(state);
+    WorkflowReqHandler workflowRequestHandler(ScenarioState state) {
+        return new WorkflowReqHandler(state);
     }
 }

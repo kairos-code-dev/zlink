@@ -1,14 +1,14 @@
-import type { EvidenceWaitRequest, ProfileReply, ProfileRequest } from '../../Shared/messages';
+import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import { RuntimeMonitoringNames } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runMonA4(options: ClientOptions): Promise<void> {
-  const before = await postJson<ProfileReply>(
+  const before = await postJson<ProfileRes>(
     options.triggerUrl,
     '/profile/request',
-    { value: 'drain', marker: 'mon-a4-before-drain' } satisfies ProfileRequest
+    { value: 'drain', marker: 'mon-a4-before-drain' } satisfies ProfileReq
   );
   ensure(before.providerRid === 'svc-a', 'MON-A4 direct trigger did not hit drained service.');
 
@@ -61,7 +61,7 @@ async function waitForTriggerDrainEvidence(triggerUrl: string): Promise<string[]
     containsAll: ['monitor-socket|', `source=${RuntimeMonitoringNames.channelClientSource}`],
     containsAnyGroups: [['kind=PeerAdmissionChanged']],
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
 }
 
 async function waitForServiceDrainEvidence(serviceUrl: string): Promise<string[]> {
@@ -69,7 +69,7 @@ async function waitForServiceDrainEvidence(serviceUrl: string): Promise<string[]
     containsAll: ['admin|', 'action=drain'],
     containsAnyGroups: [['weight=0']],
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
 }
 
 async function waitForRegistryTopologyEvidence(registryUrl: string): Promise<string[]> {
@@ -77,5 +77,5 @@ async function waitForRegistryTopologyEvidence(registryUrl: string): Promise<str
     containsAll: ['monitor-registry|source=registry'],
     containsAnyGroups: [['kind=TopologyChanged']],
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
 }

@@ -39,7 +39,7 @@
 | `Server/Consumer/ConsumerOptions.cs` | `Server/Consumer/src/main/java/systems/zlink/e2e/discoveryregistryha/consumer/ConsumerOptions.java` | done | consumer HTTP endpoint, registry endpoint, log dir env를 해석한다. |
 | `Server/Embedded/DiscoveryRegistryHa.Embedded.csproj` | `Server/Embedded/build.gradle.kts` | done | embedded registry+provider application으로 분리했다. |
 | `Server/Embedded/Program.cs` | `Server/Embedded/src/main/java/systems/zlink/e2e/discoveryregistryha/embedded/Program.java` | done | embedded process entrypoint다. |
-| `Server/Embedded/EmbeddedHandlers.cs` | `Server/Embedded/src/main/java/systems/zlink/e2e/discoveryregistryha/embedded/ProfileRequestHandler.java` | done | embedded provider request handler다. |
+| `Server/Embedded/EmbeddedHandlers.cs` | `Server/Embedded/src/main/java/systems/zlink/e2e/discoveryregistryha/embedded/ProfileReqHandler.java` | done | embedded provider request handler다. |
 | `Server/Embedded/EmbeddedHostFactory.cs` | `Server/Embedded/src/main/java/systems/zlink/e2e/discoveryregistryha/embedded/EmbeddedApplication.java`, `Server/Embedded/src/main/java/systems/zlink/e2e/discoveryregistryha/embedded/EmbeddedEndpoints.java` | done | embedded registry와 channel provider를 한 process에서 구성한다. |
 | `Server/Embedded/Support/EmbeddedEvidenceStore.cs` | `Server/Embedded/src/main/java/systems/zlink/e2e/discoveryregistryha/embedded/EmbeddedEvidenceStore.java` | done | embedded provider evidence 저장과 wait를 제공한다. |
 | `Server/Embedded/Support/EmbeddedOptions.cs` | `Server/Embedded/src/main/java/systems/zlink/e2e/discoveryregistryha/embedded/EmbeddedOptions.java` | done | embedded 전용 입력을 해석한다. |
@@ -49,7 +49,7 @@
 | `Server/Probe/ProbeOptions.cs` | `Server/Probe/src/main/java/.../probe/ProbeOptions.java` | done | probe HTTP endpoint와 query 대상 registry router endpoint를 env로 해석한다. |
 | `Server/Provider/DiscoveryRegistryHa.Provider.csproj` | `Server/Provider/build.gradle.kts` | done | provider role application이다. |
 | `Server/Provider/Program.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/Program.java` | done | provider process entrypoint다. |
-| `Server/Provider/ProviderHandlers.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProfileRequestHandler.java` | done | provider request handler다. |
+| `Server/Provider/ProviderHandlers.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProfileReqHandler.java` | done | provider request handler다. |
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProviderApplication.java`, `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProviderEndpoints.java` | done | provider framework 구성과 HTTP evidence API를 분리했다. |
 | `Server/Provider/Support/ProviderEvidenceStore.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProviderEvidenceStore.java` | done | provider 요청 evidence 저장과 `/evidence/wait`를 제공한다. |
 | `Server/Provider/Support/ProviderOptions.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/discoveryregistryha/provider/ProviderOptions.java` | done | provider rid, channel endpoint, discovery endpoint, evidence file, log dir 입력을 해석한다. |

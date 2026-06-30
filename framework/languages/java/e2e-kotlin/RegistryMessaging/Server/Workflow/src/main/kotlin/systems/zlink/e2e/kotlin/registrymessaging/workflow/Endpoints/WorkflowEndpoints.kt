@@ -10,9 +10,9 @@ import java.time.Duration
 import java.util.concurrent.Executors
 import org.springframework.context.ConfigurableApplicationContext
 import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
-import systems.zlink.e2e.kotlin.registrymessaging.shared.EvidenceWaitRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRequest
+import systems.zlink.e2e.kotlin.registrymessaging.shared.EvidenceWaitReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReq
 import systems.zlink.e2e.kotlin.registrymessaging.workflow.Configuration.ServerOptions
 import systems.zlink.e2e.kotlin.registrymessaging.workflow.Infrastructure.EvidenceStore
 import systems.zlink.framework.channels.ZLinkClient
@@ -38,7 +38,7 @@ class WorkflowEndpoints(
             exchange.writeJson(mapOf("status" to "cleared"))
         }
         server.createContext("/evidence/wait") { exchange ->
-            val request = exchange.readJson<EvidenceWaitRequest>()
+            val request = exchange.readJson<EvidenceWaitReq>()
             exchange.writeJson(
                 evidence.waitUntil(
                     request.contains,
@@ -47,7 +47,7 @@ class WorkflowEndpoints(
             )
         }
         server.createContext("/workflow/request") { exchange ->
-            val request = exchange.readJson<WorkflowRequest>()
+            val request = exchange.readJson<WorkflowReq>()
             exchange.writeJson(requestWorkflow(request))
         }
         server.createContext("/shutdown") { exchange ->
@@ -61,7 +61,7 @@ class WorkflowEndpoints(
         return server
     }
 
-    private fun requestWorkflow(request: WorkflowRequest): WorkflowReply {
+    private fun requestWorkflow(request: WorkflowReq): WorkflowRes {
         val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
         var last: RuntimeException? = null
         while (System.nanoTime() < deadline) {
@@ -69,7 +69,7 @@ class WorkflowEndpoints(
                 return channels.requestToChannel(Contracts.WORKFLOW_CHANNEL, request)
                     .packetName(Contracts.WORKFLOW_REQUEST_PACKET)
                     .timeout(Duration.ofSeconds(5))
-                    .await(WorkflowReply::class.java)
+                    .await(WorkflowRes::class.java)
             } catch (error: RuntimeException) {
                 last = error
                 Thread.sleep(100)

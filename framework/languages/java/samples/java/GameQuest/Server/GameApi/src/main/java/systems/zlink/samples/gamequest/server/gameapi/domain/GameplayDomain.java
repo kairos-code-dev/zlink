@@ -7,32 +7,32 @@ public final class GameplayDomain {
     private GameplayDomain() {
     }
 
-    public static Messages.GameplayEventEnvelope createMonsterKilled(
+    public static Messages.GameplayEventMsg createMonsterKilled(
         String playerId, String monsterId, String areaId, String idempotencyKey, String sourceApi) {
         return create(playerId, idempotencyKey, "MonsterKilled", monsterId, 1, sourceApi);
     }
 
-    public static Messages.GameplayEventEnvelope createItemCollected(
+    public static Messages.GameplayEventMsg createItemCollected(
         String playerId, String itemId, int count, String idempotencyKey, String sourceApi) {
         return create(playerId, idempotencyKey, "ItemCollected", itemId, count, sourceApi);
     }
 
-    public static Messages.GameplayEventEnvelope createMissionCompleted(
+    public static Messages.GameplayEventMsg createMissionCompleted(
         String playerId, String missionId, String idempotencyKey, String sourceApi) {
         return create(playerId, idempotencyKey, "MissionCompleted", missionId, 1, sourceApi);
     }
 
-    public static Messages.GameplayEventEnvelope createAreaEntered(
+    public static Messages.GameplayEventMsg createAreaEntered(
         String playerId, String areaId, String idempotencyKey, String sourceApi) {
         return create(playerId, idempotencyKey, "AreaEntered", areaId, 1, sourceApi);
     }
 
-    public static Messages.GameplayEventEnvelope createFeatureUnlocked(
+    public static Messages.GameplayEventMsg createFeatureUnlocked(
         String playerId, String featureId, String idempotencyKey, String sourceApi) {
         return create(playerId, idempotencyKey, "FeatureUnlocked", featureId, 1, sourceApi);
     }
 
-    private static Messages.GameplayEventEnvelope create(
+    private static Messages.GameplayEventMsg create(
         String playerId, String idempotencyKey, String eventType, String value, int count, String sourceApi) {
         if (playerId == null || playerId.isBlank()) {
             throw new IllegalStateException("Player id is required.");
@@ -43,7 +43,7 @@ public final class GameplayDomain {
         if (count <= 0) {
             throw new IllegalStateException("Count must be positive.");
         }
-        return new Messages.GameplayEventEnvelope(
+        return new Messages.GameplayEventMsg(
             playerId + "-" + idempotencyKey,
             playerId,
             idempotencyKey,

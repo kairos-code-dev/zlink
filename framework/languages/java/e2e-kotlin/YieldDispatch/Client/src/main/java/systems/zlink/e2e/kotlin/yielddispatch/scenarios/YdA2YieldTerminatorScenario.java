@@ -17,13 +17,13 @@ public final class YdA2YieldTerminatorScenario {
         ScenarioAssert.that(actorId.equals(previous.actorId()), "YD-A2 actor context mismatch");
         String requestId = "YD-A2-" + UUID.randomUUID();
         ClientStreamSupport.send(
-            connector.send(new Contracts.YieldCommand(requestId, 1200, "corr-a2"))
+            connector.send(new Contracts.YieldMsg(requestId, 1200, "corr-a2"))
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
         ClientStreamSupport.waitForEvidence(connector, requestId, "yield-released");
         ClientStreamSupport.send(
-            connector.send(new Contracts.ProbeCommand(requestId, "yield-probe"))
+            connector.send(new Contracts.ProbeMsg(requestId, "yield-probe"))
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
-        Contracts.EvidenceReply evidence = ClientStreamSupport.waitForEvidence(
+        Contracts.EvidenceRes evidence = ClientStreamSupport.waitForEvidence(
             connector,
             requestId,
             "yield-completed");

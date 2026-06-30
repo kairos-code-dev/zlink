@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { PubSubNames, type EvidenceWaitRequest } from '../../Shared/messages';
+import { PubSubNames, type EvidenceWaitReq } from '../../Shared/messages';
 import { commonContiguousSequence } from '../Support/evidence';
 import { postJson } from '../Support/http-client';
 import { delay, ensure } from '../Support/scenario-assert';
@@ -35,6 +35,6 @@ export async function publishEvent(publisher: string, topic: string, runId: stri
   await postJson(publisher, '/publish/event', { topic, runId, sequence, value });
 }
 
-export async function waitForAll(subscribers: readonly string[], request: EvidenceWaitRequest): Promise<readonly (readonly string[])[]> {
+export async function waitForAll(subscribers: readonly string[], request: EvidenceWaitReq): Promise<readonly (readonly string[])[]> {
   return await Promise.all(subscribers.map((subscriber) => postJson<readonly string[]>(subscriber, '/evidence/wait', request)));
 }

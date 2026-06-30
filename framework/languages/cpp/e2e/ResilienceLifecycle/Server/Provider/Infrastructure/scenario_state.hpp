@@ -25,6 +25,18 @@ class scenario_state_t
         entries.push_back ({std::move (marker), provider_rid, std::move (value)});
     }
 
+    void set_fault_mode (std::string mode)
+    {
+        std::lock_guard lock (_mutex);
+        _fault_mode = std::move (mode);
+    }
+
+    std::string fault_mode () const
+    {
+        std::lock_guard lock (_mutex);
+        return _fault_mode;
+    }
+
     evidence_snapshot_t snapshot () const
     {
         std::lock_guard lock (_mutex);
@@ -37,6 +49,7 @@ class scenario_state_t
   private:
     mutable std::mutex _mutex;
     std::vector<evidence_entry_t> entries;
+    std::string _fault_mode = "none";
 };
 
 } // namespace zlink::framework::e2e::registry_messaging::provider

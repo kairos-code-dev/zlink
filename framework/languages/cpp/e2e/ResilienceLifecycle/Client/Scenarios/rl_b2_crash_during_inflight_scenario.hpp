@@ -14,9 +14,9 @@ inline void run_inflight_crash_scenario (zlink::framework::channel_client_t &cha
 {
     auto pending = channels
                      .request ("registry.messaging.api.manual.b",
-                               profile_request_t{.value = "very-slow"})
+                               profile_req_t{.value = "very-slow"})
                      .timeout (std::chrono::milliseconds (2500))
-                     .async<profile_reply_t> ();
+                     .async<profile_res_t> ();
     touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
 

@@ -12,12 +12,12 @@ public final class ProbeActorYieldHandler {
         this.evidence = evidence;
     }
 
-    @ZLinkSpotActorRequest(packetName = "ActorYieldRequest")
-    public Contracts.ActorReply handle(
+    @ZLinkSpotActorRequest(packetName = "ActorYieldReq")
+    public Contracts.ActorRes handle(
         ProbeSpot spot,
         ProbeActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ActorYieldRequest request,
+        Contracts.ActorYieldReq request,
         CancellationToken cancellationToken) {
         String value = "actor=" + actor.actorId() + ";spot=" + spot.context().spotRid();
         evidence.record(request.requestId(), "actor-yield-started", value);
@@ -25,12 +25,12 @@ public final class ProbeActorYieldHandler {
         spot.context().outbound()
             .requestToChannel(
                 Contracts.DELAY_CHANNEL,
-                new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                new Contracts.DelayReq(request.requestId(), request.delayMillis()))
             .timeout(Duration.ofSeconds(5))
-            .yield(Contracts.DelayReply.class);
+            .yield(Contracts.DelayRes.class);
         evidence.record(request.requestId(), "actor-yield-resumed", value);
         evidence.record(request.requestId(), "actor-yield-completed", value);
-        return new Contracts.ActorReply(
+        return new Contracts.ActorRes(
             "YD-B",
             request.requestId(),
             actor.actorId(),

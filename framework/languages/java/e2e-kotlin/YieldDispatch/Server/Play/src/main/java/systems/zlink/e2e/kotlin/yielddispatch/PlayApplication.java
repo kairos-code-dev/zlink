@@ -40,12 +40,12 @@ public final class PlayApplication {
                 .setRoutingId(RoutingId.from(nodeRid));
             route.addRequestHandler(
                 EvidenceRouteRequestHandler.class,
-                Contracts.EvidenceRequest.class,
-                Contracts.EvidenceReply.class);
+                Contracts.EvidenceReq.class,
+                Contracts.EvidenceRes.class);
             route.addRequestHandler(
                 EnsureSpotRouteRequestHandler.class,
-                Contracts.EnsureSpotRequest.class,
-                Contracts.EnsureSpotReply.class);
+                Contracts.EnsureSpotReq.class,
+                Contracts.EnsureSpotRes.class);
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(Env.get("ZLINK_KOTLIN_E2E_DELAY_ENDPOINT"));
             ZLinkSpotNodeBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH)

@@ -142,6 +142,32 @@ struct spot_state_route_req_t
     state_req_t state;
 };
 
+struct stage_probe_req_t
+{
+    std::string marker;
+    int delta = 0;
+};
+
+struct stage_timer_start_msg_t
+{
+    std::string name;
+    int period_ms = 0;
+};
+
+struct spot_stage_probe_req_t
+{
+    std::string spot_rid;
+    std::string marker;
+    int delta = 0;
+};
+
+struct spot_stage_timer_req_t
+{
+    std::string spot_rid;
+    std::string name;
+    int period_ms = 0;
+};
+
 struct state_res_t
 {
     std::string spot_rid;
@@ -261,7 +287,7 @@ struct channel_control_ping_res_t
     std::string value;
 };
 
-struct channel_command_t
+struct channel_msg_t
 {
     std::string command_id;
 };
@@ -277,7 +303,7 @@ struct channel_slow_res_t
     std::string value;
 };
 
-struct mesh_event_t
+struct mesh_msg_t
 {
     std::string event_id;
     std::string value;
@@ -382,7 +408,7 @@ struct direct_spot_res_t
     std::string value;
 };
 
-struct direct_spot_command_t
+struct direct_spot_msg_t
 {
     std::string source_actor_id;
     std::string value;
@@ -550,7 +576,7 @@ struct close_spot_res_t
     bool closed = false;
 };
 
-struct idle_close_command_t
+struct idle_close_msg_t
 {
     std::string name;
     int period_ms = 0;
@@ -563,7 +589,7 @@ struct spot_idle_close_req_t
     int period_ms = 0;
 };
 
-struct overrun_timer_command_t
+struct overrun_timer_msg_t
 {
     std::string name;
     std::string policy;
@@ -637,6 +663,14 @@ struct evidence_snapshot_t
     std::vector<evidence_entry_t> entries;
 };
 
+struct spot_stage_timer_res_t
+{
+    std::string spot_rid;
+    std::string name;
+    bool started = false;
+    evidence_snapshot_t evidence;
+};
+
 struct spot_worker_complete_res_t
 {
     std::string spot_rid;
@@ -685,7 +719,7 @@ struct spot_missing_command_res_t
     evidence_snapshot_t evidence;
 };
 
-struct evidence_wait_request_t
+struct evidence_wait_req_t
 {
     std::vector<std::string> contains_all;
     int timeout_milliseconds = 10000;
@@ -899,6 +933,54 @@ inline void from_json (const nlohmann::json &json, spot_state_route_req_t &value
             json.at ("amount").get_to (value.state.amount);
         }
     }
+}
+
+inline void to_json (nlohmann::json &json, const stage_probe_req_t &value)
+{
+    json = nlohmann::json{{"marker", value.marker}, {"delta", value.delta}};
+}
+
+inline void from_json (const nlohmann::json &json, stage_probe_req_t &value)
+{
+    json.at ("marker").get_to (value.marker);
+    json.at ("delta").get_to (value.delta);
+}
+
+inline void to_json (nlohmann::json &json, const stage_timer_start_msg_t &value)
+{
+    json = nlohmann::json{{"name", value.name}, {"period_ms", value.period_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, stage_timer_start_msg_t &value)
+{
+    json.at ("name").get_to (value.name);
+    json.at ("period_ms").get_to (value.period_ms);
+}
+
+inline void to_json (nlohmann::json &json, const spot_stage_probe_req_t &value)
+{
+    json = nlohmann::json{
+      {"spot_rid", value.spot_rid}, {"marker", value.marker}, {"delta", value.delta}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_stage_probe_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("marker").get_to (value.marker);
+    json.at ("delta").get_to (value.delta);
+}
+
+inline void to_json (nlohmann::json &json, const spot_stage_timer_req_t &value)
+{
+    json = nlohmann::json{
+      {"spot_rid", value.spot_rid}, {"name", value.name}, {"period_ms", value.period_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_stage_timer_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("name").get_to (value.name);
+    json.at ("period_ms").get_to (value.period_ms);
 }
 
 inline void to_json (nlohmann::json &json, const state_res_t &value)
@@ -1128,12 +1210,12 @@ inline void from_json (const nlohmann::json &json, channel_control_ping_res_t &v
     json.at ("value").get_to (value.value);
 }
 
-inline void to_json (nlohmann::json &json, const channel_command_t &value)
+inline void to_json (nlohmann::json &json, const channel_msg_t &value)
 {
     json = nlohmann::json{{"command_id", value.command_id}};
 }
 
-inline void from_json (const nlohmann::json &json, channel_command_t &value)
+inline void from_json (const nlohmann::json &json, channel_msg_t &value)
 {
     json.at ("command_id").get_to (value.command_id);
 }
@@ -1159,12 +1241,12 @@ inline void from_json (const nlohmann::json &json, channel_slow_res_t &value)
     json.at ("value").get_to (value.value);
 }
 
-inline void to_json (nlohmann::json &json, const mesh_event_t &value)
+inline void to_json (nlohmann::json &json, const mesh_msg_t &value)
 {
     json = nlohmann::json{{"event_id", value.event_id}, {"value", value.value}};
 }
 
-inline void from_json (const nlohmann::json &json, mesh_event_t &value)
+inline void from_json (const nlohmann::json &json, mesh_msg_t &value)
 {
     json.at ("event_id").get_to (value.event_id);
     json.at ("value").get_to (value.value);
@@ -1366,12 +1448,12 @@ inline void from_json (const nlohmann::json &json, direct_spot_res_t &value)
     json.at ("value").get_to (value.value);
 }
 
-inline void to_json (nlohmann::json &json, const direct_spot_command_t &value)
+inline void to_json (nlohmann::json &json, const direct_spot_msg_t &value)
 {
     json = nlohmann::json{{"source_actor_id", value.source_actor_id}, {"value", value.value}};
 }
 
-inline void from_json (const nlohmann::json &json, direct_spot_command_t &value)
+inline void from_json (const nlohmann::json &json, direct_spot_msg_t &value)
 {
     json.at ("source_actor_id").get_to (value.source_actor_id);
     json.at ("value").get_to (value.value);
@@ -1695,12 +1777,12 @@ inline void from_json (const nlohmann::json &json, close_spot_res_t &value)
     json.at ("closed").get_to (value.closed);
 }
 
-inline void to_json (nlohmann::json &json, const idle_close_command_t &value)
+inline void to_json (nlohmann::json &json, const idle_close_msg_t &value)
 {
     json = nlohmann::json{{"name", value.name}, {"period_ms", value.period_ms}};
 }
 
-inline void from_json (const nlohmann::json &json, idle_close_command_t &value)
+inline void from_json (const nlohmann::json &json, idle_close_msg_t &value)
 {
     json.at ("name").get_to (value.name);
     json.at ("period_ms").get_to (value.period_ms);
@@ -1719,13 +1801,13 @@ inline void from_json (const nlohmann::json &json, spot_idle_close_req_t &value)
     json.at ("period_ms").get_to (value.period_ms);
 }
 
-inline void to_json (nlohmann::json &json, const overrun_timer_command_t &value)
+inline void to_json (nlohmann::json &json, const overrun_timer_msg_t &value)
 {
     json = nlohmann::json{
       {"name", value.name}, {"policy", value.policy}, {"period_ms", value.period_ms}};
 }
 
-inline void from_json (const nlohmann::json &json, overrun_timer_command_t &value)
+inline void from_json (const nlohmann::json &json, overrun_timer_msg_t &value)
 {
     json.at ("name").get_to (value.name);
     json.at ("policy").get_to (value.policy);
@@ -1821,6 +1903,17 @@ inline void from_json (const nlohmann::json &json, actor_push_res_t &value)
     json.at ("actor_id").get_to (value.actor_id);
 }
 
+template <typename T> inline zlink::message_t to_stream_payload (const T &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+template <typename T>
+inline void from_stream_payload (const zlink::message_t &payload, T &value)
+{
+    value = payload.parse_json<T> ();
+}
+
 inline void to_json (nlohmann::json &json, const actor_push_notify_t &value)
 {
     json = nlohmann::json{{"actor_id", value.actor_id}, {"value", value.value}};
@@ -1871,6 +1964,22 @@ inline void from_json (const nlohmann::json &json, evidence_snapshot_t &value)
 {
     json.at ("node_rid").get_to (value.node_rid);
     json.at ("entries").get_to (value.entries);
+}
+
+inline void to_json (nlohmann::json &json, const spot_stage_timer_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"name", value.name},
+                          {"started", value.started},
+                          {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_stage_timer_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("name").get_to (value.name);
+    json.at ("started").get_to (value.started);
+    json.at ("evidence").get_to (value.evidence);
 }
 
 inline void to_json (nlohmann::json &json, const spot_worker_complete_res_t &value)
@@ -1968,13 +2077,13 @@ inline void from_json (const nlohmann::json &json, spot_missing_command_res_t &v
     json.at ("evidence").get_to (value.evidence);
 }
 
-inline void to_json (nlohmann::json &json, const evidence_wait_request_t &value)
+inline void to_json (nlohmann::json &json, const evidence_wait_req_t &value)
 {
     json = nlohmann::json{{"contains_all", value.contains_all},
                           {"timeout_milliseconds", value.timeout_milliseconds}};
 }
 
-inline void from_json (const nlohmann::json &json, evidence_wait_request_t &value)
+inline void from_json (const nlohmann::json &json, evidence_wait_req_t &value)
 {
     if (json.contains ("contains_all")) {
         json.at ("contains_all").get_to (value.contains_all);

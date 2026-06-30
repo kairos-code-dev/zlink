@@ -6,14 +6,14 @@ import type {
   ZLinkSpotTimerHandler,
   ZLinkTimerTick
 } from '@zlink-systems/framework';
-import type { StageProbeReq, StageTimerStartCommand, StateReply } from '../../../Shared/messages';
+import type { StageProbeReq, StageTimerStartMsg, StateRes } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { ScenarioUserSpot } from '../Spots/scenario-spots';
 
 class ScenarioStage {
   constructor(private readonly spot: ScenarioUserSpot) {}
 
-  apply(request: StageProbeReq, evidence: EvidenceStore): StateReply {
+  apply(request: StageProbeReq, evidence: EvidenceStore): StateRes {
     const value = this.spot.add(request.delta);
     evidence.add(
       `stage-request|rid=${evidence.rid}|spot=${this.spot.context.spotRid}`
@@ -26,30 +26,30 @@ class ScenarioStage {
     };
   }
 
-  async startTimer(command: StageTimerStartCommand): Promise<void> {
+  async startTimer(command: StageTimerStartMsg): Promise<void> {
     await this.spot.context.addTimer(command.name, command.periodMs, StageTimerHandler);
   }
 }
 
 @Injectable()
-export class StageProbeHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, StageProbeReq, StateReply> {
+export class StageProbeHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, StageProbeReq, StateRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     spot: ScenarioUserSpot,
     request: StageProbeReq,
     context: ZLinkHandlerContext
-  ): Promise<StateReply> {
+  ): Promise<StateRes> {
     void context;
     return new ScenarioStage(spot).apply(request, this.evidence);
   }
 }
 
 @Injectable()
-export class StageTimerStartHandler implements ZLinkSpotPacketHandler<ScenarioUserSpot, StageTimerStartCommand> {
+export class StageTimerStartHandler implements ZLinkSpotPacketHandler<ScenarioUserSpot, StageTimerStartMsg> {
   async handle(
     spot: ScenarioUserSpot,
-    message: StageTimerStartCommand,
+    message: StageTimerStartMsg,
     context: ZLinkHandlerContext
   ): Promise<void> {
     void context;

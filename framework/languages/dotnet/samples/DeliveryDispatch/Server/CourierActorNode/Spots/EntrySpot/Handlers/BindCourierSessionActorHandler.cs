@@ -5,13 +5,13 @@ using Zlink.Framework.Contracts.Spots;
 namespace DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot.Handlers;
 
 internal sealed class BindCourierSessionActorHandler(ILogger<BindCourierSessionActorHandler> logger)
-    : IZLinkEntrySpotActorRequestHandler<CourierEntrySpot, CourierActor, BindCourierSession, CourierBound>
+    : IZLinkEntrySpotActorRequestHandler<CourierEntrySpot, CourierActor, BindCourierSessionReq, BindCourierSessionRes>
 {
-    public ValueTask<CourierBound> HandleAsync(
+    public ValueTask<BindCourierSessionRes> HandleAsync(
         CourierEntrySpot entrySpot,
         CourierActor actor,
         ZLinkSpotActorRequestContext context,
-        BindCourierSession message,
+        BindCourierSessionReq message,
         CancellationToken cancellationToken)
     {
         var actorRef = message.Actor
@@ -22,6 +22,6 @@ internal sealed class BindCourierSessionActorHandler(ILogger<BindCourierSessionA
             "deliverydispatch courier-actor: session bound courier={CourierId} actor={ActorId}",
             message.CourierId,
             actor.ActorId);
-        return ValueTask.FromResult(new CourierBound(message.CourierId, actorRef, sessionRoute));
+        return ValueTask.FromResult(new BindCourierSessionRes(message.CourierId, actorRef, sessionRoute));
     }
 }

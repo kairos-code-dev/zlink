@@ -2,7 +2,7 @@ package systems.zlink.e2e.kotlin.registrationcodec.main.handlers
 
 import java.util.Optional
 import java.util.concurrent.CompletionStage
-import systems.zlink.e2e.kotlin.registrationcodec.EchoManualRequest
+import systems.zlink.e2e.kotlin.registrationcodec.EchoManualReq
 import systems.zlink.e2e.kotlin.registrationcodec.main.infrastructure.ScenarioState
 import systems.zlink.framework.ZLinkHandlerFilter
 import systems.zlink.framework.ZLinkInvocationContext
@@ -10,7 +10,7 @@ import systems.zlink.framework.ZLinkNext
 
 private object FilterOrderValues {
     fun from(request: Any): Optional<String> =
-        if (request is EchoManualRequest && request.value.startsWith("filter-order")) {
+        if (request is EchoManualReq && request.value.startsWith("filter-order")) {
             Optional.of(request.value)
         } else {
             Optional.empty()
@@ -31,7 +31,7 @@ class FirstOrderFilter(
     private fun record(context: ZLinkInvocationContext, step: String) {
         context.request()
             .flatMap(FilterOrderValues::from)
-            .ifPresent { value -> state.record("Filter", "EchoManual", "$step:$value") }
+            .ifPresent { value -> state.record("Filter", "EchoManualReq", "$step:$value") }
     }
 }
 
@@ -49,6 +49,6 @@ class SecondOrderFilter(
     private fun record(context: ZLinkInvocationContext, step: String) {
         context.request()
             .flatMap(FilterOrderValues::from)
-            .ifPresent { value -> state.record("Filter", "EchoManual", "$step:$value") }
+            .ifPresent { value -> state.record("Filter", "EchoManualReq", "$step:$value") }
     }
 }

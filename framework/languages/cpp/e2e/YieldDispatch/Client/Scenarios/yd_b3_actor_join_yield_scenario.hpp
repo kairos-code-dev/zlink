@@ -23,7 +23,7 @@ std::string run_yd_b3_actor_join_yield_scenario (
   const yield_actor_scenario_context_t &actors)
 {
     const auto request_id = unique_id ("YD-B3");
-    std::promise<zlink::stream_connector::result_t<actor_yield_reply_t>>
+    std::promise<zlink::stream_connector::result_t<actor_yield_res_t>>
       actor_join_promise;
     auto actor_join = actor_join_promise.get_future ();
     connector.request (actor_join_yield_req_t{.request_id = request_id,
@@ -31,8 +31,8 @@ std::string run_yd_b3_actor_join_yield_scenario (
       .packet_name (actor_join_yield_req_t::packet_name)
       .metadata (actor_id_metadata, actors.actor_a)
       .timeout (std::chrono::milliseconds (30000))
-      .template submit<actor_yield_reply_t> (
-        [&] (zlink::stream_connector::result_t<actor_yield_reply_t> result) {
+      .template submit<actor_yield_res_t> (
+        [&] (zlink::stream_connector::result_t<actor_yield_res_t> result) {
             actor_join_promise.set_value (std::move (result));
         });
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
@@ -41,7 +41,7 @@ std::string run_yd_b3_actor_join_yield_scenario (
         .packet_name (actor_fast_req_t::packet_name)
         .metadata (actor_id_metadata, actors.actor_b)
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<actor_yield_reply_t> ();
+        .template submit<actor_yield_res_t> ();
     ensure (static_cast<bool> (actor_fast), "YD-B3 ActorFastReq failed");
     auto actor_join_reply = actor_join.get ();
     ensure (static_cast<bool> (actor_join_reply), "YD-B3 ActorJoinYieldReq failed");
@@ -50,7 +50,7 @@ std::string run_yd_b3_actor_join_yield_scenario (
         .packet_name (yield_evidence_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (evidence), "YD-B3 evidence request failed");
     ensure (contains_in_order (evidence.value ().evidence, request_id,
                                {"actor-join-yield-started",

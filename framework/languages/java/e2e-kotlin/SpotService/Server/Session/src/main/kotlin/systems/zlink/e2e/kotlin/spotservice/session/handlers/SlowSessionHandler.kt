@@ -8,15 +8,15 @@ import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler
 
 class SlowSessionHandler(
     private val evidence: ScenarioState
-) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.SlowSessionRequest> {
-    override fun packetName(): String = "SlowSessionRequest"
+) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.SlowSessionReq> {
+    override fun packetName(): String = "SlowSessionReq"
 
-    override fun messageType(): Class<Contracts.SlowSessionRequest> = Contracts.SlowSessionRequest::class.java
+    override fun messageType(): Class<Contracts.SlowSessionReq> = Contracts.SlowSessionReq::class.java
 
     override fun handle(
         context: ZLinkSessionContext,
         dispatch: ZLinkSessionDispatchContext,
-        request: Contracts.SlowSessionRequest
+        request: Contracts.SlowSessionReq
     ) {
         try {
             Thread.sleep(request.delayMilliseconds.coerceAtLeast(0).toLong())
@@ -26,7 +26,7 @@ class SlowSessionHandler(
         evidence.record("SlowSessionHandled", "session", request.value)
         try {
             context.client()
-                .reply(Contracts.SlowSessionReply(request.value))
+                .reply(Contracts.SlowSessionRes(request.value))
                 .await()
         } catch (error: Exception) {
             evidence.record("SlowSessionReplyFailed", "session", "${request.value}/${error.javaClass.simpleName}")

@@ -12,12 +12,12 @@ public final class RcA5FilterOrderingScenario {
     }
 
     public static void run(ScenarioContext context) {
-        Contracts.EchoReply filtered = context.client().requestToChannel(
+        Contracts.EchoRes filtered = context.client().requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.EchoManualRequest("filter-order-request"))
+                new Contracts.EchoManualReq("filter-order-request"))
             .packetName("EchoManual")
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EchoReply.class);
+            .await(Contracts.EchoRes.class);
         ScenarioAssert.ensure("echo:filter-order-request".equals(filtered.value()), "RC-A5 request mismatch");
         ScenarioAssert.waitForFilterOrder(context.evidence(), "filter-order-request");
         System.out.println("scenario RC-A5 passed");

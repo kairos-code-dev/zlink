@@ -25,7 +25,7 @@ class transient_request_service_t final : public zlink::framework::hosted_servic
 {
   public:
     transient_request_service_t (zlink::framework::app_t &app,
-                                 profile_request_t request,
+                                 profile_req_t request,
                                  std::string trace_label) :
         _app (app), _request (std::move (request)), _trace_label (std::move (trace_label))
     {
@@ -37,7 +37,7 @@ class transient_request_service_t final : public zlink::framework::hosted_servic
             auto &channels = services.get_required<zlink::framework::channel_client_t> ();
             auto request = channels.request (profile_channel, _request)
                              .timeout (std::chrono::milliseconds (3000))
-                             .async<profile_reply_t> ();
+                             .async<profile_res_t> ();
             const auto &reply = request.result ();
             if (!reply.has_value ()) {
                 _error =
@@ -55,7 +55,7 @@ class transient_request_service_t final : public zlink::framework::hosted_servic
 
     void stop () noexcept override {}
 
-    profile_reply_t take_reply () const
+    profile_res_t take_reply () const
     {
         if (_error) {
             throw std::runtime_error (*_error);
@@ -68,16 +68,16 @@ class transient_request_service_t final : public zlink::framework::hosted_servic
 
   private:
     zlink::framework::app_t &_app;
-    profile_request_t _request;
+    profile_req_t _request;
     std::string _trace_label;
-    std::optional<profile_reply_t> _reply;
+    std::optional<profile_res_t> _reply;
     std::optional<std::string> _error;
 };
 
-inline profile_reply_t request_with_transient_host (const trigger_options_t &options,
+inline profile_res_t request_with_transient_host (const trigger_options_t &options,
                                                     const std::string &channel_endpoint,
                                                     const std::string &trace_label,
-                                                    profile_request_t request)
+                                                    profile_req_t request)
 {
     if (channel_endpoint.empty ()) {
         throw std::runtime_error ("trigger channel endpoint is required");

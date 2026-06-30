@@ -1,8 +1,8 @@
 import type {
   ActorFastReq,
   ActorYieldReq,
-  TimerStartCommand,
-  YieldEvidenceReply,
+  TimerStartMsg,
+  YieldEvidenceRes,
   YieldEvidenceReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -26,15 +26,15 @@ export async function runYdC3(
     .submit();
   await new Promise((resolve) => setTimeout(resolve, 75));
   await evidenceClient
-    .send({ requestId: actorThenTimer, timerName: `${actorThenTimer}-fast`, mode: 'fast', periodMs: 50, delayMs: 0 } satisfies TimerStartCommand)
-    .packetName('TimerStartCommand')
+    .send({ requestId: actorThenTimer, timerName: `${actorThenTimer}-fast`, mode: 'fast', periodMs: 50, delayMs: 0 } satisfies TimerStartMsg)
+    .packetName('TimerStartMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, actors.spotRid)
     .submit();
   await waitForEvidence(evidenceClient, actorThenTimer, 'timer-fast-completed');
   await stopTimers(evidenceClient, actors.spotRid, actorThenTimer);
   await actorYield;
 
-  const actorThenTimerEvidence = decodeStreamReply<YieldEvidenceReply>(await evidenceClient
+  const actorThenTimerEvidence = decodeStreamReply<YieldEvidenceRes>(await evidenceClient
     .request({ requestId: actorThenTimer } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
@@ -51,8 +51,8 @@ export async function runYdC3(
 
   const timerThenActor = `YD-C3B-${uniqueId()}`;
   await client
-    .send({ requestId: timerThenActor, timerName: `${timerThenActor}-yield`, mode: 'yield-on-first', periodMs: 50, delayMs: 350 } satisfies TimerStartCommand)
-    .packetName('TimerStartCommand')
+    .send({ requestId: timerThenActor, timerName: `${timerThenActor}-yield`, mode: 'yield-on-first', periodMs: 50, delayMs: 350 } satisfies TimerStartMsg)
+    .packetName('TimerStartMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, actors.spotRid)
     .submit();
   await waitForEvidence(client, timerThenActor, 'timer-yield-released');

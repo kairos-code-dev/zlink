@@ -15,12 +15,12 @@ internal static class RlD5MixedBurstScenario
         var requestTasks = Enumerable.Range(0, 60).Select(async i =>
         {
             return (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-d5-req-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-d5-req-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
         });
         var sendTasks = Enumerable.Range(0, 60).Select(i =>
             consumer.Post("/profile/command")
-                .Body(new ProfileCommand($"rl-d5-cmd-{i}"))
+                .Body(new ProfileMsg($"rl-d5-cmd-{i}"))
                 .SubmitRawAsync().AsTask());
         var replies = await Task.WhenAll(requestTasks);
         await Task.WhenAll(sendTasks);
@@ -31,9 +31,9 @@ internal static class RlD5MixedBurstScenario
         string[] requestEvidence;
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-req-"], []))
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d5-req-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-req-"], []))
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d5-req-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             requestEvidence = (await completed).Body;
@@ -46,9 +46,9 @@ internal static class RlD5MixedBurstScenario
         string[] commandEvidence;
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-cmd-"], []))
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d5-cmd-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d5-cmd-"], []))
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d5-cmd-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             commandEvidence = (await completed).Body;

@@ -6,16 +6,16 @@ import java.util.concurrent.locks.LockSupport
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.deliverydispatch.server.courier.CourierOptions
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDelivery
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryResult
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryRes
 
 class OfferDeliveryHandler(
     private val options: CourierOptions,
-) : ZLinkSuspendingRequestHandler<OfferDelivery, OfferDeliveryResult> {
+) : ZLinkSuspendingRequestHandler<OfferDeliveryReq, OfferDeliveryRes> {
     override suspend fun handle(
-        request: OfferDelivery,
+        request: OfferDeliveryReq,
         context: ZLinkRequestContext,
-    ): OfferDeliveryResult {
+    ): OfferDeliveryRes {
         if (shouldTimeout(request.deliveryId)) {
             System.err.println(
                 "deliverydispatch courier: no response delivery=${request.deliveryId} courier=${options.courierId}",
@@ -26,7 +26,7 @@ class OfferDeliveryHandler(
         System.err.println(
             "deliverydispatch courier: decision delivery=${request.deliveryId} courier=${options.courierId} accepted=$accepted",
         )
-        return OfferDeliveryResult(
+        return OfferDeliveryRes(
             request.deliveryId,
             options.courierId,
             accepted,

@@ -15,8 +15,8 @@ internal static class RlD1HighFanoutScenario
         var tasks = Enumerable.Range(0, 120).Select(async i =>
         {
             return (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-d1-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-d1-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
         });
         var replies = await Task.WhenAll(tasks);
         ScenarioAssert.That(
@@ -25,9 +25,9 @@ internal static class RlD1HighFanoutScenario
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d1-"], []))
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d1-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-d1-"], []))
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-d1-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;

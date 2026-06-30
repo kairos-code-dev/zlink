@@ -13,13 +13,13 @@ public final class YdA1BasicTerminatorScenario {
     public static Result run(ZLinkStreamConnector connector, String actorId) {
         String requestId = "YD-A1-" + UUID.randomUUID();
         ClientStreamSupport.send(
-            connector.send(new Contracts.HoldCommand(requestId, 350))
+            connector.send(new Contracts.HoldMsg(requestId, 350))
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
         ClientStreamSupport.sleep(120);
         ClientStreamSupport.send(
-            connector.send(new Contracts.ProbeCommand(requestId, "hold-probe"))
+            connector.send(new Contracts.ProbeMsg(requestId, "hold-probe"))
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
-        Contracts.EvidenceReply evidence = ClientStreamSupport.waitForEvidence(
+        Contracts.EvidenceRes evidence = ClientStreamSupport.waitForEvidence(
             connector,
             requestId,
             "probe-completed");

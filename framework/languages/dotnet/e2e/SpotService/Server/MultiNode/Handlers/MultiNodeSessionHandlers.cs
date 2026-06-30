@@ -98,14 +98,14 @@ internal sealed class AuthSessionHandler(
                     RoutingId.From(request.NodeRid),
                     new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
                 .PacketName("EnsureActorReq")
-                .Async<EnsureActorReply>(cancellationToken);
+                .Async<EnsureActorRes>(cancellationToken);
         await context.Actors.BindAsync(
             new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
             cancellationToken);
-        await context.Client.Reply(new AuthReply(ensured.ActorId, ensured.NodeRid)).Async();
+        await context.Client.Reply(new AuthRes(ensured.ActorId, ensured.NodeRid)).Async();
     }
 
-    private static async ValueTask<EnsureActorReply> EnsureLocalActorAsync(
+    private static async ValueTask<EnsureActorRes> EnsureLocalActorAsync(
         IZLinkActorManager actors,
         NodeOptions node,
         EvidenceStore evidence,
@@ -115,12 +115,12 @@ internal sealed class AuthSessionHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
-            new ScenarioActorCreateRequest(request.DisplayName),
+            new ScenarioActorCreateReq(request.DisplayName),
             cancellationToken);
 
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         evidence.Add($"entry-joined|rid={node.Rid}|actor={request.ActorId}");
-        return new EnsureActorReply(
+        return new EnsureActorRes(
             actor.ActorId,
             actor.NodeRid.ToString(),
             actor.Generation);
@@ -148,13 +148,13 @@ internal sealed class MultiBindSessionHandler(
                     RoutingId.From(request.NodeRid),
                     new EnsureActorReq(actorId, actorId, request.NodeRid))
                 .PacketName("EnsureActorReq")
-                .Async<EnsureActorReply>(cancellationToken);
+                .Async<EnsureActorRes>(cancellationToken);
             await context.Actors.BindAsync(
                 new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
                 cancellationToken);
         }
 
-        await context.Client.Reply(new MultiBindReply(context.Actors.Bound.Count)).Async();
+        await context.Client.Reply(new MultiBindRes(context.Actors.Bound.Count)).Async();
     }
 }
 
@@ -183,10 +183,10 @@ internal sealed class UserSpotAuthSessionHandler(
         await context.Actors.BindAsync(
             new ActorRef(RoutingId.From(request.NodeRid), joined.ActorId, joined.Generation),
             cancellationToken);
-        await context.Client.Reply(new AuthReply(joined.ActorId, request.NodeRid)).Async();
+        await context.Client.Reply(new AuthRes(joined.ActorId, request.NodeRid)).Async();
     }
 
-    private static async ValueTask<JoinUserSpotActorReply> JoinLocalUserSpotAsync(
+    private static async ValueTask<JoinUserSpotActorRes> JoinLocalUserSpotAsync(
         IZLinkActorManager actors,
         EvidenceStore evidence,
         UserSpotAuthReq request,
@@ -195,21 +195,21 @@ internal sealed class UserSpotAuthSessionHandler(
         var actor = await actors.GetOrCreateAsync(
             request.ActorId,
             SpotServiceNames.ActorType,
-            new ScenarioActorCreateRequest(request.SpotRid),
+            new ScenarioActorCreateReq(request.SpotRid),
             cancellationToken);
 
         evidence.Add(
             $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
             + $"|actor={request.ActorId}|accepted=True");
         evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={request.SpotRid}|actor={request.ActorId}");
-        return new JoinUserSpotActorReply(
+        return new JoinUserSpotActorRes(
             request.SpotRid,
             actor.ActorId,
             true,
             actor.Generation);
     }
 
-    private static async ValueTask<JoinUserSpotActorReply> JoinRemoteUserSpotAsync(
+    private static async ValueTask<JoinUserSpotActorRes> JoinRemoteUserSpotAsync(
         IZLinkRouteClient routes,
         UserSpotAuthReq request,
         CancellationToken cancellationToken)
@@ -219,16 +219,16 @@ internal sealed class UserSpotAuthSessionHandler(
                 RoutingId.From(request.NodeRid),
                 new CreateSpotReq(request.SpotRid))
             .PacketName("CreateSpotReq")
-            .Async<CreateSpotReply>(cancellationToken);
+            .Async<CreateSpotRes>(cancellationToken);
         return await routes.Request(
                 SpotServiceNames.ControlChannel,
                 RoutingId.From(request.NodeRid),
                 new JoinUserSpotActorReq(request.SpotRid, request.ActorId))
             .PacketName("JoinUserSpotActorReq")
-            .Async<JoinUserSpotActorReply>(cancellationToken);
+            .Async<JoinUserSpotActorRes>(cancellationToken);
     }
 
-    private static void EnsureAccepted(JoinUserSpotActorReply joined)
+    private static void EnsureAccepted(JoinUserSpotActorRes joined)
     {
         if (!joined.Accepted)
             throw new InvalidOperationException($"User spot actor join was rejected: {joined.ActorId}");

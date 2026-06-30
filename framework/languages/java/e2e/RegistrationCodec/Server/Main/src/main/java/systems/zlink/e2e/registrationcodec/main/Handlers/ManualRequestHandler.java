@@ -6,7 +6,7 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 
 public final class ManualRequestHandler
-    implements ZLinkRequestHandler<Contracts.EchoManualRequest, Contracts.EchoReply> {
+    implements ZLinkRequestHandler<Contracts.EchoManualReq, Contracts.EchoRes> {
     private final EvidenceStore state;
 
     public ManualRequestHandler(EvidenceStore state) {
@@ -14,10 +14,10 @@ public final class ManualRequestHandler
     }
 
     @Override
-    public Contracts.EchoReply handle(
-        Contracts.EchoManualRequest request,
+    public Contracts.EchoRes handle(
+        Contracts.EchoManualReq request,
         ZLinkRequestContext context) {
         state.record("Request", context.packetName().orElse("EchoManual"), request.value());
-        return new Contracts.EchoReply("echo:" + request.value(), "manual");
+        return new Contracts.EchoRes("echo:" + request.value(), "manual");
     }
 }

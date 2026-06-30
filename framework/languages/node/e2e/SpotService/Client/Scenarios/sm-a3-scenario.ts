@@ -1,9 +1,9 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
+  EvidenceWaitReq,
   SpotStateRouteReq,
-  StateReply
+  StateRes
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -11,7 +11,7 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmA3(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-a3-${Date.now()}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(
@@ -19,7 +19,7 @@ export async function runSmA3(options: ClientOptions): Promise<void> {
     'SM-A3 routed spot was not created on play-a.'
   );
 
-  const routeReply = await postJson<StateReply>(options.playAUrl, '/spot/state/request', {
+  const routeReply = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
     spotRid,
     operation: 'add',
     delta: 1
@@ -32,7 +32,7 @@ export async function runSmA3(options: ClientOptions): Promise<void> {
   const playAEvidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedPlayAEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedPlayAEvidence.every((expected) => playAEvidence.some((line) => line.includes(expected))),
     'SM-A3 evidence mismatch.'
@@ -41,7 +41,7 @@ export async function runSmA3(options: ClientOptions): Promise<void> {
   const playBEvidence = await postJson<string[]>(options.playBUrl, '/evidence/wait', {
     containsAll: [],
     timeoutMilliseconds: 100
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     playBEvidence.every((line) => !line.includes(`spot-state-request|rid=play-b|spot=${spotRid}`)),
     'SM-A3 route resolver leaked the spot request to play-b.'

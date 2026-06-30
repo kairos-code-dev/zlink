@@ -1,12 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
-  ControlPingReply,
+  ControlPingRes,
   ControlPingReq,
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EnsureActorReply,
+  EnsureActorRes,
   EnsureActorReq,
-  JoinUserSpotActorReply,
+  JoinUserSpotActorRes,
   JoinUserSpotActorReq
 } from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
@@ -23,12 +23,12 @@ import { InMemorySpotRouteStore } from '../Infrastructure/spot-route-store';
 import { ScenarioUserSpot } from '../Spots/scenario-spots';
 
 @Injectable()
-export class ControlPingHandler implements ZLinkRouteRequestHandler<ControlPingReq, ControlPingReply> {
+export class ControlPingHandler implements ZLinkRouteRequestHandler<ControlPingReq, ControlPingRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: ControlPingReq, context: ZLinkRouteRequestContext): Promise<ControlPingReply> {
+  async handle(request: ControlPingReq, context: ZLinkRouteRequestContext): Promise<ControlPingRes> {
     void context;
-    this.evidence.add(`control-ping|rid=${this.evidence.rid}|value=${request.value}`);
+    this.evidence.add(`control-pingMsg|rid=${this.evidence.rid}|value=${request.value}`);
     return {
       value: request.value,
       nodeRid: this.evidence.rid
@@ -37,13 +37,13 @@ export class ControlPingHandler implements ZLinkRouteRequestHandler<ControlPingR
 }
 
 @Injectable()
-export class EnsureActorHandler implements ZLinkRouteRequestHandler<EnsureActorReq, EnsureActorReply> {
+export class EnsureActorHandler implements ZLinkRouteRequestHandler<EnsureActorReq, EnsureActorRes> {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: EnsureActorReq, context: ZLinkRouteRequestContext): Promise<EnsureActorReply> {
+  async handle(request: EnsureActorReq, context: ZLinkRouteRequestContext): Promise<EnsureActorRes> {
     void context;
     const actorRef = await this.actors.getOrCreate(
       request.actorId,
@@ -61,13 +61,13 @@ export class EnsureActorHandler implements ZLinkRouteRequestHandler<EnsureActorR
 }
 
 @Injectable()
-export class CreateSpotHandler implements ZLinkRouteRequestHandler<CreateSpotReq, CreateSpotReply> {
+export class CreateSpotHandler implements ZLinkRouteRequestHandler<CreateSpotReq, CreateSpotRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: CreateSpotReq, context: ZLinkRouteRequestContext): Promise<CreateSpotReply> {
+  async handle(request: CreateSpotReq, context: ZLinkRouteRequestContext): Promise<CreateSpotRes> {
     void context;
     const created = await this.spots.getOrCreate(ScenarioUserSpot, request.spotRid);
     const state = typeof created.state === 'string' ? created.state : String(created.state);
@@ -82,13 +82,13 @@ export class CreateSpotHandler implements ZLinkRouteRequestHandler<CreateSpotReq
 }
 
 @Injectable()
-export class JoinUserSpotActorHandler implements ZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorReply> {
+export class JoinUserSpotActorHandler implements ZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorRes> {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: JoinUserSpotActorReq, context: ZLinkRouteRequestContext): Promise<JoinUserSpotActorReply> {
+  async handle(request: JoinUserSpotActorReq, context: ZLinkRouteRequestContext): Promise<JoinUserSpotActorRes> {
     void context;
     const actorRef = await this.actors.getOrCreate(
       request.actorId,

@@ -10,7 +10,7 @@ internal static class OperationalEndpoints
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {
@@ -29,7 +29,7 @@ internal static class OperationalEndpoints
         {
             await Task.Yield();
             evidence.Add($"control-ping|rid={node.Rid}|value={request.Value}");
-            return Results.Ok(new ControlPingReply(request.Value, node.Rid));
+            return Results.Ok(new ControlPingRes(request.Value, node.Rid));
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {

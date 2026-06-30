@@ -21,7 +21,7 @@ subscriber 역할 server의 bounded `/evidence/wait`와 snapshot evidence를 확
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | `.NET feature-map`처럼 Pub/Sub subscriber 역할 server의 bounded `/evidence/wait`를 성공 기준으로 반영했다. |
 | `run_e2e.sh` | `run_e2e.sh` | runner | done | 별도 role project binary를 시작하고 readiness, cleanup, 실패 로그 출력을 처리한다. |
 | `Shared/PubSub.Shared.csproj` | `Shared/build.gradle.kts` | build | done | Kotlin Shared project로 분리했다. |
-| `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/shared/Messages.kt` | shared | done | 기존 `Contracts.kt`의 `EventNotify`, `EvidenceEntry`, `EvidenceSnapshot`을 Shared로 옮겼다. |
+| `Shared/Messages.cs` | `Shared/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/shared/Messages.kt` | shared | done | 기존 `Contracts.kt`의 `EventMsg`, `EvidenceEntry`, `EvidenceSnapshot`을 Shared로 옮겼다. |
 | `Client/PubSub.Client.csproj` | `Client/build.gradle.kts` | build | done | Client application project로 분리했다. |
 | `Client/Program.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Program.kt` | client-entry | done | Client는 Spring framework client를 들지 않고 publisher role HTTP endpoint를 호출한다. |
 | `Client/Support/ClientOptions.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Support/ClientOptions.kt` | support | done | Client CLI option parsing으로 분리했다. |
@@ -62,7 +62,7 @@ subscriber 역할 server의 bounded `/evidence/wait`와 snapshot evidence를 확
 | `Server/Subscriber/Configuration/SubscriberOptions.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Configuration/SubscriberOptions.kt` | configuration | done | subscriber rid, topic, endpoint, delay, HTTP endpoint, log dir를 CLI option으로 파싱한다. |
 | `Server/Subscriber/OperationalEndpoints.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Endpoints/OperationalEndpoints.kt` | endpoints | done | subscriber `/health`, `/evidence`, bounded `/evidence/wait` endpoint를 제공한다. |
 | `Server/Subscriber/EvidenceStore.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Infrastructure/EvidenceStore.kt` | infrastructure | done | 기존 `ScenarioState.kt`를 subscriber evidence store로 옮겼다. |
-| `Server/Subscriber/Handlers/EventNotifyHandler.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Handlers/EventNotifyHandler.kt` | handlers | done | 기존 `EventNotifyHandler.kt`를 subscriber handler package로 옮겼다. |
+| `Server/Subscriber/Handlers/EventMsgHandler.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Handlers/EventMsgHandler.kt` | handlers | done | 기존 `EventMsgHandler.kt`를 subscriber handler package로 옮겼다. |
 | `Server/Subscriber/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Subscriber/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/subscriber/Program.kt` (`setMessageFlowObserver`) | handlers | done | dispatch error evidence 기록은 subscriber role dispatch observer로 둔다. |
 
 ## Kotlin 전용 현재 파일 처리
@@ -76,7 +76,7 @@ subscriber 역할 server의 bounded `/evidence/wait`와 snapshot evidence를 확
 | `src/main/kotlin/.../Env.kt` | 전역 환경 변수 helper다. | role별 CLI option parser로 대체한다. |
 | `src/main/kotlin/.../RegistryApplication.kt` | registry role 코드는 재사용 가능하다. | `Server/Registry/.../Program.kt`와 configuration/endpoints로 분리한다. |
 | `src/main/kotlin/.../SubscriberApplication.kt` | subscriber role 코드는 재사용 가능하지만 handler, endpoint, delay 설정이 섞여 있다. | `Server/Subscriber` 하위 package로 재분류한다. |
-| `src/main/kotlin/.../EventNotifyHandler.kt` | subscriber handler다. | `Server/Subscriber/Handlers`로 옮긴다. |
+| `src/main/kotlin/.../EventMsgHandler.kt` | subscriber handler다. | `Server/Subscriber/Handlers`로 옮긴다. |
 | `src/main/kotlin/.../EvidenceHttpServer.kt` | subscriber operational endpoint다. | `Server/Subscriber/Endpoints`로 옮긴다. |
 | `src/main/kotlin/.../ScenarioState.kt` | subscriber evidence store다. | `Server/Subscriber/Infrastructure`로 옮긴다. |
 

@@ -148,7 +148,7 @@ class bingo_room_spot_t : public spot_t
         if (drawn.state.winners.empty ()) {
             return;
         }
-        const auto reward_event = bingo_reward_acquired_event_t{
+        const auto reward_event = bingo_reward_acquired_msg_t{
             drawn.state.room_id,
             drawn.state.winners.front (),
             drawn.state.draw_seq,
@@ -170,7 +170,7 @@ class bingo_room_spot_t : public spot_t
         }
     }
 
-    void on_reward_acquired (const bingo_reward_acquired_event_t &event)
+    void on_reward_acquired (const bingo_reward_acquired_msg_t &event)
     {
         if (!_is_observer && event.room_id == snapshot ().room_id) {
             leave_finished_actors ();

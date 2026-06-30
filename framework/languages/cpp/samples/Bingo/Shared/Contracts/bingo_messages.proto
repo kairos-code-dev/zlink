@@ -181,7 +181,7 @@ message BingoRewardAnnouncedNotify {
   string receiving_spot_node_rid = 7;
 }
 
-message BingoRewardAcquiredEvent {
+message BingoRewardAcquiredMsg {
   string room_id = 1;
   string actor_id = 2;
   int32 draw_seq = 3;

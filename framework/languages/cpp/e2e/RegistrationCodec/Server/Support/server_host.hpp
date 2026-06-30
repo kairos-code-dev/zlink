@@ -43,17 +43,17 @@ struct binary_codecs_t
     template <typename TRegistrar> void register_framework_codecs (TRegistrar &registrar) const
     {
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_roundtrip_t> (registrar);
+          protobuf_roundtrip_req_t> (registrar);
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_roundtrip_reply_t> (registrar);
+          protobuf_roundtrip_res_t> (registrar);
         zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
-          protobuf_codec_send_t> (registrar);
+          protobuf_codec_msg_t> (registrar);
         zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-          messagepack_roundtrip_t> (registrar);
+          messagepack_roundtrip_req_t> (registrar);
         zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-          messagepack_roundtrip_reply_t> (registrar);
+          messagepack_roundtrip_res_t> (registrar);
         zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
-          messagepack_codec_send_t> (registrar);
+          messagepack_codec_msg_t> (registrar);
     }
 };
 
@@ -62,33 +62,33 @@ struct custom_codecs_t
     template <typename TRegistrar> void register_framework_codecs (TRegistrar &registrar) const
     {
         registrar
-          .template add_serializer<custom_roundtrip_t> (
-            [] (const custom_roundtrip_t &value) {
+          .template add_serializer<custom_roundtrip_req_t> (
+            [] (const custom_roundtrip_req_t &value) {
                 return encode_text ("custom-request", value.value);
             },
             [] (const zlink::framework::encoded_payload_t &payload) {
-                return custom_roundtrip_t{.value = decode_text (payload, "custom-request")};
+                return custom_roundtrip_req_t{.value = decode_text (payload, "custom-request")};
             })
-          .template add_serializer<custom_roundtrip_reply_t> (
-            [] (const custom_roundtrip_reply_t &value) {
+          .template add_serializer<custom_roundtrip_res_t> (
+            [] (const custom_roundtrip_res_t &value) {
                 return encode_text ("custom-reply", value.value);
             },
             [] (const zlink::framework::encoded_payload_t &payload) {
-                return custom_roundtrip_reply_t{.value = decode_text (payload, "custom-reply")};
+                return custom_roundtrip_res_t{.value = decode_text (payload, "custom-reply")};
             })
-          .template add_serializer<mismatch_roundtrip_t> (
-            [] (const mismatch_roundtrip_t &value) {
+          .template add_serializer<mismatch_roundtrip_req_t> (
+            [] (const mismatch_roundtrip_req_t &value) {
                 return encode_text ("mismatch-request", value.value);
             },
             [] (const zlink::framework::encoded_payload_t &payload) {
-                return mismatch_roundtrip_t{.value = decode_text (payload, "mismatch-request")};
+                return mismatch_roundtrip_req_t{.value = decode_text (payload, "mismatch-request")};
             })
-          .template add_serializer<mismatch_roundtrip_reply_t> (
-            [] (const mismatch_roundtrip_reply_t &value) {
+          .template add_serializer<mismatch_roundtrip_res_t> (
+            [] (const mismatch_roundtrip_res_t &value) {
                 return encode_text ("mismatch-reply", value.value);
             },
             [] (const zlink::framework::encoded_payload_t &payload) {
-                return mismatch_roundtrip_reply_t{
+                return mismatch_roundtrip_res_t{
                   .value = decode_text (payload, "mismatch-reply")};
             });
     }
@@ -159,7 +159,7 @@ inline void configure_channels (zlink::framework::zlink_framework_options_t &opt
         options.add_route_mesh (route_channel)
           .enable_server (server.route_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("rc-server"))
-          .add_request_handler<manual_route_handler_t, echo_manual_t, echo_manual_reply_t> (
+          .add_request_handler<manual_route_handler_t, echo_manual_req_t, echo_manual_res_t> (
             "EchoManual", &manual_route_handler_t::handle);
     }
 }

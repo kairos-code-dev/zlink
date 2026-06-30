@@ -144,7 +144,7 @@ class PlaySession implements ZLinkSession {
 
 function shouldRelayToActor(packetName: string): boolean {
   return packetName === PacketNames.placeMarkReq ||
-    packetName === PacketNames.leaveGameReq;
+    packetName === PacketNames.leaveGameMsg;
 }
 
 export { PlaySession };

@@ -12,7 +12,7 @@ internal static class SmB2Scenario
         var actorId = $"actor-sm-b2-remote-{Guid.NewGuid():N}";
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
         Exception? last = null;
-        ActorPingReply? reply = null;
+        ActorPingRes? reply = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
             await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
@@ -29,10 +29,10 @@ internal static class SmB2Scenario
                 await client.Connect.Async();
                 await client.Request(new AuthReq(actorId, "remote actor", "play-b"))
                     .PacketName("AuthReq")
-                    .Async<AuthReply>();
+                    .Async<AuthRes>();
                 reply = await client.Request(new ActorPingReq("b2"))
                     .PacketName("ActorPingReq")
-                    .Async<ActorPingReply>();
+                    .Async<ActorPingRes>();
                 break;
             }
             catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
@@ -57,7 +57,7 @@ internal static class SmB2Scenario
             $"entry-joined|rid=play-b|actor={actorId}"
         };
         var evidence = (await playB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

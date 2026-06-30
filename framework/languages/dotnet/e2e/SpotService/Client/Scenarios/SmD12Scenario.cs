@@ -32,7 +32,7 @@ internal static class SmD12Scenario
                     await candidate.Connect.Async();
                     await candidate.Request(new AuthReq(actorId, "api transfer", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     first = candidate;
                     break;
                 }
@@ -52,7 +52,7 @@ internal static class SmD12Scenario
 
             var firstReply = await first.Request(new ActorPingReq("before-transfer"))
                 .PacketName("ActorPingReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             ScenarioAssert.That(firstReply.ActorId == actorId, "SM-D12 first api actor mismatch.");
             ScenarioAssert.That(firstReply.NodeRid == "play-a", "SM-D12 first api node mismatch.");
             ScenarioAssert.That(firstReply.Seen == 1, "SM-D12 expected initial actor state.");
@@ -76,7 +76,7 @@ internal static class SmD12Scenario
                     await candidate.Connect.Async();
                     await candidate.Request(new AuthReq(actorId, "api transfer", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     second = candidate;
                     break;
                 }
@@ -96,14 +96,14 @@ internal static class SmD12Scenario
 
             var snapshot = await second.Request(new SnapshotReq(actorId))
                 .PacketName("SnapshotReq")
-                .Async<SnapshotReply>();
+                .Async<SnapshotRes>();
             ScenarioAssert.That(snapshot.ActorId == actorId, "SM-D12 snapshot actor mismatch.");
             ScenarioAssert.That(snapshot.Seen == 1, "SM-D12 actor state was not preserved across apis.");
 
             var pushed = second.WaitFor<ActorPushNotify>().Async().AsTask();
             var resumed = await second.Request(new ActorPushReq("after-transfer"))
                 .PacketName("ActorPushReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var notify = await pushed;
             ScenarioAssert.That(resumed.ActorId == actorId, "SM-D12 resumed actor mismatch.");
             ScenarioAssert.That(resumed.NodeRid == "play-a", "SM-D12 resumed node mismatch.");

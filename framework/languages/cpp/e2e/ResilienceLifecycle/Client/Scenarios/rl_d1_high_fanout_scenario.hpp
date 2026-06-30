@@ -20,15 +20,15 @@ inline void run_resilience_stress_scenario (zlink::framework::channel_client_t &
         auto send =
           channels
             .send (api_channel,
-                   profile_command_t{.command_id = "rl-d5-command-" + std::to_string (index)})
+                   profile_msg_t{.command_id = "rl-d5-command-" + std::to_string (index)})
             .async ();
         ensure (send.result ().has_value (), "stress send failed");
     }
 
-    auto missing = channels.request (api_channel, profile_request_t{.value = "rl-d4-missing"})
-                     .packet_name ("MissingProfileRequest")
+    auto missing = channels.request (api_channel, profile_req_t{.value = "rl-d4-missing"})
+                     .packet_name ("MissingProfileReq")
                      .timeout (std::chrono::milliseconds (1000))
-                     .async<profile_reply_t> ();
+                     .async<profile_res_t> ();
     ensure (!missing.result ().has_value (),
             "missing request handler unexpectedly returned a typed reply");
     std::cout << "scenario RL-D1 passed\n";

@@ -8,13 +8,13 @@ import systems.zlink.framework.channels.ZLinkRouteRequestHandler
 
 class RoutePingHandler(
     private val state: ScenarioState,
-) : ZLinkRouteRequestHandler<Contracts.RoutePing, Contracts.RoutePong> {
+) : ZLinkRouteRequestHandler<Contracts.RoutePingReq, Contracts.RoutePingRes> {
     override fun handle(
-        request: Contracts.RoutePing,
+        request: Contracts.RoutePingReq,
         context: ZLinkRouteRequestContext,
-    ): Contracts.RoutePong {
-        state.record("RoutePing", context.routingId().toString(), request.value)
-        return Contracts.RoutePong(
+    ): Contracts.RoutePingRes {
+        state.record("RoutePingReq", context.routingId().toString(), request.value)
+        return Contracts.RoutePingRes(
             "route:${request.value}",
             state.nodeRid(),
             context.routingId().toString(),

@@ -1,10 +1,10 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import { startRegistry } from '../Support/managed-registry';
 import {
-  profileRequest,
+  profileReq,
   waitTopologyReady,
   waitUntilAvailable,
   waitUntilDown
@@ -13,10 +13,10 @@ import { ensure } from '../Support/scenario-assert';
 import type { ScenarioState } from '../Support/scenario-state';
 
 export async function runRlC4(options: ClientOptions, state: ScenarioState): Promise<void> {
-  const before = await postJson<ProfileReply>(
+  const before = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request',
-    profileRequest('rl-c4-before-outage')
+    profileReq('rl-c4-before-outage')
   );
   ensure(before.value === 'profile:fast', 'RL-C4 request failed before registry outage.');
 
@@ -27,10 +27,10 @@ export async function runRlC4(options: ClientOptions, state: ScenarioState): Pro
   }
   await waitUntilDown(options.registryUrl);
 
-  const during = await postJson<ProfileReply>(
+  const during = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request',
-    profileRequest('rl-c4-during-outage')
+    profileReq('rl-c4-during-outage')
   );
   ensure(during.value === 'profile:fast', 'RL-C4 existing channel failed during registry outage.');
 
@@ -71,10 +71,10 @@ export async function runRlC4(options: ClientOptions, state: ScenarioState): Pro
   await waitUntilAvailable(options.providerAUrl);
   await waitTopologyReady(options.registryUrl, 'api-a');
 
-  const after = await postJson<ProfileReply>(
+  const after = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request/new-client',
-    profileRequest('rl-c4-after-restart')
+    profileReq('rl-c4-after-restart')
   );
   ensure(after.value === 'profile:fast', 'RL-C4 follow-up request failed after registry restart.');
 

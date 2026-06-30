@@ -2,10 +2,10 @@ import { PacketNames, subscribeDelivery } from '../Shared/Contracts/messages';
 import type { ZLinkHttpClient } from '@zlink-systems/http-client';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import type {
-  DeliveryCreated,
+  CreateDeliveryRes,
   DeliveryStatusNotify,
   ServerAssertionRes,
-  SubscribeDeliveryAccepted
+  SubscribeDeliveryRes
 } from '../Shared/Contracts/messages';
 
 class DeliveryDispatchClientScenario {
@@ -38,7 +38,7 @@ class DeliveryDispatchClientScenario {
 
     const subscribed = await customer.request(subscribeDelivery(deliveryId), Object)
       .packetName(PacketNames.subscribeDelivery)
-      .submit<SubscribeDeliveryAccepted>(signal);
+      .submit<SubscribeDeliveryRes>(signal);
     ensure(() => subscribed.deliveryId === deliveryId);
     await delay(1000, signal);
 
@@ -49,7 +49,7 @@ class DeliveryDispatchClientScenario {
         pickupAddress: 'Kitchen 12',
         dropoffAddress: 'Customer Lobby'
       })
-      .fetch<DeliveryCreated>();
+      .fetch<CreateDeliveryRes>();
     ensure(() => created.deliveryId === deliveryId);
 
     if ((await assigned).payload.courierId !== 'courier-a') {
@@ -87,7 +87,7 @@ class DeliveryDispatchClientScenario {
 
     const subscribed = await customer.request(subscribeDelivery(deliveryId), Object)
       .packetName(PacketNames.subscribeDelivery)
-      .submit<SubscribeDeliveryAccepted>(signal);
+      .submit<SubscribeDeliveryRes>(signal);
     ensure(() => subscribed.deliveryId === deliveryId);
     await delay(1000, signal);
 
@@ -98,7 +98,7 @@ class DeliveryDispatchClientScenario {
         pickupAddress: 'Kitchen 12',
         dropoffAddress: 'Customer Lobby'
       })
-      .fetch<DeliveryCreated>();
+      .fetch<CreateDeliveryRes>();
     ensure(() => created.deliveryId === deliveryId);
 
     if ((await assigned).payload.courierId !== 'courier-a') {

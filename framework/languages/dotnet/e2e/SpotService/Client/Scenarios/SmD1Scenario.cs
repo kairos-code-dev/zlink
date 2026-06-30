@@ -18,7 +18,7 @@ internal static class SmD1Scenario
             {
                 var control = (await sessionA.Post("/channel/control-ping/play-a")
                     .Body(new ControlPingReq("sm-d1-play-a-ready"))
-                    .SubmitAsync<ControlPingReply>()).Body;
+                    .SubmitAsync<ControlPingRes>()).Body;
                 if (control.NodeRid == "play-a")
                 {
                     controlReady = true;
@@ -61,7 +61,7 @@ internal static class SmD1Scenario
                     await client.Connect.Async();
                     await client.Request(new AuthReq("actor-sm-d1", "local relay", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     bound = client;
                     break;
                 }
@@ -84,7 +84,7 @@ internal static class SmD1Scenario
             var pushed = activeBound.WaitFor<ActorPushNotify>().Async().AsTask();
             var reply = await activeBound.Request(new ActorPushReq("push-local"))
                 .PacketName("ActorPushReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var notify = await pushed;
             ScenarioAssert.That(reply.ActorId == "actor-sm-d1", "SM-D1 actor reply mismatch.");
             ScenarioAssert.That(notify.Payload.ActorId == "actor-sm-d1", "SM-D1 push actor mismatch.");

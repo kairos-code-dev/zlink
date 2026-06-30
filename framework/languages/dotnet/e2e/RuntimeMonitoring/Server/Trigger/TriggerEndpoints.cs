@@ -14,7 +14,7 @@ internal static class TriggerEndpoints
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {
@@ -30,16 +30,16 @@ internal static class TriggerEndpoints
             return Results.Ok(snapshot);
         });
         app.MapPost("/profile/request", async (
-            ProfileRequest request,
+            ProfileReq request,
             IZLinkChannelClient channel) =>
         {
             var reply = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
-                .PacketName("ProfileRequest")
+                .PacketName("ProfileReq")
                 .Timeout(TimeSpan.FromSeconds(3))
-                .Async<ProfileReply>();
+                .Async<ProfileRes>();
             return Results.Ok(reply);
         });
-        app.MapPost("/profile/request/disconnect", async (ProfileRequest request) =>
+        app.MapPost("/profile/request/disconnect", async (ProfileReq request) =>
         {
             var reply = await TriggerClientRequests.RequestWithTransientHostAsync(
                 options,
@@ -48,7 +48,7 @@ internal static class TriggerEndpoints
                 request);
             return Results.Ok(reply);
         });
-        app.MapPost("/profile/request/service-b", async (ProfileRequest request) =>
+        app.MapPost("/profile/request/service-b", async (ProfileReq request) =>
         {
             var reply = await TriggerClientRequests.RequestWithTransientHostAsync(
                 options,
@@ -57,7 +57,7 @@ internal static class TriggerEndpoints
                 request);
             return Results.Ok(reply);
         });
-        app.MapPost("/profile/request/throw", async (ProfileRequest request) =>
+        app.MapPost("/profile/request/throw", async (ProfileReq request) =>
         {
             var reply = await TriggerClientRequests.RequestWithTransientHostAsync(
                 options,
@@ -72,7 +72,7 @@ internal static class TriggerEndpoints
             return Results.Ok(File.Exists(path) ? File.ReadAllLines(path) : []);
         });
         app.MapPost("/logs/throw-stderr/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             CancellationToken cancellationToken) =>
         {
             var path = Path.Combine(options.LogDir, "svc-throw.stderr.log");

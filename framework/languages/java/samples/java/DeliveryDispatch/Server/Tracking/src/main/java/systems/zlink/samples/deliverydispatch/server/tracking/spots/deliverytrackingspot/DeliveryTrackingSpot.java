@@ -19,7 +19,7 @@ public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
     private final DeliverySpotDirectory directory;
     private final ObjectMapper json;
     private final Map<String, CustomerActor> customers = new LinkedHashMap<>();
-    private final List<Messages.DeliveryStatusChanged> history = new ArrayList<>();
+    private final List<Messages.DeliveryStatusReq> history = new ArrayList<>();
     private String deliveryId = "";
 
     public DeliveryTrackingSpot(
@@ -38,10 +38,10 @@ public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
 
     @Override
     public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
-        Messages.DeliverySpotCreate create = request.decode(Messages.DeliverySpotCreate.class);
+        Messages.DeliverySpotCreateReq create = request.decode(Messages.DeliverySpotCreateReq.class);
         this.deliveryId = create.deliveryId();
         directory.add(deliveryId, this);
-        return ZLinkSpotCreateResponse.accept(new Messages.DeliverySpotCreated(deliveryId));
+        return ZLinkSpotCreateResponse.accept(new Messages.DeliverySpotCreateReqd(deliveryId));
     }
 
     @Override
@@ -49,7 +49,7 @@ public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
         CustomerActor actor,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
-        Messages.DeliverySpotJoin join = request.decode(Messages.DeliverySpotJoin.class);
+        Messages.DeliverySpotJoinReq join = request.decode(Messages.DeliverySpotJoinReq.class);
         if (!join.deliveryId().equals(deliveryId)) {
             return ZLinkSpotActorJoinResponse.reject();
         }
@@ -59,7 +59,7 @@ public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
             join.deliveryId(),
             actor.actorId());
         return ZLinkSpotActorJoinResponse.accept(
-            new Messages.DeliverySpotJoined(join.deliveryId(), actor.actorId()));
+            new Messages.DeliverySpotJoinReqed(join.deliveryId(), actor.actorId()));
     }
 
     @Override
@@ -67,7 +67,7 @@ public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
         customers.remove(actor.actorId());
     }
 
-    public void record(Messages.DeliveryStatusChanged status) {
+    public void record(Messages.DeliveryStatusReq status) {
         history.add(status);
     }
 

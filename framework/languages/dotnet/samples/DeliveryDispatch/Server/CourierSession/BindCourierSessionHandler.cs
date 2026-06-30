@@ -12,7 +12,7 @@ internal sealed class BindCourierSessionHandler(
     ILogger<BindCourierSessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
-    public string PacketName => nameof(BindCourierSession);
+    public string PacketName => nameof(BindCourierSessionReq);
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
@@ -20,12 +20,12 @@ internal sealed class BindCourierSessionHandler(
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        var request = payload.Decode<BindCourierSession>();
+        var request = payload.Decode<BindCourierSessionReq>();
         var sessionRoute = context.SessionId;
         var bound = await channels.RequestToChannel(
                 SampleNames.CourierRouteChannel,
-                new BindCourier(request.CourierId, sessionRoute))
-            .Async<CourierBound>(cancellationToken);
+                new BindCourierReq(request.CourierId, sessionRoute))
+            .Async<BindCourierRes>(cancellationToken);
 
         var boundActor = context.Actors.Find(bound.Actor.ActorId);
         if (boundActor is null)
@@ -45,7 +45,7 @@ internal sealed class BindCourierSessionHandler(
 
         await boundActor.RelayAsync(
             Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(
-                new BindCourierSession(bound.CourierId, bound.Actor, bound.SessionRoute)),
+                new BindCourierSessionReq(bound.CourierId, bound.Actor, bound.SessionRoute)),
             cancellationToken);
     }
 }

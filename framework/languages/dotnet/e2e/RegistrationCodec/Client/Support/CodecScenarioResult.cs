@@ -2,4 +2,4 @@ using RegistrationCodec.Shared;
 
 namespace RegistrationCodec.Client.Support;
 
-internal sealed record CodecScenarioResult(EchoReply Json, string ProtobufValue, string MessagePackValue);
+internal sealed record CodecScenarioRes(EchoRes Json, string ProtobufValue, string MessagePackValue);

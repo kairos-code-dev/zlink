@@ -1,23 +1,23 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
-import { profileRequest } from '../Support/resilience-helpers';
+import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlC1(options: ClientOptions): Promise<void> {
   for (let index = 0; index < 12; index += 1) {
-    const reply = await postJson<ProfileReply>(
+    const reply = await postJson<ProfileRes>(
       options.consumerUrl,
       '/profile/request/new-client',
-      profileRequest(`rl-c1-${index}`)
+      profileReq(`rl-c1-${index}`)
     );
     ensure(reply.value === 'profile:fast', 'RL-C1 request failed before cleanup.');
   }
 
-  const followUp = await postJson<ProfileReply>(
+  const followUp = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request/new-client',
-    profileRequest('rl-c1-after-cleanup')
+    profileReq('rl-c1-after-cleanup')
   );
   ensure(followUp.value === 'profile:fast', 'RL-C1 follow-up failed after client cleanup.');
 

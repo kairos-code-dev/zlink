@@ -48,8 +48,8 @@ function createPeerModule(options: MessagePackOptions, evidence: EvidenceStore):
           builder.addClientServerChannel(RegistrationCodecNames.channel)
             .enableServer(options.channelEndpoint)
             .enableClient(options.channelEndpoint)
-            .addRequestHandler(PacketNames.echoMessagePack, MessagePackEchoRequestHandler)
-            .addSendHandler(PacketNames.echoMessagePackCommand, MessagePackEchoCommandHandler);
+            .addRequestHandler(PacketNames.echoMessagePackReq, MessagePackEchoRequestHandler)
+            .addSendHandler(PacketNames.echoMessagePackMsg, MessagePackEchoCommandHandler);
           return builder.build();
         }
       })

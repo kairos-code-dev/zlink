@@ -29,10 +29,10 @@ class ClientScenarioContext(
         while (index < attempts && providers.size < expectedCount) {
             val reply = client.requestToChannel(
                 Contracts.CHANNEL,
-                Contracts.WorkRequest("$prefix-$index"),
+                Contracts.WorkReq("$prefix-$index"),
             )
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply::class.java)
+                .await(Contracts.WorkRes::class.java)
             ensure(reply.value() == "work:$prefix-$index", "reply payload mismatch for $prefix-$index")
             providers.add(reply.providerRid())
             index++
@@ -182,9 +182,9 @@ class ClientScenarioContext(
 
     fun expectSingleProviderDownFailure(scenario: String, value: String) {
         try {
-            client.requestToChannel(Contracts.CHANNEL, Contracts.WorkRequest(value))
+            client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq(value))
                 .timeout(Duration.ofMillis(700))
-                .await(Contracts.WorkReply::class.java)
+                .await(Contracts.WorkRes::class.java)
             throw IllegalStateException("$scenario down-window request unexpectedly completed")
         } catch (_: RuntimeException) {
             // The scenario only requires a public failure while the sole admissible provider is down.

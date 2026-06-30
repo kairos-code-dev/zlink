@@ -18,7 +18,7 @@ import type {
   CollectItemReq,
   CompleteMissionReq,
   EnterAreaReq,
-  EventRes,
+  GameplayActionRes,
   GameQuestServerAssertRes,
   GetGameplaySnapshotReq,
   GetGameplaySnapshotRes,
@@ -89,7 +89,7 @@ function startGameApi(
       const killWithoutPublish = /^\/self-check\/gameplay\/kill-without-publish\/([^/]+)$/.exec(url.pathname);
       if (request.method === 'POST' && killWithoutPublish !== null) {
         const playerId = decodeURIComponent(killWithoutPublish[1]);
-        sendJson(response, 200, await publisher.request<EventRes>(killMonsterReq(playerId, 'wolf', 'forest', 'sync-hidden-kill')));
+        sendJson(response, 200, await publisher.request<GameplayActionRes>(killMonsterReq(playerId, 'wolf', 'forest', 'sync-hidden-kill')));
         return;
       }
       const syncMatch = /^\/self-check\/sync\/([^/]+)$/.exec(url.pathname);

@@ -25,51 +25,51 @@ public final class ConsumerEndpoints {
     }
 
     @PostMapping("/profile/request")
-    public Contracts.ProfileReply profileRequest(@RequestBody Contracts.ProfileRequest request) {
+    public Contracts.ProfileRes profileRequest(@RequestBody Contracts.ProfileReq request) {
         return requestProfile(request, Duration.ofSeconds(5));
     }
 
     @PostMapping("/profile/batch-request")
-    public List<Contracts.ProfileReply> profileBatch(@RequestBody List<Contracts.ProfileRequest> requests) {
-        List<Contracts.ProfileReply> replies = new ArrayList<>(requests.size());
-        for (Contracts.ProfileRequest request : requests) {
+    public List<Contracts.ProfileRes> profileBatch(@RequestBody List<Contracts.ProfileReq> requests) {
+        List<Contracts.ProfileRes> replies = new ArrayList<>(requests.size());
+        for (Contracts.ProfileReq request : requests) {
             replies.add(requestProfile(request, Duration.ofSeconds(5)));
         }
         return replies;
     }
 
     @PostMapping("/profile/slow-request")
-    public Contracts.RequestFailureResult slowRequest(@RequestBody Contracts.ProfileRequest request) {
+    public Contracts.RequestFailureRes slowRequest(@RequestBody Contracts.ProfileReq request) {
         return requestFailure(request, Duration.ofMillis(100));
     }
 
     @PostMapping("/profile/missing-request")
-    public Contracts.RequestFailureResult missingRequest(@RequestBody Contracts.ProfileRequest request) {
+    public Contracts.RequestFailureRes missingRequest(@RequestBody Contracts.ProfileReq request) {
         try {
             client.requestToChannel(Contracts.API_CHANNEL, request)
-                .packetName("MissingProfileRequest")
+                .packetName("MissingProfileReq")
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.ProfileReply.class);
-            return new Contracts.RequestFailureResult(false, "");
+                .await(Contracts.ProfileRes.class);
+            return new Contracts.RequestFailureRes(false, "");
         } catch (RuntimeException error) {
-            return new Contracts.RequestFailureResult(true, error.getClass().getSimpleName());
+            return new Contracts.RequestFailureRes(true, error.getClass().getSimpleName());
         }
     }
 
     @PostMapping("/profile/missing-command")
-    public java.util.Map<String, String> missingCommand(@RequestBody Contracts.ProfileCommand command) {
+    public java.util.Map<String, String> missingCommand(@RequestBody Contracts.ProfileMsg command) {
         client.sendToChannel(Contracts.API_CHANNEL, command)
-            .packetName("MissingProfileCommand")
+            .packetName("MissingProfileMsg")
             .await();
         return java.util.Map.of("status", "sent");
     }
 
     @PostMapping("/profile/payload")
-    public Contracts.PayloadReply payload(@RequestBody Contracts.PayloadRequest request) {
+    public Contracts.PayloadRes payload(@RequestBody Contracts.PayloadReq request) {
         return client.requestToChannel(Contracts.API_CHANNEL, request)
-            .packetName("PayloadRequest")
+            .packetName("PayloadReq")
             .timeout(Duration.ofSeconds(10))
-            .await(Contracts.PayloadReply.class);
+            .await(Contracts.PayloadRes.class);
     }
 
     @PostMapping("/profile/backpressure/reset")
@@ -78,36 +78,36 @@ public final class ConsumerEndpoints {
     }
 
     @PostMapping("/profile/backpressure/send")
-    public Contracts.BackpressureResult backpressureSend(@RequestBody Contracts.ProfileCommand command) {
+    public Contracts.BackpressureRes backpressureSend(@RequestBody Contracts.ProfileMsg command) {
         try {
             client.sendToChannel(Contracts.API_CHANNEL, command)
-                .packetName("ProfileCommand")
+                .packetName("ProfileMsg")
                 .submit()
                 .toCompletableFuture()
                 .get(750, TimeUnit.MILLISECONDS);
-            return new Contracts.BackpressureResult("Accepted");
+            return new Contracts.BackpressureRes("Accepted");
         } catch (Exception expected) {
-            return new Contracts.BackpressureResult("BoundedFailure");
+            return new Contracts.BackpressureRes("BoundedFailure");
         }
     }
 
-    private Contracts.ProfileReply requestProfile(
-        Contracts.ProfileRequest request,
+    private Contracts.ProfileRes requestProfile(
+        Contracts.ProfileReq request,
         Duration timeout) {
         return client.requestToChannel(Contracts.API_CHANNEL, request)
-            .packetName("ProfileRequest")
+            .packetName("ProfileReq")
             .timeout(timeout)
-            .await(Contracts.ProfileReply.class);
+            .await(Contracts.ProfileRes.class);
     }
 
-    private Contracts.RequestFailureResult requestFailure(
-        Contracts.ProfileRequest request,
+    private Contracts.RequestFailureRes requestFailure(
+        Contracts.ProfileReq request,
         Duration timeout) {
         try {
             requestProfile(request, timeout);
-            return new Contracts.RequestFailureResult(false, "");
+            return new Contracts.RequestFailureRes(false, "");
         } catch (RuntimeException error) {
-            return new Contracts.RequestFailureResult(true, error.getClass().getSimpleName());
+            return new Contracts.RequestFailureRes(true, error.getClass().getSimpleName());
         }
     }
 }

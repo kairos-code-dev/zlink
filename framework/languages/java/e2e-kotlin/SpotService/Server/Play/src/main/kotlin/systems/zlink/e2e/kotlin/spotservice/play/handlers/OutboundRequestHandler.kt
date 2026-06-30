@@ -10,8 +10,8 @@ class OutboundRequestHandler {
     @ZLinkSpotRequest
     fun handle(
         spot: UserSpot,
-        request: Contracts.OutboundRequest,
-    ): Contracts.OutboundReply {
+        request: Contracts.OutboundReq,
+    ): Contracts.OutboundRes {
         val channelReply = spot.context()
             .outbound()
             .requestToChannel(Contracts.INGRESS_CHANNEL, request.value)
@@ -22,17 +22,17 @@ class OutboundRequestHandler {
             .outbound()
             .sendToChannel(
                 Contracts.INGRESS_CHANNEL,
-                Contracts.OutboundCommand("send:${request.value}"),
+                Contracts.OutboundMsg("send:${request.value}"),
             )
-            .packetName("OutboundCommand")
+            .packetName("OutboundMsg")
             .await()
         spot.context()
             .outbound()
-            .publish("spot.events", Contracts.MeshEvent("publish:${request.value}"))
-            .packetName("MeshEvent")
+            .publish("spot.events", Contracts.MeshMsg("publish:${request.value}"))
+            .packetName("MeshMsg")
             .await()
         spot.record("SpotOutbound", "${request.value}/$channelReply")
-        return Contracts.OutboundReply(
+        return Contracts.OutboundRes(
             spot.context().spotRid().toString(),
             spot.context().nodeRid().toString(),
             channelReply,

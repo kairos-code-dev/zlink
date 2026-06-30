@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
@@ -30,20 +31,37 @@ inline void run_sm_d13_scenario (const std::string &session_stream_endpoint)
     options.heartbeat.timeout = std::chrono::milliseconds (2000);
 
     constexpr auto actor_id = "actor-sm-d13";
-    auto stream = zlink::stream_connector::connector_factory_t::create (options);
-    auto connected = stream.connect ();
-    if (!connected) {
-        throw std::runtime_error ("SM-D13 stream connect failed");
+    auto stream = zlink::stream_connector::connector_t ();
+    auto last_error = std::string ("stream auth was not attempted");
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+    while (std::chrono::steady_clock::now () < deadline) {
+        auto candidate = zlink::stream_connector::connector_factory_t::create (options);
+        auto connected = candidate.connect ();
+        if (!connected) {
+            last_error = connected.error () ? connected.error ()->message
+                                            : "stream connect failed";
+            std::this_thread::sleep_for (std::chrono::milliseconds (500));
+            continue;
+        }
+
+        auto auth =
+          candidate.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D13 Heartbeat"})
+            .packet_name ("StreamEnsureAuthReq")
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<stream_auth_res_t> ();
+        if (auth && auth.value ().actor.actor_id == actor_id
+            && auth.value ().session_node_rid == "session-a") {
+            stream = std::move (candidate);
+            break;
+        }
+
+        last_error = auth.error () ? auth.error ()->message : "stream auth reply mismatch";
+        (void) candidate.close ();
+        std::this_thread::sleep_for (std::chrono::milliseconds (500));
     }
 
-    auto auth =
-      stream.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D13 Heartbeat"})
-        .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
-        .submit<stream_auth_res_t> ();
-    if (!auth || auth.value ().actor.actor_id != actor_id
-        || auth.value ().session_node_rid != "session-a") {
-        throw std::runtime_error ("SM-D13 stream auth failed");
+    if (!stream.is_connected ()) {
+        throw std::runtime_error ("SM-D13 stream auth failed: " + last_error);
     }
 
     std::this_thread::sleep_for (std::chrono::milliseconds (700));

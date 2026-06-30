@@ -4,10 +4,10 @@ using Zlink.Framework.Contracts.Handlers;
 namespace ResilienceLifecycle.Server.Provider.Handlers;
 
 internal sealed class ProfileRequestHandler(EvidenceStore evidence, FaultState fault)
-    : IZLinkRequestHandler<ProfileRequest, ProfileReply>
+    : IZLinkRequestHandler<ProfileReq, ProfileRes>
 {
-    public async ValueTask<ProfileReply> HandleAsync(
-        ProfileRequest request,
+    public async ValueTask<ProfileRes> HandleAsync(
+        ProfileReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -25,15 +25,15 @@ internal sealed class ProfileRequestHandler(EvidenceStore evidence, FaultState f
         }
 
         evidence.Add($"profile-request|rid={evidence.Rid}|marker={request.Marker}|value={request.Value}");
-        return new ProfileReply($"profile:{request.Value}", evidence.Rid, request.Marker);
+        return new ProfileRes($"profile:{request.Value}", evidence.Rid, request.Marker);
     }
 }
 
 internal sealed class ProfileCommandHandler(EvidenceStore evidence)
-    : IZLinkSendHandler<ProfileCommand>
+    : IZLinkSendHandler<ProfileMsg>
 {
     public ValueTask HandleAsync(
-        ProfileCommand command,
+        ProfileMsg command,
         ZLinkSendContext context,
         CancellationToken cancellationToken)
     {

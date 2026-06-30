@@ -1,26 +1,26 @@
-import type { ProfileReply, RequestFailureResult } from '../../Shared/messages';
+import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
-import { profileRequest } from '../Support/resilience-helpers';
+import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlD2(options: ClientOptions): Promise<void> {
   await postJson(options.providerAUrl, '/admin/fault/observer-throws');
   await postJson(options.providerBUrl, '/admin/fault/observer-throws');
 
-  const missing = await postJson<RequestFailureResult>(
+  const missing = await postJson<RequestFailureRes>(
     options.consumerUrl,
     '/profile/missing-request',
-    profileRequest('rl-d2-error')
+    profileReq('rl-d2-error')
   );
   ensure(missing.failed, 'RL-D2 missing handler request should fail.');
 
   await waitForEitherEvidence(options, 'dispatch-error', 'RL-D2 did not record dispatch-error evidence.');
 
-  const followUp = await postJson<ProfileReply>(
+  const followUp = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request',
-    profileRequest('rl-d2-after')
+    profileReq('rl-d2-after')
   );
   ensure(followUp.value === 'profile:fast', 'RL-D2 messaging did not continue after observer failure.');
 

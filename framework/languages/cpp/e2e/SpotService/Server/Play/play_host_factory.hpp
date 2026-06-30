@@ -83,6 +83,11 @@ inline int run_play_server (int argc, char **argv)
           .add_transient<spot_worker_start_route_handler_t,
                          zlink::framework::route_client_t> ()
           .add_transient<spot_worker_complete_handler_t, scenario_state_t> ()
+          .add_transient<spot_stage_probe_route_handler_t,
+                         zlink::framework::route_client_t> ()
+          .add_transient<spot_stage_timer_route_handler_t,
+                         zlink::framework::route_client_t,
+                         scenario_state_t> ()
           .add_transient<spot_idle_close_route_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<spot_overrun_start_route_handler_t, scenario_state_t,

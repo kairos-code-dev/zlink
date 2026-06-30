@@ -18,8 +18,8 @@ inline void run_rm_c8_payload_round_trip_scenario (zlink::framework::channel_cli
     for (const auto size : sizes) {
         const auto payload = std::string (size, static_cast<char> ('a' + (size % 23)));
         const auto marker = "payload-" + std::to_string (size);
-        auto reply = post_json<payload_request_t, payload_reply_t> (
-          consumer, "/profile/payload", payload_request_t{.marker = marker, .payload = payload},
+        auto reply = post_json<payload_req_t, payload_res_t> (
+          consumer, "/profile/payload", payload_req_t{.marker = marker, .payload = payload},
           std::chrono::seconds (10));
         ensure (reply.marker == marker,
                 "RM-C8 reply marker mismatch for payload size " + std::to_string (size));
@@ -28,8 +28,8 @@ inline void run_rm_c8_payload_round_trip_scenario (zlink::framework::channel_cli
         ensure (reply.sha256 == sha256_hex (payload),
                 "RM-C8 reply sha256 mismatch for payload size " + std::to_string (size));
     }
-    auto follow_up = post_json<profile_request_t, profile_reply_t> (
-      consumer, "/profile/request", profile_request_t{.value = "rm-c8-after"});
+    auto follow_up = post_json<profile_req_t, profile_res_t> (
+      consumer, "/profile/request", profile_req_t{.value = "rm-c8-after"});
     ensure (follow_up.value == "profile:rm-c8-after", "RM-C8 follow-up request failed");
     std::cout << "scenario RM-C8 passed\n";
 }
@@ -39,19 +39,19 @@ inline void run_rm_c8_max_message_size_scenario (zlink::framework::channel_clien
     const auto oversized_payload = std::string (32 * 1024, 'x');
     auto oversized = channels
                        .request ("registry.messaging.api.manual.max",
-                      payload_request_t{.marker = "oversized", .payload = oversized_payload})
+                      payload_req_t{.marker = "oversized", .payload = oversized_payload})
                        .timeout (std::chrono::milliseconds (1000))
-                       .async<payload_reply_t> ();
+                       .async<payload_res_t> ();
     ensure (!oversized.result ().has_value (), "RM-C8 oversized request unexpectedly succeeded");
     ensure (oversized.result ().error_kind () == zlink::framework::framework_error_kind_t::timeout,
             "RM-C8 oversized request failed with an unexpected public error kind");
 
     auto normal = channels
                     .request ("registry.messaging.api.manual.max",
-                              payload_request_t{.marker = "after-oversized",
+                              payload_req_t{.marker = "after-oversized",
                                                 .payload = "after-oversized"})
                     .timeout (std::chrono::milliseconds (2000))
-                    .async<payload_reply_t> ();
+                    .async<payload_res_t> ();
     ensure (normal.result ().has_value (), "RM-C8 normal request after oversized failed");
     ensure (normal.result ().value ().marker == "after-oversized",
             "RM-C8 normal marker after oversized mismatch");

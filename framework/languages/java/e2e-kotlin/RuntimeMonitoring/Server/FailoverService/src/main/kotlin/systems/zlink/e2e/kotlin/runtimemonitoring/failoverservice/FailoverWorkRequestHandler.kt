@@ -9,12 +9,12 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 @ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
 class FailoverWorkRequestHandler(
     private val state: EvidenceState,
-) : ZLinkRequestHandler<Contracts.WorkRequest, Contracts.WorkReply> {
+) : ZLinkRequestHandler<Contracts.WorkReq, Contracts.WorkRes> {
     override fun handle(
-        request: Contracts.WorkRequest,
+        request: Contracts.WorkReq,
         context: ZLinkRequestContext,
-    ): Contracts.WorkReply {
+    ): Contracts.WorkRes {
         state.record("handler", Contracts.CHANNEL, "FailoverRequest", request.value)
-        return Contracts.WorkReply("work:${request.value}", "svc-a")
+        return Contracts.WorkRes("work:${request.value}", "svc-a")
     }
 }

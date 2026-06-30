@@ -1,11 +1,11 @@
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type {
-  PayloadReply,
-  PayloadRequest,
-  ProfileCommand,
-  ProfileReply,
-  ProfileRequest,
-  RequestFailureResult
+  PayloadRes,
+  PayloadReq,
+  ProfileMsg,
+  ProfileRes,
+  ProfileReq,
+  RequestFailureRes
 } from '../../../Shared/messages';
 import { PacketNames } from '../../../Shared/messages';
 import type { HttpRoute } from '../Support/http-server';
@@ -13,30 +13,30 @@ import type { HttpRoute } from '../Support/http-server';
 export function createConsumerEndpoints(channel: ZLinkChannelClient, stop: () => void): HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready' }) },
-    { method: 'POST', path: '/profile/batch-request', handle: (body) => batchRequest(channel, body as ProfileRequest[]) },
-    { method: 'POST', path: '/profile/request', handle: (body) => requestProfileWithRetry(channel, body as ProfileRequest, 5000) },
-    { method: 'POST', path: '/profile/slow-request', handle: (body) => requestProfileFailure(channel, body as ProfileRequest, 100) },
-    { method: 'POST', path: '/profile/missing-request', handle: (body) => requestMissingProfile(channel, body as ProfileRequest) },
+    { method: 'POST', path: '/profile/batch-request', handle: (body) => batchRequest(channel, body as ProfileReq[]) },
+    { method: 'POST', path: '/profile/request', handle: (body) => requestProfileWithRetry(channel, body as ProfileReq, 5000) },
+    { method: 'POST', path: '/profile/slow-request', handle: (body) => requestProfileFailure(channel, body as ProfileReq, 100) },
+    { method: 'POST', path: '/profile/missing-request', handle: (body) => requestMissingProfile(channel, body as ProfileReq) },
     {
       method: 'POST',
       path: '/profile/missing-command',
       handle: async (body) => {
         await channel
-          .sendToChannel('profile', body as ProfileCommand)
-          .packetName(PacketNames.missingProfileCommand)
+          .sendToChannel('profile', body as ProfileMsg)
+          .packetName(PacketNames.missingProfileMsg)
           .submit();
         return { status: 'sent' };
       }
     },
-    { method: 'POST', path: '/profile/payload', handle: (body) => requestPayloadWithRetry(channel, body as PayloadRequest) },
+    { method: 'POST', path: '/profile/payload', handle: (body) => requestPayloadWithRetry(channel, body as PayloadReq) },
     { method: 'POST', path: '/profile/backpressure/reset', handle: () => ({ status: 'ready' }) },
-    { method: 'POST', path: '/profile/backpressure/send', handle: (body) => sendProfileWithBoundedFailure(channel, body as ProfileCommand) },
+    { method: 'POST', path: '/profile/backpressure/send', handle: (body) => sendProfileWithBoundedFailure(channel, body as ProfileMsg) },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
   ];
 }
 
-async function batchRequest(channel: ZLinkChannelClient, requests: readonly ProfileRequest[]): Promise<ProfileReply[]> {
-  const replies: ProfileReply[] = [];
+async function batchRequest(channel: ZLinkChannelClient, requests: readonly ProfileReq[]): Promise<ProfileRes[]> {
+  const replies: ProfileRes[] = [];
   for (const request of requests) {
     replies.push(await requestProfileWithRetry(channel, request, 5000));
   }
@@ -45,29 +45,29 @@ async function batchRequest(channel: ZLinkChannelClient, requests: readonly Prof
 
 async function requestProfileWithRetry(
   channel: ZLinkChannelClient,
-  request: ProfileRequest,
+  request: ProfileReq,
   timeoutMs: number
-): Promise<ProfileReply> {
+): Promise<ProfileRes> {
   return retryUntil(async () => channel
     .requestToChannel('profile', request)
-    .packetName(PacketNames.profileRequest)
+    .packetName(PacketNames.profileReq)
     .timeout(timeoutMs)
-    .submit<ProfileReply>(), 'direct profile endpoints');
+    .submit<ProfileRes>(), 'direct profile endpoints');
 }
 
-async function requestPayloadWithRetry(channel: ZLinkChannelClient, request: PayloadRequest): Promise<PayloadReply> {
+async function requestPayloadWithRetry(channel: ZLinkChannelClient, request: PayloadReq): Promise<PayloadRes> {
   return retryUntil(async () => channel
     .requestToChannel('profile', request)
-    .packetName(PacketNames.payloadRequest)
+    .packetName(PacketNames.payloadReq)
     .timeout(10000)
-    .submit<PayloadReply>(), 'payload profile endpoint');
+    .submit<PayloadRes>(), 'payload profile endpoint');
 }
 
 async function requestProfileFailure(
   channel: ZLinkChannelClient,
-  request: ProfileRequest,
+  request: ProfileReq,
   timeoutMs: number
-): Promise<RequestFailureResult> {
+): Promise<RequestFailureRes> {
   try {
     await requestProfileWithRetry(channel, request, timeoutMs);
     return { failed: false, failureType: '' };
@@ -76,26 +76,26 @@ async function requestProfileFailure(
   }
 }
 
-async function requestMissingProfile(channel: ZLinkChannelClient, request: ProfileRequest): Promise<RequestFailureResult> {
+async function requestMissingProfile(channel: ZLinkChannelClient, request: ProfileReq): Promise<RequestFailureRes> {
   try {
     await channel
       .requestToChannel('profile', request)
-      .packetName(PacketNames.missingProfileRequest)
+      .packetName(PacketNames.missingProfileReq)
       .timeout(5000)
-      .submit<ProfileReply>();
+      .submit<ProfileRes>();
     return { failed: false, failureType: '' };
   } catch (error) {
     return { failed: true, failureType: error instanceof Error ? error.name : 'Error' };
   }
 }
 
-async function sendProfileWithBoundedFailure(channel: ZLinkChannelClient, command: ProfileCommand): Promise<string> {
+async function sendProfileWithBoundedFailure(channel: ZLinkChannelClient, command: ProfileMsg): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 500);
   try {
     const send = channel
       .sendToChannel('profile', command)
-      .packetName(PacketNames.profileCommand)
+      .packetName(PacketNames.profileMsg)
       .submit(controller.signal);
     const timeout = new Promise<string>((resolve) => setTimeout(() => resolve('BoundedFailure'), 750));
     const result = await Promise.race([send.then(() => 'Accepted'), timeout]);

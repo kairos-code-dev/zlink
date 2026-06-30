@@ -9,25 +9,25 @@ using Zlink.Framework.Contracts.Handlers;
 namespace RegistryMessaging.Server.Provider.Handlers;
 
 internal sealed class ProfileRequestHandler(EvidenceStore evidence)
-    : IZLinkRequestHandler<ProfileRequest, ProfileReply>
+    : IZLinkRequestHandler<ProfileReq, ProfileRes>
 {
-    public async ValueTask<ProfileReply> HandleAsync(
-        ProfileRequest request,
+    public async ValueTask<ProfileRes> HandleAsync(
+        ProfileReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         if (request.Value == "slow") await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
 
         evidence.Add($"profile-request|rid={evidence.Rid}|value={request.Value}|packet={context.PacketName}");
-        return new ProfileReply($"profile:{request.Value}", evidence.Rid);
+        return new ProfileRes($"profile:{request.Value}", evidence.Rid);
     }
 }
 
 internal sealed class ProfileCommandHandler(EvidenceStore evidence)
-    : IZLinkSendHandler<ProfileCommand>
+    : IZLinkSendHandler<ProfileMsg>
 {
     public async ValueTask HandleAsync(
-        ProfileCommand command,
+        ProfileMsg command,
         ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
@@ -40,10 +40,10 @@ internal sealed class ProfileCommandHandler(EvidenceStore evidence)
 }
 
 internal sealed class PayloadRequestHandler(EvidenceStore evidence)
-    : IZLinkRequestHandler<PayloadRequest, PayloadReply>
+    : IZLinkRequestHandler<PayloadReq, PayloadRes>
 {
-    public ValueTask<PayloadReply> HandleAsync(
-        PayloadRequest request,
+    public ValueTask<PayloadRes> HandleAsync(
+        PayloadReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -52,7 +52,7 @@ internal sealed class PayloadRequestHandler(EvidenceStore evidence)
         evidence.Add(
             $"payload-request|rid={evidence.Rid}|marker={request.Marker}"
             + $"|length={request.Payload.Length}|sha256={hash}|packet={context.PacketName}");
-        return ValueTask.FromResult(new PayloadReply(request.Marker, request.Payload.Length, hash));
+        return ValueTask.FromResult(new PayloadRes(request.Marker, request.Payload.Length, hash));
     }
 }
 

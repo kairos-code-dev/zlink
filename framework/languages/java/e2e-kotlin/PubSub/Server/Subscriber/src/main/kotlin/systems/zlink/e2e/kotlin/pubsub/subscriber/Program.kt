@@ -70,7 +70,7 @@ class SubscriberApplication {
                     )
                     CompletableFuture.completedFuture(null)
                 }
-            options.addHandlersFromPackageOf(EventNotifyHandler::class.java)
+            options.addHandlersFromPackageOf(EventMsgHandler::class.java)
             options.useDiscovery().addRegistryEndpoint(parsedOptions.registryRouterEndpoint)
             options.addFanoutChannel(Contracts.EVENT_CHANNEL)
                 .enableSubscriber()
@@ -78,6 +78,6 @@ class SubscriberApplication {
         }
 
     @Bean
-    fun eventNotifyHandler(state: EvidenceStore): EventNotifyHandler =
-        EventNotifyHandler(state)
+    fun eventMsgHandler(state: EvidenceStore): EventMsgHandler =
+        EventMsgHandler(state)
 }

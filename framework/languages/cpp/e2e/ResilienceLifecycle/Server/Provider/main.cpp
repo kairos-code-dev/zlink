@@ -79,6 +79,9 @@ int main (int argc, char **argv)
               state_ptr->record ("DispatchError",
                                  dispatch_reason_name (*event.error_reason) + ":"
                                    + dispatch_action_name (*event.error_action));
+              if (state_ptr->fault_mode () == "observer-throws") {
+                  throw std::runtime_error ("dispatch observer failure");
+              }
           });
         framework.services ().add_singleton<rm_provider::scenario_state_t> (std::move (state));
         framework.services ().add_transient<rm_provider::route_ping_handler_t,
@@ -115,8 +118,8 @@ int main (int argc, char **argv)
               .enable_server (options.route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (options.rid))
               .add_request_handler<rm_provider::route_ping_handler_t,
-                                   e2e::route_ping_t,
-                                   e2e::route_pong_t> ("ScenarioRoutePing",
+                                   e2e::scenario_route_req_t,
+                                   e2e::scenario_route_res_t> ("ScenarioRouteReq",
                                                        &rm_provider::route_ping_handler_t::handle);
         }
         if (!options.http_endpoint.empty ()) {
@@ -124,7 +127,10 @@ int main (int argc, char **argv)
               .listen (options.http_endpoint)
               .map_health ("/health")
               .map_get<rm_provider::evidence_handler_t> ("/evidence")
-              .map_post<rm_provider::server_weight_handler_t> ("/admin/server-weight");
+              .map_post<rm_provider::server_weight_handler_t> ("/admin/server-weight")
+              .map_post<rm_provider::observer_fault_handler_t> (
+                "/admin/fault/observer-throws")
+              .map_post<rm_provider::clear_fault_handler_t> ("/admin/fault/none");
         }
         framework.handlers ()
           .group (e2e::handler_group)

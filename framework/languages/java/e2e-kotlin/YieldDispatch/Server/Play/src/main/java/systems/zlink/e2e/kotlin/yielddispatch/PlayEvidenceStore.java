@@ -13,12 +13,12 @@ public final class PlayEvidenceStore {
         entries.add(new EvidenceEntry(requestId, marker, value));
     }
 
-    public synchronized Contracts.EvidenceReply evidence(String requestId) {
+    public synchronized Contracts.EvidenceRes evidence(String requestId) {
         List<String> markers = entries.stream()
             .filter(entry -> entry.requestId().equals(requestId))
             .map(entry -> entry.marker() + "|" + entry.value())
             .toList();
-        return new Contracts.EvidenceReply(requestId, markers);
+        return new Contracts.EvidenceRes(requestId, markers);
     }
 
     private record EvidenceEntry(String requestId, String marker, String value) {

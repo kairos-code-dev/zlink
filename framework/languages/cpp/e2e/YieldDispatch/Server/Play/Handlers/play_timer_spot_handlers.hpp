@@ -58,7 +58,7 @@ handle_timer_start_command (zlink::framework::spot_context_t &context,
                             evidence_store_t &evidence,
                             std::map<std::string, yield_timer_state_t> &timers,
                             std::mutex &timer_mutex,
-                            const yd::timer_start_command_t &request)
+                            const yd::timer_start_msg_t &request)
 {
     const auto spot_rid = std::string (context.spot_rid ().value ());
     {
@@ -94,7 +94,7 @@ handle_timer_start_command (zlink::framework::spot_context_t &context,
 inline void
 handle_timer_stop_command (std::map<std::string, yield_timer_state_t> &timers,
                            std::mutex &timer_mutex,
-                           const yd::timer_stop_command_t &request)
+                           const yd::timer_stop_msg_t &request)
 {
     std::vector<zlink::framework::timer_t> timers_to_cancel;
     {
@@ -154,7 +154,7 @@ handle_timer_tick (zlink::framework::spot_context_t &context,
         evidence.add ("timer-yield-released|rid=" + evidence.node_rid + "|spot="
                       + spot_rid + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
-        co_await call.yield<yd::delay_reply_t> ();
+        co_await call.yield<yd::delay_res_t> ();
         evidence.add ("timer-yield-resumed|rid=" + evidence.node_rid + "|spot="
                       + spot_rid + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");

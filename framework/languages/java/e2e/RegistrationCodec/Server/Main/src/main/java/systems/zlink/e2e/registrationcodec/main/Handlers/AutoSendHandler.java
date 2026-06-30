@@ -8,7 +8,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 
 @ZLinkHandlerGroup(Contracts.AUTO_GROUP)
 public final class AutoSendHandler
-    implements ZLinkSendHandler<Contracts.EchoAutoCommand> {
+    implements ZLinkSendHandler<Contracts.EchoAutoMsg> {
     private final EvidenceStore state;
 
     public AutoSendHandler(EvidenceStore state) {
@@ -17,7 +17,7 @@ public final class AutoSendHandler
 
     @Override
     public void handle(
-        Contracts.EchoAutoCommand message,
+        Contracts.EchoAutoMsg message,
         ZLinkSendContext context) {
         state.record("Send", "EchoAuto", message.value());
     }

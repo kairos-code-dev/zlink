@@ -7,7 +7,7 @@ import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame;
-import systems.zlink.samples.tictactoe.shared.contracts.LeaveGameReq;
+import systems.zlink.samples.tictactoe.shared.contracts.LeaveGameMsg;
 
 @ZLinkHandlerGroup(SampleNames.PlayActor)
 public final class PlayActorLeaveGameHandler {
@@ -16,7 +16,7 @@ public final class PlayActorLeaveGameHandler {
         TicTacToeGame spot,
         PlayActor actor,
         ZLinkSpotActorSendContext context,
-        LeaveGameReq request,
+        LeaveGameMsg request,
         CancellationToken cancellationToken) {
         spot.leaveGame(actor, request.roomId());
     }

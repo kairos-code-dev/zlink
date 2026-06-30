@@ -33,7 +33,7 @@ internal sealed class ConversationSpot(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var create = request.Decode<ConversationCreateRequest>();
+        var create = request.Decode<ConversationCreateReq>();
         var conversationId = Context.SpotRid.ToString();
         _conversation = new Conversation(
             conversationId,

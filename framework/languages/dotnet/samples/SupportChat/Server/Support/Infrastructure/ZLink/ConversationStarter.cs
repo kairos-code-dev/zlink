@@ -9,12 +9,12 @@ internal sealed class ConversationStarter(IZLinkSpotManager spots) : IConversati
 {
     public async ValueTask StartAsync(
         string conversationId,
-        ConversationStartRequest request,
+        ConversationStartReq request,
         CancellationToken cancellationToken)
     {
         await spots.GetOrCreateAsync<ConversationSpot>(
             RoutingId.From(conversationId),
-            new ConversationCreateRequest(
+            new ConversationCreateReq(
                 request.CustomerActorId,
                 request.CustomerDisplayName,
                 request.Subject,

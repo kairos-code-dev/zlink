@@ -10,15 +10,15 @@ import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler
 class ActorAuthHandler(
     private val actors: ZLinkActorManager,
     private val evidence: ScenarioState
-) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.ActorAuthRequest> {
-    override fun packetName(): String = "ActorAuthRequest"
+) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.ActorAuthReq> {
+    override fun packetName(): String = "ActorAuthReq"
 
-    override fun messageType(): Class<Contracts.ActorAuthRequest> = Contracts.ActorAuthRequest::class.java
+    override fun messageType(): Class<Contracts.ActorAuthReq> = Contracts.ActorAuthReq::class.java
 
     override fun handle(
         context: ZLinkSessionContext,
         dispatch: ZLinkSessionDispatchContext,
-        request: Contracts.ActorAuthRequest
+        request: Contracts.ActorAuthReq
     ) {
         val actor = actors.getOrCreate(request.actorId, "scenario", request)
             .toCompletableFuture()
@@ -29,7 +29,7 @@ class ActorAuthHandler(
         evidence.record("ActorSessionBound", "session", request.actorId)
         context.client()
             .reply(
-                Contracts.ActorAuthReply(
+                Contracts.ActorAuthRes(
                     bound.actorId(),
                     bound.ref().nodeRid().toString(),
                     context.actors().bound().size,

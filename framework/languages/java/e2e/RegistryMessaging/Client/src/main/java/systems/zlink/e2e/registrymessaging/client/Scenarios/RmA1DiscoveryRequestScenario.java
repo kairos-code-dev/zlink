@@ -12,9 +12,9 @@ public final class RmA1DiscoveryRequestScenario {
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB,
         ZLinkHttpClient registry) {
-        Contracts.ProfileReply reply = providerA.post("/profile/request")
-            .body(new Contracts.ProfileRequest("rm-a1"))
-            .fetch(Contracts.ProfileReply.class);
+        Contracts.ProfileRes reply = providerA.post("/profile/request")
+            .body(new Contracts.ProfileReq("rm-a1"))
+            .fetch(Contracts.ProfileRes.class);
         ScenarioAssert.that("profile:rm-a1".equals(reply.value()), "RM-A1 reply payload mismatch");
         ScenarioAssert.that(reply.providerRid().equals("api-a") || reply.providerRid().equals("api-b"),
             "RM-A1 provider rid mismatch");
@@ -31,7 +31,7 @@ public final class RmA1DiscoveryRequestScenario {
             ScenarioAssert.evidence(providerA),
             ScenarioAssert.evidence(providerB));
         ScenarioAssert.that(java.util.Arrays.stream(evidence)
-                .anyMatch(line -> line.contains("ProfileRequest") && line.contains("rm-a1")),
+                .anyMatch(line -> line.contains("ProfileReq") && line.contains("rm-a1")),
             "RM-A1 provider evidence missing");
         System.out.println("scenario RM-A1 passed");
     }

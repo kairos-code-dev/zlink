@@ -1,4 +1,4 @@
-import type { EvidenceWaitRequest } from '../../Shared/messages';
+import type { EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
@@ -8,7 +8,7 @@ export async function runMonA2(options: ClientOptions): Promise<void> {
     containsAll: ['monitor-registry|source=registry'],
     containsAnyGroups: [['kind=TopologyChanged'], ['kind=ServiceSummaryChanged']],
     timeoutMilliseconds: 15000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
 
   ensure(
     evidence.some((line) =>

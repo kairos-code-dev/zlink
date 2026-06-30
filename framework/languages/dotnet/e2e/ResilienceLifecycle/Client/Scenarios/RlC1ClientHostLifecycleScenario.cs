@@ -15,23 +15,23 @@ internal static class RlC1ClientHostLifecycleScenario
         foreach (var index in Enumerable.Range(0, 12))
         {
             var reply = (await consumer.Post("/profile/request/new-client")
-                .Body(new ProfileRequest("fast", $"rl-c1-{index}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-c1-{index}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(
                 reply.Value == "profile:fast",
                 "RL-C1 request failed before cleanup.");
         }
 
         var followUp = (await consumer.Post("/profile/request/new-client")
-            .Body(new ProfileRequest("fast", "rl-c1-after-cleanup"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("fast", "rl-c1-after-cleanup"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:fast", "RL-C1 follow-up failed after client cleanup.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-"], []))
+            var waitA = providerA.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-c1-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitRequest(["marker=rl-c1-"], []))
+            var waitB = providerB.Post("/evidence/wait").Body(new EvidenceWaitReq(["marker=rl-c1-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
@@ -42,10 +42,10 @@ internal static class RlC1ClientHostLifecycleScenario
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token)
                 .AsTask();
             var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c1-after-cleanup"], [])).SubmitAsync<string[]>(timeout.Token)
                 .AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;

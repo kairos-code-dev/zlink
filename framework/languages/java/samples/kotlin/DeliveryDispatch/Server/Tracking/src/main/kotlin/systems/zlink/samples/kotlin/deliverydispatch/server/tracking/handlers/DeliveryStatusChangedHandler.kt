@@ -12,9 +12,9 @@ import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.Eviden
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliverySpotDirectory
 import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliveryTrackingSpot
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreate
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusAck
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChanged
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreateReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusNotify
 
 @ZLinkHandlerGroup("tracking")
@@ -24,15 +24,15 @@ class DeliveryStatusChangedHandler(
     private val evidence: EvidenceStore,
     private val fanout: ZLinkFanoutClient,
     private val json: ObjectMapper,
-) : ZLinkSuspendingRequestHandler<DeliveryStatusChanged, DeliveryStatusAck> {
+) : ZLinkSuspendingRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes> {
     override suspend fun handle(
-        request: DeliveryStatusChanged,
+        request: DeliveryStatusChangedReq,
         context: ZLinkRequestContext,
     ) = run {
         spots.getOrCreate(
             DeliveryTrackingSpot::class.java,
             RoutingId.from(request.deliveryId),
-            DeliverySpotCreate(request.deliveryId),
+            DeliverySpotCreateReq(request.deliveryId),
         ).await()
         evidence.append(request)
         directory.require(request.deliveryId).record(request)
@@ -51,6 +51,6 @@ class DeliveryStatusChangedHandler(
         System.err.println(
             "deliverydispatch tracking: status delivery=${request.deliveryId} status=${request.status} courier=${request.courierId}",
         )
-        DeliveryStatusAck(request.deliveryId, request.status)
+        DeliveryStatusChangedRes(request.deliveryId, request.status)
     }
 }

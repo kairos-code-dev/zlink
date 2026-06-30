@@ -13,8 +13,8 @@ internal static class MonA4AvailabilityTransitionScenario
         using var registry = ZLinkHttpClient.Create(options.RegistryUrl).Build();
 
         var before = (await trigger.Post("/profile/request")
-            .Body(new ProfileRequest("drain", "mon-a4-before-drain"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("drain", "mon-a4-before-drain"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(before.ProviderRid == "svc-a", "MON-A4 direct trigger did not hit drained service.");
 
         await service.Post("/admin/drain").SubmitRawAsync();
@@ -43,7 +43,7 @@ internal static class MonA4AvailabilityTransitionScenario
     private static async Task<string[]> WaitForTriggerDrainEvidenceAsync(ZLinkHttpClient trigger)
     {
         var evidence = (await trigger.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["monitor-socket|"],
                 [["kind=PeerAdmissionChanged"]]))
             .SubmitAsync<string[]>()).Body;
@@ -55,7 +55,7 @@ internal static class MonA4AvailabilityTransitionScenario
     private static async Task<string[]> WaitForRegistryTopologyEvidenceAsync(ZLinkHttpClient registry)
     {
         var evidence = (await registry.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["monitor-registry|source=registry"],
                 [["kind=TopologyChanged|topology=3"]]))
             .SubmitAsync<string[]>()).Body;
@@ -69,7 +69,7 @@ internal static class MonA4AvailabilityTransitionScenario
     private static async Task<string[]> WaitForServiceDrainEvidenceAsync(ZLinkHttpClient service)
     {
         var evidence = (await service.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["admin|"],
                 [["action=drain"]]))
             .SubmitAsync<string[]>()).Body;

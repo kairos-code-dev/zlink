@@ -21,8 +21,8 @@ internal static class RmB1ScaleOutScenario
         for (var i = 0; i < 10; i++)
         {
             var reply = (await requester.Post("/profile/request")
-                .Body(new ProfileRequest($"{markerBefore}-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq($"{markerBefore}-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.ProviderRid == "api-a", "RM-B1 before scale-out should reach api-a.");
         }
 
@@ -46,12 +46,12 @@ internal static class RmB1ScaleOutScenario
         var values = Enumerable.Range(0, 60)
             .Select(index => $"{markerAfter}-{index}")
             .ToArray();
-        var replies = new List<ProfileReply>(values.Length);
+        var replies = new List<ProfileRes>(values.Length);
         foreach (var value in values)
         {
             var reply = (await requester.Post("/profile/request")
-                .Body(new ProfileRequest(value))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq(value))
+                .SubmitAsync<ProfileRes>()).Body;
             replies.Add(reply);
         }
 
@@ -88,7 +88,7 @@ internal static class RmB1ScaleOutScenario
     private static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains)
     {
         return (await http.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains))
+            .Body(new EvidenceWaitReq(contains))
             .SubmitAsync<string[]>()).Body;
     }
 }

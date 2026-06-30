@@ -2,14 +2,14 @@ import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
-  profileRequest,
+  profileReq,
   sendRequestBatch,
   waitTopologyReady,
   waitUntilDown
 } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 import type { ScenarioState } from '../Support/scenario-state';
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 
 export async function runRlA1(options: ClientOptions, state: ScenarioState): Promise<void> {
   await postJson(options.providerBUrl, '/shutdown');
@@ -18,7 +18,7 @@ export async function runRlA1(options: ClientOptions, state: ScenarioState): Pro
 
   for (let i = 0; i < 12; i += 1) {
     const marker = `rl-a1-down-${i}`;
-    const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', profileRequest(marker));
+    const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', profileReq(marker));
     ensure(reply.providerRid === 'api-a', 'RL-A1 request during api-b restart did not use surviving provider.');
   }
   await postJson<string[]>(options.providerAUrl, '/evidence/wait', { contains: 'marker=rl-a1-down-' });

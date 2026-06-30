@@ -39,7 +39,7 @@ internal sealed class CourierSession(
             return;
         }
 
-        var decision = payload.Decode<CourierDecision>();
+        var decision = payload.Decode<CourierDecisionMsg>();
         var actor = Context.Actors.Find(decision.CourierId)
             ?? throw new InvalidOperationException($"Courier actor is not bound: {decision.CourierId}");
         await actor.RelayAsync(payload, cancellationToken);

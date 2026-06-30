@@ -62,7 +62,7 @@ function createServiceModule(options: ServiceOptions, evidence: EvidenceStore): 
           builder.addClientServerChannel(RuntimeMonitoringNames.channel)
             .enableServer(options.channelEndpoint)
             .routingId(options.rid)
-            .addRequestHandler(PacketNames.profileRequest, ProfileRequestHandler);
+            .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler);
           builder.addSpotMesh(RuntimeMonitoringNames.spotChannel)
             .routingId(options.rid)
             .enableRouter(options.spotRouterEndpoint)

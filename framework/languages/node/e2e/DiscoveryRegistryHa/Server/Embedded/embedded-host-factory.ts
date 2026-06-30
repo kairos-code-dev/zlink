@@ -52,7 +52,7 @@ function createEmbeddedModule(options: EmbeddedOptions, evidence: EvidenceStore)
           builder.addClientServerChannel(ChannelNames.profile)
             .enableServer(options.channelEndpoint)
             .routingId(options.rid)
-            .addRequestHandler(PacketNames.profileRequest, ProfileRequestHandler);
+            .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler);
           return builder.build();
         }
       })

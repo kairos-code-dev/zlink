@@ -37,17 +37,17 @@ inline void run_mon_c1_dispatch_failure_scenario (zlink::framework::channel_clie
                 "MON-C1 throwing stderr marker missing");
     }
 
-    profile_reply_t reply;
+    profile_res_t reply;
     if (const auto trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"); !trigger_url.empty ()) {
         reply = post_profile_request (
           trigger_url, "/profile/request",
-          profile_request_t{.value = "throw", .marker = "mon-c1-recovery"});
+          profile_req_t{.value = "throw", .marker = "mon-c1-recovery"});
     } else {
         auto request =
           channels.request (profile_channel,
-                            profile_request_t{.value = "throw", .marker = "mon-c1-recovery"})
+                            profile_req_t{.value = "throw", .marker = "mon-c1-recovery"})
             .timeout (std::chrono::milliseconds (3000))
-            .async<profile_reply_t> ();
+            .async<profile_res_t> ();
         const auto &result = request.result ();
         ensure (result.has_value (),
                 "MON-C1 recovery request failed: "

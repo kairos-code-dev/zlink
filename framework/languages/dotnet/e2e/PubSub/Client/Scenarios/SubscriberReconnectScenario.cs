@@ -118,7 +118,7 @@ internal static class SubscriberReconnectScenario
     private static async Task<string[]> WaitForSubscriberAsync(ZLinkHttpClient subscriber, string runId)
     {
         return (await subscriber.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
                 []))
             .SubmitAsync<string[]>()).Body;

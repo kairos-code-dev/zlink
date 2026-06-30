@@ -12,8 +12,8 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.server.courier.handlers.OfferDeliveryHandler
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDelivery
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryResult
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryRes
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -38,8 +38,8 @@ class CourierApplication {
                 .enableServer(SampleTopology.courierEndpoint(options.courierId))
                 .addRequestHandler(
                     OfferDeliveryHandler::class.java,
-                    OfferDelivery::class.java,
-                    OfferDeliveryResult::class.java,
+                    OfferDeliveryReq::class.java,
+                    OfferDeliveryRes::class.java,
                 )
         }
 

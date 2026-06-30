@@ -6,9 +6,9 @@ import { retry } from '../Configuration/request-retry';
 import type { INestApplicationContext } from '@nestjs/common';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type {
-  AssignDeliveryResult,
-  CreateDeliveryRequest,
-  DeliveryCreated,
+  AssignDeliveryRes,
+  CreateDeliveryReq,
+  CreateDeliveryRes,
   ServerAssertionReq,
   ServerAssertionRes
 } from '../../Shared/Contracts/messages';
@@ -28,13 +28,13 @@ function startDispatchApi(
         return;
       }
       if (request.method === 'POST' && request.url === '/deliveries') {
-        const body = await readJson<CreateDeliveryRequest>(request);
+        const body = await readJson<CreateDeliveryReq>(request);
         const assigned = await requestDispatch(channels, body);
         if (!assigned.accepted) {
           throw new Error(`Dispatch Center rejected delivery '${assigned.deliveryId}'.`);
         }
         console.error(`deliverydispatch api: created delivery=${assigned.deliveryId} courier=${assigned.courierId}`);
-        sendJson(response, 200, { deliveryId: assigned.deliveryId } satisfies DeliveryCreated);
+        sendJson(response, 200, { deliveryId: assigned.deliveryId } satisfies CreateDeliveryRes);
         return;
       }
       if (request.method === 'POST' && request.url === '/self-check/assert') {
@@ -62,13 +62,13 @@ function startDispatchApi(
 
 async function requestDispatch(
   channels: ZLinkChannelClient,
-  request: CreateDeliveryRequest
-): Promise<AssignDeliveryResult> {
+  request: CreateDeliveryReq
+): Promise<AssignDeliveryRes> {
   return await retry(() => channels
     .requestToChannel(
       SampleNames.dispatchChannel,
       assignDelivery(request.deliveryId, request.customerId, request.pickupAddress, request.dropoffAddress))
-    .submit<AssignDeliveryResult>(), { delayMs: 250, maxAttempts: 40 });
+    .submit<AssignDeliveryRes>(), { delayMs: 250, maxAttempts: 40 });
 }
 
 function readJson<T>(request: http.IncomingMessage): Promise<T> {

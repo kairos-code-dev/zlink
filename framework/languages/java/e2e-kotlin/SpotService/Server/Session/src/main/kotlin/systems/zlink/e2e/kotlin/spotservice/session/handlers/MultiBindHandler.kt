@@ -10,27 +10,27 @@ import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler
 class MultiBindHandler(
     private val actors: ZLinkActorManager,
     private val evidence: ScenarioState
-) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.MultiBindRequest> {
-    override fun packetName(): String = "MultiBindRequest"
+) : ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.MultiBindReq> {
+    override fun packetName(): String = "MultiBindReq"
 
-    override fun messageType(): Class<Contracts.MultiBindRequest> = Contracts.MultiBindRequest::class.java
+    override fun messageType(): Class<Contracts.MultiBindReq> = Contracts.MultiBindReq::class.java
 
     override fun handle(
         context: ZLinkSessionContext,
         dispatch: ZLinkSessionDispatchContext,
-        request: Contracts.MultiBindRequest
+        request: Contracts.MultiBindReq
     ) {
         listOf(request.firstActorId, request.secondActorId).forEach { actorId ->
             val actor = actors.getOrCreate(
                 actorId,
                 "scenario",
-                Contracts.ActorAuthRequest(actorId, request.profile)
+                Contracts.ActorAuthReq(actorId, request.profile)
             ).toCompletableFuture().join()
             context.actors().bind(actor).toCompletableFuture().join()
             evidence.record("ActorSessionBound", "session", actorId)
         }
         context.client()
-            .reply(Contracts.MultiBindReply(context.actors().bound().size))
+            .reply(Contracts.MultiBindRes(context.actors().bound().size))
             .await()
     }
 }

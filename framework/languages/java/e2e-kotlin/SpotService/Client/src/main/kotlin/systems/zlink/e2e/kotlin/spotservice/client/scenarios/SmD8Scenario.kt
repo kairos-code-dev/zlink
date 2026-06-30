@@ -15,14 +15,14 @@ internal object SmD8Scenario {
         try {
             first.connect().await()
             val auth = first
-                .request(Contracts.ActorAuthRequest(actorId, profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(actorId, profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-D8 initial auth actor mismatch")
 
             val pending = first
-                .request(Contracts.SlowSessionRequest("before-disconnect", 1000))
+                .request(Contracts.SlowSessionReq("before-disconnect", 1000))
                 .timeout(Duration.ofSeconds(10))
-                .submit(Contracts.SlowSessionReply::class.java)
+                .submit(Contracts.SlowSessionRes::class.java)
             Thread.sleep(100)
             first.close().await()
 
@@ -43,7 +43,7 @@ internal object SmD8Scenario {
         postJson(
             Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
             "/evidence/wait",
-            Contracts.EvidenceWaitRequest(
+            Contracts.EvidenceWaitReq(
                 listOf("ActorEntryDisconnected|session-a|entry|$actorId"),
                 10_000,
             ),
@@ -54,13 +54,13 @@ internal object SmD8Scenario {
         try {
             second.connect().await()
             val auth = second
-                .request(Contracts.ActorAuthRequest(actorId, profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(actorId, profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-D8 reauth actor mismatch")
 
             val reply = second
-                .request(Contracts.ActorEchoRequest("after-reconnect", 8, profile))
-                .await(Contracts.ActorEchoReply::class.java)
+                .request(Contracts.ActorEchoReq("after-reconnect", 8, profile))
+                .await(Contracts.ActorEchoRes::class.java)
             ensure(reply.actorId == actorId, "SM-D8 reconnected actor mismatch")
             ensure(reply.nodeRid == "session-a", "SM-D8 reconnected node mismatch")
             ensure(reply.value == "entry:after-reconnect", "SM-D8 reconnected value mismatch")

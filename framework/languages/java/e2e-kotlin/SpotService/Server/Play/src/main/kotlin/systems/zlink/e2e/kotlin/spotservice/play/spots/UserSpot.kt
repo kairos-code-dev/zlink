@@ -50,7 +50,7 @@ class UserSpot(
         request: ZLinkMessage,
         cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
-        val join = request.decode(Contracts.ActorJoinRequest::class.java)
+        val join = request.decode(Contracts.ActorJoinReq::class.java)
         actor.applyProfile(join.profile)
         evidence.record(
             "ActorUserJoinRequested",
@@ -58,7 +58,7 @@ class UserSpot(
             actor.actorId() + "/" + join.profile.displayName + "/" + join.tags.joinToString(",")
         )
         return ZLinkSpotActorJoinResponse.accept(
-            Contracts.ActorJoinReply(
+            Contracts.ActorJoinRes(
                 actor.actorId(),
                 context.spotRid().toString(),
                 evidence.nodeRid(),
@@ -92,7 +92,7 @@ class UserSpot(
 
     fun apply(op: String): String {
         state = if (state.isBlank()) op else "$state,$op"
-        evidence.record("StateRequest", context.spotRid().toString(), state)
+        evidence.record("StateReq", context.spotRid().toString(), state)
         if (op == "worker-follow-up" && !workerDone) {
             evidence.record("WorkerFollowUpBeforeComplete", context.spotRid().toString(), state)
         }
@@ -120,7 +120,7 @@ class UserSpot(
     }
 
     fun command(value: String) {
-        evidence.record("StateCommand", context.spotRid().toString(), value)
+        evidence.record("StateMsg", context.spotRid().toString(), value)
     }
 
     fun record(marker: String, value: String) {

@@ -12,10 +12,10 @@ internal object SmA3Scenario {
         val roomA = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("owner-a"),
+                Contracts.StateReq("owner-a"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         ensure(roomA.nodeRid == "play-a", "SM-A3 room-a owner mismatch")
         println("scenario SM-A3 passed")

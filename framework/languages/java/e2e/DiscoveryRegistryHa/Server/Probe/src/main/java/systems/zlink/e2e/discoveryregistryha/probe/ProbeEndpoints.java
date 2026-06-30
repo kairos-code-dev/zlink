@@ -43,8 +43,8 @@ public final class ProbeEndpoints implements SmartLifecycle {
             server.createContext("/topology-rids", exchange ->
                 HttpSupport.writeJson(exchange, json, topologyRids()));
             server.createContext("/registry/topology/wait", exchange -> {
-                Contracts.TopologyReadyWaitRequest request =
-                    HttpSupport.readJson(exchange, json, Contracts.TopologyReadyWaitRequest.class);
+                Contracts.TopologyReadyWaitReq request =
+                    HttpSupport.readJson(exchange, json, Contracts.TopologyReadyWaitReq.class);
                 java.util.List<?> topology = Wait.until(
                     Duration.ofMillis(Math.max(1, request.timeoutMilliseconds())),
                     "timed out waiting for topology ready count " + request.readyCount(),

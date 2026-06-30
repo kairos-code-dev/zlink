@@ -1,7 +1,7 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
-import { profileRequest } from '../Support/resilience-helpers';
+import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlB6(options: ClientOptions): Promise<void> {
@@ -11,10 +11,10 @@ export async function runRlB6(options: ClientOptions): Promise<void> {
   let healthySuccesses = 0;
   for (let i = 0; i < 60 && (failures === 0 || healthySuccesses === 0); i += 1) {
     try {
-      const reply = await postJson<ProfileReply>(
+      const reply = await postJson<ProfileRes>(
         options.consumerUrl,
         '/profile/request/no-retry',
-        profileRequest(`rl-b6-${i}`)
+        profileReq(`rl-b6-${i}`)
       );
       if (reply.providerRid === 'api-a') {
         healthySuccesses += 1;
@@ -27,7 +27,7 @@ export async function runRlB6(options: ClientOptions): Promise<void> {
   ensure(healthySuccesses > 0 && failures > 0, 'RL-B6 expected both healthy successes and gray failures.');
 
   await postJson(options.providerBUrl, '/admin/fault/none');
-  const followUp = await postJson<ProfileReply>(
+  const followUp = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request',
     { value: 'fast', marker: 'rl-b6-after' }

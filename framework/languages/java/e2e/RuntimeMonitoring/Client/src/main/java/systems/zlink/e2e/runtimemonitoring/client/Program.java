@@ -84,11 +84,11 @@ public final class Program {
 
         public void run() {
             for (int index = 0; index < 5; index++) {
-                Contracts.WorkReply reply = client.requestToChannel(
+                Contracts.WorkRes reply = client.requestToChannel(
                         Contracts.CHANNEL,
-                        new Contracts.WorkRequest("a1-" + index))
+                        new Contracts.WorkReq("a1-" + index))
                     .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkReply.class);
+                    .await(Contracts.WorkRes.class);
                 ensure(reply.value().equals("work:a1-" + index), "reply mismatch");
             }
             waitForEvent(Env.get("ZLINK_JAVA_E2E_REGISTRY_HTTP"), "registry", Set.of(
@@ -150,11 +150,11 @@ public final class Program {
         private void ensureMonitoringHandlerFailureIsIsolated() {
             waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "monitoring", Set.of(
                 "HandlerFailureInjected"));
-            Contracts.WorkReply reply = client.requestToChannel(
+            Contracts.WorkRes reply = client.requestToChannel(
                     Contracts.CHANNEL,
-                    new Contracts.WorkRequest("c1-after-handler-failure"))
+                    new Contracts.WorkReq("c1-after-handler-failure"))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply.class);
+                .await(Contracts.WorkRes.class);
             ensure(reply.value().equals("work:c1-after-handler-failure"),
                 "MON-C1 follow-up reply mismatch");
         }

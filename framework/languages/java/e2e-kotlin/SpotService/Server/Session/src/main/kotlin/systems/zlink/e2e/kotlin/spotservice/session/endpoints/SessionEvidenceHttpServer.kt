@@ -39,7 +39,7 @@ class SessionEvidenceHttpServer(
             nextServer.createContext("/evidence/wait") { exchange ->
                 requirePost(exchange)
                 val request = exchange.requestBody.use { body ->
-                    json.readValue(body, Contracts.EvidenceWaitRequest::class.java)
+                    json.readValue(body, Contracts.EvidenceWaitReq::class.java)
                 }
                 val snapshot = state.waitUntilContainsAll(
                     request.containsAll,

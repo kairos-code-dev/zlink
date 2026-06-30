@@ -22,8 +22,8 @@ internal static class DrA4ThirdRegistryScenario
 
         var marker = $"dr-a4-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request/wait")
-            .Body(new ProfileRequest("dr-a4", marker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("dr-a4", marker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:dr-a4", "DR-A4 request failed.");
         ScenarioAssert.That(reply.ProviderRid == "api-a", "DR-A4 same-rid providers should report api-a.");
         ScenarioAssert.That(reply.Marker == marker, "DR-A4 marker mismatch.");
@@ -51,7 +51,7 @@ internal static class DrA4ThirdRegistryScenario
     private static async Task<string[]> WaitForEvidenceAsync(ZLinkHttpClient client, string marker)
     {
         return (await client.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(marker))
+            .Body(new EvidenceWaitReq(marker))
             .SubmitAsync<string[]>()).Body;
     }
 }

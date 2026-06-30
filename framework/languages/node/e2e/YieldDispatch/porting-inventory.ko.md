@@ -23,7 +23,7 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
 | YD-C3 | `Client/Scenarios/YdC3ActorTimerIsolationScenario.cs` | `Client/Scenarios/yd-c3-actor-timer-isolation-scenario.ts`, `Server/Play/Spots/yield-actors.ts`, `Server/Play/Handlers/timer-spot-handlers.ts`, `Server/Play/Spots/yield-probe-spot.ts`, `Server/Session/Handlers/yield-session.ts` | done | joined Spot actor yield와 timer fast tick, timer yield와 actor fast request의 marker order를 검증했다. `logs/20260630-001519-2006872`에서 통과 |
 | YD-D1 | `run_e2e.sh`, `Client/Scenarios/YdA1BasicTerminatorScenario.cs` | `run_e2e.sh`, YD-A1/YD-C3/YD-E1 범위 | done | `play-a`와 `delay-a` local topology에서 A/B/C/E1 marker를 검증했다. `logs/20260630-013124-2207115`에서 통과 |
 | YD-D2 | `Client/Scenarios/YdD2RemoteSpotYieldScenario.cs` | `Client/Scenarios/yd-d2-remote-spot-yield-scenario.ts`, `Server/Play/Handlers/remote-spot-handlers.ts`, `Server/Play/Handlers/basic-spot-handlers.ts`, `Server/Session/Handlers/yield-session.ts`, `run_e2e.sh` | done | `play-a` owner Spot handler가 `play-b` target Spot request를 `yield()`로 기다리고, continuation이 owner node로 돌아오는지 검증했다. `logs/20260630-011052-2139060`에서 통과 |
-| YD-D3 | `Client/Scenarios/YdD3RouteBridgeYieldScenario.cs` | `Client/Scenarios/yd-d3-route-bridge-yield-scenario.ts`, `Server/Session/Handlers/yield-session.ts`, `Server/Play/Handlers/basic-spot-handlers.ts`, `run_e2e.sh` | done | session gateway가 `play-b` target Spot으로 `YieldCommand`와 `ProbeCommand`를 relay하고, target Spot의 yield/probe marker order를 검증했다. `logs/20260630-011406-2148695`에서 통과 |
+| YD-D3 | `Client/Scenarios/YdD3RouteBridgeYieldScenario.cs` | `Client/Scenarios/yd-d3-route-bridge-yield-scenario.ts`, `Server/Session/Handlers/yield-session.ts`, `Server/Play/Handlers/basic-spot-handlers.ts`, `run_e2e.sh` | done | session gateway가 `play-b` target Spot으로 `YieldMsg`와 `ProbeMsg`를 relay하고, target Spot의 yield/probe marker order를 검증했다. `logs/20260630-011406-2148695`에서 통과 |
 | YD-D4 | `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/Scenarios/yd-d4-session-relay-actor-yield-scenario.ts`, `Server/Session/Handlers/yield-session.ts`, `Server/Play/Spots/yield-actors.ts`, `Server/Play/Spots/yield-probe-spot.ts`, `run_e2e.sh` | done | bound actor relay, actor handler yield, bound session push, unbound session 미수신을 검증했다. `logs/20260630-012503-2187844`에서 통과 |
 | YD-E1 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/Scenarios/yd-e1-timeout-scenario.ts`, `Server/Play/Handlers/failure-spot-handlers.ts`, `Server/Session/Handlers/yield-session.ts`, `run_e2e.sh` | done | timeout보다 늦은 delay request를 `yield()`로 기다린 뒤 timeout marker를 남기고, 같은 Spot의 probe가 정상 처리되는지 검증했다. `logs/20260630-013124-2207115`에서 통과 |
 | YD-E2 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/Scenarios/yd-e2-cancellation-scenario.ts`, `Server/Play/Handlers/failure-spot-handlers.ts`, `Server/Session/Handlers/yield-session.ts`, `run_e2e.sh` | done | server-side cancellation signal을 `yield()`에 전달한 뒤 cancellation marker를 남기고, 같은 Spot의 probe가 정상 처리되는지 검증했다. `logs/20260630-013740-2222765`에서 통과 |
@@ -63,7 +63,7 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
 | `Client/Scenarios/YdC2TimerReentryScenario.cs` | `Client/Scenarios/yd-c2-timer-reentry-scenario.ts` | scenario | done | 같은 timer의 다음 tick이 이전 tick continuation 뒤에 처리되는지 검증한다. |
 | `Client/Scenarios/YdC3ActorTimerIsolationScenario.cs` | `Client/Scenarios/yd-c3-actor-timer-isolation-scenario.ts` | scenario | done | actor yield 중 timer fast tick 진행과 timer yield 중 actor fast request 진행을 검증한다. actor yield와 timer control은 서로 다른 stream connector로 보내 pending request가 timer command를 막지 않게 한다. |
 | `Client/Scenarios/YdD2RemoteSpotYieldScenario.cs` | `Client/Scenarios/yd-d2-remote-spot-yield-scenario.ts` | scenario | done | owner Spot은 `play-a`, target Spot은 `play-b`에 생성하고 owner/target evidence를 나눠 검증한다. |
-| `Client/Scenarios/YdD3RouteBridgeYieldScenario.cs` | `Client/Scenarios/yd-d3-route-bridge-yield-scenario.ts` | scenario | done | target Spot을 `play-b`에 만들고 session gateway relay를 통해 `YieldCommand`/`ProbeCommand` marker order를 검증한다. |
+| `Client/Scenarios/YdD3RouteBridgeYieldScenario.cs` | `Client/Scenarios/yd-d3-route-bridge-yield-scenario.ts` | scenario | done | target Spot을 `play-b`에 만들고 session gateway relay를 통해 `YieldMsg`/`ProbeMsg` marker order를 검증한다. |
 | `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/Scenarios/yd-d4-session-relay-actor-yield-scenario.ts` | scenario | done | bound session으로 relay한 actor request가 yield 뒤 reply를 반환하고, actor가 보낸 push가 bound session에만 도착하는지 검증한다. |
 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/Scenarios/yd-e1-timeout-scenario.ts` | scenario | done | timeout 뒤 같은 Spot의 probe가 처리되고, 늦은 reply가 continuation marker를 남기지 않는지 검증한다. |
 | `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/Scenarios/yd-e2-cancellation-scenario.ts` | scenario | done | cancellation 뒤 같은 Spot의 probe가 처리되고, 늦은 reply가 continuation marker를 남기지 않는지 검증한다. |
@@ -107,7 +107,7 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
 - 내부 bridge 호출, raw frame, 테스트 전용 adapter는 추가하지 않았다.
 - B1 client driver는 actor A request와 actor B request를 서로 다른 stream connector로 보낸다. Node stream connector는 한
   connector에서 동시에 두 request/reply를 열 수 없기 때문에, 이 방식으로 같은 public session actor relay 계약을 검증한다.
-- B2 client driver는 같은 connector에서 `ActorYieldReq` request가 pending인 동안 `ActorFastReq`를 send로 보낸다.
+- B2 client driver는 같은 connector에서 `ActorYieldReq` request가 pending인 동안 `ActorFastMsg`를 send로 보낸다.
   이 방식은 request/reply 동시 pending 제약을 피하면서 같은 actor mailbox가 재진입하지 않는지를 public actor relay 경로로 검증한다.
 - B3 handler는 public `actor.context.joinSpot(...).yield()`를 사용한다. target Spot의 join hook은 `.NET` 기준처럼
   join request의 delay payload를 기다린 뒤 evidence를 남긴다.
@@ -119,23 +119,23 @@ YD-E5의 cross-language aggregation은 Node config 완료 조건이 아니라 �
   같은 connector의 request/reply 동시 진행을 제한하기 때문에, timer command가 actor request 뒤에 막히지 않도록
   같은 public session relay 계약을 두 connector로 검증한다.
 - D2 remote Spot handler는 public `spot.context.outbound.requestToSpot(...).yield<TReply>()`를 사용한다.
-  target Spot은 `play-b`에서 일반 `YieldCommand` request handler로 실행되고, continuation marker는 owner인
+  target Spot은 `play-b`에서 일반 `YieldMsg` request handler로 실행되고, continuation marker는 owner인
   `play-a`에만 남는지 검증한다.
 - D3 route bridge 경로는 stream session에서 들어온 command가 session gateway의 public Spot outbound relay를
   거쳐 `play-b` target Spot handler에 도달하는 흐름으로 검증한다. target Spot handler 안의 `yield()`와
-  같은 Spot `ProbeCommand` interleaving만 사용하며 route mesh request 자체에 yield를 붙이지 않는다.
+  같은 Spot `ProbeMsg` interleaving만 사용하며 route mesh request 자체에 yield를 붙이지 않는다.
 - D4 actor handler는 public session actor relay와 public bound session send를 사용한다. actor가 joined Spot에
   있어도 같은 public actor handler 등록으로 처리하며, push 수신 범위는 bound session과 별도 unbound session을
   함께 열어 검증한다.
 - E1 timeout handler는 Spot handler 안에서 public `requestToChannel(...).timeout(...).yield<TReply>()`를
-  사용한다. timeout 뒤 같은 Spot에 `ProbeCommand`를 보내 mailbox가 다시 진행되는지 확인하고, 늦게 온
+  사용한다. timeout 뒤 같은 Spot에 `ProbeMsg`를 보내 mailbox가 다시 진행되는지 확인하고, 늦게 온
   reply가 continuation marker를 남기지 않는지도 검증한다.
 - E2 cancellation handler는 Spot handler 안에서 server-side `AbortController` signal을 public
-  `yield<TReply>(signal)`에 전달한다. cancellation 뒤 같은 Spot에 `ProbeCommand`를 보내 mailbox가
+  `yield<TReply>(signal)`에 전달한다. cancellation 뒤 같은 Spot에 `ProbeMsg`를 보내 mailbox가
   다시 진행되는지 확인하고, 늦게 온 reply가 continuation marker를 남기지 않는지도 검증한다.
 - E3 shutdown scenario는 stream connector request가 pending인 동안 `play-a` process를 종료한다.
   client는 public stream connector가 내보내는 closed/cancelled error를 통과 조건으로 본다. 재시작 뒤에는
-  같은 public session relay와 Spot outbound send 경로로 `ProbeCommand`를 보내 새 Spot이 정상 처리되는지
+  같은 public session relay와 Spot outbound send 경로로 `ProbeMsg`를 보내 새 Spot이 정상 처리되는지
   확인한다.
 - E4 static check는 yield 시작용 HTTP endpoint/client 사용을 금지하고, `.yield(...)` 호출이
   `Server/Play` 아래 Spot, actor, timer, worker handler에만 남아 있는지 검사한다. YD scenario 파일은

@@ -1,9 +1,9 @@
 import type {
-  EnsureSpotReply,
+  EnsureSpotRes,
   EnsureSpotReq,
-  ProbeCommand,
-  YieldCancelCommand,
-  YieldEvidenceReply,
+  ProbeMsg,
+  YieldCancelMsg,
+  YieldEvidenceRes,
   YieldEvidenceWaitReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -13,7 +13,7 @@ import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 
 export async function runYdE2(client: ZlinkStreamConnector): Promise<void> {
   const spotRid = `yield-cancel-${uniqueId()}`;
-  const spot = decodeStreamReply<EnsureSpotReply>(await client
+  const spot = decodeStreamReply<EnsureSpotRes>(await client
     .request({ spotRid } satisfies EnsureSpotReq)
     .packetName('EnsureSpotReq')
     .timeout(30000)
@@ -22,15 +22,15 @@ export async function runYdE2(client: ZlinkStreamConnector): Promise<void> {
 
   const requestId = `YD-E2-${uniqueId()}`;
   await client
-    .send({ requestId, delayMs: 800, cancelAfterMs: 100 } satisfies YieldCancelCommand)
-    .packetName('YieldCancelCommand')
+    .send({ requestId, delayMs: 800, cancelAfterMs: 100 } satisfies YieldCancelMsg)
+    .packetName('YieldCancelMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
   await waitForEvidence(client, requestId, 'cancel-yield-completed');
 
   await client
-    .send({ requestId, marker: 'cancel-probe' } satisfies ProbeCommand)
-    .packetName('ProbeCommand')
+    .send({ requestId, marker: 'cancel-probe' } satisfies ProbeMsg)
+    .packetName('ProbeMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
   const evidence = await waitForEvidence(client, requestId, 'probe-completed');
@@ -59,8 +59,8 @@ async function waitForEvidence(
   client: ZlinkStreamConnector,
   requestId: string,
   marker: string
-): Promise<YieldEvidenceReply> {
-  return decodeStreamReply<YieldEvidenceReply>(await client
+): Promise<YieldEvidenceRes> {
+  return decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId, marker, timeoutMilliseconds: 30000 } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')

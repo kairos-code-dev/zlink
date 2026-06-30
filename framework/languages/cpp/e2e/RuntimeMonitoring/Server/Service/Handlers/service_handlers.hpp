@@ -49,15 +49,15 @@ class profile_request_handler_t
   public:
     using dependency_types =
       zlink::framework::dependency_list_t<server::evidence_store_t>;
-    using request_type = profile_request_t;
-    using reply_type = profile_reply_t;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
 
     explicit profile_request_handler_t (server::evidence_store_t &evidence) :
         _evidence (evidence)
     {
     }
 
-    profile_reply_t handle (const profile_request_t &request)
+    profile_res_t handle (const profile_req_t &request)
     {
         _evidence.add ("profile-request|rid=" + _evidence.rid () + "|marker=" + request.marker
                        + "|value=" + request.value);

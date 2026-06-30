@@ -1,23 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import type {
-  RemoteSpotYieldCommand,
+  RemoteSpotYieldMsg,
   RemoteSpotYieldReq,
-  YieldCommand,
-  YieldDispatchReply
+  YieldMsg,
+  YieldReq,
+  YieldDispatchRes
 } from '../../../Shared/messages';
 import { EvidenceStore } from '../../Support/evidence-store';
 import type { YieldProbeSpot } from '../Spots/yield-probe-spot';
 
 @Injectable()
-export class RemoteSpotYieldHandler implements ZLinkSpotRequestHandler<YieldProbeSpot, RemoteSpotYieldReq, YieldDispatchReply> {
+export class RemoteSpotYieldHandler implements ZLinkSpotRequestHandler<YieldProbeSpot, RemoteSpotYieldReq, YieldDispatchRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     spot: YieldProbeSpot,
     request: RemoteSpotYieldReq,
     context: ZLinkHandlerContext
-  ): Promise<YieldDispatchReply> {
+  ): Promise<YieldDispatchRes> {
     void context;
     await runRemoteSpotYield(this.evidence, spot, request);
     return reply('YD-D2', request.requestId, spot, 'remote-yield-completed');
@@ -25,12 +26,12 @@ export class RemoteSpotYieldHandler implements ZLinkSpotRequestHandler<YieldProb
 }
 
 @Injectable()
-export class RemoteSpotYieldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, RemoteSpotYieldCommand> {
+export class RemoteSpotYieldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, RemoteSpotYieldMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     spot: YieldProbeSpot,
-    request: RemoteSpotYieldCommand,
+    request: RemoteSpotYieldMsg,
     context: ZLinkHandlerContext
   ): Promise<void> {
     void context;
@@ -41,7 +42,7 @@ export class RemoteSpotYieldCommandHandler implements ZLinkSpotPacketHandler<Yie
 async function runRemoteSpotYield(
   evidence: EvidenceStore,
   spot: YieldProbeSpot,
-  request: RemoteSpotYieldReq | RemoteSpotYieldCommand
+  request: RemoteSpotYieldReq | RemoteSpotYieldMsg
 ): Promise<void> {
   evidence.add(
     `remote-yield-started|rid=${evidence.rid}|spot=${spot.context.spotRid}`
@@ -52,14 +53,14 @@ async function runRemoteSpotYield(
       requestId: request.requestId,
       delayMs: request.delayMs,
       correlationId: 'remote-spot'
-    } satisfies YieldCommand)
-    .packetName('YieldCommand')
+    } satisfies YieldReq)
+    .packetName('YieldReq')
     .timeout(5000);
   evidence.add(
     `remote-yield-released|rid=${evidence.rid}|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|handler=spot`
   );
-  const targetReply = await call.yield<YieldDispatchReply>();
+  const targetReply = await call.yield<YieldDispatchRes>();
   evidence.add(
     `remote-yield-resumed|rid=${evidence.rid}|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|targetNode=${targetReply.nodeRid}|handler=spot`
@@ -75,7 +76,7 @@ function reply(
   requestId: string,
   spot: YieldProbeSpot,
   marker: string
-): YieldDispatchReply {
+): YieldDispatchRes {
   return {
     scenarioId,
     requestId,

@@ -9,11 +9,11 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 @ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
 class WorkCommandHandler(
     private val state: ScenarioState,
-) : ZLinkSendHandler<Contracts.WorkCommand> {
+) : ZLinkSendHandler<Contracts.WorkMsg> {
     override fun handle(
-        message: Contracts.WorkCommand,
+        message: Contracts.WorkMsg,
         context: ZLinkSendContext,
     ) {
-        state.record("WorkCommand", message.value())
+        state.record("WorkMsg", message.value())
     }
 }

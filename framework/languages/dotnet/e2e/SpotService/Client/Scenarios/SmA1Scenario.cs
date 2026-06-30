@@ -10,7 +10,7 @@ internal static class SmA1Scenario
     {
         var created = (await api.Post("/spot/create")
             .Body(new CreateSpotReq(context.SpotRid))
-            .SubmitAsync<CreateSpotReply>()).Body;
+            .SubmitAsync<CreateSpotRes>()).Body;
         ScenarioAssert.That(created.SpotRid == context.SpotRid, "SM-A1 did not create the requested spot.");
         Console.WriteLine("operation SpotService.sm-a1 passed");
     }

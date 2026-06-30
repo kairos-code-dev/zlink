@@ -1,6 +1,6 @@
 namespace DiscoveryRegistryHa.Client.Support;
 
-internal sealed record DiscoveryApiResult(
+internal sealed record DiscoveryApiRes(
     string Operation,
     int Reg1TopologyCount,
     int Reg2TopologyCount,

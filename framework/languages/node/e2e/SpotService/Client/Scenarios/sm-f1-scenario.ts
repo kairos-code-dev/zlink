@@ -1,11 +1,11 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
-  SpotStateCommandReply,
-  SpotStateCommandReq,
+  EvidenceWaitReq,
+  SpotStateMsgRes,
+  SpotStateMsgReq,
   SpotStateRouteReq,
-  StateReply
+  StateRes
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -13,13 +13,13 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmF1(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-f1-${Date.now()}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(created.spotRid === spotRid, 'SM-F1 did not create the requested spot.');
   ensure(created.nodeRid === 'play-a', 'SM-F1 created spot on the wrong node.');
 
-  const state = await postJson<StateReply>(options.playAUrl, '/spot/state/request', {
+  const state = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
     spotRid,
     operation: 'add',
     delta: 7
@@ -28,10 +28,10 @@ export async function runSmF1(options: ClientOptions): Promise<void> {
   ensure(state.nodeRid === 'play-a', 'SM-F1 request reached the wrong node.');
   ensure(state.value === 7, 'SM-F1 state reply mismatch.');
 
-  const command = await postJson<SpotStateCommandReply>(options.playAUrl, '/spot/state/command', {
+  const command = await postJson<SpotStateMsgRes>(options.playAUrl, '/spot/state/command', {
     spotRid,
     marker: 'sm-f1-command'
-  } satisfies SpotStateCommandReq);
+  } satisfies SpotStateMsgReq);
   ensure(command.spotRid === spotRid && command.accepted, 'SM-F1 command was not accepted.');
 
   const expectedEvidence = [
@@ -41,7 +41,7 @@ export async function runSmF1(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
     'SM-F1 evidence mismatch.'

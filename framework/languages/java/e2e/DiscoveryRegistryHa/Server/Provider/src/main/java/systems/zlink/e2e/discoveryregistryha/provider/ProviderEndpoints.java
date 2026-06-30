@@ -34,8 +34,8 @@ public final class ProviderEndpoints implements SmartLifecycle {
             server.createContext("/evidence", exchange ->
                 HttpSupport.writeJson(exchange, json, evidence.snapshot()));
             server.createContext("/evidence/wait", exchange -> {
-                Contracts.EvidenceWaitRequest request =
-                    HttpSupport.readJson(exchange, json, Contracts.EvidenceWaitRequest.class);
+                Contracts.EvidenceWaitReq request =
+                    HttpSupport.readJson(exchange, json, Contracts.EvidenceWaitReq.class);
                 HttpSupport.writeJson(exchange, json, evidence.waitFor(
                     request.contains(),
                     Duration.ofMillis(Math.max(1, request.timeoutMilliseconds()))));

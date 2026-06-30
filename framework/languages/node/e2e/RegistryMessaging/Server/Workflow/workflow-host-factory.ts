@@ -49,7 +49,7 @@ function createWorkflowModule(options: ServerOptions, evidence: EvidenceStore): 
             .enableServer(options.workflowEndpoint)
             .routingId(options.rid)
             .enableClient()
-            .addRequestHandler(PacketNames.workflowRequest, WorkflowRequestHandler);
+            .addRequestHandler(PacketNames.workflowReq, WorkflowRequestHandler);
           return builder.build();
         }
       })

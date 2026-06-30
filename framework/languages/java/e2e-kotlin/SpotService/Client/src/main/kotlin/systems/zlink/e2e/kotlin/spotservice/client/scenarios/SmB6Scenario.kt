@@ -16,20 +16,20 @@ internal object SmB6Scenario {
         try {
             leaveClient.connect().await()
             val auth = leaveClient
-                .request(Contracts.ActorAuthRequest(leaveActorId, profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(leaveActorId, profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == leaveActorId, "SM-B6 leave auth actor mismatch")
 
             val joined = leaveClient
-                .request(Contracts.ActorJoinRequest("room-a", profile, profile.tags))
+                .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
                 .metadata("actor-id", leaveActorId)
-                .await(Contracts.ActorJoinReply::class.java)
+                .await(Contracts.ActorJoinRes::class.java)
             ensure(joined.actorId == leaveActorId, "SM-B6 leave join actor mismatch")
 
             val left = leaveClient
-                .request(Contracts.LeaveActorRequest(leaveActorId))
+                .request(Contracts.LeaveActorReq(leaveActorId))
                 .metadata("actor-id", leaveActorId)
-                .await(Contracts.LeaveActorReply::class.java)
+                .await(Contracts.LeaveActorRes::class.java)
             ensure(left.accepted && left.actorId == leaveActorId, "SM-B6 leave reply mismatch")
         } finally {
             try {
@@ -41,7 +41,7 @@ internal object SmB6Scenario {
         val leaveEvidence = postJson(
             Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
             "/evidence/wait",
-            Contracts.EvidenceWaitRequest(
+            Contracts.EvidenceWaitReq(
                 listOf("ActorUserLeft|session-a|room-a|$leaveActorId"),
                 10_000,
             ),
@@ -61,8 +61,8 @@ internal object SmB6Scenario {
             val disconnectProfile = Contracts.ActorProfile("Disconnect", 6, listOf("disconnect"))
             disconnectClient.connect().await()
             val auth = disconnectClient
-                .request(Contracts.ActorAuthRequest(disconnectActorId, disconnectProfile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(disconnectActorId, disconnectProfile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == disconnectActorId, "SM-B6 disconnect auth actor mismatch")
             disconnectClient.close().await()
         } finally {
@@ -75,7 +75,7 @@ internal object SmB6Scenario {
         val disconnectEvidence = postJson(
             Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
             "/evidence/wait",
-            Contracts.EvidenceWaitRequest(
+            Contracts.EvidenceWaitReq(
                 listOf("ActorEntryDisconnected|session-a|entry|$disconnectActorId"),
                 10_000,
             ),

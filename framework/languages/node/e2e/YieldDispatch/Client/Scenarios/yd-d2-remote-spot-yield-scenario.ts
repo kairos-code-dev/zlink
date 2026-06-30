@@ -1,9 +1,9 @@
 import type {
-  EnsureSpotReply,
+  EnsureSpotRes,
   EnsureSpotReq,
   RemoteSpotYieldReq,
-  YieldDispatchReply,
-  YieldEvidenceReply,
+  YieldDispatchRes,
+  YieldEvidenceRes,
   YieldEvidenceReq,
   YieldEvidenceWaitReq
 } from '../../Shared/messages';
@@ -19,16 +19,16 @@ export async function runYdD2(client: ZlinkStreamConnector): Promise<void> {
     .request({ spotRid: ownerSpotRid } satisfies EnsureSpotReq)
     .packetName('EnsureSpotReq')
     .timeout(30000)
-    .submit<EnsureSpotReply>();
+    .submit<EnsureSpotRes>();
   await client
     .request({ spotRid: targetSpotRid } satisfies EnsureSpotReq)
     .packetName('EnsureSpotReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-b')
     .timeout(30000)
-    .submit<EnsureSpotReply>();
+    .submit<EnsureSpotRes>();
 
   const requestId = `YD-D2-${uniqueId()}`;
-  const reply = decodeStreamReply<YieldDispatchReply>(await client
+  const reply = decodeStreamReply<YieldDispatchRes>(await client
     .request({ requestId, targetSpotRid, delayMs: 350 } satisfies RemoteSpotYieldReq)
     .packetName('RemoteSpotYieldReq')
     .metadata(YieldDispatchNames.spotRidMetadata, ownerSpotRid)
@@ -37,7 +37,7 @@ export async function runYdD2(client: ZlinkStreamConnector): Promise<void> {
   ensure(reply.scenarioId === 'YD-D2', 'YD-D2 reply scenario mismatch.');
   ensure(reply.nodeRid === 'play-a', 'YD-D2 caller continuation node mismatch.');
 
-  const ownerEvidence = decodeStreamReply<YieldEvidenceReply>(await client
+  const ownerEvidence = decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId, marker: 'remote-yield-completed' } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
@@ -53,7 +53,7 @@ export async function runYdD2(client: ZlinkStreamConnector): Promise<void> {
     'remote-yield-completed'
   ], 'YD-D2 owner marker order mismatch.');
 
-  const targetEvidence = decodeStreamReply<YieldEvidenceReply>(await client
+  const targetEvidence = decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-b')

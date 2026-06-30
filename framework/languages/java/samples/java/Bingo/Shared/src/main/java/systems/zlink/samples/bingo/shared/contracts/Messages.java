@@ -105,7 +105,7 @@ public final class Messages {
     public record StopObservingBingoEventsRes(boolean stopped, String observerNodeRid) {
     }
 
-    public record BingoWinnerEvent(
+    public record BingoWinnerMsg(
         String roomId,
         String actorId,
         int drawSeq,

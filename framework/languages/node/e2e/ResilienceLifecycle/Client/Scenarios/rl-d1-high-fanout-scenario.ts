@@ -1,15 +1,15 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
-import { profileRequest } from '../Support/resilience-helpers';
+import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlD1(options: ClientOptions): Promise<void> {
   const replies = await Promise.all(
-    Array.from({ length: 120 }, (_unused, index) => postJson<ProfileReply>(
+    Array.from({ length: 120 }, (_unused, index) => postJson<ProfileRes>(
       options.consumerUrl,
       '/profile/request',
-      profileRequest(`rl-d1-${index}`)
+      profileReq(`rl-d1-${index}`)
     ))
   );
   ensure(

@@ -43,9 +43,9 @@ class PublisherApplication {
                 publisher.publishSpot(
                     Contracts.SPOT_MESH,
                     "spot.events",
-                    Contracts.MeshEvent("c4-publisher")
+                    Contracts.MeshMsg("c4-publisher")
                 )
-                    .packetName("MeshEvent")
+                    .packetName("MeshMsg")
                     .await()
                 println("scenario SM-C4 passed")
             } finally {

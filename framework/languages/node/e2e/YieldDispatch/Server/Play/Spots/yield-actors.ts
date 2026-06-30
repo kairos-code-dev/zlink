@@ -3,10 +3,11 @@ import type {
   ActorJoinYieldReq,
   ActorPushNotify,
   ActorPushYieldReq,
-  ActorYieldReply,
+  ActorYieldRes,
+  ActorFastMsg,
   ActorFastReq,
   ActorYieldReq,
-  DelayReply,
+  DelayRes,
   DelayReq
 } from '../../../Shared/messages';
 import { YieldDispatchNames } from '../../../Shared/messages';
@@ -45,7 +46,7 @@ export class YieldEntrySpot implements ZLinkEntrySpot<YieldActor> {
 
   configure(): void {
     this.context.handlers.actorRequest('ActorYieldReq', EntryActorYieldHandler, YieldActor);
-    this.context.handlers.actorSend('ActorFastReq', EntryActorFastSendHandler, YieldActor);
+    this.context.handlers.actorSend('ActorFastMsg', EntryActorFastSendHandler, YieldActor);
     this.context.handlers.actorRequest('ActorFastReq', EntryActorFastHandler, YieldActor);
     this.context.handlers.actorRequest('ActorJoinYieldReq', EntryActorJoinYieldHandler, YieldActor);
     this.context.handlers.actorRequest('ActorPushYieldReq', EntryActorPushYieldHandler, YieldActor);
@@ -59,7 +60,7 @@ export class YieldEntrySpot implements ZLinkEntrySpot<YieldActor> {
 
 @Injectable()
 export class EntryActorYieldHandler
-  implements ZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorYieldReq, ActorYieldReply> {
+  implements ZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorYieldReq, ActorYieldRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
@@ -67,7 +68,7 @@ export class EntryActorYieldHandler
     actor: YieldActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorYieldReq
-  ): Promise<ActorYieldReply> {
+  ): Promise<ActorYieldRes> {
     void context;
     await recordActorYieldEvidence(this.evidence, entrySpot, actor, request, false);
     return actorReply('YD-B', request.requestId, actor, entrySpot, 'actor-yield-completed');
@@ -76,7 +77,7 @@ export class EntryActorYieldHandler
 
 @Injectable()
 export class SpotActorYieldHandler
-  implements ZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorYieldReq, ActorYieldReply> {
+  implements ZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorYieldReq, ActorYieldRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
@@ -84,7 +85,7 @@ export class SpotActorYieldHandler
     actor: YieldActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorYieldReq
-  ): Promise<ActorYieldReply> {
+  ): Promise<ActorYieldRes> {
     void context;
     await recordActorYieldEvidence(this.evidence, spot, actor, request, true);
     return actorReply('YD-B', request.requestId, actor, spot, 'actor-yield-completed');
@@ -93,7 +94,7 @@ export class SpotActorYieldHandler
 
 @Injectable()
 export class EntryActorFastHandler
-  implements ZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorFastReq, ActorYieldReply> {
+  implements ZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorFastReq, ActorYieldRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
@@ -101,7 +102,7 @@ export class EntryActorFastHandler
     actor: YieldActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorFastReq
-  ): Promise<ActorYieldReply> {
+  ): Promise<ActorYieldRes> {
     void context;
     recordActorFastEvidence(this.evidence, entrySpot, actor, request);
     return actorReply('YD-B', request.requestId, actor, entrySpot, request.marker);
@@ -110,14 +111,14 @@ export class EntryActorFastHandler
 
 @Injectable()
 export class EntryActorFastSendHandler
-  implements ZLinkEntrySpotActorSendHandler<YieldEntrySpot, YieldActor, ActorFastReq> {
+  implements ZLinkEntrySpotActorSendHandler<YieldEntrySpot, YieldActor, ActorFastMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     entrySpot: YieldEntrySpot,
     actor: YieldActor,
     context: ZLinkSpotActorSendContext,
-    request: ActorFastReq
+    request: ActorFastMsg
   ): Promise<void> {
     void context;
     recordActorFastEvidence(this.evidence, entrySpot, actor, request);
@@ -126,7 +127,7 @@ export class EntryActorFastSendHandler
 
 @Injectable()
 export class SpotActorFastHandler
-  implements ZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorFastReq, ActorYieldReply> {
+  implements ZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorFastReq, ActorYieldRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
@@ -134,7 +135,7 @@ export class SpotActorFastHandler
     actor: YieldActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorFastReq
-  ): Promise<ActorYieldReply> {
+  ): Promise<ActorYieldRes> {
     void context;
     recordActorFastEvidence(this.evidence, spot, actor, request);
     return actorReply('YD-B', request.requestId, actor, spot, request.marker);
@@ -143,14 +144,14 @@ export class SpotActorFastHandler
 
 @Injectable()
 export class SpotActorFastSendHandler
-  implements ZLinkSpotActorSendHandler<YieldProbeSpot, YieldActor, ActorFastReq> {
+  implements ZLinkSpotActorSendHandler<YieldProbeSpot, YieldActor, ActorFastMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     spot: YieldProbeSpot,
     actor: YieldActor,
     context: ZLinkSpotActorSendContext,
-    request: ActorFastReq
+    request: ActorFastMsg
   ): Promise<void> {
     void context;
     recordActorFastEvidence(this.evidence, spot, actor, request);
@@ -159,7 +160,7 @@ export class SpotActorFastSendHandler
 
 @Injectable()
 export class EntryActorPushYieldHandler
-  implements ZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorPushYieldReq, ActorYieldReply> {
+  implements ZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorPushYieldReq, ActorYieldRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
@@ -167,7 +168,7 @@ export class EntryActorPushYieldHandler
     actor: YieldActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPushYieldReq
-  ): Promise<ActorYieldReply> {
+  ): Promise<ActorYieldRes> {
     void context;
     await recordActorPushYieldEvidence(this.evidence, entrySpot, actor, request, false);
     return actorReply('YD-D4', request.requestId, actor, entrySpot, 'actor-push-yield-completed');
@@ -176,7 +177,7 @@ export class EntryActorPushYieldHandler
 
 @Injectable()
 export class SpotActorPushYieldHandler
-  implements ZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorPushYieldReq, ActorYieldReply> {
+  implements ZLinkSpotActorRequestHandler<YieldProbeSpot, YieldActor, ActorPushYieldReq, ActorYieldRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
@@ -184,7 +185,7 @@ export class SpotActorPushYieldHandler
     actor: YieldActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPushYieldReq
-  ): Promise<ActorYieldReply> {
+  ): Promise<ActorYieldRes> {
     void context;
     await recordActorPushYieldEvidence(this.evidence, spot, actor, request, true);
     return actorReply('YD-D4', request.requestId, actor, spot, 'actor-push-yield-completed');
@@ -193,7 +194,7 @@ export class SpotActorPushYieldHandler
 
 @Injectable()
 export class EntryActorJoinYieldHandler
-  implements ZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorJoinYieldReq, ActorYieldReply> {
+  implements ZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorJoinYieldReq, ActorYieldRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
@@ -201,7 +202,7 @@ export class EntryActorJoinYieldHandler
     actor: YieldActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorJoinYieldReq
-  ): Promise<ActorYieldReply> {
+  ): Promise<ActorYieldRes> {
     void context;
     const mailboxId = `actor:${actor.actorId}`;
     this.evidence.add(
@@ -217,7 +218,7 @@ export class EntryActorJoinYieldHandler
       `actor-join-yield-released|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
       + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotRid}`
     );
-    const joined = await call.submit<DelayReply>();
+    const joined = await call.submit<DelayRes>();
     this.evidence.add(
       `actor-join-yield-resumed|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
       + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|accepted=${joined.resultCode === 0}`
@@ -259,9 +260,9 @@ async function recordActorYieldEvidence(
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   if (useYield) {
-    await call.yield<DelayReply>();
+    await call.yield<DelayRes>();
   } else {
-    await call.submit<DelayReply>();
+    await call.submit<DelayRes>();
   }
   evidence.add(
     `actor-yield-resumed|rid=${evidence.rid}|spot=${target.context.spotRid}`
@@ -298,9 +299,9 @@ async function recordActorPushYieldEvidence(
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   if (useYield) {
-    await call.yield<DelayReply>();
+    await call.yield<DelayRes>();
   } else {
-    await call.submit<DelayReply>();
+    await call.submit<DelayRes>();
   }
   evidence.add(
     `actor-push-yield-resumed|rid=${evidence.rid}|spot=${target.context.spotRid}`
@@ -325,7 +326,7 @@ function recordActorFastEvidence(
   evidence: EvidenceStore,
   target: ActorEvidenceTarget,
   actor: YieldActor,
-  request: ActorFastReq
+  request: ActorFastReq | ActorFastMsg
 ): void {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
@@ -346,7 +347,7 @@ function actorReply(
   actor: YieldActor,
   target: ActorEvidenceTarget,
   marker: string
-): ActorYieldReply {
+): ActorYieldRes {
   return {
     scenarioId,
     requestId,

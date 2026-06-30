@@ -17,36 +17,36 @@ internal static class RlC2TopologyRecoveryScenario
         await providerB.Post("/admin/crash").SubmitRawAsync();
         await WaitUntilAsync(async () => !await IsHealthyAsync(providerB), "RL-C2 expected api-b crash.");
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 0))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .SubmitAsync<TopologyEntryRes[]>();
 
         for (var i = 0; i < 8; i++)
         {
             var reply = (await consumer.Post("/profile/request/new-client")
-                .Body(new ProfileRequest("fast", $"rl-c2-after-crash-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-c2-after-crash-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-C2 request used stale crashed api-b.");
         }
 
         await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryRes[]>();
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-c2-restored-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-c2-restored-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-C2 restored request returned an unexpected value.");
         }
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(["marker=rl-c2-after-crash-"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c2-after-crash-"], [])).SubmitAsync<string[]>(timeout.Token)
                 .AsTask();
             var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(["marker=rl-c2-after-crash-"], [])).SubmitAsync<string[]>(timeout.Token)
+                .Body(new EvidenceWaitReq(["marker=rl-c2-after-crash-"], [])).SubmitAsync<string[]>(timeout.Token)
                 .AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
@@ -58,10 +58,10 @@ internal static class RlC2TopologyRecoveryScenario
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c2-restored-"], []))
+                .Body(new EvidenceWaitReq(["profile-request|rid=api-b|marker=rl-c2-restored-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(["profile-request|rid=api-b|marker=rl-c2-restored-"], []))
+                .Body(new EvidenceWaitReq(["profile-request|rid=api-b|marker=rl-c2-restored-"], []))
                 .SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;

@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import type { ProfileReply, ProfileRequest } from '../../Shared/messages';
+import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { parseConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
 import { createConsumerEndpoints, requestProfileWithRetry } from './Endpoints/consumer-endpoints';
@@ -29,7 +29,7 @@ export async function startConsumerHost(args: readonly string[]): Promise<void> 
   await app.close();
 }
 
-async function requestWithNewClient(options: ConsumerOptions, request: ProfileRequest): Promise<ProfileReply> {
+async function requestWithNewClient(options: ConsumerOptions, request: ProfileReq): Promise<ProfileRes> {
   const traceLabel = `storm-${request.marker ?? 'request'}`;
   const ConsumerModule = createConsumerModule(options, traceLabel);
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });

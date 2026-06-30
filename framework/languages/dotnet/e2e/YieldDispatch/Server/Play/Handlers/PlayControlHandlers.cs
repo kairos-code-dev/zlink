@@ -12,9 +12,9 @@ internal sealed class BindYieldActorsControlHandler(
     IZLinkSpotManager spots,
     EvidenceStore evidence,
     NodeOptions node)
-    : IZLinkRouteRequestHandler<BindYieldActorsReq, BindYieldActorsReply>
+    : IZLinkRouteRequestHandler<BindYieldActorsReq, BindYieldActorsRes>
 {
-    public async ValueTask<BindYieldActorsReply> HandleAsync(
+    public async ValueTask<BindYieldActorsRes> HandleAsync(
         BindYieldActorsReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -39,16 +39,16 @@ internal sealed class BindYieldActorsControlHandler(
                 actor.Generation));
         }
 
-        return new BindYieldActorsReply(request.SpotRid, bindings.ToArray());
+        return new BindYieldActorsRes(request.SpotRid, bindings.ToArray());
     }
 }
 
 internal sealed class EnsureSpotControlHandler(
     IZLinkSpotManager spots,
     NodeOptions node)
-    : IZLinkRouteRequestHandler<EnsureSpotReq, EnsureSpotReply>
+    : IZLinkRouteRequestHandler<EnsureSpotReq, EnsureSpotRes>
 {
-    public async ValueTask<EnsureSpotReply> HandleAsync(
+    public async ValueTask<EnsureSpotRes> HandleAsync(
         EnsureSpotReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -57,28 +57,28 @@ internal sealed class EnsureSpotControlHandler(
         await spots.GetOrCreateAsync<YieldProbeSpot>(
             RoutingId.From(request.SpotRid),
             cancellationToken);
-        return new EnsureSpotReply(request.SpotRid, node.Rid);
+        return new EnsureSpotRes(request.SpotRid, node.Rid);
     }
 }
 
 internal sealed class YieldEvidenceControlHandler(EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<YieldEvidenceReq, YieldEvidenceReply>
+    : IZLinkRouteRequestHandler<YieldEvidenceReq, YieldEvidenceRes>
 {
-    public ValueTask<YieldEvidenceReply> HandleAsync(
+    public ValueTask<YieldEvidenceRes> HandleAsync(
         YieldEvidenceReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new YieldEvidenceReply(request.RequestId, evidence.Snapshot()));
+        return ValueTask.FromResult(new YieldEvidenceRes(request.RequestId, evidence.Snapshot()));
     }
 }
 
 internal sealed class YieldEvidenceWaitControlHandler(EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<YieldEvidenceWaitReq, YieldEvidenceReply>
+    : IZLinkRouteRequestHandler<YieldEvidenceWaitReq, YieldEvidenceRes>
 {
-    public async ValueTask<YieldEvidenceReply> HandleAsync(
+    public async ValueTask<YieldEvidenceRes> HandleAsync(
         YieldEvidenceWaitReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -91,6 +91,6 @@ internal sealed class YieldEvidenceWaitControlHandler(EvidenceStore evidence)
                 && line.Contains(request.Marker, StringComparison.Ordinal)),
             timeout,
             cancellationToken);
-        return new YieldEvidenceReply(request.RequestId, snapshot);
+        return new YieldEvidenceRes(request.RequestId, snapshot);
     }
 }

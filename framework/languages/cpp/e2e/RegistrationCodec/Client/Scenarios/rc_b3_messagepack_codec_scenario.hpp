@@ -12,16 +12,16 @@ inline void run_messagepack_codec_scenario (zlink::framework::channel_client_t &
                                             const std::string &http_endpoint)
 {
     auto request =
-      channels.request (api_channel, messagepack_roundtrip_t{.value = "b3"})
+      channels.request (api_channel, messagepack_roundtrip_req_t{.value = "b3"})
         .timeout (std::chrono::milliseconds (2000))
-        .async<messagepack_roundtrip_reply_t> ();
+        .async<messagepack_roundtrip_res_t> ();
     ensure (request.result ().has_value (), "RC-B3 request failed");
     ensure (request.result ().value ().value == "messagepack:b3", "RC-B3 reply mismatch");
     ensure (request.result ().value ().content_type == "application/x-msgpack",
             "RC-B3 content type mismatch");
 
     auto send =
-      channels.send (api_channel, messagepack_codec_send_t{.value = "send-b3"})
+      channels.send (api_channel, messagepack_codec_msg_t{.value = "send-b3"})
         .timeout (std::chrono::milliseconds (2000))
         .async ();
     ensure (send.result ().has_value (), "RC-B3 send failed");

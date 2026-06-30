@@ -26,7 +26,7 @@ internal static class MonA2RegistryEventsScenario
     private static async Task<string[]> WaitForRegistryEvidenceAsync(ZLinkHttpClient registry)
     {
         var evidence = (await registry.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["monitor-registry|source=registry"],
                 [["kind=TopologyChanged|topology=3"], ["kind=ServiceSummaryChanged|topology=-1|summary=3"]]))
             .SubmitAsync<string[]>()).Body;

@@ -1,10 +1,10 @@
 import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
 import type {
-  EvidenceWaitRequest,
-  ProfileCommand,
-  ProfileReply,
-  ProfileRequest,
-  WeightWaitRequest,
+  EvidenceWaitReq,
+  ProfileMsg,
+  ProfileRes,
+  ProfileReq,
+  WeightWaitReq,
 } from '../../../Shared/messages';
 import { PacketNames } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -24,13 +24,13 @@ export function createProviderEndpoints(
     {
       method: 'POST',
       path: '/profile/request',
-      handle: (body) => requestProfileWithRetry(channel, 'profile', body as ProfileRequest)
+      handle: (body) => requestProfileWithRetry(channel, 'profile', body as ProfileReq)
     },
     {
       method: 'POST',
       path: '/profile/command',
       handle: async (body) => {
-        await sendProfileWithRetry(channel, 'profile', body as ProfileCommand);
+        await sendProfileWithRetry(channel, 'profile', body as ProfileMsg);
         return { status: 'sent' };
       }
     },
@@ -107,13 +107,13 @@ export function createProviderEndpoints(
     {
       method: 'POST',
       path: '/admin/weight/wait',
-      handle: async (body) => waitForWeight(runtimeOptions, body as WeightWaitRequest)
+      handle: async (body) => waitForWeight(runtimeOptions, body as WeightWaitReq)
     },
     {
       method: 'POST',
       path: '/evidence/wait',
       handle: async (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
         const snapshot = await evidence.waitUntil((line) => line.includes(request.contains), timeout);
         if (!snapshot.some((line) => line.includes(request.contains))) {
@@ -128,7 +128,7 @@ export function createProviderEndpoints(
 
 async function waitForWeight(
   runtimeOptions: ZLinkChannelRuntimeOptions,
-  request: WeightWaitRequest
+  request: WeightWaitReq
 ): Promise<{ readonly weight: number }> {
   const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
   const deadline = Date.now() + timeout;
@@ -145,23 +145,23 @@ async function waitForWeight(
 async function requestProfileWithRetry(
   channel: ZLinkChannelClient,
   channelName: string,
-  request: ProfileRequest
-): Promise<ProfileReply> {
+  request: ProfileReq
+): Promise<ProfileRes> {
   return retryUntil(async () => channel
     .requestToChannel(channelName, request)
-    .packetName(PacketNames.profileRequest)
+    .packetName(PacketNames.profileReq)
     .timeout(5000)
-    .submit<ProfileReply>(), 'profile request channel route');
+    .submit<ProfileRes>(), 'profile request channel route');
 }
 
 async function sendProfileWithRetry(
   channel: ZLinkChannelClient,
   channelName: string,
-  command: ProfileCommand
+  command: ProfileMsg
 ): Promise<void> {
   await retryUntil(async () => channel
     .sendToChannel(channelName, command)
-    .packetName(PacketNames.profileCommand)
+    .packetName(PacketNames.profileMsg)
     .submit(), 'profile send channel route');
 }
 

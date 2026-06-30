@@ -4,13 +4,13 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
   ActorPushNotify,
   ActorPushReq,
-  AuthReply,
+  AuthRes,
   AuthReq,
-  EvidenceWaitRequest,
+  EvidenceWaitReq,
   UserSpotAuthReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -35,13 +35,13 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
     const entryPushed = entry.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === entryActorId)
       .timeout(10000)
       .submit();
-    const entryReply = decodeStreamReply<ActorPingReply>(await entry
+    const entryReply = decodeStreamReply<ActorPingRes>(await entry
       .request({ value: 'entry-push' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)
@@ -67,18 +67,18 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
       } satisfies UserSpotAuthReq)
       .packetName('UserSpotAuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
     const userPushed = user.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === userActorId)
       .timeout(10000)
       .submit();
-    const userReply = decodeStreamReply<ActorPingReply>(await user
+    const userReply = decodeStreamReply<ActorPingRes>(await user
       .request({ value: 'user-relay' } satisfies ActorPingReq)
       .packetName('UserActorPingReq')
       .timeout(5000)
       .submit());
-    const userPushReply = decodeStreamReply<ActorPingReply>(await user
+    const userPushReply = decodeStreamReply<ActorPingRes>(await user
       .request({ value: 'user-push' } satisfies ActorPushReq)
       .packetName('UserActorPushReq')
       .timeout(5000)
@@ -98,12 +98,12 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
 
   const expectedEvidence = [
     `spot-actor-joined|rid=play-a|spot=${userSpotRid}|actor=${userActorId}`,
-    `actor-ping|rid=play-a|actor=${userActorId}|spot=${userSpotRid}|value=user-relay`
+    `actor-pingMsg|rid=play-a|actor=${userActorId}|spot=${userSpotRid}|value=user-relay`
   ];
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
     'SM-D3 expected user spot bind and relay evidence.'

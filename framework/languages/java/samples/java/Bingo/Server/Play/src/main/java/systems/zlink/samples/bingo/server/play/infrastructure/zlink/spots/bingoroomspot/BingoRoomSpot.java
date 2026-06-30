@@ -20,7 +20,7 @@ import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomTimerHandler;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerEventHandler;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerMsgHandler;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoGame;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomGame;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
@@ -57,7 +57,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     public void configure() {
         context.handlers().addSubscribe(
             SampleNames.WinnerTopic,
-            BingoWinnerEventHandler.class);
+            BingoWinnerMsgHandler.class);
     }
 
     @Override
@@ -163,7 +163,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         leaveFinishedActors(change);
     }
 
-    public void announceWinner(Messages.BingoWinnerEvent event) {
+    public void announceWinner(Messages.BingoWinnerMsg event) {
         if (!settings.observerMode()
             || observers.isEmpty()
             || !event.roomId().equals(settings.observedRoomId())) {
@@ -229,7 +229,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         context.outbound()
             .publish(
                 SampleNames.WinnerTopic,
-                new Messages.BingoWinnerEvent(
+                new Messages.BingoWinnerMsg(
                     change.state().roomId(),
                     winner,
                     change.state().drawSeq(),

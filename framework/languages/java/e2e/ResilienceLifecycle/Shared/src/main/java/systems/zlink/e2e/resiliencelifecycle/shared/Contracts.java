@@ -9,16 +9,16 @@ public final class Contracts {
     private Contracts() {
     }
 
-    public record WorkRequest(String value) {
+    public record WorkReq(String value) {
     }
 
-    public record WorkCommand(String value) {
+    public record WorkMsg(String value) {
     }
 
-    public record UnhandledRequest(String value) {
+    public record UnhandledReq(String value) {
     }
 
-    public record WorkReply(
+    public record WorkRes(
         String value,
         String providerRid) {
     }

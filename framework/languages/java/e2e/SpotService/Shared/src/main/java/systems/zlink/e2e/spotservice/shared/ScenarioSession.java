@@ -64,7 +64,7 @@ public final class ScenarioSession implements ZLinkSession {
         }
         return switch (context.actors().bound().size()) {
             case 1 -> context.actors().bound().get(0);
-            case 0 -> throw new IllegalStateException("ActorAuthRequest is required before actor packet");
+            case 0 -> throw new IllegalStateException("ActorAuthReq is required before actor packet");
             default -> throw new IllegalStateException("actor-id metadata is required for multiple bound actors");
         };
     }

@@ -4,11 +4,11 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
-  AuthReply,
+  AuthRes,
   AuthReq,
-  EvidenceWaitRequest
+  EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -26,7 +26,7 @@ export async function runSmB4(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await client
+    const auth = decodeStreamReply<AuthRes>(await client
       .request({
         actorId,
         displayName: 'remote actor request',
@@ -37,7 +37,7 @@ export async function runSmB4(options: ClientOptions): Promise<void> {
       .submit());
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-b', 'SM-B4 auth reply mismatch.');
 
-    const reply = decodeStreamReply<ActorPingReply>(await client
+    const reply = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'sm-b4' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
@@ -45,11 +45,11 @@ export async function runSmB4(options: ClientOptions): Promise<void> {
     ensure(reply.actorId === actorId, 'SM-B4 actor reply mismatch.');
     ensure(reply.nodeRid === 'play-b', 'SM-B4 remote actor request reached the wrong node.');
 
-    const expectedEvidence = [`actor-ping|rid=play-b|actor=${actorId}`];
+    const expectedEvidence = [`actor-pingMsg|rid=play-b|actor=${actorId}`];
     const evidence = await postJson<string[]>(options.playBUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-B4 evidence did not include remote actor request.'

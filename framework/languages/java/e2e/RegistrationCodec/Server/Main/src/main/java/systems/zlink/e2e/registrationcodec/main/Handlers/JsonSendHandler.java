@@ -6,7 +6,7 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 
 public final class JsonSendHandler
-    implements ZLinkSendHandler<Contracts.JsonEchoCommand> {
+    implements ZLinkSendHandler<Contracts.JsonEchoMsg> {
     private final EvidenceStore state;
 
     public JsonSendHandler(EvidenceStore state) {
@@ -15,7 +15,7 @@ public final class JsonSendHandler
 
     @Override
     public void handle(
-        Contracts.JsonEchoCommand message,
+        Contracts.JsonEchoMsg message,
         ZLinkSendContext context) {
         state.record("Send", "JsonEcho", message.value());
         state.record("ContentType", "JsonEcho", context.contentType().orElse("missing"));

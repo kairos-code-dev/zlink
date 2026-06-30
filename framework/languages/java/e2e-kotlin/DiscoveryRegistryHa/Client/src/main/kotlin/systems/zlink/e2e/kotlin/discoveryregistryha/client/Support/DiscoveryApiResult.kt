@@ -1,6 +1,6 @@
 package systems.zlink.e2e.kotlin.discoveryregistryha.client.Support
 
-data class DiscoveryApiResult(
+data class DiscoveryApiRes(
     val operation: String,
     val reg1TopologyCount: Int,
     val reg2TopologyCount: Int,

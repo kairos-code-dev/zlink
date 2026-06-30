@@ -1,7 +1,7 @@
 import type {
-  ActorFastReq,
+  ActorFastMsg,
   ActorYieldReq,
-  YieldEvidenceReply,
+  YieldEvidenceRes,
   YieldEvidenceReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -23,13 +23,13 @@ export async function runYdB2(
     .submit();
   await new Promise((resolve) => setTimeout(resolve, 75));
   await client
-    .send({ requestId, marker: 'b2-fast' } satisfies ActorFastReq)
-    .packetName('ActorFastReq')
+    .send({ requestId, marker: 'b2-fast' } satisfies ActorFastMsg)
+    .packetName('ActorFastMsg')
     .metadata(YieldDispatchNames.actorIdMetadata, actors.actorA)
     .submit();
   await yielding;
 
-  const evidence = decodeStreamReply<YieldEvidenceReply>(await client
+  const evidence = decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')

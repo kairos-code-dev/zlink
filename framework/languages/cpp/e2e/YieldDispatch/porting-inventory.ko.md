@@ -15,7 +15,7 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | metadata | done | C++ YieldDispatch 로그와 임시 산출물 제외 규칙을 추가했다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 아직 구현되지 않은 scenario와 public gap을 완료로 과장하지 않는다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | partial | registry, delay A/B, play A/B, session A/B, client를 빌드하고 readiness와 정적 검사를 수행한다. 이 runner는 E2E target만 필요하므로 configure 때 C++ sample target은 끈다. YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D1~YD-D4, YD-E1/YD-E3 runner와 YD-E4 static gate는 반복 통과 증거가 있다. YD-A3 metadata 보존, YD-C3 같은 stream session 증거, YD-E2 cancellation token, YD-E5 cross-language report gap이 있어 config 완료 판정은 보류한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | partial | registry, delay A/B, play A/B, session A/B, client를 빌드하고 readiness와 정적 검사를 수행한다. 이 runner는 E2E target만 필요하므로 configure 때 C++ sample target은 끈다. YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D1~YD-D4, YD-E1/YD-E3 runner와 YD-E4 static gate는 반복 통과 증거가 있다. YD-C3 같은 stream session 증거, YD-E2 cancellation token, YD-E5 cross-language report gap이 있어 config 완료 판정은 보류한다. |
 | `Shared/YieldDispatch.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | role/client target 묶음은 추가됐다. shared는 header로 포함된다. |
 | `Shared/Messages.cs` | `Shared/yield_dispatch_contracts.hpp` | shared | done | Track A용 ensure/evidence/delay/hold/yield/worker/probe DTO, actor binding/yield/fast/join-yield/push-yield DTO, timer command, D2 remote Spot yield DTO, E1 timeout DTO, E2 cancellation DTO, E3 shutdown DTO와 JSON 매핑이 있다. stream connector typed request/reply/notify가 실제 JSON payload를 쓰도록 `to_stream_payload`/`from_stream_payload` hook도 제공한다. E2 scenario 자체는 C++ public yield cancellation token surface가 없어 gap으로 남긴다. |
 | `Client/GlobalUsings.cs` | not-needed | client | not-needed | C++에는 대응 파일이 필요 없다. |
@@ -26,7 +26,7 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 | `Client/Scenarios/YieldActorScenarioContext.cs` | `Client/Scenarios/yield_actor_scenario_context.hpp` | scenario-support | done | actor binding과 session relay scenario가 공유하는 spot rid, actor A, actor B context를 분리했다. |
 | `Client/Scenarios/YdA1BasicTerminatorScenario.cs` | `Client/Scenarios/yd_a1_basic_terminator_scenario.hpp` | scenario | done | YD-A1 flow는 별도 scenario header로 분리했고 runner로 통과했다. |
 | `Client/Scenarios/YdA2YieldTerminatorScenario.cs` | `Client/Scenarios/yd_a2_yield_terminator_scenario.hpp` | scenario | done | YD-A2 flow는 별도 scenario header로 분리했고 runner로 통과했다. yielded request와 probe/evidence 관측은 별도 connector로 분리한다. |
-| `Client/Scenarios/YdA3ContinuationContextScenario.cs` | `Client/Scenarios/yd_a3_continuation_context_scenario.hpp` | scenario | partial | request id/spot rid/correlation id 보존은 별도 scenario header에서 runner로 통과했다. metadata 보존 검증은 public contract gap으로 남긴다. |
+| `Client/Scenarios/YdA3ContinuationContextScenario.cs` | `Client/Scenarios/yd_a3_continuation_context_scenario.hpp` | scenario | done | request id, spot rid, correlation id, yield continuation marker 순서를 별도 scenario header에서 runner로 검증한다. `.NET`도 stream metadata 직접 노출을 완료 조건에 넣지 않는다. |
 | `Client/Scenarios/YdA4WorkerYieldScenario.cs` | `Client/Scenarios/yd_a4_worker_yield_scenario.hpp` | scenario | done | public worker call `yield()` flow는 별도 scenario header로 분리했고 runner로 통과했다. yielded request와 probe/evidence 관측은 별도 connector로 분리한다. |
 | `Client/Scenarios/YdB1OtherActorProgressScenario.cs` | `Client/Scenarios/yd_b1_other_actor_progress_scenario.hpp` | scenario | done | actor A yield 중 actor B 진행은 별도 scenario header에서 runner로 통과했다. |
 | `Client/Scenarios/YdB2SameActorReentryScenario.cs` | `Client/Scenarios/yd_b2_same_actor_reentry_scenario.hpp` | scenario | done | 같은 stream connector session에서 같은 actor mailbox 재진입 금지 marker 순서를 runner로 검증한다. |
@@ -75,7 +75,7 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 |-------------|----------|------|
 | `YD-A1` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-A2` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
-| `YD-A3` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | partial |
+| `YD-A3` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-A4` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp` | done |
 | `YD-B1` | `Client/main.cpp`; `Server/Play/main.cpp`; `Server/Session/main.cpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
 | `YD-B2` | `Client/Scenarios/yd_b2_same_actor_reentry_scenario.hpp`; `Server/Play/Handlers/play_actor_handlers.hpp`; `Server/Session/Support/yield_session.hpp`; `Server/Delay/main.cpp` | done |
@@ -127,8 +127,8 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 - 2026-06-30: `./framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260630-091449-3391388`
-  - 의미: YD-A1~YD-A4 Track A가 통과한다. A3는 `.NET`과 같은 부분 범위로 request id, spot rid,
-    correlation id 보존을 검증하고 metadata 보존은 public contract gap으로 남긴다. A4는 public
+  - 의미: YD-A1~YD-A4 Track A가 통과한다. A3는 `.NET`과 같은 완료 조건으로 request id, spot rid,
+    correlation id 보존과 yield continuation marker 순서를 검증한다. A4는 public
     `spot_context_t::run_worker(...)` call object의 `yield()`가 Spot turn을 반납하고 probe 뒤 원래
     Spot mailbox에서 continuation을 재개하는 marker 순서를 검증한다. runner 출력은
     `scenario YD-A1 passed`, `scenario YD-A2 passed`, `scenario YD-A3 passed`,
@@ -492,11 +492,18 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
   - 의미: E2 cancellation DTO 추가 뒤에도 registry -> delay -> play -> session -> client 전체 경로와
     shutdown/recovery orchestration이 통과했다. runner 출력은 `scenario YD-D1 passed`,
     `yield-dispatch e2e result=passed`다.
+- 2026-06-30: `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_yield_dispatch_client -j 4`
+  - 결과: 통과
+  - 의미: YD-A3 상태 정정 후 client target build를 확인했다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/YieldDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 로그: `logs/20260630-182120-718488`
+  - 의미: A3를 `.NET`과 같은 완료 조건으로 정리한 뒤에도 YD-A1~YD-A4, YD-B1~YD-B3,
+    YD-C1~YD-C3, YD-D1~YD-D4, YD-E1, YD-E3, YD-E4 static gate가 통과했다.
 
 ## 다음 작업 순서
 
-1. YD-A3 metadata 보존은 C++ Spot request handler public metadata surface가 정리된 뒤 보강한다.
-2. YD-C3의 actor-yield 중 timer-fast half는 같은 stream session 증거를 만들 수 있는 public connector/stream
+1. YD-C3의 actor-yield 중 timer-fast half는 같은 stream session 증거를 만들 수 있는 public connector/stream
    semantics가 정리된 뒤 partial을 해소한다.
-3. YD-E2 cancellation은 C++ public yield cancellation token surface가 정리된 뒤 구현한다.
-4. 빠른 반복 실행에서 드물게 보이는 startup `errno=105`/`errno=22`와 빌드 산출물 손상은 runner 환경 안정화 후보로 분리한다.
+2. YD-E2 cancellation은 C++ public yield cancellation token surface가 정리된 뒤 구현한다.
+3. 빠른 반복 실행에서 드물게 보이는 startup `errno=105`/`errno=22`와 빌드 산출물 손상은 runner 환경 안정화 후보로 분리한다.

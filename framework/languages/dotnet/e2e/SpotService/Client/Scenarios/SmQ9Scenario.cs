@@ -13,15 +13,15 @@ internal static class SmQ9Scenario
         var spotB = $"spot-sm-q9-b-{Guid.NewGuid():N}";
         var createdA = (await multiA.Post("/spot/create-local")
             .Body(new MultiNodeCreateSpotReq(spotA, 0))
-            .SubmitAsync<MultiNodeCreateSpotReply>()).Body;
+            .SubmitAsync<MultiNodeCreateSpotRes>()).Body;
         var firstA = (await multiA.Post("/spot/state/request")
             .Body(new MultiNodeStateRouteReq(spotA, 11))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         var directA = (await multiA.Post("/spot/state/request")
             .Body(new MultiNodeStateRouteReq(spotA, 0))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         var evidenceA = (await multiA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([
+            .Body(new EvidenceWaitReq([
                 $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11"
             ]))
             .SubmitAsync<string[]>()).Body;
@@ -32,15 +32,15 @@ internal static class SmQ9Scenario
 
         var createdB = (await multiB.Post("/spot/create-local")
             .Body(new MultiNodeCreateSpotReq(spotB, 0))
-            .SubmitAsync<MultiNodeCreateSpotReply>()).Body;
+            .SubmitAsync<MultiNodeCreateSpotRes>()).Body;
         var firstB = (await multiB.Post("/spot/state/request")
             .Body(new MultiNodeStateRouteReq(spotB, 17))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         var directB = (await multiB.Post("/spot/state/request")
             .Body(new MultiNodeStateRouteReq(spotB, 0))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         var evidenceB = (await multiB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([
+            .Body(new EvidenceWaitReq([
                 $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17"
             ]))
             .SubmitAsync<string[]>()).Body;

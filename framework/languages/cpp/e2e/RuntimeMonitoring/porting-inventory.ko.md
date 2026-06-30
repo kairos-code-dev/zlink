@@ -16,7 +16,7 @@
 | `Client/Scenarios/MonA1SocketEventsScenario.cs` | `Client/Scenarios/mon_a1_socket_events_scenario.hpp` | scenario | done | trigger role이 service A에 transient request를 보내고 socket `Connected`, `ConnectionReady`, `Disconnected` event와 remote address evidence를 검증한다. |
 | `Client/Scenarios/MonA2RegistryEventsScenario.cs` | `Client/Scenarios/mon_a2_registry_events_scenario.hpp` | scenario | done | standalone registry role의 topology/service summary evidence를 검증한다. |
 | `Client/Scenarios/MonA3SpotEventsScenario.cs` | `Client/Scenarios/mon_a3_spot_events_scenario.hpp` | scenario | done | registry-discovered TCP SPOT mesh peer로 `PeersChanged`, spot create 뒤 `SubjectsChanged`, failing timer 뒤 `TimerHandlerFailed` evidence를 검증한다. |
-| `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/Scenarios/mon_a4_availability_transition_scenario.hpp` | scenario | partial | drain/restore admin evidence, socket admission event, registry topology evidence를 검증한다. provider 교체/failover socket transition은 남아 있다. |
+| `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/Scenarios/mon_a4_availability_transition_scenario.hpp` | scenario | done | drain/restore admin evidence, socket admission event, registry topology evidence를 검증한다. |
 | `Client/Scenarios/MonA5FixedKindsScenario.cs` | `Client/Scenarios/mon_a5_fixed_kinds_scenario.hpp` | scenario | done | trigger의 invalid handshake action으로 socket `HandshakeFailed` evidence를 검증하고, registry `StatusChanged`, spot `StatusChanged`, `TimerStoppedAfterUnhandledException` evidence도 검증한다. |
 | `Client/Scenarios/MonB1KindFilterScenario.cs` | `Client/Scenarios/mon_b1_kind_filter_scenario.hpp` | scenario | done | filtered service의 socket event kind filter를 `ConnectionReady` event로 검증한다. |
 | `Client/Scenarios/MonB2RegistrationValidationScenario.cs` | `Client/Scenarios/mon_b2_registration_validation_scenario.hpp` | scenario | done | 중복 source, 비양수 interval, missing spot/socket source framework 적용 검증을 확인한다. |
@@ -59,7 +59,7 @@
 | `MON-A1` | `Client/Scenarios/mon_a1_socket_events_scenario.hpp` | done |
 | `MON-A2` | `Client/Scenarios/mon_a2_registry_events_scenario.hpp` | done |
 | `MON-A3` | `Client/Scenarios/mon_a3_spot_events_scenario.hpp` | done |
-| `MON-A4` | `Client/Scenarios/mon_a4_availability_transition_scenario.hpp` | partial |
+| `MON-A4` | `Client/Scenarios/mon_a4_availability_transition_scenario.hpp` | done |
 | `MON-A5` | `Client/Scenarios/mon_a5_fixed_kinds_scenario.hpp` | done |
 | `MON-B1` | `Client/Scenarios/mon_b1_kind_filter_scenario.hpp` | done |
 | `MON-B2` | `Client/Scenarios/mon_b2_registration_validation_scenario.hpp` | done |
@@ -70,6 +70,6 @@
 
 - 2026-06-30: `timeout 420s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
   - 결과: 통과
-  - 로그: `logs/20260630-173613-574152`
+  - 로그: `logs/20260630-182556-730831`
   - 의미: registry, service, filtered service, throwing service, trigger, client role target이 같은 gate에서
     MON-A1, MON-A2, MON-A3, MON-A4, MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을 검증한다.

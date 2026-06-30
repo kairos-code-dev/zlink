@@ -67,7 +67,7 @@ internal static class TriggerValidation
         {
             framework.AddClientServerChannel("validation.profile")
                 .EnableServer(PickTcpEndpoint())
-                .AddRequestHandler<ValidationRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
+                .AddRequestHandler<ValidationRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
         });
         builder.Services.AddZLinkMonitoring(monitor =>
         {

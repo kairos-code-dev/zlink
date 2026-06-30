@@ -2,8 +2,8 @@ package systems.zlink.e2e.kotlin.registrymessaging.workflow.Handlers
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
-import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRequest
+import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReq
 import systems.zlink.e2e.kotlin.registrymessaging.workflow.Infrastructure.EvidenceStore
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRequestHandler
@@ -13,10 +13,10 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 
 class WorkflowRequestHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRequestHandler<WorkflowRequest, WorkflowReply> {
-    override fun handle(request: WorkflowRequest, context: ZLinkRequestContext): WorkflowReply {
+) : ZLinkRequestHandler<WorkflowReq, WorkflowRes> {
+    override fun handle(request: WorkflowReq, context: ZLinkRequestContext): WorkflowRes {
         evidence.add("workflow-request|rid=${evidence.rid}|value=${request.value}|packet=${context.packetName()}")
-        return WorkflowReply("workflow:${request.value}", evidence.rid)
+        return WorkflowRes("workflow:${request.value}", evidence.rid)
     }
 }
 

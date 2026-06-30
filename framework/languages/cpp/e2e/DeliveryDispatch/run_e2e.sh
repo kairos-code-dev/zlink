@@ -86,7 +86,6 @@ cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_delivery_dispatch_registry \
   zlink_cpp_e2e_delivery_dispatch_dispatch_api \
   zlink_cpp_e2e_delivery_dispatch_dispatch_center \
-  zlink_cpp_e2e_delivery_dispatch_courier \
   zlink_cpp_e2e_delivery_dispatch_tracking \
   zlink_cpp_e2e_delivery_dispatch_session \
   zlink_cpp_e2e_delivery_dispatch_probe \
@@ -100,15 +99,7 @@ wait_port tracking "$(port_of "$DELIVERYDISPATCH_TRACKING_ROUTE")"
 
 start_role session "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_session"
 wait_port session-stream "$(port_of "$DELIVERYDISPATCH_SESSION_STREAM")"
-
-start_role courier-a env DELIVERYDISPATCH_COURIER_ID=courier-a \
-  DELIVERYDISPATCH_COURIER_MODE=timeout-reassign \
-  "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier"
 wait_port courier-a "$(port_of "$DELIVERYDISPATCH_COURIER_A_ROUTE")"
-
-start_role courier-b env DELIVERYDISPATCH_COURIER_ID=courier-b \
-  DELIVERYDISPATCH_COURIER_MODE=accept \
-  "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier"
 wait_port courier-b "$(port_of "$DELIVERYDISPATCH_COURIER_B_ROUTE")"
 
 start_role dispatch-center "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_dispatch_center"

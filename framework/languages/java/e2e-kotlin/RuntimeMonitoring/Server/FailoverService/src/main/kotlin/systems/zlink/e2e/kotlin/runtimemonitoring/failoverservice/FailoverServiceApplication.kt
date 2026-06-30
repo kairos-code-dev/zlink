@@ -47,9 +47,9 @@ class FailoverServiceApplication {
                 .setRoutingId(RoutingId.from("svc-a"))
                 .addRequestHandler(
                     FailoverWorkRequestHandler::class.java,
-                    Contracts.WorkRequest::class.java,
-                    Contracts.WorkReply::class.java,
-                    "WorkRequest",
+                    Contracts.WorkReq::class.java,
+                    Contracts.WorkRes::class.java,
+                    "WorkReq",
                 )
         }
     }

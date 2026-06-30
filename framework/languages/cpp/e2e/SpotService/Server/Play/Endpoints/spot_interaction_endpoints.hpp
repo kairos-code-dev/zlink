@@ -19,6 +19,8 @@ inline void map_spot_interaction_endpoints (zlink::framework::http_options_build
       .map_post<spot_worker_start_route_handler_t> ("/spot/worker/start")
       .map_post<spot_worker_complete_handler_t> ("/spot/worker/complete")
       .map_post<route_spot_state_handler_t> ("/spot/state/request")
+      .map_post<spot_stage_probe_route_handler_t> ("/spot/stage/request")
+      .map_post<spot_stage_timer_route_handler_t> ("/spot/stage/timer")
       .map_post<spot_state_command_route_handler_t> ("/spot/state/command")
       .map_post<spot_publish_route_handler_t> ("/spot/publish")
       .map_post<spot_publish_wait_handler_t> ("/spot/publish/wait")

@@ -11,12 +11,12 @@ import java.util.concurrent.Executors
 import org.springframework.context.ConfigurableApplicationContext
 import systems.zlink.e2e.kotlin.registrymessaging.consumer.Configuration.ConsumerOptions
 import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
-import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileCommand
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.RequestFailureResult
+import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileMsg
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.RequestFailureRes
 import systems.zlink.framework.channels.ZLinkClient
 
 class ConsumerEndpoints(
@@ -34,37 +34,37 @@ class ConsumerEndpoints(
             exchange.writeJson(mapOf("status" to "ready", "role" to "consumer"))
         }
         server.createContext("/profile/batch-request") { exchange ->
-            val requests = exchange.readJson<Array<ProfileRequest>>()
+            val requests = exchange.readJson<Array<ProfileReq>>()
             exchange.writeJson(requests.map { requestProfile(it, Duration.ofSeconds(5)) })
         }
         server.createContext("/profile/request") { exchange ->
             exchange.writeJson(requestProfile(exchange.readJson(), Duration.ofSeconds(5)))
         }
         server.createContext("/profile/slow-request") { exchange ->
-            val request = exchange.readJson<ProfileRequest>()
+            val request = exchange.readJson<ProfileReq>()
             try {
                 requestProfile(request, Duration.ofMillis(100), retryUntilReady = false)
-                exchange.writeJson(RequestFailureResult(false, ""))
+                exchange.writeJson(RequestFailureRes(false, ""))
             } catch (error: RuntimeException) {
-                exchange.writeJson(RequestFailureResult(true, rootName(error)))
+                exchange.writeJson(RequestFailureRes(true, rootName(error)))
             }
         }
         server.createContext("/profile/missing-request") { exchange ->
-            val request = exchange.readJson<ProfileRequest>()
+            val request = exchange.readJson<ProfileReq>()
             try {
                 channels.requestToChannel(Contracts.PROFILE_CHANNEL, request)
-                    .packetName("MissingProfileRequest")
+                    .packetName("MissingProfileReq")
                     .timeout(Duration.ofSeconds(5))
-                    .await(ProfileReply::class.java)
-                exchange.writeJson(RequestFailureResult(false, ""))
+                    .await(ProfileRes::class.java)
+                exchange.writeJson(RequestFailureRes(false, ""))
             } catch (error: RuntimeException) {
-                exchange.writeJson(RequestFailureResult(true, rootName(error)))
+                exchange.writeJson(RequestFailureRes(true, rootName(error)))
             }
         }
         server.createContext("/profile/missing-command") { exchange ->
-            val command = exchange.readJson<ProfileCommand>()
+            val command = exchange.readJson<ProfileMsg>()
             channels.sendToChannel(Contracts.PROFILE_CHANNEL, command)
-                .packetName("MissingProfileCommand")
+                .packetName("MissingProfileMsg")
                 .await()
             exchange.writeJson(mapOf("status" to "sent"))
         }
@@ -83,10 +83,10 @@ class ConsumerEndpoints(
     }
 
     private fun requestProfile(
-        request: ProfileRequest,
+        request: ProfileReq,
         timeout: Duration,
         retryUntilReady: Boolean = true,
-    ): ProfileReply {
+    ): ProfileRes {
         val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
         var last: RuntimeException? = null
         while (System.nanoTime() < deadline) {
@@ -94,7 +94,7 @@ class ConsumerEndpoints(
                 return channels.requestToChannel(Contracts.PROFILE_CHANNEL, request)
                     .packetName(Contracts.PROFILE_REQUEST_PACKET)
                     .timeout(timeout)
-                    .await(ProfileReply::class.java)
+                    .await(ProfileRes::class.java)
             } catch (error: RuntimeException) {
                 if (!retryUntilReady) {
                     throw error
@@ -106,7 +106,7 @@ class ConsumerEndpoints(
         throw IllegalStateException("Timed out waiting for profile endpoint.", last)
     }
 
-    private fun requestPayload(request: PayloadRequest): PayloadReply {
+    private fun requestPayload(request: PayloadReq): PayloadRes {
         val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
         var last: RuntimeException? = null
         while (System.nanoTime() < deadline) {
@@ -114,7 +114,7 @@ class ConsumerEndpoints(
                 return channels.requestToChannel(Contracts.PROFILE_CHANNEL, request)
                     .packetName(Contracts.PAYLOAD_REQUEST_PACKET)
                     .timeout(Duration.ofSeconds(10))
-                    .await(PayloadReply::class.java)
+                    .await(PayloadRes::class.java)
             } catch (error: RuntimeException) {
                 last = error
                 Thread.sleep(100)

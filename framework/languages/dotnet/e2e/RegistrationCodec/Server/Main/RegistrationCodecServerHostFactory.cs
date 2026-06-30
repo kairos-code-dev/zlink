@@ -59,18 +59,18 @@ public static class RegistrationCodecServerHostFactory
                 .EnableClient(Require(options.ChannelEndpoint, "--channel-endpoint"));
             channel.AddHandlerGroup("auto");
             channel.AddHandlerGroup("attr");
-            channel.AddRequestHandler<EchoManualRequestHandler, EchoManualReq, EchoReply>("EchoManual");
-            channel.AddSendHandler<EchoManualCommandHandler, EchoManualCommand>("EchoManualCommand");
-            channel.AddRequestHandler<JsonEchoRequestHandler, JsonEchoReq, EchoReply>("EchoJson");
-            channel.AddSendHandler<JsonEchoCommandHandler, JsonEchoCommand>("EchoJsonCommand");
+            channel.AddRequestHandler<EchoManualRequestHandler, EchoManualReq, EchoRes>("EchoManual");
+            channel.AddSendHandler<EchoManualCommandHandler, EchoManualMsg>("EchoManualMsg");
+            channel.AddRequestHandler<JsonEchoRequestHandler, JsonEchoReq, EchoRes>("EchoJson");
+            channel.AddSendHandler<JsonEchoCommandHandler, JsonEchoMsg>("EchoJsonMsg");
             channel.AddRequestHandler<ProtobufEchoRequestHandler, StringValue, StringValue>("EchoProtobuf");
-            channel.AddSendHandler<ProtobufEchoCommandHandler, StringValue>("EchoProtobufCommand");
+            channel.AddSendHandler<ProtobufEchoCommandHandler, StringValue>("EchoProtobufMsg");
             channel.AddRequestHandler<MessagePackEchoRequestHandler, PackedEchoReq, PackedEchoReq>("EchoMessagePack");
-            channel.AddSendHandler<MessagePackEchoCommandHandler, PackedEchoCommand>("EchoMessagePackCommand");
-            channel.AddRequestHandler<DiEchoRequestHandler, EchoReq, EchoReply>("EchoDi");
+            channel.AddSendHandler<MessagePackEchoCommandHandler, PackedEchoMsg>("EchoMessagePackMsg");
+            channel.AddRequestHandler<DiEchoRequestHandler, EchoReq, EchoRes>("EchoDi");
 
             if (options.InvalidMode == "duplicate")
-                channel.AddRequestHandler<DuplicateEchoRequestHandler, EchoManualReq, EchoReply>("EchoManual");
+                channel.AddRequestHandler<DuplicateEchoRequestHandler, EchoManualReq, EchoRes>("EchoManual");
         });
 
         var app = builder.Build();

@@ -1,4 +1,4 @@
-import type { EvidenceWaitRequest } from '../../../Shared/messages';
+import type { EvidenceWaitReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
@@ -10,7 +10,7 @@ export function createOperationalEndpoints(evidence: EvidenceStore, stop: () => 
       method: 'POST',
       path: '/evidence/wait',
       handle: async (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         return await evidence.waitUntil(request.containsAll, request.timeoutMilliseconds ?? 10_000);
       }
     },

@@ -15,7 +15,7 @@ import type {
   SyncQuestProgressReq,
   SyncQuestProgressRes,
   UnlockFeatureReq,
-  EventRes
+  GameplayActionRes
 } from '../../../Shared/Contracts/messages';
 
 class SubscribeQuestHandler implements ZLinkRouteRequestHandler<SubscribeQuestReq, SubscribeQuestRes> {
@@ -27,10 +27,10 @@ class SubscribeQuestHandler implements ZLinkRouteRequestHandler<SubscribeQuestRe
   }
 }
 
-class UnlockFeatureHandler implements ZLinkRouteRequestHandler<UnlockFeatureReq, EventRes> {
+class UnlockFeatureHandler implements ZLinkRouteRequestHandler<UnlockFeatureReq, GameplayActionRes> {
   constructor(@Inject(QuestEventProcessor) private readonly processor: QuestEventProcessor) {}
 
-  async handle(request: UnlockFeatureReq, context: ZLinkRouteRequestContext): Promise<EventRes> {
+  async handle(request: UnlockFeatureReq, context: ZLinkRouteRequestContext): Promise<GameplayActionRes> {
     void context;
     return this.processor.unlockFeature(request);
   }

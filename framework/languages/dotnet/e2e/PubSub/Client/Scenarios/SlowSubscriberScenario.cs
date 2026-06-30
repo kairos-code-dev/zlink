@@ -29,7 +29,7 @@ internal static class SlowSubscriberScenario
         // Fast subscribers should still reach the tail event while the slow handler is delayed.
         var fastWaits = fastSubscribers
             .Select(subscriber => subscriber.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(
+                .Body(new EvidenceWaitReq(
                     [],
                     [],
                     2000)
@@ -46,7 +46,7 @@ internal static class SlowSubscriberScenario
 
         // The slow subscriber evidence proves that this scenario actually exercised the delayed path.
         var slowEvidence = (await slowSubscriber.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 [],
                 [])
             {

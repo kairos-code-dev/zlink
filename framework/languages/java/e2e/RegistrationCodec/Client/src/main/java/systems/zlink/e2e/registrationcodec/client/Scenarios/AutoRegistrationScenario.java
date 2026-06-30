@@ -12,15 +12,15 @@ public final class AutoRegistrationScenario {
     }
 
     public static void run(ScenarioContext context) {
-        Contracts.EchoReply auto = context.client().requestToChannel(
+        Contracts.EchoRes auto = context.client().requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.EchoAutoRequest("auto-request"))
+                new Contracts.EchoAutoReq("auto-request"))
             .packetName("EchoAuto")
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EchoReply.class);
+            .await(Contracts.EchoRes.class);
         ScenarioAssert.ensure("echo:auto-request".equals(auto.value()) && "auto".equals(auto.handler()),
             "RC-A1 request mismatch");
-        context.client().sendToChannel(Contracts.CHANNEL, new Contracts.EchoAutoCommand("auto-send"))
+        context.client().sendToChannel(Contracts.CHANNEL, new Contracts.EchoAutoMsg("auto-send"))
             .packetName("EchoAuto")
             .await();
         ScenarioAssert.waitForEvidence(context.evidence(), "Send", "EchoAuto", "auto-send");

@@ -21,8 +21,8 @@ internal static class SpotInteractionEndpoints
                 routes,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new SpotOutboundReq(request.Marker),
-                "SpotOutboundReq",
+                new SpotOutboundMsg(request.Marker),
+                "SpotOutboundMsg",
                 "Spot outbound route timed out.");
             await WaitUntilAsync(
                 () =>
@@ -32,12 +32,12 @@ internal static class SpotInteractionEndpoints
                                $"spot-outbound|rid={node.Rid}|spot={request.SpotRid}|echo=echo-sm-c2|notify=notify-sm-c2") >=
                            1
                            && CountNew(after, before,
-                               $"spot-event|rid={node.Rid}|spot={request.SpotRid}|marker=sm-c2-publish") >= 1
+                               $"spot-msg|rid={node.Rid}|spot={request.SpotRid}|marker=sm-c2-publish") >= 1
                            && CountNew(after, before, "channel-echo|value=sm-c2") >= 1
                            && CountNew(after, before, "channel-notify|marker=notify-sm-c2") >= 1;
                 },
                 "Expected spot outbound evidence.");
-            return Results.Ok(new SpotOutboundRouteReply(
+            return Results.Ok(new SpotOutboundRouteRes(
                 request.SpotRid,
                 request.Marker,
                 true,
@@ -54,8 +54,8 @@ internal static class SpotInteractionEndpoints
                 routes,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new SpotOutboundNegativeReq(request.Marker),
-                "SpotOutboundNegativeReq",
+                new SpotOutboundNegativeMsg(request.Marker),
+                "SpotOutboundNegativeMsg",
                 "Spot outbound negative route timed out.");
             await WaitUntilAsync(
                 () =>
@@ -67,11 +67,11 @@ internal static class SpotInteractionEndpoints
                                "dispatch-error|surface=Channel|reason=HandlerMissing|action=ReplyError|packet=MissingChannelReq") >=
                            1
                            && CountNew(after, before,
-                               "dispatch-error|surface=Channel|reason=HandlerMissing|action=Drop|packet=MissingChannelSend") >=
+                               "dispatch-error|surface=Channel|reason=HandlerMissing|action=Drop|packet=MissingChannelNotify") >=
                            1;
                 },
                 "Expected spot outbound negative evidence.");
-            return Results.Ok(new SpotOutboundRouteReply(
+            return Results.Ok(new SpotOutboundRouteRes(
                 request.SpotRid,
                 request.Marker,
                 true,
@@ -87,7 +87,7 @@ internal static class SpotInteractionEndpoints
                     new StageProbeReq(request.Marker, request.Delta))
                 .PacketName("StageProbeReq")
                 .Timeout(TimeSpan.FromSeconds(5))
-                .Async<StateReply>();
+                .Async<StateRes>();
             return Results.Ok(result);
         });
         app.MapPost("/spot/stage/timer", async (
@@ -101,14 +101,14 @@ internal static class SpotInteractionEndpoints
                 routes,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new StageTimerStartCommand(request.Name, request.PeriodMs),
-                "StageTimerStartCommand",
+                new StageTimerStartMsg(request.Name, request.PeriodMs),
+                "StageTimerStartMsg",
                 "Spot stage timer command route timed out.");
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"stage-timer|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 1,
                 "Expected spot stage timer evidence.");
-            return Results.Ok(new SpotStageTimerReply(
+            return Results.Ok(new SpotStageTimerRes(
                 request.SpotRid,
                 request.Name,
                 true,
@@ -125,14 +125,14 @@ internal static class SpotInteractionEndpoints
                 routes,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new TimerStartCommand(request.Name, request.PeriodMs),
-                "TimerStartCommand",
+                new TimerStartMsg(request.Name, request.PeriodMs),
+                "TimerStartMsg",
                 "Spot timer start command timed out.");
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"timer-basic|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 2,
                 "Expected repeated spot timer evidence.");
-            return Results.Ok(new SpotTimerStartReply(
+            return Results.Ok(new SpotTimerStartRes(
                 request.SpotRid,
                 request.Name,
                 true,
@@ -149,8 +149,8 @@ internal static class SpotInteractionEndpoints
                 routes,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new IdleCloseCommand(request.Name, request.PeriodMs),
-                "IdleCloseCommand",
+                new IdleCloseMsg(request.Name, request.PeriodMs),
+                "IdleCloseMsg",
                 "Spot idle close command timed out.");
             await WaitUntilAsync(
                 () =>
@@ -162,7 +162,7 @@ internal static class SpotInteractionEndpoints
                            && CountNew(after, before, $"spot-closing|rid={node.Rid}|spot={request.SpotRid}") == 1;
                 },
                 "Expected spot idle close evidence.");
-            return Results.Ok(new SpotIdleCloseReply(
+            return Results.Ok(new SpotIdleCloseRes(
                 request.SpotRid,
                 request.Name,
                 true,
@@ -179,14 +179,14 @@ internal static class SpotInteractionEndpoints
                 routes,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new OverrunStartCommand(request.Name, request.Policy, request.PeriodMs),
-                "OverrunStartCommand",
+                new OverrunStartMsg(request.Name, request.Policy, request.PeriodMs),
+                "OverrunStartMsg",
                 "Spot overrun timer start command timed out.");
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"timer-overrun|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 3,
                 "Expected spot overrun timer evidence.");
-            return Results.Ok(new SpotOverrunStartReply(
+            return Results.Ok(new SpotOverrunStartRes(
                 request.SpotRid,
                 request.Name,
                 request.Policy,
@@ -203,7 +203,7 @@ internal static class SpotInteractionEndpoints
                     new WorkerStartReq(request.Marker, request.DelayMs))
                 .PacketName("WorkerStartReq")
                 .Timeout(TimeSpan.FromSeconds(30))
-                .Async<WorkerStartReply>();
+                .Async<WorkerStartRes>();
             return Results.Ok(result);
         });
         app.MapPost("/spot/worker/complete", async (
@@ -216,7 +216,7 @@ internal static class SpotInteractionEndpoints
                     line.Contains($"worker-complete|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}",
                         StringComparison.Ordinal)),
                 "Expected worker completion evidence.");
-            return Results.Ok(new SpotWorkerCompleteReply(
+            return Results.Ok(new SpotWorkerCompleteRes(
                 request.SpotRid,
                 request.Marker,
                 true,
@@ -244,7 +244,7 @@ internal static class SpotInteractionEndpoints
                                $"spot-state-command|rid={node.Rid}|spot={request.TargetSpotRid}|marker=sm-c3-send-{request.Marker}") >=
                            1
                            && CountNew(after, [],
-                               $"spot-event|rid={node.Rid}|spot={request.TargetSpotRid}|marker=sm-c3-publish-{request.Marker}") >=
+                               $"spot-msg|rid={node.Rid}|spot={request.TargetSpotRid}|marker=sm-c3-publish-{request.Marker}") >=
                            1;
                 },
                 "Expected spot-to-spot request evidence.");
@@ -257,9 +257,9 @@ internal static class SpotInteractionEndpoints
         {
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), Array.Empty<string>(),
-                    $"spot-event|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") >= 1,
+                    $"spot-msg|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") >= 1,
                 "SM-C4 expected publish event evidence.");
-            return Results.Ok(new SpotPublishObserveReply(
+            return Results.Ok(new SpotPublishObserveRes(
                 "spot.sm-c4-observe",
                 request.SpotRid,
                 request.Marker,

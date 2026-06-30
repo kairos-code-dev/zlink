@@ -7,6 +7,6 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest
 
 class TimerStatusHandler {
     @ZLinkSpotRequest
-    fun handle(spot: TimerScenarioSpot, request: String): Contracts.TimerStatus =
+    fun handle(spot: TimerScenarioSpot, request: String): Contracts.TimerStatusRes =
         spot.status()
 }

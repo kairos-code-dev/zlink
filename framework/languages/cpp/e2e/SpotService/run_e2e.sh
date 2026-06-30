@@ -374,6 +374,44 @@ wait_play_b_route_ready() {
   return 1
 }
 
+if [[ "$SCENARIO" == "SM-A1-A2-A4-F1-F2" || "$SCENARIO" == "sm-a1-a2-a4-f1-f2" ]]; then
+  start_registry
+  start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
+  start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
+  wait_route_ready sm-a1-a2-a4-f1-f2-route-ready
+  run_base_client sm-a1-a2-a4-f1-f2 client-sm-a1-a2-a4-f1-f2
+  fetch_evidence play-a-sm-a1-a2-a4-f1-f2 "$HTTP_A"
+  fetch_evidence play-b-sm-a1-a2-a4-f1-f2 "$HTTP_B"
+  python3 - "$LOG_DIR/play-a-sm-a1-a2-a4-f1-f2-evidence.json" "$LOG_DIR/play-b-sm-a1-a2-a4-f1-f2-evidence.json" <<'PY'
+import json
+import sys
+
+play_a = json.load(open(sys.argv[1], encoding="utf-8"))
+play_b = json.load(open(sys.argv[2], encoding="utf-8"))
+spot = "user:play-a:spot-owner-order-sm-a4"
+
+def has(snapshot, marker, value=None, actor_id=None):
+    return any(item["marker"] == marker
+               and item["spot_rid"] == spot
+               and (value is None or item["value"] == value)
+               and (actor_id is None or item["actor_id"] == actor_id)
+               for item in snapshot["entries"])
+
+values = [entry["value"]
+          for entry in play_a["entries"]
+          if entry["marker"] == "StateRouted"
+          and entry["spot_rid"] == spot]
+assert has(play_a, "SpotInitialized")
+assert values == ["0", "7", "12"], values
+assert has(play_a, "SpotToSpotMsg", "sm-f1-command", "sm-c1-client")
+assert has(play_a, "SpotToSpotMsg", "sm-f2-command", "sm-c1-client")
+assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
+print("scenario SM-A1/A2/A4/F1/F2 evidence passed")
+PY
+  echo "spot-service e2e result=passed"
+  exit 0
+fi
+
 run_stream_route_ready_client() {
   local output="$1"
   local status=0
@@ -525,6 +563,40 @@ assert len(values) == 2, values
 assert all(value == "0" for value in values), values
 assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
 print("scenario SM-A4 evidence passed")
+PY
+  echo "spot-service e2e result=passed"
+  exit 0
+fi
+
+if [[ "$SCENARIO" == "SM-A5" || "$SCENARIO" == "sm-a5" ]]; then
+  start_registry
+  start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
+  start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
+  wait_route_ready sm-a5-route-ready
+  run_base_client sm-a5 client-sm-a5
+  fetch_evidence play-a-sm-a5 "$HTTP_A"
+  fetch_evidence play-b-sm-a5 "$HTTP_B"
+  python3 - "$LOG_DIR/play-a-sm-a5-evidence.json" "$LOG_DIR/play-b-sm-a5-evidence.json" <<'PY'
+import json
+import sys
+
+play_a = json.load(open(sys.argv[1], encoding="utf-8"))
+play_b = json.load(open(sys.argv[2], encoding="utf-8"))
+spot = "user:play-a:sm-a5-stage"
+
+def has(snapshot, marker, value=None):
+    return any(entry["marker"] == marker
+               and entry["spot_rid"] == spot
+               and (value is None or entry["value"] == value)
+               for entry in snapshot["entries"])
+
+assert has(play_a, "SpotInitialized")
+assert has(play_a, "StateRouted", "0")
+assert has(play_a, "StageRequest", "sm-a5-stage:9")
+assert has(play_a, "StageTimer", "sm-a5-stage-timer:1")
+assert has(play_a, "SpotClosing")
+assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
+print("scenario SM-A5 evidence passed")
 PY
   echo "spot-service e2e result=passed"
   exit 0
@@ -1094,15 +1166,15 @@ def has(marker, value=None, actor_id=None):
 
 assert has("SpotInitialized")
 assert has("SpotToSpotRequest", "sm-c1-request", "sm-c1-client")
-assert has("SpotToSpotCommand", "sm-c1-send", "sm-c1-client")
-assert has("MeshEventReceived", "evt-sm-c1:sm-c1-publish")
+assert has("SpotToSpotMsg", "sm-c1-send", "sm-c1-client")
+assert has("MeshMsgReceived", "evt-sm-c1:sm-c1-publish")
 assert has("SpotToSpotRequest", "sm-c1-after-timeout", "sm-c1-client")
 assert not any(item["spot_rid"] == spot for item in play_b["entries"])
 print("scenario SM-C1 evidence passed")
 PY
   grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
     "$LOG_DIR/play-a.stderr.log"
-  grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotSend" \
+  grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
     "$LOG_DIR/play-a.stderr.log"
   echo "spot-service e2e result=passed"
   exit 0
@@ -1147,17 +1219,17 @@ def has(snapshot, marker, value=None, spot_rid=None):
 
 assert has(play_b, "SpotInitialized", spot_rid=spot)
 assert has(play_b, "SpotOutbound", "echo-sm-c2|notify-sm-c2|timeout=true", spot)
-assert has(play_b, "MeshEventReceived", "evt-sm-c2:sm-c2-publish", spot)
+assert has(play_b, "MeshMsgReceived", "evt-sm-c2:sm-c2-publish", spot)
 assert has(play_b, "SpotOutboundNegative", "requestFailed=true", spot)
 assert has(play_a, "ChannelEcho", "sm-c2")
-assert has(play_a, "ChannelCommand", "notify-sm-c2")
+assert has(play_a, "ChannelMsg", "notify-sm-c2")
 assert has(play_a, "ChannelSlow", "sm-c2")
 assert not any(item["spot_rid"] == spot for item in play_a["entries"])
 print("scenario SM-C2 evidence passed")
 PY
   grep -q "surface=channel.*reason=handler_missing.*action=reply_error.*packet=MissingChannelReq" \
     "$LOG_DIR/play-a-flow.log"
-  grep -q "surface=channel.*reason=handler_missing.*action=drop.*packet=MissingChannelSend" \
+  grep -q "surface=channel.*reason=handler_missing.*action=drop.*packet=MissingChannelMsg" \
     "$LOG_DIR/play-a-flow.log"
   echo "spot-service e2e result=passed"
   exit 0
@@ -1207,15 +1279,15 @@ assert has(play_a, "SpotInitialized", spot_rid=target)
 assert has(play_b, "SpotToSpotOutbound",
            f"target={target}|value=sm-c3-direct:reply", source)
 assert has(play_a, "SpotToSpotRequest", "sm-c3-direct", target, source)
-assert has(play_a, "SpotToSpotCommand", "sm-c3-send-direct", target, source)
-assert has(play_a, "MeshEventReceived", "evt-sm-c3:sm-c3-publish-direct", target)
+assert has(play_a, "SpotToSpotMsg", "sm-c3-send-direct", target, source)
+assert has(play_a, "MeshMsgReceived", "evt-sm-c3:sm-c3-publish-direct", target)
 assert has(play_b, "SpotToSpotTimeout", f"target={target}|failed=true", source)
 assert has(play_b, "SpotToSpotNegative", f"target={target}|requestFailed=true", source)
 print("scenario SM-C3 evidence passed")
 PY
   grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
     "$LOG_DIR/play-a.stderr.log"
-  grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotCommand" \
+  grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
     "$LOG_DIR/play-a.stderr.log"
   echo "spot-service e2e result=passed"
   exit 0
@@ -1257,7 +1329,7 @@ unsubscribed = "user:play-a:sm-c4-unsubscribed"
 
 def count_event(spot_rid):
     return sum(1 for item in play_a["entries"]
-               if item["marker"] == "MeshEventReceived"
+               if item["marker"] == "MeshMsgReceived"
                and item["spot_rid"] == spot_rid
                and item["value"] == "evt-sm-c4:sm-c4-publish")
 
@@ -1303,10 +1375,10 @@ def has(marker, value=None, actor_id=None):
 
 if scenario == "sm-f1":
     assert has("SpotToSpotRequest", "route-direct", "external-client")
-    assert has("SpotToSpotCommand", "route-direct:command", "external-client")
+    assert has("SpotToSpotMsg", "route-direct:command", "external-client")
 elif scenario == "sm-f2":
     assert has("SpotToSpotRequest", "route-direct-f2", "external-client")
-    assert has("SpotToSpotCommand", "route-direct-f2:command", "external-client")
+    assert has("SpotToSpotMsg", "route-direct-f2:command", "external-client")
 elif scenario == "sm-f4":
     assert has("SpotToSpotRequest", "route-recovery", "external-client")
 else:
@@ -2213,7 +2285,7 @@ if [[ "$SCENARIO" == "SM-E1" || "$SCENARIO" == "sm-e1" ]]; then
   for _ in $(seq 1 100); do
     if grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
       "$LOG_DIR/play-b.stderr.log" \
-      && grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotSend" \
+      && grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
         "$LOG_DIR/play-b.stderr.log"; then
       break
     fi
@@ -2221,7 +2293,7 @@ if [[ "$SCENARIO" == "SM-E1" || "$SCENARIO" == "sm-e1" ]]; then
   done
   grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
     "$LOG_DIR/play-b.stderr.log"
-  grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotSend" \
+  grep -q "surface=spot_route.*reason=handler_missing.*action=drop.*packet=MissingSpotMsg" \
     "$LOG_DIR/play-b.stderr.log"
   fetch_evidence play-a-sm-e1 "$HTTP_A"
   fetch_evidence play-b-sm-e1 "$HTTP_B"
@@ -2632,13 +2704,13 @@ assert has_value(play_a, "WorkerStarted", "alice-2", "7")
 assert has_value(play_a, "WorkerCompleted", "alice-2", "25")
 assert has(play_a, "SpotOutbound", "alice-2")
 assert has_value(play_a, "SpotToSpotOutbound", "alice-2", "spot-to-spot:reply")
-assert has(play_a, "MeshEventReceived")
-assert has_marker_value(play_a, "MeshEventReceived", "evt-spot-to-spot:alice-2:spot-to-spot")
-assert has_marker_value(play_a, "MeshEventReceived", "evt-publisher-client:publish-only")
+assert has(play_a, "MeshMsgReceived")
+assert has_marker_value(play_a, "MeshMsgReceived", "evt-spot-to-spot:alice-2:spot-to-spot")
+assert has_marker_value(play_a, "MeshMsgReceived", "evt-publisher-client:publish-only")
 assert has_value(play_b, "SpotToSpotRequest", "alice-2", "spot-to-spot")
-assert has_value(play_b, "SpotToSpotCommand", "alice-2", "spot-to-spot:command")
-assert has_marker_value(play_b, "MeshEventReceived", "evt-spot-to-spot:alice-2:spot-to-spot")
-assert has_marker_value(play_b, "MeshEventReceived", "evt-publisher-client:publish-only")
+assert has_value(play_b, "SpotToSpotMsg", "alice-2", "spot-to-spot:command")
+assert has_marker_value(play_b, "MeshMsgReceived", "evt-spot-to-spot:alice-2:spot-to-spot")
+assert has_marker_value(play_b, "MeshMsgReceived", "evt-publisher-client:publish-only")
 assert has_value(play_a, "ActorPushedSession", "stream-local", "stream-local-push")
 assert has_value(play_a, "ActorPushedSession", "stream-multi-a", "stream-multi-a-push")
 assert has_value(play_a, "ActorPushedSession", "actor-sm-d6", "push-bound-only")

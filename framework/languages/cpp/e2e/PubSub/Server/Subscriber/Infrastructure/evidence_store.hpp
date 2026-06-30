@@ -87,7 +87,7 @@ class evidence_store_t
                 .errors = errors};
     }
 
-    std::vector<std::string> wait (const evidence_wait_request_t &request) const
+    std::vector<std::string> wait (const evidence_wait_req_t &request) const
     {
         const auto timeout =
           std::chrono::milliseconds (std::clamp (request.timeout_milliseconds, 1, 30000));
@@ -149,7 +149,7 @@ class evidence_store_t
     }
 
     static bool matches (const std::vector<std::string> &snapshot,
-                         const evidence_wait_request_t &request)
+                         const evidence_wait_req_t &request)
     {
         for (const auto &expected : request.contains_all) {
             if (!any_entry_contains (snapshot, expected)) {

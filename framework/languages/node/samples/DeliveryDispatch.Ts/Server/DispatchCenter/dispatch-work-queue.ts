@@ -1,10 +1,10 @@
-import type { AssignDelivery } from '../../Shared/Contracts/messages';
+import type { AssignDeliveryReq } from '../../Shared/Contracts/messages';
 
 class DispatchWorkQueue {
-  private readonly items: AssignDelivery[] = [];
-  private readonly waiters: Array<(item: AssignDelivery) => void> = [];
+  private readonly items: AssignDeliveryReq[] = [];
+  private readonly waiters: Array<(item: AssignDeliveryReq) => void> = [];
 
-  enqueue(request: AssignDelivery): void {
+  enqueue(request: AssignDeliveryReq): void {
     const waiter = this.waiters.shift();
     if (waiter !== undefined) {
       waiter(request);
@@ -13,7 +13,7 @@ class DispatchWorkQueue {
     this.items.push(request);
   }
 
-  async next(): Promise<AssignDelivery> {
+  async next(): Promise<AssignDeliveryReq> {
     const item = this.items.shift();
     if (item !== undefined) {
       return item;

@@ -11,9 +11,9 @@ public final class RmA4SameRidFailoverScenario {
     }
 
     public static void run(ZLinkHttpClient discoveryConsumer) {
-        Contracts.ProfileReply first = discoveryConsumer.post("/profile/request")
-            .body(new Contracts.ProfileRequest("failover-before"))
-            .fetch(Contracts.ProfileReply.class);
+        Contracts.ProfileRes first = discoveryConsumer.post("/profile/request")
+            .body(new Contracts.ProfileReq("failover-before"))
+            .fetch(Contracts.ProfileRes.class);
         ScenarioAssert.that("api-a".equals(first.providerRid()) && "api-a-v1".equals(first.instanceId()),
             "RM-A4 initial provider mismatch");
 
@@ -21,9 +21,9 @@ public final class RmA4SameRidFailoverScenario {
         ScenarioSignals.waitForFile(ClientOptions.get("ZLINK_JAVA_E2E_CONTINUE_FILE"));
 
         for (int index = 0; index < 20; index++) {
-            Contracts.ProfileReply reply = discoveryConsumer.post("/profile/request")
-                .body(new Contracts.ProfileRequest("failover-after-" + index))
-                .fetch(Contracts.ProfileReply.class);
+            Contracts.ProfileRes reply = discoveryConsumer.post("/profile/request")
+                .body(new Contracts.ProfileReq("failover-after-" + index))
+                .fetch(Contracts.ProfileRes.class);
             ScenarioAssert.that("api-a".equals(reply.providerRid()) && "api-a-v2".equals(reply.instanceId()),
                 "RM-A4 did not switch to replacement provider");
         }

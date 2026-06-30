@@ -4,11 +4,11 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  AuthReply,
+  AuthRes,
   AuthReq,
-  ComplexActorReply,
+  ComplexActorRes,
   ComplexActorReq,
-  EvidenceWaitRequest
+  EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -34,9 +34,9 @@ export async function runSmB3(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
-    const complex = decodeStreamReply<ComplexActorReply>(await client
+    const complex = decodeStreamReply<ComplexActorRes>(await client
       .request({
         displayName: 'Ada Lovelace',
         level: 42,
@@ -65,7 +65,7 @@ export async function runSmB3(options: ClientOptions): Promise<void> {
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-B3 evidence mismatch.'

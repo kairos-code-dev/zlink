@@ -17,33 +17,33 @@ internal static class RmA6MultipleChannelsScenario
         var workflowMarker = $"rm-a6-workflow-{Guid.NewGuid():N}";
 
         var profileReply = (await providerA.Post("/profile/request")
-            .Body(new ProfileRequest(profileMarker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq(profileMarker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(profileReply.Value == $"profile:{profileMarker}", "RM-A6 profile reply value mismatch.");
         ScenarioAssert.That(
             profileReply.ProviderRid is "api-a" or "api-b",
             "RM-A6 profile request reached an unexpected provider.");
 
         var workflowReply = (await workflow.Post("/workflow/request")
-            .Body(new WorkflowRequest(workflowMarker))
-            .SubmitAsync<WorkflowReply>()).Body;
+            .Body(new WorkflowReq(workflowMarker))
+            .SubmitAsync<WorkflowRes>()).Body;
         ScenarioAssert.That(workflowReply.Value == $"workflow:{workflowMarker}",
             "RM-A6 workflow reply value mismatch.");
         ScenarioAssert.That(workflowReply.ProviderRid == "workflow-a",
             "RM-A6 workflow request should reach workflow-a.");
 
         var providerWaitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(profileMarker))
+            .Body(new EvidenceWaitReq(profileMarker))
             .SubmitAsync<string[]>()
             .AsTask();
         var providerWaitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(profileMarker))
+            .Body(new EvidenceWaitReq(profileMarker))
             .SubmitAsync<string[]>()
             .AsTask();
         var providerCompleted = await Task.WhenAny(providerWaitA, providerWaitB);
         var providerEvidence = (await providerCompleted).Body;
         var workflowEvidence = (await workflow.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(workflowMarker))
+            .Body(new EvidenceWaitReq(workflowMarker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             providerEvidence.Any(line => line.Contains("profile-request|", StringComparison.Ordinal)

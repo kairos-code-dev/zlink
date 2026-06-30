@@ -16,7 +16,7 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSpotCreatedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomTimerHandler
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerEventHandler
+import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoWinnerMsgHandler
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoGame
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEvent
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEventKind
@@ -30,7 +30,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRewardAnnouncedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoStateNotify
-import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoWinnerEvent
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoWinnerMsg
 import systems.zlink.samples.kotlin.bingo.shared.contracts.PlayerJoinedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEventsReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEventsRes
@@ -62,7 +62,7 @@ class BingoRoomSpot(
     override fun configure() {
         context.handlers().addSubscribe(
             SampleNames.WinnerTopic,
-            BingoWinnerEventHandler::class.java,
+            BingoWinnerMsgHandler::class.java,
         )
     }
 
@@ -163,7 +163,7 @@ class BingoRoomSpot(
         leaveFinishedActors(change)
     }
 
-    suspend fun announceWinner(event: BingoWinnerEvent) {
+    suspend fun announceWinner(event: BingoWinnerMsg) {
         if (!settings.observerMode() ||
             observers.isEmpty() ||
             event.roomId != settings.observedRoomId
@@ -231,7 +231,7 @@ class BingoRoomSpot(
         context.outbound()
             .publish(
                 SampleNames.WinnerTopic,
-                BingoWinnerEvent(
+                BingoWinnerMsg(
                     state.roomId,
                     winner,
                     state.drawSeq,

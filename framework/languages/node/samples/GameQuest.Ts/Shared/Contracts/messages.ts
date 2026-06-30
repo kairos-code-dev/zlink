@@ -19,7 +19,7 @@ type EnterAreaReq = Packetized & {
   idempotencyKey: string;
 };
 
-type EventRes = {
+type GameplayActionRes = {
   eventId: string;
 };
 
@@ -197,7 +197,7 @@ export type {
   CompleteMissionReq,
   DeleteQuestProjectionReq,
   EnterAreaReq,
-  EventRes,
+  GameplayActionRes,
   GameQuestServerAssertRes,
   GetGameplaySnapshotReq,
   GetGameplaySnapshotRes,

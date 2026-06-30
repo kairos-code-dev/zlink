@@ -1,13 +1,13 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
-  SpotSlowRouteReply,
+  EvidenceWaitReq,
+  SpotSlowRouteRes,
   SpotSlowRouteReq,
-  SpotStateCommandReply,
-  SpotStateCommandReq,
+  SpotStateMsgRes,
+  SpotStateMsgReq,
   SpotStateRouteReq,
-  StateReply
+  StateRes
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -15,7 +15,7 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmC1(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-c1-${Date.now()}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(
@@ -24,9 +24,9 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
   );
 
   const failures: string[] = [];
-  let viaChannel: StateReply | undefined;
+  let viaChannel: StateRes | undefined;
   try {
-    viaChannel = await postJson<StateReply>(options.playAUrl, '/spot/state/request', {
+    viaChannel = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
       spotRid,
       operation: 'noop',
       delta: 0
@@ -38,17 +38,17 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
   }
 
   try {
-    const command = await postJson<SpotStateCommandReply>(options.playAUrl, '/spot/state/command', {
+    const command = await postJson<SpotStateMsgRes>(options.playAUrl, '/spot/state/command', {
       spotRid,
       marker: 'sm-c1-send'
-    } satisfies SpotStateCommandReq);
+    } satisfies SpotStateMsgReq);
     ensure(command.accepted, 'SM-C1 external channel command was not accepted.');
   } catch (error) {
     failures.push(`send=${formatError(error)}`);
   }
 
   try {
-    const timeout = await postJson<SpotSlowRouteReply>(options.playAUrl, '/spot/slow/request', {
+    const timeout = await postJson<SpotSlowRouteRes>(options.playAUrl, '/spot/slow/request', {
       spotRid,
       marker: 'sm-c1-timeout',
       delayMs: 1500,
@@ -60,7 +60,7 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
   }
 
   try {
-    const afterTimeout = await postJson<StateReply>(options.playAUrl, '/spot/state/request', {
+    const afterTimeout = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
       spotRid,
       operation: 'add',
       delta: 1
@@ -79,7 +79,7 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-C1 evidence mismatch.'

@@ -6,7 +6,7 @@ import type {
   CompleteMissionReq,
   DeleteQuestProjectionReq,
   EnterAreaReq,
-  EventRes,
+  GameplayActionRes,
   GameQuestServerAssertRes,
   GetGameplaySnapshotReq,
   GetGameplaySnapshotRes,
@@ -28,27 +28,27 @@ class QuestEventProcessor {
     @Inject(PlayerQuestSpotProvisioner) private readonly spots: PlayerQuestSpotProvisioner
   ) {}
 
-  async enterArea(request: EnterAreaReq): Promise<EventRes> {
+  async enterArea(request: EnterAreaReq): Promise<GameplayActionRes> {
     await this.spots.ensure(request.playerId);
     return this.quests.enterArea(request);
   }
 
-  async killMonster(request: KillMonsterReq): Promise<EventRes> {
+  async killMonster(request: KillMonsterReq): Promise<GameplayActionRes> {
     await this.spots.ensure(request.playerId);
     return this.quests.killMonster(request);
   }
 
-  async collectItem(request: CollectItemReq): Promise<EventRes> {
+  async collectItem(request: CollectItemReq): Promise<GameplayActionRes> {
     await this.spots.ensure(request.playerId);
     return this.quests.collectItem(request);
   }
 
-  async completeMission(request: CompleteMissionReq): Promise<EventRes> {
+  async completeMission(request: CompleteMissionReq): Promise<GameplayActionRes> {
     await this.spots.ensure(request.playerId);
     return this.quests.completeMission(request);
   }
 
-  async unlockFeature(request: UnlockFeatureReq): Promise<EventRes> {
+  async unlockFeature(request: UnlockFeatureReq): Promise<GameplayActionRes> {
     await this.spots.ensure(request.playerId);
     return this.quests.unlockFeature(request);
   }

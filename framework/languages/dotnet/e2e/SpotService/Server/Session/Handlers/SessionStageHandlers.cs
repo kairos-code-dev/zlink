@@ -6,26 +6,26 @@ using Zlink.Framework.Contracts.Timers;
 
 namespace SpotService.Server.Session.Handlers;
 
-[ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotEventTopic)]
-internal sealed class SpotEventHandler(EvidenceStore evidence)
-    : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotEvent>
+[ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotMsgTopic)]
+internal sealed class SpotMsgHandler(EvidenceStore evidence)
+    : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotMsg>
 {
     public ValueTask HandleAsync(
         ScenarioUserSpot spot,
-        SpotEvent message,
+        SpotMsg message,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-event|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
+        evidence.Add($"spot-msg|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
         return ValueTask.CompletedTask;
     }
 }
 
 [ZLinkSpotRequestHandler("StageProbeReq")]
 internal sealed class StageProbeHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<ScenarioUserSpot, StageProbeReq, StateReply>
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, StageProbeReq, StateRes>
 {
-    public ValueTask<StateReply> HandleAsync(
+    public ValueTask<StateRes> HandleAsync(
         ScenarioUserSpot spot,
         StageProbeReq request,
         CancellationToken cancellationToken)
@@ -36,13 +36,13 @@ internal sealed class StageProbeHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("StageTimerStartCommand")]
+[ZLinkSpotPacketHandler("StageTimerStartMsg")]
 internal sealed class StageTimerStartHandler
-    : IZLinkSpotPacketHandler<ScenarioUserSpot, StageTimerStartCommand>
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, StageTimerStartMsg>
 {
     public async ValueTask HandleAsync(
         ScenarioUserSpot spot,
-        StageTimerStartCommand request,
+        StageTimerStartMsg request,
         CancellationToken cancellationToken)
     {
         var stage = new ScenarioStage(spot);
@@ -68,9 +68,9 @@ internal sealed class StageTimerHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("StateReq")]
 internal sealed class StateReqHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<ScenarioUserSpot, StateReq, StateReply>
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, StateReq, StateRes>
 {
-    public ValueTask<StateReply> HandleAsync(
+    public ValueTask<StateRes> HandleAsync(
         ScenarioUserSpot spot,
         StateReq request,
         CancellationToken cancellationToken)
@@ -79,7 +79,7 @@ internal sealed class StateReqHandler(EvidenceStore evidence)
         var delta = string.Equals(request.Operation, "add", StringComparison.Ordinal) ? request.Delta : 0;
         var value = spot.Add(delta);
         evidence.Add($"spot-state-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}|value={value}");
-        return ValueTask.FromResult(new StateReply(
+        return ValueTask.FromResult(new StateRes(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
             value));
@@ -88,9 +88,9 @@ internal sealed class StateReqHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("StateReq")]
 internal sealed class MultiNodeStateAHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<MultiNodeSpotA, StateReq, StateReply>
+    : IZLinkSpotRequestHandler<MultiNodeSpotA, StateReq, StateRes>
 {
-    public ValueTask<StateReply> HandleAsync(
+    public ValueTask<StateRes> HandleAsync(
         MultiNodeSpotA spot,
         StateReq request,
         CancellationToken cancellationToken)
@@ -100,7 +100,7 @@ internal sealed class MultiNodeStateAHandler(EvidenceStore evidence)
         var value = spot.Add(delta);
         evidence.Add(
             $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spot.Context.SpotRid}|value={value}");
-        return ValueTask.FromResult(new StateReply(
+        return ValueTask.FromResult(new StateRes(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
             value));
@@ -109,9 +109,9 @@ internal sealed class MultiNodeStateAHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("StateReq")]
 internal sealed class MultiNodeStateBHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<MultiNodeSpotB, StateReq, StateReply>
+    : IZLinkSpotRequestHandler<MultiNodeSpotB, StateReq, StateRes>
 {
-    public ValueTask<StateReply> HandleAsync(
+    public ValueTask<StateRes> HandleAsync(
         MultiNodeSpotB spot,
         StateReq request,
         CancellationToken cancellationToken)
@@ -121,20 +121,20 @@ internal sealed class MultiNodeStateBHandler(EvidenceStore evidence)
         var value = spot.Add(delta);
         evidence.Add(
             $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spot.Context.SpotRid}|value={value}");
-        return ValueTask.FromResult(new StateReply(
+        return ValueTask.FromResult(new StateRes(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
             value));
     }
 }
 
-[ZLinkSpotPacketHandler("StateCommand")]
+[ZLinkSpotPacketHandler("StateMsg")]
 internal sealed class StateCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<ScenarioUserSpot, StateCommand>
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, StateMsg>
 {
     public ValueTask HandleAsync(
         ScenarioUserSpot spot,
-        StateCommand message,
+        StateMsg message,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -145,16 +145,16 @@ internal sealed class StateCommandHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("SlowSpotReq")]
 internal sealed class SlowSpotHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<ScenarioUserSpot, SlowSpotReq, SlowSpotReply>
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, SlowSpotReq, SlowSpotRes>
 {
-    public async ValueTask<SlowSpotReply> HandleAsync(
+    public async ValueTask<SlowSpotRes> HandleAsync(
         ScenarioUserSpot spot,
         SlowSpotReq request,
         CancellationToken cancellationToken)
     {
         await Task.Delay(TimeSpan.FromMilliseconds(request.DelayMs), cancellationToken);
         evidence.Add($"slow-spot-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={request.Marker}");
-        return new SlowSpotReply(
+        return new SlowSpotRes(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
             request.Marker);
@@ -163,9 +163,9 @@ internal sealed class SlowSpotHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("WorkerStartReq")]
 internal sealed class WorkerStartHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<ScenarioUserSpot, WorkerStartReq, WorkerStartReply>
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, WorkerStartReq, WorkerStartRes>
 {
-    public ValueTask<WorkerStartReply> HandleAsync(
+    public ValueTask<WorkerStartRes> HandleAsync(
         ScenarioUserSpot spot,
         WorkerStartReq request,
         CancellationToken cancellationToken)
@@ -187,20 +187,20 @@ internal sealed class WorkerStartHandler(EvidenceStore evidence)
                     return ValueTask.CompletedTask;
                 },
                 cancellationToken: cancellationToken);
-        return ValueTask.FromResult(new WorkerStartReply(
+        return ValueTask.FromResult(new WorkerStartRes(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
             request.Marker));
     }
 }
 
-[ZLinkSpotPacketHandler("OverrunStartCommand")]
+[ZLinkSpotPacketHandler("OverrunStartMsg")]
 internal sealed class OverrunStartHandler
-    : IZLinkSpotPacketHandler<ScenarioUserSpot, OverrunStartCommand>
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, OverrunStartMsg>
 {
     public async ValueTask HandleAsync(
         ScenarioUserSpot spot,
-        OverrunStartCommand request,
+        OverrunStartMsg request,
         CancellationToken cancellationToken)
     {
         var policy = Enum.Parse<ZLinkTimerOverrunPolicy>(request.Policy, false);
@@ -231,13 +231,13 @@ internal sealed class OverrunTimerHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("TimerStartCommand")]
+[ZLinkSpotPacketHandler("TimerStartMsg")]
 internal sealed class TimerStartHandler
-    : IZLinkSpotPacketHandler<ScenarioUserSpot, TimerStartCommand>
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, TimerStartMsg>
 {
     public async ValueTask HandleAsync(
         ScenarioUserSpot spot,
-        TimerStartCommand request,
+        TimerStartMsg request,
         CancellationToken cancellationToken)
     {
         await spot.Context.AddTimer<BasicTimerHandler>(
@@ -263,13 +263,13 @@ internal sealed class BasicTimerHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("IdleCloseCommand")]
+[ZLinkSpotPacketHandler("IdleCloseMsg")]
 internal sealed class IdleCloseHandler
-    : IZLinkSpotPacketHandler<ScenarioUserSpot, IdleCloseCommand>
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, IdleCloseMsg>
 {
     public async ValueTask HandleAsync(
         ScenarioUserSpot spot,
-        IdleCloseCommand request,
+        IdleCloseMsg request,
         CancellationToken cancellationToken)
     {
         await spot.Context.AddTimer<IdleCloseTimerHandler>(

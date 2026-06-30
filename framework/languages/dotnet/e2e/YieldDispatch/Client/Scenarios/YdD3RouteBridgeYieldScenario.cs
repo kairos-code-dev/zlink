@@ -13,21 +13,21 @@ internal static class YdD3RouteBridgeYieldScenario
             .PacketName("EnsureSpotReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-b")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<EnsureSpotReply>();
-        await client.Send(new YieldCommand(requestId, 250, "route-bridge"))
-            .PacketName("YieldCommand")
+            .Async<EnsureSpotRes>();
+        await client.Send(new YieldMsg(requestId, 250, "route-bridge"))
+            .PacketName("YieldMsg")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
         await Task.Delay(75);
-        await client.Send(new ProbeCommand(requestId, "route-bridge-probe"))
-            .PacketName("ProbeCommand")
+        await client.Send(new ProbeMsg(requestId, "route-bridge-probe"))
+            .PacketName("ProbeMsg")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
         var evidence = await client.Request(new YieldEvidenceWaitReq(requestId, "yield-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-b")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldEvidenceReply>();
+            .Async<YieldEvidenceRes>();
         ScenarioAssert.ContainsInOrder(evidence.Evidence, requestId, [
             "yield-started",
             "yield-released",

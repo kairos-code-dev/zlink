@@ -54,12 +54,12 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
                        + spot_rid + "|actor=" + actor.actor_id + "|request="
                        + request.request_id + "|handler=entry");
         return zlink::framework::spot_actor_join_response_t::accept (
-          yd::delay_reply_t{.request_id = request.request_id,
+          yd::delay_res_t{.request_id = request.request_id,
                             .marker = request.marker,
                             .node_rid = _evidence.node_rid});
     }
 
-    zlink::framework::task_t<yd::actor_yield_reply_t>
+    zlink::framework::task_t<yd::actor_yield_res_t>
     actor_yield_req (yield_actor_t &actor,
                      zlink::framework::spot_actor_request_context_t &,
                      const yd::actor_yield_req_t &request)
@@ -80,7 +80,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
         _evidence.add ("actor-yield-released|rid=" + _evidence.node_rid + "|spot=" + spot_rid
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
-        co_await call.async<yd::delay_reply_t> ();
+        co_await call.async<yd::delay_res_t> ();
         _evidence.add ("actor-yield-resumed|rid=" + _evidence.node_rid + "|spot=" + spot_rid
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
@@ -91,7 +91,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
                                "actor-yield-completed");
     }
 
-    yd::actor_yield_reply_t actor_fast_req (yield_actor_t &actor,
+    yd::actor_yield_res_t actor_fast_req (yield_actor_t &actor,
                                             zlink::framework::spot_actor_request_context_t &,
                                             const yd::actor_fast_req_t &request)
     {
@@ -106,7 +106,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
         return actor_reply ("YD-B", request.request_id, actor.actor_id, request.marker);
     }
 
-    zlink::framework::task_t<yd::actor_yield_reply_t>
+    zlink::framework::task_t<yd::actor_yield_res_t>
     actor_join_yield_req (yield_actor_t &actor,
                           zlink::framework::spot_actor_request_context_t &,
                           const yd::actor_join_yield_req_t &request)
@@ -128,7 +128,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|target_node="
                        + request.target_node_rid + "|handler=actor");
-        const auto joined = co_await call.async<yd::delay_reply_t> ();
+        const auto joined = co_await call.async<yd::delay_res_t> ();
         const auto accepted = joined.result_code == 0 ? "true" : "false";
         _evidence.add ("actor-join-yield-resumed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
@@ -144,7 +144,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
                                "actor-join-yield-completed");
     }
 
-    zlink::framework::task_t<yd::actor_yield_reply_t>
+    zlink::framework::task_t<yd::actor_yield_res_t>
     actor_push_yield_req (yield_actor_t &actor,
                           zlink::framework::spot_actor_request_context_t &,
                           const yd::actor_push_yield_req_t &request)
@@ -165,7 +165,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
         _evidence.add ("actor-push-yield-released|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
-        co_await call.async<yd::delay_reply_t> ();
+        co_await call.async<yd::delay_res_t> ();
         _evidence.add ("actor-push-yield-resumed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
@@ -184,7 +184,7 @@ class yield_entry_spot_t : public zlink::framework::entry_spot_t
     }
 
   private:
-    yd::actor_yield_reply_t
+    yd::actor_yield_res_t
     actor_reply (std::string scenario_id,
                  std::string request_id,
                  std::string actor_id,

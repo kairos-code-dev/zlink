@@ -6,14 +6,14 @@ import type {
   ZLinkRequestHandler
 } from '@zlink-systems/framework';
 import { ZLinkMessageFlowOutcome } from '@zlink-systems/framework';
-import type { WorkflowReply, WorkflowRequest } from '../../../Shared/messages';
+import type { WorkflowRes, WorkflowReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
-export class WorkflowRequestHandler implements ZLinkRequestHandler<WorkflowRequest, WorkflowReply> {
+export class WorkflowRequestHandler implements ZLinkRequestHandler<WorkflowReq, WorkflowRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: WorkflowRequest, context: ZLinkRequestContext): Promise<WorkflowReply> {
+  async handle(request: WorkflowReq, context: ZLinkRequestContext): Promise<WorkflowRes> {
     this.evidence.add(`workflow-request|rid=${this.evidence.rid}|value=${request.value}|packet=${context.packetName}`);
     return { value: `workflow:${request.value}`, providerRid: this.evidence.rid };
   }

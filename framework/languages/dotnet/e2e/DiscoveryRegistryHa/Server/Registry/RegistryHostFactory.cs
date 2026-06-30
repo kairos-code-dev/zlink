@@ -42,7 +42,7 @@ internal static class RegistryHostFactory
                 new ZLinkRegistryTopologyFilter(ChannelName: DiscoveryRegistryHaNames.Channel),
                 cancellationToken)));
         app.MapPost("/registry/topology/wait", async (
-            TopologyReadyWaitRequest request,
+            TopologyReadyWaitReq request,
             [FromServices] IZLinkRegistryQuery query,
             CancellationToken cancellationToken) =>
         {
@@ -67,7 +67,7 @@ internal static class RegistryHostFactory
             async ([FromServices] IZLinkRegistryQuery query, CancellationToken cancellationToken) =>
             Results.Ok(await query.MemberPeersAsync(DiscoveryRegistryHaNames.Channel, cancellationToken)));
         app.MapPost("/registry/members/wait", async (
-            MemberEndpointWaitRequest request,
+            MemberEndpointWaitReq request,
             [FromServices] IZLinkRegistryQuery query,
             CancellationToken cancellationToken) =>
         {

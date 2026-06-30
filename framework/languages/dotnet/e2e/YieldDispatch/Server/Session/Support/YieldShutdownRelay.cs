@@ -6,12 +6,12 @@ namespace YieldDispatch.Server.Session.Support;
 
 internal sealed partial class YieldSession
 {
-    private static async Task<YieldScenarioResult> RunShutdownThroughSpotRouteAsync(
+    private static async Task<YieldShutdownScenarioRes> RunShutdownThroughSpotRouteAsync(
         IZLinkRouteClient routes,
         YieldShutdownScenarioReq request,
         CancellationToken cancellationToken)
     {
-        await RequestPlayControlWithRetryAsync<EnsureSpotReply>(
+        await RequestPlayControlWithRetryAsync<EnsureSpotRes>(
             routes,
             new EnsureSpotReq(request.SpotRid),
             "EnsureSpotReq",
@@ -22,39 +22,39 @@ internal sealed partial class YieldSession
                 new YieldReq(request.RequestId, request.DelayMs, "shutdown"))
             .PacketName("YieldReq")
             .Timeout(TimeSpan.FromSeconds(90))
-            .Async<YieldDispatchReply>(cancellationToken);
+            .Async<YieldDispatchRes>(cancellationToken);
 
-        var evidence = await RequestPlayControlWithRetryAsync<YieldEvidenceReply>(
+        var evidence = await RequestPlayControlWithRetryAsync<YieldEvidenceRes>(
             routes,
             new YieldEvidenceReq(request.RequestId),
             "YieldEvidenceReq",
             cancellationToken);
-        return new YieldScenarioResult("yield.e3-shutdown-unexpected-completion", request.SpotRid, evidence.Evidence);
+        return new YieldShutdownScenarioRes("yield.e3-shutdown-unexpected-completion", request.SpotRid, evidence.Evidence);
     }
 
-    private static async Task<YieldScenarioResult> RunShutdownRecoveryThroughSpotRouteAsync(
+    private static async Task<YieldShutdownRecoveryRes> RunShutdownRecoveryThroughSpotRouteAsync(
         IZLinkRouteClient routes,
         YieldShutdownRecoveryReq request,
         CancellationToken cancellationToken)
     {
-        await RequestPlayControlWithRetryAsync<EnsureSpotReply>(
+        await RequestPlayControlWithRetryAsync<EnsureSpotRes>(
             routes,
             new EnsureSpotReq(request.SpotRid),
             "EnsureSpotReq",
             cancellationToken);
-        await RequestSpotWithRetryAsync<YieldDispatchReply>(
+        await RequestSpotWithRetryAsync<YieldDispatchRes>(
             routes,
             request.SpotRid,
             new ProbeReq(request.RequestId, "shutdown-recovery-probe"),
             "ProbeReq",
             cancellationToken);
-        await RequestPlayControlWithRetryAsync<YieldEvidenceReply>(
+        await RequestPlayControlWithRetryAsync<YieldEvidenceRes>(
             routes,
             new YieldEvidenceWaitReq(request.RequestId, "probe-completed"),
             "YieldEvidenceWaitReq",
             cancellationToken);
 
-        var evidence = await RequestPlayControlWithRetryAsync<YieldEvidenceReply>(
+        var evidence = await RequestPlayControlWithRetryAsync<YieldEvidenceRes>(
             routes,
             new YieldEvidenceReq(request.RequestId),
             "YieldEvidenceReq",
@@ -65,6 +65,6 @@ internal sealed partial class YieldSession
                 && line.Contains($"rid=play-a|spot={request.SpotRid}", StringComparison.Ordinal)
                 && line.Contains("marker=shutdown-recovery-probe", StringComparison.Ordinal)),
             "YD-E3 recovery probe marker missing.");
-        return new YieldScenarioResult("yield.e3-shutdown-recovery", request.SpotRid, evidence.Evidence);
+        return new YieldShutdownRecoveryRes("yield.e3-shutdown-recovery", request.SpotRid, evidence.Evidence);
     }
 }

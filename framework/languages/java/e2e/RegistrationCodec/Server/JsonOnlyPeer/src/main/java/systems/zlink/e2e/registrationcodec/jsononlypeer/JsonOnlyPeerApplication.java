@@ -45,13 +45,13 @@ public final class JsonOnlyPeerApplication {
                 .enableServer(options.serverEndpoint());
             channel.addRequestHandler(
                 JsonRequestHandler.class,
-                Contracts.JsonEchoRequest.class,
-                Contracts.EchoReply.class,
+                Contracts.JsonEchoReq.class,
+                Contracts.EchoRes.class,
                 "JsonEcho");
             channel.addRequestHandler(
                 MsgpackRequestHandler.class,
-                Contracts.PackedEchoRequest.class,
-                Contracts.PackedEchoReply.class,
+                Contracts.PackedEchoReq.class,
+                Contracts.PackedEchoRes.class,
                 "MsgpackEcho");
         };
     }

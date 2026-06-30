@@ -1,12 +1,12 @@
 package systems.zlink.e2e.kotlin.registrationcodec.main.handlers
 
 import com.google.protobuf.StringValue
-import systems.zlink.e2e.kotlin.registrationcodec.EchoReply
-import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoCommand
-import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoRequest
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoCommand
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReply
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoRequest
+import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoMsg
+import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoReq
+import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoRes
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoMsg
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoRes
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReq
 import systems.zlink.e2e.kotlin.registrationcodec.main.infrastructure.ScenarioState
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRequestHandler
@@ -15,18 +15,18 @@ import systems.zlink.framework.channels.ZLinkSendHandler
 
 class JsonRequestHandler(
     private val state: ScenarioState,
-) : ZLinkRequestHandler<JsonEchoRequest, EchoReply> {
-    override fun handle(request: JsonEchoRequest, context: ZLinkRequestContext): EchoReply {
-        state.record("Request", "JsonEcho", request.value)
-        return EchoReply("echo:${request.value}", "json")
+) : ZLinkRequestHandler<JsonEchoReq, JsonEchoRes> {
+    override fun handle(request: JsonEchoReq, context: ZLinkRequestContext): JsonEchoRes {
+        state.record("Request", "JsonEchoReq", request.value)
+        return JsonEchoRes("echo:${request.value}", "json")
     }
 }
 
 class JsonSendHandler(
     private val state: ScenarioState,
-) : ZLinkSendHandler<JsonEchoCommand> {
-    override fun handle(message: JsonEchoCommand, context: ZLinkSendContext) {
-        state.record("Send", "JsonEcho", message.value)
+) : ZLinkSendHandler<JsonEchoMsg> {
+    override fun handle(message: JsonEchoMsg, context: ZLinkSendContext) {
+        state.record("Send", "JsonEchoMsg", message.value)
     }
 }
 
@@ -49,17 +49,17 @@ class ProtobufSendHandler(
 
 class MsgpackRequestHandler(
     private val state: ScenarioState,
-) : ZLinkRequestHandler<PackedEchoRequest, PackedEchoReply> {
-    override fun handle(request: PackedEchoRequest, context: ZLinkRequestContext): PackedEchoReply {
-        state.record("Request", "MsgpackEcho", request.value)
-        return PackedEchoReply("echo:${request.value}")
+) : ZLinkRequestHandler<PackedEchoReq, PackedEchoRes> {
+    override fun handle(request: PackedEchoReq, context: ZLinkRequestContext): PackedEchoRes {
+        state.record("Request", "PackedEchoReq", request.value)
+        return PackedEchoRes("echo:${request.value}")
     }
 }
 
 class MsgpackSendHandler(
     private val state: ScenarioState,
-) : ZLinkSendHandler<PackedEchoCommand> {
-    override fun handle(message: PackedEchoCommand, context: ZLinkSendContext) {
-        state.record("Send", "MsgpackEcho", message.value)
+) : ZLinkSendHandler<PackedEchoMsg> {
+    override fun handle(message: PackedEchoMsg, context: ZLinkSendContext) {
+        state.record("Send", "PackedEchoMsg", message.value)
     }
 }

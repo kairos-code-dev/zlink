@@ -1,9 +1,9 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
-  profileRequest,
+  profileReq,
   waitTopologyAbsent,
   waitTopologyReady,
   waitUntilAvailable,
@@ -13,10 +13,10 @@ import { ensure } from '../Support/scenario-assert';
 import type { ScenarioState } from '../Support/scenario-state';
 
 export async function runRlB3(options: ClientOptions, state: ScenarioState): Promise<void> {
-  const before = await postJson<ProfileReply>(
+  const before = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request',
-    profileRequest(`rl-b3-before-${Date.now()}`)
+    profileReq(`rl-b3-before-${Date.now()}`)
   );
   ensure(before.providerRid === 'api-a' || before.providerRid === 'api-b', 'RL-B3 pre-shutdown request failed.');
 
@@ -29,10 +29,10 @@ export async function runRlB3(options: ClientOptions, state: ScenarioState): Pro
   await waitTopologyAbsent(options.registryUrl, 'api-b');
 
   for (let i = 0; i < 12; i += 1) {
-    const after = await postJson<ProfileReply>(
+    const after = await postJson<ProfileRes>(
       options.consumerUrl,
       '/profile/request',
-      profileRequest(`rl-b3-after-${i}`)
+      profileReq(`rl-b3-after-${i}`)
     );
     ensure(after.providerRid === 'api-a', 'RL-B3 request after graceful shutdown used stale api-b.');
   }

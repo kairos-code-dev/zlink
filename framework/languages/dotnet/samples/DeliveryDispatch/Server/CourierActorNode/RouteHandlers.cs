@@ -11,10 +11,10 @@ namespace DeliveryDispatch.Server.CourierActorNode;
 internal sealed class EnsureCourierActorRouteHandler(
     IZLinkActorManager actorManager,
     ILogger<EnsureCourierActorRouteHandler> logger)
-    : IZLinkRouteRequestHandler<EnsureCourierActor, CourierActorEnsured>
+    : IZLinkRouteRequestHandler<EnsureCourierActorReq, EnsureCourierActorRes>
 {
-    public async ValueTask<CourierActorEnsured> HandleAsync(
-        EnsureCourierActor request,
+    public async ValueTask<EnsureCourierActorRes> HandleAsync(
+        EnsureCourierActorReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -27,7 +27,7 @@ internal sealed class EnsureCourierActorRouteHandler(
             "deliverydispatch courier-route: ensured courier={CourierId} node={NodeRid}",
             request.CourierId,
             actor.NodeRid);
-        return new CourierActorEnsured(
+        return new EnsureCourierActorRes(
             request.CourierId,
             new ActorRefSnapshot(actor.NodeRid.ToString(), actor.ActorId, actor.Generation));
     }
@@ -37,10 +37,10 @@ internal sealed class EnsureCourierActorRouteHandler(
 internal sealed class OfferDeliveryRouteHandler(
     IZLinkActorManager actorManager,
     ActorDirectory actors)
-    : IZLinkRouteRequestHandler<OfferDelivery, OfferDeliveryResult>
+    : IZLinkRouteRequestHandler<OfferDeliveryReq, OfferDeliveryRes>
 {
-    public async ValueTask<OfferDeliveryResult> HandleAsync(
-        OfferDelivery request,
+    public async ValueTask<OfferDeliveryRes> HandleAsync(
+        OfferDeliveryReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -59,7 +59,7 @@ internal sealed class OfferDeliveryRouteHandler(
         catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested
             && !cancellationToken.IsCancellationRequested)
         {
-            return new OfferDeliveryResult(
+            return new OfferDeliveryRes(
                 request.DeliveryId,
                 request.CourierId,
                 false,

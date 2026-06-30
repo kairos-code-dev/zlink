@@ -9,11 +9,11 @@ internal static class ManualRegistrationScenario
 {
     public static async Task RunAsync(ZLinkHttpClient server)
     {
-        var reply = (await server.Post("/registration/manual").SubmitAsync<EchoReply>()).Body;
+        var reply = (await server.Post("/registration/manual").SubmitAsync<EchoRes>()).Body;
         ScenarioAssert.That(reply.Value == "echo:rc-a3", "RC-A3 request reply mismatch.");
 
         var evidence = (await server.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["echo-command|variant=manual|id=cmd-rc-a3"]))
+            .Body(new EvidenceWaitReq(["echo-command|variant=manual|id=cmd-rc-a3"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("echo-command|variant=manual|id=cmd-rc-a3", StringComparison.Ordinal)),

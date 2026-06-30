@@ -24,14 +24,14 @@ internal static class SmB5Scenario
         await client.Connect.Async();
         await client.Request(new AuthReq(actorId, "missing handler actor", "play-a"))
             .PacketName("AuthReq")
-            .Async<AuthReply>();
+            .Async<AuthRes>();
         var missingActorRequestFailed = false;
         try
         {
             await client.Request(new ActorPingReq("missing-handler"))
                 .PacketName("MissingActorReq")
                 .Timeout(TimeSpan.FromSeconds(2))
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
         }
         catch
         {
@@ -42,7 +42,7 @@ internal static class SmB5Scenario
         var expectedEvidence = new[]
             { "dispatch-error|surface=SpotActor|reason=HandlerMissing|action=ReplyError|packet=MissingActorReq" };
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

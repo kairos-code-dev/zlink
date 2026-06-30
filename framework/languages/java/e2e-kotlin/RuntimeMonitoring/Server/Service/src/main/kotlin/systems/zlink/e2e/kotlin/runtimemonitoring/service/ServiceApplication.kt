@@ -57,18 +57,18 @@ class ServiceApplication {
                 .setRoutingId(RoutingId.from("svc-a"))
                 .addRequestHandler(
                     WorkRequestHandler::class.java,
-                    Contracts.WorkRequest::class.java,
-                    Contracts.WorkReply::class.java,
-                    "WorkRequest",
+                    Contracts.WorkReq::class.java,
+                    Contracts.WorkRes::class.java,
+                    "WorkReq",
                 )
             options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
                 .enableServer(Env.get("ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT"))
                 .setRoutingId(RoutingId.from("svc-a-handshake"))
                 .addRequestHandler(
                     WorkRequestHandler::class.java,
-                    Contracts.WorkRequest::class.java,
-                    Contracts.WorkReply::class.java,
-                    "HandshakeWorkRequest",
+                    Contracts.WorkReq::class.java,
+                    Contracts.WorkRes::class.java,
+                    "HandshakeWorkReq",
                 )
             val node = options.addSpotMesh(Contracts.SPOT_MESH)
             node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))

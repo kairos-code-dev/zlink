@@ -221,7 +221,7 @@ ZLink 샘플의 흐름을 같은 배송 하나 기준으로 보면 다음과 같
    `CourierDirectory module`은 선택한 node의 `CourierEntrySpot module` 아래 actor 준비를 요청하고, courier
    id와 actor가 있는 node rid, 그리고 actor가 push할 session route를 함께 기억한다.
 4. `DispatchWorker module`은 먼저 courier id가 `courier-a`인 후보를 고르고, actor 위치를
-   직접 조회하지 않은 채 `deliverydispatch.courier` channel로 `OfferDelivery`를 보낸다.
+   직접 조회하지 않은 채 `deliverydispatch.courier` channel로 `OfferDeliveryReq`를 보낸다.
 5. `CourierChannel handler module`은 `CourierDirectory module`에서 actor의 node rid를 얻고, 그 node의
    target SpotNode rid로 요청을 넘긴다. target node의 `CourierEntrySpot module`은
    자기 아래 actor를 찾고, `CourierActor module`은 session route로 `CourierSession server`에
@@ -229,7 +229,7 @@ ZLink 샘플의 흐름을 같은 배송 하나 기준으로 보면 다음과 같
 6. `courier-a`가 응답하지 않으면 `DispatchWorker module`은 timeout 뒤 courier id가
    `courier-b`인 후보로 같은 courier channel에 다시 제안한다. actor 위치 조회와
    target node 선택은 다시 `CourierChannel handler module`이 맡는다.
-7. 배정, 재배정, 수락, 픽업, 배송 완료 상태는 `DeliveryStatusChanged` 메시지로
+7. 배정, 재배정, 수락, 픽업, 배송 완료 상태는 `DeliveryStatusChangedReq` 메시지로
    `Tracking`에 전달된다.
 8. 고객 화면이 stream으로 연결되면 `CustomerSession module`은 `CustomerEntrySpot module`을 통해 고객
    actor를 준비하고, 그 actor와 현재 stream session을 bind한다.
@@ -267,13 +267,13 @@ sequenceDiagram
     end
 
     CourierClient->>CourierSession: connect stream
-    CourierClient->>CourierSession: BindCourierSession(courier-a)
-    CourierSession->>CourierDirectory: BindCourier(courier-a, session route)
+    CourierClient->>CourierSession: BindCourierSessionReq(courier-a)
+    CourierSession->>CourierDirectory: BindCourierReq(courier-a, session route)
     CourierDirectory->>CourierDirectory: choose node rid
-    CourierDirectory->>CourierRoute: EnsureCourierActor(courier-a)
+    CourierDirectory->>CourierRoute: EnsureCourierActorReq(courier-a)
     CourierRoute->>CourierEntry: create or find actor
     CourierEntry->>CourierActor: create or find actor
-    CourierSession->>CourierActor: BindAsync and relay BindCourierSession
+    CourierSession->>CourierActor: BindAsync and relay BindCourierSessionReq
     CourierDirectory->>CourierDirectory: remember node rid and session route
 ```
 
@@ -330,21 +330,21 @@ sequenceDiagram
 
     CustomerClient->>DispatchHttp: create delivery
     DispatchHttp->>DispatchWorker: enqueue work
-    DispatchWorker->>CourierChannel: OfferDelivery(courier-a)
+    DispatchWorker->>CourierChannel: OfferDeliveryReq(courier-a)
     CourierChannel->>CourierDirectory: resolve courier-a node rid
     CourierDirectory-->>CourierChannel: node rid
-    CourierChannel->>CourierRoute: OfferDelivery to node rid
+    CourierChannel->>CourierRoute: OfferDeliveryReq to node rid
     CourierRoute->>CourierEntry: find actor owned by entry spot
     CourierEntry->>CourierActor: dispatch offer
     CourierActor->>CourierSession: push offer by session route
     CourierSession->>CourierClient: push offer
     CourierClient-->>CourierSession: accept or timeout
     CourierSession-->>CourierActor: decision
-    CourierActor-->>CourierEntry: OfferDeliveryResult
-    CourierEntry-->>CourierRoute: OfferDeliveryResult
-    CourierRoute-->>CourierChannel: OfferDeliveryResult
-    CourierChannel-->>DispatchWorker: OfferDeliveryResult
-    DispatchWorker->>Tracking: DeliveryStatusChanged
+    CourierActor-->>CourierEntry: OfferDeliveryRes
+    CourierEntry-->>CourierRoute: OfferDeliveryRes
+    CourierRoute-->>CourierChannel: OfferDeliveryRes
+    CourierChannel-->>DispatchWorker: OfferDeliveryRes
+    DispatchWorker->>Tracking: DeliveryStatusChangedReq
     Tracking->>CustomerEntry: notify customer id
     CustomerEntry->>CustomerActor: dispatch notify
     CustomerActor->>CustomerSession: BoundSession.Send status
@@ -406,7 +406,7 @@ channel에 보낼 뿐이고, actor 위치 조회와 target node 선택은 courie
 Client scenario는 customer stream session 하나와 courier stream session 두 개를 만든다.
 `courier-a`와 `courier-b`는 같은 CourierSession server endpoint에 연결하지만 서로 다른
 stream connector를 사용하므로 session도 분리된다. 각 배송원 client는 자기 courier id로
-`BindCourierSession`을 한 번 보낸 뒤 배송 제안을 기다린다.
+`BindCourierSessionReq`을 한 번 보낸 뒤 배송 제안을 기다린다.
 
 그 뒤 두 배송을 만든다.
 

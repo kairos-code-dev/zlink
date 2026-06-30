@@ -2,7 +2,7 @@ import {
   ZLinkServiceRole,
   ZLinkTopologyState
 } from '@zlink-systems/framework';
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import { getJson, getJsonWithin, postJson } from '../Support/http-client';
 import { ManagedProcess } from '../Support/managed-process';
 import { ensure } from '../Support/scenario-assert';
@@ -14,7 +14,7 @@ export async function runDrA1(options: {
   readonly providerBUrl?: string;
 }): Promise<void> {
   ensure(options.providerBUrl !== undefined, 'DR-A1 requires provider-b-url.');
-  const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', { value: 'dr-a1' });
+  const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', { value: 'dr-a1' });
   ensure(reply.value === 'profile:dr-a1', 'DR-A1 reply value mismatch.');
   ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'DR-A1 provider rid mismatch.');
 
@@ -47,7 +47,7 @@ export async function runDrA2(options: {
   const members = await waitForMemberPeer(options.registry2Url, 'api-a');
   ensure(members.some((entry) => String(entry.routingId) === 'api-a'), 'DR-A2 reg-2 member peer did not include api-a.');
 
-  const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', { value: 'dr-a2' });
+  const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', { value: 'dr-a2' });
   ensure(reply.value === 'profile:dr-a2', 'DR-A2 reply value mismatch.');
   ensure(reply.providerRid === 'api-a', 'DR-A2 expected reg-1 provider api-a through reg-2 discovery.');
 
@@ -83,7 +83,7 @@ export async function runDrA3(options: {
     { url: options.consumer3Url, value: 'dr-a3-reg-3' }
   ];
   for (const check of checks) {
-    const reply = await postJson<ProfileReply>(check.url, '/profile/request', { value: check.value });
+    const reply = await postJson<ProfileRes>(check.url, '/profile/request', { value: check.value });
     ensure(reply.value === `profile:${check.value}`, `DR-A3 reply value mismatch for ${check.value}.`);
     ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', `DR-A3 provider rid mismatch for ${check.value}.`);
   }
@@ -111,7 +111,7 @@ export async function runDrA4(options: {
   ensure(options.duplicateProviderUrl !== undefined, 'DR-A4 requires duplicate-provider-url.');
 
   const marker = `dr-a4-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', { value: 'dr-a4', marker });
+  const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', { value: 'dr-a4', marker });
   ensure(reply.value === 'profile:dr-a4', 'DR-A4 reply value mismatch.');
   ensure(reply.providerRid === 'api-a', 'DR-A4 same-rid providers should report api-a.');
   ensure(reply.marker === marker, 'DR-A4 marker mismatch.');
@@ -147,7 +147,7 @@ export async function runDrB1(options: {
     await waitForMemberPeers(registryCase.registryUrl, ['api-a', 'api-b']);
 
     const marker = `dr-b1-${registryCase.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const reply = await postJson<ProfileReply>(registryCase.consumerUrl, '/profile/request', { value: 'dr-b1', marker });
+    const reply = await postJson<ProfileRes>(registryCase.consumerUrl, '/profile/request', { value: 'dr-b1', marker });
     ensure(reply.value === 'profile:dr-b1', `DR-B1 ${registryCase.name} reply value mismatch.`);
     ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', `DR-B1 ${registryCase.name} provider rid mismatch.`);
     ensure(reply.marker === marker, `DR-B1 ${registryCase.name} marker mismatch.`);
@@ -173,7 +173,7 @@ export async function runDrB2(options: {
   await waitForMemberPeer(options.registryUrl, 'api-a');
 
   const marker = `dr-b2-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', { value: 'dr-b2', marker });
+  const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', { value: 'dr-b2', marker });
   ensure(reply.value === 'profile:dr-b2', 'DR-B2 reply value mismatch.');
   ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'DR-B2 provider rid mismatch.');
   ensure(reply.marker === marker, 'DR-B2 marker mismatch.');
@@ -208,7 +208,7 @@ export async function runDrB3(options: {
     await waitForMemberPeers(registryCase.registryUrl, ['api-a', 'api-b']);
 
     const marker = `dr-b3-${registryCase.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const reply = await postJson<ProfileReply>(registryCase.consumerUrl, '/profile/request', { value: 'dr-b3', marker });
+    const reply = await postJson<ProfileRes>(registryCase.consumerUrl, '/profile/request', { value: 'dr-b3', marker });
     ensure(reply.value === 'profile:dr-b3', `DR-B3 ${registryCase.name} reply value mismatch.`);
     ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', `DR-B3 ${registryCase.name} provider rid mismatch.`);
     ensure(reply.marker === marker, `DR-B3 ${registryCase.name} marker mismatch.`);
@@ -236,7 +236,7 @@ export async function runDrC1(options: {
   await waitForMemberPeer(options.registryUrl, 'api-a');
 
   const marker = `dr-c1-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', { value: 'dr-c1', marker });
+  const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', { value: 'dr-c1', marker });
   ensure(reply.value === 'profile:dr-c1', 'DR-C1 reply value mismatch.');
   ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'DR-C1 provider rid mismatch.');
   ensure(reply.marker === marker, 'DR-C1 marker mismatch.');
@@ -266,7 +266,7 @@ export async function runDrC2(options: {
   await waitForMemberPeers(options.registry2Url, ['api-a', 'api-b']);
 
   const marker = `dr-c2-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const reply = await postJson<ProfileReply>(options.consumer2Url, '/profile/request', { value: 'dr-c2', marker });
+  const reply = await postJson<ProfileRes>(options.consumer2Url, '/profile/request', { value: 'dr-c2', marker });
   ensure(reply.value === 'profile:dr-c2', 'DR-C2 reply value mismatch.');
   ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'DR-C2 provider rid mismatch.');
   ensure(reply.marker === marker, 'DR-C2 marker mismatch.');
@@ -419,7 +419,7 @@ export async function runDrD2(options: {
   await waitForMemberPeer(options.registryUrl, 'api-a');
 
   const marker = `dr-d2-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', { value: 'dr-d2', marker });
+  const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', { value: 'dr-d2', marker });
   ensure(reply.value === 'profile:dr-d2', 'DR-D2 reply value mismatch.');
   ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'DR-D2 provider rid mismatch.');
   ensure(reply.marker === marker, 'DR-D2 marker mismatch.');
@@ -441,7 +441,7 @@ export async function runDrD1(options: {
   ensure(options.embeddedConsumerUrl !== undefined, 'DR-D1 requires embedded-consumer-url.');
 
   const marker = `dr-d1-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const reply = await postJson<ProfileReply>(options.embeddedConsumerUrl, '/profile/request', { value: 'dr-d1', marker });
+  const reply = await postJson<ProfileRes>(options.embeddedConsumerUrl, '/profile/request', { value: 'dr-d1', marker });
   ensure(reply.value === 'profile:dr-d1', 'DR-D1 reply value mismatch.');
   ensure(reply.providerRid === 'embedded-api', 'DR-D1 should route to embedded-api.');
   ensure(reply.marker === marker, 'DR-D1 marker mismatch.');
@@ -467,7 +467,7 @@ export async function runDrD3(options: {
   await waitForMemberPeer(options.embeddedUrl, 'api-a');
 
   const marker = `dr-d3-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const reply = await postJson<ProfileReply>(options.embeddedConsumerUrl, '/profile/request', { value: 'dr-d3', marker });
+  const reply = await postJson<ProfileRes>(options.embeddedConsumerUrl, '/profile/request', { value: 'dr-d3', marker });
   ensure(reply.value === 'profile:dr-d3', 'DR-D3 reply value mismatch.');
   ensure(
     reply.providerRid === 'api-a' || reply.providerRid === 'api-b' || reply.providerRid === 'embedded-api-mixed',
@@ -580,15 +580,15 @@ async function assertDeadRegistryFails(registryUrl: string): Promise<void> {
   throw new Error('DR-C1 dead registry endpoint did not fail within the bounded timeout.');
 }
 
-async function requestProfile(consumerUrl: string, phase: string, value: string): Promise<ProfileReply> {
+async function requestProfile(consumerUrl: string, phase: string, value: string): Promise<ProfileRes> {
   const marker = `${phase}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const reply = await postJson<ProfileReply>(consumerUrl, '/profile/request', { value, marker });
+  const reply = await postJson<ProfileRes>(consumerUrl, '/profile/request', { value, marker });
   ensure(reply.value === `profile:${value}`, `DR-C3 ${phase} reply value mismatch.`);
   ensure(reply.marker === marker, `DR-C3 ${phase} marker mismatch.`);
   return reply;
 }
 
-async function waitForReplyEvidence(reply: ProfileReply, providerAUrl: string, providerBUrl: string): Promise<void> {
+async function waitForReplyEvidence(reply: ProfileRes, providerAUrl: string, providerBUrl: string): Promise<void> {
   const providerUrl = reply.providerRid === 'api-a' ? providerAUrl : providerBUrl;
   const evidence = await waitForEvidence(providerUrl, reply.marker ?? '');
   ensure(

@@ -1,4 +1,4 @@
-import type { ProfileReply, WorkflowReply } from '../../Shared/messages';
+import type { ProfileRes, WorkflowRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
@@ -6,11 +6,11 @@ export async function runRmA6(providerAUrl: string, providerBUrl: string, workfl
   const profileMarker = uniqueMarker('rm-a6-profile');
   const workflowMarker = uniqueMarker('rm-a6-workflow');
 
-  const profileReply = await postJson<ProfileReply>(providerAUrl, '/profile/request', { value: profileMarker });
+  const profileReply = await postJson<ProfileRes>(providerAUrl, '/profile/request', { value: profileMarker });
   ensure(profileReply.value === `profile:${profileMarker}`, 'RM-A6 profile reply value mismatch.');
   ensure(profileReply.providerRid === 'api-a' || profileReply.providerRid === 'api-b', 'RM-A6 profile request reached an unexpected provider.');
 
-  const workflowReply = await postJson<WorkflowReply>(workflowUrl, '/workflow/request', { value: workflowMarker });
+  const workflowReply = await postJson<WorkflowRes>(workflowUrl, '/workflow/request', { value: workflowMarker });
   ensure(workflowReply.value === `workflow:${workflowMarker}`, 'RM-A6 workflow reply value mismatch.');
   ensure(workflowReply.providerRid === 'workflow-a', 'RM-A6 workflow request should reach workflow-a.');
 

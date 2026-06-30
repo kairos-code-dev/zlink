@@ -58,12 +58,12 @@ class MultiNodeStateAHandler(
     @ZLinkSpotRequest(packetName = "StateReq")
     fun handle(
         spot: MultiNodeSpotA,
-        request: Contracts.MultiNodeStateRequest
-    ): Contracts.MultiNodeStateReply {
+        request: Contracts.MultiNodeStateReq
+    ): Contracts.MultiNodeStateRes {
         val delta = if (request.operation == "add") request.delta else 0
         val value = spot.add(delta)
         evidence.add("multi-state-request|node=${Contracts.MULTI_SPOT_NODE_A}|spot=${spot.context().spotRid()}|value=$value")
-        return Contracts.MultiNodeStateReply(
+        return Contracts.MultiNodeStateRes(
             spot.context().spotRid().toString(),
             spot.context().nodeRid().toString(),
             value
@@ -77,12 +77,12 @@ class MultiNodeStateBHandler(
     @ZLinkSpotRequest(packetName = "StateReq")
     fun handle(
         spot: MultiNodeSpotB,
-        request: Contracts.MultiNodeStateRequest
-    ): Contracts.MultiNodeStateReply {
+        request: Contracts.MultiNodeStateReq
+    ): Contracts.MultiNodeStateRes {
         val delta = if (request.operation == "add") request.delta else 0
         val value = spot.add(delta)
         evidence.add("multi-state-request|node=${Contracts.MULTI_SPOT_NODE_B}|spot=${spot.context().spotRid()}|value=$value")
-        return Contracts.MultiNodeStateReply(
+        return Contracts.MultiNodeStateRes(
             spot.context().spotRid().toString(),
             spot.context().nodeRid().toString(),
             value

@@ -1,7 +1,7 @@
 import type {
   ActorFastReq,
   ActorJoinYieldReq,
-  YieldEvidenceReply,
+  YieldEvidenceRes,
   YieldEvidenceReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -31,7 +31,7 @@ export async function runYdB3(
     .submit();
   await Promise.all([joining, fast]);
 
-  const evidence = decodeStreamReply<YieldEvidenceReply>(await joinClient
+  const evidence = decodeStreamReply<YieldEvidenceRes>(await joinClient
     .request({ requestId } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')

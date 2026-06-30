@@ -140,7 +140,7 @@ class tictactoe_game_spot_t : public spot_t, public tictactoe_match_t
         players[actor.actor_id] = player;
         actor.apply_player (player);
         if (player.wins == 100) {
-            const auto milestone_event = player_win_milestone_event_t{
+            const auto milestone_event = player_win_milestone_msg_t{
               state.room_id, player.actor_id, player.display_name, player.wins};
             (void) _context.publish (sample_names_t::player_milestone_topic, milestone_event).async ();
         }

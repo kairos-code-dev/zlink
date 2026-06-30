@@ -10,7 +10,7 @@ import { createPlayEndpoints } from './Endpoints/play-endpoints';
 import { ChannelEchoHandler, ChannelNotifyHandler } from './Handlers/channel-handlers';
 import { ControlPingHandler, CreateSpotHandler, EnsureActorHandler, JoinUserSpotActorHandler } from './Handlers/control-handlers';
 import { EvidenceDispatchErrorObserver } from './Handlers/dispatch-error-observer';
-import { SpotEventHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from './Handlers/spot-outbound-handlers';
+import { SpotMsgHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from './Handlers/spot-outbound-handlers';
 import { SpotToSpotHandler, SpotToSpotNegativeHandler, SpotToSpotTimeoutHandler } from './Handlers/spot-to-spot-handlers';
 import { StageProbeHandler, StageTimerHandler, StageTimerStartHandler } from './Handlers/stage-handlers';
 import { SlowSpotHandler, StateCommandHandler, StateReqHandler } from './Handlers/state-req-handler';
@@ -132,7 +132,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
       SpotToSpotHandler,
       SpotToSpotTimeoutHandler,
       SpotToSpotNegativeHandler,
-      SpotEventHandler,
+      SpotMsgHandler,
       UserActorPingHandler,
       UserActorPushHandler,
       BasicTimerHandler,

@@ -2,15 +2,17 @@ package systems.zlink.e2e.kotlin.registrationcodec.main.handlers
 
 import org.springframework.beans.factory.ObjectProvider
 import systems.zlink.e2e.kotlin.registrationcodec.Contracts
-import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleReply
-import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleRequest
-import systems.zlink.e2e.kotlin.registrationcodec.EchoAttrCommand
-import systems.zlink.e2e.kotlin.registrationcodec.EchoAttrRequest
-import systems.zlink.e2e.kotlin.registrationcodec.EchoAutoCommand
-import systems.zlink.e2e.kotlin.registrationcodec.EchoAutoRequest
-import systems.zlink.e2e.kotlin.registrationcodec.EchoManualCommand
-import systems.zlink.e2e.kotlin.registrationcodec.EchoManualRequest
-import systems.zlink.e2e.kotlin.registrationcodec.EchoReply
+import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleRes
+import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleReq
+import systems.zlink.e2e.kotlin.registrationcodec.EchoAttrMsg
+import systems.zlink.e2e.kotlin.registrationcodec.EchoAttrReq
+import systems.zlink.e2e.kotlin.registrationcodec.EchoAttrRes
+import systems.zlink.e2e.kotlin.registrationcodec.EchoAutoMsg
+import systems.zlink.e2e.kotlin.registrationcodec.EchoAutoReq
+import systems.zlink.e2e.kotlin.registrationcodec.EchoAutoRes
+import systems.zlink.e2e.kotlin.registrationcodec.EchoManualMsg
+import systems.zlink.e2e.kotlin.registrationcodec.EchoManualReq
+import systems.zlink.e2e.kotlin.registrationcodec.EchoManualRes
 import systems.zlink.e2e.kotlin.registrationcodec.main.infrastructure.DiScopedDependency
 import systems.zlink.e2e.kotlin.registrationcodec.main.infrastructure.DiSingletonDependency
 import systems.zlink.e2e.kotlin.registrationcodec.main.infrastructure.ScenarioState
@@ -25,19 +27,19 @@ import systems.zlink.framework.handlers.ZLinkSend
 @ZLinkHandlerGroup(Contracts.AUTO_GROUP)
 class AutoRequestHandler(
     private val state: ScenarioState,
-) : ZLinkRequestHandler<EchoAutoRequest, EchoReply> {
-    override fun handle(request: EchoAutoRequest, context: ZLinkRequestContext): EchoReply {
-        state.record("Request", "EchoAuto", request.value)
-        return EchoReply("echo:${request.value}", "auto")
+) : ZLinkRequestHandler<EchoAutoReq, EchoAutoRes> {
+    override fun handle(request: EchoAutoReq, context: ZLinkRequestContext): EchoAutoRes {
+        state.record("Request", "EchoAutoReq", request.value)
+        return EchoAutoRes("echo:${request.value}", "auto")
     }
 }
 
 @ZLinkHandlerGroup(Contracts.AUTO_GROUP)
 class AutoSendHandler(
     private val state: ScenarioState,
-) : ZLinkSendHandler<EchoAutoCommand> {
-    override fun handle(message: EchoAutoCommand, context: ZLinkSendContext) {
-        state.record("Send", "EchoAuto", message.value)
+) : ZLinkSendHandler<EchoAutoMsg> {
+    override fun handle(message: EchoAutoMsg, context: ZLinkSendContext) {
+        state.record("Send", "EchoAutoMsg", message.value)
     }
 }
 
@@ -45,32 +47,32 @@ class AutoSendHandler(
 class AttrEchoHandler(
     private val state: ScenarioState,
 ) {
-    @ZLinkRequest(packetName = "EchoAttr")
-    fun request(request: EchoAttrRequest, context: ZLinkRequestContext): EchoReply {
-        state.record("Request", "EchoAttr", request.value)
-        return EchoReply("echo:${request.value}", "attr")
+    @ZLinkRequest(packetName = "EchoAttrReq")
+    fun request(request: EchoAttrReq, context: ZLinkRequestContext): EchoAttrRes {
+        state.record("Request", "EchoAttrReq", request.value)
+        return EchoAttrRes("echo:${request.value}", "attr")
     }
 
-    @ZLinkSend(packetName = "EchoAttr")
-    fun send(message: EchoAttrCommand, context: ZLinkSendContext) {
-        state.record("Send", "EchoAttr", message.value)
+    @ZLinkSend(packetName = "EchoAttrMsg")
+    fun send(message: EchoAttrMsg, context: ZLinkSendContext) {
+        state.record("Send", "EchoAttrMsg", message.value)
     }
 }
 
 class ManualRequestHandler(
     private val state: ScenarioState,
-) : ZLinkRequestHandler<EchoManualRequest, EchoReply> {
-    override fun handle(request: EchoManualRequest, context: ZLinkRequestContext): EchoReply {
-        state.record("Request", context.packetName().orElse("EchoManual"), request.value)
-        return EchoReply("echo:${request.value}", "manual")
+) : ZLinkRequestHandler<EchoManualReq, EchoManualRes> {
+    override fun handle(request: EchoManualReq, context: ZLinkRequestContext): EchoManualRes {
+        state.record("Request", context.packetName().orElse("EchoManualReq"), request.value)
+        return EchoManualRes("echo:${request.value}", "manual")
     }
 }
 
 class ManualSendHandler(
     private val state: ScenarioState,
-) : ZLinkSendHandler<EchoManualCommand> {
-    override fun handle(message: EchoManualCommand, context: ZLinkSendContext) {
-        state.record("Send", context.packetName().orElse("EchoManual"), message.value)
+) : ZLinkSendHandler<EchoManualMsg> {
+    override fun handle(message: EchoManualMsg, context: ZLinkSendContext) {
+        state.record("Send", context.packetName().orElse("EchoManualMsg"), message.value)
     }
 }
 
@@ -78,17 +80,17 @@ class DiLifecycleRequestHandler(
     private val scoped: ObjectProvider<DiScopedDependency>,
     private val singleton: DiSingletonDependency,
     private val state: ScenarioState,
-) : ZLinkRequestHandler<DiLifecycleRequest, DiLifecycleReply> {
-    override fun handle(request: DiLifecycleRequest, context: ZLinkRequestContext): DiLifecycleReply {
+) : ZLinkRequestHandler<DiLifecycleReq, DiLifecycleRes> {
+    override fun handle(request: DiLifecycleReq, context: ZLinkRequestContext): DiLifecycleRes {
         val scopedId = scoped.getObject().use { dependency ->
             state.record(
                 "DI",
-                context.packetName().orElse("DiLifecycle"),
+                context.packetName().orElse("DiLifecycleReq"),
                 "${dependency.id}:${singleton.id}:${request.value}",
             )
             dependency.id
         }
-        return DiLifecycleReply(
+        return DiLifecycleRes(
             "echo:${request.value}",
             scopedId,
             singleton.id,

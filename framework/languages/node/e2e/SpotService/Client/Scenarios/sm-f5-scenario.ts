@@ -1,12 +1,12 @@
 import type {
-  ChannelRouteReply,
+  ChannelRouteRes,
   ChannelRouteReq,
-  CloseSpotReply,
+  CloseSpotRes,
   CloseSpotReq,
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
-  SpotMixedRouteReply,
+  EvidenceWaitReq,
+  SpotMixedRouteRes,
   SpotMixedRouteReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -15,13 +15,13 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmF5(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-f5-${Date.now()}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(created.spotRid === spotRid, 'SM-F5 did not create the requested spot.');
   ensure(created.nodeRid === 'play-a', 'SM-F5 created spot on the wrong node.');
 
-  const mixed = await postJson<SpotMixedRouteReply>(options.playBUrl, '/spot/mixed-route/request', {
+  const mixed = await postJson<SpotMixedRouteRes>(options.playBUrl, '/spot/mixed-route/request', {
     spotRid,
     targetNodeRid: 'play-a',
     channelValue: 'sm-f5-before-close',
@@ -30,12 +30,12 @@ export async function runSmF5(options: ClientOptions): Promise<void> {
   ensure(mixed.channelReply === 'echo-sm-f5-before-close', 'SM-F5 pre-close channel reply mismatch.');
   ensure(mixed.spotValue === 13, 'SM-F5 pre-close spot route reply mismatch.');
 
-  const closed = await postJson<CloseSpotReply>(options.playAUrl, '/spot/close', {
+  const closed = await postJson<CloseSpotRes>(options.playAUrl, '/spot/close', {
     spotRid
   } satisfies CloseSpotReq);
   ensure(closed.closed, 'SM-F5 did not close the spot.');
 
-  const channelAfterClose = await postJson<ChannelRouteReply>(options.playBUrl, '/channel/route/request', {
+  const channelAfterClose = await postJson<ChannelRouteRes>(options.playBUrl, '/channel/route/request', {
     targetNodeRid: 'play-a',
     value: 'sm-f5-after-close'
   } satisfies ChannelRouteReq);
@@ -50,7 +50,7 @@ export async function runSmF5(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
     'SM-F5 channel independence evidence mismatch.'

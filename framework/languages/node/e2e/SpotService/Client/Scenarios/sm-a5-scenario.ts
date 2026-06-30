@@ -1,14 +1,14 @@
 import type {
-  CloseSpotReply,
+  CloseSpotRes,
   CloseSpotReq,
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
+  EvidenceWaitReq,
   SpotStageProbeReq,
-  SpotStageTimerReply,
+  SpotStageTimerRes,
   SpotStageTimerReq,
   SpotStateRouteReq,
-  StateReply
+  StateRes
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -16,13 +16,13 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmA5(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-a5-${Date.now()}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(created.spotRid === spotRid, 'SM-A5 did not create the requested spot.');
   ensure(created.nodeRid === 'play-a', 'SM-A5 created spot on the wrong node.');
 
-  const ready = await postJson<StateReply>(options.playAUrl, '/spot/state/request', {
+  const ready = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
     spotRid,
     operation: 'noop',
     delta: 0
@@ -32,7 +32,7 @@ export async function runSmA5(options: ClientOptions): Promise<void> {
     'SM-A5 spot route did not become ready.'
   );
 
-  const probeReply = await postJson<StateReply>(options.playAUrl, '/spot/stage/request', {
+  const probeReply = await postJson<StateRes>(options.playAUrl, '/spot/stage/request', {
     spotRid,
     marker: 'sm-a5-stage',
     delta: 9
@@ -41,14 +41,14 @@ export async function runSmA5(options: ClientOptions): Promise<void> {
   ensure(probeReply.nodeRid === 'play-a', 'SM-A5 stage request reached the wrong node.');
   ensure(probeReply.value === 9, 'SM-A5 stage request state mismatch.');
 
-  const timer = await postJson<SpotStageTimerReply>(options.playAUrl, '/spot/stage/timer', {
+  const timer = await postJson<SpotStageTimerRes>(options.playAUrl, '/spot/stage/timer', {
     spotRid,
     name: 'sm-a5-stage-timer',
     periodMs: 50
   } satisfies SpotStageTimerReq);
   ensure(timer.spotRid === spotRid && timer.started, 'SM-A5 stage timer was not started.');
 
-  const closeReply = await postJson<CloseSpotReply>(options.playAUrl, '/spot/close', {
+  const closeReply = await postJson<CloseSpotRes>(options.playAUrl, '/spot/close', {
     spotRid
   } satisfies CloseSpotReq);
   ensure(closeReply.closed, 'SM-A5 did not close the spot.');
@@ -62,7 +62,7 @@ export async function runSmA5(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
     'SM-A5 evidence mismatch.'

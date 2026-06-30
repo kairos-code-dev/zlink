@@ -108,11 +108,11 @@ public final class ClientScenario {
         int index = 0;
         while (!hasSignal("a5-stop")) {
             try {
-                Contracts.WorkReply reply = client.requestToChannel(
+                Contracts.WorkRes reply = client.requestToChannel(
                         Contracts.CHANNEL,
-                        new Contracts.WorkRequest("a5-flap-" + index))
+                        new Contracts.WorkReq("a5-flap-" + index))
                     .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkReply.class);
+                    .await(Contracts.WorkRes.class);
                 ensure(reply.value().equals("work:a5-flap-" + index),
                     "RL-A5 reply payload mismatch");
                 providers.add(reply.providerRid());
@@ -125,11 +125,11 @@ public final class ClientScenario {
             sleep(100);
         }
         waitForTopology(2);
-        Contracts.WorkReply followUp = client.requestToChannel(
+        Contracts.WorkRes followUp = client.requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.WorkRequest("a5-follow-up"))
+                new Contracts.WorkReq("a5-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkReply.class);
+            .await(Contracts.WorkRes.class);
         ensure("work:a5-follow-up".equals(followUp.value()), "RL-A5 follow-up payload mismatch");
         ensure(successes >= 10, "RL-A5 did not send enough traffic during flapping");
         ensure(providers.contains("api-b"), "RL-A5 did not converge to live api-b during flapping");
@@ -155,14 +155,14 @@ public final class ClientScenario {
             for (int index = 0; index < 40; index++) {
                 String value = "d5-soak-" + window + "-" + index;
                 if (index % 5 == 0) {
-                    client.sendToChannel(Contracts.CHANNEL, new Contracts.WorkCommand(value))
+                    client.sendToChannel(Contracts.CHANNEL, new Contracts.WorkMsg(value))
                         .await();
                 } else {
-                    Contracts.WorkReply reply = client.requestToChannel(
+                    Contracts.WorkRes reply = client.requestToChannel(
                             Contracts.CHANNEL,
-                            new Contracts.WorkRequest(value))
+                            new Contracts.WorkReq(value))
                         .timeout(Duration.ofSeconds(3))
-                        .await(Contracts.WorkReply.class);
+                        .await(Contracts.WorkRes.class);
                     ensure(reply.value().equals("work:" + value),
                         "RL-D5 reply payload mismatch for " + value);
                     providers.add(reply.providerRid());
@@ -193,9 +193,9 @@ public final class ClientScenario {
         try {
             client.requestToChannel(
                     Contracts.CHANNEL,
-                    new Contracts.WorkRequest(value))
+                    new Contracts.WorkReq(value))
                 .timeout(Duration.ofMillis(700))
-                .await(Contracts.WorkReply.class);
+                .await(Contracts.WorkRes.class);
             throw new IllegalStateException(scenario + " down-window request unexpectedly completed");
         } catch (RuntimeException expected) {
             // The scenario only requires a public failure while the sole admissible provider is down.
@@ -206,19 +206,19 @@ public final class ClientScenario {
         try {
             client.requestToChannel(
                     Contracts.CHANNEL,
-                    new Contracts.WorkRequest("timeout"))
+                    new Contracts.WorkReq("timeout"))
                 .timeout(Duration.ofMillis(300))
-                .await(Contracts.WorkReply.class);
+                .await(Contracts.WorkRes.class);
             throw new IllegalStateException("RL-B1 timeout request unexpectedly completed");
         } catch (RuntimeException expected) {
             waitForEvidenceAny("TimeoutStarted", adminA(), adminB());
         }
         sleep(1800);
-        Contracts.WorkReply followUp = client.requestToChannel(
+        Contracts.WorkRes followUp = client.requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.WorkRequest("b1-follow-up"))
+                new Contracts.WorkReq("b1-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkReply.class);
+            .await(Contracts.WorkRes.class);
         ensure("work:b1-follow-up".equals(followUp.value()), "RL-B1 follow-up payload mismatch");
         System.out.println("scenario RL-B1 passed");
     }
@@ -247,11 +247,11 @@ public final class ClientScenario {
         waitForWeight(adminB(), 0);
         sleep(1500);
 
-        CompletionStage<Contracts.WorkReply> slow = client.requestToChannel(
+        CompletionStage<Contracts.WorkRes> slow = client.requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.WorkRequest("slow"))
+                new Contracts.WorkReq("slow"))
             .timeout(Duration.ofSeconds(15))
-            .submit(Contracts.WorkReply.class);
+            .submit(Contracts.WorkRes.class);
         waitForEvidence(adminA(), "SlowStarted");
 
         post(adminA() + "/admin/drain");
@@ -261,7 +261,7 @@ public final class ClientScenario {
         collectStableProvidersWithout("b5-after-drain", "api-a", "api-b");
 
         post(adminA() + "/admin/release-slow");
-        Contracts.WorkReply slowReply;
+        Contracts.WorkRes slowReply;
         try {
             slowReply = slow.toCompletableFuture().get(20, TimeUnit.SECONDS);
         } catch (Exception error) {
@@ -280,18 +280,18 @@ public final class ClientScenario {
         try {
             client.requestToChannel(
                     Contracts.CHANNEL,
-                    new Contracts.UnhandledRequest("d3-missing-handler"))
+                    new Contracts.UnhandledReq("d3-missing-handler"))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply.class);
+                .await(Contracts.WorkRes.class);
             throw new IllegalStateException("RL-D3 missing handler request unexpectedly completed");
         } catch (RuntimeException expected) {
-            waitForDispatchErrorAny("UnhandledRequest", adminA(), adminB());
+            waitForDispatchErrorAny("UnhandledReq", adminA(), adminB());
         }
-        Contracts.WorkReply followUp = client.requestToChannel(
+        Contracts.WorkRes followUp = client.requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.WorkRequest("d3-follow-up"))
+                new Contracts.WorkReq("d3-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkReply.class);
+            .await(Contracts.WorkRes.class);
         ensure("work:d3-follow-up".equals(followUp.value()), "RL-D3 follow-up payload mismatch");
         System.out.println("scenario RL-D3 passed");
     }
@@ -304,11 +304,11 @@ public final class ClientScenario {
         Set<String> providers = new HashSet<>();
         for (int index = 0; index < 80 && successes < 10; index++) {
             try {
-                Contracts.WorkReply reply = client.requestToChannel(
+                Contracts.WorkRes reply = client.requestToChannel(
                         Contracts.CHANNEL,
-                        new Contracts.WorkRequest("b6-gray-" + index))
+                        new Contracts.WorkReq("b6-gray-" + index))
                     .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkReply.class);
+                    .await(Contracts.WorkRes.class);
                 ensure(reply.value().equals("work:b6-gray-" + index),
                     "RL-B6 reply payload mismatch");
                 providers.add(reply.providerRid());
@@ -322,11 +322,11 @@ public final class ClientScenario {
         ensure(failures > 0, "RL-B6 did not observe public failures from degraded provider");
         ensure(successes >= 10, "RL-B6 healthy provider did not maintain enough successful traffic");
         ensure(providers.contains("api-b"), "RL-B6 did not receive successful replies from api-b");
-        Contracts.WorkReply followUp = client.requestToChannel(
+        Contracts.WorkRes followUp = client.requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.WorkRequest("b6-follow-up"))
+                new Contracts.WorkReq("b6-follow-up"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkReply.class);
+            .await(Contracts.WorkRes.class);
         ensure("work:b6-follow-up".equals(followUp.value()), "RL-B6 follow-up payload mismatch");
         System.out.println("scenario RL-B6 passed");
     }
@@ -360,11 +360,11 @@ public final class ClientScenario {
 
     private void runGracefulShutdown() {
         waitForTopology(2);
-        Contracts.WorkReply beforeShutdown = client.requestToChannel(
+        Contracts.WorkRes beforeShutdown = client.requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.WorkRequest("b3-before-shutdown"))
+                new Contracts.WorkReq("b3-before-shutdown"))
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkReply.class);
+            .await(Contracts.WorkRes.class);
         ensure("work:b3-before-shutdown".equals(beforeShutdown.value()),
             "RL-B3 pre-shutdown reply payload mismatch");
 
@@ -378,11 +378,11 @@ public final class ClientScenario {
     private Set<String> collectProviders(String prefix, int attempts, int expectedCount) {
         Set<String> providers = new HashSet<>();
         for (int index = 0; index < attempts && providers.size() < expectedCount; index++) {
-            Contracts.WorkReply reply = client.requestToChannel(
+            Contracts.WorkRes reply = client.requestToChannel(
                     Contracts.CHANNEL,
-                    new Contracts.WorkRequest(prefix + "-" + index))
+                    new Contracts.WorkReq(prefix + "-" + index))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply.class);
+                .await(Contracts.WorkRes.class);
             ensure(reply.value().equals("work:" + prefix + "-" + index),
                 "reply payload mismatch for " + prefix + "-" + index);
             providers.add(reply.providerRid());

@@ -16,33 +16,33 @@ public final class YdD2RemoteSpotYieldScenario {
         String ownerSpot = requestId + "-owner";
         String targetSpot = requestId + "-target";
 
-        Contracts.EnsureSpotReply owner = ClientStreamSupport.await(
-            connector.request(new Contracts.EnsureSpotRequest(ownerSpot))
+        Contracts.EnsureSpotRes owner = ClientStreamSupport.await(
+            connector.request(new Contracts.EnsureSpotReq(ownerSpot))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .timeout(ClientStreamSupport.REQUEST_TIMEOUT),
-            Contracts.EnsureSpotReply.class);
+            Contracts.EnsureSpotRes.class);
         ScenarioAssert.that(ownerSpot.equals(owner.spotRid()), "YD-D2 owner spot mismatch");
         ScenarioAssert.that("play-a".equals(owner.nodeRid()), "YD-D2 owner node mismatch");
 
-        Contracts.EnsureSpotReply target = ClientStreamSupport.await(
-            connector.request(new Contracts.EnsureSpotRequest(targetSpot))
+        Contracts.EnsureSpotRes target = ClientStreamSupport.await(
+            connector.request(new Contracts.EnsureSpotReq(targetSpot))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-b")
                 .timeout(ClientStreamSupport.REQUEST_TIMEOUT),
-            Contracts.EnsureSpotReply.class);
+            Contracts.EnsureSpotRes.class);
         ScenarioAssert.that(targetSpot.equals(target.spotRid()), "YD-D2 target spot mismatch");
         ScenarioAssert.that("play-b".equals(target.nodeRid()), "YD-D2 target node mismatch");
 
-        Contracts.ScenarioReply reply = ClientStreamSupport.await(
-            connector.request(new Contracts.RemoteSpotYieldRequest(requestId, targetSpot, 350))
+        Contracts.ScenarioRes reply = ClientStreamSupport.await(
+            connector.request(new Contracts.RemoteSpotYieldReq(requestId, targetSpot, 350))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .metadata(Contracts.SPOT_RID_METADATA, ownerSpot)
                 .timeout(ClientStreamSupport.REQUEST_TIMEOUT),
-            Contracts.ScenarioReply.class);
+            Contracts.ScenarioRes.class);
         ScenarioAssert.that("YD-D2".equals(reply.scenarioId()), "YD-D2 reply scenario mismatch");
         ScenarioAssert.that(requestId.equals(reply.requestId()), "YD-D2 reply request mismatch");
         ScenarioAssert.that("play-a".equals(reply.result()), "YD-D2 continuation node mismatch");
 
-        Contracts.EvidenceReply ownerEvidence = evidence(connector, requestId, "play-a");
+        Contracts.EvidenceRes ownerEvidence = evidence(connector, requestId, "play-a");
         assertMarkers(ownerEvidence.markers(), List.of(
             "remote-yield-started",
             "remote-yield-released",
@@ -54,7 +54,7 @@ public final class YdD2RemoteSpotYieldScenario {
                 .anyMatch(marker -> marker.contains("targetNode=play-b")),
             "YD-D2 owner continuation did not observe play-b target");
 
-        Contracts.EvidenceReply targetEvidence = evidence(connector, requestId, "play-b");
+        Contracts.EvidenceRes targetEvidence = evidence(connector, requestId, "play-b");
         assertMarkers(targetEvidence.markers(), List.of(
             "yield-started",
             "yield-released",
@@ -66,16 +66,16 @@ public final class YdD2RemoteSpotYieldScenario {
         System.out.println("scenario YD-D2 passed");
     }
 
-    private static Contracts.EvidenceReply evidence(
+    private static Contracts.EvidenceRes evidence(
         ZLinkStreamConnector connector,
         String requestId,
         String targetNode) {
         return ClientStreamSupport.await(
-            connector.request(new Contracts.EvidenceRequest(requestId))
+            connector.request(new Contracts.EvidenceReq(requestId))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, targetNode)
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a")
                 .timeout(ClientStreamSupport.REQUEST_TIMEOUT),
-            Contracts.EvidenceReply.class);
+            Contracts.EvidenceRes.class);
     }
 
     private static void assertMarkers(

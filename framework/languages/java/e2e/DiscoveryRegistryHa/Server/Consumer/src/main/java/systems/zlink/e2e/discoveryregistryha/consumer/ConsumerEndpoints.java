@@ -34,14 +34,14 @@ public final class ConsumerEndpoints implements SmartLifecycle {
                 json,
                 java.util.Map.of("status", "ready", "rid", options.rid())));
             server.createContext("/profile/request", exchange -> {
-                Contracts.ProfileRequest request =
-                    HttpSupport.readJson(exchange, json, Contracts.ProfileRequest.class);
+                Contracts.ProfileReq request =
+                    HttpSupport.readJson(exchange, json, Contracts.ProfileReq.class);
                 HttpSupport.writeJson(exchange, json, request(request));
             });
             server.createContext("/profile/request/wait", exchange -> {
-                Contracts.ProfileRequest request =
-                    HttpSupport.readJson(exchange, json, Contracts.ProfileRequest.class);
-                Contracts.ProfileReply reply = Wait.until(
+                Contracts.ProfileReq request =
+                    HttpSupport.readJson(exchange, json, Contracts.ProfileReq.class);
+                Contracts.ProfileRes reply = Wait.until(
                     Duration.ofSeconds(10),
                     "timed out waiting for profile request routing",
                     () -> {
@@ -65,10 +65,10 @@ public final class ConsumerEndpoints implements SmartLifecycle {
         }
     }
 
-    private Contracts.ProfileReply request(Contracts.ProfileRequest request) {
+    private Contracts.ProfileRes request(Contracts.ProfileReq request) {
         return client.requestToChannel(Contracts.CHANNEL, request)
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.ProfileReply.class);
+            .await(Contracts.ProfileRes.class);
     }
 
     @Override

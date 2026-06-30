@@ -16,7 +16,7 @@ namespace zlink::framework::e2e::yield_dispatch::server::play {
 
 namespace yd = zlink::framework::e2e::yield_dispatch;
 
-inline yd::yield_dispatch_reply_t
+inline yd::yield_dispatch_res_t
 basic_spot_reply (const zlink::framework::spot_context_t &context,
                   const evidence_store_t &evidence,
                   std::string scenario_id,
@@ -46,7 +46,7 @@ handle_basic_hold (zlink::framework::spot_context_t &context,
                                 .marker = "hold"})
       .packet_name (yd::delay_req_t::packet_name)
       .timeout (std::chrono::milliseconds (5000))
-      .async<yd::delay_reply_t> ();
+      .async<yd::delay_res_t> ();
     evidence.add ("hold-resumed|rid=" + evidence.node_rid + "|spot=" + spot_rid
                   + "|request=" + request_id + "|handler=spot");
     evidence.add ("hold-completed|rid=" + evidence.node_rid + "|spot=" + spot_rid
@@ -76,7 +76,7 @@ handle_basic_yield (zlink::framework::spot_context_t &context,
     evidence.add ("yield-released|rid=" + evidence.node_rid + "|spot=" + spot_rid
                   + "|request=" + request_id + "|correlation="
                   + correlation_id + "|handler=spot");
-    co_await call.yield<yd::delay_reply_t> ();
+    co_await call.yield<yd::delay_res_t> ();
     evidence.add ("yield-resumed|rid=" + evidence.node_rid + "|spot=" + spot_rid
                   + "|request=" + request_id + "|correlation="
                   + correlation_id + "|handler=spot");

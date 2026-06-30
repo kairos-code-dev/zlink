@@ -11,9 +11,9 @@ namespace zlink::framework::e2e::registry_messaging::client
 
 inline void run_rm_a4_same_rid_failover_scenario (zlink::framework::channel_client_t &channels)
 {
-    auto first = channels.request (api_channel, profile_request_t{.value = "failover-before"})
+    auto first = channels.request (api_channel, profile_req_t{.value = "failover-before"})
                    .timeout (std::chrono::milliseconds (2000))
-                   .async<profile_reply_t> ();
+                   .async<profile_res_t> ();
     ensure (first.result ().has_value (), "RM-A4 initial request failed");
     ensure (first.result ().value ().provider_rid == "api-a"
               && first.result ().value ().instance_id == "api-a-v1",
@@ -25,10 +25,10 @@ inline void run_rm_a4_same_rid_failover_scenario (zlink::framework::channel_clie
     for (int index = 0; index < 20; ++index) {
         auto task = channels
                       .request (api_channel,
-                                profile_request_t{.value = "failover-after-"
+                                profile_req_t{.value = "failover-after-"
                                                            + std::to_string (index)})
                       .timeout (std::chrono::milliseconds (2000))
-                      .async<profile_reply_t> ();
+                      .async<profile_res_t> ();
         ensure (task.result ().has_value (), "RM-A4 post-failover request failed");
         ensure (task.result ().value ().provider_rid == "api-a"
                   && task.result ().value ().instance_id == "api-a-v2",

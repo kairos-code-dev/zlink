@@ -29,13 +29,13 @@ public final class InvalidDuplicateApplication {
                 .enableServer(options.serverEndpoint());
             channel.addRequestHandler(
                 ManualRequestHandler.class,
-                Contracts.EchoManualRequest.class,
-                Contracts.EchoReply.class,
+                Contracts.EchoManualReq.class,
+                Contracts.EchoRes.class,
                 "DuplicatePacket");
             channel.addRequestHandler(
                 ManualRequestHandler.class,
-                Contracts.EchoManualRequest.class,
-                Contracts.EchoReply.class,
+                Contracts.EchoManualReq.class,
+                Contracts.EchoRes.class,
                 "DuplicatePacket");
         };
     }

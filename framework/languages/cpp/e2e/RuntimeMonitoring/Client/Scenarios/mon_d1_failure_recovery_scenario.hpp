@@ -22,16 +22,16 @@ inline void run_mon_d1_failure_recovery_scenario (zlink::framework::channel_clie
     const auto initial_registry_topology_count =
       count_contains (initial_registry_evidence, registry_topology_event);
 
-    profile_reply_t reply;
+    profile_res_t reply;
     if (const auto trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"); !trigger_url.empty ()) {
         reply = post_profile_request (trigger_url, "/profile/request/service-b",
-                                      profile_request_t{.value = "restart", .marker = "mon-d1"});
+                                      profile_req_t{.value = "restart", .marker = "mon-d1"});
     } else {
         auto request = channels
                          .request (profile_channel,
-                                   profile_request_t{.value = "restart", .marker = "mon-d1"})
+                                   profile_req_t{.value = "restart", .marker = "mon-d1"})
                          .timeout (std::chrono::milliseconds (3000))
-                         .async<profile_reply_t> ();
+                         .async<profile_res_t> ();
         const auto &result = request.result ();
         ensure (result.has_value (),
                 "MON-D1 restarted service request failed: "

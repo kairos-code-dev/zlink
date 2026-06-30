@@ -19,14 +19,14 @@ internal static class DrD1DirectEndpointScenario
 
         var marker = $"dr-d1-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("dr-d1", marker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("dr-d1", marker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:dr-d1", "DR-D1 request failed.");
         ScenarioAssert.That(reply.ProviderRid == "embedded-api", "DR-D1 should route to embedded-api.");
         ScenarioAssert.That(reply.Marker == marker, "DR-D1 marker mismatch.");
 
         var evidence = (await embedded.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(marker))
+            .Body(new EvidenceWaitReq(marker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)

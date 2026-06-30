@@ -6,16 +6,16 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 
 public final class EntryActorJoinHandler {
-    @ZLinkSpotActorRequest(packetName = "ActorJoinRequest")
-    public Contracts.ActorJoinReply handle(
+    @ZLinkSpotActorRequest(packetName = "ActorJoinReq")
+    public Contracts.ActorJoinRes handle(
         ProbeEntrySpot spot,
         ProbeActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ActorJoinRequest request,
+        Contracts.ActorJoinReq request,
         CancellationToken cancellationToken) {
         return actor.context()
             .joinSpot(RoutingId.from(request.spotRid()), request)
-            .await(Contracts.ActorJoinReply.class)
+            .await(Contracts.ActorJoinRes.class)
             .reply();
     }
 }

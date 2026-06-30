@@ -17,7 +17,7 @@ internal sealed class OrderWorkflowService(
     {
         var stored = await events.ReadAsync(command.OrderId, cancellationToken);
         var aggregate = OrderAggregate.Rehydrate(stored.Select(static item => item.Payload));
-        if (aggregate.HasProcessedCommand(command.IdempotencyKey))
+        if (aggregate.HasProcessedMsg(command.IdempotencyKey))
             return await RequireProjectionAsync(command.OrderId, cancellationToken);
 
         var now = NowUnixMs();

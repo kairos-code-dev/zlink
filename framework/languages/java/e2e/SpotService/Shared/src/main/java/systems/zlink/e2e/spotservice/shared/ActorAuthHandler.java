@@ -6,7 +6,7 @@ import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class ActorAuthHandler
-    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.ActorAuthRequest> {
+    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.ActorAuthReq> {
     private final ZLinkActorManager actors;
     private final ScenarioState evidence;
 
@@ -19,19 +19,19 @@ public final class ActorAuthHandler
 
     @Override
     public String packetName() {
-        return "ActorAuthRequest";
+        return "ActorAuthReq";
     }
 
     @Override
-    public Class<Contracts.ActorAuthRequest> messageType() {
-        return Contracts.ActorAuthRequest.class;
+    public Class<Contracts.ActorAuthReq> messageType() {
+        return Contracts.ActorAuthReq.class;
     }
 
     @Override
     public void handle(
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Contracts.ActorAuthRequest request) {
+        Contracts.ActorAuthReq request) {
         var actor = actors.getOrCreate(request.actorId(), "scenario", request)
             .toCompletableFuture()
             .join();
@@ -40,7 +40,7 @@ public final class ActorAuthHandler
             .join();
         evidence.record("ActorSessionBound", "session", request.actorId());
         context.client()
-            .reply(new Contracts.ActorAuthReply(
+            .reply(new Contracts.ActorAuthRes(
                 bound.actorId(),
                 bound.ref().nodeRid().toString(),
                 context.actors().bound().size(),

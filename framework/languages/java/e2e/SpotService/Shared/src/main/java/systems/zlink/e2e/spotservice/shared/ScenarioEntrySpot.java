@@ -42,7 +42,7 @@ public final class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
         ZLinkMessage createRequest,
         CancellationToken cancellationToken) {
         if (!createRequest.isEmpty()) {
-            Contracts.ActorAuthRequest request = createRequest.decode(Contracts.ActorAuthRequest.class);
+            Contracts.ActorAuthReq request = createRequest.decode(Contracts.ActorAuthReq.class);
             actor.applyProfile(request.profile());
             evidence.record("ActorCreatedPayload", "entry",
                 request.profile().displayName() + "/"

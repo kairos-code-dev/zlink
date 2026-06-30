@@ -9,10 +9,10 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 @ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
 class WorkRequestHandler(
     private val state: ProviderEvidenceStore,
-) : ZLinkRequestHandler<Contracts.WorkRequest, Contracts.WorkReply> {
+) : ZLinkRequestHandler<Contracts.WorkReq, Contracts.WorkRes> {
     override fun handle(
-        request: Contracts.WorkRequest,
+        request: Contracts.WorkReq,
         context: ZLinkRequestContext,
-    ): Contracts.WorkReply =
-        Contracts.WorkReply("work:${request.value}", state.providerRid)
+    ): Contracts.WorkRes =
+        Contracts.WorkRes("work:${request.value}", state.providerRid)
 }

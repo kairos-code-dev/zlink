@@ -4,10 +4,10 @@ import type {
   ZLinkSpotActorRequestHandler,
   ZLinkSpotContext
 } from '@zlink-systems/framework';
-import type { ActorPingReply, ActorPingReq, ActorPushNotify, ActorPushReq } from '../../../Shared/messages';
+import type { ActorPingRes, ActorPingReq, ActorPushNotify, ActorPushReq } from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
-import { SpotEventHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from '../Handlers/spot-outbound-handlers';
+import { SpotMsgHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from '../Handlers/spot-outbound-handlers';
 import { SpotToSpotHandler, SpotToSpotNegativeHandler, SpotToSpotTimeoutHandler } from '../Handlers/spot-to-spot-handlers';
 import { StageProbeHandler, StageTimerStartHandler } from '../Handlers/stage-handlers';
 import { SlowSpotHandler, StateCommandHandler, StateReqHandler } from '../Handlers/state-req-handler';
@@ -24,18 +24,18 @@ export class ScenarioUserSpot implements ZLinkSpot {
 
   configure(): void {
     this.context.handlers.packet('StateReq', StateReqHandler);
-    this.context.handlers.packet('StateCommand', StateCommandHandler);
+    this.context.handlers.packet('StateMsg', StateCommandHandler);
     this.context.handlers.packet('StageProbeReq', StageProbeHandler);
-    this.context.handlers.packet('StageTimerStartCommand', StageTimerStartHandler);
+    this.context.handlers.packet('StageTimerStartMsg', StageTimerStartHandler);
     this.context.handlers.packet('SlowSpotReq', SlowSpotHandler);
-    this.context.handlers.packet('SpotOutboundReq', SpotOutboundHandler);
-    this.context.handlers.packet('SpotOutboundNegativeReq', SpotOutboundNegativeHandler);
+    this.context.handlers.packet('SpotOutboundMsg', SpotOutboundHandler);
+    this.context.handlers.packet('SpotOutboundNegativeMsg', SpotOutboundNegativeHandler);
     this.context.handlers.packet('SpotToSpotReq', SpotToSpotHandler);
     this.context.handlers.packet('SpotToSpotTimeoutReq', SpotToSpotTimeoutHandler);
     this.context.handlers.packet('SpotToSpotNegativeReq', SpotToSpotNegativeHandler);
     this.context.handlers.actorRequest('UserActorPingReq', UserActorPingHandler, ScenarioActor);
     this.context.handlers.actorRequest('UserActorPushReq', UserActorPushHandler, ScenarioActor);
-    this.context.handlers.subscribe(SpotServiceNames.spotEventTopic, SpotEventHandler);
+    this.context.handlers.subscribe(SpotServiceNames.spotEventTopic, SpotMsgHandler);
   }
 
   async onInitialize(): Promise<void> {
@@ -62,18 +62,18 @@ export class ScenarioUserSpot implements ZLinkSpot {
 }
 
 export class UserActorPingHandler
-  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPingReq, ActorPingReply> {
+  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPingReq, ActorPingRes> {
   async handle(
     spot: ScenarioUserSpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPingReq
-  ): Promise<ActorPingReply> {
+  ): Promise<ActorPingRes> {
     void context;
     actor.seen += 1;
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `actor-ping|rid=${spot.context.nodeRid}|actor=${actor.actorId}`
+      `actor-pingMsg|rid=${spot.context.nodeRid}|actor=${actor.actorId}`
       + `|spot=${spot.context.spotRid}|value=${request.value}|seen=${actor.seen}`
     );
     return {
@@ -87,13 +87,13 @@ export class UserActorPingHandler
 }
 
 export class UserActorPushHandler
-  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPushReq, ActorPingReply> {
+  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPushReq, ActorPingRes> {
   async handle(
     spot: ScenarioUserSpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPushReq
-  ): Promise<ActorPingReply> {
+  ): Promise<ActorPingRes> {
     void context;
     actor.seen += 1;
     await actor.context.boundSession

@@ -23,19 +23,19 @@ class profile_request_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
-    using request_type = profile_request_t;
-    using reply_type = profile_reply_t;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
 
     explicit profile_request_handler_t (zlink::framework::channel_client_t &channels) :
         _channels (channels)
     {
     }
 
-    profile_reply_t handle (const profile_request_t &request)
+    profile_res_t handle (const profile_req_t &request)
     {
         auto call = _channels.request (profile_channel, request)
                       .timeout (std::chrono::milliseconds (3000))
-                      .async<profile_reply_t> ();
+                      .async<profile_res_t> ();
         const auto &reply = call.result ();
         if (!reply.has_value ()) {
             throw std::runtime_error (
@@ -54,8 +54,8 @@ class service_b_request_handler_t
   public:
     using dependency_types =
       zlink::framework::dependency_list_t<trigger_options_t, server::evidence_store_t>;
-    using request_type = profile_request_t;
-    using reply_type = profile_reply_t;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
 
     service_b_request_handler_t (const trigger_options_t &options,
                                  server::evidence_store_t &evidence) :
@@ -63,7 +63,7 @@ class service_b_request_handler_t
     {
     }
 
-    profile_reply_t handle (const profile_request_t &request)
+    profile_res_t handle (const profile_req_t &request)
     {
         try {
             auto reply = request_with_transient_host (_options, _options.service_b_channel_endpoint,
@@ -90,8 +90,8 @@ class service_a_request_handler_t
   public:
     using dependency_types =
       zlink::framework::dependency_list_t<trigger_options_t, server::evidence_store_t>;
-    using request_type = profile_request_t;
-    using reply_type = profile_reply_t;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
 
     service_a_request_handler_t (const trigger_options_t &options,
                                  server::evidence_store_t &evidence) :
@@ -99,7 +99,7 @@ class service_a_request_handler_t
     {
     }
 
-    profile_reply_t handle (const profile_request_t &request)
+    profile_res_t handle (const profile_req_t &request)
     {
         try {
             auto reply = request_with_transient_host (_options, _options.service_channel_endpoint,
@@ -126,8 +126,8 @@ class throwing_request_handler_t
   public:
     using dependency_types =
       zlink::framework::dependency_list_t<trigger_options_t, server::evidence_store_t>;
-    using request_type = profile_request_t;
-    using reply_type = profile_reply_t;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
 
     throwing_request_handler_t (const trigger_options_t &options,
                                 server::evidence_store_t &evidence) :
@@ -135,7 +135,7 @@ class throwing_request_handler_t
     {
     }
 
-    profile_reply_t handle (const profile_request_t &request)
+    profile_res_t handle (const profile_req_t &request)
     {
         try {
             auto reply = request_with_transient_host (_options, _options.throw_channel_endpoint,
@@ -179,12 +179,12 @@ class throw_stderr_wait_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<trigger_options_t>;
-    using request_type = evidence_wait_request_t;
+    using request_type = evidence_wait_req_t;
     using reply_type = std::vector<std::string>;
 
     explicit throw_stderr_wait_handler_t (const trigger_options_t &options) : _options (options) {}
 
-    std::vector<std::string> handle (const evidence_wait_request_t &request)
+    std::vector<std::string> handle (const evidence_wait_req_t &request)
     {
         return wait_for_log_lines (throw_stderr_path (), request);
     }

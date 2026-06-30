@@ -11,25 +11,25 @@ public final class Contracts {
     private Contracts() {
     }
 
-    public record DelayRequest(String value, long millis) {
+    public record DelayReq(String value, long millis) {
     }
 
-    public record DelayReply(String value) {
+    public record DelayRes(String value) {
     }
 
-    public record ScenarioReply(String scenarioId, String requestId, String result) {
+    public record ScenarioRes(String scenarioId, String requestId, String result) {
     }
 
-    public record ProbeRequest(String op, long millis) {
+    public record ProbeReq(String op, long millis) {
     }
 
-    public record ProbeReply(String spotRid, String nodeRid, String op, String value) {
+    public record ProbeRes(String spotRid, String nodeRid, String op, String value) {
     }
 
-    public record DispatchRequest(String spotRid, String op, long millis) {
+    public record DispatchReq(String spotRid, String op, long millis) {
     }
 
-    public record TimerStartCommand(
+    public record TimerStartMsg(
         String requestId,
         String timerName,
         String mode,
@@ -37,67 +37,67 @@ public final class Contracts {
         long delayMillis) {
     }
 
-    public record TimerStopCommand(String requestId) {
+    public record TimerStopMsg(String requestId) {
     }
 
-    public record EnsureSpotRequest(String spotRid) {
+    public record EnsureSpotReq(String spotRid) {
     }
 
-    public record EnsureSpotReply(String spotRid, String nodeRid) {
+    public record EnsureSpotRes(String spotRid, String nodeRid) {
     }
 
-    public record YieldRequest(String scenarioId, String requestId, String correlationId) {
+    public record YieldReq(String scenarioId, String requestId, String correlationId) {
     }
 
-    public record YieldCommand(String requestId, long delayMillis, String correlationId) {
+    public record YieldMsg(String requestId, long delayMillis, String correlationId) {
     }
 
-    public record HoldCommand(String requestId, long delayMillis) {
+    public record HoldMsg(String requestId, long delayMillis) {
     }
 
-    public record WorkerYieldCommand(String requestId, long delayMillis) {
+    public record WorkerYieldMsg(String requestId, long delayMillis) {
     }
 
-    public record ProbeCommand(String requestId, String marker) {
+    public record ProbeMsg(String requestId, String marker) {
     }
 
-    public record RemoteSpotYieldRequest(String requestId, String targetSpotRid, long delayMillis) {
+    public record RemoteSpotYieldReq(String requestId, String targetSpotRid, long delayMillis) {
     }
 
-    public record YieldTimeoutCommand(String requestId, long delayMillis, long timeoutMillis) {
+    public record YieldTimeoutMsg(String requestId, long delayMillis, long timeoutMillis) {
     }
 
-    public record SpotProbeCommand(String requestId, String marker) {
+    public record SpotProbeMsg(String requestId, String marker) {
     }
 
-    public record EvidenceRequest(String requestId) {
+    public record EvidenceReq(String requestId) {
     }
 
-    public record EvidenceReply(String requestId, List<String> markers) {
+    public record EvidenceRes(String requestId, List<String> markers) {
     }
 
-    public record ActorAuthRequest(String actorId) {
+    public record ActorAuthReq(String actorId) {
     }
 
-    public record ActorAuthReply(String actorId) {
+    public record ActorAuthRes(String actorId) {
     }
 
-    public record ActorJoinRequest(String spotRid, String value, long millis) {
-        public ActorJoinRequest(String spotRid, String value) {
+    public record ActorJoinReq(String spotRid, String value, long millis) {
+        public ActorJoinReq(String spotRid, String value) {
             this(spotRid, value, 0);
         }
     }
 
-    public record ActorJoinReply(String actorId, String spotRid, String value) {
+    public record ActorJoinRes(String actorId, String spotRid, String value) {
     }
 
-    public record ActorYieldRequest(String requestId, long delayMillis) {
+    public record ActorYieldReq(String requestId, long delayMillis) {
     }
 
-    public record ActorFastRequest(String requestId, String marker) {
+    public record ActorFastReq(String requestId, String marker) {
     }
 
-    public record ActorReply(String scenarioId, String requestId, String actorId, String marker) {
+    public record ActorRes(String scenarioId, String requestId, String actorId, String marker) {
     }
 
 }

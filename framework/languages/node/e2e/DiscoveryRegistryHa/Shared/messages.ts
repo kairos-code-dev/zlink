@@ -3,21 +3,21 @@ export const ChannelNames = {
 } as const;
 
 export const PacketNames = {
-  profileRequest: 'ProfileRequest'
+  profileReq: 'ProfileReq'
 } as const;
 
-export interface ProfileRequest {
+export interface ProfileReq {
   readonly value: string;
   readonly marker?: string;
 }
 
-export interface ProfileReply {
+export interface ProfileRes {
   readonly value: string;
   readonly providerRid: string;
   readonly marker?: string;
 }
 
-export interface EvidenceWaitRequest {
+export interface EvidenceWaitReq {
   readonly contains: string;
   readonly timeoutMilliseconds?: number;
 }

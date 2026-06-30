@@ -9,7 +9,7 @@ import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class BindActorsHandler
-    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.BindActorsRequest> {
+    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.BindActorsReq> {
     private final ZLinkRouteClient routes;
     private final EvidenceStore evidence;
 
@@ -22,26 +22,26 @@ public final class BindActorsHandler
 
     @Override
     public String packetName() {
-        return "BindActorsRequest";
+        return "BindActorsReq";
     }
 
     @Override
-    public Class<Contracts.BindActorsRequest> messageType() {
-        return Contracts.BindActorsRequest.class;
+    public Class<Contracts.BindActorsReq> messageType() {
+        return Contracts.BindActorsReq.class;
     }
 
     @Override
     public void handle(
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Contracts.BindActorsRequest request) {
-        Contracts.BindActorsReply reply = routes
+        Contracts.BindActorsReq request) {
+        Contracts.BindActorsRes reply = routes
             .requestTo(
                 Contracts.ROUTE_CHANNEL,
                 RoutingId.from(Contracts.PLAY_NODE),
                 request)
             .timeout(Duration.ofSeconds(30))
-            .await(Contracts.BindActorsReply.class);
+            .await(Contracts.BindActorsRes.class);
         for (Contracts.ActorBinding actor : reply.actors()) {
             context.actors().bind(new ZLinkActorRef(
                     RoutingId.from(actor.nodeRid()),

@@ -36,9 +36,9 @@ struct ensure_spot_req_t
     std::string spot_rid;
 };
 
-struct ensure_spot_reply_t
+struct ensure_spot_res_t
 {
-    static constexpr const char *packet_name = "EnsureSpotReply";
+    static constexpr const char *packet_name = "EnsureSpotRes";
     std::string spot_rid;
     std::string node_rid;
 };
@@ -49,9 +49,9 @@ struct yield_evidence_req_t
     std::string request_id;
 };
 
-struct yield_evidence_reply_t
+struct yield_evidence_res_t
 {
-    static constexpr const char *packet_name = "YieldEvidenceReply";
+    static constexpr const char *packet_name = "YieldEvidenceRes";
     std::string request_id;
     std::vector<std::string> evidence;
 };
@@ -87,9 +87,9 @@ struct delay_req_t
     std::string marker;
 };
 
-struct delay_reply_t
+struct delay_res_t
 {
-    static constexpr const char *packet_name = "DelayReply";
+    static constexpr const char *packet_name = "DelayRes";
     std::string request_id;
     std::string marker;
     std::string node_rid;
@@ -109,9 +109,9 @@ struct bind_yield_actors_req_t
     std::vector<std::string> actor_ids;
 };
 
-struct bind_yield_actors_reply_t
+struct bind_yield_actors_res_t
 {
-    static constexpr const char *packet_name = "BindYieldActorsReply";
+    static constexpr const char *packet_name = "BindYieldActorsRes";
     std::string spot_rid;
     std::vector<yield_actor_binding_t> actors;
 };
@@ -123,9 +123,9 @@ struct hold_req_t
     int delay_ms = 0;
 };
 
-struct hold_command_t
+struct hold_msg_t
 {
-    static constexpr const char *packet_name = "HoldCommand";
+    static constexpr const char *packet_name = "HoldMsg";
     std::string request_id;
     int delay_ms = 0;
 };
@@ -138,9 +138,9 @@ struct yield_req_t
     std::string correlation_id;
 };
 
-struct yield_command_t
+struct yield_msg_t
 {
-    static constexpr const char *packet_name = "YieldCommand";
+    static constexpr const char *packet_name = "YieldMsg";
     std::string request_id;
     int delay_ms = 0;
     std::string correlation_id;
@@ -153,9 +153,9 @@ struct worker_yield_req_t
     int delay_ms = 0;
 };
 
-struct worker_yield_command_t
+struct worker_yield_msg_t
 {
-    static constexpr const char *packet_name = "WorkerYieldCommand";
+    static constexpr const char *packet_name = "WorkerYieldMsg";
     std::string request_id;
     int delay_ms = 0;
 };
@@ -168,9 +168,9 @@ struct yield_timeout_req_t
     int timeout_ms = 0;
 };
 
-struct yield_timeout_command_t
+struct yield_timeout_msg_t
 {
-    static constexpr const char *packet_name = "YieldTimeoutCommand";
+    static constexpr const char *packet_name = "YieldTimeoutMsg";
     std::string request_id;
     int delay_ms = 0;
     int timeout_ms = 0;
@@ -184,9 +184,9 @@ struct yield_cancel_req_t
     int cancel_after_ms = 0;
 };
 
-struct yield_cancel_command_t
+struct yield_cancel_msg_t
 {
-    static constexpr const char *packet_name = "YieldCancelCommand";
+    static constexpr const char *packet_name = "YieldCancelMsg";
     std::string request_id;
     int delay_ms = 0;
     int cancel_after_ms = 0;
@@ -200,9 +200,9 @@ struct remote_spot_yield_req_t
     int delay_ms = 0;
 };
 
-struct timer_start_command_t
+struct timer_start_msg_t
 {
-    static constexpr const char *packet_name = "TimerStartCommand";
+    static constexpr const char *packet_name = "TimerStartMsg";
     std::string request_id;
     std::string timer_name;
     std::string mode;
@@ -210,9 +210,9 @@ struct timer_start_command_t
     int delay_ms = 0;
 };
 
-struct timer_stop_command_t
+struct timer_stop_msg_t
 {
-    static constexpr const char *packet_name = "TimerStopCommand";
+    static constexpr const char *packet_name = "TimerStopMsg";
     std::string request_id;
 };
 
@@ -223,9 +223,9 @@ struct probe_req_t
     std::string marker;
 };
 
-struct probe_command_t
+struct probe_msg_t
 {
-    static constexpr const char *packet_name = "ProbeCommand";
+    static constexpr const char *packet_name = "ProbeMsg";
     std::string request_id;
     std::string marker;
 };
@@ -268,9 +268,9 @@ struct actor_push_notify_t
     std::string node_rid;
 };
 
-struct actor_yield_reply_t
+struct actor_yield_res_t
 {
-    static constexpr const char *packet_name = "ActorYieldReply";
+    static constexpr const char *packet_name = "ActorYieldRes";
     std::string scenario_id;
     std::string request_id;
     std::string actor_id;
@@ -279,9 +279,9 @@ struct actor_yield_reply_t
     std::string marker;
 };
 
-struct yield_dispatch_reply_t
+struct yield_dispatch_res_t
 {
-    static constexpr const char *packet_name = "YieldDispatchReply";
+    static constexpr const char *packet_name = "YieldDispatchRes";
     std::string scenario_id;
     std::string request_id;
     std::string spot_rid;
@@ -289,9 +289,9 @@ struct yield_dispatch_reply_t
     std::string marker;
 };
 
-struct yield_timeout_reply_t
+struct yield_timeout_res_t
 {
-    static constexpr const char *packet_name = "YieldTimeoutReply";
+    static constexpr const char *packet_name = "YieldTimeoutRes";
     std::string scenario_id;
     std::string request_id;
     std::string spot_rid;
@@ -300,9 +300,9 @@ struct yield_timeout_reply_t
     std::string error;
 };
 
-struct yield_cancel_reply_t
+struct yield_cancel_res_t
 {
-    static constexpr const char *packet_name = "YieldCancelReply";
+    static constexpr const char *packet_name = "YieldCancelRes";
     std::string scenario_id;
     std::string request_id;
     std::string spot_rid;
@@ -311,9 +311,9 @@ struct yield_cancel_reply_t
     std::string error;
 };
 
-struct yield_scenario_result_t
+struct yield_scenario_res_t
 {
-    static constexpr const char *packet_name = "YieldScenarioResult";
+    static constexpr const char *packet_name = "YieldScenarioRes";
     std::string operation;
     std::string spot_rid;
     std::vector<std::string> evidence;
@@ -334,12 +334,12 @@ inline void from_json (const nlohmann::json &json, ensure_spot_req_t &value)
     value.spot_rid = json.value ("spot_rid", "");
 }
 
-inline void to_json (nlohmann::json &json, const ensure_spot_reply_t &value)
+inline void to_json (nlohmann::json &json, const ensure_spot_res_t &value)
 {
     json = nlohmann::json{{"spot_rid", value.spot_rid}, {"node_rid", value.node_rid}};
 }
 
-inline void from_json (const nlohmann::json &json, ensure_spot_reply_t &value)
+inline void from_json (const nlohmann::json &json, ensure_spot_res_t &value)
 {
     value.spot_rid = json.value ("spot_rid", "");
     value.node_rid = json.value ("node_rid", "");
@@ -355,12 +355,12 @@ inline void from_json (const nlohmann::json &json, yield_evidence_req_t &value)
     value.request_id = json.value ("request_id", "");
 }
 
-inline void to_json (nlohmann::json &json, const yield_evidence_reply_t &value)
+inline void to_json (nlohmann::json &json, const yield_evidence_res_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id}, {"evidence", value.evidence}};
 }
 
-inline void from_json (const nlohmann::json &json, yield_evidence_reply_t &value)
+inline void from_json (const nlohmann::json &json, yield_evidence_res_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.evidence = json.value ("evidence", std::vector<std::string>{});
@@ -419,14 +419,14 @@ inline void from_json (const nlohmann::json &json, delay_req_t &value)
     value.marker = json.value ("marker", "");
 }
 
-inline void to_json (nlohmann::json &json, const delay_reply_t &value)
+inline void to_json (nlohmann::json &json, const delay_res_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id},
                           {"marker", value.marker},
                           {"node_rid", value.node_rid}};
 }
 
-inline void from_json (const nlohmann::json &json, delay_reply_t &value)
+inline void from_json (const nlohmann::json &json, delay_res_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.marker = json.value ("marker", "");
@@ -458,12 +458,12 @@ inline void from_json (const nlohmann::json &json, bind_yield_actors_req_t &valu
     value.actor_ids = json.value ("actor_ids", std::vector<std::string>{});
 }
 
-inline void to_json (nlohmann::json &json, const bind_yield_actors_reply_t &value)
+inline void to_json (nlohmann::json &json, const bind_yield_actors_res_t &value)
 {
     json = nlohmann::json{{"spot_rid", value.spot_rid}, {"actors", value.actors}};
 }
 
-inline void from_json (const nlohmann::json &json, bind_yield_actors_reply_t &value)
+inline void from_json (const nlohmann::json &json, bind_yield_actors_res_t &value)
 {
     value.spot_rid = json.value ("spot_rid", "");
     value.actors = json.value ("actors", std::vector<yield_actor_binding_t>{});
@@ -480,12 +480,12 @@ inline void from_json (const nlohmann::json &json, hold_req_t &value)
     value.delay_ms = json.value ("delay_ms", 0);
 }
 
-inline void to_json (nlohmann::json &json, const hold_command_t &value)
+inline void to_json (nlohmann::json &json, const hold_msg_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id}, {"delay_ms", value.delay_ms}};
 }
 
-inline void from_json (const nlohmann::json &json, hold_command_t &value)
+inline void from_json (const nlohmann::json &json, hold_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.delay_ms = json.value ("delay_ms", 0);
@@ -505,14 +505,14 @@ inline void from_json (const nlohmann::json &json, yield_req_t &value)
     value.correlation_id = json.value ("correlation_id", "");
 }
 
-inline void to_json (nlohmann::json &json, const yield_command_t &value)
+inline void to_json (nlohmann::json &json, const yield_msg_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id},
                           {"delay_ms", value.delay_ms},
                           {"correlation_id", value.correlation_id}};
 }
 
-inline void from_json (const nlohmann::json &json, yield_command_t &value)
+inline void from_json (const nlohmann::json &json, yield_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.delay_ms = json.value ("delay_ms", 0);
@@ -530,12 +530,12 @@ inline void from_json (const nlohmann::json &json, worker_yield_req_t &value)
     value.delay_ms = json.value ("delay_ms", 0);
 }
 
-inline void to_json (nlohmann::json &json, const worker_yield_command_t &value)
+inline void to_json (nlohmann::json &json, const worker_yield_msg_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id}, {"delay_ms", value.delay_ms}};
 }
 
-inline void from_json (const nlohmann::json &json, worker_yield_command_t &value)
+inline void from_json (const nlohmann::json &json, worker_yield_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.delay_ms = json.value ("delay_ms", 0);
@@ -555,14 +555,14 @@ inline void from_json (const nlohmann::json &json, yield_timeout_req_t &value)
     value.timeout_ms = json.value ("timeout_ms", 0);
 }
 
-inline void to_json (nlohmann::json &json, const yield_timeout_command_t &value)
+inline void to_json (nlohmann::json &json, const yield_timeout_msg_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id},
                           {"delay_ms", value.delay_ms},
                           {"timeout_ms", value.timeout_ms}};
 }
 
-inline void from_json (const nlohmann::json &json, yield_timeout_command_t &value)
+inline void from_json (const nlohmann::json &json, yield_timeout_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.delay_ms = json.value ("delay_ms", 0);
@@ -583,14 +583,14 @@ inline void from_json (const nlohmann::json &json, yield_cancel_req_t &value)
     value.cancel_after_ms = json.value ("cancel_after_ms", 0);
 }
 
-inline void to_json (nlohmann::json &json, const yield_cancel_command_t &value)
+inline void to_json (nlohmann::json &json, const yield_cancel_msg_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id},
                           {"delay_ms", value.delay_ms},
                           {"cancel_after_ms", value.cancel_after_ms}};
 }
 
-inline void from_json (const nlohmann::json &json, yield_cancel_command_t &value)
+inline void from_json (const nlohmann::json &json, yield_cancel_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.delay_ms = json.value ("delay_ms", 0);
@@ -611,7 +611,7 @@ inline void from_json (const nlohmann::json &json, remote_spot_yield_req_t &valu
     value.delay_ms = json.value ("delay_ms", 0);
 }
 
-inline void to_json (nlohmann::json &json, const timer_start_command_t &value)
+inline void to_json (nlohmann::json &json, const timer_start_msg_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id},
                           {"timer_name", value.timer_name},
@@ -620,7 +620,7 @@ inline void to_json (nlohmann::json &json, const timer_start_command_t &value)
                           {"delay_ms", value.delay_ms}};
 }
 
-inline void from_json (const nlohmann::json &json, timer_start_command_t &value)
+inline void from_json (const nlohmann::json &json, timer_start_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.timer_name = json.value ("timer_name", "");
@@ -629,12 +629,12 @@ inline void from_json (const nlohmann::json &json, timer_start_command_t &value)
     value.delay_ms = json.value ("delay_ms", 0);
 }
 
-inline void to_json (nlohmann::json &json, const timer_stop_command_t &value)
+inline void to_json (nlohmann::json &json, const timer_stop_msg_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id}};
 }
 
-inline void from_json (const nlohmann::json &json, timer_stop_command_t &value)
+inline void from_json (const nlohmann::json &json, timer_stop_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
 }
@@ -650,12 +650,12 @@ inline void from_json (const nlohmann::json &json, probe_req_t &value)
     value.marker = json.value ("marker", "");
 }
 
-inline void to_json (nlohmann::json &json, const probe_command_t &value)
+inline void to_json (nlohmann::json &json, const probe_msg_t &value)
 {
     json = nlohmann::json{{"request_id", value.request_id}, {"marker", value.marker}};
 }
 
-inline void from_json (const nlohmann::json &json, probe_command_t &value)
+inline void from_json (const nlohmann::json &json, probe_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.marker = json.value ("marker", "");
@@ -759,7 +759,7 @@ inline void from_stream_payload (zlink::stream_connector::codec_t,
     from_stream_payload (payload, value);
 }
 
-inline void to_json (nlohmann::json &json, const actor_yield_reply_t &value)
+inline void to_json (nlohmann::json &json, const actor_yield_res_t &value)
 {
     json = nlohmann::json{{"scenario_id", value.scenario_id},
                           {"request_id", value.request_id},
@@ -769,7 +769,7 @@ inline void to_json (nlohmann::json &json, const actor_yield_reply_t &value)
                           {"marker", value.marker}};
 }
 
-inline void from_json (const nlohmann::json &json, actor_yield_reply_t &value)
+inline void from_json (const nlohmann::json &json, actor_yield_res_t &value)
 {
     value.scenario_id = json.value ("scenario_id", "");
     value.request_id = json.value ("request_id", "");
@@ -779,7 +779,7 @@ inline void from_json (const nlohmann::json &json, actor_yield_reply_t &value)
     value.marker = json.value ("marker", "");
 }
 
-inline void to_json (nlohmann::json &json, const yield_dispatch_reply_t &value)
+inline void to_json (nlohmann::json &json, const yield_dispatch_res_t &value)
 {
     json = nlohmann::json{{"scenario_id", value.scenario_id},
                           {"request_id", value.request_id},
@@ -788,7 +788,7 @@ inline void to_json (nlohmann::json &json, const yield_dispatch_reply_t &value)
                           {"marker", value.marker}};
 }
 
-inline void from_json (const nlohmann::json &json, yield_dispatch_reply_t &value)
+inline void from_json (const nlohmann::json &json, yield_dispatch_res_t &value)
 {
     value.scenario_id = json.value ("scenario_id", "");
     value.request_id = json.value ("request_id", "");
@@ -797,7 +797,7 @@ inline void from_json (const nlohmann::json &json, yield_dispatch_reply_t &value
     value.marker = json.value ("marker", "");
 }
 
-inline void to_json (nlohmann::json &json, const yield_timeout_reply_t &value)
+inline void to_json (nlohmann::json &json, const yield_timeout_res_t &value)
 {
     json = nlohmann::json{{"scenario_id", value.scenario_id},
                           {"request_id", value.request_id},
@@ -807,7 +807,7 @@ inline void to_json (nlohmann::json &json, const yield_timeout_reply_t &value)
                           {"error", value.error}};
 }
 
-inline void from_json (const nlohmann::json &json, yield_timeout_reply_t &value)
+inline void from_json (const nlohmann::json &json, yield_timeout_res_t &value)
 {
     value.scenario_id = json.value ("scenario_id", "");
     value.request_id = json.value ("request_id", "");
@@ -817,7 +817,7 @@ inline void from_json (const nlohmann::json &json, yield_timeout_reply_t &value)
     value.error = json.value ("error", "");
 }
 
-inline void to_json (nlohmann::json &json, const yield_cancel_reply_t &value)
+inline void to_json (nlohmann::json &json, const yield_cancel_res_t &value)
 {
     json = nlohmann::json{{"scenario_id", value.scenario_id},
                           {"request_id", value.request_id},
@@ -827,7 +827,7 @@ inline void to_json (nlohmann::json &json, const yield_cancel_reply_t &value)
                           {"error", value.error}};
 }
 
-inline void from_json (const nlohmann::json &json, yield_cancel_reply_t &value)
+inline void from_json (const nlohmann::json &json, yield_cancel_res_t &value)
 {
     value.scenario_id = json.value ("scenario_id", "");
     value.request_id = json.value ("request_id", "");
@@ -837,14 +837,14 @@ inline void from_json (const nlohmann::json &json, yield_cancel_reply_t &value)
     value.error = json.value ("error", "");
 }
 
-inline void to_json (nlohmann::json &json, const yield_scenario_result_t &value)
+inline void to_json (nlohmann::json &json, const yield_scenario_res_t &value)
 {
     json = nlohmann::json{{"operation", value.operation},
                           {"spot_rid", value.spot_rid},
                           {"evidence", value.evidence}};
 }
 
-inline void from_json (const nlohmann::json &json, yield_scenario_result_t &value)
+inline void from_json (const nlohmann::json &json, yield_scenario_res_t &value)
 {
     value.operation = json.value ("operation", "");
     value.spot_rid = json.value ("spot_rid", "");

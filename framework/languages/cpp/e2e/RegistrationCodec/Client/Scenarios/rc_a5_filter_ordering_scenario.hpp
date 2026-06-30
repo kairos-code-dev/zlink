@@ -14,7 +14,7 @@ inline void run_filter_ordering_scenario (zlink::framework::channel_client_t &ch
     auto request =
       channels.request (api_channel, filter_order_req_t{.value = "filter-order"})
         .timeout (std::chrono::milliseconds (2000))
-        .async<filter_order_reply_t> ();
+        .async<filter_order_res_t> ();
     ensure (request.result ().has_value (), "RC-A5 request failed");
     const auto reply = request.result ().value ();
     const std::vector<std::string> expected{

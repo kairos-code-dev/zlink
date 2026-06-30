@@ -2,7 +2,7 @@ import type { ClientOptions } from '../Support/client-options';
 import { DynamicClusterLauncher } from '../Support/dynamic-cluster-launcher';
 import { getJson, postJson } from '../Support/http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 
 export async function runRmB1(options: ClientOptions): Promise<void> {
   const cluster = await DynamicClusterLauncher.start(options, 'rm-b1');
@@ -11,7 +11,7 @@ export async function runRmB1(options: ClientOptions): Promise<void> {
     let beforeA = await getJson<string[]>(providerA.httpUrl, '/evidence');
     const markerBefore = uniqueMarker('rm-b1-before');
     for (let i = 0; i < 10; i += 1) {
-      const reply = await postJson<ProfileReply>(providerA.httpUrl, '/profile/request', { value: `${markerBefore}-${i}` });
+      const reply = await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value: `${markerBefore}-${i}` });
       ensure(reply.providerRid === 'api-a', 'RM-B1 before scale-out should reach api-a.');
     }
     const preScaleEvidence = await postJson<string[]>(providerA.httpUrl, '/evidence/wait', { contains: `${markerBefore}-9` });
@@ -22,9 +22,9 @@ export async function runRmB1(options: ClientOptions): Promise<void> {
     const beforeB = await getJson<string[]>(providerB.httpUrl, '/evidence');
     const markerAfter = uniqueMarker('rm-b1-after');
     const values = Array.from({ length: 60 }, (_, index) => `${markerAfter}-${index}`);
-    const replies: ProfileReply[] = [];
+    const replies: ProfileRes[] = [];
     for (const value of values) {
-      replies.push(await postJson<ProfileReply>(providerA.httpUrl, '/profile/request', { value }));
+      replies.push(await postJson<ProfileRes>(providerA.httpUrl, '/profile/request', { value }));
     }
     const apiAValues = replies.filter((reply) => reply.providerRid === 'api-a').map((reply) => reply.value);
     const apiBValues = replies.filter((reply) => reply.providerRid === 'api-b').map((reply) => reply.value);

@@ -4,7 +4,7 @@ import {
   ZlinkStreamDispatchMode,
   ZlinkStreamException
 } from '@zlink-systems/stream-connector';
-import type { YieldScenarioResult, YieldShutdownRecoveryReq, YieldShutdownScenarioReq } from '../../Shared/messages';
+import type { YieldScenarioRes, YieldShutdownRecoveryReq, YieldShutdownScenarioReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
 import { decodeStreamReply } from '../Support/stream-reply';
@@ -19,7 +19,7 @@ export async function runShutdownWait(options: ClientOptions): Promise<void> {
       .request({ requestId, spotRid, delayMs: 30000 } satisfies YieldShutdownScenarioReq)
       .packetName('YieldShutdownScenarioReq')
       .timeout(90000)
-      .submit<YieldScenarioResult>();
+      .submit<YieldScenarioRes>();
     throw new Error(`YD-E3 expected play-a shutdown while yield was pending, but request completed as ${reply.operation}.`);
   } catch (error) {
     if (error instanceof ZlinkStreamException || isAbortLike(error)) {
@@ -38,7 +38,7 @@ export async function runShutdownRecovery(options: ClientOptions): Promise<void>
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
-    const result = decodeStreamReply<YieldScenarioResult>(await client
+    const result = decodeStreamReply<YieldScenarioRes>(await client
       .request({ requestId, spotRid } satisfies YieldShutdownRecoveryReq)
       .packetName('YieldShutdownRecoveryReq')
       .timeout(30000)

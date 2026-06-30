@@ -5,7 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChanged
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedReq
 
 class EvidenceStore {
     private val path: Path
@@ -22,7 +22,7 @@ class EvidenceStore {
         path = dir.resolve("events.log")
     }
 
-    fun append(status: DeliveryStatusChanged) {
+    fun append(status: DeliveryStatusChangedReq) {
         val line = listOf(
             status.deliveryId,
             status.status,

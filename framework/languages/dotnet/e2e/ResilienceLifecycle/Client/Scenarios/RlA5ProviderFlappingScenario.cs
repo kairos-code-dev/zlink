@@ -36,13 +36,13 @@ internal static class RlA5ProviderFlappingScenario
             {
                 var marker = $"rl-a5-down-{cycle}-{i}";
                 var reply = (await consumer.Post("/profile/request")
-                    .Body(new ProfileRequest("fast", marker))
-                    .SubmitAsync<ProfileReply>()).Body;
+                    .Body(new ProfileReq("fast", marker))
+                    .SubmitAsync<ProfileRes>()).Body;
                 ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-A5 down window did not converge to api-a.");
             }
 
             await providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest([$"marker=rl-a5-down-{cycle}-"], []))
+                .Body(new EvidenceWaitReq([$"marker=rl-a5-down-{cycle}-"], []))
                 .SubmitAsync<string[]>();
 
             await processes.StartProviderBAsync();
@@ -62,20 +62,20 @@ internal static class RlA5ProviderFlappingScenario
             }
 
             await registry.Post("/topology/wait")
-                .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-                .SubmitAsync<TopologyEntryResult[]>();
+                .Body(new TopologyWaitReq("api-b", "Ready", 1))
+                .SubmitAsync<TopologyEntryRes[]>();
             for (var i = 0; i < 24; i++)
             {
                 var marker = $"rl-a5-up-{cycle}-{i}";
                 var reply = (await consumer.Post("/profile/request")
-                    .Body(new ProfileRequest("fast", marker))
-                    .SubmitAsync<ProfileReply>()).Body;
+                    .Body(new ProfileReq("fast", marker))
+                    .SubmitAsync<ProfileRes>()).Body;
                 ScenarioAssert.That(reply.Value == "profile:fast",
                     "RL-A5 up-window request returned an unexpected value.");
             }
 
             await providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest([$"profile-request|rid=api-b|marker=rl-a5-up-{cycle}-"], []))
+                .Body(new EvidenceWaitReq([$"profile-request|rid=api-b|marker=rl-a5-up-{cycle}-"], []))
                 .SubmitAsync<string[]>();
         }
 

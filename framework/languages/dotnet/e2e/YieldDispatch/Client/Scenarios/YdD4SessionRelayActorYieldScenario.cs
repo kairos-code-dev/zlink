@@ -30,7 +30,7 @@ internal static class YdD4SessionRelayActorYieldScenario
             .PacketName("ActorPushYieldReq")
             .Metadata(YieldDispatchNames.ActorIdMetadata, actors.ActorA)
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<ActorYieldReply>();
+            .Async<ActorYieldRes>();
         var notify = await push;
         ScenarioAssert.That(reply.ScenarioId == "YD-D4", "YD-D4 reply scenario mismatch.");
         ScenarioAssert.That(notify.Payload.ActorId == actors.ActorA, "YD-D4 push actor mismatch.");
@@ -44,7 +44,7 @@ internal static class YdD4SessionRelayActorYieldScenario
             .PacketName("YieldEvidenceReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldEvidenceReply>();
+            .Async<YieldEvidenceRes>();
         ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "actor-push-yield-started",
             "actor-push-yield-released",

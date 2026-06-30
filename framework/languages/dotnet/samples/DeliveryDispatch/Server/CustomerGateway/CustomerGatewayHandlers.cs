@@ -7,10 +7,10 @@ namespace DeliveryDispatch.Server.CustomerGateway;
 
 [ZLinkHandlerGroup(SampleNames.CustomerRouteChannel)]
 internal sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
-    : IZLinkRequestHandler<EnsureCustomerActor, CustomerActorEnsured>
+    : IZLinkRequestHandler<EnsureCustomerActorReq, EnsureCustomerActorRes>
 {
-    public async ValueTask<CustomerActorEnsured> HandleAsync(
-        EnsureCustomerActor request,
+    public async ValueTask<EnsureCustomerActorRes> HandleAsync(
+        EnsureCustomerActorReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -20,7 +20,7 @@ internal sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
             request,
             cancellationToken);
 
-        return new CustomerActorEnsured(
+        return new EnsureCustomerActorRes(
             request.CustomerId,
             new ActorRefSnapshot(actor.NodeRid.ToString(), actor.ActorId, actor.Generation));
     }
@@ -28,14 +28,14 @@ internal sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
 
 [ZLinkHandlerGroup(SampleNames.CustomerRouteChannel)]
 internal sealed class CustomerStatusPushHandler(CustomerActorDirectory customers)
-    : IZLinkRequestHandler<DeliveryStatusChanged, DeliveryStatusAck>
+    : IZLinkRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes>
 {
-    public async ValueTask<DeliveryStatusAck> HandleAsync(
-        DeliveryStatusChanged request,
+    public async ValueTask<DeliveryStatusChangedRes> HandleAsync(
+        DeliveryStatusChangedReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         await customers.PushAsync(request, cancellationToken);
-        return new DeliveryStatusAck(request.DeliveryId, request.Status);
+        return new DeliveryStatusChangedRes(request.DeliveryId, request.Status);
     }
 }

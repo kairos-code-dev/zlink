@@ -1,6 +1,6 @@
 namespace ResilienceLifecycle.Client.Support;
 
-internal sealed record LifecycleApiResult(
+internal sealed record LifecycleApiRes(
     string Operation,
     string[] ProviderAEvidence,
     string[] ProviderBEvidence);

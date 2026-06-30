@@ -5,12 +5,12 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 
 public final class ProbeActorRequestHandler {
-    @ZLinkSpotActorRequest(packetName = "ProbeRequest")
-    public Contracts.ProbeReply handle(
+    @ZLinkSpotActorRequest(packetName = "ProbeReq")
+    public Contracts.ProbeRes handle(
         ProbeSpot spot,
         ProbeActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ProbeRequest request,
+        Contracts.ProbeReq request,
         CancellationToken cancellationToken) {
         return spot.handle(request);
     }

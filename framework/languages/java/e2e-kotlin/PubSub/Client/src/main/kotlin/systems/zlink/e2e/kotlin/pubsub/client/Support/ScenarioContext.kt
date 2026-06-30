@@ -17,7 +17,7 @@ import systems.zlink.e2e.kotlin.pubsub.client.Scenarios.PublisherRestartScenario
 import systems.zlink.e2e.kotlin.pubsub.client.Scenarios.SlowSubscriberScenario
 import systems.zlink.e2e.kotlin.pubsub.client.Scenarios.SubscriberReconnectScenario
 import systems.zlink.e2e.kotlin.pubsub.client.Scenarios.TopicFilterScenario
-import systems.zlink.e2e.kotlin.pubsub.shared.EventNotify
+import systems.zlink.e2e.kotlin.pubsub.shared.EventMsg
 import systems.zlink.e2e.kotlin.pubsub.shared.EvidenceSnapshot
 
 class ScenarioContext(
@@ -40,7 +40,7 @@ class ScenarioContext(
         touch(options.publisherReadyFile)
         waitForFile(options.prelateContinueFile)
 
-        publish("all", EventNotify("prelate", 0, "before-late"))
+        publish("all", EventMsg("prelate", 0, "before-late"))
         waitForEvent("sub-1", "prelate", 0)
         waitForEvent("sub-2", "prelate", 0)
         touch(options.lateReadyFile)
@@ -53,12 +53,12 @@ class ScenarioContext(
     }
 
     fun runSubscriberRestartAfterReconnect() {
-        publish("all", EventNotify("ps-a4-down", 1, "while-sub-1-down"))
+        publish("all", EventMsg("ps-a4-down", 1, "while-sub-1-down"))
         waitForEvent("sub-2", "ps-a4-down", 1)
 
         waitForFile(options.lateContinueFile)
 
-        publish("all", EventNotify("ps-a4-after", 2, "after-sub-1-restart"))
+        publish("all", EventMsg("ps-a4-after", 2, "after-sub-1-restart"))
         waitForEvent("sub-1", "ps-a4-after", 2)
         waitForEvent("sub-2", "ps-a4-after", 2)
         val restarted = snapshot("sub-1")
@@ -71,7 +71,7 @@ class ScenarioContext(
 
     fun runSlowSubscriberIsolation() {
         for (sequence in 0 until 8) {
-            publish("all", EventNotify("ps-b1", sequence, "slow-isolation-$sequence"))
+            publish("all", EventMsg("ps-b1", sequence, "slow-isolation-$sequence"))
         }
         waitForEvent("sub-2", "ps-b1", 7)
         waitForEvent("sub-3", "ps-b1", 7)
@@ -79,7 +79,7 @@ class ScenarioContext(
     }
 
     fun runPublisherRestartRecovery() {
-        publish("all", EventNotify("ps-b2", 1, "after-publisher-restart"))
+        publish("all", EventMsg("ps-b2", 1, "after-publisher-restart"))
         waitForEvent("sub-1", "ps-b2", 1)
         waitForEvent("sub-2", "ps-b2", 1)
         waitForEvent("sub-3", "ps-b2", 1)
@@ -88,14 +88,14 @@ class ScenarioContext(
 
     fun runFanoutBasicDelivery() {
         for (index in 0 until 20) {
-            publish("all", EventNotify("warmup", index, "warmup-$index"))
+            publish("all", EventMsg("warmup", index, "warmup-$index"))
         }
         for (rid in listOf("sub-1", "sub-2", "sub-3")) {
             waitForAnyEvent(rid, "warmup")
         }
 
         for (sequence in 0 until 12) {
-            publish("all", EventNotify("ps-a1", sequence, "fanout-$sequence"))
+            publish("all", EventMsg("ps-a1", sequence, "fanout-$sequence"))
         }
         for (rid in listOf("sub-1", "sub-2", "sub-3")) {
             for (sequence in 0 until 4) {
@@ -106,9 +106,9 @@ class ScenarioContext(
     }
 
     fun runTopicFilter() {
-        publish("alpha", EventNotify("ps-a2", 1, "alpha-only"))
-        publish("beta", EventNotify("ps-a2", 2, "beta-only"))
-        publish("gamma", EventNotify("ps-a2", 3, "gamma-only"))
+        publish("alpha", EventMsg("ps-a2", 1, "alpha-only"))
+        publish("beta", EventMsg("ps-a2", 2, "beta-only"))
+        publish("gamma", EventMsg("ps-a2", 3, "gamma-only"))
 
         waitForEvent("sub-1", "ps-a2", 1)
         waitForEvent("sub-2", "ps-a2", 2)
@@ -139,30 +139,30 @@ class ScenarioContext(
     fun runLateSubscriber() {
         val late = snapshot("sub-3")
         ensure(!hasEvent(late, "prelate", 0), "PS-A3 late subscriber received replayed pre-late event")
-        publish("all", EventNotify("ps-a3", 1, "after-late"))
+        publish("all", EventMsg("ps-a3", 1, "after-late"))
         waitForEvent("sub-3", "ps-a3", 1)
         println("scenario PS-A3 passed")
     }
 
     fun runMissingPacket() {
-        publishMissing("all", EventNotify("ps-c1", 1, "missing-packet"))
-        waitForDispatchError("sub-1", "MissingEventNotify")
-        publish("all", EventNotify("ps-c1", 2, "normal-after-missing"))
+        publishMissing("all", EventMsg("ps-c1", 1, "missing-packet"))
+        waitForDispatchError("sub-1", "MissingEventMsg")
+        publish("all", EventMsg("ps-c1", 2, "normal-after-missing"))
         waitForEvent("sub-1", "ps-c1", 2)
         waitForEvent("sub-2", "ps-c1", 2)
         waitForEvent("sub-3", "ps-c1", 2)
         println("scenario PS-C1 passed")
     }
 
-    private fun publish(topic: String, message: EventNotify) {
-        postPublisher("/publish", PublishRequest(topic, message))
+    private fun publish(topic: String, message: EventMsg) {
+        postPublisher("/publish", PublishReq(topic, message))
     }
 
-    private fun publishMissing(topic: String, message: EventNotify) {
-        postPublisher("/publish-missing", PublishRequest(topic, message))
+    private fun publishMissing(topic: String, message: EventMsg) {
+        postPublisher("/publish-missing", PublishReq(topic, message))
     }
 
-    private fun postPublisher(path: String, body: PublishRequest) {
+    private fun postPublisher(path: String, body: PublishReq) {
         val request = HttpRequest.newBuilder(URI.create("$publisherUrl$path"))
             .timeout(Duration.ofSeconds(5))
             .header("Content-Type", "application/json")
@@ -173,7 +173,7 @@ class ScenarioContext(
     }
 
     private fun waitForAnyEvent(subscriberRid: String, scenario: String) {
-        waitForEvidence(subscriberRid, marker = "EventNotify", scenario = scenario)
+        waitForEvidence(subscriberRid, marker = "EventMsg", scenario = scenario)
     }
 
     private fun waitForEvent(
@@ -181,7 +181,7 @@ class ScenarioContext(
         scenario: String,
         sequence: Int,
     ) {
-        waitForEvidence(subscriberRid, marker = "EventNotify", scenario = scenario, sequence = sequence)
+        waitForEvidence(subscriberRid, marker = "EventMsg", scenario = scenario, sequence = sequence)
     }
 
     private fun waitForDispatchError(subscriberRid: String, packetName: String) {
@@ -243,7 +243,7 @@ class ScenarioContext(
         sequence: Int,
     ): Boolean =
         snapshot.entries.any {
-            it.marker == "EventNotify" &&
+            it.marker == "EventMsg" &&
                 it.scenario == scenario &&
                 it.sequence == sequence
         }
@@ -296,11 +296,11 @@ class ScenarioContext(
     private fun encode(value: String): String =
         URLEncoder.encode(value, Charsets.UTF_8)
 
-    private class PublishRequest() {
+    private class PublishReq() {
         var topic: String = ""
-        var message: EventNotify = EventNotify()
+        var message: EventMsg = EventMsg()
 
-        constructor(topic: String, message: EventNotify) : this() {
+        constructor(topic: String, message: EventMsg) : this() {
             this.topic = topic
             this.message = message
         }

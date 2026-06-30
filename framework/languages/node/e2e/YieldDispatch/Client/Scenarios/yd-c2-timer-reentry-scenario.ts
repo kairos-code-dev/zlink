@@ -1,4 +1,4 @@
-import type { TimerStartCommand } from '../../Shared/messages';
+import type { TimerStartMsg } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder } from '../Support/scenario-assert';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
@@ -7,8 +7,8 @@ import { stopTimers, waitForEvidence } from './yd-c1-timer-isolation-scenario';
 export async function runYdC2(client: ZlinkStreamConnector, spotRid: string): Promise<string> {
   const requestId = `YD-C2-${uniqueId()}`;
   await client
-    .send({ requestId, timerName: `${requestId}-same`, mode: 'yield-then-next', periodMs: 50, delayMs: 350 } satisfies TimerStartCommand)
-    .packetName('TimerStartCommand')
+    .send({ requestId, timerName: `${requestId}-same`, mode: 'yield-then-next', periodMs: 50, delayMs: 350 } satisfies TimerStartMsg)
+    .packetName('TimerStartMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
   const evidence = await waitForEvidence(client, requestId, 'timer-next-completed');

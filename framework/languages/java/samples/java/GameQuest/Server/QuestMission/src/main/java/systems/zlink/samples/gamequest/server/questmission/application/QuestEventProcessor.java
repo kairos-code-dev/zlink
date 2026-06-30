@@ -37,7 +37,7 @@ public final class QuestEventProcessor {
         this.missionName = options.missionName();
     }
 
-    public void process(Messages.GameplayEventEnvelope gameplayEvent) {
+    public void process(Messages.GameplayEventMsg gameplayEvent) {
         if (!ownerRouter.isLocalOwner(gameplayEvent.playerId())) {
             return;
         }
@@ -92,7 +92,7 @@ public final class QuestEventProcessor {
             .mapToInt(Messages.KillCountSnapshot::count)
             .sum();
         if (killCount > 0) {
-            process(new Messages.GameplayEventEnvelope(
+            process(new Messages.GameplayEventMsg(
                 request.playerId() + "-snapshot-" + snapshot.snapshotVersion(),
                 request.playerId(),
                 "snapshot-" + snapshot.snapshotVersion(),

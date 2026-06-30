@@ -28,8 +28,39 @@ struct quest_progress_t
     long long updated_at_unix_ms{0};
 };
 
-struct event_res_t
+struct quest_event_msg_t
 {
+    static constexpr const char *packet_name = "QuestEventMsg";
+    std::string event_id;
+};
+
+struct enter_area_res_t
+{
+    static constexpr const char *packet_name = "EnterAreaRes";
+    std::string event_id;
+};
+
+struct kill_monster_res_t
+{
+    static constexpr const char *packet_name = "KillMonsterRes";
+    std::string event_id;
+};
+
+struct collect_item_res_t
+{
+    static constexpr const char *packet_name = "CollectItemRes";
+    std::string event_id;
+};
+
+struct complete_mission_res_t
+{
+    static constexpr const char *packet_name = "CompleteMissionRes";
+    std::string event_id;
+};
+
+struct unlock_feature_res_t
+{
+    static constexpr const char *packet_name = "UnlockFeatureRes";
     std::string event_id;
 };
 
@@ -170,15 +201,24 @@ inline void from_json (const nlohmann::json &json, quest_progress_t &value)
     value.updated_at_unix_ms = json.value ("updatedAtUnixMs", 0LL);
 }
 
-inline void to_json (nlohmann::json &json, const event_res_t &value)
-{
-    json = nlohmann::json{{"eventId", value.event_id}};
-}
+#define ZLINK_GAMEQUEST_EVENT_ID_JSON(type_name)                         \
+    inline void to_json (nlohmann::json &json, const type_name &value)   \
+    {                                                                    \
+        json = nlohmann::json{{"eventId", value.event_id}};             \
+    }                                                                    \
+    inline void from_json (const nlohmann::json &json, type_name &value) \
+    {                                                                    \
+        value.event_id = json.value ("eventId", "");                   \
+    }
 
-inline void from_json (const nlohmann::json &json, event_res_t &value)
-{
-    value.event_id = json.value ("eventId", "");
-}
+ZLINK_GAMEQUEST_EVENT_ID_JSON (quest_event_msg_t)
+ZLINK_GAMEQUEST_EVENT_ID_JSON (enter_area_res_t)
+ZLINK_GAMEQUEST_EVENT_ID_JSON (kill_monster_res_t)
+ZLINK_GAMEQUEST_EVENT_ID_JSON (collect_item_res_t)
+ZLINK_GAMEQUEST_EVENT_ID_JSON (complete_mission_res_t)
+ZLINK_GAMEQUEST_EVENT_ID_JSON (unlock_feature_res_t)
+
+#undef ZLINK_GAMEQUEST_EVENT_ID_JSON
 
 #define ZLINK_GAMEQUEST_JSON3(type_name, field1, json1, field2, json2, field3, json3) \
     inline void to_json (nlohmann::json &json, const type_name &value)               \

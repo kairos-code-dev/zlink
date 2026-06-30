@@ -23,25 +23,25 @@ void run_yd_c3_actor_timer_isolation_scenario (
   const yield_actor_scenario_context_t &actors)
 {
     const auto actor_then_timer = unique_id ("YD-C3A");
-    std::promise<zlink::stream_connector::result_t<actor_yield_reply_t>>
+    std::promise<zlink::stream_connector::result_t<actor_yield_res_t>>
       actor_yield_promise;
     auto actor_yield = actor_yield_promise.get_future ();
     connector.request (actor_yield_req_t{.request_id = actor_then_timer, .delay_ms = 350})
       .packet_name (actor_yield_req_t::packet_name)
       .metadata (actor_id_metadata, actors.actor_a)
       .timeout (std::chrono::milliseconds (30000))
-      .template submit<actor_yield_reply_t> (
-        [&] (zlink::stream_connector::result_t<actor_yield_reply_t> result) {
+      .template submit<actor_yield_res_t> (
+        [&] (zlink::stream_connector::result_t<actor_yield_res_t> result) {
             actor_yield_promise.set_value (std::move (result));
         });
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
     auto fast_timer_start =
-      observer.send (timer_start_command_t{.request_id = actor_then_timer,
+      observer.send (timer_start_msg_t{.request_id = actor_then_timer,
                                            .timer_name = actor_then_timer + "-fast",
                                            .mode = "fast",
                                            .period_ms = 50,
                                            .delay_ms = 0})
-        .packet_name (timer_start_command_t::packet_name)
+        .packet_name (timer_start_msg_t::packet_name)
         .metadata (spot_rid_metadata, actors.spot_rid)
         .submit ();
     ensure (static_cast<bool> (fast_timer_start), "YD-C3A fast timer start failed");
@@ -53,12 +53,12 @@ void run_yd_c3_actor_timer_isolation_scenario (
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (fast_timer_completed),
             "YD-C3A timer-fast-completed wait failed");
     auto fast_timer_stop =
-      observer.send (timer_stop_command_t{.request_id = actor_then_timer})
-        .packet_name (timer_stop_command_t::packet_name)
+      observer.send (timer_stop_msg_t{.request_id = actor_then_timer})
+        .packet_name (timer_stop_msg_t::packet_name)
         .metadata (spot_rid_metadata, actors.spot_rid)
         .submit ();
     ensure (static_cast<bool> (fast_timer_stop), "YD-C3A timer stop failed");
@@ -69,7 +69,7 @@ void run_yd_c3_actor_timer_isolation_scenario (
         .packet_name (yield_evidence_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (actor_timer_evidence),
             "YD-C3A evidence request failed");
     ensure_contains_in_order (actor_timer_evidence.value ().evidence,
@@ -84,12 +84,12 @@ void run_yd_c3_actor_timer_isolation_scenario (
 
     const auto timer_then_actor = unique_id ("YD-C3B");
     auto yield_timer_start =
-      connector.send (timer_start_command_t{.request_id = timer_then_actor,
+      connector.send (timer_start_msg_t{.request_id = timer_then_actor,
                                             .timer_name = timer_then_actor + "-yield",
                                             .mode = "yield-on-first",
                                             .period_ms = 500,
                                             .delay_ms = 350})
-        .packet_name (timer_start_command_t::packet_name)
+        .packet_name (timer_start_msg_t::packet_name)
         .metadata (spot_rid_metadata, actors.spot_rid)
         .submit ();
     ensure (static_cast<bool> (yield_timer_start), "YD-C3B yield timer start failed");
@@ -101,7 +101,7 @@ void run_yd_c3_actor_timer_isolation_scenario (
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (yield_timer_released),
             "YD-C3B timer-yield-released wait failed");
     auto actor_fast =
@@ -110,7 +110,7 @@ void run_yd_c3_actor_timer_isolation_scenario (
         .packet_name (actor_fast_req_t::packet_name)
         .metadata (actor_id_metadata, actors.actor_b)
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<actor_yield_reply_t> ();
+        .template submit<actor_yield_res_t> ();
     ensure (static_cast<bool> (actor_fast), "YD-C3B ActorFastReq failed");
     auto timer_actor_evidence =
       observer.request (
@@ -120,12 +120,12 @@ void run_yd_c3_actor_timer_isolation_scenario (
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (timer_actor_evidence),
             "YD-C3B evidence wait failed");
     auto yield_timer_stop =
-      connector.send (timer_stop_command_t{.request_id = timer_then_actor})
-        .packet_name (timer_stop_command_t::packet_name)
+      connector.send (timer_stop_msg_t{.request_id = timer_then_actor})
+        .packet_name (timer_stop_msg_t::packet_name)
         .metadata (spot_rid_metadata, actors.spot_rid)
         .submit ();
     ensure (static_cast<bool> (yield_timer_stop), "YD-C3B timer stop failed");

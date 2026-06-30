@@ -73,7 +73,7 @@ public final class ScenarioAssert {
         String scenario,
         int sequence) {
         return snapshot.entries().stream()
-            .anyMatch(entry -> "EventNotify".equals(entry.marker())
+            .anyMatch(entry -> "EventMsg".equals(entry.marker())
                 && scenario.equals(entry.scenario())
                 && entry.sequence() == sequence);
     }

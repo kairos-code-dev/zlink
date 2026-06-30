@@ -11,16 +11,16 @@ internal static class SmE3Scenario
         var spotRid = $"spot-sm-e3-{Guid.NewGuid():N}";
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
-            .SubmitAsync<CreateSpotReply>()).Body;
+            .SubmitAsync<CreateSpotRes>()).Body;
         ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
             "SM-E3 idle spot was not created on play-a.");
         var idle = (await playA.Post("/spot/idle-close/start")
             .Body(new SpotIdleCloseReq(spotRid, "sm-e3-idle", 50))
-            .SubmitAsync<SpotIdleCloseReply>()).Body;
+            .SubmitAsync<SpotIdleCloseRes>()).Body;
         ScenarioAssert.That(idle.Closed, "SM-E3 idle close did not close the spot.");
         var closedSpotRequest = (await playA.Post("/spot/missing-target/request")
             .Body(new SpotMissingTargetReq(spotRid))
-            .SubmitAsync<SpotMissingTargetReply>()).Body;
+            .SubmitAsync<SpotMissingTargetRes>()).Body;
         ScenarioAssert.That(closedSpotRequest.Failed, "SM-E3 closed spot request did not fail.");
         var expectedEvidence = new[]
         {
@@ -28,7 +28,7 @@ internal static class SmE3Scenario
             $"spot-closing|rid=play-a|spot={spotRid}"
         };
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

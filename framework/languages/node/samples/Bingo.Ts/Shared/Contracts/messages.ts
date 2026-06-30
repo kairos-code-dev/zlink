@@ -8,8 +8,8 @@ const PacketNames = Object.freeze({
   submitBingoCardReq: 'SubmitBingoCardReq',
   observeBingoEventsReq: 'ObserveBingoEventsReq',
   stopObservingBingoEventsReq: 'StopObservingBingoEventsReq',
-  bingoRewardAcquiredEvent: 'BingoRewardAcquiredEvent',
-  ping: 'Ping',
+  bingoRewardAcquiredEvent: 'BingoRewardAcquiredMsg',
+  pingMsg: 'PingMsg',
   playerJoinedNotify: 'PlayerJoinedNotify',
   gameStartedNotify: 'BingoGameStartedNotify',
   numberDrawnNotify: 'BingoNumberDrawnNotify',
@@ -239,7 +239,7 @@ export interface NumberDrawnNotify {
   state: unknown;
 }
 
-export interface BingoRewardAcquiredEvent {
+export interface BingoRewardAcquiredMsg {
   roomId: string;
   actorId: string;
   drawSeq: number;
@@ -248,7 +248,7 @@ export interface BingoRewardAcquiredEvent {
   rarity: string;
 }
 
-export interface BingoRewardAnnouncedNotify extends BingoRewardAcquiredEvent {
+export interface BingoRewardAnnouncedNotify extends BingoRewardAcquiredMsg {
   receivingSpotNodeRid: string;
 }
 
@@ -424,12 +424,12 @@ function numberDrawnNotify(roomId: string, drawSeq: number, number: number, stat
   return { roomId, drawSeq, number, state };
 }
 
-function bingoRewardAcquiredEvent(value: BingoRewardAcquiredEvent): BingoRewardAcquiredEvent {
+function bingoRewardAcquiredEvent(value: BingoRewardAcquiredMsg): BingoRewardAcquiredMsg {
   return { ...value };
 }
 
 function bingoRewardAnnouncedNotify(
-  event: BingoRewardAcquiredEvent,
+  event: BingoRewardAcquiredMsg,
   receivingSpotNodeRid: string
 ): BingoRewardAnnouncedNotify {
   return {

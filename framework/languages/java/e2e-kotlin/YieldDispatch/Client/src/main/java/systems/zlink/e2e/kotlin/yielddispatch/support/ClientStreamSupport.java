@@ -37,7 +37,7 @@ public final class ClientStreamSupport {
             ZLinkStreamCompression.LZ4));
     }
 
-    public static Contracts.ActorJoinReply joinActor(
+    public static Contracts.ActorJoinRes joinActor(
         ZLinkStreamConnector connector,
         String actorId,
         String spotRid,
@@ -45,32 +45,32 @@ public final class ClientStreamSupport {
         return joinActor(connector, actorId, spotRid, value, 0);
     }
 
-    public static Contracts.ActorJoinReply joinActor(
+    public static Contracts.ActorJoinRes joinActor(
         ZLinkStreamConnector connector,
         String actorId,
         String spotRid,
         String value,
         long millis) {
-        Contracts.ActorAuthReply auth = await(
-            connector.request(new Contracts.ActorAuthRequest(actorId)),
-            Contracts.ActorAuthReply.class);
+        Contracts.ActorAuthRes auth = await(
+            connector.request(new Contracts.ActorAuthReq(actorId)),
+            Contracts.ActorAuthRes.class);
         ScenarioAssert.that(actorId.equals(auth.actorId()), "actor auth mismatch");
         return await(
-            connector.request(new Contracts.ActorJoinRequest(spotRid, value, millis))
+            connector.request(new Contracts.ActorJoinReq(spotRid, value, millis))
                 .metadata("actor-id", actorId),
-            Contracts.ActorJoinReply.class);
+            Contracts.ActorJoinRes.class);
     }
 
-    public static Contracts.ProbeReply request(
+    public static Contracts.ProbeRes request(
         ZLinkStreamConnector connector,
         String actorId,
         String op,
         long millis) {
         return await(
-            connector.request(new Contracts.ProbeRequest(op, millis))
+            connector.request(new Contracts.ProbeReq(op, millis))
                 .metadata("actor-id", actorId)
                 .timeout(REQUEST_TIMEOUT),
-            Contracts.ProbeReply.class);
+            Contracts.ProbeRes.class);
     }
 
     public static void send(
@@ -87,23 +87,23 @@ public final class ClientStreamSupport {
         }
     }
 
-    public static Contracts.EvidenceReply evidence(
+    public static Contracts.EvidenceRes evidence(
         ZLinkStreamConnector connector,
         String requestId) {
         return await(
-            connector.request(new Contracts.EvidenceRequest(requestId))
+            connector.request(new Contracts.EvidenceReq(requestId))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a")
                 .timeout(REQUEST_TIMEOUT),
-            Contracts.EvidenceReply.class);
+            Contracts.EvidenceRes.class);
     }
 
-    public static Contracts.EvidenceReply waitForEvidence(
+    public static Contracts.EvidenceRes waitForEvidence(
         ZLinkStreamConnector connector,
         String requestId,
         String marker) {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-        Contracts.EvidenceReply latest = new Contracts.EvidenceReply(requestId, java.util.List.of());
+        Contracts.EvidenceRes latest = new Contracts.EvidenceRes(requestId, java.util.List.of());
         while (System.nanoTime() < deadline) {
             latest = evidence(connector, requestId);
             if (latest.markers().stream().anyMatch(entry -> entry.startsWith(marker + "|"))) {

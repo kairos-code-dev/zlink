@@ -13,10 +13,10 @@ inline void run_manual_registration_scenario (zlink::framework::route_client_t &
     auto request =
       routes
         .request (route_channel, zlink::routing_id_t::from (std::string ("rc-server")),
-                  echo_manual_t{.value = "manual"})
+                  echo_manual_req_t{.value = "manual"})
         .packet_name ("EchoManual")
         .timeout (std::chrono::milliseconds (2000))
-        .async<echo_manual_reply_t> ();
+        .async<echo_manual_res_t> ();
     ensure (request.result ().has_value (), "RC-A3 route request failed");
     ensure (request.result ().value ().value == "manual:manual", "RC-A3 reply mismatch");
     ensure (request.result ().value ().packet_name == "EchoManual",

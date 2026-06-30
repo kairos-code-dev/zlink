@@ -79,7 +79,7 @@ internal static class DrC3EmbeddedRegistryScenario
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Build();
             await reg2.Post("/registry/members/wait")
-                .Body(new MemberEndpointWaitRequest(options.ProviderCEndpoint))
+                .Body(new MemberEndpointWaitReq(options.ProviderCEndpoint))
                 .SubmitRawAsync();
 
             await StopServerAsync(options.Reg2ConsumerUrl);
@@ -99,21 +99,21 @@ internal static class DrC3EmbeddedRegistryScenario
         Console.WriteLine("scenario DR-C3 passed");
     }
 
-    private static async Task<ProfileReply> RequestProfileAsync(ZLinkHttpClient consumer, string phase)
+    private static async Task<ProfileRes> RequestProfileAsync(ZLinkHttpClient consumer, string phase)
     {
         var marker = $"{phase}-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("dr-c3", marker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("dr-c3", marker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:dr-c3", $"DR-C3 {phase} request failed.");
         ScenarioAssert.That(reply.Marker == marker, $"DR-C3 {phase} marker mismatch.");
         return reply;
     }
 
-    private static async Task WaitForEvidenceAsync(ProfileReply reply, ZLinkHttpClient provider)
+    private static async Task WaitForEvidenceAsync(ProfileRes reply, ZLinkHttpClient provider)
     {
         var evidence = (await provider.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(reply.Marker))
+            .Body(new EvidenceWaitReq(reply.Marker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(reply.Marker, StringComparison.Ordinal)

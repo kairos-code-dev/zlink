@@ -9,7 +9,7 @@ import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 /** Fanout subscriber: processes published gameplay events. Mirrors the .NET {@code GameplayEventHandler}. */
 @ZLinkHandlerGroup("gamequest-gameplay")
-public final class GameplayEventHandler implements ZLinkPublishHandler<Messages.GameplayEventEnvelope> {
+public final class GameplayEventHandler implements ZLinkPublishHandler<Messages.GameplayEventMsg> {
     private final QuestEventProcessor processor;
 
     public GameplayEventHandler(QuestEventProcessor processor) {
@@ -17,7 +17,7 @@ public final class GameplayEventHandler implements ZLinkPublishHandler<Messages.
     }
 
     @Override
-    public void handle(Messages.GameplayEventEnvelope message, ZLinkPublishContext context) {
+    public void handle(Messages.GameplayEventMsg message, ZLinkPublishContext context) {
         if (!SampleNames.GameplayTopic.equals(context.topic())) {
             return;
         }

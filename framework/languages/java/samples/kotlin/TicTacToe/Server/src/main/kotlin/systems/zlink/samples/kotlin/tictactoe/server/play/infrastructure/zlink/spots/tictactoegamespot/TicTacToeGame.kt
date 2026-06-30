@@ -22,7 +22,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameStateNotify
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerJoinedNotify
-import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerWinMilestoneEvent
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerWinMilestoneMsg
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinRes
 
@@ -307,7 +307,7 @@ class TicTacToeGame(
         context.outbound()
             .publish(
                 SampleNames.PlayerMilestoneTopic,
-                PlayerWinMilestoneEvent(
+                PlayerWinMilestoneMsg(
                     roomId = after.roomId,
                     actorId = actor.actorId,
                     displayName = player.displayName,

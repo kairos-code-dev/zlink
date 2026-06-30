@@ -3,7 +3,7 @@ import {
   zlinkStreamJsonCodec,
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
-import type { ActorPingReply, ActorPingReq, AuthReply, AuthReq } from '../../Shared/messages';
+import type { ActorPingRes, ActorPingReq, AuthRes, AuthReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
 import { decodeStreamReply } from '../Support/stream-reply';
@@ -24,7 +24,7 @@ export async function runSmG1(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
     await playB
       .request({
         actorId: 'actor-sm-g1-survivor',
@@ -33,16 +33,16 @@ export async function runSmG1(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
-    const beforeCrash = decodeStreamReply<ActorPingReply>(await playA
+    const beforeCrash = decodeStreamReply<ActorPingRes>(await playA
       .request({ value: 'before-crash' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
       .submit());
     ensure(beforeCrash.nodeRid === 'play-a', 'SM-G1 play-a actor setup mismatch.');
 
-    const beforeSurvivor = decodeStreamReply<ActorPingReply>(await playB
+    const beforeSurvivor = decodeStreamReply<ActorPingRes>(await playB
       .request({ value: 'before-crash' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
@@ -62,7 +62,7 @@ export async function runSmG1(options: ClientOptions): Promise<void> {
     });
     ensure(afterCrashFailed, 'SM-G1 expected play-a actor request to fail after crash.');
 
-    const survivor = decodeStreamReply<ActorPingReply>(await playB
+    const survivor = decodeStreamReply<ActorPingRes>(await playB
       .request({ value: 'after-crash' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
@@ -80,8 +80,8 @@ export async function runSmG1(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
-    const rebound = decodeStreamReply<ActorPingReply>(await recovered
+      .submit<AuthRes>();
+    const rebound = decodeStreamReply<ActorPingRes>(await recovered
       .request({ value: 'rebound' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)

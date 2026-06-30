@@ -17,16 +17,16 @@ public final class AttrEchoHandler {
     }
 
     @ZLinkRequest(packetName = "EchoAttr")
-    public Contracts.EchoReply request(
-        Contracts.EchoAttrRequest request,
+    public Contracts.EchoRes request(
+        Contracts.EchoAttrReq request,
         ZLinkRequestContext context) {
         state.record("Request", "EchoAttr", request.value());
-        return new Contracts.EchoReply("echo:" + request.value(), "attr");
+        return new Contracts.EchoRes("echo:" + request.value(), "attr");
     }
 
     @ZLinkSend(packetName = "EchoAttr")
     public void send(
-        Contracts.EchoAttrCommand message,
+        Contracts.EchoAttrMsg message,
         ZLinkSendContext context) {
         state.record("Send", "EchoAttr", message.value());
     }

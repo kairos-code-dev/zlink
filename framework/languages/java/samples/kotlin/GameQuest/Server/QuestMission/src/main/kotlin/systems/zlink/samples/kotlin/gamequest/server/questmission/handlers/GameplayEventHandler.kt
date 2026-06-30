@@ -5,14 +5,14 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingPublishHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.gamequest.server.questmission.application.QuestEventProcessor
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventMsg
 
 /** Fanout subscriber: processes published gameplay events. Mirrors the .NET `GameplayEventHandler`. */
 @ZLinkHandlerGroup("gamequest-gameplay")
 class GameplayEventHandler(
     private val processor: QuestEventProcessor,
-) : ZLinkSuspendingPublishHandler<GameplayEventEnvelope> {
-    override suspend fun handle(message: GameplayEventEnvelope, context: ZLinkPublishContext) = run {
+) : ZLinkSuspendingPublishHandler<GameplayEventMsg> {
+    override suspend fun handle(message: GameplayEventMsg, context: ZLinkPublishContext) = run {
         if (context.topic() != SampleNames.GameplayTopic) {
             return
         }

@@ -321,7 +321,7 @@ grep -q "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"
 grep -q "observer-win-milestone=verified" "${LOG_DIR}/client.log"
-wait_grep "host leave marker" "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
-wait_grep "guest leave marker" "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
+wait_grep "host leave marker" "actor: LeaveGameMsg completed. actor=player-x" "${LOG_DIR}"/play-*.log
+wait_grep "guest leave marker" "actor: LeaveGameMsg completed. actor=player-o" "${LOG_DIR}"/play-*.log
 grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
 echo "PASS TicTacToe.Ts"

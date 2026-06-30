@@ -39,12 +39,12 @@ class evidence_wait_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using request_type = e2e::evidence_wait_request_t;
+    using request_type = e2e::evidence_wait_req_t;
     using reply_type = e2e::evidence_snapshot_t;
 
     explicit evidence_wait_handler_t (scenario_state_t &state) : _state (state) {}
 
-    e2e::evidence_snapshot_t handle (const e2e::evidence_wait_request_t &request)
+    e2e::evidence_snapshot_t handle (const e2e::evidence_wait_req_t &request)
     {
         const auto timeout =
           std::chrono::milliseconds (std::clamp (request.timeout_milliseconds, 1, 30000));
@@ -82,7 +82,7 @@ class evidence_wait_handler_t
     }
 
     static bool matches (const e2e::evidence_snapshot_t &snapshot,
-                         const e2e::evidence_wait_request_t &request)
+                         const e2e::evidence_wait_req_t &request)
     {
         for (const auto &expected : request.contains_all) {
             if (!contains_any (snapshot, expected)) {

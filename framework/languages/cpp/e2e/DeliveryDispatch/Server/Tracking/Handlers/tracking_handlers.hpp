@@ -16,11 +16,11 @@ namespace zlink::samples::deliverydispatch
 class ensure_customer_actor_handler_t
 {
   public:
-    using request_type = ensure_customer_actor_t;
-    using reply_type = customer_actor_ensured_t;
-    static constexpr const char *topic_name = "EnsureCustomerActor";
+    using request_type = ensure_customer_actor_req_t;
+    using reply_type = ensure_customer_actor_res_t;
+    static constexpr const char *topic_name = "EnsureCustomerActorReq";
 
-    customer_actor_ensured_t handle (const ensure_customer_actor_t &request)
+    ensure_customer_actor_res_t handle (const ensure_customer_actor_req_t &request)
     {
         customer_actor_t actor{request.customer_id};
         customer_entry_spot_t entry;
@@ -34,21 +34,21 @@ class ensure_customer_actor_handler_t
 class subscribe_customer_to_delivery_handler_t
 {
   public:
-    using request_type = subscribe_customer_to_delivery_t;
-    using reply_type = customer_delivery_subscribed_t;
+    using request_type = subscribe_customer_to_delivery_req_t;
+    using reply_type = subscribe_customer_to_delivery_res_t;
     using dependency_types = zlink::framework::dependency_list_t<delivery_spot_directory_t>;
-    static constexpr const char *topic_name = "SubscribeCustomerToDelivery";
+    static constexpr const char *topic_name = "SubscribeCustomerToDeliveryReq";
 
     explicit subscribe_customer_to_delivery_handler_t (delivery_spot_directory_t &directory) :
         _directory (directory)
     {
     }
 
-    customer_delivery_subscribed_t handle (const subscribe_customer_to_delivery_t &request)
+    subscribe_customer_to_delivery_res_t handle (const subscribe_customer_to_delivery_req_t &request)
     {
         auto &spot = _directory.get_or_create (request.delivery_id);
         customer_actor_t actor{request.customer_id};
-        if (!spot.join (actor, delivery_spot_join_t{request.delivery_id, request.customer_id})) {
+        if (!spot.join (actor, delivery_spot_join_req_t{request.delivery_id, request.customer_id})) {
             throw std::runtime_error ("delivery spot join rejected");
         }
         return {request.customer_id, request.delivery_id};
@@ -61,12 +61,12 @@ class subscribe_customer_to_delivery_handler_t
 class delivery_status_changed_handler_t
 {
   public:
-    using request_type = delivery_status_changed_t;
-    using reply_type = delivery_status_ack_t;
+    using request_type = delivery_status_req_t;
+    using reply_type = delivery_status_res_t;
     using dependency_types = zlink::framework::dependency_list_t<evidence_store_t,
                                                                 zlink::framework::publisher_t,
                                                                 delivery_spot_directory_t>;
-    static constexpr const char *topic_name = "DeliveryStatusChanged";
+    static constexpr const char *topic_name = "DeliveryStatusReq";
 
     delivery_status_changed_handler_t (evidence_store_t &evidence,
                                        zlink::framework::publisher_t &fanout,
@@ -75,8 +75,8 @@ class delivery_status_changed_handler_t
     {
     }
 
-    zlink::framework::task_t<delivery_status_ack_t> handle (
-      const delivery_status_changed_t &request)
+    zlink::framework::task_t<delivery_status_res_t> handle (
+      const delivery_status_req_t &request)
     {
         _evidence.append (request);
         _directory.get_or_create (request.delivery_id).record (request);
@@ -87,7 +87,7 @@ class delivery_status_changed_handler_t
           .async ();
         std::cerr << "deliverydispatch tracking: status delivery=" << request.delivery_id
                   << " status=" << request.status << " courier=" << request.courier_id << "\n";
-        co_return delivery_status_ack_t{request.delivery_id, request.status};
+        co_return delivery_status_res_t{request.delivery_id, request.status};
     }
 
   private:

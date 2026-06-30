@@ -15,7 +15,7 @@ inline constexpr const char *topic_fanout = "fanout";
 inline constexpr const char *topic_alpha = "alpha";
 inline constexpr const char *topic_beta = "beta";
 
-struct event_notify_t
+struct event_msg_t
 {
     std::string value;
 };
@@ -45,7 +45,7 @@ struct evidence_snapshot_t
     std::vector<dispatch_error_evidence_t> errors;
 };
 
-struct evidence_wait_request_t
+struct evidence_wait_req_t
 {
     std::vector<std::string> contains_all;
     std::vector<std::vector<std::string>> contains_any_groups;
@@ -54,12 +54,12 @@ struct evidence_wait_request_t
     int timeout_milliseconds = 10000;
 };
 
-inline void to_json (nlohmann::json &json, const event_notify_t &value)
+inline void to_json (nlohmann::json &json, const event_msg_t &value)
 {
     json = nlohmann::json{{"value", value.value}};
 }
 
-inline void from_json (const nlohmann::json &json, event_notify_t &value)
+inline void from_json (const nlohmann::json &json, event_msg_t &value)
 {
     json.at ("value").get_to (value.value);
 }
@@ -117,7 +117,7 @@ inline void from_json (const nlohmann::json &json, evidence_snapshot_t &value)
     json.at ("errors").get_to (value.errors);
 }
 
-inline void to_json (nlohmann::json &json, const evidence_wait_request_t &value)
+inline void to_json (nlohmann::json &json, const evidence_wait_req_t &value)
 {
     json = nlohmann::json{{"contains_all", value.contains_all},
                           {"contains_any_groups", value.contains_any_groups},
@@ -126,7 +126,7 @@ inline void to_json (nlohmann::json &json, const evidence_wait_request_t &value)
                           {"timeout_milliseconds", value.timeout_milliseconds}};
 }
 
-inline void from_json (const nlohmann::json &json, evidence_wait_request_t &value)
+inline void from_json (const nlohmann::json &json, evidence_wait_req_t &value)
 {
     if (json.contains ("contains_all")) {
         json.at ("contains_all").get_to (value.contains_all);

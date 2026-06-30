@@ -36,12 +36,12 @@ internal static class PlayHostFactory
                 .EnableServer(options.ControlEndpoint)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .AddRequestHandler<BindYieldActorsControlHandler, BindYieldActorsReq, BindYieldActorsReply>(
+                .AddRequestHandler<BindYieldActorsControlHandler, BindYieldActorsReq, BindYieldActorsRes>(
                     "BindYieldActorsReq")
-                .AddRequestHandler<EnsureSpotControlHandler, EnsureSpotReq, EnsureSpotReply>("EnsureSpotReq")
-                .AddRequestHandler<YieldEvidenceControlHandler, YieldEvidenceReq, YieldEvidenceReply>(
+                .AddRequestHandler<EnsureSpotControlHandler, EnsureSpotReq, EnsureSpotRes>("EnsureSpotReq")
+                .AddRequestHandler<YieldEvidenceControlHandler, YieldEvidenceReq, YieldEvidenceRes>(
                     "YieldEvidenceReq")
-                .AddRequestHandler<YieldEvidenceWaitControlHandler, YieldEvidenceWaitReq, YieldEvidenceReply>(
+                .AddRequestHandler<YieldEvidenceWaitControlHandler, YieldEvidenceWaitReq, YieldEvidenceRes>(
                     "YieldEvidenceWaitReq");
             framework.AddClientServerChannel(YieldDispatchNames.DelayChannel)
                 .EnableClient(options.DelayEndpoint)

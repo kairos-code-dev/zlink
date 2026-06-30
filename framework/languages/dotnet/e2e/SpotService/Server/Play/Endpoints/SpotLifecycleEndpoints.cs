@@ -21,7 +21,7 @@ internal static class SpotLifecycleEndpoints
         {
             var createdSpot = await spots.GetOrCreateAsync<ScenarioUserSpot>(RoutingId.From(request.SpotRid));
             evidence.Add($"create-spot|rid={node.Rid}|spot={createdSpot.SpotRid}|state={createdSpot.State}");
-            return Results.Ok(new CreateSpotReply(
+            return Results.Ok(new CreateSpotRes(
                 createdSpot.SpotRid.ToString(),
                 node.Rid,
                 createdSpot.State.ToString()));
@@ -35,7 +35,7 @@ internal static class SpotLifecycleEndpoints
             var createdSpot = await spots.GetOrCreateAsync<ScenarioAlternateSpot>(RoutingId.From(request.SpotRid));
             evidence.Add(
                 $"create-unsubscribed-spot|rid={node.Rid}|spot={createdSpot.SpotRid}|state={createdSpot.State}");
-            return Results.Ok(new CreateSpotReply(
+            return Results.Ok(new CreateSpotRes(
                 createdSpot.SpotRid.ToString(),
                 node.Rid,
                 createdSpot.State.ToString()));
@@ -55,7 +55,7 @@ internal static class SpotLifecycleEndpoints
             catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.SpotTypeMismatch)
             {
                 evidence.Add($"spot-type-mismatch|rid={node.Rid}|spot={request.SpotRid}|kind={ex.Kind}");
-                return Results.Ok(new SpotTypeMismatchReply(
+                return Results.Ok(new SpotTypeMismatchRes(
                     request.SpotRid,
                     true,
                     ex.Kind.ToString(),
@@ -76,7 +76,7 @@ internal static class SpotLifecycleEndpoints
                 () => evidence.Snapshot().Any(line =>
                     line.Contains($"spot-closing|rid={node.Rid}|spot={request.SpotRid}", StringComparison.Ordinal)),
                 "Expected spot closing evidence.");
-            return Results.Ok(new CloseSpotReply(request.SpotRid, closed));
+            return Results.Ok(new CloseSpotRes(request.SpotRid, closed));
         });
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
@@ -105,14 +105,14 @@ internal static class SpotLifecycleEndpoints
                 routes,
                 SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new StateCommand(request.Marker),
-                "StateCommand",
+                new StateMsg(request.Marker),
+                "StateMsg",
                 "Spot state command route timed out.");
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"spot-state-command|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") == 1,
                 "Expected spot state command evidence.");
-            return Results.Ok(new SpotStateCommandReply(
+            return Results.Ok(new SpotStateCommandRes(
                 request.SpotRid,
                 request.Marker,
                 true,

@@ -12,15 +12,15 @@ public final class RcB3MessagePackCodecScenario {
     }
 
     public static void run(ScenarioContext context) {
-        Contracts.PackedEchoReply packedReply = context.client().requestToChannel(
+        Contracts.PackedEchoRes packedReply = context.client().requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.PackedEchoRequest("msgpack-request"))
+                new Contracts.PackedEchoReq("msgpack-request"))
             .packetName("MsgpackEcho")
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.PackedEchoReply.class);
+            .await(Contracts.PackedEchoRes.class);
         ScenarioAssert.ensure("echo:msgpack-request".equals(packedReply.value()),
             "RC-B3 request mismatch");
-        context.client().sendToChannel(Contracts.CHANNEL, new Contracts.PackedEchoCommand("msgpack-send"))
+        context.client().sendToChannel(Contracts.CHANNEL, new Contracts.PackedEchoMsg("msgpack-send"))
             .packetName("MsgpackEcho")
             .await();
         ScenarioAssert.waitForEvidence(context.evidence(), "Send", "MsgpackEcho", "msgpack-send");

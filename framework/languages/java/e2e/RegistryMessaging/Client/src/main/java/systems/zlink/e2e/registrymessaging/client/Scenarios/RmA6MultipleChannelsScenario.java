@@ -14,22 +14,22 @@ public final class RmA6MultipleChannelsScenario {
         ZLinkHttpClient workflow) {
         String profileMarker = "a6-api-" + java.util.UUID.randomUUID();
         String workflowMarker = "a6-workflow-" + java.util.UUID.randomUUID();
-        Contracts.ProfileReply api = providerA.post("/profile/request")
-            .body(new Contracts.ProfileRequest(profileMarker))
-            .fetch(Contracts.ProfileReply.class);
+        Contracts.ProfileRes api = providerA.post("/profile/request")
+            .body(new Contracts.ProfileReq(profileMarker))
+            .fetch(Contracts.ProfileRes.class);
         ScenarioAssert.that(("profile:" + profileMarker).equals(api.value()), "RM-A6 api reply mismatch");
         ScenarioAssert.that(api.providerRid().startsWith("api-"), "RM-A6 api resolved wrong provider");
 
-        Contracts.WorkflowReply workflowReply = workflow.post("/workflow/request")
-            .body(new Contracts.WorkflowRequest(workflowMarker))
-            .fetch(Contracts.WorkflowReply.class);
+        Contracts.WorkflowRes workflowReply = workflow.post("/workflow/request")
+            .body(new Contracts.WorkflowReq(workflowMarker))
+            .fetch(Contracts.WorkflowRes.class);
         ScenarioAssert.that(("workflow:" + workflowMarker).equals(workflowReply.value()),
             "RM-A6 workflow reply mismatch");
         ScenarioAssert.that("workflow-a".equals(workflowReply.providerRid()), "RM-A6 workflow resolved wrong provider");
         String[] providerEvidence = ScenarioAssert.waitAnyEvidence(providerA, providerB, profileMarker);
         String[] workflowEvidence = ScenarioAssert.waitEvidence(workflow, workflowMarker);
         ScenarioAssert.that(java.util.Arrays.stream(providerEvidence)
-                .anyMatch(line -> line.contains("ProfileRequest") && line.contains(profileMarker)),
+                .anyMatch(line -> line.contains("ProfileReq") && line.contains(profileMarker)),
             "RM-A6 profile evidence missing");
         ScenarioAssert.that(java.util.Arrays.stream(workflowEvidence)
                 .anyMatch(line -> line.contains("workflow-request") && line.contains(workflowMarker)),

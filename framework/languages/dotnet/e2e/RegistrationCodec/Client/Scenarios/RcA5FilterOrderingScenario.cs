@@ -9,9 +9,9 @@ internal static class RcA5FilterOrderingScenario
 {
     public static async Task RunAsync(ZLinkHttpClient server)
     {
-        await server.Post("/registration/di-filter-order").SubmitAsync<EchoReply[]>();
+        await server.Post("/registration/di-filter-order").SubmitAsync<EchoRes[]>();
         var lines = (await server.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["filter|", "packet=EchoDi"]))
+            .Body(new EvidenceWaitReq(["filter|", "packet=EchoDi"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             lines.Count(line => line.Contains("filter|", StringComparison.Ordinal)

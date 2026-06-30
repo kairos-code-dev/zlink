@@ -32,8 +32,8 @@ internal static class MonD1FailureRecoveryScenario
                 "MON-D1 expected service-b to restart.");
 
             var reply = (await trigger.Post("/profile/request/service-b")
-                .Body(new ProfileRequest("restart", "mon-d1-request"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("restart", "mon-d1-request"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(
                 reply.ProviderRid == "svc-b"
                 && reply.Marker == "mon-d1-request"
@@ -42,7 +42,7 @@ internal static class MonD1FailureRecoveryScenario
 
             using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
             var serviceBEvidence = (await restartedServiceB.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(
+                .Body(new EvidenceWaitReq(
                     ["profile-request|rid=svc-b|marker=mon-d1-request|value=restart"],
                     []))
                 .SubmitAsync<string[]>()).Body;
@@ -53,7 +53,7 @@ internal static class MonD1FailureRecoveryScenario
                 "MON-D1 restarted service evidence missing.");
 
             var registryEvidence = (await registry.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(
+                .Body(new EvidenceWaitReq(
                     ["monitor-registry|source=registry"],
                     [["kind=TopologyChanged|topology=5"]]))
                 .SubmitAsync<string[]>()).Body;

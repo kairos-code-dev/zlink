@@ -7,28 +7,28 @@ public final class Contracts {
     private Contracts() {
     }
 
-    public record ProfileRequest(
+    public record ProfileReq(
         String value,
         String marker) {
     }
 
-    public record ProfileReply(
+    public record ProfileRes(
         String value,
         String providerRid,
         String marker) {
     }
 
-    public record EvidenceWaitRequest(
+    public record EvidenceWaitReq(
         String contains,
         int timeoutMilliseconds) {
     }
 
-    public record TopologyReadyWaitRequest(
+    public record TopologyReadyWaitReq(
         int readyCount,
         int timeoutMilliseconds) {
     }
 
-    public record MemberEndpointWaitRequest(
+    public record MemberEndpointWaitReq(
         String endpoint,
         int timeoutMilliseconds) {
     }

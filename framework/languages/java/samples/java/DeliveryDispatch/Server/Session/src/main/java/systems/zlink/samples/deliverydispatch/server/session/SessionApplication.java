@@ -15,7 +15,7 @@ import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopolog
 import systems.zlink.samples.deliverydispatch.server.session.sessions.CustomerSession;
 import systems.zlink.samples.deliverydispatch.server.session.sessions.CustomerSessionDirectory;
 import systems.zlink.samples.deliverydispatch.server.session.sessions.handlers.DeliveryStatusFanoutHandler;
-import systems.zlink.samples.deliverydispatch.server.session.sessions.handlers.SubscribeDeliveryHandler;
+import systems.zlink.samples.deliverydispatch.server.session.sessions.handlers.SubscribeDeliveryReqHandler;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 @EnableZLinkFramework
@@ -69,7 +69,7 @@ public final class SessionApplication {
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.SessionStreamEndpoint)
                 .registerSession(CustomerSession.class)
-                .addSessionPacketHandler(SubscribeDeliveryHandler.class);
+                .addSessionPacketHandler(SubscribeDeliveryReqHandler.class);
         };
     }
 }

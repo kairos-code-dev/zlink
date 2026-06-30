@@ -9,11 +9,11 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 @ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
 class WorkRequestHandler(
     private val state: ScenarioState,
-) : ZLinkRequestHandler<Contracts.WorkRequest, Contracts.WorkReply> {
+) : ZLinkRequestHandler<Contracts.WorkReq, Contracts.WorkRes> {
     override fun handle(
-        request: Contracts.WorkRequest,
+        request: Contracts.WorkReq,
         context: ZLinkRequestContext,
-    ): Contracts.WorkReply {
+    ): Contracts.WorkRes {
         when {
             state.grayFailure() && request.value().startsWith("b6-gray-") -> {
                 state.record("GrayFailureInjected", request.value())
@@ -29,9 +29,9 @@ class WorkRequestHandler(
                 sleep(1500)
                 state.record("TimeoutCompleted", request.value())
             }
-            else -> state.record("WorkRequest", request.value())
+            else -> state.record("WorkReq", request.value())
         }
-        return Contracts.WorkReply("work:${request.value()}", state.providerRid())
+        return Contracts.WorkRes("work:${request.value()}", state.providerRid())
     }
 
     private fun sleep(millis: Long) {

@@ -16,23 +16,23 @@ internal object SmB5Scenario {
             val profile = Contracts.ActorProfile("Missing Handler", 5, listOf("missing"))
             connector.connect().await()
             val auth = connector
-                .request(Contracts.ActorAuthRequest(actorId, profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(actorId, profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-B5 auth actor mismatch")
 
             expectFailure {
                 connector
-                    .request(Contracts.ActorEchoRequest("missing-handler", 5, profile))
+                    .request(Contracts.ActorEchoReq("missing-handler", 5, profile))
                     .metadata("actor-id", actorId)
                     .packetName("MissingActorReq")
                     .timeout(Duration.ofSeconds(2))
-                    .await(Contracts.ActorEchoReply::class.java)
+                    .await(Contracts.ActorEchoRes::class.java)
             }
 
             postJson(
                 Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
                 "/evidence/wait",
-                Contracts.EvidenceWaitRequest(
+                Contracts.EvidenceWaitReq(
                     listOf("SPOT_ACTOR|HANDLER_MISSING/REPLY_ERROR/MissingActorReq"),
                     10_000,
                 ),

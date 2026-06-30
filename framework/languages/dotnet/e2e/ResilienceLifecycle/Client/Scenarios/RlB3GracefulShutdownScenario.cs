@@ -15,8 +15,8 @@ internal static class RlB3GracefulShutdownScenario
     {
         var beforeMarker = $"rl-b3-before-{Guid.NewGuid():N}";
         var before = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("fast", beforeMarker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("fast", beforeMarker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(before.ProviderRid is "api-a" or "api-b", "RL-B3 pre-shutdown request failed.");
 
         await providerB.Post("/shutdown").SubmitRawAsync();
@@ -38,14 +38,14 @@ internal static class RlB3GracefulShutdownScenario
         for (var i = 0; i < 12; i++)
         {
             var after = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-b3-after-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-b3-after-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(after.ProviderRid == "api-a",
                 "RL-B3 request after graceful shutdown used stale api-b.");
         }
 
         await providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["marker=rl-b3-after-"], []))
+            .Body(new EvidenceWaitReq(["marker=rl-b3-after-"], []))
             .SubmitAsync<string[]>();
 
         await processes.StartProviderBAsync();

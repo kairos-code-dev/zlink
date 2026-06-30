@@ -22,8 +22,8 @@ class probe_service_t final : public zlink::framework::hosted_service_t
         auto result =
           channels
             .request (zlink::samples::deliverydispatch::sample_names_t::tracking_route_channel,
-                      zlink::samples::deliverydispatch::ensure_customer_actor_t{"customer-1"})
-            .async<zlink::samples::deliverydispatch::customer_actor_ensured_t> ()
+                      zlink::samples::deliverydispatch::ensure_customer_actor_req_t{"customer-1"})
+            .async<zlink::samples::deliverydispatch::ensure_customer_actor_res_t> ()
             .result ();
         passed = static_cast<bool> (result);
         if (passed) {

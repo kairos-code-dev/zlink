@@ -33,7 +33,7 @@ internal static class SmD5Scenario
                     await candidate.Connect.Async();
                     await candidate.Request(new AuthReq(actorId, "disconnect", "session-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     client = candidate;
                     break;
                 }
@@ -60,7 +60,7 @@ internal static class SmD5Scenario
         }
 
         var evidence = (await sessionA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"entry-disconnected|rid=session-a|actor={actorId}"]))
+            .Body(new EvidenceWaitReq([$"entry-disconnected|rid=session-a|actor={actorId}"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line =>

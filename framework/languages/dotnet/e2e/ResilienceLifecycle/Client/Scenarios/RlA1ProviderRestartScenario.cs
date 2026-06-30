@@ -34,20 +34,20 @@ internal static class RlA1ProviderRestartScenario
         {
             var marker = $"rl-a1-down-{i}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", marker))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", marker))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.ProviderRid == "api-a",
                 "RL-A1 request during api-b restart did not use surviving provider.");
         }
 
         await providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["marker=rl-a1-down-"], []))
+            .Body(new EvidenceWaitReq(["marker=rl-a1-down-"], []))
             .SubmitAsync<string[]>();
 
         await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryRes[]>();
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
@@ -67,13 +67,13 @@ internal static class RlA1ProviderRestartScenario
         {
             var marker = $"rl-a1-restored-{i}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", marker))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", marker))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A1 restored request returned an unexpected value.");
         }
 
         await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["marker=rl-a1-restored-"], []))
+            .Body(new EvidenceWaitReq(["marker=rl-a1-restored-"], []))
             .SubmitAsync<string[]>();
 
         Console.WriteLine("scenario RL-A1 passed");

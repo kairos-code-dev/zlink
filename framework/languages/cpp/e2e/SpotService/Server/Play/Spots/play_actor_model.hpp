@@ -37,6 +37,11 @@ struct user_spot_overrun_timer_handler_t
     void handle (user_spot_t &spot, const zlink::framework::timer_tick_t &tick) const;
 };
 
+struct user_spot_stage_timer_handler_t
+{
+    void handle (user_spot_t &spot, const zlink::framework::timer_tick_t &tick) const;
+};
+
 struct scenario_actor_t
 {
     explicit scenario_actor_t (std::string actor_id) : actor_id (std::move (actor_id)) {}
@@ -89,7 +94,7 @@ class user_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&user_spot_t::push_to_session> ("PushReq");
         context.handlers ().add_handler<&user_spot_t::direct_state> ("StateReq");
         context.handlers ().add_handler<&user_spot_t::direct_request> ("DirectSpotReq");
-        context.handlers ().add_handler<&user_spot_t::direct_command> ("DirectSpotCommand");
+        context.handlers ().add_handler<&user_spot_t::direct_command> ("DirectSpotMsg");
         context.handlers ().add_handler<&user_spot_t::start_worker> ("WorkerStartReq");
         context.handlers ().add_handler<&user_spot_t::slow_request> ("SlowSpotReq");
         context.handlers ().add_handler<&user_spot_t::spot_outbound> ("SpotOutboundReq");
@@ -101,7 +106,9 @@ class user_spot_t : public zlink::framework::spot_t
           "SpotToSpotTimeoutReq");
         context.handlers ().add_handler<&user_spot_t::spot_to_spot_negative> (
           "SpotToSpotNegativeReq");
-        context.handlers ().add_handler<&user_spot_t::start_idle_close> ("IdleCloseCommand");
+        context.handlers ().add_handler<&user_spot_t::start_idle_close> ("IdleCloseMsg");
+        context.handlers ().add_handler<&user_spot_t::stage_probe> ("StageProbeReq");
+        context.handlers ().add_handler<&user_spot_t::start_stage_timer> ("StageTimerStartMsg");
         context.handlers ().add_subscribe<&user_spot_t::on_mesh_event> (e2e::mesh_topic);
     }
 
@@ -120,14 +127,14 @@ class user_spot_t : public zlink::framework::spot_t
     {
         if (!request.empty ()) {
             try {
-                const auto command = request.decode<e2e::overrun_timer_command_t> ();
+                const auto command = request.decode<e2e::overrun_timer_msg_t> ();
                 if (!command.name.empty () && command.period_ms > 0) {
                     start_overrun_timer (command);
                 }
             }
             catch (const std::exception &) {
                 try {
-                    const auto command = request.decode<e2e::idle_close_command_t> ();
+                    const auto command = request.decode<e2e::idle_close_msg_t> ();
                     if (!command.name.empty () && command.period_ms > 0) {
                         start_idle_close (command);
                     }
@@ -268,13 +275,13 @@ class user_spot_t : public zlink::framework::spot_t
         }
     }
 
-    void start_idle_close (const e2e::idle_close_command_t &request)
+    void start_idle_close (const e2e::idle_close_msg_t &request)
     {
         _idle_close_timer = _context.add_timer<user_spot_idle_close_timer_handler_t> (
           request.name, std::chrono::milliseconds (request.period_ms));
     }
 
-    void start_overrun_timer (const e2e::overrun_timer_command_t &request)
+    void start_overrun_timer (const e2e::overrun_timer_msg_t &request)
     {
         zlink::framework::timer_options_t options;
         options.overrun_policy = overrun_policy_from_name (request.policy);
@@ -305,6 +312,35 @@ class user_spot_t : public zlink::framework::spot_t
             return;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (90));
+    }
+
+    e2e::state_res_t stage_probe (const e2e::stage_probe_req_t &request)
+    {
+        _value += request.delta;
+        ++_sequence;
+        _state.record ("StageRequest", {}, std::string (_context.spot_rid ().value ()),
+                       request.marker + ":" + std::to_string (_value));
+        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+                .owner_node_rid = _state.node_rid,
+                .value = _value,
+                .sequence = _sequence};
+    }
+
+    void start_stage_timer (const e2e::stage_timer_start_msg_t &request)
+    {
+        _stage_timer_ticks = 0;
+        _stage_timer = _context.add_timer<user_spot_stage_timer_handler_t> (
+          request.name, std::chrono::milliseconds (request.period_ms));
+    }
+
+    void record_stage_timer_tick (const zlink::framework::timer_tick_t &tick)
+    {
+        ++_stage_timer_ticks;
+        _state.record ("StageTimer", {}, std::string (_context.spot_rid ().value ()),
+                       tick.name + ":" + std::to_string (tick.delivery_index));
+        if (_stage_timer_ticks >= 1) {
+            _stage_timer.cancel ();
+        }
     }
 
     zlink::framework::task_t<e2e::leave_res_t>
@@ -340,10 +376,10 @@ class user_spot_t : public zlink::framework::spot_t
                        .async<e2e::channel_echo_res_t> ();
         co_await _context.outbound ()
           .send (e2e::api_channel,
-                 e2e::channel_command_t{"cmd-" + actor.actor_id + "-" + request.value})
+                 e2e::channel_msg_t{"cmd-" + actor.actor_id + "-" + request.value})
           .async ();
         co_await _context
-          .publish (e2e::mesh_topic, e2e::mesh_event_t{"evt-" + actor.actor_id, request.value})
+          .publish (e2e::mesh_topic, e2e::mesh_msg_t{"evt-" + actor.actor_id, request.value})
           .async ();
         _state.record ("SpotOutbound", actor.actor_id, std::string (_context.spot_rid ().value ()),
                        reply.value);
@@ -358,10 +394,10 @@ class user_spot_t : public zlink::framework::spot_t
                        .timeout (std::chrono::milliseconds (3000))
                        .async<e2e::channel_echo_res_t> ();
         co_await _context.outbound ()
-          .send (e2e::api_channel, e2e::channel_command_t{"notify-" + request.value})
+          .send (e2e::api_channel, e2e::channel_msg_t{"notify-" + request.value})
           .async ();
         co_await _context
-          .publish (e2e::mesh_topic, e2e::mesh_event_t{"evt-sm-c2", "sm-c2-publish"})
+          .publish (e2e::mesh_topic, e2e::mesh_msg_t{"evt-sm-c2", "sm-c2-publish"})
           .async ();
         bool timed_out = false;
         try {
@@ -395,8 +431,8 @@ class user_spot_t : public zlink::framework::spot_t
             request_failed = true;
         }
         co_await _context.outbound ()
-          .send (e2e::api_channel, e2e::channel_command_t{"missing-" + request.value})
-          .packet_name ("MissingChannelSend")
+          .send (e2e::api_channel, e2e::channel_msg_t{"missing-" + request.value})
+          .packet_name ("MissingChannelMsg")
           .async ();
         _state.record ("SpotOutboundNegative", {}, std::string (_context.spot_rid ().value ()),
                        std::string ("requestFailed=") + (request_failed ? "true" : "false"));
@@ -457,9 +493,9 @@ class user_spot_t : public zlink::framework::spot_t
         return {.spot_rid = spot_rid, .owner_node_rid = _state.node_rid, .marker = request.marker};
     }
 
-    void direct_command (const e2e::direct_spot_command_t &request)
+    void direct_command (const e2e::direct_spot_msg_t &request)
     {
-        _state.record ("SpotToSpotCommand", request.source_actor_id,
+        _state.record ("SpotToSpotMsg", request.source_actor_id,
                        std::string (_context.spot_rid ().value ()), request.value);
     }
 
@@ -490,12 +526,12 @@ class user_spot_t : public zlink::framework::spot_t
             .async ();
         co_await _context
           .send_to (target_node, target_spot,
-                    e2e::direct_spot_command_t{actor.actor_id, request.value + ":command"})
-          .packet_name ("DirectSpotCommand")
+                    e2e::direct_spot_msg_t{actor.actor_id, request.value + ":command"})
+          .packet_name ("DirectSpotMsg")
           .async ();
         co_await _context
           .publish (e2e::mesh_topic,
-                    e2e::mesh_event_t{"evt-spot-to-spot", actor.actor_id + ":" + request.value})
+                    e2e::mesh_msg_t{"evt-spot-to-spot", actor.actor_id + ":" + request.value})
           .async ();
         auto missing = _context
                          .request_to<e2e::direct_spot_res_t> (
@@ -535,13 +571,13 @@ class user_spot_t : public zlink::framework::spot_t
             .async ();
         co_await _context
           .send_to (target_node, target_spot,
-                    e2e::direct_spot_command_t{source_spot,
+                    e2e::direct_spot_msg_t{source_spot,
                                                "sm-c3-send-" + request.marker})
-          .packet_name ("DirectSpotCommand")
+          .packet_name ("DirectSpotMsg")
           .async ();
         co_await _context
           .publish (e2e::mesh_topic,
-                    e2e::mesh_event_t{"evt-sm-c3", "sm-c3-publish-" + request.marker})
+                    e2e::mesh_msg_t{"evt-sm-c3", "sm-c3-publish-" + request.marker})
           .async ();
         _state.record ("SpotToSpotOutbound", {}, source_spot,
                        "target=" + request.target_spot_rid + "|value=" + reply.value);
@@ -602,9 +638,9 @@ class user_spot_t : public zlink::framework::spot_t
         }
         co_await _context
           .send_to (target_node, target_spot,
-                    e2e::direct_spot_command_t{source_spot,
+                    e2e::direct_spot_msg_t{source_spot,
                                                "missing-" + request.marker})
-          .packet_name ("MissingSpotCommand")
+          .packet_name ("MissingSpotMsg")
           .async ();
         _state.record ("SpotToSpotNegative", {}, source_spot,
                        "target=" + request.target_spot_rid + "|requestFailed="
@@ -655,9 +691,9 @@ class user_spot_t : public zlink::framework::spot_t
         co_return e2e::actor_push_res_t{true, actor.actor_id};
     }
 
-    void on_mesh_event (const e2e::mesh_event_t &event)
+    void on_mesh_event (const e2e::mesh_msg_t &event)
     {
-        _state.record ("MeshEventReceived", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("MeshMsgReceived", {}, std::string (_context.spot_rid ().value ()),
                        event.event_id + ":" + event.value);
     }
 
@@ -667,10 +703,12 @@ class user_spot_t : public zlink::framework::spot_t
     zlink::framework::timer_t _timer;
     zlink::framework::timer_t _idle_close_timer;
     zlink::framework::timer_t _overrun_timer;
+    zlink::framework::timer_t _stage_timer;
     int _value = 0;
     int _sequence = 0;
     int _timer_ticks = 0;
     int _overrun_ticks = 0;
+    int _stage_timer_ticks = 0;
 
     static zlink::framework::timer_overrun_policy_t
     overrun_policy_from_name (const std::string &policy)
@@ -706,6 +744,13 @@ user_spot_overrun_timer_handler_t::handle (user_spot_t &spot,
                                            const zlink::framework::timer_tick_t &tick) const
 {
     spot.record_overrun_tick (tick);
+}
+
+inline void
+user_spot_stage_timer_handler_t::handle (user_spot_t &spot,
+                                         const zlink::framework::timer_tick_t &tick) const
+{
+    spot.record_stage_timer_tick (tick);
 }
 
 class entry_spot_t : public zlink::framework::entry_spot_t
@@ -751,7 +796,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
                        request.key);
         try {
             auto joined =
-              co_await actor.context.join_spot (rid, request).yield<e2e::join_res_t> ();
+              co_await actor.context.join_spot (rid, request).async<e2e::join_res_t> ();
             co_return joined.reply;
         }
         catch (const zlink::framework::framework_exception_t &error) {

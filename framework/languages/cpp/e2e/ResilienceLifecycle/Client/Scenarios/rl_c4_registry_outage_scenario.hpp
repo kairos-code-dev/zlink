@@ -26,9 +26,9 @@ inline void run_registry_outage_scenario (zlink::framework::channel_client_t &ch
     ensure (during.value == "profile:rl-c4-during-outage",
             "RL-C4 established channel failed during registry outage");
 
-    wait_provider_evidence_contains ("ProfileRequest", "rl-c4-before-outage",
+    wait_provider_evidence_contains ("ProfileReq", "rl-c4-before-outage",
                                      std::chrono::seconds (10));
-    wait_provider_evidence_contains ("ProfileRequest", "rl-c4-during-outage",
+    wait_provider_evidence_contains ("ProfileReq", "rl-c4-during-outage",
                                      std::chrono::seconds (10));
 
     touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));

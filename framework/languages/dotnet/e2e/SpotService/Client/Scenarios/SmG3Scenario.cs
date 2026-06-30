@@ -35,7 +35,7 @@ internal static class SmG3Scenario
                         await candidate.Connect.Async();
                         await candidate.Request(new UserSpotAuthReq(spotRid, actorId, actorId, "play-a"))
                             .PacketName("UserSpotAuthReq")
-                            .Async<AuthReply>();
+                            .Async<AuthRes>();
                         client = candidate;
                         break;
                     }
@@ -63,12 +63,12 @@ internal static class SmG3Scenario
                 var client = clients[index];
                 var ping = await client.Request(new ActorPingReq(actorId))
                     .PacketName("UserActorPingReq")
-                    .Async<ActorPingReply>();
+                    .Async<ActorPingRes>();
                 ScenarioAssert.That(ping.ActorId == actorId, "SM-G3 actor request target mismatch.");
                 ScenarioAssert.That(ping.NodeRid == "play-a", "SM-G3 actor request reached the wrong node.");
                 var left = await client.Request(new LeaveReq(actorId))
                     .PacketName("LeaveReq")
-                    .Async<LeaveReply>();
+                    .Async<LeaveRes>();
                 ScenarioAssert.That(left.Accepted && left.ActorId == actorId, "SM-G3 leave reply mismatch.");
             }));
 
@@ -80,7 +80,7 @@ internal static class SmG3Scenario
                 })
                 .ToArray();
             var evidence = (await playA.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(expectedEvidence))
+                .Body(new EvidenceWaitReq(expectedEvidence))
                 .SubmitAsync<string[]>()).Body;
             ScenarioAssert.That(
                 expectedEvidence.All(expected =>

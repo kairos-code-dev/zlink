@@ -17,15 +17,15 @@ namespace zlink::framework::e2e::runtime_monitoring::client
 
 inline void run_mon_a1_socket_events_scenario (zlink::framework::channel_client_t &channels)
 {
-    profile_reply_t reply;
+    profile_res_t reply;
     if (const auto trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"); !trigger_url.empty ()) {
         reply = post_profile_request (trigger_url, "/profile/request/service-a",
-                                      profile_request_t{.value = "monitor", .marker = "mon-a1"});
+                                      profile_req_t{.value = "monitor", .marker = "mon-a1"});
     } else {
         auto request = channels.request (profile_channel,
-                                         profile_request_t{.value = "monitor", .marker = "mon-a1"})
+                                         profile_req_t{.value = "monitor", .marker = "mon-a1"})
                          .timeout (std::chrono::milliseconds (3000))
-                         .async<profile_reply_t> ();
+                         .async<profile_res_t> ();
         const auto &result = request.result ();
         ensure (result.has_value (),
                 "MON-A1 request failed: "

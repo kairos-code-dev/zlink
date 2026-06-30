@@ -1,7 +1,7 @@
 import type {
-  ProbeCommand,
-  YieldCommand,
-  YieldEvidenceReply,
+  ProbeMsg,
+  YieldMsg,
+  YieldEvidenceRes,
   YieldEvidenceWaitReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -12,8 +12,8 @@ import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 export async function runYdA2(client: ZlinkStreamConnector, spotRid: string): Promise<string> {
   const requestId = `YD-A2-${uniqueId()}`;
   await client
-    .send({ requestId, delayMs: 350, correlationId: 'corr-a2' } satisfies YieldCommand)
-    .packetName('YieldCommand')
+    .send({ requestId, delayMs: 350, correlationId: 'corr-a2' } satisfies YieldMsg)
+    .packetName('YieldMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
   await client
@@ -23,12 +23,12 @@ export async function runYdA2(client: ZlinkStreamConnector, spotRid: string): Pr
     .timeout(30000)
     .submit();
   await client
-    .send({ requestId, marker: 'yield-probe' } satisfies ProbeCommand)
-    .packetName('ProbeCommand')
+    .send({ requestId, marker: 'yield-probe' } satisfies ProbeMsg)
+    .packetName('ProbeMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
 
-  const evidence = decodeStreamReply<YieldEvidenceReply>(await client
+  const evidence = decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId, marker: 'yield-completed', timeoutMilliseconds: 30000 } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')

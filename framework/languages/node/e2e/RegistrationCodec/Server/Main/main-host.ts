@@ -13,10 +13,10 @@ import {
 } from '@zlink-systems/framework-codec-protobuf';
 import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import {
-  MessagePackEchoCommand,
+  MessagePackEchoMsg,
   MessagePackEchoReq,
   PacketNames,
-  ProtobufEchoCommand,
+  ProtobufEchoMsg,
   ProtobufEchoReq,
   RegistrationCodecNames
 } from '../../Shared/messages';
@@ -86,11 +86,11 @@ function createMainModule(options: ServerOptions, evidence: EvidenceStore, hostO
                   codecs
                     .addSerializer(ZLINK_PROTOBUF_CONTENT_TYPE, {
                       ...createProtobufMessageSerializer(),
-                      canSerialize: (value) => value instanceof ProtobufEchoReq || value instanceof ProtobufEchoCommand
+                      canSerialize: (value) => value instanceof ProtobufEchoReq || value instanceof ProtobufEchoMsg
                     })
                     .addSerializer(ZLINK_MESSAGEPACK_CONTENT_TYPE, {
                       ...createMessagePackSerializer(),
-                      canSerialize: (value) => value instanceof MessagePackEchoReq || value instanceof MessagePackEchoCommand
+                      canSerialize: (value) => value instanceof MessagePackEchoReq || value instanceof MessagePackEchoMsg
                     });
                 }
               })
@@ -104,17 +104,17 @@ function createMainModule(options: ServerOptions, evidence: EvidenceStore, hostO
             .enableClient(options.channelEndpoint)
             .addHandlerGroup('auto')
             .addHandlerGroup('attr')
-            .addRequestHandler(PacketNames.echoManual, EchoManualRequestHandler)
-            .addSendHandler(PacketNames.echoManualCommand, EchoManualCommandHandler)
-            .addRequestHandler(PacketNames.echoDi, DiEchoRequestHandler)
-            .addRequestHandler(PacketNames.echoJson, JsonEchoRequestHandler)
-            .addSendHandler(PacketNames.echoJsonCommand, JsonEchoCommandHandler)
-            .addRequestHandler(PacketNames.echoProtobuf, ProtobufEchoRequestHandler)
-            .addSendHandler(PacketNames.echoProtobufCommand, ProtobufEchoCommandHandler)
-            .addRequestHandler(PacketNames.echoMessagePack, MessagePackEchoRequestHandler)
-            .addSendHandler(PacketNames.echoMessagePackCommand, MessagePackEchoCommandHandler);
+            .addRequestHandler(PacketNames.echoManualReq, EchoManualRequestHandler)
+            .addSendHandler(PacketNames.echoManualMsg, EchoManualCommandHandler)
+            .addRequestHandler(PacketNames.echoDiReq, DiEchoRequestHandler)
+            .addRequestHandler(PacketNames.echoJsonReq, JsonEchoRequestHandler)
+            .addSendHandler(PacketNames.echoJsonMsg, JsonEchoCommandHandler)
+            .addRequestHandler(PacketNames.echoProtobufReq, ProtobufEchoRequestHandler)
+            .addSendHandler(PacketNames.echoProtobufMsg, ProtobufEchoCommandHandler)
+            .addRequestHandler(PacketNames.echoMessagePackReq, MessagePackEchoRequestHandler)
+            .addSendHandler(PacketNames.echoMessagePackMsg, MessagePackEchoCommandHandler);
           if (hostOptions.duplicate === true) {
-            channel.addRequestHandler(PacketNames.echoManual, DuplicateEchoRequestHandler);
+            channel.addRequestHandler(PacketNames.echoManualReq, DuplicateEchoRequestHandler);
           }
           return builder.build();
         }

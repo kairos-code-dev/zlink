@@ -8,9 +8,9 @@ namespace SpotService.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("SpotToSpotReq")]
 internal sealed class SpotToSpotHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotReply>
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotRes>
 {
-    public async ValueTask<SpotToSpotReply> HandleAsync(
+    public async ValueTask<SpotToSpotRes> HandleAsync(
         ScenarioUserSpot spot,
         SpotToSpotReq request,
         CancellationToken cancellationToken)
@@ -19,19 +19,19 @@ internal sealed class SpotToSpotHandler(EvidenceStore evidence)
         var reply = await spot.Context.Outbound
             .RequestToSpot(targetRid, new StateReq("add", 3))
             .PacketName("StateReq")
-            .Async<StateReply>(cancellationToken);
+            .Async<StateRes>(cancellationToken);
         await spot.Context.Outbound
-            .SendToSpot(targetRid, new StateCommand($"sm-c3-send-{request.Marker}"))
-            .PacketName("StateCommand")
+            .SendToSpot(targetRid, new StateMsg($"sm-c3-send-{request.Marker}"))
+            .PacketName("StateMsg")
             .Async(cancellationToken);
         await spot.Context.Outbound
-            .Publish(SpotServiceNames.SpotEventTopic, new SpotEvent($"sm-c3-publish-{request.Marker}"))
-            .PacketName("SpotEvent")
+            .Publish(SpotServiceNames.SpotMsgTopic, new SpotMsg($"sm-c3-publish-{request.Marker}"))
+            .PacketName("SpotMsg")
             .Async(cancellationToken);
         evidence.Add(
             $"spot-to-spot|rid={evidence.Rid}|source={spot.Context.SpotRid}"
             + $"|target={request.TargetSpotRid}|value={reply.Value}");
-        return new SpotToSpotReply(
+        return new SpotToSpotRes(
             spot.Context.SpotRid.ToString(),
             request.TargetSpotRid,
             reply.Value);
@@ -40,9 +40,9 @@ internal sealed class SpotToSpotHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("SpotToSpotTimeoutReq")]
 internal sealed class SpotToSpotTimeoutHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutReply>
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutRes>
 {
-    public async ValueTask<SpotToSpotTimeoutReply> HandleAsync(
+    public async ValueTask<SpotToSpotTimeoutRes> HandleAsync(
         ScenarioUserSpot spot,
         SpotToSpotTimeoutReq request,
         CancellationToken cancellationToken)
@@ -55,7 +55,7 @@ internal sealed class SpotToSpotTimeoutHandler(EvidenceStore evidence)
                 .RequestToSpot(targetRid, new SlowSpotReq(request.Marker, 1500))
                 .PacketName("SlowSpotReq")
                 .Timeout(TimeSpan.FromMilliseconds(100))
-                .Async<SlowSpotReply>(cancellationToken);
+                .Async<SlowSpotRes>(cancellationToken);
         }
         catch
         {
@@ -65,7 +65,7 @@ internal sealed class SpotToSpotTimeoutHandler(EvidenceStore evidence)
         evidence.Add(
             $"spot-to-spot-timeout|rid={evidence.Rid}|source={spot.Context.SpotRid}"
             + $"|target={request.TargetSpotRid}|failed={failed}");
-        return new SpotToSpotTimeoutReply(
+        return new SpotToSpotTimeoutRes(
             spot.Context.SpotRid.ToString(),
             request.TargetSpotRid,
             failed);
@@ -74,9 +74,9 @@ internal sealed class SpotToSpotTimeoutHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("SpotToSpotNegativeReq")]
 internal sealed class SpotToSpotNegativeHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeReply>
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeRes>
 {
-    public async ValueTask<SpotToSpotNegativeReply> HandleAsync(
+    public async ValueTask<SpotToSpotNegativeRes> HandleAsync(
         ScenarioUserSpot spot,
         SpotToSpotNegativeReq request,
         CancellationToken cancellationToken)
@@ -89,7 +89,7 @@ internal sealed class SpotToSpotNegativeHandler(EvidenceStore evidence)
                 .RequestToSpot(targetRid, new StateReq("noop", 0))
                 .PacketName("MissingSpotReq")
                 .Timeout(TimeSpan.FromSeconds(2))
-                .Async<StateReply>(cancellationToken);
+                .Async<StateRes>(cancellationToken);
         }
         catch
         {
@@ -97,26 +97,26 @@ internal sealed class SpotToSpotNegativeHandler(EvidenceStore evidence)
         }
 
         await spot.Context.Outbound
-            .SendToSpot(targetRid, new StateCommand($"missing-{request.Marker}"))
-            .PacketName("MissingSpotCommand")
+            .SendToSpot(targetRid, new StateMsg($"missing-{request.Marker}"))
+            .PacketName("MissingSpotMsg")
             .Async(cancellationToken);
         evidence.Add(
             $"spot-to-spot-negative|rid={evidence.Rid}|source={spot.Context.SpotRid}"
             + $"|target={request.TargetSpotRid}|requestFailed={requestFailed}");
-        return new SpotToSpotNegativeReply(
+        return new SpotToSpotNegativeRes(
             spot.Context.SpotRid.ToString(),
             request.TargetSpotRid,
             requestFailed);
     }
 }
 
-[ZLinkSpotPacketHandler("SpotOutboundReq")]
+[ZLinkSpotPacketHandler("SpotOutboundMsg")]
 internal sealed class SpotOutboundHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundReq>
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundMsg>
 {
     public async ValueTask HandleAsync(
         ScenarioUserSpot spot,
-        SpotOutboundReq request,
+        SpotOutboundMsg request,
         CancellationToken cancellationToken)
     {
         var echo = await spot.Context.Outbound
@@ -124,7 +124,7 @@ internal sealed class SpotOutboundHandler(EvidenceStore evidence)
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelEchoReq(request.Marker))
             .PacketName("ChannelEchoReq")
-            .Async<ChannelEchoReply>(cancellationToken);
+            .Async<ChannelEchoRes>(cancellationToken);
         var notifyMarker = $"notify-{request.Marker}";
         await spot.Context.Outbound
             .SendToChannel(
@@ -134,9 +134,9 @@ internal sealed class SpotOutboundHandler(EvidenceStore evidence)
             .Async(cancellationToken);
         await spot.Context.Outbound
             .Publish(
-                SpotServiceNames.SpotEventTopic,
-                new SpotEvent("sm-c2-publish"))
-            .PacketName("SpotEvent")
+                SpotServiceNames.SpotMsgTopic,
+                new SpotMsg("sm-c2-publish"))
+            .PacketName("SpotMsg")
             .Async(cancellationToken);
         evidence.Add(
             $"spot-outbound|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
@@ -144,13 +144,13 @@ internal sealed class SpotOutboundHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("SpotOutboundNegativeReq")]
+[ZLinkSpotPacketHandler("SpotOutboundNegativeMsg")]
 internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundNegativeReq>
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundNegativeMsg>
 {
     public async ValueTask HandleAsync(
         ScenarioUserSpot spot,
-        SpotOutboundNegativeReq request,
+        SpotOutboundNegativeMsg request,
         CancellationToken cancellationToken)
     {
         var requestFailed = false;
@@ -162,7 +162,7 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
                     new ChannelEchoReq(request.Marker))
                 .PacketName("MissingChannelReq")
                 .Timeout(TimeSpan.FromSeconds(2))
-                .Async<ChannelEchoReply>(cancellationToken);
+                .Async<ChannelEchoRes>(cancellationToken);
         }
         catch
         {
@@ -173,7 +173,7 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
             .SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelNotify($"missing-{request.Marker}"))
-            .PacketName("MissingChannelSend")
+            .PacketName("MissingChannelNotify")
             .Async(cancellationToken);
         evidence.Add(
             $"spot-outbound-negative|rid={evidence.Rid}|spot={spot.Context.SpotRid}"

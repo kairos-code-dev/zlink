@@ -15,13 +15,13 @@ internal static class RegistryEndpoints
             var topology = await queryClient.TopologyAsync(
                 new ZLinkRegistryTopologyFilter(ChannelName: ResilienceLifecycleNames.Channel),
                 CancellationToken.None);
-            return Results.Ok(topology.Select(entry => new TopologyEntryResult(
+            return Results.Ok(topology.Select(entry => new TopologyEntryRes(
                 entry.RoutingId?.ToString(),
                 entry.Endpoint,
                 entry.State.ToString())).ToArray());
         });
         app.MapPost("/topology/wait", async (
-            TopologyWaitRequest request,
+            TopologyWaitReq request,
             IZLinkRegistryQueryClient queryClient,
             CancellationToken cancellationToken) =>
         {
@@ -32,7 +32,7 @@ internal static class RegistryEndpoints
                 var topology = await queryClient.TopologyAsync(
                     new ZLinkRegistryTopologyFilter(ChannelName: ResilienceLifecycleNames.Channel),
                     cancellationToken);
-                var snapshot = topology.Select(entry => new TopologyEntryResult(
+                var snapshot = topology.Select(entry => new TopologyEntryRes(
                     entry.RoutingId?.ToString(),
                     entry.Endpoint,
                     entry.State.ToString())).ToArray();

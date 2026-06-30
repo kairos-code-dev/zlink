@@ -6,7 +6,7 @@ import type {
   CompleteMissionReq,
   DeleteQuestProjectionReq,
   EnterAreaReq,
-  EventRes,
+  GameplayActionRes,
   GameQuestServerAssertRes,
   GetGameplaySnapshotRes,
   GetQuestProgressRes,
@@ -57,7 +57,7 @@ class QuestProgressStore {
     return { activeQuests: this.visibleProgress(store, playerId) };
   }
 
-  enterArea(request: EnterAreaReq): EventRes {
+  enterArea(request: EnterAreaReq): GameplayActionRes {
     return this.mutateEvent(request.playerId, request.idempotencyKey, (store, eventId) => {
       this.addToSet(store.enteredAreas, request.playerId, request.areaId);
       this.upsertProgress(store, request.playerId, questIdForArea(request.areaId), 1, 1, eventId);
@@ -65,21 +65,21 @@ class QuestProgressStore {
     });
   }
 
-  killMonster(request: KillMonsterReq): EventRes {
+  killMonster(request: KillMonsterReq): GameplayActionRes {
     return this.mutateEvent(request.playerId, request.idempotencyKey, (store, eventId) => {
       this.incrementProgress(store, request.playerId, QuestIds.firstHunt, 1, 3, eventId);
       store.evidence.push(`${eventId}:kill:${request.monsterId}`);
     });
   }
 
-  collectItem(request: CollectItemReq): EventRes {
+  collectItem(request: CollectItemReq): GameplayActionRes {
     return this.mutateEvent(request.playerId, request.idempotencyKey, (store, eventId) => {
       this.incrementProgress(store, request.playerId, QuestIds.herbGathering, request.count, 5, eventId);
       store.evidence.push(`${eventId}:item:${request.itemId}:${request.count}`);
     });
   }
 
-  completeMission(request: CompleteMissionReq): EventRes {
+  completeMission(request: CompleteMissionReq): GameplayActionRes {
     return this.mutateEvent(request.playerId, request.idempotencyKey, (store, eventId) => {
       this.addToSet(store.completedMissions, request.playerId, request.missionId);
       this.upsertProgress(store, request.playerId, request.missionId, 1, 1, eventId);
@@ -87,7 +87,7 @@ class QuestProgressStore {
     });
   }
 
-  unlockFeature(request: UnlockFeatureReq): EventRes {
+  unlockFeature(request: UnlockFeatureReq): GameplayActionRes {
     return this.mutateEvent(request.playerId, request.idempotencyKey, (store, eventId) => {
       this.addToSet(store.unlockedFeatures, request.playerId, request.featureId);
       this.upsertProgress(store, request.playerId, QuestIds.openAuction, 1, 1, eventId);
@@ -167,7 +167,7 @@ class QuestProgressStore {
     playerId: string,
     idempotencyKey: string,
     update: (store: PersistedQuestStore, eventId: string) => void
-  ): EventRes {
+  ): GameplayActionRes {
     const store = this.read();
     const eventId = this.eventId(playerId, idempotencyKey);
     if (store.idempotency[idempotencyKey] === undefined) {

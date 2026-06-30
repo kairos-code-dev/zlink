@@ -16,7 +16,7 @@ export interface DelayReq {
   readonly marker: string;
 }
 
-export interface DelayReply {
+export interface DelayRes {
   readonly requestId: string;
   readonly marker: string;
   readonly nodeRid: string;
@@ -33,18 +33,24 @@ export interface YieldShutdownRecoveryReq {
   readonly spotRid: string;
 }
 
-export interface YieldScenarioResult {
+export interface YieldScenarioRes {
   readonly operation: string;
   readonly spotRid: string;
   readonly evidence: readonly string[];
 }
 
-export interface HoldCommand {
+export interface HoldMsg {
   readonly requestId: string;
   readonly delayMs: number;
 }
 
-export interface YieldCommand {
+export interface YieldMsg {
+  readonly requestId: string;
+  readonly delayMs: number;
+  readonly correlationId: string;
+}
+
+export interface YieldReq {
   readonly requestId: string;
   readonly delayMs: number;
   readonly correlationId: string;
@@ -56,30 +62,30 @@ export interface RemoteSpotYieldReq {
   readonly delayMs: number;
 }
 
-export interface RemoteSpotYieldCommand {
+export interface RemoteSpotYieldMsg {
   readonly requestId: string;
   readonly targetSpotRid: string;
   readonly delayMs: number;
 }
 
-export interface WorkerYieldCommand {
+export interface WorkerYieldMsg {
   readonly requestId: string;
   readonly delayMs: number;
 }
 
-export interface YieldTimeoutCommand {
+export interface YieldTimeoutMsg {
   readonly requestId: string;
   readonly delayMs: number;
   readonly timeoutMs: number;
 }
 
-export interface YieldCancelCommand {
+export interface YieldCancelMsg {
   readonly requestId: string;
   readonly delayMs: number;
   readonly cancelAfterMs: number;
 }
 
-export interface TimerStartCommand {
+export interface TimerStartMsg {
   readonly requestId: string;
   readonly timerName: string;
   readonly mode: string;
@@ -87,11 +93,11 @@ export interface TimerStartCommand {
   readonly delayMs: number;
 }
 
-export interface TimerStopCommand {
+export interface TimerStopMsg {
   readonly requestId: string;
 }
 
-export interface ProbeCommand {
+export interface ProbeMsg {
   readonly requestId: string;
   readonly marker: string;
 }
@@ -100,7 +106,7 @@ export interface EnsureSpotReq {
   readonly spotRid: string;
 }
 
-export interface EnsureSpotReply {
+export interface EnsureSpotRes {
   readonly spotRid: string;
   readonly nodeRid: string;
 }
@@ -115,7 +121,7 @@ export interface YieldEvidenceReq {
   readonly requestId: string;
 }
 
-export interface YieldEvidenceReply {
+export interface YieldEvidenceRes {
   readonly requestId: string;
   readonly evidence: readonly string[];
 }
@@ -125,7 +131,7 @@ export interface BindYieldActorsReq {
   readonly actorIds: readonly string[];
 }
 
-export interface BindYieldActorsReply {
+export interface BindYieldActorsRes {
   readonly spotRid: string;
   readonly actors: readonly YieldActorBinding[];
 }
@@ -142,6 +148,11 @@ export interface ActorYieldReq {
 }
 
 export interface ActorFastReq {
+  readonly requestId: string;
+  readonly marker: string;
+}
+
+export interface ActorFastMsg {
   readonly requestId: string;
   readonly marker: string;
 }
@@ -164,7 +175,7 @@ export interface ActorPushNotify {
   readonly nodeRid: string;
 }
 
-export interface ActorYieldReply {
+export interface ActorYieldRes {
   readonly scenarioId: string;
   readonly requestId: string;
   readonly actorId: string;
@@ -173,7 +184,7 @@ export interface ActorYieldReply {
   readonly marker: string;
 }
 
-export interface YieldDispatchReply {
+export interface YieldDispatchRes {
   readonly scenarioId: string;
   readonly requestId: string;
   readonly spotRid: string;

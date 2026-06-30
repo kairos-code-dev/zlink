@@ -9,7 +9,7 @@ import systems.zlink.samples.deliverydispatch.server.courier.CourierOptions;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
 public final class OfferDeliveryHandler
-    implements ZLinkRequestHandler<Messages.OfferDelivery, Messages.OfferDeliveryResult> {
+    implements ZLinkRequestHandler<Messages.OfferDelivery, Messages.OfferDeliveryRes> {
     private final CourierOptions options;
 
     public OfferDeliveryHandler(CourierOptions options) {
@@ -17,7 +17,7 @@ public final class OfferDeliveryHandler
     }
 
     @Override
-    public Messages.OfferDeliveryResult handle(
+    public Messages.OfferDeliveryRes handle(
         Messages.OfferDelivery request,
         ZLinkRequestContext context) {
         if (shouldTimeout(request.deliveryId())) {
@@ -33,7 +33,7 @@ public final class OfferDeliveryHandler
             request.deliveryId(),
             options.courierId(),
             accepted);
-        return new Messages.OfferDeliveryResult(
+        return new Messages.OfferDeliveryRes(
             request.deliveryId(),
             options.courierId(),
             accepted,

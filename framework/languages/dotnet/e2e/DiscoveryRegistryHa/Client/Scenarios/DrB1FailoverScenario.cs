@@ -32,16 +32,16 @@ internal static class DrB1FailoverScenario
                 .Build();
 
             await registry.Post("/registry/members/wait")
-                .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
+                .Body(new MemberEndpointWaitReq(options.ApiAEndpoint))
                 .SubmitRawAsync();
             await registry.Post("/registry/members/wait")
-                .Body(new MemberEndpointWaitRequest(options.ApiBEndpoint))
+                .Body(new MemberEndpointWaitReq(options.ApiBEndpoint))
                 .SubmitRawAsync();
 
             var marker = $"dr-b1-{registryCase.Name}-{Guid.NewGuid():N}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("dr-b1", marker))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("dr-b1", marker))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:dr-b1", $"DR-B1 {registryCase.Name} request failed.");
             ScenarioAssert.That(
                 reply.ProviderRid is "api-a" or "api-b",
@@ -50,7 +50,7 @@ internal static class DrB1FailoverScenario
 
             var evidenceClient = reply.ProviderRid == "api-a" ? providerA : providerB;
             var evidence = (await evidenceClient.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(marker))
+                .Body(new EvidenceWaitReq(marker))
                 .SubmitAsync<string[]>()).Body;
             ScenarioAssert.That(
                 evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)

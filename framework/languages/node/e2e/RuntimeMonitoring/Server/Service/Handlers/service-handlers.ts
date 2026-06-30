@@ -12,14 +12,14 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLinkSocketEventKind, ZLinkSpotEventKind } from '@zlink-systems/framework';
 import { zlinkRuntimeEventHandler, zlinkSpotTimerHandler } from '@zlink-systems/nestjs';
-import { RuntimeMonitoringNames, type ProfileReply, type ProfileRequest } from '../../../Shared/messages';
+import { RuntimeMonitoringNames, type ProfileRes, type ProfileReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
-export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileRequest, ProfileReply> {
+export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileReq, ProfileRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: ProfileRequest, context: ZLinkRequestContext): Promise<ProfileReply> {
+  async handle(request: ProfileReq, context: ZLinkRequestContext): Promise<ProfileRes> {
     this.evidence.add(`profile-request|rid=${this.evidence.rid}|marker=${request.marker}|value=${request.value}|packet=${context.packetName}`);
     return { value: `profile:${request.value}`, providerRid: this.evidence.rid, marker: request.marker };
   }

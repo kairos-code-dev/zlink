@@ -8,7 +8,7 @@ import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class RemoteSpotYieldSessionHandler
-    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.RemoteSpotYieldRequest> {
+    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.RemoteSpotYieldReq> {
     private final ZLinkRouteClient routes;
 
     public RemoteSpotYieldSessionHandler(ZLinkRouteClient routes) {
@@ -17,31 +17,31 @@ public final class RemoteSpotYieldSessionHandler
 
     @Override
     public String packetName() {
-        return "RemoteSpotYieldRequest";
+        return "RemoteSpotYieldReq";
     }
 
     @Override
-    public Class<Contracts.RemoteSpotYieldRequest> messageType() {
-        return Contracts.RemoteSpotYieldRequest.class;
+    public Class<Contracts.RemoteSpotYieldReq> messageType() {
+        return Contracts.RemoteSpotYieldReq.class;
     }
 
     @Override
     public void handle(
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Contracts.RemoteSpotYieldRequest request) {
+        Contracts.RemoteSpotYieldReq request) {
         RoutingId targetNodeRid = RoutingId.from(dispatch.metadata()
             .getOrDefault(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE));
         RoutingId targetSpotRid = RoutingId.from(dispatch.metadata()
             .getOrDefault(Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT));
-        Contracts.ScenarioReply reply = routes
+        Contracts.ScenarioRes reply = routes
             .requestToSpot(
                 Contracts.ROUTE_CHANNEL,
                 targetNodeRid,
                 targetSpotRid,
                 request)
             .timeout(Duration.ofSeconds(30))
-            .await(Contracts.ScenarioReply.class);
+            .await(Contracts.ScenarioRes.class);
         context.client()
             .reply(reply)
             .await();

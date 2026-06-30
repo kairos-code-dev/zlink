@@ -9,10 +9,10 @@ import org.springframework.web.bind.annotation.RestController
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeliveryResult
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CreateDeliveryRequest
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryCreated
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeliveryRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CreateDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CreateDeliveryRes
 
 @RestController
 class CreateDeliveryHandler(
@@ -22,8 +22,8 @@ class CreateDeliveryHandler(
     fun health(): Map<String, Any> = mapOf("ready" to true, "role" to "dispatch-api")
 
     @PostMapping("/deliveries")
-    suspend fun handle(@RequestBody request: CreateDeliveryRequest): DeliveryCreated {
-        val assign = AssignDelivery(
+    suspend fun handle(@RequestBody request: CreateDeliveryReq): CreateDeliveryRes {
+        val assign = AssignDeliveryReq(
             request.deliveryId,
             request.customerId,
             request.pickupAddress,
@@ -33,16 +33,16 @@ class CreateDeliveryHandler(
         System.err.println(
             "deliverydispatch api: created delivery=${assigned.deliveryId} courier=${assigned.courierId}",
         )
-        return DeliveryCreated(assigned.deliveryId)
+        return CreateDeliveryRes(assigned.deliveryId)
     }
 
-    private suspend fun requestDispatch(request: AssignDelivery): AssignDeliveryResult {
+    private suspend fun requestDispatch(request: AssignDeliveryReq): AssignDeliveryRes {
         var lastError: RuntimeException? = null
         for (attempt in 1..SampleTimings.MaxChannelAttempts) {
             try {
                 return channels.requestToChannel(SampleNames.DispatchChannel, request)
                     .timeout(SampleTimings.RequestTimeout)
-                    .submit(AssignDeliveryResult::class.java)
+                    .submit(AssignDeliveryRes::class.java)
                     .await()
             } catch (error: RuntimeException) {
                 lastError = error

@@ -52,7 +52,7 @@ function createTicTacToePlayModule(config: {
           })
           .addClientServerChannel(SampleNames.playChannel)
             .enableServer(config.playEndpoint)
-            .addRequestHandler(PacketNames.createGame, CreateGameHandler)
+            .addRequestHandler(PacketNames.createGameReq, CreateGameHandler)
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient(config.apiEndpoints)
             .addStreamNode(SampleNames.playStream)

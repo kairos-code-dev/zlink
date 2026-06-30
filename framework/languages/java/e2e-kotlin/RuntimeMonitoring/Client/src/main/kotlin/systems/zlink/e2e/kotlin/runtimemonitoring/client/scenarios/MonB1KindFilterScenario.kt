@@ -16,10 +16,10 @@ class MonB1KindFilterScenario(
         repeat(4) { index ->
             val reply = client.requestToChannel(
                 Contracts.CHANNEL,
-                Contracts.WorkRequest("b1-filter-$index"),
+                Contracts.WorkReq("b1-filter-$index"),
             )
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply::class.java)
+                .await(Contracts.WorkRes::class.java)
             ScenarioAssert.ensure(
                 reply.value == "work:b1-filter-$index",
                 "MON-B1 filtered request reply mismatch",

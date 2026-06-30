@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
-  AuthReply,
+  AuthRes,
   AuthReq,
-  EnsureActorReply,
-  JoinUserSpotActorReply,
-  MultiBindReply,
+  EnsureActorRes,
+  JoinUserSpotActorRes,
+  MultiBindRes,
   MultiBindReq,
   UserSpotAuthReq
 } from '../../../Shared/messages';
@@ -55,7 +55,7 @@ class ScenarioSession implements ZLinkSession {
             })
             .packetName('EnsureActorReq')
             .timeout(5000)
-            .submit<EnsureActorReply>(signal);
+            .submit<EnsureActorRes>(signal);
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=ensured`);
         await this.context.actors.bind({
           actorId: ensured.actorId,
@@ -66,7 +66,7 @@ class ScenarioSession implements ZLinkSession {
         await this.context.client.reply({
           actorId: ensured.actorId,
           nodeRid: ensured.nodeRid
-        } satisfies AuthReply).submit(signal);
+        } satisfies AuthRes).submit(signal);
         this.evidence.add(`session-auth|rid=${this.evidence.rid}|actor=${request.actorId}|step=replied`);
       } catch (error) {
         this.evidence.add(
@@ -91,7 +91,7 @@ class ScenarioSession implements ZLinkSession {
       await this.context.client.reply({
         actorId: joined.actorId,
         nodeRid: request.nodeRid
-      } satisfies AuthReply).submit(signal);
+      } satisfies AuthRes).submit(signal);
       return;
     }
 
@@ -111,7 +111,7 @@ class ScenarioSession implements ZLinkSession {
       }
       await this.context.client.reply({
         boundCount: this.context.actors.bound.length
-      } satisfies MultiBindReply).submit(signal);
+      } satisfies MultiBindRes).submit(signal);
       return;
     }
 
@@ -125,7 +125,7 @@ class ScenarioSession implements ZLinkSession {
     await actor.relay(payload, signal);
   }
 
-  private async ensureLocalActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorReply> {
+  private async ensureLocalActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorRes> {
     const actorRef = await this.actors.getOrCreate(
       request.actorId,
       SpotServiceNames.actorType,
@@ -141,7 +141,7 @@ class ScenarioSession implements ZLinkSession {
     };
   }
 
-  private async joinRemoteUserSpot(request: UserSpotAuthReq, signal?: AbortSignal): Promise<JoinUserSpotActorReply> {
+  private async joinRemoteUserSpot(request: UserSpotAuthReq, signal?: AbortSignal): Promise<JoinUserSpotActorRes> {
     await this.route
       .request(SpotServiceNames.controlChannel, request.nodeRid, { spotRid: request.spotRid })
       .packetName('CreateSpotReq')
@@ -154,10 +154,10 @@ class ScenarioSession implements ZLinkSession {
       })
       .packetName('JoinUserSpotActorReq')
       .timeout(5000)
-      .submit<JoinUserSpotActorReply>(signal);
+      .submit<JoinUserSpotActorRes>(signal);
   }
 
-  private async ensureRemoteActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorReply> {
+  private async ensureRemoteActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorRes> {
     return await this.route
       .request(SpotServiceNames.controlChannel, request.nodeRid, {
         actorId: request.actorId,
@@ -166,7 +166,7 @@ class ScenarioSession implements ZLinkSession {
       })
       .packetName('EnsureActorReq')
       .timeout(5000)
-      .submit<EnsureActorReply>(signal);
+      .submit<EnsureActorRes>(signal);
   }
 
   private requireSingleBoundActor(packetName: string) {

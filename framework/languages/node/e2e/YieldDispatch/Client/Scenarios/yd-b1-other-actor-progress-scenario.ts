@@ -1,9 +1,9 @@
 import type {
   ActorFastReq,
   ActorYieldReq,
-  BindYieldActorsReply,
+  BindYieldActorsRes,
   BindYieldActorsReq,
-  YieldEvidenceReply,
+  YieldEvidenceRes,
   YieldEvidenceReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -26,7 +26,7 @@ export async function bindYieldActors(
   const actorA = existing?.actorA ?? `yield-actor-a-${uniqueId()}`;
   const actorB = existing?.actorB ?? `yield-actor-b-${uniqueId()}`;
   const requestedActorIds = actorIds ?? [actorA, actorB];
-  const reply = decodeStreamReply<BindYieldActorsReply>(await client
+  const reply = decodeStreamReply<BindYieldActorsRes>(await client
     .request({ spotRid, actorIds: requestedActorIds } satisfies BindYieldActorsReq)
     .packetName('BindYieldActorsReq')
     .timeout(30000)
@@ -56,7 +56,7 @@ export async function runYdB1(
     .submit();
   await Promise.all([yielding, fast]);
 
-  const evidence = decodeStreamReply<YieldEvidenceReply>(await yieldClient
+  const evidence = decodeStreamReply<YieldEvidenceRes>(await yieldClient
     .request({ requestId } satisfies YieldEvidenceReq)
     .packetName('YieldEvidenceReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')

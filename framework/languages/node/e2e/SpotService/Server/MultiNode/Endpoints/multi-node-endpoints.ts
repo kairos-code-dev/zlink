@@ -1,6 +1,6 @@
 import type { ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
 import type {
-  EvidenceWaitRequest,
+  EvidenceWaitReq,
   MultiNodeCreateSpotReq,
   MultiNodeStateRouteReq
 } from '../../../Shared/messages';
@@ -21,7 +21,7 @@ export function createMultiNodeEndpoints(
       method: 'POST',
       path: '/evidence/wait',
       handle: (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
         return evidence.waitUntil((entries) =>
           request.containsAll.every((expected) => entries.some((entry) => entry.includes(expected))), timeout);

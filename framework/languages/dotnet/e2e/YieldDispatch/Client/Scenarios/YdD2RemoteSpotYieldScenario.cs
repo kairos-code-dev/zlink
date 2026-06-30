@@ -12,26 +12,26 @@ internal static class YdD2RemoteSpotYieldScenario
         await client.Request(new EnsureSpotReq(ownerSpotRid))
             .PacketName("EnsureSpotReq")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<EnsureSpotReply>();
+            .Async<EnsureSpotRes>();
         await client.Request(new EnsureSpotReq(targetSpotRid))
             .PacketName("EnsureSpotReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-b")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<EnsureSpotReply>();
+            .Async<EnsureSpotRes>();
 
         var requestId = $"YD-D2-{Guid.NewGuid():N}";
         var reply = await client.Request(new RemoteSpotYieldReq(requestId, targetSpotRid, 350))
             .PacketName("RemoteSpotYieldReq")
             .Metadata(YieldDispatchNames.SpotRidMetadata, ownerSpotRid)
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldDispatchReply>();
+            .Async<YieldDispatchRes>();
         ScenarioAssert.That(reply.ScenarioId == "YD-D2", "YD-D2 reply scenario mismatch.");
         ScenarioAssert.That(reply.NodeRid == "play-a", "YD-D2 caller continuation node mismatch.");
         var ownerEvidence = await client.Request(new YieldEvidenceWaitReq(requestId, "remote-yield-completed"))
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldEvidenceReply>();
+            .Async<YieldEvidenceRes>();
         ScenarioAssert.That(
             ownerEvidence.Evidence.Any(line =>
                 line.Contains("remote-yield-resumed|rid=play-a", StringComparison.Ordinal)
@@ -41,7 +41,7 @@ internal static class YdD2RemoteSpotYieldScenario
             .PacketName("YieldEvidenceReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-b")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldEvidenceReply>();
+            .Async<YieldEvidenceRes>();
         ScenarioAssert.ContainsInOrder(ownerEvidence.Evidence, requestId, [
             "remote-yield-started",
             "remote-yield-released",

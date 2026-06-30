@@ -17,12 +17,12 @@ internal static class RmC3MultiProviderDistributionScenario
         var beforeB = providerB.Get("/evidence").Fetch<string[]>();
         var marker = $"rm-c3-{Guid.NewGuid():N}";
         var requests = Enumerable.Range(0, 60)
-            .Select(index => new ProfileRequest($"{marker}-{index}"))
+            .Select(index => new ProfileReq($"{marker}-{index}"))
             .ToArray();
 
         var replies = (await directConsumer.Post("/profile/batch-request")
             .Body(requests)
-            .SubmitAsync<ProfileReply[]>()).Body;
+            .SubmitAsync<ProfileRes[]>()).Body;
         ScenarioAssert.That(replies.Length == requests.Length, "RM-C3 reply count mismatch.");
         for (var i = 0; i < requests.Length; i++)
         {

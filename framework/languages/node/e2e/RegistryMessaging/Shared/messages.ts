@@ -1,68 +1,68 @@
 import { createHash } from 'node:crypto';
 
 export const PacketNames = {
-  profileRequest: 'ProfileRequest',
-  profileCommand: 'ProfileCommand',
-  payloadRequest: 'PayloadRequest',
-  workflowRequest: 'WorkflowRequest',
-  scenarioRoutePing: 'ScenarioRoutePing',
-  missingProfileRequest: 'MissingProfileRequest',
-  missingProfileCommand: 'MissingProfileCommand'
+  profileReq: 'ProfileReq',
+  profileMsg: 'ProfileMsg',
+  payloadReq: 'PayloadReq',
+  workflowReq: 'WorkflowReq',
+  scenarioRouteReq: 'ScenarioRouteReq',
+  missingProfileReq: 'MissingProfileReq',
+  missingProfileMsg: 'MissingProfileMsg'
 } as const;
 
-export interface ProfileRequest {
+export interface ProfileReq {
   readonly value: string;
 }
 
-export interface ProfileReply {
+export interface ProfileRes {
   readonly value: string;
   readonly providerRid: string;
 }
 
-export interface ProfileCommand {
+export interface ProfileMsg {
   readonly commandId: string;
 }
 
-export interface EvidenceWaitRequest {
+export interface EvidenceWaitReq {
   readonly contains: string;
   readonly timeoutMilliseconds?: number;
 }
 
-export interface PayloadRequest {
+export interface PayloadReq {
   readonly marker: string;
   readonly payload: string;
 }
 
-export interface PayloadReply {
+export interface PayloadRes {
   readonly marker: string;
   readonly length: number;
   readonly sha256: string;
 }
 
-export interface WorkflowRequest {
+export interface WorkflowReq {
   readonly value: string;
 }
 
-export interface WorkflowReply {
+export interface WorkflowRes {
   readonly value: string;
   readonly providerRid: string;
 }
 
-export interface ScenarioRoutePing {
+export interface ScenarioRouteReq {
   readonly value: string;
 }
 
-export interface ScenarioRoutePong {
+export interface ScenarioRouteRes {
   readonly value: string;
   readonly providerRid: string;
   readonly sourceRid: string;
 }
 
-export interface RouteMissingResult {
+export interface RouteMissingRes {
   readonly failed: boolean;
 }
 
-export interface RequestFailureResult {
+export interface RequestFailureRes {
   readonly failed: boolean;
   readonly failureType: string;
 }

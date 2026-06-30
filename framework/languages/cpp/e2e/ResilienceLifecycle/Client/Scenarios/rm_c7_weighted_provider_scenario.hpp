@@ -17,9 +17,9 @@ inline void run_rm_c7_weighted_provider_scenario (zlink::framework::channel_clie
     for (int index = 0; index < request_count; ++index) {
         auto task = channels
                       .request (api_channel,
-                                profile_request_t{.value = "weighted-" + std::to_string (index)})
+                                profile_req_t{.value = "weighted-" + std::to_string (index)})
                       .timeout (std::chrono::milliseconds (750))
-                      .async<profile_reply_t> ();
+                      .async<profile_res_t> ();
         ensure (task.result ().has_value (), "RM-C7 weighted request failed");
         ++counts[task.result ().value ().provider_rid];
     }

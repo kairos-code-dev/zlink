@@ -1,4 +1,4 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
@@ -10,7 +10,7 @@ export async function runRlB5(options: ClientOptions): Promise<void> {
   await waitForWeight(options.providerBUrl, 100);
 
   const slowMarker = `rl-b5-slow-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const slowTask = postJson<ProfileReply>(options.consumerUrl, '/profile/request/no-retry', {
+  const slowTask = postJson<ProfileRes>(options.consumerUrl, '/profile/request/no-retry', {
     value: 'slow',
     marker: slowMarker
   });
@@ -24,7 +24,7 @@ export async function runRlB5(options: ClientOptions): Promise<void> {
   await waitForWeight(drainedProviderUrl, 0);
 
   for (let i = 0; i < 12; i += 1) {
-    const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', {
+    const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', {
       value: 'fast',
       marker: `rl-b5-drained-${i}`
     });
@@ -51,7 +51,7 @@ export async function runRlB5(options: ClientOptions): Promise<void> {
   await waitForWeight(drainedProviderUrl, 100);
 
   for (let i = 0; i < 40; i += 1) {
-    const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', {
+    const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', {
       value: 'fast',
       marker: `rl-b5-after-${i}`
     });

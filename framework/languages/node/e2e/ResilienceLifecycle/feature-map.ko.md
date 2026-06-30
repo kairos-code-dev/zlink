@@ -25,8 +25,8 @@
 | RL-C4 | 구현 | registry shutdown 중 기존 channel request가 계속 성공하는지 확인하고, registry/provider A 재시작 뒤 topology 재등록과 follow-up evidence를 검증했다. 로그: `logs/20260630-061338-2889689` |
 | RL-D1 | 구현 | 120개 concurrent request burst가 모두 정상 reply를 받고 provider evidence marker가 기록되는지 검증했다. 로그: `logs/20260630-061338-2889689` |
 | RL-D2 | 구현 | dispatch-error observer fault를 주입하고 missing request 실패, dispatch-error evidence, observer 예외 이후 follow-up request 성공을 검증했다. 로그: `logs/20260630-061338-2889689` |
-| RL-D3 | 구현 | missing request handler 실패 뒤 provider dispatch-error evidence에 `packet=MissingProfileRequest` marker가 남는지 검증했다. 로그: `logs/20260630-061338-2889689` |
-| RL-D4 | 구현 | missing request handler public failure와 provider dispatch-error evidence의 `packet=MissingProfileRequest` marker를 검증했다. 로그: `logs/20260630-061338-2889689` |
+| RL-D3 | 구현 | missing request handler 실패 뒤 provider dispatch-error evidence에 `packet=MissingProfileReq` marker가 남는지 검증했다. 로그: `logs/20260630-061338-2889689` |
+| RL-D4 | 구현 | missing request handler public failure와 provider dispatch-error evidence의 `packet=MissingProfileReq` marker를 검증했다. 로그: `logs/20260630-061338-2889689` |
 | RL-D5 | 구현 | 60 request와 60 send 혼합 burst가 정상 완료되고 request/send evidence marker가 모두 기록되는지 검증했다. 로그: `logs/20260630-061338-2889689` |
 
 검증:

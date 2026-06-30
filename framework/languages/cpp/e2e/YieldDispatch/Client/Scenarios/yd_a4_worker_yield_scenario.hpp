@@ -24,7 +24,7 @@ std::string run_yd_a4_worker_yield_scenario (TConnector &connector,
           .packet_name (worker_yield_req_t::packet_name)
           .metadata (spot_rid_metadata, spot_rid)
           .timeout (std::chrono::milliseconds (10000))
-          .template submit<yield_dispatch_reply_t> ();
+          .template submit<yield_dispatch_res_t> ();
     });
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
     auto worker_released =
@@ -35,14 +35,14 @@ std::string run_yd_a4_worker_yield_scenario (TConnector &connector,
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (worker_released), "YD-A4 worker-yield-released wait failed");
     auto worker_probe =
       observer.request (probe_req_t{.request_id = request_id, .marker = "worker-probe"})
         .packet_name (probe_req_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .timeout (std::chrono::milliseconds (10000))
-        .template submit<yield_dispatch_reply_t> ();
+        .template submit<yield_dispatch_res_t> ();
     ensure (static_cast<bool> (worker_probe), "YD-A4 ProbeReq failed");
     auto worker_reply = worker.get ();
     ensure (static_cast<bool> (worker_reply), "YD-A4 WorkerYieldReq failed");
@@ -54,7 +54,7 @@ std::string run_yd_a4_worker_yield_scenario (TConnector &connector,
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (evidence), "YD-A4 evidence wait failed");
     ensure (contains_in_order (evidence.value ().evidence, request_id,
                                {"worker-yield-started", "worker-yield-released",

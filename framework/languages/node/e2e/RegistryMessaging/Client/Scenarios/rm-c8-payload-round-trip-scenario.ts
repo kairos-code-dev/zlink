@@ -1,4 +1,4 @@
-import type { PayloadReply, ProfileReply } from '../../Shared/messages';
+import type { PayloadRes, ProfileRes } from '../../Shared/messages';
 import { sha256Hex } from '../../Shared/messages';
 import { getJson, postJson } from '../Support/http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
@@ -10,12 +10,12 @@ export async function runRmC8(singleConsumerUrl: string, providerAUrl: string): 
     const marker = uniqueMarker(`rm-c8-${size}`);
     markers.push(marker);
     const payload = buildPayload(size);
-    const reply = await postJson<PayloadReply>(singleConsumerUrl, '/profile/payload', { marker, payload });
+    const reply = await postJson<PayloadRes>(singleConsumerUrl, '/profile/payload', { marker, payload });
     ensure(reply.marker === marker, 'RM-C8 marker mismatch.');
     ensure(reply.length === payload.length, 'RM-C8 payload length mismatch.');
     ensure(reply.sha256 === sha256Hex(payload), 'RM-C8 payload hash mismatch.');
   }
-  const followUp = await postJson<ProfileReply>(singleConsumerUrl, '/profile/request', { value: 'rm-c8-after' });
+  const followUp = await postJson<ProfileRes>(singleConsumerUrl, '/profile/request', { value: 'rm-c8-after' });
   ensure(followUp.value === 'profile:rm-c8-after', 'RM-C8 follow-up request failed.');
   const after = await getJson<string[]>(providerAUrl, '/evidence');
   ensure(markers.every((marker) => countNewEvidence(after, before, 'payload-request|rid=api-a', marker) === 1), 'RM-C8 payload evidence missing.');

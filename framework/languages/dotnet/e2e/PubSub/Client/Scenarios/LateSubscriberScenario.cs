@@ -58,7 +58,7 @@ internal static class LateSubscriberScenario
 
             // The positive check proves the late subscriber joined the fanout after process start.
             var lateEvidence = (await lateSubscriberClient.Post("/evidence/wait")
-                .Body(new EvidenceWaitRequest(
+                .Body(new EvidenceWaitReq(
                     ["event|", $"run={afterLateRun}", $"topic={PubSubNames.MainTopic}"],
                     []))
                 .SubmitAsync<string[]>()).Body;

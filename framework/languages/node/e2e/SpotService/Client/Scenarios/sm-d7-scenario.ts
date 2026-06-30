@@ -4,9 +4,9 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
-  AuthReply,
+  AuthRes,
   AuthReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -23,7 +23,7 @@ export async function runSmD7(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await client
+    const auth = decodeStreamReply<AuthRes>(await client
       .request({
         actorId: 'actor-sm-d7',
         displayName: 'stream auth',
@@ -34,7 +34,7 @@ export async function runSmD7(options: ClientOptions): Promise<void> {
       .submit());
     ensure(auth.actorId === 'actor-sm-d7', 'SM-D7 auth reply actor mismatch.');
 
-    const reply = decodeStreamReply<ActorPingReply>(await client
+    const reply = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'auth-ok' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)

@@ -1,7 +1,7 @@
-import type { DeliveryStatusChanged } from '../../../../Shared/Contracts/messages';
+import type { DeliveryStatusReq } from '../../../../Shared/Contracts/messages';
 
 type DeliveryRecorder = {
-  record(status: DeliveryStatusChanged): void;
+  record(status: DeliveryStatusReq): void;
 };
 
 class DeliverySpotDirectory {

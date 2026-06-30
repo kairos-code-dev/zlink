@@ -14,9 +14,9 @@ public final class RmB1ScaleOutScenario {
 
     public static void run(ZLinkHttpClient discoveryConsumer) {
         for (int index = 0; index < 5; index++) {
-            Contracts.ProfileReply reply = discoveryConsumer.post("/profile/request")
-                .body(new Contracts.ProfileRequest("scale-out-before-" + index))
-                .fetch(Contracts.ProfileReply.class);
+            Contracts.ProfileRes reply = discoveryConsumer.post("/profile/request")
+                .body(new Contracts.ProfileReq("scale-out-before-" + index))
+                .fetch(Contracts.ProfileRes.class);
             ScenarioAssert.that("api-a".equals(reply.providerRid()), "RM-B1 initial traffic should only use api-a");
         }
 
@@ -25,9 +25,9 @@ public final class RmB1ScaleOutScenario {
 
         Set<String> providers = new HashSet<>();
         for (int index = 0; index < 100 && providers.size() < 2; index++) {
-            Contracts.ProfileReply reply = discoveryConsumer.post("/profile/request")
-                .body(new Contracts.ProfileRequest("scale-out-after-" + index))
-                .fetch(Contracts.ProfileReply.class);
+            Contracts.ProfileRes reply = discoveryConsumer.post("/profile/request")
+                .body(new Contracts.ProfileReq("scale-out-after-" + index))
+                .fetch(Contracts.ProfileRes.class);
             providers.add(reply.providerRid());
         }
         ScenarioAssert.that(providers.contains("api-a") && providers.contains("api-b"),

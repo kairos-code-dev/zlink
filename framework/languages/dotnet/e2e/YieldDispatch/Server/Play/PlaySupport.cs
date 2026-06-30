@@ -144,13 +144,13 @@ internal static class Cli
 
 internal static class YieldReplies
 {
-    public static YieldDispatchReply Reply(
+    public static YieldDispatchRes Reply(
         string scenarioId,
         string requestId,
         YieldProbeSpot spot,
         string marker)
     {
-        return new YieldDispatchReply(
+        return new YieldDispatchRes(
             scenarioId,
             requestId,
             spot.Context.SpotRid.ToString(),
@@ -161,14 +161,14 @@ internal static class YieldReplies
 
 internal static class ActorReplies
 {
-    public static ActorYieldReply Reply(
+    public static ActorYieldRes Reply(
         string scenarioId,
         string requestId,
         YieldActor actor,
         YieldEntrySpot entrySpot,
         string marker)
     {
-        return new ActorYieldReply(
+        return new ActorYieldRes(
             scenarioId,
             requestId,
             actor.ActorId,

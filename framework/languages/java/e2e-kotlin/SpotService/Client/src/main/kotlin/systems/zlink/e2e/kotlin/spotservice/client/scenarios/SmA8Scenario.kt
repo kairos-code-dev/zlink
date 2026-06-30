@@ -14,18 +14,18 @@ internal object SmA8Scenario {
         eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("worker-start-long"),
+                Contracts.StateReq("worker-start-long"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         val followUp = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("worker-follow-up"),
+                Contracts.StateReq("worker-follow-up"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         ensure(followUp.value.contains("worker-follow-up"), "SM-A8 follow-up state was not applied")
         val evidenceEndpoint = Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT")

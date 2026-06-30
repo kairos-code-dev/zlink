@@ -36,7 +36,7 @@ std::string run_yd_d4_session_relay_actor_yield_scenario (
                                           .actor_ids = {actors.actor_a, actors.actor_b}})
         .packet_name (bind_yield_actors_req_t::packet_name)
         .timeout (std::chrono::milliseconds (15000))
-        .template submit<bind_yield_actors_reply_t> ();
+        .template submit<bind_yield_actors_res_t> ();
     ensure (static_cast<bool> (rebound), "YD-D4 client actor rebind failed");
     auto bound_push =
       connector.template wait_for<actor_push_notify_t> (std::chrono::milliseconds (30000))
@@ -52,7 +52,7 @@ std::string run_yd_d4_session_relay_actor_yield_scenario (
         .packet_name (actor_push_yield_req_t::packet_name)
         .metadata (actor_id_metadata, actors.actor_a)
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<actor_yield_reply_t> ();
+        .template submit<actor_yield_res_t> ();
     ensure_result (reply, "YD-D4 ActorPushYieldReq failed");
     ensure (reply.value ().scenario_id == "YD-D4", "YD-D4 reply scenario mismatch");
     ensure (reply.value ().request_id == request_id, "YD-D4 reply request mismatch");
@@ -75,7 +75,7 @@ std::string run_yd_d4_session_relay_actor_yield_scenario (
         .packet_name (yield_evidence_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (evidence), "YD-D4 evidence request failed");
     ensure (contains_in_order (evidence.value ().evidence, request_id,
                                {"actor-push-yield-started",

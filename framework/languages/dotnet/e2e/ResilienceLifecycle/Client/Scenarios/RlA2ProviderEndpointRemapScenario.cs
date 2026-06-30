@@ -19,11 +19,11 @@ internal static class RlA2ProviderEndpointRemapScenario
         var replacement = await processes.StartProviderBRemapAsync();
         using var replacementProvider = ZLinkHttpClient.Create(replacement.Url).Build();
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryRes[]>();
         await SendRequestBatchAsync(consumer, "rl-a2-rescheduled");
         await replacementProvider.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["marker=rl-a2-rescheduled-"], []))
+            .Body(new EvidenceWaitReq(["marker=rl-a2-rescheduled-"], []))
             .SubmitAsync<string[]>();
 
         await replacementProvider.Post("/shutdown").SubmitRawAsync();
@@ -32,11 +32,11 @@ internal static class RlA2ProviderEndpointRemapScenario
         await processes.StartProviderBAsync();
         await WaitUntilAvailableAsync(providerB);
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryRes[]>();
         await SendRequestBatchAsync(consumer, "rl-a2-original-restored");
         await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["marker=rl-a2-original-restored-"], []))
+            .Body(new EvidenceWaitReq(["marker=rl-a2-original-restored-"], []))
             .SubmitAsync<string[]>();
 
         Console.WriteLine("scenario RL-A2 passed");
@@ -50,8 +50,8 @@ internal static class RlA2ProviderEndpointRemapScenario
         {
             var marker = $"{markerPrefix}-{i}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", marker))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", marker))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-A2 request returned an unexpected value.");
         }
     }

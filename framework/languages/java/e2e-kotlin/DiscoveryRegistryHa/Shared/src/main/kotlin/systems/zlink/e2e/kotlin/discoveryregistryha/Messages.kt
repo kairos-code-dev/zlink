@@ -7,10 +7,10 @@ class Contracts private constructor() {
     }
 
     @JvmRecord
-    data class WorkRequest(val value: String)
+    data class WorkReq(val value: String)
 
     @JvmRecord
-    data class WorkReply(
+    data class WorkRes(
         val value: String,
         val providerRid: String,
     )

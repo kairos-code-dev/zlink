@@ -7,7 +7,7 @@ internal static class ScenarioAssert
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    public static string[] AllProviderEvidence(LifecycleApiResult result)
+    public static string[] AllProviderEvidence(LifecycleApiRes result)
     {
         return result.ProviderAEvidence.Concat(result.ProviderBEvidence).ToArray();
     }

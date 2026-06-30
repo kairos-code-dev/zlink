@@ -8,18 +8,18 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 
 class UserActorLeaveHandler {
-    @ZLinkSpotActorRequest(packetName = "LeaveActorRequest")
+    @ZLinkSpotActorRequest(packetName = "LeaveActorReq")
     fun handle(
         spot: UserSpot,
         actor: ScenarioActor,
         context: ZLinkSpotActorRequestContext,
-        request: Contracts.LeaveActorRequest,
+        request: Contracts.LeaveActorReq,
         cancellationToken: CancellationToken
-    ): Contracts.LeaveActorReply {
+    ): Contracts.LeaveActorRes {
         if (request.actorId != actor.actorId()) {
             throw IllegalStateException("leave request actor does not match dispatched actor")
         }
         spot.context().leaveActor(actor).toCompletableFuture().join()
-        return Contracts.LeaveActorReply(actor.actorId(), true)
+        return Contracts.LeaveActorRes(actor.actorId(), true)
     }
 }

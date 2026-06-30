@@ -12,10 +12,10 @@ internal object SmA2Scenario {
         val second = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("a2"),
+                Contracts.StateReq("a2"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         ensure(
             second.value.contains("a1") && second.value.contains("a2"),

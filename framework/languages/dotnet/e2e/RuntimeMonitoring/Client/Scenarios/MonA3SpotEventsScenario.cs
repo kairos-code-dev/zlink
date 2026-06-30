@@ -33,7 +33,7 @@ internal static class MonA3SpotEventsScenario
     private static async Task<string[]> WaitForSpotEvidenceAsync(ZLinkHttpClient service)
     {
         var evidence = (await service.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["monitor-spot|source=monitor.spot"],
                 [
                     ["kind=StatusChanged"],

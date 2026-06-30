@@ -19,8 +19,8 @@ internal static class RlB5DrainInflightScenario
 
         var slowMarker = $"rl-b5-slow-{Guid.NewGuid():N}";
         var slowTask = consumer.Post("/profile/request")
-            .Body(new ProfileRequest("slow", slowMarker))
-            .SubmitAsync<ProfileReply>();
+            .Body(new ProfileReq("slow", slowMarker))
+            .SubmitAsync<ProfileRes>();
 
         var slowProvider = await WaitForSlowStartAsync(providerA, providerB, slowMarker);
         var drainedProvider = slowProvider == "api-a" ? providerA : providerB;
@@ -33,8 +33,8 @@ internal static class RlB5DrainInflightScenario
         for (var i = 0; i < 12; i++)
         {
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-b5-drained-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-b5-drained-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.ProviderRid == healthyProvider,
                 "RL-B5 drain did not block new requests to the drained provider.");
         }
@@ -59,13 +59,13 @@ internal static class RlB5DrainInflightScenario
         for (var i = 0; i < 40; i++)
         {
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-b5-after-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-b5-after-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-B5 restored request returned an unexpected value.");
         }
 
         await drainedProvider.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"profile-request|rid={slowProvider}|marker=rl-b5-after-"], []))
+            .Body(new EvidenceWaitReq([$"profile-request|rid={slowProvider}|marker=rl-b5-after-"], []))
             .SubmitAsync<string[]>();
 
         Console.WriteLine("scenario RL-B5 passed");
@@ -78,11 +78,11 @@ internal static class RlB5DrainInflightScenario
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var waitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"profile-start|rid=api-a|marker={marker}"], []))
+            .Body(new EvidenceWaitReq([$"profile-start|rid=api-a|marker={marker}"], []))
             .SubmitAsync<string[]>(timeout.Token)
             .AsTask();
         var waitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"profile-start|rid=api-b|marker={marker}"], []))
+            .Body(new EvidenceWaitReq([$"profile-start|rid=api-b|marker={marker}"], []))
             .SubmitAsync<string[]>(timeout.Token)
             .AsTask();
 
@@ -95,7 +95,7 @@ internal static class RlB5DrainInflightScenario
     private static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
     {
         await provider.Post("/admin/weight/wait")
-            .Body(new WeightWaitRequest(expected))
+            .Body(new WeightWaitReq(expected))
             .SubmitRawAsync();
     }
 

@@ -9,10 +9,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.registrymessaging.provider.Configuration.ServerOptions;
-import systems.zlink.e2e.registrymessaging.provider.Handlers.PayloadRequestHandler;
-import systems.zlink.e2e.registrymessaging.provider.Handlers.ProfileCommandHandler;
-import systems.zlink.e2e.registrymessaging.provider.Handlers.ProfileRequestHandler;
-import systems.zlink.e2e.registrymessaging.provider.Handlers.RoutePingHandler;
+import systems.zlink.e2e.registrymessaging.provider.Handlers.PayloadReqHandler;
+import systems.zlink.e2e.registrymessaging.provider.Handlers.ProfileMsgHandler;
+import systems.zlink.e2e.registrymessaging.provider.Handlers.ProfileReqHandler;
+import systems.zlink.e2e.registrymessaging.provider.Handlers.RouteReqHandler;
 import systems.zlink.e2e.registrymessaging.provider.Infrastructure.ScenarioState;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
@@ -60,7 +60,7 @@ public final class Program {
                         error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return CompletableFuture.completedFuture(null);
                 });
-            options.addHandlersFromPackageOf(ProfileRequestHandler.class);
+            options.addHandlersFromPackageOf(ProfileReqHandler.class);
             options.useDiscovery().addRegistryEndpoint(ServerOptions.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
 
             String apiEndpoint = ServerOptions.get("ZLINK_JAVA_E2E_API_ENDPOINT");
@@ -93,9 +93,9 @@ public final class Program {
                     .enableServer(routeEndpoint)
                     .setRoutingId(RoutingId.from(state.providerRid()));
                 route.addRequestHandler(
-                    RoutePingHandler.class,
-                    Contracts.RoutePing.class,
-                    Contracts.RoutePong.class,
+                    RouteReqHandler.class,
+                    Contracts.RouteReq.class,
+                    Contracts.RouteRes.class,
                     Contracts.ROUTE_PACKET);
                 for (String peer : ServerOptions.get("ZLINK_JAVA_E2E_ROUTE_PEERS").split(",")) {
                     if (!peer.isBlank()) {
@@ -120,22 +120,22 @@ public final class Program {
     }
 
     @Bean
-    ProfileRequestHandler profileRequestHandler(ScenarioState state) {
-        return new ProfileRequestHandler(state);
+    ProfileReqHandler profileRequestHandler(ScenarioState state) {
+        return new ProfileReqHandler(state);
     }
 
     @Bean
-    ProfileCommandHandler profileCommandHandler(ScenarioState state) {
-        return new ProfileCommandHandler(state);
+    ProfileMsgHandler profileCommandHandler(ScenarioState state) {
+        return new ProfileMsgHandler(state);
     }
 
     @Bean
-    PayloadRequestHandler payloadRequestHandler(ScenarioState state) {
-        return new PayloadRequestHandler(state);
+    PayloadReqHandler payloadRequestHandler(ScenarioState state) {
+        return new PayloadReqHandler(state);
     }
 
     @Bean
-    RoutePingHandler routePingHandler(ScenarioState state) {
-        return new RoutePingHandler(state);
+    RouteReqHandler routePingHandler(ScenarioState state) {
+        return new RouteReqHandler(state);
     }
 }

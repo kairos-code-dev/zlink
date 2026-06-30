@@ -1,18 +1,18 @@
-import type { ProfileReply, RequestFailureResult } from '../../Shared/messages';
+import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRmC5(discoveryConsumerUrl: string, providerAUrl: string, providerBUrl: string): Promise<void> {
-  const missingRequest = await postJson<RequestFailureResult>(discoveryConsumerUrl, '/profile/missing-request', { value: 'missing-request' });
+  const missingRequest = await postJson<RequestFailureRes>(discoveryConsumerUrl, '/profile/missing-request', { value: 'missing-request' });
   ensure(missingRequest.failed, 'RM-C5 missing request should fail.');
   await postJson(discoveryConsumerUrl, '/profile/missing-command', { commandId: 'missing-send' });
   const evidence = [
-    ...await waitForDispatchErrorEvidence(providerAUrl, providerBUrl, 'MissingProfileRequest'),
-    ...await waitForDispatchErrorEvidence(providerAUrl, providerBUrl, 'MissingProfileCommand')
+    ...await waitForDispatchErrorEvidence(providerAUrl, providerBUrl, 'MissingProfileReq'),
+    ...await waitForDispatchErrorEvidence(providerAUrl, providerBUrl, 'MissingProfileMsg')
   ];
-  ensure(evidence.some((line) => line.includes('dispatch-error') && line.includes('MissingProfileRequest')), 'RM-C5 missing request evidence missing.');
-  ensure(evidence.some((line) => line.includes('dispatch-error') && line.includes('MissingProfileCommand')), 'RM-C5 missing send evidence missing.');
-  const reply = await postJson<ProfileReply>(discoveryConsumerUrl, '/profile/request', { value: 'rm-c5-after' });
+  ensure(evidence.some((line) => line.includes('dispatch-error') && line.includes('MissingProfileReq')), 'RM-C5 missing request evidence missing.');
+  ensure(evidence.some((line) => line.includes('dispatch-error') && line.includes('MissingProfileMsg')), 'RM-C5 missing send evidence missing.');
+  const reply = await postJson<ProfileRes>(discoveryConsumerUrl, '/profile/request', { value: 'rm-c5-after' });
   ensure(reply.value === 'profile:rm-c5-after', 'RM-C5 normal request after negative path failed.');
   console.log('scenario RM-C5 passed');
 }

@@ -3,31 +3,31 @@ export const RegistrationCodecNames = {
 } as const;
 
 export const PacketNames = {
-  echoAuto: 'EchoAuto',
-  echoAutoCommand: 'EchoAutoCommand',
-  echoAttr: 'EchoAttr',
-  echoAttrCommand: 'EchoAttrCommand',
-  echoManual: 'EchoManual',
-  echoManualCommand: 'EchoManualCommand',
-  echoDi: 'EchoDi',
-  echoJson: 'EchoJson',
-  echoJsonCommand: 'EchoJsonCommand',
-  echoProtobuf: 'EchoProtobuf',
-  echoProtobufCommand: 'EchoProtobufCommand',
-  echoMessagePack: 'EchoMessagePack',
-  echoMessagePackCommand: 'EchoMessagePackCommand'
+  echoAutoReq: 'EchoAutoReq',
+  echoAutoMsg: 'EchoAutoMsg',
+  echoAttrReq: 'EchoAttrReq',
+  echoAttrMsg: 'EchoAttrMsg',
+  echoManualReq: 'EchoManualReq',
+  echoManualMsg: 'EchoManualMsg',
+  echoDiReq: 'EchoDiReq',
+  echoJsonReq: 'EchoJsonReq',
+  echoJsonMsg: 'EchoJsonMsg',
+  echoProtobufReq: 'EchoProtobufReq',
+  echoProtobufMsg: 'EchoProtobufMsg',
+  echoMessagePackReq: 'EchoMessagePackReq',
+  echoMessagePackMsg: 'EchoMessagePackMsg'
 } as const;
 
 export interface EchoReq {
   readonly value: string;
 }
 
-export interface EchoReply {
+export interface EchoRes {
   readonly value: string;
   readonly contentType: string;
 }
 
-export interface EchoCommand {
+export interface EchoMsg {
   readonly commandId: string;
   readonly value: string;
 }
@@ -36,7 +36,7 @@ export class ProtobufEchoReq {
   constructor(readonly value: string) {}
 }
 
-export class ProtobufEchoCommand {
+export class ProtobufEchoMsg {
   constructor(readonly value: string) {}
 }
 
@@ -44,22 +44,22 @@ export class MessagePackEchoReq {
   constructor(readonly value: string) {}
 }
 
-export class MessagePackEchoCommand {
+export class MessagePackEchoMsg {
   constructor(
     readonly commandId: string,
     readonly value: string
   ) {}
 }
 
-export interface CodecScenarioResult {
+export interface CodecScenarioRes {
   readonly value?: string;
   readonly contentType?: string;
-  readonly json?: EchoReply;
+  readonly json?: EchoRes;
   readonly protobufValue?: string;
   readonly messagePackValue?: string;
 }
 
-export interface EvidenceWaitRequest {
+export interface EvidenceWaitReq {
   readonly containsAll: readonly string[];
   readonly timeoutMilliseconds?: number;
 }

@@ -11,10 +11,10 @@ internal object SmF4Scenario {
         expectFailure {
             outbound.requestToSpot(
                 RoutingId.from("missing-route"),
-                Contracts.StateRequest("missing-route"),
+                Contracts.StateReq("missing-route"),
             )
                 .timeout(Duration.ofMillis(300))
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         println("scenario SM-F4-missing-route passed")
     }

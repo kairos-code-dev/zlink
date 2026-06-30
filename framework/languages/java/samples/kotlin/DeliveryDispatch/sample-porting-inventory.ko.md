@@ -52,25 +52,25 @@
 
 | 기준 | Kotlin 대응 | 분류 | 상태 | 비고 |
 |------|-------------|------|------|------|
-| `common: CreateDeliveryRequest` | `CreateDeliveryRequest(deliveryId, customerId, pickupAddress, dropoffAddress)` | shared-contract | done | HTTP boundary payload다. |
-| `common: CreateDeliveryResponse` | `DeliveryCreated(deliveryId)` | shared-contract | done | Kotlin 샘플 이름은 기존 shared contract와 맞춰 `DeliveryCreated`를 쓴다. |
-| `common: SubscribeDelivery` | `SubscribeDelivery(deliveryId)` | shared-contract | done | stream session request다. |
-| `common: SubscribeDeliveryAccepted` | `SubscribeDeliveryAccepted(deliveryId)` | shared-contract | done | subscription 접수 응답이다. |
+| `common: CreateDeliveryReq` | `CreateDeliveryReq(deliveryId, customerId, pickupAddress, dropoffAddress)` | shared-contract | done | HTTP boundary payload다. |
+| `common: CreateDeliveryResponse` | `CreateDeliveryRes(deliveryId)` | shared-contract | done | Kotlin 샘플 이름은 기존 shared contract와 맞춰 `CreateDeliveryRes`를 쓴다. |
+| `common: SubscribeDeliveryReq` | `SubscribeDeliveryReq(deliveryId)` | shared-contract | done | stream session request다. |
+| `common: SubscribeDeliveryRes` | `SubscribeDeliveryRes(deliveryId)` | shared-contract | done | subscription 접수 응답이다. |
 | `common: DeliveryStatusNotify` | `DeliveryStatusNotify(deliveryId, status, courierId, occurredAtUnixMs)` | shared-contract | done | Kotlin은 `DateTimeOffset` 대신 epoch milliseconds를 사용한다. |
-| `common: AssignDelivery` | `AssignDelivery(deliveryId, customerId, pickupAddress, dropoffAddress)` | shared-contract | done | DispatchApi에서 DispatchCenter로 보낸다. |
-| `common: AssignDeliveryResult` | `AssignDeliveryResult(deliveryId, courierId)` | shared-contract | done | 접수된 courier id를 포함한다. |
-| `common: OfferDelivery` | `OfferDelivery(deliveryId, pickupAddress, dropoffAddress)` | shared-contract | done | DispatchCenter에서 Courier로 보낸다. |
-| `common: OfferDeliveryResult` | `OfferDeliveryResult(deliveryId, courierId, accepted, reason)` | shared-contract | done | timeout-reassign은 accepted=false로 표현한다. |
-| `common: DeliveryStatusChanged` | `DeliveryStatusChanged(deliveryId, status, courierId, occurredAtUnixMs)` | shared-contract | done | Tracking 상태 기록 요청이다. |
-| `common: DeliveryStatusAck` | `DeliveryStatusAck(deliveryId, status)` | shared-contract | done | Tracking 처리 응답이다. |
-| `common: EnsureCustomerActor` | `EnsureCustomerActor(customerId)` | shared-contract | done | Session에서 Tracking actor를 보장한다. |
-| `common: CustomerActorEnsured` | `CustomerActorEnsured(customerId, actor)` | shared-contract | done | ActorRefSnapshot을 포함한다. |
-| `common: SubscribeCustomerToDelivery` | `SubscribeCustomerToDelivery(customerId, deliveryId)` | shared-contract | done | customer actor를 delivery spot에 join시킨다. |
-| `common: CustomerDeliverySubscribed` | `CustomerDeliverySubscribed(customerId, deliveryId)` | shared-contract | done | join 완료 응답이다. |
-| `common: DeliverySpotCreate` | `DeliverySpotCreate(deliveryId)` | shared-contract | done | Tracking 내부 spot 생성 payload다. |
-| `common: DeliverySpotCreated` | `DeliverySpotCreated(deliveryId)` | shared-contract | done | spot 생성 결과다. |
-| `common: DeliverySpotJoin` | `DeliverySpotJoin(deliveryId, customerId)` | shared-contract | done | customer actor join payload다. |
-| `common: DeliverySpotJoined` | `DeliverySpotJoined(deliveryId, customerId)` | shared-contract | done | join 결과다. |
+| `common: AssignDeliveryReq` | `AssignDeliveryReq(deliveryId, customerId, pickupAddress, dropoffAddress)` | shared-contract | done | DispatchApi에서 DispatchCenter로 보낸다. |
+| `common: AssignDeliveryRes` | `AssignDeliveryRes(deliveryId, courierId)` | shared-contract | done | 접수된 courier id를 포함한다. |
+| `common: OfferDeliveryReq` | `OfferDeliveryReq(deliveryId, pickupAddress, dropoffAddress)` | shared-contract | done | DispatchCenter에서 Courier로 보낸다. |
+| `common: OfferDeliveryRes` | `OfferDeliveryRes(deliveryId, courierId, accepted, reason)` | shared-contract | done | timeout-reassign은 accepted=false로 표현한다. |
+| `common: DeliveryStatusChangedReq` | `DeliveryStatusChangedReq(deliveryId, status, courierId, occurredAtUnixMs)` | shared-contract | done | Tracking 상태 기록 요청이다. |
+| `common: DeliveryStatusChangedRes` | `DeliveryStatusChangedRes(deliveryId, status)` | shared-contract | done | Tracking 처리 응답이다. |
+| `common: EnsureCustomerActorReq` | `EnsureCustomerActorReq(customerId)` | shared-contract | done | Session에서 Tracking actor를 보장한다. |
+| `common: EnsureCustomerActorRes` | `EnsureCustomerActorRes(customerId, actor)` | shared-contract | done | ActorRefSnapshot을 포함한다. |
+| `common: SubscribeCustomerToDeliveryReq` | `SubscribeCustomerToDeliveryReq(customerId, deliveryId)` | shared-contract | done | customer actor를 delivery spot에 join시킨다. |
+| `common: SubscribeCustomerToDeliveryRes` | `SubscribeCustomerToDeliveryRes(customerId, deliveryId)` | shared-contract | done | join 완료 응답이다. |
+| `common: DeliverySpotCreateReq` | `DeliverySpotCreateReq(deliveryId)` | shared-contract | done | Tracking 내부 spot 생성 payload다. |
+| `common: DeliverySpotCreateRes` | `DeliverySpotCreateRes(deliveryId)` | shared-contract | done | spot 생성 결과다. |
+| `common: DeliverySpotJoinReq` | `DeliverySpotJoinReq(deliveryId, customerId)` | shared-contract | done | customer actor join payload다. |
+| `common: DeliverySpotJoinRes` | `DeliverySpotJoinRes(deliveryId, customerId)` | shared-contract | done | join 결과다. |
 | `common: Status Assigned/Accepted/Reassigned/PickedUp/Delivered` | `DeliveryStatuses` constants | shared-contract | done | self-check가 순서를 검증한다. |
 | `.NET-only: CourierDecision` | 없음 | shared-contract | not-needed | 현재 Kotlin 흐름은 courier response를 바로 처리하므로 별도 message가 필요 없다. |
 | `.NET-only: ReassignDelivery` | 없음 | shared-contract | not-needed | Kotlin worker가 재배정 상태와 다음 courier 제안을 직접 실행한다. |

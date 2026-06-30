@@ -11,9 +11,9 @@ internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
     EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>
+    : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
-    public async ValueTask<MultiNodeCreateSpotReply> HandleAsync(
+    public async ValueTask<MultiNodeCreateSpotRes> HandleAsync(
         MultiNodeCreateSpotReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -30,7 +30,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
             cancellationToken);
         evidence.Add(
             $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeA}|spot={result.SpotRid}|state={result.State}");
-        return new MultiNodeCreateSpotReply(
+        return new MultiNodeCreateSpotRes(
             result.SpotRid.ToString(),
             SpotServiceNames.MultiSpotNodeA,
             result.State.ToString(),
@@ -42,9 +42,9 @@ internal sealed class MultiNodeCreateSpotBHandler(
     IZLinkSpotManager spots,
     IZLinkRouteClient routes,
     EvidenceStore evidence)
-    : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotReply>
+    : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
-    public async ValueTask<MultiNodeCreateSpotReply> HandleAsync(
+    public async ValueTask<MultiNodeCreateSpotRes> HandleAsync(
         MultiNodeCreateSpotReq request,
         ZLinkRouteRequestContext context,
         CancellationToken cancellationToken)
@@ -61,7 +61,7 @@ internal sealed class MultiNodeCreateSpotBHandler(
             cancellationToken);
         evidence.Add(
             $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeB}|spot={result.SpotRid}|state={result.State}");
-        return new MultiNodeCreateSpotReply(
+        return new MultiNodeCreateSpotRes(
             result.SpotRid.ToString(),
             SpotServiceNames.MultiSpotNodeB,
             result.State.ToString(),
@@ -71,7 +71,7 @@ internal sealed class MultiNodeCreateSpotBHandler(
 
 internal static class MultiNodeScenario
 {
-    public static async Task<StateReply> RequestStateWithRetryAsync(
+    public static async Task<StateRes> RequestStateWithRetryAsync(
         IZLinkRouteClient routes,
         string channelName,
         string spotRid,
@@ -90,7 +90,7 @@ internal static class MultiNodeScenario
                         new StateReq("add", delta))
                     .PacketName("StateReq")
                     .Timeout(TimeSpan.FromSeconds(2))
-                    .Async<StateReply>(cancellationToken);
+                    .Async<StateRes>(cancellationToken);
             }
             catch (TimeoutException ex)
             {
@@ -155,20 +155,20 @@ internal sealed class MultiNodeSpotB(IZLinkSpotContext context, EvidenceStore ev
 
 internal sealed class ScenarioStage(ScenarioUserSpot spot)
 {
-    public StateReply Apply(StageProbeReq request, EvidenceStore evidence)
+    public StateRes Apply(StageProbeReq request, EvidenceStore evidence)
     {
         var value = spot.Add(request.Delta);
         evidence.Add(
             $"stage-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|marker={request.Marker}|value={value}");
-        return new StateReply(
+        return new StateRes(
             spot.Context.SpotRid.ToString(),
             spot.Context.NodeRid.ToString(),
             value);
     }
 
     public async ValueTask StartTimerAsync(
-        StageTimerStartCommand command,
+        StageTimerStartMsg command,
         CancellationToken cancellationToken)
     {
         await spot.Context.AddTimer<StageTimerHandler>(

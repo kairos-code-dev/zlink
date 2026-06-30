@@ -12,11 +12,11 @@ namespace RuntimeMonitoring.Server.Trigger.Support;
 
 internal static class TriggerClientRequests
 {
-    public static async Task<ProfileReply> RequestWithTransientHostAsync(
+    public static async Task<ProfileRes> RequestWithTransientHostAsync(
         TriggerOptions options,
         string channelEndpoint,
         string traceLabel,
-        ProfileRequest request)
+        ProfileReq request)
     {
         using var host = CreateClientHost(options, channelEndpoint, traceLabel);
         await host.StartAsync();
@@ -24,9 +24,9 @@ internal static class TriggerClientRequests
         {
             var channel = host.Services.GetRequiredService<IZLinkChannelClient>();
             return await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
-                .PacketName("ProfileRequest")
+                .PacketName("ProfileReq")
                 .Timeout(TimeSpan.FromSeconds(3))
-                .Async<ProfileReply>();
+                .Async<ProfileRes>();
         }
         finally
         {

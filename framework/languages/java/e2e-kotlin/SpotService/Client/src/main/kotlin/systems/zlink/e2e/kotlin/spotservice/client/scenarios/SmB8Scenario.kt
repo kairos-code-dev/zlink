@@ -16,19 +16,19 @@ internal object SmB8Scenario {
             val profile = Contracts.ActorProfile("Destroy", 8, listOf("destroy"))
             connector.connect().await()
             val auth = connector
-                .request(Contracts.ActorAuthRequest(actorId, profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(actorId, profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-B8 auth actor mismatch")
 
             val destroyed = connector
-                .request(Contracts.DestroyActorRequest(actorId))
-                .await(Contracts.DestroyActorReply::class.java)
+                .request(Contracts.DestroyActorReq(actorId))
+                .await(Contracts.DestroyActorRes::class.java)
             ensure(destroyed.destroyed && destroyed.actorId == actorId, "SM-B8 destroy reply mismatch")
 
             val evidence = postJson(
                 Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
                 "/evidence/wait",
-                Contracts.EvidenceWaitRequest(
+                Contracts.EvidenceWaitReq(
                     listOf("ActorDestroyed|session-a|entry|$actorId"),
                     10_000,
                 ),
@@ -41,9 +41,9 @@ internal object SmB8Scenario {
 
             expectFailure {
                 connector
-                    .request(Contracts.ActorEchoRequest("after-destroy", 8, profile))
+                    .request(Contracts.ActorEchoReq("after-destroy", 8, profile))
                     .timeout(Duration.ofMillis(500))
-                    .await(Contracts.ActorEchoReply::class.java)
+                    .await(Contracts.ActorEchoRes::class.java)
             }
 
             println("scenario SM-B8 passed")

@@ -56,7 +56,7 @@
 | `Server/Subscriber/Configuration/ServerArgs.cs` | `run_e2e.sh` | configuration | done | runner env orchestration이 인자 역할을 담당한다. |
 | `Server/Subscriber/Configuration/SubscriberOptions.cs` | `Server/Subscriber/Configuration/subscriber_options.hpp`; `run_e2e.sh` | configuration | done | subscriber id/topic/http options가 대응한다. |
 | `Server/Subscriber/EvidenceStore.cs` | `Server/Subscriber/Infrastructure/evidence_store.hpp` | infrastructure | done | subscriber accepted/ignored/error evidence store와 bounded evidence wait matching이 대응한다. |
-| `Server/Subscriber/Handlers/EventNotifyHandler.cs` | `Server/Subscriber/Handlers/event_notify_handler.hpp` | handler | done | topic별 publish handler가 대응한다. |
+| `Server/Subscriber/Handlers/EventMsgHandler.cs` | `Server/Subscriber/Handlers/event_msg_handler.hpp` | handler | done | topic별 publish handler가 대응한다. |
 | `Server/Subscriber/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Subscriber/Infrastructure/evidence_store.hpp`; `Server/Subscriber/main.cpp` | handler | done | dispatch observer가 evidence store에 error marker를 기록한다. |
 | `Server/Subscriber/OperationalEndpoints.cs` | `Server/Subscriber/Endpoints/operational_endpoints.hpp` | endpoint | done | `/evidence`와 `/evidence/wait` endpoint가 대응한다. |
 | `Server/Subscriber/Program.cs` | `Server/Subscriber/main.cpp` | server-entry | done | subscriber 전용 executable이다. |

@@ -115,8 +115,8 @@ int main (int argc, char **argv)
               .enable_server (options.route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (options.rid))
               .add_request_handler<rm_provider::route_ping_handler_t,
-                                   e2e::route_ping_t,
-                                   e2e::route_pong_t> ("ScenarioRoutePing",
+                                   e2e::scenario_route_req_t,
+                                   e2e::scenario_route_res_t> ("ScenarioRouteReq",
                                                        &rm_provider::route_ping_handler_t::handle);
         }
         if (!options.http_endpoint.empty ()) {

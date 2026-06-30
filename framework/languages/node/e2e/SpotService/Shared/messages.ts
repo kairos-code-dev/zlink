@@ -20,7 +20,7 @@ export interface CreateSpotReq {
   readonly spotRid: string;
 }
 
-export interface CreateSpotReply {
+export interface CreateSpotRes {
   readonly spotRid: string;
   readonly nodeRid: string;
   readonly state: string;
@@ -30,7 +30,7 @@ export interface CloseSpotReq {
   readonly spotRid: string;
 }
 
-export interface CloseSpotReply {
+export interface CloseSpotRes {
   readonly spotRid: string;
   readonly closed: boolean;
 }
@@ -40,7 +40,7 @@ export interface StateReq {
   readonly delta: number;
 }
 
-export interface StateReply {
+export interface StateRes {
   readonly spotRid: string;
   readonly nodeRid: string;
   readonly value: number;
@@ -51,7 +51,7 @@ export interface MultiNodeCreateSpotReq {
   readonly delta: number;
 }
 
-export interface MultiNodeCreateSpotReply {
+export interface MultiNodeCreateSpotRes {
   readonly spotRid: string;
   readonly nodeRid: string;
   readonly state: string;
@@ -63,7 +63,7 @@ export interface MultiNodeStateRouteReq {
   readonly delta: number;
 }
 
-export interface StateCommand {
+export interface StateMsg {
   readonly marker: string;
 }
 
@@ -72,20 +72,20 @@ export interface StageProbeReq {
   readonly delta: number;
 }
 
-export interface StageTimerStartCommand {
+export interface StageTimerStartMsg {
   readonly name: string;
   readonly periodMs: number;
 }
 
-export interface SpotEvent {
+export interface SpotMsg {
   readonly marker: string;
 }
 
-export interface SpotOutboundReq {
+export interface SpotOutboundMsg {
   readonly marker: string;
 }
 
-export interface SpotOutboundNegativeReq {
+export interface SpotOutboundNegativeMsg {
   readonly marker: string;
 }
 
@@ -94,7 +94,7 @@ export interface SpotOutboundRouteReq {
   readonly marker: string;
 }
 
-export interface SpotOutboundRouteReply {
+export interface SpotOutboundRouteRes {
   readonly spotRid: string;
   readonly marker: string;
   readonly accepted: boolean;
@@ -106,7 +106,7 @@ export interface SpotToSpotReq {
   readonly marker: string;
 }
 
-export interface SpotToSpotReply {
+export interface SpotToSpotRes {
   readonly sourceSpotRid: string;
   readonly targetSpotRid: string;
   readonly targetValue: number;
@@ -123,7 +123,7 @@ export interface SpotToSpotTimeoutReq {
   readonly marker: string;
 }
 
-export interface SpotToSpotTimeoutReply {
+export interface SpotToSpotTimeoutRes {
   readonly sourceSpotRid: string;
   readonly targetSpotRid: string;
   readonly failed: boolean;
@@ -140,7 +140,7 @@ export interface SpotToSpotNegativeReq {
   readonly marker: string;
 }
 
-export interface SpotToSpotNegativeReply {
+export interface SpotToSpotNegativeRes {
   readonly sourceSpotRid: string;
   readonly targetSpotRid: string;
   readonly requestFailed: boolean;
@@ -157,7 +157,7 @@ export interface SpotPublishReq {
   readonly marker: string;
 }
 
-export interface SpotPublishReply {
+export interface SpotPublishRes {
   readonly operation: string;
   readonly publisherRid: string;
   readonly spotRid: string;
@@ -165,7 +165,7 @@ export interface SpotPublishReply {
   readonly evidence: readonly string[];
 }
 
-export interface SpotPublishObserveReply {
+export interface SpotPublishObserveRes {
   readonly operation: string;
   readonly spotRid: string;
   readonly marker: string;
@@ -177,7 +177,7 @@ export interface ChannelEchoReq {
   readonly value: string;
 }
 
-export interface ChannelEchoReply {
+export interface ChannelEchoRes {
   readonly value: string;
 }
 
@@ -190,7 +190,7 @@ export interface ChannelRouteReq {
   readonly value: string;
 }
 
-export interface ChannelRouteReply {
+export interface ChannelRouteRes {
   readonly value: string;
 }
 
@@ -201,7 +201,7 @@ export interface SpotMixedRouteReq {
   readonly delta: number;
 }
 
-export interface SpotMixedRouteReply {
+export interface SpotMixedRouteRes {
   readonly spotRid: string;
   readonly channelReply: string;
   readonly spotValue: number;
@@ -211,7 +211,7 @@ export interface ControlPingReq {
   readonly value: string;
 }
 
-export interface ControlPingReply {
+export interface ControlPingRes {
   readonly value: string;
   readonly nodeRid: string;
 }
@@ -222,7 +222,7 @@ export interface AuthReq {
   readonly nodeRid: string;
 }
 
-export interface AuthReply {
+export interface AuthRes {
   readonly actorId: string;
   readonly nodeRid: string;
 }
@@ -233,7 +233,7 @@ export interface EnsureActorReq {
   readonly nodeRid: string;
 }
 
-export interface EnsureActorReply {
+export interface EnsureActorRes {
   readonly actorId: string;
   readonly nodeRid: string;
   readonly generation: string;
@@ -248,7 +248,7 @@ export interface SlowActorPingReq {
   readonly delayMs: number;
 }
 
-export interface ActorPingReply {
+export interface ActorPingRes {
   readonly actorId: string;
   readonly nodeRid: string;
   readonly spotRid: string;
@@ -272,7 +272,7 @@ export interface MultiBindReq {
   readonly nodeRid: string;
 }
 
-export interface MultiBindReply {
+export interface MultiBindRes {
   readonly boundCount: number;
 }
 
@@ -280,7 +280,7 @@ export interface SnapshotReq {
   readonly actorId: string;
 }
 
-export interface SnapshotReply {
+export interface SnapshotRes {
   readonly actorId: string;
   readonly seen: number;
 }
@@ -289,7 +289,7 @@ export interface DestroyActorReq {
   readonly actorId: string;
 }
 
-export interface DestroyActorReply {
+export interface DestroyActorRes {
   readonly actorId: string;
   readonly destroyed: boolean;
 }
@@ -306,7 +306,7 @@ export interface JoinUserSpotActorReq {
   readonly actorId: string;
 }
 
-export interface JoinUserSpotActorReply {
+export interface JoinUserSpotActorRes {
   readonly spotRid: string;
   readonly actorId: string;
   readonly accepted: boolean;
@@ -317,7 +317,7 @@ export interface LeaveReq {
   readonly actorId: string;
 }
 
-export interface LeaveReply {
+export interface LeaveRes {
   readonly actorId: string;
   readonly accepted: boolean;
 }
@@ -329,7 +329,7 @@ export interface ComplexActorReq {
   readonly attributes: Readonly<Record<string, string>>;
 }
 
-export interface ComplexActorReply {
+export interface ComplexActorRes {
   readonly actorId: string;
   readonly displayName: string;
   readonly level: number;
@@ -341,12 +341,12 @@ export interface SpotStateRouteReq extends StateReq {
   readonly spotRid: string;
 }
 
-export interface SpotStateCommandReq {
+export interface SpotStateMsgReq {
   readonly spotRid: string;
   readonly marker: string;
 }
 
-export interface SpotStateCommandReply {
+export interface SpotStateMsgRes {
   readonly spotRid: string;
   readonly marker: string;
   readonly accepted: boolean;
@@ -363,7 +363,7 @@ export interface SpotStageTimerReq {
   readonly periodMs: number;
 }
 
-export interface SpotStageTimerReply {
+export interface SpotStageTimerRes {
   readonly spotRid: string;
   readonly name: string;
   readonly started: boolean;
@@ -374,18 +374,18 @@ export interface SpotMissingHandlerReq {
   readonly spotRid: string;
 }
 
-export interface SpotMissingHandlerReply {
+export interface SpotMissingHandlerRes {
   readonly spotRid: string;
   readonly failed: boolean;
   readonly evidence: readonly string[];
 }
 
-export interface SpotMissingCommandReq {
+export interface SpotMissingMsgReq {
   readonly spotRid: string;
   readonly marker: string;
 }
 
-export interface SpotMissingCommandReply {
+export interface SpotMissingMsgRes {
   readonly spotRid: string;
   readonly marker: string;
   readonly sent: boolean;
@@ -396,18 +396,18 @@ export interface SpotMissingTargetReq {
   readonly spotRid: string;
 }
 
-export interface SpotMissingTargetReply {
+export interface SpotMissingTargetRes {
   readonly spotRid: string;
   readonly failed: boolean;
   readonly evidence: readonly string[];
 }
 
-export interface SpotMissingTargetCommandReq {
+export interface SpotMissingTargetMsgReq {
   readonly spotRid: string;
   readonly marker: string;
 }
 
-export interface SpotMissingTargetCommandReply {
+export interface SpotMissingTargetMsgRes {
   readonly spotRid: string;
   readonly marker: string;
   readonly sent: boolean;
@@ -419,7 +419,7 @@ export interface SlowSpotReq {
   readonly delayMs: number;
 }
 
-export interface SlowSpotReply {
+export interface SlowSpotRes {
   readonly spotRid: string;
   readonly nodeRid: string;
   readonly marker: string;
@@ -432,7 +432,7 @@ export interface SpotSlowRouteReq {
   readonly timeoutMs: number;
 }
 
-export interface SpotSlowRouteReply {
+export interface SpotSlowRouteRes {
   readonly spotRid: string;
   readonly marker: string;
   readonly timedOut: boolean;
@@ -444,7 +444,7 @@ export interface SpotWorkerStartReq {
   readonly delayMs: number;
 }
 
-export interface WorkerStartReply {
+export interface WorkerStartRes {
   readonly spotRid: string;
   readonly nodeRid: string;
   readonly marker: string;
@@ -455,7 +455,7 @@ export interface SpotWorkerCompleteReq {
   readonly marker: string;
 }
 
-export interface SpotWorkerCompleteReply {
+export interface SpotWorkerCompleteRes {
   readonly spotRid: string;
   readonly marker: string;
   readonly completed: boolean;
@@ -468,7 +468,7 @@ export interface SpotTimerStartReq {
   readonly periodMs: number;
 }
 
-export interface SpotTimerStartReply {
+export interface SpotTimerStartRes {
   readonly spotRid: string;
   readonly name: string;
   readonly started: boolean;
@@ -481,7 +481,7 @@ export interface SpotIdleCloseReq {
   readonly periodMs: number;
 }
 
-export interface SpotIdleCloseReply {
+export interface SpotIdleCloseRes {
   readonly spotRid: string;
   readonly name: string;
   readonly closed: boolean;
@@ -495,7 +495,7 @@ export interface SpotOverrunStartReq {
   readonly periodMs: number;
 }
 
-export interface SpotOverrunStartReply {
+export interface SpotOverrunStartRes {
   readonly spotRid: string;
   readonly name: string;
   readonly policy: string;
@@ -507,14 +507,14 @@ export interface SpotTypeMismatchReq {
   readonly spotRid: string;
 }
 
-export interface SpotTypeMismatchReply {
+export interface SpotTypeMismatchRes {
   readonly spotRid: string;
   readonly failed: boolean;
   readonly errorKind: string;
   readonly state: string;
 }
 
-export interface EvidenceWaitRequest {
+export interface EvidenceWaitReq {
   readonly containsAll: readonly string[];
   readonly timeoutMilliseconds?: number;
 }

@@ -5,13 +5,13 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.HexFormat
 import systems.zlink.e2e.kotlin.registrymessaging.provider.Infrastructure.EvidenceStore
-import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileCommand
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePing
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePong
+import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileMsg
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingRes
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
@@ -24,20 +24,20 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 
 class ProfileRequestHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRequestHandler<ProfileRequest, ProfileReply> {
-    override fun handle(request: ProfileRequest, context: ZLinkRequestContext): ProfileReply {
+) : ZLinkRequestHandler<ProfileReq, ProfileRes> {
+    override fun handle(request: ProfileReq, context: ZLinkRequestContext): ProfileRes {
         if (request.value == "slow") {
             Thread.sleep(1000)
         }
         evidence.add("profile-request|rid=${evidence.rid}|value=${request.value}|packet=${context.packetName()}")
-        return ProfileReply("profile:${request.value}", evidence.rid)
+        return ProfileRes("profile:${request.value}", evidence.rid)
     }
 }
 
 class ProfileCommandHandler(
     private val evidence: EvidenceStore,
-) : ZLinkSendHandler<ProfileCommand> {
-    override fun handle(message: ProfileCommand, context: ZLinkSendContext) {
+) : ZLinkSendHandler<ProfileMsg> {
+    override fun handle(message: ProfileMsg, context: ZLinkSendContext) {
         if (message.commandId.startsWith("rm-c9-slow-")) {
             Thread.sleep(1000)
         }
@@ -47,25 +47,25 @@ class ProfileCommandHandler(
 
 class PayloadRequestHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRequestHandler<PayloadRequest, PayloadReply> {
-    override fun handle(request: PayloadRequest, context: ZLinkRequestContext): PayloadReply {
+) : ZLinkRequestHandler<PayloadReq, PayloadRes> {
+    override fun handle(request: PayloadReq, context: ZLinkRequestContext): PayloadRes {
         val digest = MessageDigest.getInstance("SHA-256").digest(request.payload.toByteArray(Charsets.UTF_8))
         val hash = HexFormat.of().formatHex(digest).uppercase()
         evidence.add(
             "payload-request|rid=${evidence.rid}|marker=${request.marker}" +
                 "|length=${request.payload.length}|sha256=$hash|packet=${context.packetName()}",
         )
-        return PayloadReply(request.marker, request.payload.length, hash)
+        return PayloadRes(request.marker, request.payload.length, hash)
     }
 }
 
 class RoutePingHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRouteRequestHandler<ScenarioRoutePing, ScenarioRoutePong> {
-    override fun handle(request: ScenarioRoutePing, context: ZLinkRouteRequestContext): ScenarioRoutePong {
+) : ZLinkRouteRequestHandler<ScenarioRoutePingReq, ScenarioRoutePingRes> {
+    override fun handle(request: ScenarioRoutePingReq, context: ZLinkRouteRequestContext): ScenarioRoutePingRes {
         val source = context.routingId().toString()
         evidence.add("route-request|rid=${evidence.rid}|source=$source|value=${request.value}")
-        return ScenarioRoutePong("route:${request.value}", evidence.rid, source)
+        return ScenarioRoutePingRes("route:${request.value}", evidence.rid, source)
     }
 }
 

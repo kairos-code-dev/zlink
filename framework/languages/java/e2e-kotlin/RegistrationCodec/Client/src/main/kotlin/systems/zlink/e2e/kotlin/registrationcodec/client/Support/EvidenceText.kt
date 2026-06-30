@@ -36,7 +36,7 @@ class EvidenceText(
         )
         assert.waitUntil("RC-A5 filter order") {
             snapshot().entries
-                .filter { it.marker == "Filter" && it.packetName == "EchoManual" && it.value.endsWith(":$value") }
+                .filter { it.marker == "Filter" && it.packetName == "EchoManualReq" && it.value.endsWith(":$value") }
                 .map { it.value } == expected
         }
     }

@@ -97,7 +97,7 @@ internal static class PlayHostFactory
         }
     }
 
-    internal static async Task<StateReply> RequestSpotStateWithRetryAsync(
+    internal static async Task<StateRes> RequestSpotStateWithRetryAsync(
         IZLinkRouteClient routes,
         string spotRid,
         StateReq request,
@@ -115,7 +115,7 @@ internal static class PlayHostFactory
                         request)
                     .PacketName("StateReq")
                     .Timeout(TimeSpan.FromSeconds(1))
-                    .Async<StateReply>();
+                    .Async<StateRes>();
             }
             catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
             {
@@ -155,7 +155,7 @@ internal static class PlayHostFactory
             last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
     }
 
-    internal static async Task<SpotToSpotReply> RequestSpotToSpotWithRetryAsync(
+    internal static async Task<SpotToSpotRes> RequestSpotToSpotWithRetryAsync(
         IZLinkRouteClient routes,
         string sourceSpotRid,
         SpotToSpotReq request,
@@ -173,7 +173,7 @@ internal static class PlayHostFactory
                         request)
                     .PacketName("SpotToSpotReq")
                     .Timeout(TimeSpan.FromSeconds(2))
-                    .Async<SpotToSpotReply>();
+                    .Async<SpotToSpotRes>();
             }
             catch (Exception ex) when (
                 ex is TimeoutException or OperationCanceledException or ZlinkRequestException or ZlinkSubmitException

@@ -14,7 +14,7 @@ public final class NoopIngressHandler implements ZLinkRequestHandler<String, Str
     public String handle(
         String request,
         ZLinkRequestContext context) {
-        state.record("IngressRequest", "channel", request);
+        state.record("IngressReq", "channel", request);
         return request;
     }
 }

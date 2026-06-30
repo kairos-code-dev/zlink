@@ -14,13 +14,13 @@ public final class YdA4WorkerYieldScenario {
         ScenarioAssert.that(actorId != null && !actorId.isBlank(), "YD-A4 actor setup mismatch");
         String requestId = "YD-A4-" + UUID.randomUUID();
         ClientStreamSupport.send(
-            connector.send(new Contracts.WorkerYieldCommand(requestId, 1200))
+            connector.send(new Contracts.WorkerYieldMsg(requestId, 1200))
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
         ClientStreamSupport.waitForEvidence(connector, requestId, "worker-yield-released");
         ClientStreamSupport.send(
-            connector.send(new Contracts.ProbeCommand(requestId, "worker-probe"))
+            connector.send(new Contracts.ProbeMsg(requestId, "worker-probe"))
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
-        Contracts.EvidenceReply evidence = ClientStreamSupport.waitForEvidence(
+        Contracts.EvidenceRes evidence = ClientStreamSupport.waitForEvidence(
             connector,
             requestId,
             "worker-yield-completed");

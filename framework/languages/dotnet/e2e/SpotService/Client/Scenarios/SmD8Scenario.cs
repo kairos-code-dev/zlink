@@ -32,7 +32,7 @@ internal static class SmD8Scenario
                     await candidate.Connect.Async();
                     await candidate.Request(new AuthReq(actorId, "stream reconnect", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     first = candidate;
                     break;
                 }
@@ -54,7 +54,7 @@ internal static class SmD8Scenario
             var pending = first.Request(new SlowActorPingReq("before-disconnect", 1000))
                 .PacketName("SlowActorPingReq")
                 .Timeout(TimeSpan.FromSeconds(10))
-                .Async<ActorPingReply>()
+                .Async<ActorPingRes>()
                 .AsTask();
             await Task.Delay(TimeSpan.FromMilliseconds(100));
             await first.Close.Async();
@@ -89,7 +89,7 @@ internal static class SmD8Scenario
                     await candidate.Connect.Async();
                     await candidate.Request(new AuthReq(actorId, "stream reconnect", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     second = candidate;
                     break;
                 }
@@ -110,7 +110,7 @@ internal static class SmD8Scenario
 
             var resumed = await second.Request(new ActorPingReq("after-reconnect"))
                 .PacketName("ActorPingReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             ScenarioAssert.That(resumed.ActorId == actorId, "SM-D8 reconnected actor mismatch.");
             ScenarioAssert.That(resumed.NodeRid == "play-a", "SM-D8 reconnected node mismatch.");
             ScenarioAssert.That(resumed.Value == "after-reconnect", "SM-D8 reconnected value mismatch.");

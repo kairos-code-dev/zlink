@@ -5,11 +5,11 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 
 public final class ManualRequestHandler
-    implements ZLinkRequestHandler<Contracts.EchoManualRequest, Contracts.EchoReply> {
+    implements ZLinkRequestHandler<Contracts.EchoManualReq, Contracts.EchoRes> {
     @Override
-    public Contracts.EchoReply handle(
-        Contracts.EchoManualRequest request,
+    public Contracts.EchoRes handle(
+        Contracts.EchoManualReq request,
         ZLinkRequestContext context) {
-        return new Contracts.EchoReply("echo:" + request.value(), "manual");
+        return new Contracts.EchoRes("echo:" + request.value(), "manual");
     }
 }

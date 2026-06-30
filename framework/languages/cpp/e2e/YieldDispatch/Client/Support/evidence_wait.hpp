@@ -12,7 +12,7 @@ namespace zlink::framework::e2e::yield_dispatch::client
 {
 
 template <typename TConnector>
-std::optional<yield_evidence_reply_t>
+std::optional<yield_evidence_res_t>
 wait_for_evidence_snapshot (TConnector &connector,
                             const std::string &request_id,
                             const std::string &marker,
@@ -20,14 +20,14 @@ wait_for_evidence_snapshot (TConnector &connector,
                             std::chrono::milliseconds timeout)
 {
     const auto deadline = std::chrono::steady_clock::now () + timeout;
-    std::optional<yield_evidence_reply_t> latest;
+    std::optional<yield_evidence_res_t> latest;
     while (std::chrono::steady_clock::now () < deadline) {
         auto result =
           connector.request (yield_evidence_req_t{.request_id = request_id})
             .packet_name (yield_evidence_req_t::packet_name)
             .metadata (target_node_rid_metadata, target_node_rid)
             .timeout (std::chrono::milliseconds (5000))
-            .template submit<yield_evidence_reply_t> ();
+            .template submit<yield_evidence_res_t> ();
         if (static_cast<bool> (result)) {
             latest = result.value ();
             for (const auto &line : latest->evidence) {

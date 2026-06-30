@@ -216,9 +216,12 @@ grep -q "scenario RM-C4 passed" "$LOG_DIR/client-rl-b1.stdout.log"
 echo "scenario RL-B1 passed"
 run_client rm-c5 rl-d3 env
 grep -q "scenario RM-C5 passed" "$LOG_DIR/client-rl-d3.stdout.log"
-grep -Eq "reason=handler_missing.*action=drop.*packet=MissingProfileCommand" \
+grep -Eq "reason=handler_missing.*action=drop.*packet=MissingProfileMsg" \
   "$LOG_DIR/api-a-flow.log" "$LOG_DIR/api-b-flow.log"
 echo "scenario RL-D3 passed"
+run_client observer-fault rl-d2 env
+grep -q "scenario RL-D2 passed" "$LOG_DIR/client-rl-d2.stdout.log"
+echo "scenario RL-D2 passed"
 stop_pid "$API_A_PID"
 stop_pid "$API_B_PID"
 stop_pid "$WORKFLOW_A_PID"

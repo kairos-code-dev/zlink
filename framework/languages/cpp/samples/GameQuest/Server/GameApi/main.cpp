@@ -69,10 +69,10 @@ template <typename TReq, typename TRes, typename TCall> class http_body_handler_
   protected:
     task_t<TRes> complete (const TReq &request, TCall call)
     {
-        auto result = call (_state, request);
+        auto event = call (_state, request);
         auto progress = _state.get_progress (request.player_id);
         co_await _sessions.notify (request.player_id, progress.active_quests);
-        co_return result;
+        co_return TRes{event.event_id};
     }
 
     game_quest_state_t &_state;
@@ -80,14 +80,14 @@ template <typename TReq, typename TRes, typename TCall> class http_body_handler_
 };
 
 class kill_http_handler_t
-  : public http_body_handler_t<kill_monster_req_t, event_res_t, event_res_t (*) (
+  : public http_body_handler_t<kill_monster_req_t, kill_monster_res_t, quest_event_msg_t (*) (
                                                              game_quest_state_t &,
                                                              const kill_monster_req_t &)>
 {
   public:
     using http_body_handler_t::http_body_handler_t;
     static constexpr const char *topic_name = "KillMonsterReq";
-    task_t<event_res_t> handle (const kill_monster_req_t &request)
+    task_t<kill_monster_res_t> handle (const kill_monster_req_t &request)
     {
         return complete (request, [] (game_quest_state_t &state, const kill_monster_req_t &value) {
             return state.kill_monster (value);
@@ -96,14 +96,14 @@ class kill_http_handler_t
 };
 
 class collect_http_handler_t
-  : public http_body_handler_t<collect_item_req_t, event_res_t, event_res_t (*) (
+  : public http_body_handler_t<collect_item_req_t, collect_item_res_t, quest_event_msg_t (*) (
                                                             game_quest_state_t &,
                                                             const collect_item_req_t &)>
 {
   public:
     using http_body_handler_t::http_body_handler_t;
     static constexpr const char *topic_name = "CollectItemReq";
-    task_t<event_res_t> handle (const collect_item_req_t &request)
+    task_t<collect_item_res_t> handle (const collect_item_req_t &request)
     {
         return complete (request, [] (game_quest_state_t &state, const collect_item_req_t &value) {
             return state.collect_item (value);
@@ -112,14 +112,14 @@ class collect_http_handler_t
 };
 
 class mission_http_handler_t
-  : public http_body_handler_t<complete_mission_req_t, event_res_t, event_res_t (*) (
+  : public http_body_handler_t<complete_mission_req_t, complete_mission_res_t, quest_event_msg_t (*) (
                                                                   game_quest_state_t &,
                                                                   const complete_mission_req_t &)>
 {
   public:
     using http_body_handler_t::http_body_handler_t;
     static constexpr const char *topic_name = "CompleteMissionReq";
-    task_t<event_res_t> handle (const complete_mission_req_t &request)
+    task_t<complete_mission_res_t> handle (const complete_mission_req_t &request)
     {
         return complete (
           request, [] (game_quest_state_t &state, const complete_mission_req_t &value) {
@@ -129,14 +129,14 @@ class mission_http_handler_t
 };
 
 class enter_http_handler_t
-  : public http_body_handler_t<enter_area_req_t, event_res_t, event_res_t (*) (
+  : public http_body_handler_t<enter_area_req_t, enter_area_res_t, quest_event_msg_t (*) (
                                                           game_quest_state_t &,
                                                           const enter_area_req_t &)>
 {
   public:
     using http_body_handler_t::http_body_handler_t;
     static constexpr const char *topic_name = "EnterAreaReq";
-    task_t<event_res_t> handle (const enter_area_req_t &request)
+    task_t<enter_area_res_t> handle (const enter_area_req_t &request)
     {
         return complete (request, [] (game_quest_state_t &state, const enter_area_req_t &value) {
             return state.enter_area (value);
@@ -145,14 +145,14 @@ class enter_http_handler_t
 };
 
 class unlock_http_handler_t
-  : public http_body_handler_t<unlock_feature_req_t, event_res_t, event_res_t (*) (
+  : public http_body_handler_t<unlock_feature_req_t, unlock_feature_res_t, quest_event_msg_t (*) (
                                                             game_quest_state_t &,
                                                             const unlock_feature_req_t &)>
 {
   public:
     using http_body_handler_t::http_body_handler_t;
     static constexpr const char *topic_name = "UnlockFeatureReq";
-    task_t<event_res_t> handle (const unlock_feature_req_t &request)
+    task_t<unlock_feature_res_t> handle (const unlock_feature_req_t &request)
     {
         return complete (request, [] (game_quest_state_t &state, const unlock_feature_req_t &value) {
             return state.unlock_feature (value);

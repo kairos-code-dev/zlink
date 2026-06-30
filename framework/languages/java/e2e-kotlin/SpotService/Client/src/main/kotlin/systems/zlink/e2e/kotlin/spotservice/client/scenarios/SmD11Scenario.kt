@@ -16,13 +16,13 @@ internal object SmD11Scenario {
         try {
             connector.connect().await()
             val auth = connector
-                .request(Contracts.ActorAuthRequest(actorId, profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(actorId, profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-D11 auth actor mismatch")
 
             val streamReply = connector
-                .request(Contracts.ActorEchoRequest("stream-side", 11, profile))
-                .await(Contracts.ActorEchoReply::class.java)
+                .request(Contracts.ActorEchoReq("stream-side", 11, profile))
+                .await(Contracts.ActorEchoRes::class.java)
             ensure(streamReply.actorId == actorId, "SM-D11 stream request actor mismatch")
             ensure(streamReply.value == "entry:stream-side", "SM-D11 stream reply value mismatch")
         } finally {
@@ -35,11 +35,11 @@ internal object SmD11Scenario {
         val routeReply = routes.requestTo(
             Contracts.ROUTE_CHANNEL,
             RoutingId.from("play-a"),
-            Contracts.RoutePing("channel-side"),
+            Contracts.RoutePingReq("channel-side"),
         )
             .packetName(Contracts.ROUTE_PACKET)
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.RoutePong::class.java)
+            .await(Contracts.RoutePingRes::class.java)
         ensure(routeReply.nodeRid == "play-a", "SM-D11 channel request node mismatch")
         ensure(routeReply.value == "route:channel-side", "SM-D11 channel reply value mismatch")
         ensure(routeReply.routeRid == "client-actor-session", "SM-D11 channel source routing id mismatch")

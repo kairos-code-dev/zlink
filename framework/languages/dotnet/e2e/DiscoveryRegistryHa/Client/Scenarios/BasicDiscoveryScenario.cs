@@ -24,13 +24,13 @@ internal static class BasicDiscoveryScenario
             .Build();
 
         await registry.Post("/registry/topology/wait")
-            .Body(new TopologyReadyWaitRequest(2))
+            .Body(new TopologyReadyWaitReq(2))
             .SubmitRawAsync();
 
         var marker = $"dr-a1-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("dr-a1", marker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("dr-a1", marker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:dr-a1", "DR-A1 request failed.");
         ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b", "DR-A1 unexpected provider.");
         ScenarioAssert.That(reply.Marker == marker, "DR-A1 marker mismatch.");
@@ -48,7 +48,7 @@ internal static class BasicDiscoveryScenario
     private static async Task<string[]> WaitForEvidenceAsync(ZLinkHttpClient client, string contains)
     {
         return (await client.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains))
+            .Body(new EvidenceWaitReq(contains))
             .SubmitAsync<string[]>()).Body;
     }
 }

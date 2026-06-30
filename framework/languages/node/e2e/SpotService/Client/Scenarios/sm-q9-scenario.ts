@@ -1,9 +1,9 @@
 import type {
-  EvidenceWaitRequest,
-  MultiNodeCreateSpotReply,
+  EvidenceWaitReq,
+  MultiNodeCreateSpotRes,
   MultiNodeCreateSpotReq,
   MultiNodeStateRouteReq,
-  StateReply
+  StateRes
 } from '../../Shared/messages';
 import { SpotServiceNames } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -14,39 +14,39 @@ export async function runSmQ9(options: ClientOptions): Promise<void> {
   const spotA = `spot-sm-q9-a-${uniqueId()}`;
   const spotB = `spot-sm-q9-b-${uniqueId()}`;
 
-  const createdA = await postJson<MultiNodeCreateSpotReply>(options.multiAUrl, '/spot/create-local', {
+  const createdA = await postJson<MultiNodeCreateSpotRes>(options.multiAUrl, '/spot/create-local', {
     spotRid: spotA,
     delta: 0
   } satisfies MultiNodeCreateSpotReq);
-  const firstA = await postJson<StateReply>(options.multiAUrl, '/spot/state/request', {
+  const firstA = await postJson<StateRes>(options.multiAUrl, '/spot/state/request', {
     spotRid: spotA,
     delta: 11
   } satisfies MultiNodeStateRouteReq);
-  const directA = await postJson<StateReply>(options.multiAUrl, '/spot/state/request', {
+  const directA = await postJson<StateRes>(options.multiAUrl, '/spot/state/request', {
     spotRid: spotA,
     delta: 0
   } satisfies MultiNodeStateRouteReq);
   const evidenceA = await postJson<string[]>(options.multiAUrl, '/evidence/wait', {
     containsAll: [`multi-state-request|node=${SpotServiceNames.multiSpotNodeA}|spot=${spotA}|value=11`],
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
 
-  const createdB = await postJson<MultiNodeCreateSpotReply>(options.multiBUrl, '/spot/create-local', {
+  const createdB = await postJson<MultiNodeCreateSpotRes>(options.multiBUrl, '/spot/create-local', {
     spotRid: spotB,
     delta: 0
   } satisfies MultiNodeCreateSpotReq);
-  const firstB = await postJson<StateReply>(options.multiBUrl, '/spot/state/request', {
+  const firstB = await postJson<StateRes>(options.multiBUrl, '/spot/state/request', {
     spotRid: spotB,
     delta: 17
   } satisfies MultiNodeStateRouteReq);
-  const directB = await postJson<StateReply>(options.multiBUrl, '/spot/state/request', {
+  const directB = await postJson<StateRes>(options.multiBUrl, '/spot/state/request', {
     spotRid: spotB,
     delta: 0
   } satisfies MultiNodeStateRouteReq);
   const evidenceB = await postJson<string[]>(options.multiBUrl, '/evidence/wait', {
     containsAll: [`multi-state-request|node=${SpotServiceNames.multiSpotNodeB}|spot=${spotB}|value=17`],
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
 
   const expectedA = `multi-state-request|node=${SpotServiceNames.multiSpotNodeA}|spot=${spotA}|value=11`;
   const expectedB = `multi-state-request|node=${SpotServiceNames.multiSpotNodeB}|spot=${spotB}|value=17`;

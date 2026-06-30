@@ -36,7 +36,7 @@ internal static class ProbeHostFactory
                 new ZLinkRegistryTopologyFilter(ChannelName: DiscoveryRegistryHaNames.Channel),
                 cancellationToken)));
         app.MapPost("/registry/topology/wait", async (
-            TopologyReadyWaitRequest request,
+            TopologyReadyWaitReq request,
             [FromServices] IZLinkRegistryQueryClient query,
             CancellationToken cancellationToken) =>
         {

@@ -6,18 +6,18 @@ import {
   type ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type {
-  ChannelEchoReply,
-  ChannelRouteReply,
+  ChannelEchoRes,
+  ChannelRouteRes,
   ChannelRouteReq,
   CloseSpotReq,
   CreateSpotReq,
-  EvidenceWaitRequest,
+  EvidenceWaitReq,
   SpotIdleCloseReq,
-  SpotMissingCommandReq,
+  SpotMissingMsgReq,
   SpotMissingHandlerReq,
-  SpotMissingTargetCommandReq,
+  SpotMissingTargetMsgReq,
   SpotMissingTargetReq,
-  SpotMixedRouteReply,
+  SpotMixedRouteRes,
   SpotMixedRouteReq,
   SpotStageProbeReq,
   SpotStageTimerReq,
@@ -25,19 +25,19 @@ import type {
   SpotOutboundRouteReq,
   SpotPublishReq,
   SpotSlowRouteReq,
-  SpotStateCommandReq,
+  SpotStateMsgReq,
   SpotStateRouteReq,
   SpotTimerStartReq,
-  SpotToSpotNegativeReply,
+  SpotToSpotNegativeRes,
   SpotToSpotNegativeRouteReq,
-  SpotToSpotReply,
+  SpotToSpotRes,
   SpotToSpotRouteReq,
-  SpotToSpotTimeoutReply,
+  SpotToSpotTimeoutRes,
   SpotToSpotTimeoutRouteReq,
   SpotTypeMismatchReq,
   SpotWorkerCompleteReq,
   SpotWorkerStartReq,
-  StateReply
+  StateRes
 } from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
 import { ZLinkTimerOverrunPolicy } from '@zlink-systems/framework';
@@ -69,7 +69,7 @@ export function createPlayEndpoints(
       method: 'POST',
       path: '/evidence/wait',
       handle: (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
         return evidence.waitUntil((entries) =>
           request.containsAll.every((expected) => entries.some((entry) => entry.includes(expected))), timeout);
@@ -151,7 +151,7 @@ export function createPlayEndpoints(
           .requestToSpot(request.spotRid, { marker: request.marker, delta: request.delta })
           .packetName('StageProbeReq')
           .timeout(5000)
-          .submit<StateReply>(), 'spot stage route request');
+          .submit<StateRes>(), 'spot stage route request');
       }
     },
     {
@@ -162,7 +162,7 @@ export function createPlayEndpoints(
         const before = evidence.snapshot();
         await retryUntil(async () => spotOutbound
           .sendToSpot(request.spotRid, { name: request.name, periodMs: request.periodMs })
-          .packetName('StageTimerStartCommand')
+          .packetName('StageTimerStartMsg')
           .submit(), 'spot stage timer command route');
         const marker = `stage-timer|rid=${evidence.rid}|spot=${request.spotRid}|name=${request.name}`;
         const snapshot = await evidence.waitUntil((entries) =>
@@ -179,11 +179,11 @@ export function createPlayEndpoints(
       method: 'POST',
       path: '/spot/state/command',
       handle: async (body) => {
-        const request = body as SpotStateCommandReq;
+        const request = body as SpotStateMsgReq;
         const before = evidence.snapshot();
         await spotOutbound
           .sendToSpot(request.spotRid, { marker: request.marker })
-          .packetName('StateCommand')
+          .packetName('StateMsg')
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
           countNew(entries, before, `spot-state-command|rid=${evidence.rid}|spot=${request.spotRid}|marker=${request.marker}`) >= 1,
@@ -223,11 +223,11 @@ export function createPlayEndpoints(
         const before = evidence.snapshot();
         await spotOutbound
           .sendToSpot(request.spotRid, { marker: request.marker })
-          .packetName('SpotOutboundReq')
+          .packetName('SpotOutboundMsg')
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
           countNew(entries, before, `spot-outbound|rid=${evidence.rid}|spot=${request.spotRid}|echo=echo-sm-c2|notify=notify-sm-c2`) >= 1
-          && countNew(entries, before, `spot-event|rid=${evidence.rid}|spot=${request.spotRid}|marker=sm-c2-publish`) >= 1
+          && countNew(entries, before, `spot-msg|rid=${evidence.rid}|spot=${request.spotRid}|marker=sm-c2-publish`) >= 1
           && countNew(entries, before, 'channel-echo|value=sm-c2') >= 1
           && countNew(entries, before, 'channel-notify|marker=notify-sm-c2') >= 1,
           10000);
@@ -247,12 +247,12 @@ export function createPlayEndpoints(
         const before = evidence.snapshot();
         await spotOutbound
           .sendToSpot(request.spotRid, { marker: request.marker })
-          .packetName('SpotOutboundNegativeReq')
+          .packetName('SpotOutboundNegativeMsg')
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
           countNew(entries, before, `spot-outbound-negative|rid=${evidence.rid}|spot=${request.spotRid}|requestFailed=True`) >= 1
           && countNew(entries, before, 'dispatch-error|surface=channel|kind=request|reason=handlerMissing|action=replyError|packet=MissingChannelReq') >= 1
-          && countNew(entries, before, 'dispatch-error|surface=channel|kind=send|reason=handlerMissing|action=drop|packet=MissingChannelSend') >= 1,
+          && countNew(entries, before, 'dispatch-error|surface=channel|kind=send|reason=handlerMissing|action=drop|packet=MissingChannelNotify') >= 1,
           10000);
         return {
           spotRid: request.spotRid,
@@ -271,8 +271,8 @@ export function createPlayEndpoints(
           .request(SpotServiceNames.externalSpotChannel, request.targetNodeRid, { value: request.value })
           .packetName('ChannelEchoReq')
           .timeout(5000)
-          .submit<ChannelEchoReply>();
-        return { value: channel.value } satisfies ChannelRouteReply;
+          .submit<ChannelEchoRes>();
+        return { value: channel.value } satisfies ChannelRouteRes;
       }
     },
     {
@@ -285,17 +285,17 @@ export function createPlayEndpoints(
           .request(SpotServiceNames.externalSpotChannel, request.targetNodeRid, { value: request.channelValue })
           .packetName('ChannelEchoReq')
           .timeout(5000)
-          .submit<ChannelEchoReply>();
+          .submit<ChannelEchoRes>();
         const state = await retryUntil(async () => spotOutbound
           .requestToSpot(request.spotRid, { operation: 'add', delta: request.delta })
           .packetName('StateReq')
           .timeout(5000)
-          .submit<StateReply>(), 'mixed route spot request');
+          .submit<StateRes>(), 'mixed route spot request');
         return {
           spotRid: request.spotRid,
           channelReply: channel.value,
           spotValue: state.value
-        } satisfies SpotMixedRouteReply;
+        } satisfies SpotMixedRouteRes;
       }
     },
     {
@@ -310,7 +310,7 @@ export function createPlayEndpoints(
           })
           .packetName('SpotToSpotReq')
           .timeout(5000)
-          .submit<SpotToSpotReply>();
+          .submit<SpotToSpotRes>();
       }
     },
     {
@@ -325,7 +325,7 @@ export function createPlayEndpoints(
           })
           .packetName('SpotToSpotTimeoutReq')
           .timeout(5000)
-          .submit<SpotToSpotTimeoutReply>();
+          .submit<SpotToSpotTimeoutRes>();
       }
     },
     {
@@ -340,7 +340,7 @@ export function createPlayEndpoints(
           })
           .packetName('SpotToSpotNegativeReq')
           .timeout(5000)
-          .submit<SpotToSpotNegativeReply>();
+          .submit<SpotToSpotNegativeRes>();
       }
     },
     {
@@ -350,7 +350,7 @@ export function createPlayEndpoints(
         const request = body as SpotPublishReq;
         const snapshot = await evidence.waitUntil((entries) =>
           entries.some((entry) =>
-            entry.includes(`spot-event|rid=${evidence.rid}|spot=${request.spotRid}|marker=${request.marker}`)),
+            entry.includes(`spot-msg|rid=${evidence.rid}|spot=${request.spotRid}|marker=${request.marker}`)),
           30000);
         return {
           operation: 'spot.sm-c4-observe',
@@ -372,7 +372,7 @@ export function createPlayEndpoints(
             .requestToSpot(request.spotRid, { operation: 'noop', delta: 0 })
             .packetName('MissingSpotReq')
             .timeout(2000)
-            .submit<StateReply>();
+            .submit<StateRes>();
         });
         const snapshot = await evidence.waitUntil((entries) =>
           countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=request|reason=handlerMissing|action=replyError|packet=MissingSpotReq') >= 1,
@@ -388,14 +388,14 @@ export function createPlayEndpoints(
       method: 'POST',
       path: '/spot/missing-handler/command',
       handle: async (body) => {
-        const request = body as SpotMissingCommandReq;
+        const request = body as SpotMissingMsgReq;
         const before = evidence.snapshot();
         const abort = new AbortController();
         const timeout = setTimeout(() => abort.abort(), 2000);
         try {
           await spotOutbound
             .sendToSpot(request.spotRid, { marker: request.marker })
-            .packetName('MissingSpotCommand')
+            .packetName('MissingSpotMsg')
             .submit(abort.signal);
         } catch (error) {
           if (!abort.signal.aborted) {
@@ -405,7 +405,7 @@ export function createPlayEndpoints(
           clearTimeout(timeout);
         }
         const snapshot = await evidence.waitUntil((entries) =>
-          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=MissingSpotCommand') >= 1,
+          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=MissingSpotMsg') >= 1,
           10000);
         return {
           spotRid: request.spotRid,
@@ -427,7 +427,7 @@ export function createPlayEndpoints(
             .requestToSpot(request.spotRid, { operation: 'noop', delta: 0 })
             .packetName('StateReq')
             .timeout(2000)
-            .submit<StateReply>();
+            .submit<StateRes>();
         });
         const snapshot = await evidence.waitUntil((entries) =>
           countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=request|reason=handlerMissing|action=replyError|packet=StateReq') >= 1,
@@ -443,15 +443,15 @@ export function createPlayEndpoints(
       method: 'POST',
       path: '/spot/missing-target/command',
       handle: async (body) => {
-        const request = body as SpotMissingTargetCommandReq;
+        const request = body as SpotMissingTargetMsgReq;
         InMemorySpotRouteStore.recordUserSpot(request.spotRid, evidence.rid);
         const before = evidence.snapshot();
         await spotOutbound
           .sendToSpot(request.spotRid, { marker: request.marker })
-          .packetName('StateCommand')
+          .packetName('StateMsg')
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
-          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=StateCommand') >= 1,
+          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=StateMsg') >= 1,
           10000);
         return {
           spotRid: request.spotRid,
@@ -466,7 +466,7 @@ export function createPlayEndpoints(
       path: '/spot/state/local',
       handle: (body) => {
         const request = body as SpotStateRouteReq;
-        return spotManager.executeOnSpot(ScenarioUserSpot, request.spotRid, (spot): StateReply => {
+        return spotManager.executeOnSpot(ScenarioUserSpot, request.spotRid, (spot): StateRes => {
           const delta = request.operation === 'add' ? request.delta : 0;
           const value = spot.add(delta);
           evidence.add(`spot-state-request|rid=${evidence.rid}|spot=${spot.context.spotRid}|value=${value}`);
@@ -629,12 +629,12 @@ function delayWorker(marker: string, delayMs: number, signal?: AbortSignal): Pro
 async function requestSpotStateWithRetry(
   spotOutbound: ZLinkSpotOutbound,
   request: SpotStateRouteReq
-): Promise<StateReply> {
+): Promise<StateRes> {
   return retryUntil(async () => spotOutbound
     .requestToSpot(request.spotRid, { operation: request.operation, delta: request.delta })
     .packetName('StateReq')
     .timeout(5000)
-    .submit<StateReply>(), 'spot state route request');
+    .submit<StateRes>(), 'spot state route request');
 }
 
 async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {

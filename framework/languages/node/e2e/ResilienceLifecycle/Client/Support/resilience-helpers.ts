@@ -1,4 +1,4 @@
-import type { ProfileReply, ProfileRequest } from '../../Shared/messages';
+import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { getJson, postJson } from './http-client';
 import { ensure } from './scenario-assert';
 
@@ -8,7 +8,7 @@ interface TopologyEntryResult {
   readonly endpoint?: string;
 }
 
-export function profileRequest(marker: string): ProfileRequest {
+export function profileReq(marker: string): ProfileReq {
   return { value: 'fast', marker };
 }
 
@@ -20,7 +20,7 @@ export async function sendRequestBatch(
   let sawExpectedProvider = expectedProviderRid === undefined;
   for (let i = 0; i < 32; i += 1) {
     const marker = `${markerPrefix}-${i}`;
-    const reply = await postJson<ProfileReply>(consumerUrl, '/profile/request', profileRequest(marker));
+    const reply = await postJson<ProfileRes>(consumerUrl, '/profile/request', profileReq(marker));
     ensure(reply.value === 'profile:fast', `${markerPrefix} request returned an unexpected value.`);
     if (expectedProviderRid !== undefined && reply.providerRid === expectedProviderRid) {
       sawExpectedProvider = true;

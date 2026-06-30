@@ -9,9 +9,9 @@ class TimerActivityHandler {
     @ZLinkSpotRequest
     fun handle(
         spot: TimerScenarioSpot,
-        request: Contracts.TimerActivity,
-    ): Contracts.TimerStatus {
+        request: Contracts.TimerActivityReq,
+    ): Contracts.TimerActivityRes {
         spot.activity(request.value)
-        return spot.status()
+        return spot.activityStatus()
     }
 }

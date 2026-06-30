@@ -8,9 +8,9 @@ namespace YieldDispatch.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("RemoteSpotYieldReq")]
 internal sealed class RemoteSpotYieldHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<YieldProbeSpot, RemoteSpotYieldReq, YieldDispatchReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, RemoteSpotYieldReq, YieldDispatchRes>
 {
-    public async ValueTask<YieldDispatchReply> HandleAsync(
+    public async ValueTask<YieldDispatchRes> HandleAsync(
         YieldProbeSpot spot,
         RemoteSpotYieldReq request,
         CancellationToken cancellationToken)
@@ -26,7 +26,7 @@ internal sealed class RemoteSpotYieldHandler(EvidenceStore evidence)
         evidence.Add(
             $"remote-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|handler=spot");
-        var targetReply = await call.Yield<YieldDispatchReply>(cancellationToken);
+        var targetReply = await call.Yield<YieldDispatchRes>(cancellationToken);
         evidence.Add(
             $"remote-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|targetNode={targetReply.NodeRid}|handler=spot");
@@ -37,13 +37,13 @@ internal sealed class RemoteSpotYieldHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("RemoteSpotYieldCommand")]
+[ZLinkSpotPacketHandler("RemoteSpotYieldMsg")]
 internal sealed class RemoteSpotYieldCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<YieldProbeSpot, RemoteSpotYieldCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, RemoteSpotYieldMsg>
 {
     public async ValueTask HandleAsync(
         YieldProbeSpot spot,
-        RemoteSpotYieldCommand request,
+        RemoteSpotYieldMsg request,
         CancellationToken cancellationToken)
     {
         evidence.Add(
@@ -57,7 +57,7 @@ internal sealed class RemoteSpotYieldCommandHandler(EvidenceStore evidence)
         evidence.Add(
             $"remote-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|handler=spot");
-        var targetReply = await call.Yield<YieldDispatchReply>(cancellationToken);
+        var targetReply = await call.Yield<YieldDispatchRes>(cancellationToken);
         evidence.Add(
             $"remote-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|target={request.TargetSpotRid}|targetNode={targetReply.NodeRid}|handler=spot");

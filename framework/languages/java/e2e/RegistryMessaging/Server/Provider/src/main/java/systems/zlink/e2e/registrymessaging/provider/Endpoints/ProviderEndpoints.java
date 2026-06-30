@@ -44,57 +44,57 @@ public final class ProviderEndpoints {
     }
 
     @PostMapping("/evidence/wait")
-    public List<String> waitEvidence(@RequestBody Contracts.EvidenceWaitRequest request) {
+    public List<String> waitEvidence(@RequestBody Contracts.EvidenceWaitReq request) {
         long timeout = Math.max(1, Math.min(30000, request.timeoutMilliseconds()));
         return state.waitUntil(line -> line.contains(request.contains()), timeout);
     }
 
     @PostMapping("/profile/request")
-    public Contracts.ProfileReply profileRequest(@RequestBody Contracts.ProfileRequest request) {
+    public Contracts.ProfileRes profileRequest(@RequestBody Contracts.ProfileReq request) {
         return requestProfile(Contracts.API_CHANNEL, request, Duration.ofSeconds(5));
     }
 
     @PostMapping("/profile/manual")
-    public Contracts.ProfileReply profileManual(@RequestBody Contracts.ProfileRequest request) {
+    public Contracts.ProfileRes profileManual(@RequestBody Contracts.ProfileReq request) {
         return requestProfile("registry.messaging.api.manual", request, Duration.ofSeconds(5));
     }
 
     @PostMapping("/profile/command")
-    public java.util.Map<String, String> profileCommand(@RequestBody Contracts.ProfileCommand command) {
+    public java.util.Map<String, String> profileCommand(@RequestBody Contracts.ProfileMsg command) {
         client.sendToChannel(Contracts.API_CHANNEL, command)
-            .packetName("ProfileCommand")
+            .packetName("ProfileMsg")
             .await();
         return java.util.Map.of("status", "sent");
     }
 
     @PostMapping("/profile/route/request")
-    public Contracts.RoutePong routeRequest(@RequestBody Contracts.RoutePing request) {
+    public Contracts.RouteRes routeRequest(@RequestBody Contracts.RouteReq request) {
         return routes.requestTo(Contracts.ROUTE_CHANNEL, RoutingId.from("api-b"), request)
             .packetName(Contracts.ROUTE_PACKET)
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.RoutePong.class);
+            .await(Contracts.RouteRes.class);
     }
 
     @PostMapping("/profile/route/missing")
-    public Contracts.RouteMissingResult routeMissing(@RequestBody Contracts.RoutePing request) {
+    public Contracts.RouteMissingRes routeMissing(@RequestBody Contracts.RouteReq request) {
         try {
             routes.requestTo(Contracts.ROUTE_CHANNEL, RoutingId.from("missing-rid"), request)
                 .packetName(Contracts.ROUTE_PACKET)
                 .timeout(Duration.ofMillis(300))
-                .await(Contracts.RoutePong.class);
-            return new Contracts.RouteMissingResult(false);
+                .await(Contracts.RouteRes.class);
+            return new Contracts.RouteMissingRes(false);
         } catch (RuntimeException expected) {
-            return new Contracts.RouteMissingResult(true);
+            return new Contracts.RouteMissingRes(true);
         }
     }
 
-    private Contracts.ProfileReply requestProfile(
+    private Contracts.ProfileRes requestProfile(
         String channelName,
-        Contracts.ProfileRequest request,
+        Contracts.ProfileReq request,
         Duration timeout) {
         return client.requestToChannel(channelName, request)
-            .packetName("ProfileRequest")
+            .packetName("ProfileReq")
             .timeout(timeout)
-            .await(Contracts.ProfileReply.class);
+            .await(Contracts.ProfileRes.class);
     }
 }

@@ -9,7 +9,7 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import org.springframework.context.SmartLifecycle
 import systems.zlink.e2e.kotlin.pubsub.shared.Contracts
-import systems.zlink.e2e.kotlin.pubsub.shared.EventNotify
+import systems.zlink.e2e.kotlin.pubsub.shared.EventMsg
 import systems.zlink.framework.channels.ZLinkFanoutClient
 
 class PublisherEndpoints(
@@ -33,16 +33,16 @@ class PublisherEndpoints(
             exchange.close()
         }
         httpServer.createContext("/publish") { exchange ->
-            val request = exchange.readJson<PublishRequest>()
+            val request = exchange.readJson<PublishReq>()
             fanout.publish(Contracts.EVENT_CHANNEL, request.topic, request.message)
                 .packetName(Contracts.EVENT_PACKET)
                 .await()
             exchange.writeJson(mapOf("status" to "published"))
         }
         httpServer.createContext("/publish-missing") { exchange ->
-            val request = exchange.readJson<PublishRequest>()
+            val request = exchange.readJson<PublishReq>()
             fanout.publish(Contracts.EVENT_CHANNEL, request.topic, request.message)
-                .packetName("MissingEventNotify")
+                .packetName("MissingEventMsg")
                 .await()
             exchange.writeJson(mapOf("status" to "published"))
         }
@@ -71,11 +71,11 @@ class PublisherEndpoints(
     }
 }
 
-class PublishRequest() {
+class PublishReq() {
     var topic: String = ""
-    var message: EventNotify = EventNotify()
+    var message: EventMsg = EventMsg()
 
-    constructor(topic: String, message: EventNotify) : this() {
+    constructor(topic: String, message: EventMsg) : this() {
         this.topic = topic
         this.message = message
     }

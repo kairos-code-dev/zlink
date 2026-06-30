@@ -8,8 +8,8 @@ import systems.zlink.framework.channels.ZLinkSendHandler
 
 class IngressCommandHandler(
     private val state: ScenarioState,
-) : ZLinkSendHandler<Contracts.OutboundCommand> {
-    override fun handle(message: Contracts.OutboundCommand, context: ZLinkSendContext) {
+) : ZLinkSendHandler<Contracts.OutboundMsg> {
+    override fun handle(message: Contracts.OutboundMsg, context: ZLinkSendContext) {
         state.record("IngressCommand", "channel", message.value)
     }
 }

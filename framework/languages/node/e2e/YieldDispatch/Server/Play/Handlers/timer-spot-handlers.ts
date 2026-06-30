@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotTimerHandler, ZLinkTimerTick } from '@zlink-systems/framework';
 import { ZLinkTimerOverrunPolicy } from '@zlink-systems/framework';
-import type { DelayReply, DelayReq, TimerStartCommand, TimerStopCommand } from '../../../Shared/messages';
+import type { DelayRes, DelayReq, TimerStartMsg, TimerStopMsg } from '../../../Shared/messages';
 import { YieldDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../../Support/evidence-store';
 import type { YieldProbeSpot } from '../Spots/yield-probe-spot';
 import { YieldTimerState } from '../Spots/yield-timer-state';
 
 @Injectable()
-export class TimerStartCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, TimerStartCommand> {
+export class TimerStartCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, TimerStartMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: YieldProbeSpot, request: TimerStartCommand, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: YieldProbeSpot, request: TimerStartMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     const state = new YieldTimerState(request.requestId, request.timerName, request.mode, request.delayMs);
     if (!spot.tryAddTimerState(state)) {
@@ -36,8 +36,8 @@ export class TimerStartCommandHandler implements ZLinkSpotPacketHandler<YieldPro
 }
 
 @Injectable()
-export class TimerStopCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, TimerStopCommand> {
-  async handle(spot: YieldProbeSpot, request: TimerStopCommand, context: ZLinkHandlerContext): Promise<void> {
+export class TimerStopCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, TimerStopMsg> {
+  async handle(spot: YieldProbeSpot, request: TimerStopMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     await spot.stopScenarioTimers(request.requestId);
   }
@@ -82,7 +82,7 @@ export class YieldTimerHandler implements ZLinkSpotTimerHandler<YieldProbeSpot> 
         `timer-yield-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${state.requestId}|timer=${state.timerName}|tick=${tickNumber}|handler=timer`
       );
-      await call.yield<DelayReply>();
+      await call.yield<DelayRes>();
       this.evidence.add(
         `timer-yield-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${state.requestId}|timer=${state.timerName}|tick=${tickNumber}|handler=timer`

@@ -13,14 +13,14 @@ inline void run_rm_c5_missing_packet_scenario (zlink::framework::channel_client_
 {
     (void) channels;
     const auto consumer = env_or ("ZLINK_CPP_E2E_DISCOVERY_CONSUMER_URL");
-    auto missing = post_json<profile_request_t, request_failure_result_t> (
-      consumer, "/profile/missing-request", profile_request_t{.value = "missing"});
+    auto missing = post_json<profile_req_t, request_failure_res_t> (
+      consumer, "/profile/missing-request", profile_req_t{.value = "missing"});
     ensure (missing.failed, "RM-C5 missing request unexpectedly succeeded");
-    auto dropped = post_json<profile_command_t, operation_status_t> (
-      consumer, "/profile/missing-command", profile_command_t{.command_id = "missing-send"});
+    auto dropped = post_json<profile_msg_t, operation_status_t> (
+      consumer, "/profile/missing-command", profile_msg_t{.command_id = "missing-send"});
     ensure (dropped.status == "sent", "RM-C5 missing send endpoint failed");
-    auto normal = post_json<profile_request_t, profile_reply_t> (
-      consumer, "/profile/request", profile_request_t{.value = "normal"});
+    auto normal = post_json<profile_req_t, profile_res_t> (
+      consumer, "/profile/request", profile_req_t{.value = "normal"});
     ensure (normal.value == "profile:normal", "RM-C5 normal request after missing packet failed");
 
     std::this_thread::sleep_for (std::chrono::milliseconds (200));

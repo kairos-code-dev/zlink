@@ -1,9 +1,9 @@
 import type {
-  EnsureSpotReply,
+  EnsureSpotRes,
   EnsureSpotReq,
-  TimerStartCommand,
-  TimerStopCommand,
-  YieldEvidenceReply,
+  TimerStartMsg,
+  TimerStopMsg,
+  YieldEvidenceRes,
   YieldEvidenceWaitReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -18,7 +18,7 @@ export interface YieldTimerScenarioContext {
 
 export async function runYdC1(client: ZlinkStreamConnector): Promise<YieldTimerScenarioContext> {
   const spotRid = `yield-timer-${uniqueId()}`;
-  const spot = decodeStreamReply<EnsureSpotReply>(await client
+  const spot = decodeStreamReply<EnsureSpotRes>(await client
     .request({ spotRid } satisfies EnsureSpotReq)
     .packetName('EnsureSpotReq')
     .timeout(30000)
@@ -27,14 +27,14 @@ export async function runYdC1(client: ZlinkStreamConnector): Promise<YieldTimerS
 
   const requestId = `YD-C1-${uniqueId()}`;
   await client
-    .send({ requestId, timerName: `${requestId}-yield`, mode: 'yield-on-first', periodMs: 50, delayMs: 350 } satisfies TimerStartCommand)
-    .packetName('TimerStartCommand')
+    .send({ requestId, timerName: `${requestId}-yield`, mode: 'yield-on-first', periodMs: 50, delayMs: 350 } satisfies TimerStartMsg)
+    .packetName('TimerStartMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
   await waitForEvidence(client, requestId, 'timer-yield-released');
   await client
-    .send({ requestId, timerName: `${requestId}-fast`, mode: 'fast', periodMs: 50, delayMs: 0 } satisfies TimerStartCommand)
-    .packetName('TimerStartCommand')
+    .send({ requestId, timerName: `${requestId}-fast`, mode: 'fast', periodMs: 50, delayMs: 0 } satisfies TimerStartMsg)
+    .packetName('TimerStartMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
   await waitForEvidence(client, requestId, 'timer-fast-completed');
@@ -56,8 +56,8 @@ export async function waitForEvidence(
   client: ZlinkStreamConnector,
   requestId: string,
   marker: string
-): Promise<YieldEvidenceReply> {
-  return decodeStreamReply<YieldEvidenceReply>(await client
+): Promise<YieldEvidenceRes> {
+  return decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId, marker } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')
@@ -67,8 +67,8 @@ export async function waitForEvidence(
 
 export async function stopTimers(client: ZlinkStreamConnector, spotRid: string, requestId: string): Promise<void> {
   await client
-    .send({ requestId } satisfies TimerStopCommand)
-    .packetName('TimerStopCommand')
+    .send({ requestId } satisfies TimerStopMsg)
+    .packetName('TimerStopMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
 }

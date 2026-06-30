@@ -8,8 +8,8 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
-import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRequest
+import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReq
 import systems.zlink.e2e.kotlin.registrymessaging.workflow.Configuration.ServerOptions
 import systems.zlink.e2e.kotlin.registrymessaging.workflow.Endpoints.WorkflowEndpoints
 import systems.zlink.e2e.kotlin.registrymessaging.workflow.Handlers.EvidenceDispatchErrorObserver
@@ -57,8 +57,8 @@ class WorkflowApplication {
                 .setRoutingId(RoutingId.from(options.rid))
             channel.addRequestHandler(
                 WorkflowRequestHandler::class.java,
-                WorkflowRequest::class.java,
-                WorkflowReply::class.java,
+                WorkflowReq::class.java,
+                WorkflowRes::class.java,
                 Contracts.WORKFLOW_REQUEST_PACKET,
             )
         }

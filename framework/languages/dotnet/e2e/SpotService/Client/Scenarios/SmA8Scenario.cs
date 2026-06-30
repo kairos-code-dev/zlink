@@ -11,23 +11,23 @@ internal static class SmA8Scenario
         var spotRid = $"spot-sm-a8-{Guid.NewGuid():N}";
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
-            .SubmitAsync<CreateSpotReply>()).Body;
+            .SubmitAsync<CreateSpotRes>()).Body;
         ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
             "SM-A8 worker spot was not created on play-a.");
         var ready = (await playA.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(spotRid, "noop", 0))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
             "SM-A8 worker spot route did not become ready.");
         var worker = (await playA.Post("/spot/worker/start")
             .Body(new SpotWorkerStartReq(spotRid, "sm-a8-worker", 5000))
-            .SubmitAsync<WorkerStartReply>()).Body;
+            .SubmitAsync<WorkerStartRes>()).Body;
         var duringWorker = (await playA.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(spotRid, "add", 1))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         var completed = (await playA.Post("/spot/worker/complete")
             .Body(new SpotWorkerCompleteReq(spotRid, "sm-a8-worker"))
-            .SubmitAsync<SpotWorkerCompleteReply>()).Body;
+            .SubmitAsync<SpotWorkerCompleteRes>()).Body;
         ScenarioAssert.That(worker.SpotRid == spotRid, "SM-A8 worker start target mismatch.");
         ScenarioAssert.That(duringWorker.Value == 1,
             "SM-A8 concurrent spot request did not run before worker completion.");

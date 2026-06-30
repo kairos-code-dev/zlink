@@ -1,8 +1,8 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  SpotPublishObserveReply,
-  SpotPublishReply,
+  SpotPublishObserveRes,
+  SpotPublishRes,
   SpotPublishReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -11,7 +11,7 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmC4(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-c4-${Date.now()}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(
@@ -20,7 +20,7 @@ export async function runSmC4(options: ClientOptions): Promise<void> {
   );
 
   const unsubscribedSpotRid = `spot-sm-c4-unsubscribed-${Date.now()}`;
-  const unsubscribed = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create-alternate', {
+  const unsubscribed = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create-alternate', {
     spotRid: unsubscribedSpotRid
   } satisfies CreateSpotReq);
   ensure(
@@ -29,11 +29,11 @@ export async function runSmC4(options: ClientOptions): Promise<void> {
   );
 
   const marker = 'sm-c4-publish';
-  const waitTask = postJson<SpotPublishObserveReply>(options.playAUrl, '/spot/publish/wait', {
+  const waitTask = postJson<SpotPublishObserveRes>(options.playAUrl, '/spot/publish/wait', {
     spotRid,
     marker
   } satisfies SpotPublishReq);
-  const publish = await postJson<SpotPublishReply>(options.gatewayUrl, '/spot/publish', {
+  const publish = await postJson<SpotPublishRes>(options.gatewayUrl, '/spot/publish', {
     spotRid,
     marker
   } satisfies SpotPublishReq);
@@ -49,11 +49,11 @@ export async function runSmC4(options: ClientOptions): Promise<void> {
     'SM-C4 gateway evidence did not include publish marker.'
   );
   ensure(
-    observe.evidence.some((line) => line.includes(`spot-event|rid=play-a|spot=${spotRid}|marker=${marker}`)),
+    observe.evidence.some((line) => line.includes(`spot-msg|rid=play-a|spot=${spotRid}|marker=${marker}`)),
     'SM-C4 evidence did not include spot event publish.'
   );
   ensure(
-    observe.evidence.every((line) => !line.includes(`spot-event|rid=play-a|spot=${unsubscribedSpotRid}|marker=${marker}`)),
+    observe.evidence.every((line) => !line.includes(`spot-msg|rid=play-a|spot=${unsubscribedSpotRid}|marker=${marker}`)),
     'SM-C4 unsubscribed spot received publish event.'
   );
 

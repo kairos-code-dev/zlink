@@ -5,66 +5,66 @@ object Contracts {
     const val PROFILE_MANUAL_CHANNEL = "profile.manual"
     const val PROFILE_ROUTE_CHANNEL = "profile.route"
     const val WORKFLOW_CHANNEL = "workflow"
-    const val PROFILE_REQUEST_PACKET = "ProfileRequest"
-    const val PROFILE_COMMAND_PACKET = "ProfileCommand"
-    const val PAYLOAD_REQUEST_PACKET = "PayloadRequest"
-    const val ROUTE_PACKET = "ScenarioRoutePing"
-    const val WORKFLOW_REQUEST_PACKET = "WorkflowRequest"
+    const val PROFILE_REQUEST_PACKET = "ProfileReq"
+    const val PROFILE_COMMAND_PACKET = "ProfileMsg"
+    const val PAYLOAD_REQUEST_PACKET = "PayloadReq"
+    const val ROUTE_PACKET = "ScenarioRoutePingReq"
+    const val WORKFLOW_REQUEST_PACKET = "WorkflowReq"
 }
 
-data class ProfileRequest(
+data class ProfileReq(
     var value: String = "",
 )
 
-data class ProfileReply(
+data class ProfileRes(
     var value: String = "",
     var providerRid: String = "",
 )
 
-data class ProfileCommand(
+data class ProfileMsg(
     var commandId: String = "",
 )
 
-data class EvidenceWaitRequest(
+data class EvidenceWaitReq(
     var contains: String = "",
     var timeoutMilliseconds: Int = 10000,
 )
 
-data class PayloadRequest(
+data class PayloadReq(
     var marker: String = "",
     var payload: String = "",
 )
 
-data class PayloadReply(
+data class PayloadRes(
     var marker: String = "",
     var length: Int = 0,
     var sha256: String = "",
 )
 
-data class WorkflowRequest(
+data class WorkflowReq(
     var value: String = "",
 )
 
-data class WorkflowReply(
+data class WorkflowRes(
     var value: String = "",
     var providerRid: String = "",
 )
 
-data class ScenarioRoutePing(
+data class ScenarioRoutePingReq(
     var value: String = "",
 )
 
-data class ScenarioRoutePong(
+data class ScenarioRoutePingRes(
     var value: String = "",
     var providerRid: String = "",
     var sourceRid: String = "",
 )
 
-data class RouteMissingResult(
+data class RouteMissingRes(
     var failed: Boolean = false,
 )
 
-data class RequestFailureResult(
+data class RequestFailureRes(
     var failed: Boolean = false,
     var failureType: String = "",
 )

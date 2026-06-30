@@ -15,7 +15,7 @@ public final class ZLinkGameplayEventPublisher implements GameplayActionService.
     }
 
     @Override
-    public void publish(Messages.GameplayEventEnvelope event) {
+    public void publish(Messages.GameplayEventMsg event) {
         fanout.publish(SampleNames.FanoutChannel, SampleNames.GameplayTopic, event).await();
     }
 }

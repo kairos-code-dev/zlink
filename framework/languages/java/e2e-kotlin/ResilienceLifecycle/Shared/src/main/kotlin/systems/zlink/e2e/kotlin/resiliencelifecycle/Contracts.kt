@@ -7,25 +7,25 @@ object Contracts {
     const val CHANNEL: String = "resilience.lifecycle.api"
     const val HANDLER_GROUP: String = "resilience-lifecycle"
 
-    data class WorkRequest @JsonCreator constructor(
+    data class WorkReq @JsonCreator constructor(
         @JsonProperty("value") val value: String,
     ) {
         fun value(): String = value
     }
 
-    data class WorkCommand @JsonCreator constructor(
+    data class WorkMsg @JsonCreator constructor(
         @JsonProperty("value") val value: String,
     ) {
         fun value(): String = value
     }
 
-    data class UnhandledRequest @JsonCreator constructor(
+    data class UnhandledReq @JsonCreator constructor(
         @JsonProperty("value") val value: String,
     ) {
         fun value(): String = value
     }
 
-    data class WorkReply @JsonCreator constructor(
+    data class WorkRes @JsonCreator constructor(
         @JsonProperty("value") val value: String,
         @JsonProperty("providerRid") val providerRid: String,
     ) {

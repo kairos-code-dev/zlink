@@ -22,7 +22,7 @@ internal static class SubscriberHostFactory
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
             framework.AddFanoutChannel(PubSubNames.Channel)
                 .EnableSubscriber(options.PublisherEndpoint)
-                .AddPublishHandler<EventNotifyHandler, EventNotify>("EventNotify");
+                .AddPublishHandler<EventMsgHandler, EventMsg>("EventMsg");
         });
 
         var app = builder.Build();

@@ -91,7 +91,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
     std::vector<std::string> actor_ids;
 
   private:
-    void on_player_win_milestone (const player_win_milestone_event_t &event)
+    void on_player_win_milestone (const player_win_milestone_msg_t &event)
     {
         for (auto &[_, actor] : observers) {
             const auto notify =

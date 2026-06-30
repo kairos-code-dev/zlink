@@ -1,4 +1,4 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
@@ -19,7 +19,7 @@ export async function runRmC9(backpressureConsumerUrl: string, providerAUrl: str
   );
 
   await new Promise((resolve) => setTimeout(resolve, 5000));
-  const followUp = await postJson<ProfileReply>(
+  const followUp = await postJson<ProfileRes>(
     backpressureConsumerUrl,
     '/profile/request',
     { value: 'rm-c9-after' }

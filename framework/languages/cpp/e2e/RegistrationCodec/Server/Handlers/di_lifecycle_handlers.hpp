@@ -14,14 +14,14 @@ class scoped_lifecycle_handler_t
     using dependency_types =
       zlink::framework::dependency_list_t<scoped_dependency_t, singleton_dependency_t>;
     using request_type = scoped_lifecycle_req_t;
-    using reply_type = scoped_lifecycle_reply_t;
+    using reply_type = scoped_lifecycle_res_t;
 
     scoped_lifecycle_handler_t (scoped_dependency_t &scoped, singleton_dependency_t &singleton) :
         _scoped (scoped), _singleton (singleton)
     {
     }
 
-    scoped_lifecycle_reply_t handle (const scoped_lifecycle_req_t &)
+    scoped_lifecycle_res_t handle (const scoped_lifecycle_req_t &)
     {
         return {.scoped_id = _scoped.id,
                 .singleton_id = _singleton.id,
@@ -37,9 +37,9 @@ class scoped_lifecycle_stats_handler_t
 {
   public:
     using request_type = scoped_lifecycle_stats_req_t;
-    using reply_type = scoped_lifecycle_stats_reply_t;
+    using reply_type = scoped_lifecycle_stats_res_t;
 
-    scoped_lifecycle_stats_reply_t handle (const scoped_lifecycle_stats_req_t &)
+    scoped_lifecycle_stats_res_t handle (const scoped_lifecycle_stats_req_t &)
     {
         return {.destroyed_count = scoped_dependency_destroyed.load ()};
     }

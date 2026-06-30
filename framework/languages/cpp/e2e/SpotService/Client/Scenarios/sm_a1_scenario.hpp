@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "../Support/spot_lifecycle_order_context.hpp"
 #include "../../Shared/spot_service_contracts.hpp"
 
 #include <zlink/http_client.hpp>
@@ -10,6 +11,37 @@
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
+
+inline void run_sm_a1_scenario (const std::string &play_http_endpoint,
+                                spot_lifecycle_order_context_t &context)
+{
+    if (play_http_endpoint.empty ()) {
+        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-A1");
+    }
+
+    auto api = zlink::http_client::client_t::create ()
+                 .base_url (play_http_endpoint)
+                 .build ();
+    auto raw =
+      api.post ("/spot/create")
+        .body (create_spot_req_t{.spot_rid = context.spot_rid})
+        .submit_raw ()
+        .result ();
+    if (!raw) {
+        throw std::runtime_error (raw.error () ? raw.error ()->what () : "SM-A1 HTTP failed");
+    }
+    if (raw.value ().status >= 400) {
+        throw std::runtime_error ("SM-A1 HTTP status " + std::to_string (raw.value ().status)
+                                  + ": " + raw.value ().body);
+    }
+    auto created = nlohmann::json::parse (raw.value ().body).get<create_spot_res_t> ();
+    if (created.spot_rid != context.spot_rid) {
+        throw std::runtime_error ("SM-A1 spot rid mismatch: " + created.spot_rid);
+    }
+    if (created.owner_node_rid != "play-a") {
+        throw std::runtime_error ("SM-A1 owner mismatch: " + created.owner_node_rid);
+    }
+}
 
 inline void run_sm_a1_scenario (const std::string &play_http_endpoint)
 {

@@ -6,7 +6,7 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PacketNames, PubSubNames } from '../../Shared/messages';
 import { parseSubscriberOptions, SUBSCRIBER_OPTIONS, type SubscriberOptions } from './Configuration/subscriber-options';
 import { createSubscriberEndpoints } from './Endpoints/operational-endpoints';
-import { EvidenceDispatchErrorObserver, EventNotifyHandler } from './Handlers/event-notify-handler';
+import { EvidenceDispatchErrorObserver, EventMsgHandler } from './Handlers/event-msg-handler';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
@@ -42,7 +42,7 @@ function createSubscriberModule(options: SubscriberOptions, evidence: EvidenceSt
           builder.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint);
           builder.addFanoutChannel(PubSubNames.channel)
             .enableSubscriber(options.publisherEndpoint)
-            .addPublishHandler(PacketNames.eventNotify, EventNotifyHandler);
+            .addPublishHandler(PacketNames.eventMsg, EventMsgHandler);
           return builder.build();
         }
       })
@@ -50,7 +50,7 @@ function createSubscriberModule(options: SubscriberOptions, evidence: EvidenceSt
     providers: [
       { provide: EvidenceStore, useValue: evidence },
       { provide: SUBSCRIBER_OPTIONS, useValue: options },
-      EventNotifyHandler,
+      EventMsgHandler,
       EvidenceDispatchErrorObserver
     ]
   })(SubscriberModule);

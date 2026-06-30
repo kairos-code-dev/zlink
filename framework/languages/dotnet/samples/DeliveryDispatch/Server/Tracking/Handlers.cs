@@ -11,21 +11,21 @@ internal sealed class DeliveryStatusChangedHandler(
     EvidenceStore evidence,
     IZLinkChannelClient channels,
     ILogger<DeliveryStatusChangedHandler> logger)
-    : IZLinkRequestHandler<DeliveryStatusChanged, DeliveryStatusAck>
+    : IZLinkRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes>
 {
-    public async ValueTask<DeliveryStatusAck> HandleAsync(
-        DeliveryStatusChanged request,
+    public async ValueTask<DeliveryStatusChangedRes> HandleAsync(
+        DeliveryStatusChangedReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         evidence.Append(request);
         _ = await channels.RequestToChannel(SampleNames.CustomerRouteChannel, request)
-            .Async<DeliveryStatusAck>(cancellationToken);
+            .Async<DeliveryStatusChangedRes>(cancellationToken);
         logger.LogInformation(
             "deliverydispatch tracking: status delivery={DeliveryId} status={Status} courier={CourierId}",
             request.DeliveryId,
             request.Status,
             request.CourierId);
-        return new DeliveryStatusAck(request.DeliveryId, request.Status);
+        return new DeliveryStatusChangedRes(request.DeliveryId, request.Status);
     }
 }

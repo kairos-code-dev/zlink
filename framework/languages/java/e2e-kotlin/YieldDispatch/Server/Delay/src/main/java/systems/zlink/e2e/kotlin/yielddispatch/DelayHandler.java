@@ -4,10 +4,10 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 
 public final class DelayHandler
-    implements ZLinkRequestHandler<Contracts.DelayRequest, Contracts.DelayReply> {
+    implements ZLinkRequestHandler<Contracts.DelayReq, Contracts.DelayRes> {
     @Override
-    public Contracts.DelayReply handle(
-        Contracts.DelayRequest request,
+    public Contracts.DelayRes handle(
+        Contracts.DelayReq request,
         ZLinkRequestContext context) {
         try {
             Thread.sleep(request.millis());
@@ -15,6 +15,6 @@ public final class DelayHandler
             Thread.currentThread().interrupt();
             throw new IllegalStateException("delay interrupted", error);
         }
-        return new Contracts.DelayReply("delay:" + request.value());
+        return new Contracts.DelayRes("delay:" + request.value());
     }
 }

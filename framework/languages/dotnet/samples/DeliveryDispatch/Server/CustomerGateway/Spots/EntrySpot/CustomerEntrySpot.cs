@@ -15,10 +15,10 @@ internal sealed class CustomerEntrySpot(
 
     public void Configure()
     {
-        Context.Handlers.AddActorRequest<SubscribeDeliveryActorHandler, CustomerActor>(nameof(SubscribeDelivery));
+        Context.Handlers.AddActorRequest<SubscribeDeliveryActorHandler, CustomerActor>(nameof(SubscribeDeliveryReq));
     }
 
-    public SubscribeDeliveryAccepted SubscribeCustomer(
+    public SubscribeDeliveryRes SubscribeCustomer(
         string customerId,
         string deliveryId)
     {
@@ -27,7 +27,7 @@ internal sealed class CustomerEntrySpot(
             "deliverydispatch customer-entry: subscribed customer={CustomerId} delivery={DeliveryId}",
             customerId,
             deliveryId);
-        return new SubscribeDeliveryAccepted(deliveryId);
+        return new SubscribeDeliveryRes(deliveryId);
     }
 
     public ValueTask OnCreateActorAsync(

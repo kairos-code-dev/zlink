@@ -5,8 +5,8 @@ import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.e2e.kotlin.spotservice.play.spots.*
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler
 
-class StateCommandHandler : ZLinkSpotPacketHandler<UserSpot, Contracts.StateCommand> {
-    override fun handle(spot: UserSpot, message: Contracts.StateCommand) {
+class StateCommandHandler : ZLinkSpotPacketHandler<UserSpot, Contracts.StateMsg> {
+    override fun handle(spot: UserSpot, message: Contracts.StateMsg) {
         spot.command(message.value)
     }
 }

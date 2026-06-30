@@ -41,7 +41,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
 
   async configure(): Promise<void> {
     this.context.handlers.actorRequest(PacketNames.placeMarkReq, PlayActorPlaceMarkHandler);
-    this.context.handlers.actorSend(PacketNames.leaveGameReq, PlayActorLeaveGameHandler);
+    this.context.handlers.actorSend(PacketNames.leaveGameMsg, PlayActorLeaveGameHandler);
     this.gameTick = await this.context.addTimer(
       'game-tick',
       GameTickPeriodMs,

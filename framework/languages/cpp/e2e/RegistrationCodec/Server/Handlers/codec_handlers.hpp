@@ -11,10 +11,10 @@ namespace zlink::framework::e2e::registration_codec::server
 class json_roundtrip_handler_t
 {
   public:
-    using request_type = json_roundtrip_t;
-    using reply_type = json_roundtrip_reply_t;
+    using request_type = json_roundtrip_req_t;
+    using reply_type = json_roundtrip_res_t;
 
-    json_roundtrip_reply_t handle (const json_roundtrip_t &request,
+    json_roundtrip_res_t handle (const json_roundtrip_req_t &request,
                                    const zlink::framework::request_context_t &context)
     {
         return {.value = "json:" + request.value, .content_type = context.content_type};
@@ -25,11 +25,11 @@ class json_codec_send_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using message_type = json_codec_send_t;
+    using message_type = json_codec_msg_t;
 
     explicit json_codec_send_handler_t (scenario_state_t &state) : _state (state) {}
 
-    void handle (const json_codec_send_t &message,
+    void handle (const json_codec_msg_t &message,
                  const zlink::framework::send_context_t &context)
     {
         _state.record ("RC-B1-send", context.content_type + ":" + message.value);
@@ -42,10 +42,10 @@ class json_codec_send_handler_t
 class protobuf_roundtrip_handler_t
 {
   public:
-    using request_type = protobuf_roundtrip_t;
-    using reply_type = protobuf_roundtrip_reply_t;
+    using request_type = protobuf_roundtrip_req_t;
+    using reply_type = protobuf_roundtrip_res_t;
 
-    protobuf_roundtrip_reply_t handle (const protobuf_roundtrip_t &request,
+    protobuf_roundtrip_res_t handle (const protobuf_roundtrip_req_t &request,
                                        const zlink::framework::request_context_t &context)
     {
         return {.value = "protobuf:" + request.value, .content_type = context.content_type};
@@ -56,11 +56,11 @@ class protobuf_codec_send_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using message_type = protobuf_codec_send_t;
+    using message_type = protobuf_codec_msg_t;
 
     explicit protobuf_codec_send_handler_t (scenario_state_t &state) : _state (state) {}
 
-    void handle (const protobuf_codec_send_t &message,
+    void handle (const protobuf_codec_msg_t &message,
                  const zlink::framework::send_context_t &context)
     {
         _state.record ("RC-B2-send", context.content_type + ":" + message.value);
@@ -73,10 +73,10 @@ class protobuf_codec_send_handler_t
 class messagepack_roundtrip_handler_t
 {
   public:
-    using request_type = messagepack_roundtrip_t;
-    using reply_type = messagepack_roundtrip_reply_t;
+    using request_type = messagepack_roundtrip_req_t;
+    using reply_type = messagepack_roundtrip_res_t;
 
-    messagepack_roundtrip_reply_t handle (const messagepack_roundtrip_t &request,
+    messagepack_roundtrip_res_t handle (const messagepack_roundtrip_req_t &request,
                                           const zlink::framework::request_context_t &context)
     {
         return {.value = "messagepack:" + request.value, .content_type = context.content_type};
@@ -87,11 +87,11 @@ class messagepack_codec_send_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using message_type = messagepack_codec_send_t;
+    using message_type = messagepack_codec_msg_t;
 
     explicit messagepack_codec_send_handler_t (scenario_state_t &state) : _state (state) {}
 
-    void handle (const messagepack_codec_send_t &message,
+    void handle (const messagepack_codec_msg_t &message,
                  const zlink::framework::send_context_t &context)
     {
         _state.record ("RC-B3-send", context.content_type + ":" + message.value);
@@ -104,10 +104,10 @@ class messagepack_codec_send_handler_t
 class custom_roundtrip_handler_t
 {
   public:
-    using request_type = custom_roundtrip_t;
-    using reply_type = custom_roundtrip_reply_t;
+    using request_type = custom_roundtrip_req_t;
+    using reply_type = custom_roundtrip_res_t;
 
-    custom_roundtrip_reply_t handle (const custom_roundtrip_t &request)
+    custom_roundtrip_res_t handle (const custom_roundtrip_req_t &request)
     {
         return {.value = "custom:" + request.value};
     }
@@ -116,10 +116,10 @@ class custom_roundtrip_handler_t
 class mismatch_roundtrip_handler_t
 {
   public:
-    using request_type = mismatch_roundtrip_t;
-    using reply_type = mismatch_roundtrip_reply_t;
+    using request_type = mismatch_roundtrip_req_t;
+    using reply_type = mismatch_roundtrip_res_t;
 
-    mismatch_roundtrip_reply_t handle (const mismatch_roundtrip_t &request)
+    mismatch_roundtrip_res_t handle (const mismatch_roundtrip_req_t &request)
     {
         return {.value = "mismatch:" + request.value};
     }

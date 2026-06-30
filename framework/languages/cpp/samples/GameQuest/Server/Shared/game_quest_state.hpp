@@ -25,28 +25,28 @@ class game_quest_state_t
         return {visible_progress_unlocked (player_id)};
     }
 
-    event_res_t enter_area (const enter_area_req_t &request)
+    quest_event_msg_t enter_area (const enter_area_req_t &request)
     {
         return record_event (request.player_id, request.idempotency_key,
                              request.area_id == "ruins" ? "ruins-explorer" : request.area_id, 1, 1,
                              "area:" + request.area_id);
     }
 
-    event_res_t kill_monster (const kill_monster_req_t &request)
+    quest_event_msg_t kill_monster (const kill_monster_req_t &request)
     {
         return increment_event (request.player_id, request.idempotency_key,
                                 sample_names_t::first_hunt, 1, 3,
                                 "kill:" + request.monster_id);
     }
 
-    event_res_t collect_item (const collect_item_req_t &request)
+    quest_event_msg_t collect_item (const collect_item_req_t &request)
     {
         return increment_event (request.player_id, request.idempotency_key,
                                 sample_names_t::herb_gathering, request.count, 5,
                                 "item:" + request.item_id);
     }
 
-    event_res_t complete_mission (const complete_mission_req_t &request)
+    quest_event_msg_t complete_mission (const complete_mission_req_t &request)
     {
         const std::lock_guard lock (_mutex);
         _completed_missions[request.player_id].insert (request.mission_id);
@@ -55,7 +55,7 @@ class game_quest_state_t
                                       "mission:" + request.mission_id);
     }
 
-    event_res_t unlock_feature (const unlock_feature_req_t &request)
+    quest_event_msg_t unlock_feature (const unlock_feature_req_t &request)
     {
         const std::lock_guard lock (_mutex);
         _unlocked_features[request.player_id].insert (request.feature_id);
@@ -132,12 +132,12 @@ class game_quest_state_t
     }
 
   private:
-    event_res_t increment_event (const std::string &player_id,
-                                 const std::string &idempotency_key,
-                                 const std::string &quest_id,
-                                 int delta,
-                                 int required_count,
-                                 const std::string &evidence)
+    quest_event_msg_t increment_event (const std::string &player_id,
+                                       const std::string &idempotency_key,
+                                       const std::string &quest_id,
+                                       int delta,
+                                       int required_count,
+                                       const std::string &evidence)
     {
         const std::lock_guard lock (_mutex);
         auto *current = find_progress_unlocked (player_id, quest_id);
@@ -146,24 +146,24 @@ class game_quest_state_t
                                       evidence);
     }
 
-    event_res_t record_event (const std::string &player_id,
-                              const std::string &idempotency_key,
-                              const std::string &quest_id,
-                              int current_count,
-                              int required_count,
-                              const std::string &evidence)
+    quest_event_msg_t record_event (const std::string &player_id,
+                                    const std::string &idempotency_key,
+                                    const std::string &quest_id,
+                                    int current_count,
+                                    int required_count,
+                                    const std::string &evidence)
     {
         const std::lock_guard lock (_mutex);
         return record_event_unlocked (player_id, idempotency_key, quest_id, current_count,
                                       required_count, evidence);
     }
 
-    event_res_t record_event_unlocked (const std::string &player_id,
-                                       const std::string &idempotency_key,
-                                       const std::string &quest_id,
-                                       int current_count,
-                                       int required_count,
-                                       const std::string &evidence)
+    quest_event_msg_t record_event_unlocked (const std::string &player_id,
+                                             const std::string &idempotency_key,
+                                             const std::string &quest_id,
+                                             int current_count,
+                                             int required_count,
+                                             const std::string &evidence)
     {
         const auto event_id = player_id + "-" + idempotency_key;
         if (_idempotency.insert (idempotency_key).second) {

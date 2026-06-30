@@ -288,7 +288,7 @@ elif mode == "publisher-restart":
     for endpoint in endpoints:
         wait_lines(endpoint, contains_all_line_groups=groups)
 elif mode == "negative":
-    groups = [accepted("after-missing"), error_line("MissingEventNotify")]
+    groups = [accepted("after-missing"), error_line("MissingEventMsg")]
     for endpoint in endpoints:
         wait_lines(endpoint, contains_all_line_groups=groups)
 else:

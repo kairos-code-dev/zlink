@@ -18,20 +18,20 @@ import type {
   ZLinkSpotManager
 } from '@zlink-systems/framework';
 import type {
-  CustomerActorEnsured,
-  CustomerDeliverySubscribed,
-  DeliveryStatusAck,
-  DeliveryStatusChanged,
+  EnsureCustomerActorRes,
+  SubscribeCustomerToDeliveryRes,
+  DeliveryStatusRes,
+  DeliveryStatusReq,
   DeliveryStatusNotify,
-  EnsureCustomerActor,
-  SubscribeCustomerToDelivery
+  EnsureCustomerActorReq,
+  SubscribeCustomerToDeliveryReq
 } from '../../../Shared/Contracts/messages';
 
 @zlinkRequestHandler('tracking', PacketNames.ensureCustomerActor)
-class EnsureCustomerActorHandler implements ZLinkRequestHandler<EnsureCustomerActor, CustomerActorEnsured> {
+class EnsureCustomerActorHandler implements ZLinkRequestHandler<EnsureCustomerActorReq, EnsureCustomerActorRes> {
   constructor(@Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager) {}
 
-  async handle(request: EnsureCustomerActor, context: ZLinkRequestContext): Promise<CustomerActorEnsured> {
+  async handle(request: EnsureCustomerActorReq, context: ZLinkRequestContext): Promise<EnsureCustomerActorRes> {
     void context;
     console.error(`deliverydispatch tracking: ensure customer=${request.customerId}`);
     const actor = await this.actors.getOrCreate(request.customerId, SampleNames.customerActorType, request);
@@ -47,13 +47,13 @@ class EnsureCustomerActorHandler implements ZLinkRequestHandler<EnsureCustomerAc
 }
 
 @zlinkRequestHandler('tracking', PacketNames.subscribeCustomerToDelivery)
-class SubscribeCustomerToDeliveryHandler implements ZLinkRequestHandler<SubscribeCustomerToDelivery, CustomerDeliverySubscribed> {
+class SubscribeCustomerToDeliveryHandler implements ZLinkRequestHandler<SubscribeCustomerToDeliveryReq, SubscribeCustomerToDeliveryRes> {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager
   ) {}
 
-  async handle(request: SubscribeCustomerToDelivery, context: ZLinkRequestContext): Promise<CustomerDeliverySubscribed> {
+  async handle(request: SubscribeCustomerToDeliveryReq, context: ZLinkRequestContext): Promise<SubscribeCustomerToDeliveryRes> {
     void context;
     console.error(`deliverydispatch tracking: subscribe delivery=${request.deliveryId} customer=${request.customerId}`);
     await this.spots.getOrCreate(DeliveryTrackingSpot, request.deliveryId, { deliveryId: request.deliveryId });
@@ -63,7 +63,7 @@ class SubscribeCustomerToDeliveryHandler implements ZLinkRequestHandler<Subscrib
 }
 
 @zlinkRequestHandler('tracking', PacketNames.deliveryStatusChanged)
-class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatusChanged, DeliveryStatusAck> {
+class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatusReq, DeliveryStatusRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
     @Inject(ZLINK_FANOUT_CLIENT) private readonly fanout: ZLinkFanoutClient,
@@ -71,7 +71,7 @@ class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatus
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: DeliveryStatusChanged, context: ZLinkRequestContext): Promise<DeliveryStatusAck> {
+  async handle(request: DeliveryStatusReq, context: ZLinkRequestContext): Promise<DeliveryStatusRes> {
     void context;
     await this.spots.getOrCreate(DeliveryTrackingSpot, request.deliveryId, { deliveryId: request.deliveryId });
     this.evidence.append(request);

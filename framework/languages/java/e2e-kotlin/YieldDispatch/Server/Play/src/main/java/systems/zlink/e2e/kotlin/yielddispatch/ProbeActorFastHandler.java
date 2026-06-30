@@ -11,18 +11,18 @@ public final class ProbeActorFastHandler {
         this.evidence = evidence;
     }
 
-    @ZLinkSpotActorRequest(packetName = "ActorFastRequest")
-    public Contracts.ActorReply handle(
+    @ZLinkSpotActorRequest(packetName = "ActorFastReq")
+    public Contracts.ActorRes handle(
         ProbeSpot spot,
         ProbeActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ActorFastRequest request,
+        Contracts.ActorFastReq request,
         CancellationToken cancellationToken) {
         String value = "actor=" + actor.actorId() + ";marker=" + request.marker()
             + ";spot=" + spot.context().spotRid();
         evidence.record(request.requestId(), "actor-fast-started", value);
         evidence.record(request.requestId(), "actor-fast-completed", value);
-        return new Contracts.ActorReply(
+        return new Contracts.ActorRes(
             "YD-B",
             request.requestId(),
             actor.actorId(),

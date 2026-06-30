@@ -34,7 +34,7 @@ internal static class SmD3Scenario
                     await client.Connect.Async();
                     await client.Request(new AuthReq(entryActorId, "entry bind", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     entry = client;
                     break;
                 }
@@ -56,7 +56,7 @@ internal static class SmD3Scenario
             var entryPushed = entry.WaitFor<ActorPushNotify>().Async().AsTask();
             var entryReply = await entry.Request(new ActorPushReq("entry-push"))
                 .PacketName("ActorPushReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var entryNotify = await entryPushed;
             ScenarioAssert.That(entryReply.ActorId == entryActorId, "SM-D3 entry bind actor mismatch.");
             ScenarioAssert.That(entryReply.NodeRid == "play-a", "SM-D3 entry bind node mismatch.");
@@ -81,7 +81,7 @@ internal static class SmD3Scenario
                     await client.Connect.Async();
                     await client.Request(new UserSpotAuthReq(userSpotRid, userActorId, "user bind", "play-a"))
                         .PacketName("UserSpotAuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     user = client;
                     break;
                 }
@@ -103,10 +103,10 @@ internal static class SmD3Scenario
             var userPushed = user.WaitFor<ActorPushNotify>().Async().AsTask();
             var userReply = await user.Request(new ActorPingReq("user-relay"))
                 .PacketName("UserActorPingReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var userPushReply = await user.Request(new ActorPushReq("user-push"))
                 .PacketName("UserActorPushReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var userNotify = await userPushed;
             ScenarioAssert.That(userReply.ActorId == userActorId, "SM-D3 user bind actor mismatch.");
             ScenarioAssert.That(userReply.NodeRid == "play-a", "SM-D3 user bind node mismatch.");
@@ -123,7 +123,7 @@ internal static class SmD3Scenario
         }
 
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([
+            .Body(new EvidenceWaitReq([
                 $"spot-actor-joined|rid=play-a|spot={userSpotRid}|actor={userActorId}",
                 $"actor-ping|rid=play-a|actor={userActorId}|spot={userSpotRid}|value=user-relay"
             ]))

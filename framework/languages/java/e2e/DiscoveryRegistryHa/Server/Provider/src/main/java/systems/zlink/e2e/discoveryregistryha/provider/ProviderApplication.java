@@ -37,7 +37,7 @@ public final class ProviderApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(options.logDir() + "/" + options.rid() + "-flow.log")
                 .traceLabel(options.rid());
-            framework.addHandlersFromPackageOf(ProfileRequestHandler.class);
+            framework.addHandlersFromPackageOf(ProfileReqHandler.class);
             for (String registry : options.discoveryEndpoints()) {
                 framework.useDiscovery().addRegistryEndpoint(registry);
             }
@@ -49,8 +49,8 @@ public final class ProviderApplication {
     }
 
     @Bean
-    ProfileRequestHandler profileRequestHandler(ProviderEvidenceStore evidence) {
-        return new ProfileRequestHandler(evidence);
+    ProfileReqHandler profileRequestHandler(ProviderEvidenceStore evidence) {
+        return new ProfileReqHandler(evidence);
     }
 
     @Bean

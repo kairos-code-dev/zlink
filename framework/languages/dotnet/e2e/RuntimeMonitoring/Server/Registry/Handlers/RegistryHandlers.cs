@@ -7,16 +7,16 @@ using Zlink.Framework.Contracts.Timers;
 namespace RuntimeMonitoring.Server.Registry.Handlers;
 
 internal sealed class ProfileRequestHandler(EvidenceStore evidence)
-    : IZLinkRequestHandler<ProfileRequest, ProfileReply>
+    : IZLinkRequestHandler<ProfileReq, ProfileRes>
 {
-    public ValueTask<ProfileReply> HandleAsync(
-        ProfileRequest request,
+    public ValueTask<ProfileRes> HandleAsync(
+        ProfileReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"profile-request|rid={evidence.Rid}|marker={request.Marker}|value={request.Value}");
-        return ValueTask.FromResult(new ProfileReply($"profile:{request.Value}", evidence.Rid, request.Marker));
+        return ValueTask.FromResult(new ProfileRes($"profile:{request.Value}", evidence.Rid, request.Marker));
     }
 }
 

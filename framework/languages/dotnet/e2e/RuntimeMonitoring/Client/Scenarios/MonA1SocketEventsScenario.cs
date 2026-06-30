@@ -12,8 +12,8 @@ internal static class MonA1SocketEventsScenario
         using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
 
         var reply = (await trigger.Post("/profile/request/disconnect")
-            .Body(new ProfileRequest("monitor", "mon-a1-request"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("monitor", "mon-a1-request"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:monitor", "MON-A1 trigger request failed.");
 
         var serviceEvidence = await WaitForSocketEvidenceAsync(service);
@@ -34,7 +34,7 @@ internal static class MonA1SocketEventsScenario
     private static async Task<string[]> WaitForSocketEvidenceAsync(ZLinkHttpClient service)
     {
         var evidence = (await service.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["monitor-socket|", "source=monitor.profile.server"],
                 [["kind=Connected", "kind=ConnectionReady"], ["kind=Disconnected", "kind=Closed"]]))
             .SubmitAsync<string[]>()).Body;

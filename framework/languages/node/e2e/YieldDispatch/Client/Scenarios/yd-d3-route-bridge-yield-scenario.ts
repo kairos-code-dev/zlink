@@ -1,9 +1,9 @@
 import type {
-  EnsureSpotReply,
+  EnsureSpotRes,
   EnsureSpotReq,
-  ProbeCommand,
-  YieldCommand,
-  YieldEvidenceReply,
+  ProbeMsg,
+  YieldMsg,
+  YieldEvidenceRes,
   YieldEvidenceWaitReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -19,21 +19,21 @@ export async function runYdD3(client: ZlinkStreamConnector): Promise<void> {
     .packetName('EnsureSpotReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-b')
     .timeout(30000)
-    .submit<EnsureSpotReply>();
+    .submit<EnsureSpotRes>();
 
   await client
-    .send({ requestId, delayMs: 250, correlationId: 'route-bridge' } satisfies YieldCommand)
-    .packetName('YieldCommand')
+    .send({ requestId, delayMs: 250, correlationId: 'route-bridge' } satisfies YieldMsg)
+    .packetName('YieldMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
   await new Promise((resolve) => setTimeout(resolve, 75));
   await client
-    .send({ requestId, marker: 'route-bridge-probe' } satisfies ProbeCommand)
-    .packetName('ProbeCommand')
+    .send({ requestId, marker: 'route-bridge-probe' } satisfies ProbeMsg)
+    .packetName('ProbeMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
 
-  const evidence = decodeStreamReply<YieldEvidenceReply>(await client
+  const evidence = decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId, marker: 'yield-completed' } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-b')

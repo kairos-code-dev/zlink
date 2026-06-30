@@ -15,14 +15,14 @@ internal object SmD7Scenario {
             expectFailure {
                 preAuth
                     .request(
-                        Contracts.ActorEchoRequest(
+                        Contracts.ActorEchoReq(
                             "pre-auth-dispatch",
                             7,
                             Contracts.ActorProfile("PreAuth", 7, listOf("pre-auth")),
                         )
                     )
                     .timeout(Duration.ofMillis(500))
-                    .await(Contracts.ActorEchoReply::class.java)
+                    .await(Contracts.ActorEchoRes::class.java)
             }
         } finally {
             try {
@@ -36,15 +36,15 @@ internal object SmD7Scenario {
             val profile = Contracts.ActorProfile("Auth Ok", 7, listOf("auth"))
             authenticated.connect().await()
             val auth = authenticated
-                .request(Contracts.ActorAuthRequest("actor-sm-d7", profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq("actor-sm-d7", profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == "actor-sm-d7", "SM-D7 auth actor mismatch")
 
-            val push = authenticated.waitFor(Contracts.ActorPush::class.java)
-                .submit(Contracts.ActorPush::class.java)
+            val push = authenticated.waitFor(Contracts.ActorPushNotify::class.java)
+                .submit(Contracts.ActorPushNotify::class.java)
             val reply = authenticated
-                .request(Contracts.ActorEchoRequest("auth-ok", 7, profile))
-                .await(Contracts.ActorEchoReply::class.java)
+                .request(Contracts.ActorEchoReq("auth-ok", 7, profile))
+                .await(Contracts.ActorEchoRes::class.java)
             val notify = authenticated.await(push).payload()
 
             ensure(reply.actorId == "actor-sm-d7", "SM-D7 relay actor mismatch")

@@ -1,4 +1,4 @@
-import type { EvidenceWaitRequest } from '../../Shared/messages';
+import type { EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
@@ -14,7 +14,7 @@ export async function runMonA3(options: ClientOptions): Promise<void> {
       ['timer=failing']
     ],
     timeoutMilliseconds: 15000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
 
   ensure(
     evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=StatusChanged')),

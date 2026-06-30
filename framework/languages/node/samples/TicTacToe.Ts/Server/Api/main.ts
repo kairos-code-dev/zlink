@@ -18,7 +18,7 @@ async function main(): Promise<void> {
     logger: false,
     abortOnError: false
   });
-  const createGame = getCreateGameEndpoint(apiApp);
+  const createGameReq = getCreateGameEndpoint(apiApp);
 
   const server = http.createServer(async (request: IncomingMessage, response: ServerResponse) => {
     if (request.method !== 'POST' || request.url !== '/games') {
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
     }
     try {
       const body = await readJson(request);
-      const result = await createGame.handle(body);
+      const result = await createGameReq.handle(body);
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify(result));
     } catch (error) {

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import type { EvidenceWaitRequest, ProfileReply, ProfileRequest } from '../../Shared/messages';
+import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
@@ -16,8 +16,8 @@ export async function runMonD1(options: ClientOptions): Promise<void> {
   try {
     await waitForPortState(options.serviceBUrl, true, 'MON-D1 expected service-b to restart.');
 
-    const request: ProfileRequest = { value: 'restart', marker: 'mon-d1-request' };
-    const reply = await postJson<ProfileReply>(options.triggerUrl, '/profile/request/service-b', request);
+    const request: ProfileReq = { value: 'restart', marker: 'mon-d1-request' };
+    const reply = await postJson<ProfileRes>(options.triggerUrl, '/profile/request/service-b', request);
     ensure(
       reply.providerRid === 'svc-b'
       && reply.marker === 'mon-d1-request'
@@ -29,7 +29,7 @@ export async function runMonD1(options: ClientOptions): Promise<void> {
       containsAll: ['profile-request|rid=svc-b|marker=mon-d1-request|value=restart'],
       containsAnyGroups: [],
       timeoutMilliseconds: 15000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       evidence.some((line) => line.includes('profile-request|rid=svc-b|marker=mon-d1-request|value=restart')),
       'MON-D1 restarted service evidence missing.'

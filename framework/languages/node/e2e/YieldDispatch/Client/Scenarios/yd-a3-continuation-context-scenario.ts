@@ -1,6 +1,6 @@
 import type {
-  YieldCommand,
-  YieldEvidenceReply,
+  YieldMsg,
+  YieldEvidenceRes,
   YieldEvidenceWaitReq
 } from '../../Shared/messages';
 import { YieldDispatchNames } from '../../Shared/messages';
@@ -11,12 +11,12 @@ import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 export async function runYdA3(client: ZlinkStreamConnector, spotRid: string): Promise<string> {
   const requestId = `YD-A3-${uniqueId()}`;
   await client
-    .send({ requestId, delayMs: 50, correlationId: 'corr-a3' } satisfies YieldCommand)
-    .packetName('YieldCommand')
+    .send({ requestId, delayMs: 50, correlationId: 'corr-a3' } satisfies YieldMsg)
+    .packetName('YieldMsg')
     .metadata(YieldDispatchNames.spotRidMetadata, spotRid)
     .submit();
 
-  const evidence = decodeStreamReply<YieldEvidenceReply>(await client
+  const evidence = decodeStreamReply<YieldEvidenceRes>(await client
     .request({ requestId, marker: 'yield-completed', timeoutMilliseconds: 30000 } satisfies YieldEvidenceWaitReq)
     .packetName('YieldEvidenceWaitReq')
     .metadata(YieldDispatchNames.targetNodeRidMetadata, 'play-a')

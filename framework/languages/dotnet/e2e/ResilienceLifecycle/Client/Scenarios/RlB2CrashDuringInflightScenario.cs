@@ -16,16 +16,16 @@ internal static class RlB2CrashDuringInflightScenario
     {
         await providerA.Post("/admin/drain").SubmitRawAsync();
         await providerA.Post("/admin/weight/wait")
-            .Body(new WeightWaitRequest(0))
+            .Body(new WeightWaitReq(0))
             .SubmitRawAsync();
 
         var marker = $"rl-b2-slow-{Guid.NewGuid():N}";
         var inFlight = consumer.Post("/profile/request")
-            .Body(new ProfileRequest("slow", marker))
-            .SubmitAsync<ProfileReply>();
+            .Body(new ProfileReq("slow", marker))
+            .SubmitAsync<ProfileRes>();
 
         await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"profile-start|rid=api-b|marker={marker}"], []))
+            .Body(new EvidenceWaitReq([$"profile-start|rid=api-b|marker={marker}"], []))
             .SubmitAsync<string[]>();
 
         await providerB.Post("/admin/crash").SubmitRawAsync();
@@ -58,21 +58,21 @@ internal static class RlB2CrashDuringInflightScenario
 
         await providerA.Post("/admin/restore").SubmitRawAsync();
         await providerA.Post("/admin/weight/wait")
-            .Body(new WeightWaitRequest(100))
+            .Body(new WeightWaitReq(100))
             .SubmitRawAsync();
 
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 0))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .SubmitAsync<TopologyEntryRes[]>();
         var followUp = (await consumer.Post("/profile/request/new-client")
-            .Body(new ProfileRequest("fast", "rl-b2-after-crash"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("fast", "rl-b2-after-crash"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.ProviderRid == "api-a", "RL-B2 surviving provider traffic failed.");
 
         await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
-            .Body(new TopologyWaitRequest("api-b", "Ready", 1))
-            .SubmitAsync<TopologyEntryResult[]>();
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .SubmitAsync<TopologyEntryRes[]>();
         for (var attempt = 0; attempt < 100; attempt++)
         {
             try
@@ -91,13 +91,13 @@ internal static class RlB2CrashDuringInflightScenario
         for (var i = 0; i < 32; i++)
         {
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileRequest("fast", $"rl-b2-restored-{i}"))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq("fast", $"rl-b2-restored-{i}"))
+                .SubmitAsync<ProfileRes>()).Body;
             ScenarioAssert.That(reply.Value == "profile:fast", "RL-B2 restored request returned an unexpected value.");
         }
 
         await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["marker=rl-b2-restored-"], []))
+            .Body(new EvidenceWaitReq(["marker=rl-b2-restored-"], []))
             .SubmitAsync<string[]>();
 
         Console.WriteLine("scenario RL-B2 passed");

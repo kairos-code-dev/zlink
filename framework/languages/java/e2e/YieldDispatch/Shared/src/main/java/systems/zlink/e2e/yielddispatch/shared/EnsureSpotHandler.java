@@ -11,7 +11,7 @@ import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class EnsureSpotHandler
-    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.EnsureSpotRequest> {
+    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.EnsureSpotReq> {
     private final ZLinkRouteClient routes;
 
     public EnsureSpotHandler(ZLinkRouteClient routes) {
@@ -20,35 +20,35 @@ public final class EnsureSpotHandler
 
     @Override
     public String packetName() {
-        return "EnsureSpotRequest";
+        return "EnsureSpotReq";
     }
 
     @Override
-    public Class<Contracts.EnsureSpotRequest> messageType() {
-        return Contracts.EnsureSpotRequest.class;
+    public Class<Contracts.EnsureSpotReq> messageType() {
+        return Contracts.EnsureSpotReq.class;
     }
 
     @Override
     public void handle(
         ZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
-        Contracts.EnsureSpotRequest request) {
+        Contracts.EnsureSpotReq request) {
         RoutingId targetNodeRid = RoutingId.from(dispatch.metadata()
             .getOrDefault(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE));
-        Contracts.EnsureSpotReply reply = routes
+        Contracts.EnsureSpotRes reply = routes
             .requestTo(
                 Contracts.ROUTE_CHANNEL,
                 targetNodeRid,
                 request)
             .timeout(Duration.ofSeconds(30))
-            .await(Contracts.EnsureSpotReply.class);
+            .await(Contracts.EnsureSpotRes.class);
         context.client()
             .reply(reply)
             .await();
     }
 
     public static final class Play
-        implements ZLinkRouteRequestHandler<Contracts.EnsureSpotRequest, Contracts.EnsureSpotReply> {
+        implements ZLinkRouteRequestHandler<Contracts.EnsureSpotReq, Contracts.EnsureSpotRes> {
         private final ZLinkSpotManager spots;
         private final EvidenceStore evidence;
 
@@ -60,8 +60,8 @@ public final class EnsureSpotHandler
         }
 
         @Override
-        public Contracts.EnsureSpotReply handle(
-            Contracts.EnsureSpotRequest request,
+        public Contracts.EnsureSpotRes handle(
+            Contracts.EnsureSpotReq request,
             ZLinkRouteRequestContext context) {
             spots.getOrCreate(
                     YieldProbeSpot.class,
@@ -70,7 +70,7 @@ public final class EnsureSpotHandler
                 .toCompletableFuture()
                 .join();
             evidence.record("spot-ensured", request.spotRid(), "node=" + evidence.nodeRid());
-            return new Contracts.EnsureSpotReply(request.spotRid(), evidence.nodeRid());
+            return new Contracts.EnsureSpotRes(request.spotRid(), evidence.nodeRid());
         }
     }
 }

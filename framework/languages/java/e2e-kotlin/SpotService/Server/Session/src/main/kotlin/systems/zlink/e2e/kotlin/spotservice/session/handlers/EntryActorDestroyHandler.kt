@@ -8,14 +8,14 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 
 class EntryActorDestroyHandler {
-    @ZLinkSpotActorRequest(packetName = "DestroyActorRequest")
+    @ZLinkSpotActorRequest(packetName = "DestroyActorReq")
     fun handle(
         spot: ScenarioEntrySpot,
         actor: ScenarioActor,
         context: ZLinkSpotActorRequestContext,
-        request: Contracts.DestroyActorRequest,
+        request: Contracts.DestroyActorReq,
         cancellationToken: CancellationToken
-    ): Contracts.DestroyActorReply {
+    ): Contracts.DestroyActorRes {
         if (request.actorId != actor.actorId()) {
             throw IllegalStateException("destroy request actor does not match dispatched actor")
         }
@@ -35,6 +35,6 @@ class EntryActorDestroyHandler {
                 }
             )
 
-        return Contracts.DestroyActorReply(actor.actorId(), true)
+        return Contracts.DestroyActorRes(actor.actorId(), true)
     }
 }

@@ -2,12 +2,12 @@ package systems.zlink.e2e.kotlin.registrymessaging.client.Scenarios
 
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.HttpJson
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.ScenarioAssert
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRequest
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
 
 object RmA1DiscoveryRequestScenario {
     fun run(providerA: HttpJson, providerB: HttpJson, registry: HttpJson) {
-        val reply = providerA.post<ProfileReply>("/profile/request", ProfileRequest("rm-a1"))
+        val reply = providerA.post<ProfileRes>("/profile/request", ProfileReq("rm-a1"))
         ScenarioAssert.that(reply.value == "profile:rm-a1", "RM-A1 reply value mismatch.")
         ScenarioAssert.that(reply.providerRid == "api-a" || reply.providerRid == "api-b", "RM-A1 provider rid mismatch.")
 

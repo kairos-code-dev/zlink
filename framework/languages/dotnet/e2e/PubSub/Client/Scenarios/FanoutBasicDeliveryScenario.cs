@@ -24,7 +24,7 @@ internal static class FanoutBasicDeliveryScenario
         // Wait until every subscriber has proven that it is attached to the fanout stream.
         await WaitForAllSubscribersAsync(
             subscribers,
-            new EvidenceWaitRequest(
+            new EvidenceWaitReq(
                 ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
                 []));
 
@@ -43,7 +43,7 @@ internal static class FanoutBasicDeliveryScenario
         // Publish submit does not promise remote delivery, so the scenario checks a shared contiguous range.
         var measuredSnapshots = await WaitForAllSubscribersAsync(
             subscribers,
-            new EvidenceWaitRequest(
+            new EvidenceWaitReq(
                 ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
                 [
                     [$"seq={measureStart}|"],
@@ -64,7 +64,7 @@ internal static class FanoutBasicDeliveryScenario
 
     private static async Task<string[][]> WaitForAllSubscribersAsync(
         IReadOnlyList<ZLinkHttpClient> subscribers,
-        EvidenceWaitRequest request)
+        EvidenceWaitReq request)
     {
         var waits = subscribers
             .Select(subscriber => subscriber.Post("/evidence/wait").Body(request).SubmitAsync<string[]>().AsTask())

@@ -48,9 +48,9 @@ class ThrowingServiceApplication {
                 .setRoutingId(RoutingId.from("svc-throw"))
                 .addRequestHandler(
                     WorkRequestHandler::class.java,
-                    Contracts.WorkRequest::class.java,
-                    Contracts.WorkReply::class.java,
-                    "WorkRequest",
+                    Contracts.WorkReq::class.java,
+                    Contracts.WorkRes::class.java,
+                    "WorkReq",
                 )
         }
     }

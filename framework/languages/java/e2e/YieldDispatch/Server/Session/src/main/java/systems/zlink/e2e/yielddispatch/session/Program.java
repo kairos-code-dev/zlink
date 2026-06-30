@@ -12,7 +12,7 @@ import systems.zlink.e2e.yielddispatch.shared.EnsureSpotHandler;
 import systems.zlink.e2e.yielddispatch.shared.Env;
 import systems.zlink.e2e.yielddispatch.shared.EvidenceHttpServer;
 import systems.zlink.e2e.yielddispatch.shared.EvidenceStore;
-import systems.zlink.e2e.yielddispatch.shared.ScenarioRequestHandler;
+import systems.zlink.e2e.yielddispatch.shared.ScenarioReqHandler;
 import systems.zlink.e2e.yielddispatch.shared.ShutdownYieldSessionHandlers;
 import systems.zlink.e2e.yielddispatch.shared.SpotCommandHandler;
 import systems.zlink.e2e.yielddispatch.shared.RemoteSpotYieldSessionHandler;
@@ -85,7 +85,7 @@ public final class Program {
             options.addStreamNode("session")
                 .bind(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))
                 .registerSession(YieldSession.class)
-                .addSessionPacketHandler(ScenarioRequestHandler.class)
+                .addSessionPacketHandler(ScenarioReqHandler.class)
                 .addSessionPacketHandler(ShutdownYieldSessionHandlers.Wait.class)
                 .addSessionPacketHandler(ShutdownYieldSessionHandlers.Recovery.class)
                 .addSessionPacketHandler(SpotCommandHandler.Yield.class)
@@ -102,10 +102,10 @@ public final class Program {
     }
 
     @Bean
-    ScenarioRequestHandler scenarioRequestHandler(
+    ScenarioReqHandler scenarioRequestHandler(
         systems.zlink.framework.channels.ZLinkRouteClient routes,
         EvidenceStore evidence) {
-        return new ScenarioRequestHandler(routes, evidence);
+        return new ScenarioReqHandler(routes, evidence);
     }
 
     @Bean
@@ -140,7 +140,7 @@ public final class Program {
     }
 
     @Bean
-    SpotCommandHandler.WorkerYield workerYieldCommandHandler(
+    SpotCommandHandler.WorkerYield workerYieldMsgHandler(
         systems.zlink.framework.channels.ZLinkRouteClient routes) {
         return new SpotCommandHandler.WorkerYield(routes);
     }
@@ -197,8 +197,8 @@ public final class Program {
     }
 
     @Bean
-    YieldProbeHandlers.ActorPushYieldHandler actorPushYieldHandler(EvidenceStore evidence) {
-        return new YieldProbeHandlers.ActorPushYieldHandler(evidence);
+    YieldProbeHandlers.ActorPushNotifyYieldHandler actorPushYieldHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.ActorPushNotifyYieldHandler(evidence);
     }
 
     @Bean

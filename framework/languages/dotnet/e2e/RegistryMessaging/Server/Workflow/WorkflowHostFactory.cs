@@ -46,7 +46,7 @@ internal static class WorkflowHostFactory
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
             workflow.ConfigureServerSocket().Weight = options.Weight;
-            workflow.AddRequestHandler<WorkflowRequestHandler, WorkflowRequest, WorkflowReply>("WorkflowRequest");
+            workflow.AddRequestHandler<WorkflowRequestHandler, WorkflowReq, WorkflowRes>("WorkflowReq");
         });
 
         var app = builder.Build();

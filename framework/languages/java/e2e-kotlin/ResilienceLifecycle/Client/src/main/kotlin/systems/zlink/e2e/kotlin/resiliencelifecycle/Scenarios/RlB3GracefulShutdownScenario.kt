@@ -4,9 +4,9 @@ import java.time.Duration
 
 fun ClientScenarioContext.runGracefulShutdownScenario() {
     waitForTopology(2)
-    val beforeShutdown = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkRequest("b3-before-shutdown"))
+    val beforeShutdown = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq("b3-before-shutdown"))
         .timeout(Duration.ofSeconds(3))
-        .await(Contracts.WorkReply::class.java)
+        .await(Contracts.WorkRes::class.java)
     ensure(beforeShutdown.value() == "work:b3-before-shutdown", "RL-B3 pre-shutdown reply payload mismatch")
 
     post("${adminB()}/admin/shutdown")

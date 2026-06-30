@@ -18,55 +18,55 @@ public final class Contracts {
     private Contracts() {
     }
 
-    public record ScenarioRequest(String scenarioId, String requestId) {
+    public record ScenarioReq(String scenarioId, String requestId) {
     }
 
-    public record ScenarioReply(String scenarioId, String requestId, String result) {
+    public record ScenarioRes(String scenarioId, String requestId, String result) {
     }
 
-    public record DelayRequest(String requestId, long delayMillis) {
+    public record DelayReq(String requestId, long delayMillis) {
     }
 
-    public record DelayReply(String requestId) {
+    public record DelayRes(String requestId) {
     }
 
-    public record HoldRequest(String requestId) {
+    public record HoldReq(String requestId) {
     }
 
-    public record YieldRequest(String scenarioId, String requestId, String correlationId) {
+    public record YieldReq(String scenarioId, String requestId, String correlationId) {
     }
 
-    public record YieldCommand(String requestId, long delayMillis, String correlationId) {
+    public record YieldMsg(String requestId, long delayMillis, String correlationId) {
     }
 
-    public record YieldTimeoutCommand(String requestId, long delayMillis, long timeoutMillis) {
+    public record YieldTimeoutMsg(String requestId, long delayMillis, long timeoutMillis) {
     }
 
-    public record YieldCancelCommand(String requestId, long delayMillis, long cancelAfterMillis) {
+    public record YieldCancelMsg(String requestId, long delayMillis, long cancelAfterMillis) {
     }
 
-    public record YieldShutdownScenarioRequest(String requestId, String spotRid, long delayMillis) {
+    public record YieldShutdownScenarioReq(String requestId, String spotRid, long delayMillis) {
     }
 
-    public record YieldShutdownRecoveryRequest(String requestId, String spotRid) {
+    public record YieldShutdownRecoveryReq(String requestId, String spotRid) {
     }
 
-    public record YieldShutdownResult(String operation, String requestId, String spotRid) {
+    public record YieldShutdownRes(String operation, String requestId, String spotRid) {
     }
 
-    public record WorkerYieldRequest(String requestId) {
+    public record WorkerYieldReq(String requestId) {
     }
 
-    public record WorkerYieldCommand(String requestId, long delayMillis) {
+    public record WorkerYieldMsg(String requestId, long delayMillis) {
     }
 
-    public record ProbeRequest(String requestId) {
+    public record ProbeReq(String requestId) {
     }
 
-    public record ProbeCommand(String requestId, String marker) {
+    public record ProbeMsg(String requestId, String marker) {
     }
 
-    public record TimerStartCommand(
+    public record TimerStartMsg(
         String requestId,
         String timerName,
         String mode,
@@ -74,49 +74,61 @@ public final class Contracts {
         long delayMillis) {
     }
 
-    public record TimerStopCommand(String requestId) {
+    public record TimerStopMsg(String requestId) {
     }
 
-    public record EnsureSpotRequest(String spotRid) {
+    public record EnsureSpotReq(String spotRid) {
     }
 
-    public record EnsureSpotReply(String spotRid, String nodeRid) {
+    public record EnsureSpotRes(String spotRid, String nodeRid) {
     }
 
-    public record RemoteSpotYieldRequest(String requestId, String targetSpotRid, long delayMillis) {
+    public record RemoteSpotYieldReq(String requestId, String targetSpotRid, long delayMillis) {
     }
 
-    public record ProbeReply(String requestId) {
+    public record ProbeRes(String requestId) {
     }
 
-    public record BindActorsRequest(String spotRid, String actorA, String actorB) {
+    public record BindActorsReq(String spotRid, String actorA, String actorB) {
     }
 
     public record ActorBinding(String actorId, String nodeRid, long epoch) {
     }
 
-    public record BindActorsReply(String spotRid, String actorA, String actorB, List<ActorBinding> actors) {
+    public record BindActorsRes(String spotRid, String actorA, String actorB, List<ActorBinding> actors) {
     }
 
-    public record ActorYieldRequest(String requestId, long delayMillis) {
+    public record ActorYieldReq(String requestId, long delayMillis) {
     }
 
-    public record ActorFastRequest(String requestId, String marker) {
+    public record ActorFastReq(String requestId, String marker) {
     }
 
-    public record ActorJoinRequest(String requestId, String spotRid) {
+    public record ActorJoinReq(String requestId, String spotRid) {
     }
 
-    public record ActorJoinYieldRequest(String requestId, String targetSpotRid) {
+    public record ActorJoinYieldReq(String requestId, String targetSpotRid) {
     }
 
-    public record ActorPushYieldRequest(String requestId, long delayMillis, String value) {
+    public record ActorPushYieldReq(String requestId, long delayMillis, String value) {
     }
 
     public record ActorPushNotify(String actorId, String requestId, String value, String nodeRid) {
     }
 
-    public record ActorReply(String scenarioId, String requestId, String actorId, String marker) {
+    public record ActorYieldRes(String scenarioId, String requestId, String actorId, String marker) {
+    }
+
+    public record ActorFastRes(String scenarioId, String requestId, String actorId, String marker) {
+    }
+
+    public record ActorJoinRes(String scenarioId, String requestId, String actorId, String marker) {
+    }
+
+    public record ActorJoinYieldRes(String scenarioId, String requestId, String actorId, String marker) {
+    }
+
+    public record ActorPushYieldRes(String scenarioId, String requestId, String actorId, String marker) {
     }
 
     public record EvidenceEntry(long sequence, String marker, String subject, String value) {

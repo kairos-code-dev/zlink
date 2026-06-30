@@ -23,10 +23,10 @@ internal static class SmG4Scenario
                 await client.Connect.Async();
                 await client.Request(new AuthReq($"actor-sm-g4-{index}", $"bound-load-{index}", "play-a"))
                     .PacketName("AuthReq")
-                    .Async<AuthReply>();
+                    .Async<AuthRes>();
             }
 
-            var results = new List<(string ActorId, string Value, ActorPingReply Reply, ActorPushNotify Notify)>();
+            var results = new List<(string ActorId, string Value, ActorPingRes Reply, ActorPushNotify Notify)>();
             for (var index = 0; index < clients.Count; index++)
             {
                 var client = clients[index];
@@ -35,7 +35,7 @@ internal static class SmG4Scenario
                 var pushed = client.WaitFor<ActorPushNotify>().Async().AsTask();
                 var reply = await client.Request(new ActorPushReq(value))
                     .PacketName("ActorPushReq")
-                    .Async<ActorPingReply>();
+                    .Async<ActorPingRes>();
                 var notify = await pushed;
                 results.Add((actorId, value, reply, notify.Payload));
             }

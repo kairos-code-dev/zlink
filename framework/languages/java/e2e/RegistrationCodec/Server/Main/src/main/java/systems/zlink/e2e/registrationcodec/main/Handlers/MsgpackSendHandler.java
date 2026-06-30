@@ -6,7 +6,7 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 
 public final class MsgpackSendHandler
-    implements ZLinkSendHandler<Contracts.PackedEchoCommand> {
+    implements ZLinkSendHandler<Contracts.PackedEchoMsg> {
     private final EvidenceStore state;
 
     public MsgpackSendHandler(EvidenceStore state) {
@@ -15,7 +15,7 @@ public final class MsgpackSendHandler
 
     @Override
     public void handle(
-        Contracts.PackedEchoCommand message,
+        Contracts.PackedEchoMsg message,
         ZLinkSendContext context) {
         state.record("Send", "MsgpackEcho", message.value());
         state.record("ContentType", "MsgpackEcho", context.contentType().orElse(""));

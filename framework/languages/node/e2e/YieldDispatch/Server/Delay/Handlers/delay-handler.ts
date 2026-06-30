@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkRequestHandler } from '@zlink-systems/framework';
-import type { DelayReply, DelayReq } from '../../../Shared/messages';
+import type { DelayRes, DelayReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../../Support/evidence-store';
 
 @Injectable()
-export class DelayHandler implements ZLinkRequestHandler<DelayReq, DelayReply> {
+export class DelayHandler implements ZLinkRequestHandler<DelayReq, DelayRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: DelayReq, context: ZLinkHandlerContext): Promise<DelayReply> {
+  async handle(request: DelayReq, context: ZLinkHandlerContext): Promise<DelayRes> {
     void context;
     this.evidence.add(`delay-started|rid=${this.evidence.rid}|request=${request.requestId}|marker=${request.marker}`);
     await new Promise((resolve) => setTimeout(resolve, request.delayMs));

@@ -7,44 +7,44 @@ public final class Contracts {
     public static final String WORKFLOW_CHANNEL = "registry.messaging.workflow";
     public static final String ROUTE_CHANNEL = "registry.messaging.route";
     public static final String HANDLER_GROUP = "registry-messaging";
-    public static final String ROUTE_PACKET = "ScenarioRoutePing";
+    public static final String ROUTE_PACKET = "ScenarioRouteReq";
 
     private Contracts() {
     }
 
-    public record ProfileRequest(String value) {
+    public record ProfileReq(String value) {
     }
 
-    public record ProfileReply(
+    public record ProfileRes(
         String value,
         String providerRid,
         String instanceId) {
     }
 
-    public record ProfileCommand(String commandId) {
+    public record ProfileMsg(String commandId) {
     }
 
-    public record PayloadRequest(String marker, String payload) {
+    public record PayloadReq(String marker, String payload) {
     }
 
-    public record PayloadReply(
+    public record PayloadRes(
         String marker,
         int length,
         String sha256) {
     }
 
-    public record WorkflowRequest(String value) {
+    public record WorkflowReq(String value) {
     }
 
-    public record WorkflowReply(
+    public record WorkflowRes(
         String value,
         String providerRid) {
     }
 
-    public record RoutePing(String value) {
+    public record RouteReq(String value) {
     }
 
-    public record RoutePong(
+    public record RouteRes(
         String value,
         String targetRid,
         String sourceRid) {
@@ -61,22 +61,22 @@ public final class Contracts {
         List<EvidenceEntry> entries) {
     }
 
-    public record EvidenceWaitRequest(
+    public record EvidenceWaitReq(
         String contains,
         int timeoutMilliseconds) {
-        public EvidenceWaitRequest(String contains) {
+        public EvidenceWaitReq(String contains) {
             this(contains, 10000);
         }
     }
 
-    public record RouteMissingResult(boolean failed) {
+    public record RouteMissingRes(boolean failed) {
     }
 
-    public record RequestFailureResult(
+    public record RequestFailureRes(
         boolean failed,
         String failureType) {
     }
 
-    public record BackpressureResult(String outcome) {
+    public record BackpressureRes(String outcome) {
     }
 }

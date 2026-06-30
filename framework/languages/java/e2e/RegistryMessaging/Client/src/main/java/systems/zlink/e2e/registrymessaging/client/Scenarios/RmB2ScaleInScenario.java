@@ -15,9 +15,9 @@ public final class RmB2ScaleInScenario {
     public static void run(ZLinkHttpClient discoveryConsumer) {
         Set<String> before = new HashSet<>();
         for (int index = 0; index < 100 && before.size() < 2; index++) {
-            Contracts.ProfileReply reply = discoveryConsumer.post("/profile/request")
-                .body(new Contracts.ProfileRequest("scale-in-before-" + index))
-                .fetch(Contracts.ProfileReply.class);
+            Contracts.ProfileRes reply = discoveryConsumer.post("/profile/request")
+                .body(new Contracts.ProfileReq("scale-in-before-" + index))
+                .fetch(Contracts.ProfileRes.class);
             before.add(reply.providerRid());
         }
         ScenarioAssert.that(before.contains("api-a") && before.contains("api-b"),
@@ -27,9 +27,9 @@ public final class RmB2ScaleInScenario {
         ScenarioSignals.waitForFile(ClientOptions.get("ZLINK_JAVA_E2E_CONTINUE_FILE"));
 
         for (int index = 0; index < 20; index++) {
-            Contracts.ProfileReply reply = discoveryConsumer.post("/profile/request")
-                .body(new Contracts.ProfileRequest("scale-in-after-" + index))
-                .fetch(Contracts.ProfileReply.class);
+            Contracts.ProfileRes reply = discoveryConsumer.post("/profile/request")
+                .body(new Contracts.ProfileReq("scale-in-after-" + index))
+                .fetch(Contracts.ProfileRes.class);
             ScenarioAssert.that("api-a".equals(reply.providerRid()), "RM-B2 routed to removed provider");
         }
         System.out.println("scenario RM-B2 passed");

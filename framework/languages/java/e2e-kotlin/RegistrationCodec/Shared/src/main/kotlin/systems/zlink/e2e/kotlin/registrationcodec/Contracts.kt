@@ -8,44 +8,71 @@ object Contracts {
     const val ATTR_GROUP = "registration-codec-kotlin-attr"
 }
 
-@ZLinkPacket("EchoAuto")
-class EchoAutoRequest() {
+@ZLinkPacket("EchoAutoReq")
+class EchoAutoReq() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-@ZLinkPacket("EchoAuto")
-class EchoAutoCommand() {
+@ZLinkPacket("EchoAutoMsg")
+class EchoAutoMsg() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-class EchoAttrRequest() {
+class EchoAutoRes() {
+    var value: String = ""
+    var handler: String = ""
+    constructor(value: String, handler: String) : this() {
+        this.value = value
+        this.handler = handler
+    }
+}
+
+class EchoAttrReq() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-class EchoAttrCommand() {
+class EchoAttrMsg() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-class EchoManualRequest() {
+class EchoAttrRes() {
+    var value: String = ""
+    var handler: String = ""
+    constructor(value: String, handler: String) : this() {
+        this.value = value
+        this.handler = handler
+    }
+}
+
+class EchoManualReq() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-class EchoManualCommand() {
+class EchoManualMsg() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-class DiLifecycleRequest() {
+class EchoManualRes() {
+    var value: String = ""
+    var handler: String = ""
+    constructor(value: String, handler: String) : this() {
+        this.value = value
+        this.handler = handler
+    }
+}
+
+class DiLifecycleReq() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-class DiLifecycleReply() {
+class DiLifecycleRes() {
     var value: String = ""
     var scopedId: Int = 0
     var singletonId: Int = 0
@@ -59,38 +86,38 @@ class DiLifecycleReply() {
     }
 }
 
-class JsonEchoRequest() {
+class JsonEchoReq() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-class JsonEchoCommand() {
+class JsonEchoMsg() {
     var value: String = ""
     constructor(value: String) : this() { this.value = value }
 }
 
-class PackedEchoRequest() {
-    var value: String = ""
-    constructor(value: String) : this() { this.value = value }
-}
-
-class PackedEchoReply() {
-    var value: String = ""
-    constructor(value: String) : this() { this.value = value }
-}
-
-class PackedEchoCommand() {
-    var value: String = ""
-    constructor(value: String) : this() { this.value = value }
-}
-
-class EchoReply() {
+class JsonEchoRes() {
     var value: String = ""
     var handler: String = ""
     constructor(value: String, handler: String) : this() {
         this.value = value
         this.handler = handler
     }
+}
+
+class PackedEchoReq() {
+    var value: String = ""
+    constructor(value: String) : this() { this.value = value }
+}
+
+class PackedEchoRes() {
+    var value: String = ""
+    constructor(value: String) : this() { this.value = value }
+}
+
+class PackedEchoMsg() {
+    var value: String = ""
+    constructor(value: String) : this() { this.value = value }
 }
 
 class EvidenceEntry() {
@@ -111,6 +138,6 @@ class EvidenceSnapshot() {
 }
 
 fun isPackedType(type: Class<*>): Boolean =
-    type == PackedEchoRequest::class.java ||
-        type == PackedEchoReply::class.java ||
-        type == PackedEchoCommand::class.java
+    type == PackedEchoReq::class.java ||
+        type == PackedEchoRes::class.java ||
+        type == PackedEchoMsg::class.java

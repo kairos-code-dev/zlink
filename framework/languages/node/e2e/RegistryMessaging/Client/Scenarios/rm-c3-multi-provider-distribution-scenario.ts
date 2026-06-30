@@ -1,4 +1,4 @@
-import type { ProfileReply, ProfileRequest } from '../../Shared/messages';
+import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { getJson, postJson } from '../Support/http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
 
@@ -6,9 +6,9 @@ export async function runRmC3(directConsumerUrl: string, providerAUrl: string, p
   const beforeA = await getJson<string[]>(providerAUrl, '/evidence');
   const beforeB = await getJson<string[]>(providerBUrl, '/evidence');
   const marker = uniqueMarker('rm-c3');
-  const requests: ProfileRequest[] = Array.from({ length: 60 }, (_, index) => ({ value: `${marker}-${index}` }));
+  const requests: ProfileReq[] = Array.from({ length: 60 }, (_, index) => ({ value: `${marker}-${index}` }));
 
-  const replies = await postJson<ProfileReply[]>(directConsumerUrl, '/profile/batch-request', requests);
+  const replies = await postJson<ProfileRes[]>(directConsumerUrl, '/profile/batch-request', requests);
   ensure(replies.length === requests.length, 'RM-C3 reply count mismatch.');
   for (let i = 0; i < requests.length; i += 1) {
     ensure(replies[i].value === `profile:${marker}-${i}`, 'RM-C3 reply value mismatch.');

@@ -5,27 +5,27 @@ public static class ResilienceLifecycleNames
     public const string Channel = "resilience.profile";
 }
 
-public sealed record ProfileRequest(string Value, string Marker);
+public sealed record ProfileReq(string Value, string Marker);
 
-public sealed record ProfileReply(string Value, string ProviderRid, string Marker);
+public sealed record ProfileRes(string Value, string ProviderRid, string Marker);
 
-public sealed record ProfileCommand(string Marker);
+public sealed record ProfileMsg(string Marker);
 
-public sealed record EvidenceWaitRequest(
+public sealed record EvidenceWaitReq(
     string[] ContainsAll,
     string[][] ContainsAnyGroups,
     int TimeoutMilliseconds = 10000);
 
-public sealed record WeightWaitRequest(
+public sealed record WeightWaitReq(
     int Expected,
     int TimeoutMilliseconds = 10000);
 
-public sealed record TopologyWaitRequest(
+public sealed record TopologyWaitReq(
     string RoutingId,
     string State,
     int ExpectedCount,
     int TimeoutMilliseconds = 30000);
 
-public sealed record RegistryHealthWaitRequest(
+public sealed record RegistryHealthWaitReq(
     bool ExpectedHealthy,
     int TimeoutMilliseconds = 30000);

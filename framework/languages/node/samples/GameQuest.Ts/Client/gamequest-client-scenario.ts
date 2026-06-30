@@ -12,7 +12,7 @@ import {
 import type { ZLinkHttpClient } from '@zlink-systems/http-client';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import type {
-  EventRes,
+  GameplayActionRes,
   GameQuestServerAssertRes,
   GetGameplaySnapshotRes,
   GetQuestProgressRes,
@@ -40,35 +40,35 @@ class GameQuestClientScenario {
     const firstProgress = apiAStream.waitFor<QuestProgressNotify>('QuestProgressNotify')
       .where((message) => message.payload.playerId === 'player-alice' && message.payload.progress.questId === 'first-hunt')
       .submit(signal);
-    const firstKill = await post<EventRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-1'));
+    const firstKill = await post<GameplayActionRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-1'));
     ensure(firstKill.eventId === 'player-alice-kill-1');
     ensure((await firstProgress).payload.progress.currentCount === 1);
     const firstCompleted = apiAStream.waitFor<QuestCompletedNotify>('QuestCompletedNotify')
       .where((message) => message.payload.playerId === 'player-alice' && message.payload.progress.questId === 'first-hunt')
       .submit(signal);
-    const secondKill = await post<EventRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-2'));
+    const secondKill = await post<GameplayActionRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-2'));
     ensure(secondKill.eventId === 'player-alice-kill-2');
-    const thirdKill = await post<EventRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'));
+    const thirdKill = await post<GameplayActionRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'));
     ensure(thirdKill.eventId === 'player-alice-kill-3');
     ensure((await firstCompleted).payload.rewardGranted);
-    const duplicate = await post<EventRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'));
+    const duplicate = await post<GameplayActionRes>(apiA, '/combat/kill', killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'));
     ensure(duplicate.eventId === thirdKill.eventId);
 
     const auctionCompleted = apiAStream.waitFor<QuestCompletedNotify>('QuestCompletedNotify')
       .where((message) => message.payload.playerId === 'player-alice' && message.payload.progress.questId === 'open-auction')
       .submit(signal);
-    const auction = await post<EventRes>(apiA, '/feature/unlock', unlockFeatureReq('player-alice', 'auction', 'unlock-auction'));
+    const auction = await post<GameplayActionRes>(apiA, '/feature/unlock', unlockFeatureReq('player-alice', 'auction', 'unlock-auction'));
     ensure(auction.eventId === 'player-alice-unlock-auction');
     ensure((await auctionCompleted).payload.rewardGranted);
     const snapshot = await post<GetGameplaySnapshotRes>(apiA, '/internal/snapshot', getGameplaySnapshotReq('player-alice'));
     ensure(snapshot.unlockedFeatureIds.includes('auction'));
 
-    const tutorial = await post<EventRes>(apiA, '/mission/complete', completeMissionReq('player-alice', 'tutorial', 'mission-tutorial'));
+    const tutorial = await post<GameplayActionRes>(apiA, '/mission/complete', completeMissionReq('player-alice', 'tutorial', 'mission-tutorial'));
     ensure(tutorial.eventId === 'player-alice-mission-tutorial');
-    const ruins = await post<EventRes>(apiA, '/world/enter', enterAreaReq('player-alice', 'ruins', 'enter-ruins'));
+    const ruins = await post<GameplayActionRes>(apiA, '/world/enter', enterAreaReq('player-alice', 'ruins', 'enter-ruins'));
     ensure(ruins.eventId === 'player-alice-enter-ruins');
 
-    const offlineItem = await post<EventRes>(apiA, '/inventory/collect', collectItemReq('player-bob', 'healing-herb', 1, 'herb-1'));
+    const offlineItem = await post<GameplayActionRes>(apiA, '/inventory/collect', collectItemReq('player-bob', 'healing-herb', 1, 'herb-1'));
     ensure(offlineItem.eventId === 'player-bob-herb-1');
     await apiBStream.connect(signal);
     const bobSubscribed = await apiBStream.request(subscribeQuestReq('player-bob'), Object)
@@ -78,7 +78,7 @@ class GameQuestClientScenario {
     const herbCompleted = apiBStream.waitFor<QuestCompletedNotify>('QuestCompletedNotify')
       .where((message) => message.payload.playerId === 'player-bob' && message.payload.progress.questId === 'herb-gathering')
       .submit(signal);
-    const onlineItem = await post<EventRes>(apiB, '/inventory/collect', collectItemReq('player-bob', 'healing-herb', 4, 'herb-2'));
+    const onlineItem = await post<GameplayActionRes>(apiB, '/inventory/collect', collectItemReq('player-bob', 'healing-herb', 4, 'herb-2'));
     ensure(onlineItem.eventId === 'player-bob-herb-2');
     ensure((await herbCompleted).payload.rewardGranted);
     const bobProgress = await apiBStream.request(getQuestProgressReq('player-bob'), Object)

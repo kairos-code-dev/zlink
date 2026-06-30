@@ -46,9 +46,9 @@ class ClientApplication {
 }
 
 fun isPackedType(type: Class<*>): Boolean =
-    type == PackedEchoRequest::class.java ||
-        type == PackedEchoReply::class.java ||
-        type == PackedEchoCommand::class.java
+    type == PackedEchoReq::class.java ||
+        type == PackedEchoRes::class.java ||
+        type == PackedEchoMsg::class.java
 
 fun runClientApplication(vararg args: String) {
     val context = SpringApplicationBuilder(ClientApplication::class.java)

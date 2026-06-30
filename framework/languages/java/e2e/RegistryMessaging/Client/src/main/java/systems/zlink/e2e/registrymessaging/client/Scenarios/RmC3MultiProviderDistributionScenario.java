@@ -17,14 +17,14 @@ public final class RmC3MultiProviderDistributionScenario {
         int requestCount,
         boolean requireHighGreaterThanLow) {
         Map<String, Integer> counts = new HashMap<>();
-        Contracts.ProfileRequest[] requests = new Contracts.ProfileRequest[requestCount];
+        Contracts.ProfileReq[] requests = new Contracts.ProfileReq[requestCount];
         for (int index = 0; index < requestCount; index++) {
-            requests[index] = new Contracts.ProfileRequest(prefix + index);
+            requests[index] = new Contracts.ProfileReq(prefix + index);
         }
-        Contracts.ProfileReply[] replies = directConsumer.post("/profile/batch-request")
+        Contracts.ProfileRes[] replies = directConsumer.post("/profile/batch-request")
             .body(requests)
-            .fetch(Contracts.ProfileReply[].class);
-        for (Contracts.ProfileReply reply : replies) {
+            .fetch(Contracts.ProfileRes[].class);
+        for (Contracts.ProfileRes reply : replies) {
             counts.merge(reply.providerRid(), 1, Integer::sum);
         }
         ScenarioAssert.that(counts.getOrDefault("api-a", 0) > 0, scenarioId + " did not reach api-a");

@@ -12,10 +12,10 @@ internal object SmC2Scenario {
         val reply = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.OutboundRequest("c2"),
+                Contracts.OutboundReq("c2"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.OutboundReply::class.java)
+                .await(Contracts.OutboundRes::class.java)
         }
         ensure(reply.spotRid == "room-a", "SM-C2 wrong source spot")
         ensure(reply.nodeRid == "play-a", "SM-C2 wrong source node")

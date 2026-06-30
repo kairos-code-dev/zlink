@@ -12,75 +12,75 @@ object DeliveryStatuses {
     const val Failed = "Failed"
 }
 
-@ZLinkPacket("CreateDeliveryRequest")
-data class CreateDeliveryRequest(
+@ZLinkPacket("CreateDeliveryReq")
+data class CreateDeliveryReq(
     val deliveryId: String,
     val customerId: String,
     val pickupAddress: String,
     val dropoffAddress: String,
 )
 
-data class DeliveryCreated(val deliveryId: String)
+data class CreateDeliveryRes(val deliveryId: String)
 
-@ZLinkPacket("AssignDelivery")
-data class AssignDelivery(
+@ZLinkPacket("AssignDeliveryReq")
+data class AssignDeliveryReq(
     val deliveryId: String,
     val customerId: String,
     val pickupAddress: String,
     val dropoffAddress: String,
 )
 
-data class AssignDeliveryResult(val deliveryId: String, val courierId: String)
+data class AssignDeliveryRes(val deliveryId: String, val courierId: String)
 
-@ZLinkPacket("OfferDelivery")
-data class OfferDelivery(
+@ZLinkPacket("OfferDeliveryReq")
+data class OfferDeliveryReq(
     val deliveryId: String,
     val pickupAddress: String,
     val dropoffAddress: String,
 )
 
-data class OfferDeliveryResult(
+data class OfferDeliveryRes(
     val deliveryId: String,
     val courierId: String,
     val accepted: Boolean,
     val reason: String?,
 )
 
-@ZLinkPacket("DeliveryStatusChanged")
-data class DeliveryStatusChanged(
+@ZLinkPacket("DeliveryStatusChangedReq")
+data class DeliveryStatusChangedReq(
     val deliveryId: String,
     val status: String,
     val courierId: String?,
     val occurredAtUnixMs: Long,
 )
 
-data class DeliveryStatusAck(val deliveryId: String, val status: String)
+data class DeliveryStatusChangedRes(val deliveryId: String, val status: String)
 
-@ZLinkPacket("EnsureCustomerActor")
-data class EnsureCustomerActor(val customerId: String)
+@ZLinkPacket("EnsureCustomerActorReq")
+data class EnsureCustomerActorReq(val customerId: String)
 
 data class ActorRefSnapshot(val nodeRid: ByteArray, val actorId: String, val generation: Long)
 
-data class CustomerActorEnsured(val customerId: String, val actor: ActorRefSnapshot)
+data class EnsureCustomerActorRes(val customerId: String, val actor: ActorRefSnapshot)
 
-@ZLinkPacket("SubscribeCustomerToDelivery")
-data class SubscribeCustomerToDelivery(val customerId: String, val deliveryId: String)
+@ZLinkPacket("SubscribeCustomerToDeliveryReq")
+data class SubscribeCustomerToDeliveryReq(val customerId: String, val deliveryId: String)
 
-data class CustomerDeliverySubscribed(val customerId: String, val deliveryId: String)
+data class SubscribeCustomerToDeliveryRes(val customerId: String, val deliveryId: String)
 
-data class DeliverySpotCreate(val deliveryId: String)
+data class DeliverySpotCreateReq(val deliveryId: String)
 
-data class DeliverySpotCreated(val deliveryId: String)
+data class DeliverySpotCreateRes(val deliveryId: String)
 
-data class DeliverySpotJoin(val deliveryId: String, val customerId: String)
+data class DeliverySpotJoinReq(val deliveryId: String, val customerId: String)
 
-data class DeliverySpotJoined(val deliveryId: String, val customerId: String)
+data class DeliverySpotJoinRes(val deliveryId: String, val customerId: String)
 
-@ZLinkPacket("SubscribeDelivery")
-data class SubscribeDelivery(val deliveryId: String)
+@ZLinkPacket("SubscribeDeliveryReq")
+data class SubscribeDeliveryReq(val deliveryId: String)
 
-@ZLinkPacket("SubscribeDeliveryAccepted")
-data class SubscribeDeliveryAccepted(val deliveryId: String)
+@ZLinkPacket("SubscribeDeliveryRes")
+data class SubscribeDeliveryRes(val deliveryId: String)
 
 @ZLinkPacket("DeliveryStatusNotify")
 data class DeliveryStatusNotify(

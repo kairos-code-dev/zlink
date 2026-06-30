@@ -11,22 +11,22 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLinkMessageFlowOutcome } from '@zlink-systems/framework';
 import type {
-  PayloadReply,
-  PayloadRequest,
-  ProfileCommand,
-  ProfileReply,
-  ProfileRequest,
-  ScenarioRoutePing,
-  ScenarioRoutePong
+  PayloadRes,
+  PayloadReq,
+  ProfileMsg,
+  ProfileRes,
+  ProfileReq,
+  ScenarioRouteReq,
+  ScenarioRouteRes
 } from '../../../Shared/messages';
 import { sha256Hex } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
-export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileRequest, ProfileReply> {
+export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileReq, ProfileRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: ProfileRequest, context: ZLinkRequestContext): Promise<ProfileReply> {
+  async handle(request: ProfileReq, context: ZLinkRequestContext): Promise<ProfileRes> {
     if (request.value === 'slow') {
       await delay(1000);
     }
@@ -36,10 +36,10 @@ export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileRequest
 }
 
 @Injectable()
-export class ProfileCommandHandler implements ZLinkSendHandler<ProfileCommand> {
+export class ProfileCommandHandler implements ZLinkSendHandler<ProfileMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(command: ProfileCommand, context: ZLinkSendContext): Promise<void> {
+  async handle(command: ProfileMsg, context: ZLinkSendContext): Promise<void> {
     if (command.commandId.startsWith('rm-c9-slow-')) {
       await delay(1000);
     }
@@ -48,10 +48,10 @@ export class ProfileCommandHandler implements ZLinkSendHandler<ProfileCommand> {
 }
 
 @Injectable()
-export class PayloadRequestHandler implements ZLinkRequestHandler<PayloadRequest, PayloadReply> {
+export class PayloadRequestHandler implements ZLinkRequestHandler<PayloadReq, PayloadRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: PayloadRequest, context: ZLinkRequestContext): Promise<PayloadReply> {
+  async handle(request: PayloadReq, context: ZLinkRequestContext): Promise<PayloadRes> {
     const hash = sha256Hex(request.payload);
     this.evidence.add(
       `payload-request|rid=${this.evidence.rid}|marker=${request.marker}`
@@ -62,10 +62,10 @@ export class PayloadRequestHandler implements ZLinkRequestHandler<PayloadRequest
 }
 
 @Injectable()
-export class RoutePingHandler implements ZLinkRouteRequestHandler<ScenarioRoutePing, ScenarioRoutePong> {
+export class RoutePingHandler implements ZLinkRouteRequestHandler<ScenarioRouteReq, ScenarioRouteRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: ScenarioRoutePing, context: ZLinkRouteRequestContext): Promise<ScenarioRoutePong> {
+  async handle(request: ScenarioRouteReq, context: ZLinkRouteRequestContext): Promise<ScenarioRouteRes> {
     const sourceRid = String(context.sourceNodeRid);
     this.evidence.add(`route-request|rid=${this.evidence.rid}|source=${sourceRid}|value=${request.value}`);
     return { value: `route:${request.value}`, providerRid: this.evidence.rid, sourceRid };

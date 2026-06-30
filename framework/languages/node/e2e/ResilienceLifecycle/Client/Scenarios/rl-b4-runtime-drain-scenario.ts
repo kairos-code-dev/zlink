@@ -1,7 +1,7 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
-import { profileRequest } from '../Support/resilience-helpers';
+import { profileReq } from '../Support/resilience-helpers';
 import { countNewEvidence, ensure } from '../Support/scenario-assert';
 
 export async function runRlB4(options: ClientOptions): Promise<void> {
@@ -11,7 +11,7 @@ export async function runRlB4(options: ClientOptions): Promise<void> {
 
   for (let i = 0; i < 20; i += 1) {
     const marker = `rl-b4-drained-${i}`;
-    const reply = await postJson<ProfileReply>(options.consumerUrl, '/profile/request', profileRequest(marker));
+    const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', profileReq(marker));
     ensure(reply.providerRid === 'api-a', 'RL-B4 drained api-b received a new request.');
   }
 
@@ -28,10 +28,10 @@ export async function runRlB4(options: ClientOptions): Promise<void> {
   await waitForWeight(options.providerBUrl, 100);
 
   for (let i = 0; i < 40; i += 1) {
-    const reply = await postJson<ProfileReply>(
+    const reply = await postJson<ProfileRes>(
       options.consumerUrl,
       '/profile/request',
-      profileRequest(`rl-b4-restored-${i}`)
+      profileReq(`rl-b4-restored-${i}`)
     );
     ensure(reply.value === 'profile:fast', 'RL-B4 restored request returned an unexpected value.');
   }

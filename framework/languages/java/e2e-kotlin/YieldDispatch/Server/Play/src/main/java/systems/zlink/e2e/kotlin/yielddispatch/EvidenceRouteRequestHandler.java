@@ -4,7 +4,7 @@ import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 
 public final class EvidenceRouteRequestHandler
-    implements ZLinkRouteRequestHandler<Contracts.EvidenceRequest, Contracts.EvidenceReply> {
+    implements ZLinkRouteRequestHandler<Contracts.EvidenceReq, Contracts.EvidenceRes> {
     private final PlayEvidenceStore evidence;
 
     public EvidenceRouteRequestHandler(PlayEvidenceStore evidence) {
@@ -12,8 +12,8 @@ public final class EvidenceRouteRequestHandler
     }
 
     @Override
-    public Contracts.EvidenceReply handle(
-        Contracts.EvidenceRequest request,
+    public Contracts.EvidenceRes handle(
+        Contracts.EvidenceReq request,
         ZLinkRouteRequestContext context) {
         return evidence.evidence(request.requestId());
     }

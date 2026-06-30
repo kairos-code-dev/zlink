@@ -13,16 +13,16 @@ internal object SmD13Scenario {
         try {
             connector.connect().await()
             val auth = connector
-                .request(Contracts.ActorAuthRequest(actorId, profile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq(actorId, profile))
+                .await(Contracts.ActorAuthRes::class.java)
             ensure(auth.actorId == actorId, "SM-D13 auth actor mismatch")
 
             Thread.sleep(700)
             ensure(connector.isConnected, "SM-D13 heartbeat-enabled stream disconnected")
 
             val reply = connector
-                .request(Contracts.ActorEchoRequest("after-heartbeat", 13, profile))
-                .await(Contracts.ActorEchoReply::class.java)
+                .request(Contracts.ActorEchoReq("after-heartbeat", 13, profile))
+                .await(Contracts.ActorEchoRes::class.java)
             ensure(reply.actorId == actorId, "SM-D13 actor reply mismatch")
             ensure(reply.nodeRid == "session-a", "SM-D13 actor node mismatch")
             ensure(reply.value == "entry:after-heartbeat", "SM-D13 actor value mismatch")

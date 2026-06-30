@@ -10,7 +10,7 @@ internal static class SmF2Scenario
     {
         var state = (await api.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(context.SpotRid, "add", 5))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         ScenarioAssert.That(state.SpotRid == context.SpotRid, "SM-F2 request reached the wrong spot.");
         ScenarioAssert.That(state.NodeRid == "play-a", "SM-F2 request reached the wrong node.");
         ScenarioAssert.That(state.Value == context.CurrentValue + 5, "SM-F2 state reply mismatch.");
@@ -18,7 +18,7 @@ internal static class SmF2Scenario
 
         var command = (await api.Post("/spot/state/command")
             .Body(new SpotStateCommandReq(context.SpotRid, "sm-f2-command"))
-            .SubmitAsync<SpotStateCommandReply>()).Body;
+            .SubmitAsync<SpotStateCommandRes>()).Body;
         ScenarioAssert.That(command.SpotRid == context.SpotRid && command.Accepted, "SM-F2 command was not accepted.");
         var expectedEvidence = new[]
         {
@@ -26,7 +26,7 @@ internal static class SmF2Scenario
             $"spot-state-command|rid=play-a|spot={context.SpotRid}|marker=sm-f2-command"
         };
         var evidence = (await api.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

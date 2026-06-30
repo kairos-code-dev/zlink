@@ -8,14 +8,14 @@ internal sealed class DiEchoRequestHandler(
     EvidenceStore evidence,
     SingletonProbe singleton,
     ScopedProbe scoped)
-    : IZLinkRequestHandler<EchoReq, EchoReply>
+    : IZLinkRequestHandler<EchoReq, EchoRes>
 {
-    public ValueTask<EchoReply> HandleAsync(EchoReq request, ZLinkRequestContext context,
+    public ValueTask<EchoRes> HandleAsync(EchoReq request, ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
             $"di|value={request.Value}|singleton={singleton.Id}|scoped={scoped.Id}|disposed={ScopedProbe.DisposedCount}");
-        return ValueTask.FromResult(new EchoReply($"echo:{request.Value}", context.ContentType ?? "<null>"));
+        return ValueTask.FromResult(new EchoRes($"echo:{request.Value}", context.ContentType ?? "<null>"));
     }
 }

@@ -4,11 +4,11 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
-  AuthReply,
+  AuthRes,
   AuthReq,
-  EvidenceWaitRequest
+  EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -26,7 +26,7 @@ export async function runSmB1(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await client
+    const auth = decodeStreamReply<AuthRes>(await client
       .request({
         actorId,
         displayName: 'local actor',
@@ -37,13 +37,13 @@ export async function runSmB1(options: ClientOptions): Promise<void> {
       .submit());
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-B1 auth reply mismatch.');
 
-    const ping = decodeStreamReply<ActorPingReply>(await client
+    const pingMsg = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'b1' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
       .submit());
-    ensure(ping.actorId === actorId, 'SM-B1 actor reply mismatch.');
-    ensure(ping.nodeRid === 'play-a', 'SM-B1 local node mismatch.');
+    ensure(pingMsg.actorId === actorId, 'SM-B1 actor reply mismatch.');
+    ensure(pingMsg.nodeRid === 'play-a', 'SM-B1 local node mismatch.');
 
     const expectedEvidence = [
       `entry-created|rid=play-a|actor=${actorId}`,
@@ -52,7 +52,7 @@ export async function runSmB1(options: ClientOptions): Promise<void> {
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-B1 evidence mismatch.'

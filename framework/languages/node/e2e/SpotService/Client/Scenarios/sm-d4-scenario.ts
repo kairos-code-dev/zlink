@@ -4,11 +4,11 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
   ActorPushNotify,
   ActorPushReq,
-  MultiBindReply,
+  MultiBindRes,
   MultiBindReq
 } from '../../Shared/messages';
 import { SpotServiceNames } from '../../Shared/messages';
@@ -28,7 +28,7 @@ export async function runSmD4(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const bound = decodeStreamReply<MultiBindReply>(await client
+    const bound = decodeStreamReply<MultiBindRes>(await client
       .request({
         firstActorId,
         secondActorId,
@@ -39,13 +39,13 @@ export async function runSmD4(options: ClientOptions): Promise<void> {
       .submit());
     ensure(bound.boundCount === 2, 'SM-D4 expected two bound actors.');
 
-    const x = decodeStreamReply<ActorPingReply>(await client
+    const x = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'to-x' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .metadata(SpotServiceNames.actorIdMetadata, firstActorId)
       .timeout(5000)
       .submit());
-    const y = decodeStreamReply<ActorPingReply>(await client
+    const y = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'to-y' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .metadata(SpotServiceNames.actorIdMetadata, secondActorId)
@@ -58,7 +58,7 @@ export async function runSmD4(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === firstActorId)
       .timeout(10000)
       .submit();
-    const xPushReply = decodeStreamReply<ActorPingReply>(await client
+    const xPushReply = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'push-x' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .metadata(SpotServiceNames.actorIdMetadata, firstActorId)
@@ -72,7 +72,7 @@ export async function runSmD4(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === secondActorId)
       .timeout(10000)
       .submit();
-    const yPushReply = decodeStreamReply<ActorPingReply>(await client
+    const yPushReply = decodeStreamReply<ActorPingRes>(await client
       .request({ value: 'push-y' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .metadata(SpotServiceNames.actorIdMetadata, secondActorId)

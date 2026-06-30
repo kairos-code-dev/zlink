@@ -98,7 +98,7 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-C4 publish wait reply mismatch");
     }
     for (const auto &entry : observed.evidence.entries) {
-        if (entry.marker == "MeshEventReceived" && entry.spot_rid == unsubscribed_spot_rid
+        if (entry.marker == "MeshMsgReceived" && entry.spot_rid == unsubscribed_spot_rid
             && entry.value == "evt-sm-c4:sm-c4-publish") {
             throw std::runtime_error ("SM-C4 unsubscribed spot received publish event");
         }

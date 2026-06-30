@@ -62,7 +62,7 @@ class delivery_dispatch_client_scenario_t
 
         const auto subscribed =
           customer.request (subscribe_delivery_req_t{delivery_id})
-            .async<subscribe_delivery_accepted_t> ()
+            .async<subscribe_delivery_res_t> ()
             .result ();
         if (!subscribed) {
             throw std::runtime_error (subscribed.error () ? subscribed.error ()->message
@@ -75,7 +75,7 @@ class delivery_dispatch_client_scenario_t
         auto created = http.post ("/deliveries")
                          .body (create_delivery_req_t{
                            delivery_id, "customer-1", "Kitchen 12", "Customer Lobby"})
-                         .fetch<delivery_created_t> ();
+                         .fetch<create_delivery_res_t> ();
         ensure (created.delivery_id == delivery_id, "delivery-success create failed");
         ensure (assigned.get ().courier_id == "courier-a", "assigned courier mismatch");
         ensure (accepted.get ().courier_id == "courier-a", "accepted courier mismatch");
@@ -94,7 +94,7 @@ class delivery_dispatch_client_scenario_t
 
         const auto subscribed =
           customer.request (subscribe_delivery_req_t{delivery_id})
-            .async<subscribe_delivery_accepted_t> ()
+            .async<subscribe_delivery_res_t> ()
             .result ();
         if (!subscribed) {
             throw std::runtime_error (subscribed.error () ? subscribed.error ()->message
@@ -107,7 +107,7 @@ class delivery_dispatch_client_scenario_t
         auto created = http.post ("/deliveries")
                          .body (create_delivery_req_t{
                            delivery_id, "customer-1", "Kitchen 12", "Customer Lobby"})
-                         .fetch<delivery_created_t> ();
+                         .fetch<create_delivery_res_t> ();
         ensure (created.delivery_id == delivery_id, "delivery-reassign create failed");
         ensure (assigned.get ().courier_id == "courier-a", "assigned courier mismatch");
         ensure (reassigned.get ().courier_id == "courier-b", "reassigned courier mismatch");

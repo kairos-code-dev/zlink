@@ -126,13 +126,13 @@ class channel_command_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using message_type = e2e::channel_command_t;
+    using message_type = e2e::channel_msg_t;
 
     explicit channel_command_handler_t (scenario_state_t &state) : _state (state) {}
 
-    void handle (const e2e::channel_command_t &command)
+    void handle (const e2e::channel_msg_t &command)
     {
-        _state.record ("ChannelCommand", {}, {}, command.command_id);
+        _state.record ("ChannelMsg", {}, {}, command.command_id);
     }
 
   private:

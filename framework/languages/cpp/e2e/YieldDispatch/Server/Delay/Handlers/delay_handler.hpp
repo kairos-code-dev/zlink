@@ -19,11 +19,11 @@ class delay_handler_t
   public:
     using dependency_types = zlink::framework::dependency_list_t<delay_state_t>;
     using request_type = yd::delay_req_t;
-    using reply_type = yd::delay_reply_t;
+    using reply_type = yd::delay_res_t;
 
     explicit delay_handler_t (delay_state_t &state) : _state (state) {}
 
-    yd::delay_reply_t handle (const yd::delay_req_t &request)
+    yd::delay_res_t handle (const yd::delay_req_t &request)
     {
         _state.evidence.add ("delay-started|rid=" + _state.node_rid
                              + "|request=" + request.request_id

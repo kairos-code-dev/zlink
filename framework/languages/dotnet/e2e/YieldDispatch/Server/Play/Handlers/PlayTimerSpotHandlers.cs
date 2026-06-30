@@ -8,9 +8,9 @@ namespace YieldDispatch.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("TimerStartReq")]
 internal sealed class TimerStartHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<YieldProbeSpot, TimerStartReq, YieldDispatchReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, TimerStartReq, YieldDispatchRes>
 {
-    public async ValueTask<YieldDispatchReply> HandleAsync(
+    public async ValueTask<YieldDispatchRes> HandleAsync(
         YieldProbeSpot spot,
         TimerStartReq request,
         CancellationToken cancellationToken)
@@ -40,13 +40,13 @@ internal sealed class TimerStartHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("TimerStartCommand")]
+[ZLinkSpotPacketHandler("TimerStartMsg")]
 internal sealed class TimerStartCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<YieldProbeSpot, TimerStartCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, TimerStartMsg>
 {
     public async ValueTask HandleAsync(
         YieldProbeSpot spot,
-        TimerStartCommand request,
+        TimerStartMsg request,
         CancellationToken cancellationToken)
     {
         var state = new YieldTimerState(
@@ -75,9 +75,9 @@ internal sealed class TimerStartCommandHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("TimerStopReq")]
 internal sealed class TimerStopHandler
-    : IZLinkSpotRequestHandler<YieldProbeSpot, TimerStopReq, YieldDispatchReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, TimerStopReq, YieldDispatchRes>
 {
-    public async ValueTask<YieldDispatchReply> HandleAsync(
+    public async ValueTask<YieldDispatchRes> HandleAsync(
         YieldProbeSpot spot,
         TimerStopReq request,
         CancellationToken cancellationToken)
@@ -88,13 +88,13 @@ internal sealed class TimerStopHandler
     }
 }
 
-[ZLinkSpotPacketHandler("TimerStopCommand")]
+[ZLinkSpotPacketHandler("TimerStopMsg")]
 internal sealed class TimerStopCommandHandler
-    : IZLinkSpotPacketHandler<YieldProbeSpot, TimerStopCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, TimerStopMsg>
 {
     public async ValueTask HandleAsync(
         YieldProbeSpot spot,
-        TimerStopCommand request,
+        TimerStopMsg request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -140,7 +140,7 @@ internal sealed class YieldTimerHandler(EvidenceStore evidence)
             evidence.Add(
                 $"timer-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
-            await call.Yield<DelayReply>(cancellationToken);
+            await call.Yield<DelayRes>(cancellationToken);
             evidence.Add(
                 $"timer-yield-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");

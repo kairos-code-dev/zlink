@@ -66,7 +66,10 @@ class TimerScenarioSpot(
         evidence.record("IdleActivity", context.spotRid().toString(), value)
     }
 
-    fun status(): Contracts.TimerStatus = Contracts.TimerStatus(context.spotRid().toString(), status)
+    fun activityStatus(): Contracts.TimerActivityRes =
+        Contracts.TimerActivityRes(context.spotRid().toString(), status)
+
+    fun status(): Contracts.TimerStatusRes = Contracts.TimerStatusRes(context.spotRid().toString(), status)
 
     fun idleTick() {
         val rid = context.spotRid().toString()

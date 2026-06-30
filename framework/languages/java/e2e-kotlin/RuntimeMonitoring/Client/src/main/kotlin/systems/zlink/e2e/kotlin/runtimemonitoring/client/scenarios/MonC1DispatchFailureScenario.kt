@@ -16,10 +16,10 @@ class MonC1DispatchFailureScenario(
         repeat(12) { index ->
             val reply = client.requestToChannel(
                 Contracts.CHANNEL,
-                Contracts.WorkRequest("c1-trigger-$index"),
+                Contracts.WorkReq("c1-trigger-$index"),
             )
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply::class.java)
+                .await(Contracts.WorkRes::class.java)
             ScenarioAssert.ensure(
                 reply.value == "work:c1-trigger-$index",
                 "MON-C1 trigger reply mismatch",
@@ -35,10 +35,10 @@ class MonC1DispatchFailureScenario(
                 )
                 val recovery = client.requestToChannel(
                     Contracts.CHANNEL,
-                    Contracts.WorkRequest("c1-after-handler-failure"),
+                    Contracts.WorkReq("c1-after-handler-failure"),
                 )
                     .timeout(Duration.ofSeconds(3))
-                    .await(Contracts.WorkReply::class.java)
+                    .await(Contracts.WorkRes::class.java)
                 ScenarioAssert.ensure(
                     recovery.value == "work:c1-after-handler-failure",
                     "MON-C1 follow-up reply mismatch",
@@ -50,10 +50,10 @@ class MonC1DispatchFailureScenario(
 
         val reply = client.requestToChannel(
             Contracts.CHANNEL,
-            Contracts.WorkRequest("c1-after-handler-failure"),
+            Contracts.WorkReq("c1-after-handler-failure"),
         )
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkReply::class.java)
+            .await(Contracts.WorkRes::class.java)
         ScenarioAssert.ensure(
             reply.value == "work:c1-after-handler-failure",
             "MON-C1 follow-up reply mismatch",

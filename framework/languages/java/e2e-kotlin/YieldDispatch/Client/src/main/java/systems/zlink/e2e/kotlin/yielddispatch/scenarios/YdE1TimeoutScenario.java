@@ -13,8 +13,8 @@ public final class YdE1TimeoutScenario {
     public static void run(ZLinkStreamConnector connector) {
         String requestId = "YD-E1-" + UUID.randomUUID();
         ClientStreamSupport.send(
-            connector.send(new Contracts.YieldTimeoutCommand(requestId, 800, 100))
-                .packetName("YieldTimeoutCommand")
+            connector.send(new Contracts.YieldTimeoutMsg(requestId, 800, 100))
+                .packetName("YieldTimeoutMsg")
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
         waitForMarkers(connector, requestId, List.of(
@@ -22,8 +22,8 @@ public final class YdE1TimeoutScenario {
             "timeout-yield-released",
             "timeout-yield-completed"));
         ClientStreamSupport.send(
-            connector.send(new Contracts.SpotProbeCommand(requestId, "timeout-probe"))
-                .packetName("SpotProbeCommand")
+            connector.send(new Contracts.SpotProbeMsg(requestId, "timeout-probe"))
+                .packetName("SpotProbeMsg")
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
                 .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
         waitForMarkers(connector, requestId, List.of(
@@ -40,7 +40,7 @@ public final class YdE1TimeoutScenario {
         List<String> expected) {
         List<String> latest = List.of();
         for (int attempt = 0; attempt < 80; attempt++) {
-            Contracts.EvidenceReply evidence = ClientStreamSupport.evidence(connector, requestId);
+            Contracts.EvidenceRes evidence = ClientStreamSupport.evidence(connector, requestId);
             latest = evidence.markers();
             if (startsWithMarkers(latest, expected)) {
                 return;

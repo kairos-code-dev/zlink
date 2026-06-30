@@ -12,10 +12,10 @@ public final class Contracts {
     private Contracts() {
     }
 
-    public record WorkRequest(String value) {
+    public record WorkReq(String value) {
     }
 
-    public record WorkReply(String value, String providerRid) {
+    public record WorkRes(String value, String providerRid) {
     }
 
     public record EvidenceEntry(String surface, String sourceName, String event, String detail) {

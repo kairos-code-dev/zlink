@@ -72,9 +72,9 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore, f
               .enableServer(options.channelEndpoint)
               .routingId(options.rid)
               .enableClient()
-              .addRequestHandler(PacketNames.profileRequest, ProfileRequestHandler)
-              .addRequestHandler(PacketNames.payloadRequest, PayloadRequestHandler)
-              .addSendHandler(PacketNames.profileCommand, ProfileCommandHandler);
+              .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)
+              .addRequestHandler(PacketNames.payloadReq, PayloadRequestHandler)
+              .addSendHandler(PacketNames.profileMsg, ProfileCommandHandler);
           }
           return builder.build();
         }

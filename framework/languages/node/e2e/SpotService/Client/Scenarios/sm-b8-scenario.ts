@@ -4,12 +4,12 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  AuthReply,
+  AuthRes,
   AuthReq,
-  DestroyActorReply,
+  DestroyActorRes,
   DestroyActorReq,
-  EvidenceWaitRequest,
-  SnapshotReply,
+  EvidenceWaitReq,
+  SnapshotRes,
   SnapshotReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -28,7 +28,7 @@ export async function runSmB8(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await client
+    const auth = decodeStreamReply<AuthRes>(await client
       .request({
         actorId,
         displayName: 'destroy',
@@ -39,7 +39,7 @@ export async function runSmB8(options: ClientOptions): Promise<void> {
       .submit());
     ensure(auth.actorId === actorId && auth.nodeRid === 'play-a', 'SM-B8 auth reply mismatch.');
 
-    const destroyed = decodeStreamReply<DestroyActorReply>(await client
+    const destroyed = decodeStreamReply<DestroyActorRes>(await client
       .request({ actorId } satisfies DestroyActorReq)
       .packetName('DestroyActorReq')
       .timeout(5000)
@@ -56,7 +56,7 @@ export async function runSmB8(options: ClientOptions): Promise<void> {
           .request({ actorId } satisfies SnapshotReq)
           .packetName('SnapshotReq')
           .timeout(1000)
-          .submit<SnapshotReply>();
+          .submit<SnapshotRes>();
       } catch {
         snapshotFailed = true;
         break;
@@ -68,7 +68,7 @@ export async function runSmB8(options: ClientOptions): Promise<void> {
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: [`actor-destroyed|rid=play-a|actor=${actorId}`],
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       evidence.some((line) => line.includes(`actor-destroyed|rid=play-a|actor=${actorId}`)),
       'SM-B8 expected actor destroy evidence.'

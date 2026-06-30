@@ -12,15 +12,15 @@ public final class ManualRegistrationScenario {
     }
 
     public static void run(ScenarioContext context) {
-        Contracts.EchoReply manual = context.client().requestToChannel(
+        Contracts.EchoRes manual = context.client().requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.EchoManualRequest("manual-request"))
+                new Contracts.EchoManualReq("manual-request"))
             .packetName("EchoManual")
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EchoReply.class);
+            .await(Contracts.EchoRes.class);
         ScenarioAssert.ensure("echo:manual-request".equals(manual.value()) && "manual".equals(manual.handler()),
             "RC-A3 request mismatch");
-        context.client().sendToChannel(Contracts.CHANNEL, new Contracts.EchoManualCommand("manual-send"))
+        context.client().sendToChannel(Contracts.CHANNEL, new Contracts.EchoManualMsg("manual-send"))
             .packetName("EchoManual")
             .await();
         ScenarioAssert.waitForEvidence(context.evidence(), "Send", "EchoManual", "manual-send");

@@ -9,15 +9,15 @@ class SlowRequestHandler {
     @ZLinkSpotRequest
     fun handle(
         spot: UserSpot,
-        request: Contracts.SlowRequest,
-    ): Contracts.StateReply {
+        request: Contracts.SlowReq,
+    ): Contracts.StateRes {
         try {
             Thread.sleep(1000)
         } catch (error: InterruptedException) {
             Thread.currentThread().interrupt()
             throw IllegalStateException("interrupted", error)
         }
-        return Contracts.StateReply(
+        return Contracts.StateRes(
             spot.context().spotRid().toString(),
             spot.context().nodeRid().toString(),
             spot.apply("slow:${request.value}"),

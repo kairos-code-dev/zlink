@@ -65,7 +65,7 @@ class evidence_store_t
         _changed.notify_all ();
     }
 
-    yield_evidence_reply_t snapshot (const std::string &request_id) const
+    yield_evidence_res_t snapshot (const std::string &request_id) const
     {
         std::lock_guard lock (_mutex);
         std::vector<std::string> selected;
@@ -77,7 +77,7 @@ class evidence_store_t
         return {.request_id = request_id, .evidence = std::move (selected)};
     }
 
-    yield_evidence_reply_t wait (const yield_evidence_wait_req_t &request)
+    yield_evidence_res_t wait (const yield_evidence_wait_req_t &request)
     {
         const auto deadline =
           std::chrono::steady_clock::now () + std::chrono::milliseconds (request.timeout_milliseconds);

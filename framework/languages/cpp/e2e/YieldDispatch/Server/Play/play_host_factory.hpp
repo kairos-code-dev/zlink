@@ -53,16 +53,16 @@ inline zlink::framework::app_t create_play_host ()
           .enable_client ()
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid))
           .add_request_handler<bind_yield_actors_handler_t, yd::bind_yield_actors_req_t,
-                               yd::bind_yield_actors_reply_t> (
+                               yd::bind_yield_actors_res_t> (
             yd::bind_yield_actors_req_t::packet_name, &bind_yield_actors_handler_t::handle)
           .add_request_handler<ensure_spot_handler_t, yd::ensure_spot_req_t,
-                               yd::ensure_spot_reply_t> (
+                               yd::ensure_spot_res_t> (
             yd::ensure_spot_req_t::packet_name, &ensure_spot_handler_t::handle)
           .add_request_handler<evidence_handler_t, yd::yield_evidence_req_t,
-                               yd::yield_evidence_reply_t> (
+                               yd::yield_evidence_res_t> (
             yd::yield_evidence_req_t::packet_name, &evidence_handler_t::handle)
           .add_request_handler<evidence_wait_handler_t, yd::yield_evidence_wait_req_t,
-                               yd::yield_evidence_reply_t> (
+                               yd::yield_evidence_res_t> (
             yd::yield_evidence_wait_req_t::packet_name, &evidence_wait_handler_t::handle);
         options.add_spot_mesh (yd::spot_channel)
           .use_registry_spot_resolver (yd::control_channel)

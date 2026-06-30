@@ -8,13 +8,13 @@ namespace YieldDispatch.Server.Session.Support;
 
 internal sealed partial class YieldSession
 {
-    private static async Task<TReply> RequestPlayControlWithRetryAsync<TReply>(
+    private static async Task<TRes> RequestPlayControlWithRetryAsync<TRes>(
         IZLinkRouteClient routes,
         object request,
         string packetName,
         CancellationToken cancellationToken)
     {
-        return await RequestPlayControlWithRetryAsync<TReply>(
+        return await RequestPlayControlWithRetryAsync<TRes>(
             routes,
             request,
             packetName,
@@ -22,7 +22,7 @@ internal sealed partial class YieldSession
             cancellationToken);
     }
 
-    private static async Task<TReply> RequestPlayControlWithRetryAsync<TReply>(
+    private static async Task<TRes> RequestPlayControlWithRetryAsync<TRes>(
         IZLinkRouteClient routes,
         object request,
         string packetName,
@@ -40,7 +40,7 @@ internal sealed partial class YieldSession
                         request)
                     .PacketName(packetName)
                     .Timeout(TimeSpan.FromSeconds(5))
-                    .Async<TReply>(cancellationToken);
+                    .Async<TRes>(cancellationToken);
             }
             catch (Exception ex) when (
                 ex is TimeoutException or ZlinkRequestException or ZlinkSubmitException
@@ -84,7 +84,7 @@ internal sealed partial class YieldSession
         throw new TimeoutException($"Timed out sending spot '{spotRid}' packet '{packetName}'.", last);
     }
 
-    private static async ValueTask<TReply> RequestSpotWithRetryAsync<TReply>(
+    private static async ValueTask<TRes> RequestSpotWithRetryAsync<TRes>(
         IZLinkRouteClient routes,
         string spotRid,
         object request,
@@ -102,7 +102,7 @@ internal sealed partial class YieldSession
                         request)
                     .PacketName(packetName)
                     .Timeout(TimeSpan.FromSeconds(5))
-                    .Async<TReply>(cancellationToken);
+                    .Async<TRes>(cancellationToken);
             }
             catch (Exception ex) when (
                 ex is TimeoutException or ZLinkFrameworkException

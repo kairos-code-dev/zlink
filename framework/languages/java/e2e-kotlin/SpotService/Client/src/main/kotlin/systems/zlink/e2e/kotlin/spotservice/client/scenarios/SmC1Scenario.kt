@@ -11,7 +11,7 @@ import systems.zlink.framework.spots.ZLinkSpotOutbound
 
 internal object SmC1Scenario {
     fun runSend(outbound: ZLinkSpotOutbound) {
-        outbound.sendToSpot(RoutingId.from("room-a"), Contracts.StateCommand("cmd-c1"))
+        outbound.sendToSpot(RoutingId.from("room-a"), Contracts.StateMsg("cmd-c1"))
             .await()
         println("scenario SM-C1-send passed")
     }
@@ -20,10 +20,10 @@ internal object SmC1Scenario {
         expectFailure {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.SlowRequest("late"),
+                Contracts.SlowReq("late"),
             )
                 .timeout(Duration.ofMillis(100))
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         println("scenario SM-C1-timeout passed")
     }
@@ -32,10 +32,10 @@ internal object SmC1Scenario {
         val after = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("after-timeout"),
+                Contracts.StateReq("after-timeout"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         ensure(after.value.contains("after-timeout"), "SM-C1 post-timeout request failed")
         println("scenario SM-C1 passed")

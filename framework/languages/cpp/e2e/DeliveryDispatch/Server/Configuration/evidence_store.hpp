@@ -24,7 +24,7 @@ class evidence_store_t
         std::filesystem::create_directories (std::filesystem::path (_path).parent_path ());
     }
 
-    void append (const delivery_status_changed_t &status)
+    void append (const delivery_status_req_t &status)
     {
         const std::lock_guard lock (_mutex);
         std::ofstream file (_path, std::ios::app);

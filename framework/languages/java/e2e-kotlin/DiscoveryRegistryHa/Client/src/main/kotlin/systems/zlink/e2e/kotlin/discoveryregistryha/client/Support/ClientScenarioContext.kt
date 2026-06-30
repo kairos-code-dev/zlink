@@ -98,12 +98,12 @@ class ClientScenarioContext(
         return providers
     }
 
-    private fun postWorkRequest(value: String): Contracts.WorkReply {
+    private fun postWorkRequest(value: String): Contracts.WorkRes {
         val endpoint = options.consumerHttpEndpoint()
         ScenarioAssert.that(!endpoint.isNullOrBlank(), "consumer HTTP endpoint is required")
-        val body = json.writeValueAsString(Contracts.WorkRequest(value))
+        val body = json.writeValueAsString(Contracts.WorkReq(value))
         val responseBody = post("$endpoint/profile/request", body)
-        return json.readValue(responseBody, Contracts.WorkReply::class.java)
+        return json.readValue(responseBody, Contracts.WorkRes::class.java)
     }
 
     private fun expectHttpFailure(url: String?) {

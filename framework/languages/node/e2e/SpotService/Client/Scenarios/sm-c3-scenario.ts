@@ -1,12 +1,12 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
-  SpotToSpotNegativeReply,
+  EvidenceWaitReq,
+  SpotToSpotNegativeRes,
   SpotToSpotNegativeRouteReq,
-  SpotToSpotReply,
+  SpotToSpotRes,
   SpotToSpotRouteReq,
-  SpotToSpotTimeoutReply,
+  SpotToSpotTimeoutRes,
   SpotToSpotTimeoutRouteReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -17,7 +17,7 @@ export async function runSmC3(options: ClientOptions): Promise<void> {
   const sourceSpotRid = `spot-sm-c3-source-${Date.now()}`;
   const targetSpotRid = `spot-sm-c3-target-${Date.now()}`;
   for (const spotRid of [sourceSpotRid, targetSpotRid]) {
-    const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+    const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
       spotRid
     } satisfies CreateSpotReq);
     ensure(
@@ -28,7 +28,7 @@ export async function runSmC3(options: ClientOptions): Promise<void> {
 
   const failures: string[] = [];
   try {
-    const direct = await postJson<SpotToSpotReply>(options.playAUrl, '/spot/to-spot/request', {
+    const direct = await postJson<SpotToSpotRes>(options.playAUrl, '/spot/to-spot/request', {
       sourceSpotRid,
       targetSpotRid,
       marker: 'direct'
@@ -41,7 +41,7 @@ export async function runSmC3(options: ClientOptions): Promise<void> {
   }
 
   try {
-    const timeout = await postJson<SpotToSpotTimeoutReply>(options.playAUrl, '/spot/to-spot/timeout', {
+    const timeout = await postJson<SpotToSpotTimeoutRes>(options.playAUrl, '/spot/to-spot/timeout', {
       sourceSpotRid,
       targetSpotRid,
       marker: 'slow'
@@ -52,7 +52,7 @@ export async function runSmC3(options: ClientOptions): Promise<void> {
   }
 
   try {
-    const negative = await postJson<SpotToSpotNegativeReply>(options.playAUrl, '/spot/to-spot/negative', {
+    const negative = await postJson<SpotToSpotNegativeRes>(options.playAUrl, '/spot/to-spot/negative', {
       sourceSpotRid,
       targetSpotRid,
       marker: 'missing'
@@ -66,16 +66,16 @@ export async function runSmC3(options: ClientOptions): Promise<void> {
     const expectedEvidence = [
       `spot-to-spot|rid=play-a|source=${sourceSpotRid}|target=${targetSpotRid}|value=`,
       `spot-state-command|rid=play-a|spot=${targetSpotRid}|marker=sm-c3-send-direct`,
-      `spot-event|rid=play-a|spot=${targetSpotRid}|marker=sm-c3-publish-direct`,
+      `spot-msg|rid=play-a|spot=${targetSpotRid}|marker=sm-c3-publish-direct`,
       `spot-to-spot-timeout|rid=play-a|source=${sourceSpotRid}|target=${targetSpotRid}|failed=True`,
       `spot-to-spot-negative|rid=play-a|source=${sourceSpotRid}|target=${targetSpotRid}|requestFailed=True`,
       'dispatch-error|surface=spotRoute|kind=request|reason=handlerMissing|action=replyError|packet=MissingSpotReq',
-      'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=MissingSpotCommand'
+      'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=MissingSpotMsg'
     ];
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-C3 evidence mismatch.'

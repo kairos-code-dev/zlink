@@ -40,7 +40,7 @@ class UserSpot(
         request: ZLinkMessage,
         cancellationToken: CancellationToken
     ): ZLinkSpotActorJoinResponse {
-        val join = request.decode(Contracts.ActorJoinRequest::class.java)
+        val join = request.decode(Contracts.ActorJoinReq::class.java)
         actor.applyProfile(join.profile)
         evidence.record(
             "ActorUserJoinRequested",
@@ -48,7 +48,7 @@ class UserSpot(
             actor.actorId() + "/" + join.profile.displayName + "/" + join.tags.joinToString(",")
         )
         return ZLinkSpotActorJoinResponse.accept(
-            Contracts.ActorJoinReply(
+            Contracts.ActorJoinRes(
                 actor.actorId(),
                 context.spotRid().toString(),
                 evidence.nodeRid(),

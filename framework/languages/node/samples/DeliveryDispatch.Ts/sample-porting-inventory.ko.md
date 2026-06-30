@@ -44,16 +44,16 @@
 | `common: 역할 Tracking` | `Server/Tracking/*` | server-role | done | status 기록, Spot join, fanout publish를 맡는다. |
 | `common: 역할 Session` | `Server/Session/*` | server-role | done | stream session과 delivery subscription을 유지한다. |
 | `common: 역할 Probe` | `Server/Probe/probe.ts` | validation | done | registry topology readiness를 확인한다. |
-| `common: message CreateDeliveryRequest/DeliveryCreated` | `Shared/Contracts/messages.ts` | shared-contract | done | HTTP 생성 요청과 응답 타입을 둔다. |
-| `common: message SubscribeDelivery/SubscribeDeliveryAccepted` | `Shared/Contracts/messages.ts` | shared-contract | done | stream subscription 요청과 응답 타입을 둔다. |
+| `common: message CreateDeliveryReq/CreateDeliveryRes` | `Shared/Contracts/messages.ts` | shared-contract | done | HTTP 생성 요청과 응답 타입을 둔다. |
+| `common: message SubscribeDeliveryReq/SubscribeDeliveryRes` | `Shared/Contracts/messages.ts` | shared-contract | done | stream subscription 요청과 응답 타입을 둔다. |
 | `common: message DeliveryStatusNotify` | `Shared/Contracts/messages.ts` | shared-contract | done | 상태 push payload를 정의한다. |
-| `common: message AssignDelivery/AssignDeliveryResult` | `Shared/Contracts/messages.ts` | shared-contract | done | `AssignDeliveryResult`는 `deliveryId`, `accepted`, `courierId`를 포함해 공통 문서와 .NET 기준 구현을 모두 만족한다. |
-| `common: message OfferDelivery/OfferDeliveryResult` | `Shared/Contracts/messages.ts` | shared-contract | done | courier offer와 응답 타입을 둔다. |
-| `common: message DeliveryStatusChanged/DeliveryStatusAck` | `Shared/Contracts/messages.ts` | shared-contract | done | tracking status event와 ack를 둔다. |
-| `common: message EnsureCustomerActor/CustomerActorEnsured` | `Shared/Contracts/messages.ts` | shared-contract | done | session이 tracking에 customer actor를 요청한다. |
-| `common: message SubscribeCustomerToDelivery/CustomerDeliverySubscribed` | `Shared/Contracts/messages.ts` | shared-contract | done | customer actor를 delivery Spot에 join시킨다. |
-| `common: message DeliverySpotCreate/DeliverySpotCreated` | `Shared/Contracts/messages.ts` | shared-contract | done | delivery Spot 생성 payload와 결과를 둔다. |
-| `common: message DeliverySpotJoin/DeliverySpotJoined` | `Shared/Contracts/messages.ts` | shared-contract | done | delivery별 actor join payload와 결과를 둔다. |
+| `common: message AssignDeliveryReq/AssignDeliveryRes` | `Shared/Contracts/messages.ts` | shared-contract | done | `AssignDeliveryRes`는 `deliveryId`, `accepted`, `courierId`를 포함해 공통 문서와 .NET 기준 구현을 모두 만족한다. |
+| `common: message OfferDeliveryReq/OfferDeliveryRes` | `Shared/Contracts/messages.ts` | shared-contract | done | courier offer와 응답 타입을 둔다. |
+| `common: message DeliveryStatusReq/DeliveryStatusRes` | `Shared/Contracts/messages.ts` | shared-contract | done | tracking status event와 ack를 둔다. |
+| `common: message EnsureCustomerActorReq/EnsureCustomerActorRes` | `Shared/Contracts/messages.ts` | shared-contract | done | session이 tracking에 customer actor를 요청한다. |
+| `common: message SubscribeCustomerToDeliveryReq/SubscribeCustomerToDeliveryRes` | `Shared/Contracts/messages.ts` | shared-contract | done | customer actor를 delivery Spot에 join시킨다. |
+| `common: message DeliverySpotCreateReq/DeliverySpotCreateRes` | `Shared/Contracts/messages.ts` | shared-contract | done | delivery Spot 생성 payload와 결과를 둔다. |
+| `common: message DeliverySpotJoinReq/DeliverySpotJoinRes` | `Shared/Contracts/messages.ts` | shared-contract | done | delivery별 actor join payload와 결과를 둔다. |
 | `common: validation delivery-success Assigned` | `Client/deliverydispatch-client-scenario.ts` | validation | done | `courier-a`의 `Assigned` push를 기다리고 검증한다. |
 | `common: validation delivery-success Accepted/PickedUp/Delivered` | `Client/deliverydispatch-client-scenario.ts` | validation | done | 각 상태가 `courier-a`에서 왔는지 검증한다. |
 | `common: validation delivery-reassign Assigned` | `Client/deliverydispatch-client-scenario.ts` | validation | done | 최초 `Assigned`가 `courier-a`에서 왔는지 검증한다. |
@@ -67,4 +67,4 @@
 ## 남은 확인
 
 - PowerShell runner의 Windows 전용 경로는 별도 Windows 환경에서 확인해야 한다.
-- 공통 문서의 `AssignDeliveryResult.Accepted`와 `.NET` 구현의 `CourierId` drift를 별도 문서 또는 후속 계약 정리로 처리해야 한다.
+- 공통 문서의 `AssignDeliveryRes.Accepted`와 `.NET` 구현의 `CourierId` drift를 별도 문서 또는 후속 계약 정리로 처리해야 한다.

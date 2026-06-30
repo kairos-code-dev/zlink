@@ -35,8 +35,8 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
 
     @Override
     public void configure() {
-        context.handlers().addPacket(TimerActivityHandler.class);
-        context.handlers().addPacket(TimerStatusHandler.class);
+        context.handlers().addPacket(TimerActivityReqHandler.class);
+        context.handlers().addPacket(TimerActivityResHandler.class);
     }
 
     @Override
@@ -75,8 +75,8 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
         evidence.record("IdleActivity", context.spotRid().toString(), value);
     }
 
-    public Contracts.TimerStatus status() {
-        return new Contracts.TimerStatus(context.spotRid().toString(), status);
+    public Contracts.TimerActivityRes status() {
+        return new Contracts.TimerActivityRes(context.spotRid().toString(), status);
     }
 
     public void idleTick() {

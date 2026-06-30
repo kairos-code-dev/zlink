@@ -71,20 +71,20 @@ public final class DispatchWorker {
             request.customerId());
         publishStatus(request.deliveryId(), Status.Assigned, SampleNames.CourierA);
 
-        Messages.OfferDeliveryResult first = tryOffer(request, SampleNames.CourierA);
+        Messages.OfferDeliveryRes first = tryOffer(request, SampleNames.CourierA);
         if (first.accepted()) {
             continueAccepted(request.deliveryId(), first.courierId());
             return;
         }
 
         publishStatus(request.deliveryId(), Status.Reassigned, SampleNames.CourierB);
-        Messages.OfferDeliveryResult second = requestWithRetry(
+        Messages.OfferDeliveryRes second = requestWithRetry(
             SampleNames.courierChannel(SampleNames.CourierB),
             new Messages.OfferDelivery(
                 request.deliveryId(),
                 request.pickupAddress(),
                 request.dropoffAddress()),
-            Messages.OfferDeliveryResult.class,
+            Messages.OfferDeliveryRes.class,
             null,
             SampleTimings.MaxChannelAttempts);
         if (!second.accepted()) {
@@ -95,7 +95,7 @@ public final class DispatchWorker {
         continueAccepted(request.deliveryId(), second.courierId());
     }
 
-    private Messages.OfferDeliveryResult tryOffer(
+    private Messages.OfferDeliveryRes tryOffer(
         Messages.AssignDelivery request,
         String courierId) {
         try {
@@ -105,7 +105,7 @@ public final class DispatchWorker {
                     request.deliveryId(),
                     request.pickupAddress(),
                     request.dropoffAddress()),
-                Messages.OfferDeliveryResult.class,
+                Messages.OfferDeliveryRes.class,
                 SampleTimings.DispatchTimeout,
                 1);
         } catch (RuntimeException error) {
@@ -113,7 +113,7 @@ public final class DispatchWorker {
                 "deliverydispatch dispatch: courier timeout delivery=%s courier=%s%n",
                 request.deliveryId(),
                 courierId);
-            return new Messages.OfferDeliveryResult(
+            return new Messages.OfferDeliveryRes(
                 request.deliveryId(),
                 courierId,
                 false,
@@ -130,12 +130,12 @@ public final class DispatchWorker {
     private void publishStatus(String deliveryId, String status, String courierId) {
         requestWithRetry(
             SampleNames.TrackingChannel,
-            new Messages.DeliveryStatusChanged(
+            new Messages.DeliveryStatusReq(
                 deliveryId,
                 status,
                 courierId,
                 System.currentTimeMillis()),
-            Messages.DeliveryStatusAck.class,
+            Messages.DeliveryStatusRes.class,
             null,
             SampleTimings.MaxChannelAttempts);
     }

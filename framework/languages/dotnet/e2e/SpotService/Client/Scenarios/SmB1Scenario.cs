@@ -24,10 +24,10 @@ internal static class SmB1Scenario
         await client.Connect.Async();
         await client.Request(new AuthReq(actorId, "local actor", "play-a"))
             .PacketName("AuthReq")
-            .Async<AuthReply>();
+            .Async<AuthRes>();
         var ping = await client.Request(new ActorPingReq("b1"))
             .PacketName("ActorPingReq")
-            .Async<ActorPingReply>();
+            .Async<ActorPingRes>();
         ScenarioAssert.That(ping.ActorId == actorId, "SM-B1 actor reply mismatch.");
         ScenarioAssert.That(ping.NodeRid == "play-a", "SM-B1 local node mismatch.");
         var expectedEvidence = new[]
@@ -36,7 +36,7 @@ internal static class SmB1Scenario
             $"entry-joined|rid=play-a|actor={actorId}"
         };
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

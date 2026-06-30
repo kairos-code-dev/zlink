@@ -24,7 +24,7 @@ internal static class SmB3Scenario
         await client.Connect.Async();
         await client.Request(new AuthReq(actorId, "complex actor", "play-a"))
             .PacketName("AuthReq")
-            .Async<AuthReply>();
+            .Async<AuthRes>();
         var complex = await client.Request(new ComplexActorReq(
                 "Ada Lovelace",
                 42,
@@ -35,7 +35,7 @@ internal static class SmB3Scenario
                     ["region"] = "west"
                 }))
             .PacketName("ComplexActorReq")
-            .Async<ComplexActorReply>();
+            .Async<ComplexActorRes>();
         ScenarioAssert.That(complex.ActorId == actorId, "SM-B3 actor id mismatch.");
         ScenarioAssert.That(
             complex.DisplayName == "Ada Lovelace" && complex.Level == 42,
@@ -46,7 +46,7 @@ internal static class SmB3Scenario
             "SM-B3 attribute payload mismatch.");
         var expectedEvidence = new[] { $"actor-complex|rid=play-a|actor={actorId}" };
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

@@ -8,14 +8,14 @@ import systems.zlink.framework.kotlin.await
 import systems.zlink.httpclient.ZLinkHttpClient
 import systems.zlink.httpclient.kotlin.fetch
 import systems.zlink.samples.kotlin.deliverydispatch.client.configuration.SampleNames
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CreateDeliveryRequest
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryCreated
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CreateDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CreateDeliveryRes
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusNotify
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatuses
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAssertionReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAssertionRes
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDelivery
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryAccepted
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryRes
 
 class DeliveryDispatchClientScenario(
     private val api: ZLinkHttpClient,
@@ -34,7 +34,7 @@ class DeliveryDispatchClientScenario(
         val pickedUp = awaitStatus(customer, deliveryId, DeliveryStatuses.PickedUp)
         val delivered = awaitStatus(customer, deliveryId, DeliveryStatuses.Delivered)
 
-        val subscribed = customer.request(SubscribeDelivery(deliveryId)).await<SubscribeDeliveryAccepted>()
+        val subscribed = customer.request(SubscribeDeliveryReq(deliveryId)).await<SubscribeDeliveryRes>()
         ensure(subscribed.deliveryId == deliveryId)
 
         val created = createDelivery(deliveryId)
@@ -53,7 +53,7 @@ class DeliveryDispatchClientScenario(
         val accepted = awaitStatus(customer, deliveryId, DeliveryStatuses.Accepted)
         val delivered = awaitStatus(customer, deliveryId, DeliveryStatuses.Delivered)
 
-        val subscribed = customer.request(SubscribeDelivery(deliveryId)).await<SubscribeDeliveryAccepted>()
+        val subscribed = customer.request(SubscribeDeliveryReq(deliveryId)).await<SubscribeDeliveryRes>()
         ensure(subscribed.deliveryId == deliveryId)
 
         val created = createDelivery(deliveryId)
@@ -76,9 +76,9 @@ class DeliveryDispatchClientScenario(
         return async { wait.await() }
     }
 
-    private suspend fun createDelivery(deliveryId: String): DeliveryCreated =
+    private suspend fun createDelivery(deliveryId: String): CreateDeliveryRes =
         api.post("/deliveries")
-            .body(CreateDeliveryRequest(deliveryId, "customer-1", "Kitchen 12", "Customer Lobby"))
+            .body(CreateDeliveryReq(deliveryId, "customer-1", "Kitchen 12", "Customer Lobby"))
             .fetch()
 
     private suspend fun assertServerEvidence() {

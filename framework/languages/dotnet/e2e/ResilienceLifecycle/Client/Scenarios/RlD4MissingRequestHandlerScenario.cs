@@ -13,13 +13,13 @@ internal static class RlD4MissingRequestHandlerScenario
         ZLinkHttpClient providerB)
     {
         var failed = await consumer.Post("/profile/request/missing")
-            .Body(new ProfileRequest("fast", "rl-d4-missing"))
+            .Body(new ProfileReq("fast", "rl-d4-missing"))
             .SubmitRawAsync();
         ScenarioAssert.That(failed.Status >= 500, "RL-D4 expected public failure for missing request handler.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var request = new EvidenceWaitRequest(["dispatch-error|", "packet=MissingProfileRequest"], []);
+            var request = new EvidenceWaitReq(["dispatch-error|", "packet=MissingProfileReq"], []);
             var waitA = providerA.Post("/evidence/wait").Body(request).SubmitAsync<string[]>(timeout.Token).AsTask();
             var waitB = providerB.Post("/evidence/wait").Body(request).SubmitAsync<string[]>(timeout.Token).AsTask();
             var completed = await Task.WhenAny(waitA, waitB);
@@ -27,7 +27,7 @@ internal static class RlD4MissingRequestHandlerScenario
             timeout.Cancel();
             ScenarioAssert.That(
                 evidence.Any(line => line.Contains("dispatch-error|", StringComparison.Ordinal)
-                                     && line.Contains("packet=MissingProfileRequest", StringComparison.Ordinal)),
+                                     && line.Contains("packet=MissingProfileReq", StringComparison.Ordinal)),
                 "RL-D4 dispatch-error marker missing.");
         }
 

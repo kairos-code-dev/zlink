@@ -52,12 +52,12 @@ internal static class GatewayHostFactory
         {
             await publisher.PublishSpot(
                     SpotServiceNames.SpotChannel,
-                    SpotServiceNames.SpotEventTopic,
-                    new SpotEvent(request.Marker))
-                .PacketName("SpotEvent")
+                    SpotServiceNames.SpotMsgTopic,
+                    new SpotMsg(request.Marker))
+                .PacketName("SpotMsg")
                 .Async();
             evidence.Add($"spot-publish|rid={options.Rid}|spot={request.SpotRid}|marker={request.Marker}");
-            return Results.Ok(new SpotPublishReply(
+            return Results.Ok(new SpotPublishRes(
                 "spot.sm-c4-publish",
                 options.Rid,
                 request.SpotRid,

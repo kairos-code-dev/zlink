@@ -14,7 +14,7 @@ import systems.zlink.e2e.registrationcodec.main.Endpoints.OperationalEndpoints;
 import systems.zlink.e2e.registrationcodec.main.Handlers.AttrEchoHandler;
 import systems.zlink.e2e.registrationcodec.main.Handlers.AutoRequestHandler;
 import systems.zlink.e2e.registrationcodec.main.Handlers.AutoSendHandler;
-import systems.zlink.e2e.registrationcodec.main.Handlers.DiLifecycleRequestHandler;
+import systems.zlink.e2e.registrationcodec.main.Handlers.DiLifecycleReqHandler;
 import systems.zlink.e2e.registrationcodec.main.Handlers.FirstOrderFilter;
 import systems.zlink.e2e.registrationcodec.main.Handlers.JsonRequestHandler;
 import systems.zlink.e2e.registrationcodec.main.Handlers.JsonSendHandler;
@@ -90,26 +90,26 @@ public final class RegistrationCodecServerApplication {
                 .addHandlerGroup(Contracts.ATTR_GROUP);
             channel.addRequestHandler(
                 ManualRequestHandler.class,
-                Contracts.EchoManualRequest.class,
-                Contracts.EchoReply.class,
+                Contracts.EchoManualReq.class,
+                Contracts.EchoRes.class,
                 "EchoManual");
             channel.addSendHandler(
                 ManualSendHandler.class,
-                Contracts.EchoManualCommand.class,
+                Contracts.EchoManualMsg.class,
                 "EchoManual");
             channel.addRequestHandler(
-                DiLifecycleRequestHandler.class,
-                Contracts.DiLifecycleRequest.class,
-                Contracts.DiLifecycleReply.class,
+                DiLifecycleReqHandler.class,
+                Contracts.DiLifecycleReq.class,
+                Contracts.DiLifecycleRes.class,
                 "DiLifecycle");
             channel.addRequestHandler(
                 JsonRequestHandler.class,
-                Contracts.JsonEchoRequest.class,
-                Contracts.EchoReply.class,
+                Contracts.JsonEchoReq.class,
+                Contracts.EchoRes.class,
                 "JsonEcho");
             channel.addSendHandler(
                 JsonSendHandler.class,
-                Contracts.JsonEchoCommand.class,
+                Contracts.JsonEchoMsg.class,
                 "JsonEcho");
             channel.addRequestHandler(
                 ProtobufRequestHandler.class,
@@ -122,21 +122,21 @@ public final class RegistrationCodecServerApplication {
                 "ProtobufEcho");
             channel.addRequestHandler(
                 MsgpackRequestHandler.class,
-                Contracts.PackedEchoRequest.class,
-                Contracts.PackedEchoReply.class,
+                Contracts.PackedEchoReq.class,
+                Contracts.PackedEchoRes.class,
                 "MsgpackEcho");
             channel.addSendHandler(
                 MsgpackSendHandler.class,
-                Contracts.PackedEchoCommand.class,
+                Contracts.PackedEchoMsg.class,
                 "MsgpackEcho");
         };
     }
 
     private static boolean isPackedType(Class<?> type) {
         return Set.of(
-            Contracts.PackedEchoRequest.class,
-            Contracts.PackedEchoReply.class,
-            Contracts.PackedEchoCommand.class).contains(type);
+            Contracts.PackedEchoReq.class,
+            Contracts.PackedEchoRes.class,
+            Contracts.PackedEchoMsg.class).contains(type);
     }
 
     @Bean AutoRequestHandler autoRequestHandler(EvidenceStore evidence) { return new AutoRequestHandler(evidence); }
@@ -144,11 +144,11 @@ public final class RegistrationCodecServerApplication {
     @Bean AttrEchoHandler attrEchoHandler(EvidenceStore evidence) { return new AttrEchoHandler(evidence); }
     @Bean ManualRequestHandler manualRequestHandler(EvidenceStore evidence) { return new ManualRequestHandler(evidence); }
     @Bean ManualSendHandler manualSendHandler(EvidenceStore evidence) { return new ManualSendHandler(evidence); }
-    @Bean DiLifecycleRequestHandler diLifecycleRequestHandler(
+    @Bean DiLifecycleReqHandler diLifecycleRequestHandler(
         org.springframework.beans.factory.ObjectProvider<DiScopedDependency> scoped,
         DiSingletonDependency singleton,
         EvidenceStore evidence) {
-        return new DiLifecycleRequestHandler(scoped, singleton, evidence);
+        return new DiLifecycleReqHandler(scoped, singleton, evidence);
     }
     @Bean DiSingletonDependency diSingletonDependency() { return new DiSingletonDependency(); }
     @Bean

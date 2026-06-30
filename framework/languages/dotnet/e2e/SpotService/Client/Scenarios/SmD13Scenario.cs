@@ -34,7 +34,7 @@ internal static class SmD13Scenario
                     await client.Connect.Async();
                     await client.Request(new AuthReq("actor-sm-d13", "heartbeat", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     stream = client;
                     break;
                 }

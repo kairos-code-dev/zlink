@@ -277,4 +277,4 @@ with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
 PY
 
 grep -Rq "message flow" "${log_dir}"/*-flow.log
-grep -q "HANDLER_MISSING/DROP/MissingEventNotify" "${log_dir}/sub-2-evidence.json"
+grep -q "HANDLER_MISSING/DROP/MissingEventMsg" "${log_dir}/sub-2-evidence.json"

@@ -1,19 +1,19 @@
-import type { EvidenceWaitRequest, ProfileReply, ProfileRequest } from '../../Shared/messages';
+import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runMonC1(options: ClientOptions): Promise<void> {
-  const request: ProfileRequest = { value: 'throw', marker: 'mon-c1-request' };
-  const failureReply = await postJson<ProfileReply>(options.triggerUrl, '/profile/request/throw', request);
+  const request: ProfileReq = { value: 'throw', marker: 'mon-c1-request' };
+  const failureReply = await postJson<ProfileRes>(options.triggerUrl, '/profile/request/throw', request);
   ensure(failureReply.providerRid === 'svc-throw', 'MON-C1 direct trigger did not hit throwing-monitor service.');
 
   const [throwEvidence, throwStderr] = await waitForDispatchFailureEvidence(options);
 
-  const recoveryReply = await postJson<ProfileReply>(options.triggerUrl, '/profile/request/throw', {
+  const recoveryReply = await postJson<ProfileRes>(options.triggerUrl, '/profile/request/throw', {
     value: 'throw',
     marker: 'mon-c1-recovery'
-  } satisfies ProfileRequest);
+  } satisfies ProfileReq);
   ensure(recoveryReply.value === 'profile:throw', 'MON-C1 messaging did not recover after monitoring handler failure.');
 
   ensure(
@@ -39,11 +39,11 @@ async function waitForDispatchFailureEvidence(options: ClientOptions): Promise<[
       containsAll: [],
       containsAnyGroups: [['monitor-socket|'], ['monitor-throw|']],
       timeoutMilliseconds: 15000
-    } satisfies EvidenceWaitRequest),
+    } satisfies EvidenceWaitReq),
     postJson<string[]>(options.triggerUrl, '/logs/throw-stderr/wait', {
       containsAll: [],
       containsAnyGroups: [['monitoring-event-dispatch'], ['monitoring dispatch failure for e2e']],
       timeoutMilliseconds: 15000
-    } satisfies EvidenceWaitRequest)
+    } satisfies EvidenceWaitReq)
   ]);
 }

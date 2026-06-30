@@ -54,11 +54,11 @@ internal static class CodecRequesterHostFactory
                     .PacketName("EchoProtobuf")
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StringValue>(cancellationToken);
-                return Results.Ok(new CodecMismatchProbeReply(false, null, reply.Value));
+                return Results.Ok(new CodecMismatchProbeRes(false, null, reply.Value));
             }
             catch (Exception ex)
             {
-                return Results.Ok(new CodecMismatchProbeReply(true, ex.GetType().Name, null));
+                return Results.Ok(new CodecMismatchProbeRes(true, ex.GetType().Name, null));
             }
         });
         app.MapPost("/codec/json/request", async (
@@ -70,7 +70,7 @@ internal static class CodecRequesterHostFactory
                     new JsonEchoReq("rc-b5-json"))
                 .PacketName("EchoJson")
                 .Timeout(TimeSpan.FromSeconds(5))
-                .Async<EchoReply>(cancellationToken);
+                .Async<EchoRes>(cancellationToken);
             return Results.Ok(reply);
         });
         return app;

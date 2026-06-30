@@ -41,9 +41,9 @@ public final class Program {
                 .setRoutingId(RoutingId.from("delay-a"))
                 .addRequestHandler(
                     DelayHandler.class,
-                    Contracts.DelayRequest.class,
-                    Contracts.DelayReply.class,
-                    "DelayRequest");
+                    Contracts.DelayReq.class,
+                    Contracts.DelayRes.class,
+                    "DelayReq");
         };
     }
 

@@ -46,7 +46,7 @@ internal sealed partial class YieldSession(
                 var request = payload.Decode<BindYieldActorsReq>();
                 evidence.Add(
                     $"session-bind-actors|rid={evidence.Rid}|session={Context.SessionId}|spot={request.SpotRid}");
-                var result = await RequestPlayControlWithRetryAsync<BindYieldActorsReply>(
+                var result = await RequestPlayControlWithRetryAsync<BindYieldActorsRes>(
                     routes,
                     request,
                     "BindYieldActorsReq",
@@ -94,7 +94,7 @@ internal sealed partial class YieldSession(
             case "YieldEvidenceReq":
             {
                 var request = payload.Decode<YieldEvidenceReq>();
-                var result = await RequestPlayControlWithRetryAsync<YieldEvidenceReply>(
+                var result = await RequestPlayControlWithRetryAsync<YieldEvidenceRes>(
                     routes,
                     request,
                     "YieldEvidenceReq",
@@ -106,7 +106,7 @@ internal sealed partial class YieldSession(
             case "YieldEvidenceWaitReq":
             {
                 var request = payload.Decode<YieldEvidenceWaitReq>();
-                var result = await RequestPlayControlWithRetryAsync<YieldEvidenceReply>(
+                var result = await RequestPlayControlWithRetryAsync<YieldEvidenceRes>(
                     routes,
                     request,
                     "YieldEvidenceWaitReq",
@@ -118,7 +118,7 @@ internal sealed partial class YieldSession(
             case "EnsureSpotReq":
             {
                 var request = payload.Decode<EnsureSpotReq>();
-                var result = await RequestPlayControlWithRetryAsync<EnsureSpotReply>(
+                var result = await RequestPlayControlWithRetryAsync<EnsureSpotRes>(
                     routes,
                     request,
                     "EnsureSpotReq",
@@ -129,73 +129,73 @@ internal sealed partial class YieldSession(
             }
             case "HoldReq":
             {
-                await ReplySpotRequestAsync<HoldReq, YieldDispatchReply>(dispatch, payload, cancellationToken);
+                await ReplySpotRequestAsync<HoldReq, YieldDispatchRes>(dispatch, payload, cancellationToken);
                 return;
             }
             case "YieldReq":
             {
-                await ReplySpotRequestAsync<YieldReq, YieldDispatchReply>(dispatch, payload, cancellationToken);
+                await ReplySpotRequestAsync<YieldReq, YieldDispatchRes>(dispatch, payload, cancellationToken);
                 return;
             }
             case "WorkerYieldReq":
             {
-                await ReplySpotRequestAsync<WorkerYieldReq, YieldDispatchReply>(dispatch, payload, cancellationToken);
+                await ReplySpotRequestAsync<WorkerYieldReq, YieldDispatchRes>(dispatch, payload, cancellationToken);
                 return;
             }
             case "RemoteSpotYieldReq":
             {
-                await ReplySpotRequestAsync<RemoteSpotYieldReq, YieldDispatchReply>(dispatch, payload,
+                await ReplySpotRequestAsync<RemoteSpotYieldReq, YieldDispatchRes>(dispatch, payload,
                     cancellationToken);
                 return;
             }
             case "ProbeReq":
             {
-                await ReplySpotRequestAsync<ProbeReq, YieldDispatchReply>(dispatch, payload, cancellationToken);
+                await ReplySpotRequestAsync<ProbeReq, YieldDispatchRes>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "HoldCommand":
+            case "HoldMsg":
             {
-                await RelaySpotCommandAsync<HoldCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<HoldMsg>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "YieldCommand":
+            case "YieldMsg":
             {
-                await RelaySpotCommandAsync<YieldCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<YieldMsg>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "WorkerYieldCommand":
+            case "WorkerYieldMsg":
             {
-                await RelaySpotCommandAsync<WorkerYieldCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<WorkerYieldMsg>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "RemoteSpotYieldCommand":
+            case "RemoteSpotYieldMsg":
             {
-                await RelaySpotCommandAsync<RemoteSpotYieldCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<RemoteSpotYieldMsg>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "ProbeCommand":
+            case "ProbeMsg":
             {
-                await RelaySpotCommandAsync<ProbeCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<ProbeMsg>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "YieldTimeoutCommand":
+            case "YieldTimeoutMsg":
             {
-                await RelaySpotCommandAsync<YieldTimeoutCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<YieldTimeoutMsg>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "YieldCancelCommand":
+            case "YieldCancelMsg":
             {
-                await RelaySpotCommandAsync<YieldCancelCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<YieldCancelMsg>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "TimerStartCommand":
+            case "TimerStartMsg":
             {
-                await RelaySpotCommandAsync<TimerStartCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<TimerStartMsg>(dispatch, payload, cancellationToken);
                 return;
             }
-            case "TimerStopCommand":
+            case "TimerStopMsg":
             {
-                await RelaySpotCommandAsync<TimerStopCommand>(dispatch, payload, cancellationToken);
+                await RelaySpotCommandAsync<TimerStopMsg>(dispatch, payload, cancellationToken);
                 return;
             }
             default:
@@ -221,7 +221,7 @@ internal sealed partial class YieldSession(
         };
     }
 
-    private async Task ReplySpotRequestAsync<TRequest, TReply>(
+    private async Task ReplySpotRequestAsync<TReq, TRes>(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
@@ -230,9 +230,9 @@ internal sealed partial class YieldSession(
         if (string.IsNullOrWhiteSpace(spotRid))
             throw new InvalidOperationException($"{YieldDispatchNames.SpotRidMetadata} metadata is required.");
 
-        var request = payload.Decode<TRequest>()
+        var request = payload.Decode<TReq>()
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
-        var result = await RequestSpotWithRetryAsync<TReply>(
+        var result = await RequestSpotWithRetryAsync<TRes>(
             routes,
             spotRid,
             request,
@@ -241,7 +241,7 @@ internal sealed partial class YieldSession(
         await Context.Client.Reply(result).Async();
     }
 
-    private async Task RelaySpotCommandAsync<TCommand>(
+    private async Task RelaySpotCommandAsync<TMsg>(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
@@ -250,7 +250,7 @@ internal sealed partial class YieldSession(
         if (string.IsNullOrWhiteSpace(spotRid))
             throw new InvalidOperationException($"{YieldDispatchNames.SpotRidMetadata} metadata is required.");
 
-        var command = payload.Decode<TCommand>()
+        var command = payload.Decode<TMsg>()
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         await SendSpotWithRetryAsync(
             routes,

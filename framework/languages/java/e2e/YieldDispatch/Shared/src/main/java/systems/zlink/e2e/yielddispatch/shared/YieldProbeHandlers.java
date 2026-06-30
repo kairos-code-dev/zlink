@@ -25,19 +25,19 @@ public final class YieldProbeHandlers {
         }
 
         @ZLinkSpotRequest
-        public Contracts.ScenarioReply handle(
+        public Contracts.ScenarioRes handle(
             YieldProbeSpot spot,
-            Contracts.HoldRequest request) {
+            Contracts.HoldReq request) {
             evidence.record("hold-started", request.requestId(), spot.context().spotRid().toString());
             spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
-                    new Contracts.DelayRequest(request.requestId(), 800))
+                    new Contracts.DelayReq(request.requestId(), 800))
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.DelayReply.class);
+                .await(Contracts.DelayRes.class);
             evidence.record("hold-resumed", request.requestId(), spot.context().spotRid().toString());
             evidence.record("hold-completed", request.requestId(), spot.context().spotRid().toString());
-            return new Contracts.ScenarioReply("YD-A1", request.requestId(), "ok");
+            return new Contracts.ScenarioRes("YD-A1", request.requestId(), "ok");
         }
     }
 
@@ -49,21 +49,21 @@ public final class YieldProbeHandlers {
         }
 
         @ZLinkSpotRequest
-        public Contracts.ScenarioReply handle(
+        public Contracts.ScenarioRes handle(
             YieldProbeSpot spot,
-            Contracts.YieldRequest request) {
+            Contracts.YieldReq request) {
             String context = "spot=" + spot.context().spotRid() + ";correlation=" + request.correlationId();
             evidence.record("yield-started", request.requestId(), context);
             evidence.record("yield-released", request.requestId(), context);
             spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
-                    new Contracts.DelayRequest(request.requestId(), 800))
+                    new Contracts.DelayReq(request.requestId(), 800))
                 .timeout(Duration.ofSeconds(5))
-                .yield(Contracts.DelayReply.class);
+                .yield(Contracts.DelayRes.class);
             evidence.record("yield-resumed", request.requestId(), context);
             evidence.record("yield-completed", request.requestId(), context);
-            return new Contracts.ScenarioReply(request.scenarioId(), request.requestId(), evidence.nodeRid());
+            return new Contracts.ScenarioRes(request.scenarioId(), request.requestId(), evidence.nodeRid());
         }
     }
 
@@ -75,9 +75,9 @@ public final class YieldProbeHandlers {
         }
 
         @ZLinkSpotRequest
-        public Contracts.ScenarioReply handle(
+        public Contracts.ScenarioRes handle(
             YieldProbeSpot spot,
-            Contracts.WorkerYieldRequest request) {
+            Contracts.WorkerYieldReq request) {
             evidence.record("worker-yield-started", request.requestId(), spot.context().spotRid().toString());
             evidence.record("worker-yield-released", request.requestId(), spot.context().spotRid().toString());
             String result = spot.context().runWorker(token -> {
@@ -88,7 +88,7 @@ public final class YieldProbeHandlers {
                 .yield();
             evidence.record("worker-yield-resumed", result, spot.context().spotRid().toString());
             evidence.record("worker-yield-completed", result, spot.context().spotRid().toString());
-            return new Contracts.ScenarioReply("YD-A4", request.requestId(), "ok");
+            return new Contracts.ScenarioRes("YD-A4", request.requestId(), "ok");
         }
     }
 
@@ -100,27 +100,27 @@ public final class YieldProbeHandlers {
         }
 
         @ZLinkSpotRequest
-        public Contracts.ProbeReply handle(
+        public Contracts.ProbeRes handle(
             YieldProbeSpot spot,
-            Contracts.ProbeRequest request) {
+            Contracts.ProbeReq request) {
             evidence.record("probe-started", request.requestId(), spot.context().spotRid().toString());
             evidence.record("probe-completed", request.requestId(), spot.context().spotRid().toString());
-            return new Contracts.ProbeReply(request.requestId());
+            return new Contracts.ProbeRes(request.requestId());
         }
     }
 
-    public static final class WorkerYieldCommandHandler
-        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.WorkerYieldCommand> {
+    public static final class WorkerYieldMsgHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.WorkerYieldMsg> {
         private final EvidenceStore evidence;
 
-        public WorkerYieldCommandHandler(EvidenceStore evidence) {
+        public WorkerYieldMsgHandler(EvidenceStore evidence) {
             this.evidence = evidence;
         }
 
         @Override
         public void handle(
             YieldProbeSpot spot,
-            Contracts.WorkerYieldCommand request) {
+            Contracts.WorkerYieldMsg request) {
             evidence.record("worker-yield-started", request.requestId(), spot.context().spotRid().toString());
             evidence.record("worker-yield-released", request.requestId(), spot.context().spotRid().toString());
             String result = spot.context().runWorker(token -> {
@@ -134,35 +134,35 @@ public final class YieldProbeHandlers {
         }
     }
 
-    public static final class ProbeCommandHandler
-        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.ProbeCommand> {
+    public static final class ProbeMsgHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.ProbeMsg> {
         private final EvidenceStore evidence;
 
-        public ProbeCommandHandler(EvidenceStore evidence) {
+        public ProbeMsgHandler(EvidenceStore evidence) {
             this.evidence = evidence;
         }
 
         @Override
         public void handle(
             YieldProbeSpot spot,
-            Contracts.ProbeCommand request) {
+            Contracts.ProbeMsg request) {
             evidence.record("probe-started", request.requestId(), spot.context().spotRid().toString());
             evidence.record("probe-completed", request.requestId(), spot.context().spotRid().toString());
         }
     }
 
-    public static final class YieldCommandHandler
-        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.YieldCommand> {
+    public static final class YieldMsgHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.YieldMsg> {
         private final EvidenceStore evidence;
 
-        public YieldCommandHandler(EvidenceStore evidence) {
+        public YieldMsgHandler(EvidenceStore evidence) {
             this.evidence = evidence;
         }
 
         @Override
         public void handle(
             YieldProbeSpot spot,
-            Contracts.YieldCommand request) {
+            Contracts.YieldMsg request) {
             String value = "spot=" + spot.context().spotRid()
                 + ";correlation=" + request.correlationId()
                 + ";handler=spot";
@@ -171,26 +171,26 @@ public final class YieldProbeHandlers {
             spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
-                    new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                    new Contracts.DelayReq(request.requestId(), request.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.DelayReply.class);
+                .await(Contracts.DelayRes.class);
             evidence.record("yield-resumed", request.requestId(), value);
             evidence.record("yield-completed", request.requestId(), value);
         }
     }
 
-    public static final class YieldTimeoutCommandHandler
-        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.YieldTimeoutCommand> {
+    public static final class YieldTimeoutMsgHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.YieldTimeoutMsg> {
         private final EvidenceStore evidence;
 
-        public YieldTimeoutCommandHandler(EvidenceStore evidence) {
+        public YieldTimeoutMsgHandler(EvidenceStore evidence) {
             this.evidence = evidence;
         }
 
         @Override
         public void handle(
             YieldProbeSpot spot,
-            Contracts.YieldTimeoutCommand request) {
+            Contracts.YieldTimeoutMsg request) {
             String value = "spot=" + spot.context().spotRid() + ";handler=spot";
             evidence.record("timeout-yield-started", request.requestId(), value);
             try {
@@ -198,9 +198,9 @@ public final class YieldProbeHandlers {
                 spot.context().outbound()
                     .requestToChannel(
                         Contracts.DELAY_CHANNEL,
-                        new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                        new Contracts.DelayReq(request.requestId(), request.delayMillis()))
                     .timeout(Duration.ofMillis(request.timeoutMillis()))
-                    .yield(Contracts.DelayReply.class);
+                    .yield(Contracts.DelayRes.class);
                 evidence.record("timeout-yield-unexpected-resumed", request.requestId(), value);
             } catch (RuntimeException error) {
                 evidence.record(
@@ -211,18 +211,18 @@ public final class YieldProbeHandlers {
         }
     }
 
-    public static final class YieldCancelCommandHandler
-        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.YieldCancelCommand> {
+    public static final class YieldCancelMsgHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.YieldCancelMsg> {
         private final EvidenceStore evidence;
 
-        public YieldCancelCommandHandler(EvidenceStore evidence) {
+        public YieldCancelMsgHandler(EvidenceStore evidence) {
             this.evidence = evidence;
         }
 
         @Override
         public void handle(
             YieldProbeSpot spot,
-            Contracts.YieldCancelCommand request) {
+            Contracts.YieldCancelMsg request) {
             String value = "spot=" + spot.context().spotRid() + ";handler=spot";
             AtomicBoolean canceled = new AtomicBoolean(false);
             evidence.record("cancel-yield-started", request.requestId(), value);
@@ -238,9 +238,9 @@ public final class YieldProbeHandlers {
                 spot.context().outbound()
                     .requestToChannel(
                         Contracts.DELAY_CHANNEL,
-                        new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                        new Contracts.DelayReq(request.requestId(), request.delayMillis()))
                     .timeout(Duration.ofSeconds(5))
-                    .yield(Contracts.DelayReply.class, canceled::get);
+                    .yield(Contracts.DelayRes.class, canceled::get);
                 evidence.record("cancel-yield-unexpected-resumed", request.requestId(), value);
             } catch (RuntimeException error) {
                 evidence.record(
@@ -259,41 +259,41 @@ public final class YieldProbeHandlers {
         }
 
         @ZLinkSpotRequest
-        public Contracts.ScenarioReply handle(
+        public Contracts.ScenarioRes handle(
             YieldProbeSpot spot,
-            Contracts.RemoteSpotYieldRequest request) {
+            Contracts.RemoteSpotYieldReq request) {
             String value = "spot=" + spot.context().spotRid() + ";target=" + request.targetSpotRid();
             evidence.record("remote-yield-started", request.requestId(), value);
             evidence.record("remote-yield-released", request.requestId(), value);
-            Contracts.ScenarioReply targetReply = spot.context().outbound()
+            Contracts.ScenarioRes targetReply = spot.context().outbound()
                 .requestToSpot(
                     RoutingId.from(request.targetSpotRid()),
-                    new Contracts.YieldRequest("YD-D2", request.requestId(), "remote-spot"))
+                    new Contracts.YieldReq("YD-D2", request.requestId(), "remote-spot"))
                 .timeout(Duration.ofSeconds(5))
-                .yield(Contracts.ScenarioReply.class);
+                .yield(Contracts.ScenarioRes.class);
             String resumed = value + ";targetNode=" + targetReply.result();
             evidence.record("remote-yield-resumed", request.requestId(), resumed);
             evidence.record("remote-yield-completed", request.requestId(), resumed);
-            return new Contracts.ScenarioReply("YD-D2", request.requestId(), evidence.nodeRid());
+            return new Contracts.ScenarioRes("YD-D2", request.requestId(), evidence.nodeRid());
         }
     }
 
-    public static final class TimerStartCommandHandler
-        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.TimerStartCommand> {
+    public static final class TimerStartMsgHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.TimerStartMsg> {
         @Override
         public void handle(
             YieldProbeSpot spot,
-            Contracts.TimerStartCommand request) {
+            Contracts.TimerStartMsg request) {
             spot.startTimer(request);
         }
     }
 
-    public static final class TimerStopCommandHandler
-        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.TimerStopCommand> {
+    public static final class TimerStopMsgHandler
+        implements ZLinkSpotPacketHandler<YieldProbeSpot, Contracts.TimerStopMsg> {
         @Override
         public void handle(
             YieldProbeSpot spot,
-            Contracts.TimerStopCommand request) {
+            Contracts.TimerStopMsg request) {
             spot.stopTimers(request.requestId());
         }
     }
@@ -320,9 +320,9 @@ public final class YieldProbeHandlers {
                 spot.context().outbound()
                     .requestToChannel(
                         Contracts.DELAY_CHANNEL,
-                        new Contracts.DelayRequest(scenario.requestId(), scenario.delayMillis()))
+                        new Contracts.DelayReq(scenario.requestId(), scenario.delayMillis()))
                     .timeout(Duration.ofSeconds(5))
-                    .yield(Contracts.DelayReply.class);
+                    .yield(Contracts.DelayRes.class);
                 evidence.record("timer-yield-resumed", scenario.requestId(), value);
                 evidence.record("timer-yield-completed", scenario.requestId(), value);
                 if ("yield-on-first".equals(scenario.mode())) {
@@ -348,8 +348,8 @@ public final class YieldProbeHandlers {
         implements ZLinkEntrySpotActorRequestHandler<
             YieldEntrySpot,
             YieldActor,
-            Contracts.ActorYieldRequest,
-            Contracts.ActorReply> {
+            Contracts.ActorYieldReq,
+            Contracts.ActorYieldRes> {
         private final EvidenceStore evidence;
 
         public ActorYieldHandler(EvidenceStore evidence) {
@@ -357,11 +357,11 @@ public final class YieldProbeHandlers {
         }
 
         @Override
-        public Contracts.ActorReply handle(
+        public Contracts.ActorYieldRes handle(
             YieldEntrySpot spot,
             YieldActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ActorYieldRequest request,
+            Contracts.ActorYieldReq request,
             CancellationToken cancellationToken) {
             String value = "actor=" + actor.actorId() + ";mailbox=actor:" + actor.actorId()
                 + ";spot=" + spot.context().spotRid();
@@ -370,12 +370,12 @@ public final class YieldProbeHandlers {
             spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
-                    new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                    new Contracts.DelayReq(request.requestId(), request.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.DelayReply.class);
+                .await(Contracts.DelayRes.class);
             evidence.record("actor-yield-resumed", request.requestId(), value);
             evidence.record("actor-yield-completed", request.requestId(), value);
-            return new Contracts.ActorReply("YD-B", request.requestId(), actor.actorId(), "actor-yield-completed");
+            return new Contracts.ActorYieldRes("YD-B", request.requestId(), actor.actorId(), "actor-yield-completed");
         }
     }
 
@@ -383,8 +383,8 @@ public final class YieldProbeHandlers {
         implements ZLinkEntrySpotActorRequestHandler<
             YieldEntrySpot,
             YieldActor,
-            Contracts.ActorJoinRequest,
-            Contracts.ActorReply> {
+            Contracts.ActorJoinReq,
+            Contracts.ActorJoinRes> {
         private final EvidenceStore evidence;
 
         public ActorJoinHandler(EvidenceStore evidence) {
@@ -392,11 +392,11 @@ public final class YieldProbeHandlers {
         }
 
         @Override
-        public Contracts.ActorReply handle(
+        public Contracts.ActorJoinRes handle(
             YieldEntrySpot spot,
             YieldActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ActorJoinRequest request,
+            Contracts.ActorJoinReq request,
             CancellationToken cancellationToken) {
             ZLinkActorJoinResult<Void> joined = actor.context()
                 .joinSpot(systems.zlink.contracts.core.RoutingId.from(request.spotRid()))
@@ -404,7 +404,7 @@ public final class YieldProbeHandlers {
                 .await();
             evidence.record("actor-joined", request.requestId(),
                 "actor=" + joined.actor().actorId() + ";spot=" + request.spotRid());
-            return new Contracts.ActorReply("YD-B-JOIN", request.requestId(), actor.actorId(), "joined");
+            return new Contracts.ActorJoinRes("YD-B-JOIN", request.requestId(), actor.actorId(), "joined");
         }
     }
 
@@ -412,8 +412,8 @@ public final class YieldProbeHandlers {
         implements ZLinkEntrySpotActorRequestHandler<
             YieldEntrySpot,
             YieldActor,
-            Contracts.ActorJoinYieldRequest,
-            Contracts.ActorReply> {
+            Contracts.ActorJoinYieldReq,
+            Contracts.ActorJoinYieldRes> {
         private final EvidenceStore evidence;
 
         public ActorJoinYieldHandler(EvidenceStore evidence) {
@@ -421,11 +421,11 @@ public final class YieldProbeHandlers {
         }
 
         @Override
-        public Contracts.ActorReply handle(
+        public Contracts.ActorJoinYieldRes handle(
             YieldEntrySpot spot,
             YieldActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ActorJoinYieldRequest request,
+            Contracts.ActorJoinYieldReq request,
             CancellationToken cancellationToken) {
             String value = "actor=" + actor.actorId() + ";mailbox=actor:" + actor.actorId()
                 + ";spot=" + spot.context().spotRid() + ";target=" + request.targetSpotRid();
@@ -434,14 +434,14 @@ public final class YieldProbeHandlers {
             ZLinkActorJoinResult<Void> joined = actor.context()
                 .joinSpot(
                     systems.zlink.contracts.core.RoutingId.from(request.targetSpotRid()),
-                    new Contracts.DelayRequest(request.requestId(), 350))
+                    new Contracts.DelayReq(request.requestId(), 350))
                 .timeout(Duration.ofSeconds(5))
                 .await();
             evidence.record("actor-join-yield-resumed", request.requestId(),
                 value + ";joined=" + joined.actor().actorId());
             evidence.record("actor-join-yield-completed", request.requestId(),
                 value + ";joined=" + joined.actor().actorId());
-            return new Contracts.ActorReply(
+            return new Contracts.ActorJoinYieldRes(
                 "YD-B3",
                 request.requestId(),
                 actor.actorId(),
@@ -449,24 +449,24 @@ public final class YieldProbeHandlers {
         }
     }
 
-    public static final class ActorPushYieldHandler
+    public static final class ActorPushNotifyYieldHandler
         implements ZLinkEntrySpotActorRequestHandler<
             YieldEntrySpot,
             YieldActor,
-            Contracts.ActorPushYieldRequest,
-            Contracts.ActorReply> {
+            Contracts.ActorPushYieldReq,
+            Contracts.ActorPushYieldRes> {
         private final EvidenceStore evidence;
 
-        public ActorPushYieldHandler(EvidenceStore evidence) {
+        public ActorPushNotifyYieldHandler(EvidenceStore evidence) {
             this.evidence = evidence;
         }
 
         @Override
-        public Contracts.ActorReply handle(
+        public Contracts.ActorPushYieldRes handle(
             YieldEntrySpot spot,
             YieldActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ActorPushYieldRequest request,
+            Contracts.ActorPushYieldReq request,
             CancellationToken cancellationToken) {
             String value = "actor=" + actor.actorId() + ";mailbox=actor:" + actor.actorId()
                 + ";spot=" + spot.context().spotRid() + ";handler=actor";
@@ -475,9 +475,9 @@ public final class YieldProbeHandlers {
             spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
-                    new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                    new Contracts.DelayReq(request.requestId(), request.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .await(Contracts.DelayReply.class);
+                .await(Contracts.DelayRes.class);
             evidence.record("actor-push-yield-resumed", request.requestId(), value);
             actor.context()
                 .boundSession()
@@ -489,7 +489,7 @@ public final class YieldProbeHandlers {
                 .packetName("ActorPushNotify")
                 .await();
             evidence.record("actor-push-yield-completed", request.requestId(), value);
-            return new Contracts.ActorReply(
+            return new Contracts.ActorPushYieldRes(
                 "YD-D4",
                 request.requestId(),
                 actor.actorId(),
@@ -501,8 +501,8 @@ public final class YieldProbeHandlers {
         implements ZLinkEntrySpotActorRequestHandler<
             YieldEntrySpot,
             YieldActor,
-            Contracts.ActorFastRequest,
-            Contracts.ActorReply> {
+            Contracts.ActorFastReq,
+            Contracts.ActorFastRes> {
         private final EvidenceStore evidence;
 
         public ActorFastHandler(EvidenceStore evidence) {
@@ -510,17 +510,17 @@ public final class YieldProbeHandlers {
         }
 
         @Override
-        public Contracts.ActorReply handle(
+        public Contracts.ActorFastRes handle(
             YieldEntrySpot spot,
             YieldActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ActorFastRequest request,
+            Contracts.ActorFastReq request,
             CancellationToken cancellationToken) {
             String value = "actor=" + actor.actorId() + ";mailbox=actor:" + actor.actorId()
                 + ";marker=" + request.marker() + ";spot=" + spot.context().spotRid();
             evidence.record("actor-fast-started", request.requestId(), value);
             evidence.record("actor-fast-completed", request.requestId(), value);
-            return new Contracts.ActorReply("YD-B", request.requestId(), actor.actorId(), request.marker());
+            return new Contracts.ActorFastRes("YD-B", request.requestId(), actor.actorId(), request.marker());
         }
     }
 
@@ -528,8 +528,8 @@ public final class YieldProbeHandlers {
         implements ZLinkSpotActorRequestHandler<
             YieldProbeSpot,
             YieldActor,
-            Contracts.ActorYieldRequest,
-            Contracts.ActorReply> {
+            Contracts.ActorYieldReq,
+            Contracts.ActorYieldRes> {
         private final EvidenceStore evidence;
 
         public SpotActorYieldHandler(EvidenceStore evidence) {
@@ -537,11 +537,11 @@ public final class YieldProbeHandlers {
         }
 
         @Override
-        public Contracts.ActorReply handle(
+        public Contracts.ActorYieldRes handle(
             YieldProbeSpot spot,
             YieldActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ActorYieldRequest request,
+            Contracts.ActorYieldReq request,
             CancellationToken cancellationToken) {
             String value = "actor=" + actor.actorId() + ";mailbox=actor:" + actor.actorId()
                 + ";spot=" + spot.context().spotRid();
@@ -550,12 +550,12 @@ public final class YieldProbeHandlers {
             spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
-                    new Contracts.DelayRequest(request.requestId(), request.delayMillis()))
+                    new Contracts.DelayReq(request.requestId(), request.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .yield(Contracts.DelayReply.class);
+                .yield(Contracts.DelayRes.class);
             evidence.record("actor-yield-resumed", request.requestId(), value);
             evidence.record("actor-yield-completed", request.requestId(), value);
-            return new Contracts.ActorReply("YD-B", request.requestId(), actor.actorId(), "actor-yield-completed");
+            return new Contracts.ActorYieldRes("YD-B", request.requestId(), actor.actorId(), "actor-yield-completed");
         }
     }
 
@@ -563,8 +563,8 @@ public final class YieldProbeHandlers {
         implements ZLinkSpotActorRequestHandler<
             YieldProbeSpot,
             YieldActor,
-            Contracts.ActorFastRequest,
-            Contracts.ActorReply> {
+            Contracts.ActorFastReq,
+            Contracts.ActorFastRes> {
         private final EvidenceStore evidence;
 
         public SpotActorFastHandler(EvidenceStore evidence) {
@@ -572,17 +572,17 @@ public final class YieldProbeHandlers {
         }
 
         @Override
-        public Contracts.ActorReply handle(
+        public Contracts.ActorFastRes handle(
             YieldProbeSpot spot,
             YieldActor actor,
             ZLinkSpotActorRequestContext context,
-            Contracts.ActorFastRequest request,
+            Contracts.ActorFastReq request,
             CancellationToken cancellationToken) {
             String value = "actor=" + actor.actorId() + ";mailbox=actor:" + actor.actorId()
                 + ";marker=" + request.marker() + ";spot=" + spot.context().spotRid();
             evidence.record("actor-fast-started", request.requestId(), value);
             evidence.record("actor-fast-completed", request.requestId(), value);
-            return new Contracts.ActorReply("YD-B", request.requestId(), actor.actorId(), request.marker());
+            return new Contracts.ActorFastRes("YD-B", request.requestId(), actor.actorId(), request.marker());
         }
     }
 }

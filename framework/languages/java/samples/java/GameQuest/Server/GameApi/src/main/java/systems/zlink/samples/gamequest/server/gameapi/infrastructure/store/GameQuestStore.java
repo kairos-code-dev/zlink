@@ -60,13 +60,13 @@ public final class GameQuestStore implements GameplayActionService.GameplayEvent
     // ----- gameplay events -----
 
     @Override
-    public Messages.GameplayEventEnvelope getOrAddGameplayEvent(Messages.GameplayEventEnvelope candidate) {
+    public Messages.GameplayEventMsg getOrAddGameplayEvent(Messages.GameplayEventMsg candidate) {
         return update(
             "gameplay-events.json",
-            new TypeReference<List<Messages.GameplayEventEnvelope>>() {
+            new TypeReference<List<Messages.GameplayEventMsg>>() {
             },
             events -> {
-                for (Messages.GameplayEventEnvelope existing : events) {
+                for (Messages.GameplayEventMsg existing : events) {
                     if (existing.playerId().equals(candidate.playerId())
                         && existing.idempotencyKey().equals(candidate.idempotencyKey())) {
                         return existing;
@@ -89,9 +89,9 @@ public final class GameQuestStore implements GameplayActionService.GameplayEvent
     }
 
     public Messages.GetGameplaySnapshotRes readSnapshot(String playerId) {
-        List<Messages.GameplayEventEnvelope> events = read(
+        List<Messages.GameplayEventMsg> events = read(
             "gameplay-events.json",
-            new TypeReference<List<Messages.GameplayEventEnvelope>>() {
+            new TypeReference<List<Messages.GameplayEventMsg>>() {
             },
             new ArrayList<>());
         Map<String, Integer> unpublishedKills = read(
@@ -101,7 +101,7 @@ public final class GameQuestStore implements GameplayActionService.GameplayEvent
             new LinkedHashMap<>());
 
         Map<String, Integer> killByMonster = new LinkedHashMap<>();
-        for (Messages.GameplayEventEnvelope event : events) {
+        for (Messages.GameplayEventMsg event : events) {
             if (event.playerId().equals(playerId) && "MonsterKilled".equals(event.eventType())) {
                 killByMonster.merge(event.value(), event.count(), Integer::sum);
             }
@@ -116,7 +116,7 @@ public final class GameQuestStore implements GameplayActionService.GameplayEvent
         }
 
         long maxCreatedAt = 0;
-        for (Messages.GameplayEventEnvelope event : events) {
+        for (Messages.GameplayEventMsg event : events) {
             if (event.playerId().equals(playerId)) {
                 maxCreatedAt = Math.max(maxCreatedAt, event.createdAtUnixMs());
             }
@@ -133,9 +133,9 @@ public final class GameQuestStore implements GameplayActionService.GameplayEvent
     }
 
     private List<Messages.ItemCountSnapshot> itemCounts(
-        List<Messages.GameplayEventEnvelope> events, String playerId) {
+        List<Messages.GameplayEventMsg> events, String playerId) {
         Map<String, Integer> byItem = new LinkedHashMap<>();
-        for (Messages.GameplayEventEnvelope event : events) {
+        for (Messages.GameplayEventMsg event : events) {
             if (event.playerId().equals(playerId) && "ItemCollected".equals(event.eventType())) {
                 byItem.merge(event.value(), event.count(), Integer::sum);
             }
@@ -148,9 +148,9 @@ public final class GameQuestStore implements GameplayActionService.GameplayEvent
     }
 
     private List<String> distinctSortedValues(
-        List<Messages.GameplayEventEnvelope> events, String playerId, String eventType) {
+        List<Messages.GameplayEventMsg> events, String playerId, String eventType) {
         TreeSet<String> values = new TreeSet<>();
-        for (Messages.GameplayEventEnvelope event : events) {
+        for (Messages.GameplayEventMsg event : events) {
             if (event.playerId().equals(playerId) && eventType.equals(event.eventType())) {
                 values.add(event.value());
             }

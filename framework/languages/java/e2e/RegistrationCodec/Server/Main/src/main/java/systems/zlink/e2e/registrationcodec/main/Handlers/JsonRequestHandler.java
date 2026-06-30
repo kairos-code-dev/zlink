@@ -6,7 +6,7 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 
 public final class JsonRequestHandler
-    implements ZLinkRequestHandler<Contracts.JsonEchoRequest, Contracts.EchoReply> {
+    implements ZLinkRequestHandler<Contracts.JsonEchoReq, Contracts.EchoRes> {
     private final EvidenceStore state;
 
     public JsonRequestHandler(EvidenceStore state) {
@@ -14,11 +14,11 @@ public final class JsonRequestHandler
     }
 
     @Override
-    public Contracts.EchoReply handle(
-        Contracts.JsonEchoRequest request,
+    public Contracts.EchoRes handle(
+        Contracts.JsonEchoReq request,
         ZLinkRequestContext context) {
         state.record("Request", "JsonEcho", request.value());
         state.record("ContentType", "JsonEcho", context.contentType().orElse("missing"));
-        return new Contracts.EchoReply("echo:" + request.value(), "json");
+        return new Contracts.EchoRes("echo:" + request.value(), "json");
     }
 }

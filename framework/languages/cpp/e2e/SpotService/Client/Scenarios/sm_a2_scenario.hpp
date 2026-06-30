@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "../Support/spot_lifecycle_order_context.hpp"
 #include "../../Shared/spot_service_contracts.hpp"
 
 #include <zlink/http_client.hpp>
@@ -13,6 +14,46 @@
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
+
+inline void run_sm_a2_scenario (const std::string &play_http_endpoint,
+                                spot_lifecycle_order_context_t &context)
+{
+    if (play_http_endpoint.empty ()) {
+        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-A2");
+    }
+
+    auto api = zlink::http_client::client_t::create ()
+                 .base_url (play_http_endpoint)
+                 .build ();
+    auto observed =
+      api.post ("/evidence/wait")
+        .body (evidence_wait_req_t{
+          .contains_all = {"StateRouted", context.spot_rid,
+                           std::to_string (context.current_value)}})
+        .submit_raw ()
+        .result ();
+    if (!observed) {
+        throw std::runtime_error (observed.error () ? observed.error ()->what ()
+                                                    : "SM-A2 evidence wait HTTP failed");
+    }
+    if (observed.value ().status >= 400) {
+        throw std::runtime_error ("SM-A2 evidence wait HTTP status "
+                                  + std::to_string (observed.value ().status) + ": "
+                                  + observed.value ().body);
+    }
+    const auto evidence =
+      nlohmann::json::parse (observed.value ().body).get<evidence_snapshot_t> ();
+    const auto expected_value = std::to_string (context.current_value);
+    const auto found = std::any_of (evidence.entries.begin (), evidence.entries.end (),
+                                    [&] (const evidence_entry_t &entry) {
+                                        return entry.marker == "StateRouted"
+                                               && entry.spot_rid == context.spot_rid
+                                               && entry.value == expected_value;
+                                    });
+    if (!found) {
+        throw std::runtime_error ("SM-A2 state mutation evidence mismatch");
+    }
+}
 
 inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
 {

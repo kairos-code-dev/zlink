@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component
 import systems.zlink.samples.kotlin.gamequest.server.questmission.QuestMissionOptions
 import systems.zlink.samples.kotlin.gamequest.server.questmission.domain.QuestDomain
 import systems.zlink.samples.kotlin.gamequest.server.questmission.domain.QuestDomain.PendingQuestEvent
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventMsg
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.NotifyQuestProgressReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
@@ -27,7 +27,7 @@ class QuestEventProcessor(
 ) {
     private val missionName = options.missionName
 
-    fun process(gameplayEvent: GameplayEventEnvelope) {
+    fun process(gameplayEvent: GameplayEventMsg) {
         if (!ownerRouter.isLocalOwner(gameplayEvent.playerId)) {
             return
         }
@@ -80,7 +80,7 @@ class QuestEventProcessor(
         val killCount = snapshot.killCounts.sumOf { it.count }
         if (killCount > 0) {
             process(
-                GameplayEventEnvelope(
+                GameplayEventMsg(
                     "${request.playerId}-snapshot-${snapshot.snapshotVersion}",
                     request.playerId,
                     "snapshot-${snapshot.snapshotVersion}",

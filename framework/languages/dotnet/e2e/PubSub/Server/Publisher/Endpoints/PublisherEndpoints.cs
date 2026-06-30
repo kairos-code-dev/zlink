@@ -18,8 +18,8 @@ internal static class PublisherEndpoints
             await fanout.Publish(
                     PubSubNames.Channel,
                     topic,
-                    new EventNotify(runId, sequence, value))
-                .PacketName("EventNotify")
+                    new EventMsg(runId, sequence, value))
+                .PacketName("EventMsg")
                 .Async(cancellationToken);
             return Results.Ok(new { status = "published", topic, runId, sequence });
         });
@@ -34,8 +34,8 @@ internal static class PublisherEndpoints
             await fanout.Publish(
                     PubSubNames.Channel,
                     topic,
-                    new MissingEventNotify(runId, sequence, value))
-                .PacketName("MissingEventNotify")
+                    new MissingEventMsg(runId, sequence, value))
+                .PacketName("MissingEventMsg")
                 .Async(cancellationToken);
             return Results.Ok(new { status = "published", topic, runId, sequence });
         });

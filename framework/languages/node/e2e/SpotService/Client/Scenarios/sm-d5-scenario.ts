@@ -4,9 +4,9 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  AuthReply,
+  AuthRes,
   AuthReq,
-  EvidenceWaitRequest
+  EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -31,7 +31,7 @@ export async function runSmD5(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
   } finally {
     await client.close();
   }
@@ -40,7 +40,7 @@ export async function runSmD5(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.sessionAUrl, '/evidence/wait', {
     containsAll: expectedEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
     'SM-D5 expected selected bound actor disconnect notification.'

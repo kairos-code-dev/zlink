@@ -1,9 +1,9 @@
-import type { ProfileReply, TimeoutRequestResult } from '../../Shared/messages';
+import type { ProfileRes, TimeoutRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
-  profileRequest,
+  profileReq,
   sendRequestBatch,
   waitTopologyAbsent,
   waitTopologyReady,
@@ -32,10 +32,10 @@ export async function runRlB2(options: ClientOptions, state: ScenarioState): Pro
   await waitForWeight(options.providerAUrl, 100);
 
   await waitTopologyAbsent(options.registryUrl, 'api-b');
-  const followUp = await postJson<ProfileReply>(
+  const followUp = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request/new-client',
-    profileRequest('rl-b2-after-crash')
+    profileReq('rl-b2-after-crash')
   );
   ensure(followUp.providerRid === 'api-a', 'RL-B2 surviving provider traffic failed.');
 
@@ -65,10 +65,10 @@ async function waitForWeight(providerUrl: string, expected: number): Promise<voi
   await postJson(providerUrl, '/admin/weight/wait', { expected });
 }
 
-async function startSlowRequestOnApiB(options: ClientOptions): Promise<Promise<TimeoutRequestResult>> {
+async function startSlowRequestOnApiB(options: ClientOptions): Promise<Promise<TimeoutRes>> {
   for (let attempt = 0; attempt < 12; attempt += 1) {
     const marker = `rl-b2-slow-${attempt}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const inFlight = postJson<TimeoutRequestResult>(
+    const inFlight = postJson<TimeoutRes>(
       options.consumerUrl,
       '/profile/request/timeout/10000',
       profileRequestWithValue('slow', marker)

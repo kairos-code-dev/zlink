@@ -4,11 +4,11 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
-  AuthReply,
+  AuthRes,
   AuthReq,
-  EvidenceWaitRequest
+  EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -26,7 +26,7 @@ export async function runSmB5(options: ClientOptions): Promise<void> {
   });
   await client.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await client
+    const auth = decodeStreamReply<AuthRes>(await client
       .request({
         actorId,
         displayName: 'missing handler actor',
@@ -43,7 +43,7 @@ export async function runSmB5(options: ClientOptions): Promise<void> {
         .request({ value: 'missing-handler' } satisfies ActorPingReq)
         .packetName('MissingActorReq')
         .timeout(2000)
-        .submit<ActorPingReply>();
+        .submit<ActorPingRes>();
     } catch {
       failed = true;
     }
@@ -55,7 +55,7 @@ export async function runSmB5(options: ClientOptions): Promise<void> {
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-B5 evidence mismatch.'

@@ -9,11 +9,11 @@ public static class RuntimeMonitoringNames
     public const string SpotNode = SpotChannel;
 }
 
-public sealed record ProfileRequest(string Value, string Marker);
+public sealed record ProfileReq(string Value, string Marker);
 
-public sealed record ProfileReply(string Value, string ProviderRid, string Marker);
+public sealed record ProfileRes(string Value, string ProviderRid, string Marker);
 
-public sealed record EvidenceWaitRequest(
+public sealed record EvidenceWaitReq(
     string[] ContainsAll,
     string[][] ContainsAnyGroups,
     int TimeoutMilliseconds = 10000);

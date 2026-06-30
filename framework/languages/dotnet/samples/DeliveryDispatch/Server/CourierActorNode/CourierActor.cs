@@ -8,17 +8,17 @@ internal sealed class CourierActor(
     IZLinkActorContext context) : IZLinkActor
 {
     private readonly object _gate = new();
-    private readonly Dictionary<string, TaskCompletionSource<CourierDecision>> _pending = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TaskCompletionSource<CourierDecisionMsg>> _pending = new(StringComparer.Ordinal);
 
     public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
 
-    public async ValueTask<OfferDeliveryResult> OfferAsync(
-        OfferDelivery offer,
+    public async ValueTask<OfferDeliveryRes> OfferAsync(
+        OfferDeliveryReq offer,
         CancellationToken cancellationToken)
     {
-        var pending = new TaskCompletionSource<CourierDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = new TaskCompletionSource<CourierDecisionMsg>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate)
         {
             _pending[offer.DeliveryId] = pending;
@@ -26,9 +26,14 @@ internal sealed class CourierActor(
 
         try
         {
-            await Context.BoundSession.Send(offer).Async(cancellationToken);
+            await Context.BoundSession.Send(new OfferDeliveryNotify(
+                    offer.CourierId,
+                    offer.DeliveryId,
+                    offer.PickupAddress,
+                    offer.DropoffAddress))
+                .Async(cancellationToken);
             var decision = await pending.Task.WaitAsync(cancellationToken);
-            return new OfferDeliveryResult(
+            return new OfferDeliveryRes(
                 offer.DeliveryId,
                 ActorId,
                 decision.Accepted,
@@ -43,9 +48,9 @@ internal sealed class CourierActor(
         }
     }
 
-    public void Complete(CourierDecision decision)
+    public void Complete(CourierDecisionMsg decision)
     {
-        TaskCompletionSource<CourierDecision>? pending;
+        TaskCompletionSource<CourierDecisionMsg>? pending;
         lock (_gate)
         {
             _pending.TryGetValue(decision.DeliveryId, out pending);

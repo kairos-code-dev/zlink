@@ -16,20 +16,20 @@ inline void run_drain_restore_scenario (zlink::framework::channel_client_t &chan
 {
     auto inflight = channels
                       .request ("registry.messaging.api.manual.b",
-                                profile_request_t{.value = "slow"})
+                                profile_req_t{.value = "slow"})
                       .timeout (std::chrono::milliseconds (3000))
-                      .async<profile_reply_t> ();
+                      .async<profile_res_t> ();
 
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
         if (evidence_contains (fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT")),
-                               "ProfileRequest", "slow")) {
+                               "ProfileReq", "slow")) {
             break;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
     ensure (evidence_contains (fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT")),
-                               "ProfileRequest", "slow"),
+                               "ProfileReq", "slow"),
             "slow in-flight request did not reach provider before drain");
     touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
     wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));

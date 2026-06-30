@@ -16,13 +16,13 @@ public final class YdB3ActorJoinYieldScenario {
         String joiningActorId,
         ZLinkStreamConnector fastConnector,
         String fastActorId) {
-        CompletableFuture<Contracts.ActorJoinReply> join = CompletableFuture.supplyAsync(() ->
+        CompletableFuture<Contracts.ActorJoinRes> join = CompletableFuture.supplyAsync(() ->
             ClientStreamSupport.joinActor(joinConnector, joiningActorId, "room-b", "join-yield", 650));
         ClientStreamSupport.sleep(120);
         long started = System.nanoTime();
-        Contracts.ProbeReply fast = ClientStreamSupport.request(fastConnector, fastActorId, "join-fast", 0);
+        Contracts.ProbeRes fast = ClientStreamSupport.request(fastConnector, fastActorId, "join-fast", 0);
         long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
-        Contracts.ActorJoinReply joined = join.join();
+        Contracts.ActorJoinRes joined = join.join();
         ScenarioAssert.that("room-b".equals(joined.spotRid()), "YD-B3 join spot mismatch");
         ScenarioAssert.that("joined:join-yield".equals(joined.value()), "YD-B3 join reply mismatch");
         ScenarioAssert.that(fast.value().startsWith("immediate:join-fast#"), "YD-B3 fast reply mismatch");

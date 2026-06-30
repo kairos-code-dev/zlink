@@ -45,18 +45,18 @@ public final class SessionApplication {
             options.addStreamNode("gateway")
                 .bind(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT"))
                 .registerSession(ProbeSession.class)
-                .addSessionPacketHandler(ActorAuthHandler.class)
-                .addSessionPacketHandler(EnsureSpotHandler.class)
-                .addSessionPacketHandler(RemoteSpotYieldRouteHandler.class)
-                .addSessionPacketHandler(HoldCommandRouteHandler.class)
-                .addSessionPacketHandler(YieldCommandRouteHandler.class)
-                .addSessionPacketHandler(WorkerYieldCommandRouteHandler.class)
-                .addSessionPacketHandler(ProbeCommandRouteHandler.class)
-                .addSessionPacketHandler(TimerStartRouteHandler.class)
-                .addSessionPacketHandler(TimerStopRouteHandler.class)
-                .addSessionPacketHandler(YieldTimeoutRouteHandler.class)
-                .addSessionPacketHandler(SpotProbeRouteHandler.class)
-                .addSessionPacketHandler(EvidenceRouteHandler.class);
+                .addSessionPacketHandler(ActorAuthReqHandler.class)
+                .addSessionPacketHandler(EnsureSpotReqHandler.class)
+                .addSessionPacketHandler(RemoteSpotYieldReqRouteHandler.class)
+                .addSessionPacketHandler(HoldMsgRouteHandler.class)
+                .addSessionPacketHandler(YieldMsgRouteHandler.class)
+                .addSessionPacketHandler(WorkerYieldMsgRouteHandler.class)
+                .addSessionPacketHandler(ProbeMsgRouteHandler.class)
+                .addSessionPacketHandler(TimerStartMsgRouteHandler.class)
+                .addSessionPacketHandler(TimerStopMsgRouteHandler.class)
+                .addSessionPacketHandler(YieldTimeoutMsgRouteHandler.class)
+                .addSessionPacketHandler(SpotProbeMsgRouteHandler.class)
+                .addSessionPacketHandler(EvidenceReqRouteHandler.class);
         };
     }
 }

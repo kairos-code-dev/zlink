@@ -19,19 +19,19 @@ std::string run_yd_e1_timeout_scenario (TConnector &connector)
       connector.request (ensure_spot_req_t{.spot_rid = spot_rid})
         .packet_name (ensure_spot_req_t::packet_name)
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<ensure_spot_reply_t> ();
+        .template submit<ensure_spot_res_t> ();
     ensure (static_cast<bool> (spot), "YD-E1 ensure spot failed");
     ensure (spot.value ().spot_rid == spot_rid, "YD-E1 ensure spot reply mismatch");
 
     const auto request_id = unique_id ("YD-E1");
     auto sent_timeout =
-      connector.send (yield_timeout_command_t{.request_id = request_id,
+      connector.send (yield_timeout_msg_t{.request_id = request_id,
                                               .delay_ms = 700,
                                               .timeout_ms = 100})
-        .packet_name (yield_timeout_command_t::packet_name)
+        .packet_name (yield_timeout_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (sent_timeout), "YD-E1 YieldTimeoutCommand failed");
+    ensure (static_cast<bool> (sent_timeout), "YD-E1 YieldTimeoutMsg failed");
 
     auto timeout_evidence =
       connector.request (
@@ -41,7 +41,7 @@ std::string run_yd_e1_timeout_scenario (TConnector &connector)
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (timeout_evidence), "YD-E1 timeout evidence wait failed");
     ensure_contains_in_order (timeout_evidence.value ().evidence, request_id,
                               {"timeout-yield-started",
@@ -50,11 +50,11 @@ std::string run_yd_e1_timeout_scenario (TConnector &connector)
                               "YD-E1 timeout marker order mismatch");
 
     auto sent_probe =
-      connector.send (probe_command_t{.request_id = request_id, .marker = "timeout-probe"})
-        .packet_name (probe_command_t::packet_name)
+      connector.send (probe_msg_t{.request_id = request_id, .marker = "timeout-probe"})
+        .packet_name (probe_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (sent_probe), "YD-E1 ProbeCommand failed");
+    ensure (static_cast<bool> (sent_probe), "YD-E1 ProbeMsg failed");
 
     auto probe_evidence =
       connector.request (
@@ -64,7 +64,7 @@ std::string run_yd_e1_timeout_scenario (TConnector &connector)
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (probe_evidence), "YD-E1 probe evidence wait failed");
     ensure_contains_in_order (probe_evidence.value ().evidence, request_id,
                               {"timeout-yield-completed",

@@ -1,23 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import type {
-  DelayReply,
+  DelayRes,
   DelayReq,
-  HoldCommand,
-  ProbeCommand,
-  WorkerYieldCommand,
-  YieldCommand,
-  YieldDispatchReply
+  HoldMsg,
+  ProbeMsg,
+  WorkerYieldMsg,
+  YieldMsg,
+  YieldReq,
+  YieldDispatchRes
 } from '../../../Shared/messages';
 import { YieldDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../../Support/evidence-store';
 import type { YieldProbeSpot } from '../Spots/yield-probe-spot';
 
 @Injectable()
-export class HoldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, HoldCommand> {
+export class HoldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, HoldMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: YieldProbeSpot, request: HoldCommand, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: YieldProbeSpot, request: HoldMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(`hold-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
     await spot.context.outbound
@@ -28,17 +29,17 @@ export class HoldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot
       } satisfies DelayReq)
       .packetName('DelayReq')
       .timeout(5000)
-      .submit<DelayReply>();
+      .submit<DelayRes>();
     this.evidence.add(`hold-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
     this.evidence.add(`hold-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
   }
 }
 
 @Injectable()
-export class YieldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, YieldCommand> {
+export class YieldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, YieldMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: YieldProbeSpot, request: YieldCommand, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: YieldProbeSpot, request: YieldMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(
       `yield-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
@@ -56,7 +57,7 @@ export class YieldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpo
       `yield-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
       + `|correlation=${request.correlationId}|handler=spot`
     );
-    await call.yield<DelayReply>();
+    await call.yield<DelayRes>();
     this.evidence.add(
       `yield-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
       + `|correlation=${request.correlationId}|handler=spot`
@@ -69,14 +70,14 @@ export class YieldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpo
 }
 
 @Injectable()
-export class YieldRequestHandler implements ZLinkSpotRequestHandler<YieldProbeSpot, YieldCommand, YieldDispatchReply> {
+export class YieldRequestHandler implements ZLinkSpotRequestHandler<YieldProbeSpot, YieldReq, YieldDispatchRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     spot: YieldProbeSpot,
-    request: YieldCommand,
+    request: YieldReq,
     context: ZLinkHandlerContext
-  ): Promise<YieldDispatchReply> {
+  ): Promise<YieldDispatchRes> {
     await new YieldCommandHandler(this.evidence).handle(spot, request, context);
     return {
       scenarioId: request.correlationId === 'remote-spot' ? 'YD-D2-target' : 'YD-A2',
@@ -89,10 +90,10 @@ export class YieldRequestHandler implements ZLinkSpotRequestHandler<YieldProbeSp
 }
 
 @Injectable()
-export class WorkerYieldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, WorkerYieldCommand> {
+export class WorkerYieldCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, WorkerYieldMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: YieldProbeSpot, request: WorkerYieldCommand, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: YieldProbeSpot, request: WorkerYieldMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(`worker-yield-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
     const call = spot.context.runWorker(async (signal) => {
@@ -107,10 +108,10 @@ export class WorkerYieldCommandHandler implements ZLinkSpotPacketHandler<YieldPr
 }
 
 @Injectable()
-export class ProbeCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, ProbeCommand> {
+export class ProbeCommandHandler implements ZLinkSpotPacketHandler<YieldProbeSpot, ProbeMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: YieldProbeSpot, request: ProbeCommand, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: YieldProbeSpot, request: ProbeMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(
       `probe-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`

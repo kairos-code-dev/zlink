@@ -4,11 +4,11 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
-  AuthReply,
-  EvidenceWaitRequest,
-  LeaveReply,
+  AuthRes,
+  EvidenceWaitReq,
+  LeaveRes,
   LeaveReq,
   UserSpotAuthReq
 } from '../../Shared/messages';
@@ -32,15 +32,15 @@ export async function runSmG3(options: ClientOptions): Promise<void> {
 
     await Promise.all(actorIds.map(async (actorId, index) => {
       const client = clients[index];
-      const ping = decodeStreamReply<ActorPingReply>(await client
+      const pingMsg = decodeStreamReply<ActorPingRes>(await client
         .request({ value: actorId } satisfies ActorPingReq)
         .packetName('UserActorPingReq')
         .timeout(5000)
         .submit());
-      ensure(ping.actorId === actorId, 'SM-G3 actor request target mismatch.');
-      ensure(ping.nodeRid === 'play-a', 'SM-G3 actor request reached the wrong node.');
+      ensure(pingMsg.actorId === actorId, 'SM-G3 actor request target mismatch.');
+      ensure(pingMsg.nodeRid === 'play-a', 'SM-G3 actor request reached the wrong node.');
 
-      const left = decodeStreamReply<LeaveReply>(await client
+      const left = decodeStreamReply<LeaveRes>(await client
         .request({ actorId } satisfies LeaveReq)
         .packetName('LeaveReq')
         .timeout(5000)
@@ -55,7 +55,7 @@ export async function runSmG3(options: ClientOptions): Promise<void> {
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest);
+    } satisfies EvidenceWaitReq);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-G3 expected concurrent join and leave evidence.'
@@ -95,7 +95,7 @@ async function connectAndAuth(endpoint: string, spotRid: string, actorId: string
         } satisfies UserSpotAuthReq)
         .packetName('UserSpotAuthReq')
         .timeout(5000)
-        .submit<AuthReply>();
+        .submit<AuthRes>();
       return client;
     } catch (error) {
       last = error;

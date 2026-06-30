@@ -22,13 +22,13 @@ internal static class RmC9BackpressureScenario
 
         await Task.Delay(TimeSpan.FromSeconds(5));
         var followUp = (await backpressureConsumer.Post("/profile/request")
-            .Body(new ProfileRequest("rm-c9-after"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("rm-c9-after"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(followUp.Value == "profile:rm-c9-after",
             "RM-C9 follow-up request failed after backlog cleared.");
 
         var evidence = (await providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest("rm-c9-after", 20000))
+            .Body(new EvidenceWaitReq("rm-c9-after", 20000))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("rm-c9-after", StringComparison.Ordinal)),
@@ -40,7 +40,7 @@ internal static class RmC9BackpressureScenario
         string commandId)
     {
         return (await backpressureConsumer.Post("/profile/backpressure/send")
-            .Body(new ProfileCommand(commandId))
+            .Body(new ProfileMsg(commandId))
             .SubmitAsync<string>()).Body;
     }
 }

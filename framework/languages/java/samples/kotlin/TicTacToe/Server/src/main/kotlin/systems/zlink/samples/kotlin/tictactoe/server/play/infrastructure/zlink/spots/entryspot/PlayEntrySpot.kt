@@ -10,10 +10,10 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
-import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayerWinMilestoneEventHandler
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayerWinMilestoneMsgHandler
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.ObserveMilestoneRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
-import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerWinMilestoneEvent
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerWinMilestoneMsg
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.WinMilestoneNotify
 
 class PlayEntrySpot(
@@ -27,7 +27,7 @@ class PlayEntrySpot(
     override fun configure() {
         context.handlers().addSubscribe(
             SampleNames.PlayerMilestoneTopic,
-            PlayerWinMilestoneEventHandler::class.java,
+            PlayerWinMilestoneMsgHandler::class.java,
         )
     }
 
@@ -71,7 +71,7 @@ class PlayEntrySpot(
         return ObserveMilestoneRes(true)
     }
 
-    fun notifyMilestone(event: PlayerWinMilestoneEvent) {
+    fun notifyMilestone(event: PlayerWinMilestoneMsg) {
         val payload = WinMilestoneNotify(
             roomId = event.roomId,
             actorId = event.actorId,

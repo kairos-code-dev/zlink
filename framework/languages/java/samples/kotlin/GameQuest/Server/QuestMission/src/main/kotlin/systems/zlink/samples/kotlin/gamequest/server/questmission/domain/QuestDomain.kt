@@ -2,7 +2,7 @@ package systems.zlink.samples.kotlin.gamequest.server.questmission.domain
 
 import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestIds
 import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestStatuses
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventMsg
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestCompletedEvent
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgressReconciledEvent
@@ -31,7 +31,7 @@ object QuestDomain {
         QuestDefinition(QuestIds.VisitRuins, "AreaEntered", "ruins", 1),
     )
 
-    fun match(event: GameplayEventEnvelope): QuestDefinition? =
+    fun match(event: GameplayEventMsg): QuestDefinition? =
         CATALOG.firstOrNull {
             it.eventType == event.eventType && (it.value == "*" || it.value == event.value)
         }
@@ -42,7 +42,7 @@ object QuestDomain {
     fun apply(
         definition: QuestDefinition,
         current: QuestProgress?,
-        event: GameplayEventEnvelope,
+        event: GameplayEventMsg,
     ): QuestProgress {
         val currentCount = current?.currentCount ?: 0
         val nextCount = if (event.eventType == "SnapshotKillCount") {
@@ -66,7 +66,7 @@ object QuestDomain {
         definition: QuestDefinition,
         before: QuestProgress?,
         after: QuestProgress,
-        source: GameplayEventEnvelope,
+        source: GameplayEventMsg,
     ): List<PendingQuestEvent> {
         if (before != null && source.eventId == before.lastEventId) {
             return emptyList()
@@ -96,7 +96,7 @@ object QuestDomain {
         definition: QuestDefinition,
         before: QuestProgress?,
         after: QuestProgress,
-        source: GameplayEventEnvelope,
+        source: GameplayEventMsg,
     ): PendingQuestEvent {
         val now = System.currentTimeMillis()
         val eventId = "${after.playerId}-${definition.questId}-${source.eventId}-$eventType"

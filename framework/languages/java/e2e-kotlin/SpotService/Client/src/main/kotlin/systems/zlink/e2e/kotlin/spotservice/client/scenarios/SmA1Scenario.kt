@@ -12,10 +12,10 @@ internal object SmA1Scenario {
         val first = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("a1"),
+                Contracts.StateReq("a1"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         ensure(first.spotRid == "room-a", "SM-A1 wrong spot rid")
         ensure(first.nodeRid == "play-a", "SM-A1 wrong owner node")

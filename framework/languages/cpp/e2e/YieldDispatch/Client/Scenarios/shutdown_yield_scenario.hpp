@@ -46,7 +46,7 @@ inline void run_shutdown_wait_scenario (const client_options_t &client_options)
                                                     .delay_ms = 30000})
         .packet_name (yield_shutdown_scenario_req_t::packet_name)
         .timeout (std::chrono::milliseconds (90000))
-        .submit<yield_scenario_result_t> ();
+        .submit<yield_scenario_res_t> ();
     (void) client.close ();
     ensure (!static_cast<bool> (result),
             "YD-E3 expected play-a shutdown while yield was pending");
@@ -69,7 +69,7 @@ inline void run_shutdown_recovery_scenario (const client_options_t &client_optio
                                             .spot_rid = client_options.spot_rid})
         .packet_name (yield_shutdown_recovery_req_t::packet_name)
         .timeout (std::chrono::milliseconds (30000))
-        .submit<yield_scenario_result_t> ();
+        .submit<yield_scenario_res_t> ();
     (void) client.close ();
     ensure (static_cast<bool> (result), "YD-E3 shutdown recovery request failed");
     ensure (result.value ().operation == "yield.e3-shutdown-recovery",

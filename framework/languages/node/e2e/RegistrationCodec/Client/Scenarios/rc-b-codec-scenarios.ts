@@ -1,9 +1,9 @@
-import type { CodecScenarioResult, EchoReply } from '../../Shared/messages';
+import type { CodecScenarioRes, EchoRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRcB1(serverUrl: string): Promise<void> {
-  const reply = await postJson<EchoReply>(serverUrl, '/codec/json');
+  const reply = await postJson<EchoRes>(serverUrl, '/codec/json');
   ensure(reply.value === 'echo:rc-b1', 'RC-B1 reply value mismatch.');
   ensure(reply.contentType === 'application/json', 'RC-B1 expected application/json content type.');
   const evidence = await postJson<readonly string[]>(serverUrl, '/evidence/wait', {
@@ -16,7 +16,7 @@ export async function runRcB1(serverUrl: string): Promise<void> {
 }
 
 export async function runRcB2(protobufUrl: string): Promise<void> {
-  const reply = await postJson<CodecScenarioResult>(protobufUrl, '/codec/protobuf');
+  const reply = await postJson<CodecScenarioRes>(protobufUrl, '/codec/protobuf');
   ensure(reply.value === 'echo:rc-b2', 'RC-B2 reply value mismatch.');
   ensure(reply.contentType === 'application/x-protobuf', 'RC-B2 expected Protobuf content type.');
   const evidence = await postJson<readonly string[]>(protobufUrl, '/evidence/wait', {
@@ -29,7 +29,7 @@ export async function runRcB2(protobufUrl: string): Promise<void> {
 }
 
 export async function runRcB3(messagePackUrl: string): Promise<void> {
-  const reply = await postJson<CodecScenarioResult>(messagePackUrl, '/codec/msgpack');
+  const reply = await postJson<CodecScenarioRes>(messagePackUrl, '/codec/msgpack');
   ensure(reply.value === 'echo:rc-b3', 'RC-B3 reply value mismatch.');
   ensure(reply.contentType === 'application/x-msgpack', 'RC-B3 expected MessagePack content type.');
   const evidence = await postJson<readonly string[]>(messagePackUrl, '/evidence/wait', {
@@ -42,7 +42,7 @@ export async function runRcB3(messagePackUrl: string): Promise<void> {
 }
 
 export async function runRcB4(serverUrl: string): Promise<void> {
-  const result = await postJson<CodecScenarioResult>(serverUrl, '/codec/roundtrip');
+  const result = await postJson<CodecScenarioRes>(serverUrl, '/codec/roundtrip');
   ensure(result.json?.value === 'echo:rc-b1', 'RC-B4 JSON reply mismatch.');
   ensure(result.protobufValue?.includes('echo:rc-b2') === true, 'RC-B4 Protobuf reply mismatch.');
   ensure(result.protobufValue?.includes('content:application/x-protobuf') === true, 'RC-B4 Protobuf content type mismatch.');
@@ -70,7 +70,7 @@ export async function runRcB4(serverUrl: string): Promise<void> {
 export async function runRcB5(codecRequesterUrl: string, jsonOnlyUrl: string): Promise<void> {
   const mismatch = await postJson<{ readonly rejected: boolean; readonly failureType?: string }>(codecRequesterUrl, '/codec/mismatch');
   ensure(mismatch.rejected, 'RC-B5 expected Protobuf request to JSON-only peer to be rejected.');
-  const recovery = await postJson<EchoReply>(jsonOnlyUrl, '/codec/json-recovery');
+  const recovery = await postJson<EchoRes>(jsonOnlyUrl, '/codec/json-recovery');
   ensure(recovery.value === 'echo:rc-b5-json', 'RC-B5 JSON recovery reply mismatch.');
   ensure(recovery.contentType === 'application/json', 'RC-B5 JSON recovery expected JSON content type.');
   const evidence = await postJson<readonly string[]>(jsonOnlyUrl, '/evidence/wait', {

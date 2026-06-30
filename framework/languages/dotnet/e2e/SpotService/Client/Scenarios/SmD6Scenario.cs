@@ -30,7 +30,7 @@ internal static class SmD6Scenario
                     await client.Connect.Async();
                     await client.Request(new AuthReq("actor-sm-d6", "bound", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     bound = client;
                     break;
                 }
@@ -67,7 +67,7 @@ internal static class SmD6Scenario
                     await client.Connect.Async();
                     await client.Request(new AuthReq("actor-sm-d6-shadow", "unbound", "play-b"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     unbound = client;
                     break;
                 }
@@ -91,7 +91,7 @@ internal static class SmD6Scenario
             var pushed = activeBound.WaitFor<ActorPushNotify>().Async().AsTask();
             await activeBound.Request(new ActorPushReq("push-bound-only"))
                 .PacketName("ActorPushReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var notify = await pushed;
             ScenarioAssert.That(notify.Payload.ActorId == "actor-sm-d6", "SM-D6 push actor mismatch.");
             ScenarioAssert.That(notify.Payload.Value == "push-bound-only", "SM-D6 push value mismatch.");

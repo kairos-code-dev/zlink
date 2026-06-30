@@ -1,30 +1,31 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
-  ActorFastReq,
+  ActorFastMsg,
   ActorJoinYieldReq,
   ActorPushYieldReq,
   ActorYieldReq,
-  BindYieldActorsReply,
+  BindYieldActorsRes,
   BindYieldActorsReq,
-  EnsureSpotReply,
+  EnsureSpotRes,
   EnsureSpotReq,
-  HoldCommand,
-  ProbeCommand,
-  RemoteSpotYieldCommand,
+  HoldMsg,
+  ProbeMsg,
+  RemoteSpotYieldMsg,
   RemoteSpotYieldReq,
-  TimerStartCommand,
-  TimerStopCommand,
-  WorkerYieldCommand,
-  YieldCancelCommand,
-  YieldCommand,
-  YieldDispatchReply,
-  YieldEvidenceReply,
+  TimerStartMsg,
+  TimerStopMsg,
+  WorkerYieldMsg,
+  YieldCancelMsg,
+  YieldMsg,
+  YieldReq,
+  YieldDispatchRes,
+  YieldEvidenceRes,
   YieldEvidenceReq,
   YieldEvidenceWaitReq,
-  YieldScenarioResult,
+  YieldScenarioRes,
   YieldShutdownRecoveryReq,
   YieldShutdownScenarioReq,
-  YieldTimeoutCommand
+  YieldTimeoutMsg
 } from '../../../Shared/messages';
 import { YieldDispatchNames } from '../../../Shared/messages';
 import type {
@@ -63,7 +64,7 @@ class YieldSession implements ZLinkSession {
         .request(YieldDispatchNames.controlChannel, targetRid, request)
         .packetName('EnsureSpotReq')
         .timeout(5000)
-        .submit<EnsureSpotReply>(signal);
+        .submit<EnsureSpotRes>(signal);
       await this.context.client.reply(reply).submit(signal);
       return;
     }
@@ -74,7 +75,7 @@ class YieldSession implements ZLinkSession {
         .request(YieldDispatchNames.controlChannel, 'play-a', request)
         .packetName('BindYieldActorsReq')
         .timeout(5000)
-        .submit<BindYieldActorsReply>(signal);
+        .submit<BindYieldActorsRes>(signal);
       for (const actor of reply.actors) {
         await this.context.actors.bind({
           actorId: actor.actorId,
@@ -93,7 +94,7 @@ class YieldSession implements ZLinkSession {
         .request(YieldDispatchNames.controlChannel, targetRid, request)
         .packetName('YieldEvidenceReq')
         .timeout(5000)
-        .submit<YieldEvidenceReply>(signal);
+        .submit<YieldEvidenceRes>(signal);
       await this.context.client.reply(reply).submit(signal);
       return;
     }
@@ -105,7 +106,7 @@ class YieldSession implements ZLinkSession {
         .request(YieldDispatchNames.controlChannel, targetRid, request)
         .packetName('YieldEvidenceWaitReq')
         .timeout(request.timeoutMilliseconds ?? 30000)
-        .submit<YieldEvidenceReply>(signal);
+        .submit<YieldEvidenceRes>(signal);
       await this.context.client.reply(reply).submit(signal);
       return;
     }
@@ -132,43 +133,43 @@ class YieldSession implements ZLinkSession {
       return;
     }
 
-    if (dispatch.packetName === 'HoldCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<HoldCommand>(Object as never), signal);
+    if (dispatch.packetName === 'HoldMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<HoldMsg>(Object as never), signal);
       return;
     }
 
-    if (dispatch.packetName === 'YieldCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldCommand>(Object as never), signal);
+    if (dispatch.packetName === 'YieldMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldMsg>(Object as never), signal);
       return;
     }
 
-    if (dispatch.packetName === 'WorkerYieldCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<WorkerYieldCommand>(Object as never), signal);
+    if (dispatch.packetName === 'WorkerYieldMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<WorkerYieldMsg>(Object as never), signal);
       return;
     }
 
-    if (dispatch.packetName === 'YieldTimeoutCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldTimeoutCommand>(Object as never), signal);
+    if (dispatch.packetName === 'YieldTimeoutMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldTimeoutMsg>(Object as never), signal);
       return;
     }
 
-    if (dispatch.packetName === 'YieldCancelCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldCancelCommand>(Object as never), signal);
+    if (dispatch.packetName === 'YieldCancelMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<YieldCancelMsg>(Object as never), signal);
       return;
     }
 
-    if (dispatch.packetName === 'ProbeCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<ProbeCommand>(Object as never), signal);
+    if (dispatch.packetName === 'ProbeMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<ProbeMsg>(Object as never), signal);
       return;
     }
 
-    if (dispatch.packetName === 'TimerStartCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<TimerStartCommand>(Object as never), signal);
+    if (dispatch.packetName === 'TimerStartMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<TimerStartMsg>(Object as never), signal);
       return;
     }
 
-    if (dispatch.packetName === 'TimerStopCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<TimerStopCommand>(Object as never), signal);
+    if (dispatch.packetName === 'TimerStopMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<TimerStopMsg>(Object as never), signal);
       return;
     }
 
@@ -182,8 +183,8 @@ class YieldSession implements ZLinkSession {
       return;
     }
 
-    if (dispatch.packetName === 'RemoteSpotYieldCommand') {
-      await this.relayToSpotWithRetry(dispatch, payload.decode<RemoteSpotYieldCommand>(Object as never), signal);
+    if (dispatch.packetName === 'RemoteSpotYieldMsg') {
+      await this.relayToSpotWithRetry(dispatch, payload.decode<RemoteSpotYieldMsg>(Object as never), signal);
       return;
     }
 
@@ -193,8 +194,8 @@ class YieldSession implements ZLinkSession {
       return;
     }
 
-    if (dispatch.packetName === 'ActorFastReq') {
-      payload.decode<ActorFastReq>(Object as never);
+    if (dispatch.packetName === 'ActorFastMsg') {
+      payload.decode<ActorFastMsg>(Object as never);
       await this.relayToActor(dispatch, payload, signal);
       return;
     }
@@ -238,17 +239,17 @@ class YieldSession implements ZLinkSession {
   private async runShutdownThroughSpotRoute(
     request: YieldShutdownScenarioReq,
     signal?: AbortSignal
-  ): Promise<YieldScenarioResult> {
+  ): Promise<YieldScenarioRes> {
     await this.ensurePlaySpot(request.spotRid, signal);
     await this.outbound
       .requestToSpot(request.spotRid, {
         requestId: request.requestId,
         delayMs: request.delayMs,
         correlationId: 'shutdown'
-      } satisfies YieldCommand)
-      .packetName('YieldCommand')
+      } satisfies YieldReq)
+      .packetName('YieldReq')
       .timeout(90000)
-      .submit<YieldDispatchReply>(signal);
+      .submit<YieldDispatchRes>(signal);
     const evidence = await this.requestPlayEvidence(request.requestId, signal);
     return {
       operation: 'yield.e3-shutdown-unexpected-completion',
@@ -260,14 +261,14 @@ class YieldSession implements ZLinkSession {
   private async runShutdownRecoveryThroughSpotRoute(
     request: YieldShutdownRecoveryReq,
     signal?: AbortSignal
-  ): Promise<YieldScenarioResult> {
+  ): Promise<YieldScenarioRes> {
     await this.ensurePlaySpot(request.spotRid, signal);
     await this.outbound
       .sendToSpot(request.spotRid, {
         requestId: request.requestId,
         marker: 'shutdown-recovery-probe'
-      } satisfies ProbeCommand)
-      .packetName('ProbeCommand')
+      } satisfies ProbeMsg)
+      .packetName('ProbeMsg')
       .submit(signal);
     await this.requestPlayEvidenceWait(request.requestId, 'probe-completed', signal);
     const evidence = await this.requestPlayEvidence(request.requestId, signal);
@@ -290,32 +291,32 @@ class YieldSession implements ZLinkSession {
       .request(YieldDispatchNames.controlChannel, 'play-a', { spotRid } satisfies EnsureSpotReq)
       .packetName('EnsureSpotReq')
       .timeout(5000)
-      .submit<EnsureSpotReply>(signal);
+      .submit<EnsureSpotRes>(signal);
   }
 
-  private async requestPlayEvidence(requestId: string, signal?: AbortSignal): Promise<YieldEvidenceReply> {
+  private async requestPlayEvidence(requestId: string, signal?: AbortSignal): Promise<YieldEvidenceRes> {
     return await this.route
       .request(YieldDispatchNames.controlChannel, 'play-a', { requestId } satisfies YieldEvidenceReq)
       .packetName('YieldEvidenceReq')
       .timeout(5000)
-      .submit<YieldEvidenceReply>(signal);
+      .submit<YieldEvidenceRes>(signal);
   }
 
   private async requestPlayEvidenceWait(
     requestId: string,
     marker: string,
     signal?: AbortSignal
-  ): Promise<YieldEvidenceReply> {
+  ): Promise<YieldEvidenceRes> {
     return await this.route
       .request(YieldDispatchNames.controlChannel, 'play-a', { requestId, marker, timeoutMilliseconds: 20000 } satisfies YieldEvidenceWaitReq)
       .packetName('YieldEvidenceWaitReq')
       .timeout(20000)
-      .submit<YieldEvidenceReply>(signal);
+      .submit<YieldEvidenceRes>(signal);
   }
 
   private async relayToSpotWithRetry(
     dispatch: ZLinkSessionDispatchContext,
-    request: HoldCommand | YieldCommand | WorkerYieldCommand | YieldTimeoutCommand | YieldCancelCommand | ProbeCommand | TimerStartCommand | TimerStopCommand | RemoteSpotYieldCommand,
+    request: HoldMsg | YieldMsg | WorkerYieldMsg | YieldTimeoutMsg | YieldCancelMsg | ProbeMsg | TimerStartMsg | TimerStopMsg | RemoteSpotYieldMsg,
     signal?: AbortSignal
   ): Promise<void> {
     const spotRid = dispatch.metadata.get(YieldDispatchNames.spotRidMetadata);
@@ -346,7 +347,7 @@ class YieldSession implements ZLinkSession {
     dispatch: ZLinkSessionDispatchContext,
     request: RemoteSpotYieldReq,
     signal?: AbortSignal
-  ): Promise<YieldDispatchReply> {
+  ): Promise<YieldDispatchRes> {
     const spotRid = dispatch.metadata.get(YieldDispatchNames.spotRidMetadata);
     if (spotRid === undefined || spotRid.trim() === '') {
       throw new Error(`${YieldDispatchNames.spotRidMetadata} metadata is required for '${dispatch.packetName}'.`);
@@ -359,7 +360,7 @@ class YieldSession implements ZLinkSession {
           .requestToSpot(spotRid, request)
           .packetName(dispatch.packetName)
           .timeout(5000)
-          .submit<YieldDispatchReply>(signal);
+          .submit<YieldDispatchRes>(signal);
         this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=replied`);
         return reply;
       } catch (error) {

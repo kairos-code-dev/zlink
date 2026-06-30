@@ -5,13 +5,13 @@ using Zlink.Framework.Contracts.Spots;
 namespace DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot.Handlers;
 
 internal sealed class CourierDecisionActorHandler(ILogger<CourierDecisionActorHandler> logger)
-    : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, CourierDecision>
+    : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, CourierDecisionMsg>
 {
     public ValueTask HandleAsync(
         CourierEntrySpot entrySpot,
         CourierActor actor,
         ZLinkSpotActorSendContext context,
-        CourierDecision message,
+        CourierDecisionMsg message,
         CancellationToken cancellationToken)
     {
         actor.Complete(message);

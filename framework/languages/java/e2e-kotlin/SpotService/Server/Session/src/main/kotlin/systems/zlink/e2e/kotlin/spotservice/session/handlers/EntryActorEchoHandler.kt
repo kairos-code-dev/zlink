@@ -8,20 +8,20 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 
 class EntryActorEchoHandler {
-    @ZLinkSpotActorRequest(packetName = "ActorEchoRequest")
+    @ZLinkSpotActorRequest(packetName = "ActorEchoReq")
     fun handle(
         spot: ScenarioEntrySpot,
         actor: ScenarioActor,
         context: ZLinkSpotActorRequestContext,
-        request: Contracts.ActorEchoRequest,
+        request: Contracts.ActorEchoReq,
         cancellationToken: CancellationToken
-    ): Contracts.ActorEchoReply {
+    ): Contracts.ActorEchoRes {
         val seq = actor.nextSequence()
         spot.record("ActorEntryRequest", actor.actorId() + "/" + request.value + "#" + seq)
         actor.context().boundSession()
-            .send(Contracts.ActorPush(actor.actorId(), "entry", "push:" + request.value, request.seq, seq))
+            .send(Contracts.ActorPushNotify(actor.actorId(), "entry", "push:" + request.value, request.seq, seq))
             .submit()
-        return Contracts.ActorEchoReply(
+        return Contracts.ActorEchoRes(
             actor.actorId(),
             "entry",
             spot.nodeRid(),

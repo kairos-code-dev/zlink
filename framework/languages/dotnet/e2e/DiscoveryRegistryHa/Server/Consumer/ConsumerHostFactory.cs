@@ -42,16 +42,16 @@ internal static class ConsumerHostFactory
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
-        app.MapPost("/profile/request", async (ProfileRequest request, IZLinkChannelClient client) =>
+        app.MapPost("/profile/request", async (ProfileReq request, IZLinkChannelClient client) =>
         {
             var reply = await client.RequestToChannel(DiscoveryRegistryHaNames.Channel, request)
-                .PacketName("ProfileRequest")
+                .PacketName("ProfileReq")
                 .Timeout(TimeSpan.FromSeconds(3))
-                .Async<ProfileReply>();
+                .Async<ProfileRes>();
             return Results.Ok(reply);
         });
         app.MapPost("/profile/request/wait", async (
-            ProfileRequest request,
+            ProfileReq request,
             IZLinkChannelClient client,
             CancellationToken cancellationToken) =>
         {
@@ -62,9 +62,9 @@ internal static class ConsumerHostFactory
                 try
                 {
                     var reply = await client.RequestToChannel(DiscoveryRegistryHaNames.Channel, request)
-                        .PacketName("ProfileRequest")
+                        .PacketName("ProfileReq")
                         .Timeout(TimeSpan.FromSeconds(3))
-                        .Async<ProfileReply>();
+                        .Async<ProfileRes>();
                     return Results.Ok(reply);
                 }
                 catch (Exception ex)

@@ -1,4 +1,4 @@
-import type { EvidenceWaitRequest } from '../../../Shared/messages';
+import type { EvidenceWaitReq } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
@@ -10,7 +10,7 @@ export function createRegistryEndpoints(evidence: EvidenceStore, stop: () => voi
       method: 'POST',
       path: '/evidence/wait',
       handle: (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
         return evidence.waitUntil((entries) =>
           request.containsAll.every((expected) => entries.some((entry) => entry.includes(expected))), timeout);

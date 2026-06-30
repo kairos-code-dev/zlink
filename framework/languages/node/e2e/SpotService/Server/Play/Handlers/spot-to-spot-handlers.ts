@@ -1,40 +1,40 @@
 import { Injectable } from '@nestjs/common';
 import type { ZLinkHandlerContext, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import type {
-  SlowSpotReply,
-  SpotToSpotNegativeReply,
+  SlowSpotRes,
+  SpotToSpotNegativeRes,
   SpotToSpotNegativeReq,
-  SpotToSpotReply,
+  SpotToSpotRes,
   SpotToSpotReq,
-  SpotToSpotTimeoutReply,
+  SpotToSpotTimeoutRes,
   SpotToSpotTimeoutReq,
-  StateReply
+  StateRes
 } from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { ScenarioUserSpot } from '../Spots/scenario-spots';
 
 @Injectable()
-export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotReply> {
+export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     spot: ScenarioUserSpot,
     request: SpotToSpotReq,
     context: ZLinkHandlerContext
-  ): Promise<SpotToSpotReply> {
+  ): Promise<SpotToSpotRes> {
     void context;
     const reply = await spot.context.outbound
       .requestToSpot(request.targetSpotRid, { operation: 'add', delta: 3 })
       .packetName('StateReq')
-      .submit<StateReply>();
+      .submit<StateRes>();
     await spot.context.outbound
       .sendToSpot(request.targetSpotRid, { marker: `sm-c3-send-${request.marker}` })
-      .packetName('StateCommand')
+      .packetName('StateMsg')
       .submit();
     await spot.context.outbound
       .publish(SpotServiceNames.spotEventTopic, { marker: `sm-c3-publish-${request.marker}` })
-      .packetName('SpotEvent')
+      .packetName('SpotMsg')
       .submit();
     this.evidence.add(
       `spot-to-spot|rid=${this.evidence.rid}|source=${spot.context.spotRid}`
@@ -50,14 +50,14 @@ export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
 
 @Injectable()
 export class SpotToSpotTimeoutHandler
-  implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutReply> {
+  implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     spot: ScenarioUserSpot,
     request: SpotToSpotTimeoutReq,
     context: ZLinkHandlerContext
-  ): Promise<SpotToSpotTimeoutReply> {
+  ): Promise<SpotToSpotTimeoutRes> {
     void context;
     let failed = false;
     try {
@@ -65,7 +65,7 @@ export class SpotToSpotTimeoutHandler
         .requestToSpot(request.targetSpotRid, { marker: request.marker, delayMs: 1500 })
         .packetName('SlowSpotReq')
         .timeout(100)
-        .submit<SlowSpotReply>();
+        .submit<SlowSpotRes>();
     } catch {
       failed = true;
     }
@@ -83,14 +83,14 @@ export class SpotToSpotTimeoutHandler
 
 @Injectable()
 export class SpotToSpotNegativeHandler
-  implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeReply> {
+  implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(
     spot: ScenarioUserSpot,
     request: SpotToSpotNegativeReq,
     context: ZLinkHandlerContext
-  ): Promise<SpotToSpotNegativeReply> {
+  ): Promise<SpotToSpotNegativeRes> {
     void context;
     let requestFailed = false;
     try {
@@ -98,13 +98,13 @@ export class SpotToSpotNegativeHandler
         .requestToSpot(request.targetSpotRid, { operation: 'noop', delta: 0 })
         .packetName('MissingSpotReq')
         .timeout(2000)
-        .submit<StateReply>();
+        .submit<StateRes>();
     } catch {
       requestFailed = true;
     }
     await spot.context.outbound
       .sendToSpot(request.targetSpotRid, { marker: `missing-${request.marker}` })
-      .packetName('MissingSpotCommand')
+      .packetName('MissingSpotMsg')
       .submit();
     this.evidence.add(
       `spot-to-spot-negative|rid=${this.evidence.rid}|source=${spot.context.spotRid}`

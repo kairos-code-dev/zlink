@@ -8,29 +8,29 @@ import type {
 import {
   MessagePackEchoReq,
   ProtobufEchoReq,
-  type EchoCommand,
-  type EchoReply,
+  type EchoMsg,
+  type EchoRes,
   type EchoReq,
-  type MessagePackEchoCommand,
-  type ProtobufEchoCommand
+  type MessagePackEchoMsg,
+  type ProtobufEchoMsg
 } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
-export class JsonEchoRequestHandler implements ZLinkRequestHandler<EchoReq, EchoReply> {
+export class JsonEchoRequestHandler implements ZLinkRequestHandler<EchoReq, EchoRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: EchoReq, context: ZLinkRequestContext): Promise<EchoReply> {
+  async handle(request: EchoReq, context: ZLinkRequestContext): Promise<EchoRes> {
     this.evidence.add(`codec-request|codec=json|value=${request.value}|content=${context.contentType}`);
     return { value: `echo:${request.value}`, contentType: context.contentType ?? '<null>' };
   }
 }
 
 @Injectable()
-export class JsonEchoCommandHandler implements ZLinkSendHandler<EchoCommand> {
+export class JsonEchoCommandHandler implements ZLinkSendHandler<EchoMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(message: EchoCommand, context: ZLinkSendContext): Promise<void> {
+  async handle(message: EchoMsg, context: ZLinkSendContext): Promise<void> {
     this.evidence.add(`codec-command|codec=json|id=${message.commandId}|value=${message.value}|content=${context.contentType}`);
   }
 }
@@ -46,10 +46,10 @@ export class ProtobufEchoRequestHandler implements ZLinkRequestHandler<EchoReq, 
 }
 
 @Injectable()
-export class ProtobufEchoCommandHandler implements ZLinkSendHandler<ProtobufEchoCommand> {
+export class ProtobufEchoCommandHandler implements ZLinkSendHandler<ProtobufEchoMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(message: ProtobufEchoCommand, context: ZLinkSendContext): Promise<void> {
+  async handle(message: ProtobufEchoMsg, context: ZLinkSendContext): Promise<void> {
     this.evidence.add(`codec-command|codec=protobuf|value=${message.value}|content=${context.contentType}`);
   }
 }
@@ -65,10 +65,10 @@ export class MessagePackEchoRequestHandler implements ZLinkRequestHandler<EchoRe
 }
 
 @Injectable()
-export class MessagePackEchoCommandHandler implements ZLinkSendHandler<MessagePackEchoCommand> {
+export class MessagePackEchoCommandHandler implements ZLinkSendHandler<MessagePackEchoMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(message: MessagePackEchoCommand, context: ZLinkSendContext): Promise<void> {
+  async handle(message: MessagePackEchoMsg, context: ZLinkSendContext): Promise<void> {
     this.evidence.add(`codec-command|codec=msgpack|id=${message.commandId}|value=${message.value}|content=${context.contentType}`);
   }
 }

@@ -41,86 +41,86 @@ public abstract class SpotCommandHandler<TCommand>
     }
 
     public static final class WorkerYield
-        extends SpotCommandHandler<Contracts.WorkerYieldCommand> {
+        extends SpotCommandHandler<Contracts.WorkerYieldMsg> {
         public WorkerYield(ZLinkRouteClient routes) {
-            super(routes, Contracts.WorkerYieldCommand.class);
+            super(routes, Contracts.WorkerYieldMsg.class);
         }
 
         @Override
         public String packetName() {
-            return "WorkerYieldCommand";
+            return "WorkerYieldMsg";
         }
     }
 
     public static final class Yield
-        extends SpotCommandHandler<Contracts.YieldCommand> {
+        extends SpotCommandHandler<Contracts.YieldMsg> {
         public Yield(ZLinkRouteClient routes) {
-            super(routes, Contracts.YieldCommand.class);
+            super(routes, Contracts.YieldMsg.class);
         }
 
         @Override
         public String packetName() {
-            return "YieldCommand";
+            return "YieldMsg";
         }
     }
 
     public static final class Probe
-        extends SpotCommandHandler<Contracts.ProbeCommand> {
+        extends SpotCommandHandler<Contracts.ProbeMsg> {
         public Probe(ZLinkRouteClient routes) {
-            super(routes, Contracts.ProbeCommand.class);
+            super(routes, Contracts.ProbeMsg.class);
         }
 
         @Override
         public String packetName() {
-            return "ProbeCommand";
+            return "ProbeMsg";
         }
     }
 
     public static final class YieldTimeout
-        extends SpotCommandHandler<Contracts.YieldTimeoutCommand> {
+        extends SpotCommandHandler<Contracts.YieldTimeoutMsg> {
         public YieldTimeout(ZLinkRouteClient routes) {
-            super(routes, Contracts.YieldTimeoutCommand.class);
+            super(routes, Contracts.YieldTimeoutMsg.class);
         }
 
         @Override
         public String packetName() {
-            return "YieldTimeoutCommand";
+            return "YieldTimeoutMsg";
         }
     }
 
     public static final class YieldCancel
-        extends SpotCommandHandler<Contracts.YieldCancelCommand> {
+        extends SpotCommandHandler<Contracts.YieldCancelMsg> {
         public YieldCancel(ZLinkRouteClient routes) {
-            super(routes, Contracts.YieldCancelCommand.class);
+            super(routes, Contracts.YieldCancelMsg.class);
         }
 
         @Override
         public String packetName() {
-            return "YieldCancelCommand";
+            return "YieldCancelMsg";
         }
     }
 
     public static final class TimerStart
-        extends SpotCommandHandler<Contracts.TimerStartCommand> {
+        extends SpotCommandHandler<Contracts.TimerStartMsg> {
         public TimerStart(ZLinkRouteClient routes) {
-            super(routes, Contracts.TimerStartCommand.class);
+            super(routes, Contracts.TimerStartMsg.class);
         }
 
         @Override
         public String packetName() {
-            return "TimerStartCommand";
+            return "TimerStartMsg";
         }
     }
 
     public static final class TimerStop
-        extends SpotCommandHandler<Contracts.TimerStopCommand> {
+        extends SpotCommandHandler<Contracts.TimerStopMsg> {
         public TimerStop(ZLinkRouteClient routes) {
-            super(routes, Contracts.TimerStopCommand.class);
+            super(routes, Contracts.TimerStopMsg.class);
         }
 
         @Override
         public String packetName() {
-            return "TimerStopCommand";
+            return "TimerStopMsg";
         }
     }
 }

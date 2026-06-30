@@ -11,16 +11,16 @@ namespace zlink::framework::e2e::registry_messaging::client
 
 inline void run_rm_a6_multiple_channels_scenario (zlink::framework::channel_client_t &channels)
 {
-    auto api = channels.request (api_channel, profile_request_t{.value = "a6-api"})
+    auto api = channels.request (api_channel, profile_req_t{.value = "a6-api"})
                  .timeout (std::chrono::milliseconds (2000))
-                 .async<profile_reply_t> ();
+                 .async<profile_res_t> ();
     ensure (api.result ().has_value (), "RM-A6 api channel request failed");
     ensure (api.result ().value ().provider_rid.rfind ("api-", 0) == 0,
             "RM-A6 api channel resolved a non-api provider");
 
-    auto workflow = channels.request (workflow_channel, workflow_request_t{.value = "a6-workflow"})
+    auto workflow = channels.request (workflow_channel, workflow_req_t{.value = "a6-workflow"})
                       .timeout (std::chrono::milliseconds (2000))
-                      .async<workflow_reply_t> ();
+                      .async<workflow_res_t> ();
     ensure (workflow.result ().has_value (), "RM-A6 workflow channel request failed");
     ensure (workflow.result ().value ().value == "workflow:a6-workflow",
             "RM-A6 workflow reply value mismatch");
@@ -33,13 +33,13 @@ inline void run_rm_a6_multiple_channels_scenario (zlink::framework::channel_clie
     bool workflow_recorded = false;
     bool workflow_leaked_to_provider = false;
     for (const auto &entry : workflow_evidence.entries) {
-        if (entry.marker == "WorkflowRequest" && entry.value == "a6-workflow") {
+        if (entry.marker == "WorkflowReq" && entry.value == "a6-workflow") {
             workflow_recorded = true;
         }
     }
     for (const auto &snapshot : {evidence_a, evidence_b}) {
         for (const auto &entry : snapshot.entries) {
-            if (entry.marker == "WorkflowRequest" && entry.value == "a6-workflow") {
+            if (entry.marker == "WorkflowReq" && entry.value == "a6-workflow") {
                 workflow_leaked_to_provider = true;
             }
         }

@@ -9,11 +9,11 @@ internal static class AttributeRegistrationScenario
 {
     public static async Task RunAsync(ZLinkHttpClient server)
     {
-        var reply = (await server.Post("/registration/attribute").SubmitAsync<EchoReply>()).Body;
+        var reply = (await server.Post("/registration/attribute").SubmitAsync<EchoRes>()).Body;
         ScenarioAssert.That(reply.Value == "echo:rc-a2", "RC-A2 request reply mismatch.");
 
         var evidence = (await server.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(["echo-command|variant=attr|id=cmd-rc-a2"]))
+            .Body(new EvidenceWaitReq(["echo-command|variant=attr|id=cmd-rc-a2"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains("echo-command|variant=attr|id=cmd-rc-a2", StringComparison.Ordinal)),

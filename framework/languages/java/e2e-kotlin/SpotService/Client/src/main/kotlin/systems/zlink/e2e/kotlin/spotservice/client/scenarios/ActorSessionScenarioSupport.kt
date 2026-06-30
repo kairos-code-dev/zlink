@@ -25,25 +25,25 @@ internal class ActorSessionScenarioContext : AutoCloseable {
         7,
         listOf("alpha", "beta"),
     )
-    lateinit var auth: Contracts.ActorAuthReply
+    lateinit var auth: Contracts.ActorAuthRes
         private set
-    lateinit var entryReply: Contracts.ActorEchoReply
+    lateinit var entryReply: Contracts.ActorEchoRes
         private set
-    lateinit var entryPush: Contracts.ActorPush
+    lateinit var entryPush: Contracts.ActorPushNotify
         private set
-    lateinit var joined: Contracts.ActorJoinReply
+    lateinit var joined: Contracts.ActorJoinRes
         private set
-    lateinit var userReply1: Contracts.ActorEchoReply
+    lateinit var userReply1: Contracts.ActorEchoRes
         private set
-    lateinit var userPush1: Contracts.ActorPush
+    lateinit var userPush1: Contracts.ActorPushNotify
         private set
-    lateinit var userReply2: Contracts.ActorEchoReply
+    lateinit var userReply2: Contracts.ActorEchoRes
         private set
-    lateinit var userPush2: Contracts.ActorPush
+    lateinit var userPush2: Contracts.ActorPushNotify
         private set
-    lateinit var userReply3: Contracts.ActorEchoReply
+    lateinit var userReply3: Contracts.ActorEchoRes
         private set
-    lateinit var userPush3: Contracts.ActorPush
+    lateinit var userPush3: Contracts.ActorPushNotify
         private set
 
     fun observedInboundNames(): List<String> = inboundNames.toList()
@@ -52,55 +52,55 @@ internal class ActorSessionScenarioContext : AutoCloseable {
         connector.connect().await()
         unbound.connect().await()
         auth = connector
-            .request(Contracts.ActorAuthRequest("actor-local-1", profile))
-            .await(Contracts.ActorAuthReply::class.java)
+            .request(Contracts.ActorAuthReq("actor-local-1", profile))
+            .await(Contracts.ActorAuthRes::class.java)
     }
 
     fun requestEntryEcho() {
-        val push = connector.waitFor(Contracts.ActorPush::class.java)
-            .submit(Contracts.ActorPush::class.java)
+        val push = connector.waitFor(Contracts.ActorPushNotify::class.java)
+            .submit(Contracts.ActorPushNotify::class.java)
         entryReply = connector
-            .request(Contracts.ActorEchoRequest("entry-echo", 1, profile))
+            .request(Contracts.ActorEchoReq("entry-echo", 1, profile))
             .metadata("actor-id", "actor-local-1")
-            .await(Contracts.ActorEchoReply::class.java)
+            .await(Contracts.ActorEchoRes::class.java)
         entryPush = connector.await(push).payload()
     }
 
     fun joinRoom() {
         joined = connector
-            .request(Contracts.ActorJoinRequest("room-a", profile, profile.tags))
+            .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
             .metadata("actor-id", "actor-local-1")
-            .await(Contracts.ActorJoinReply::class.java)
+            .await(Contracts.ActorJoinRes::class.java)
     }
 
     fun requestFirstUserEchoAndCheckUnboundIsolation() {
-        val unboundPush = unbound.waitFor(Contracts.ActorPush::class.java)
+        val unboundPush = unbound.waitFor(Contracts.ActorPushNotify::class.java)
             .timeout(Duration.ofMillis(400))
-            .submit(Contracts.ActorPush::class.java)
-        val push = connector.waitFor(Contracts.ActorPush::class.java)
-            .submit(Contracts.ActorPush::class.java)
+            .submit(Contracts.ActorPushNotify::class.java)
+        val push = connector.waitFor(Contracts.ActorPushNotify::class.java)
+            .submit(Contracts.ActorPushNotify::class.java)
         userReply1 = requestUserEcho("user-echo-1", 2)
         userPush1 = connector.await(push).payload()
         expectFailure { awaitUnchecked(unbound, unboundPush) }
     }
 
     fun requestOrderedUserEchoes() {
-        val secondPush = connector.waitFor(Contracts.ActorPush::class.java)
-            .submit(Contracts.ActorPush::class.java)
+        val secondPush = connector.waitFor(Contracts.ActorPushNotify::class.java)
+            .submit(Contracts.ActorPushNotify::class.java)
         userReply2 = requestUserEcho("user-echo-2", 3)
         userPush2 = connector.await(secondPush).payload()
 
-        val thirdPush = connector.waitFor(Contracts.ActorPush::class.java)
-            .submit(Contracts.ActorPush::class.java)
+        val thirdPush = connector.waitFor(Contracts.ActorPushNotify::class.java)
+            .submit(Contracts.ActorPushNotify::class.java)
         userReply3 = requestUserEcho("user-echo-3", 4)
         userPush3 = connector.await(thirdPush).payload()
     }
 
-    private fun requestUserEcho(value: String, seq: Int): Contracts.ActorEchoReply =
+    private fun requestUserEcho(value: String, seq: Int): Contracts.ActorEchoRes =
         connector
-            .request(Contracts.ActorEchoRequest(value, seq, profile))
+            .request(Contracts.ActorEchoReq(value, seq, profile))
             .metadata("actor-id", "actor-local-1")
-            .await(Contracts.ActorEchoReply::class.java)
+            .await(Contracts.ActorEchoRes::class.java)
 
     override fun close() {
         closeQuietly(inboundObserver)
@@ -139,7 +139,7 @@ internal object ActorSessionScenarioSupport {
         postJson(
             Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
             "/evidence/wait",
-            Contracts.EvidenceWaitRequest(
+            Contracts.EvidenceWaitReq(
                 listOf(
                     "ActorCreated",
                     "ActorCreatedPayload",

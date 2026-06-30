@@ -3,7 +3,7 @@ import {
   zlinkStreamJsonCodec,
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
-import type { AuthReply, AuthReq } from '../../Shared/messages';
+import type { AuthRes, AuthReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
 import { decodeStreamReply } from '../Support/stream-reply';
@@ -24,7 +24,7 @@ export async function runSmD13(options: ClientOptions): Promise<void> {
 
   await stream.connect();
   try {
-    const auth = decodeStreamReply<AuthReply>(await stream
+    const auth = decodeStreamReply<AuthRes>(await stream
       .request({
         actorId: 'actor-sm-d13',
         displayName: 'heartbeat',

@@ -18,7 +18,7 @@ internal static class SmD2Scenario
             {
                 var control = (await sessionA.Post("/channel/control-ping/play-b")
                     .Body(new ControlPingReq("sm-d2-play-b-ready"))
-                    .SubmitAsync<ControlPingReply>()).Body;
+                    .SubmitAsync<ControlPingRes>()).Body;
                 if (control.NodeRid == "play-b")
                 {
                     controlReady = true;
@@ -61,7 +61,7 @@ internal static class SmD2Scenario
                     await client.Connect.Async();
                     await client.Request(new AuthReq("actor-sm-d2", "remote relay", "play-b"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     remote = client;
                     break;
                 }
@@ -84,7 +84,7 @@ internal static class SmD2Scenario
             var remotePushed = activeRemote.WaitFor<ActorPushNotify>().Async().AsTask();
             var remoteReply = await activeRemote.Request(new ActorPushReq("push-remote"))
                 .PacketName("ActorPushReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             var remoteNotify = await remotePushed;
             ScenarioAssert.That(remoteReply.ActorId == "actor-sm-d2", "SM-D2 actor reply mismatch.");
             ScenarioAssert.That(remoteReply.NodeRid == "play-b", "SM-D2 remote node mismatch.");

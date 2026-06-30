@@ -1,9 +1,9 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
+  EvidenceWaitReq,
   SpotStateRouteReq,
-  StateReply
+  StateRes
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -11,7 +11,7 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmA4(options: ClientOptions): Promise<void> {
   const spotRid = 'sm-a1-user';
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(
@@ -19,7 +19,7 @@ export async function runSmA4(options: ClientOptions): Promise<void> {
     'SM-A4 owner spot was not created on play-a.'
   );
 
-  const reply = await postJson<StateReply>(options.playAUrl, '/spot/state/request', {
+  const reply = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
     spotRid,
     operation: 'noop',
     delta: 0
@@ -30,7 +30,7 @@ export async function runSmA4(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: [`spot-state-request|rid=play-a|spot=${spotRid}|value=${reply.value}`],
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     evidence.some((line) => line.includes(`spot-state-request|rid=play-a|spot=${spotRid}|value=${reply.value}`)),
     'SM-A4 owner routing evidence missing.'

@@ -24,16 +24,16 @@ struct delivery_status_t
 
 struct create_delivery_req_t
 {
-    static constexpr const char *packet_name = "CreateDeliveryRequest";
+    static constexpr const char *packet_name = "CreateDeliveryReq";
     std::string delivery_id;
     std::string customer_id;
     std::string pickup_address;
     std::string dropoff_address;
 };
 
-struct delivery_created_t
+struct create_delivery_res_t
 {
-    static constexpr const char *packet_name = "DeliveryCreated";
+    static constexpr const char *packet_name = "CreateDeliveryRes";
     std::string delivery_id;
 };
 
@@ -45,15 +45,15 @@ struct actor_ref_snapshot_t
     std::uint64_t generation{0};
 };
 
-struct ensure_customer_actor_t
+struct ensure_customer_actor_req_t
 {
-    static constexpr const char *packet_name = "EnsureCustomerActor";
+    static constexpr const char *packet_name = "EnsureCustomerActorReq";
     std::string customer_id;
 };
 
-struct customer_actor_ensured_t
+struct ensure_customer_actor_res_t
 {
-    static constexpr const char *packet_name = "CustomerActorEnsured";
+    static constexpr const char *packet_name = "EnsureCustomerActorReqRes";
     std::string customer_id;
     actor_ref_snapshot_t actor;
 };
@@ -64,22 +64,22 @@ struct subscribe_delivery_req_t
     std::string delivery_id;
 };
 
-struct subscribe_delivery_accepted_t
+struct subscribe_delivery_res_t
 {
-    static constexpr const char *packet_name = "SubscribeDeliveryAccepted";
+    static constexpr const char *packet_name = "SubscribeDeliveryRes";
     std::string delivery_id;
 };
 
-struct subscribe_customer_to_delivery_t
+struct subscribe_customer_to_delivery_req_t
 {
-    static constexpr const char *packet_name = "SubscribeCustomerToDelivery";
+    static constexpr const char *packet_name = "SubscribeCustomerToDeliveryReq";
     std::string customer_id;
     std::string delivery_id;
 };
 
-struct customer_delivery_subscribed_t
+struct subscribe_customer_to_delivery_res_t
 {
-    static constexpr const char *packet_name = "CustomerDeliverySubscribed";
+    static constexpr const char *packet_name = "SubscribeCustomerToDeliveryRes";
     std::string customer_id;
     std::string delivery_id;
 };
@@ -95,7 +95,7 @@ struct assign_delivery_req_t
 
 struct assign_delivery_res_t
 {
-    static constexpr const char *packet_name = "AssignDeliveryResult";
+    static constexpr const char *packet_name = "AssignDeliveryRes";
     std::string delivery_id;
     std::string courier_id;
 };
@@ -110,69 +110,69 @@ struct offer_delivery_req_t
 
 struct offer_delivery_res_t
 {
-    static constexpr const char *packet_name = "OfferDeliveryResult";
+    static constexpr const char *packet_name = "OfferDeliveryRes";
     std::string delivery_id;
     std::string courier_id;
     bool accepted{false};
     std::string reason;
 };
 
-struct courier_decision_t
+struct courier_decision_msg_t
 {
-    static constexpr const char *packet_name = "CourierDecision";
+    static constexpr const char *packet_name = "CourierDecisionMsg";
     std::string delivery_id;
     std::string courier_id;
     bool accepted{false};
     std::string reason;
 };
 
-struct reassign_delivery_t
+struct reassign_delivery_msg_t
 {
-    static constexpr const char *packet_name = "ReassignDelivery";
+    static constexpr const char *packet_name = "ReassignDeliveryMsg";
     std::string delivery_id;
     std::string previous_courier_id;
     std::string next_courier_id;
     std::string reason;
 };
 
-struct delivery_status_changed_t
+struct delivery_status_req_t
 {
-    static constexpr const char *packet_name = "DeliveryStatusChanged";
+    static constexpr const char *packet_name = "DeliveryStatusReq";
     std::string delivery_id;
     std::string status;
     std::string courier_id;
     std::string occurred_at;
 };
 
-struct delivery_status_ack_t
+struct delivery_status_res_t
 {
-    static constexpr const char *packet_name = "DeliveryStatusAck";
+    static constexpr const char *packet_name = "DeliveryStatusRes";
     std::string delivery_id;
     std::string status;
 };
 
-struct delivery_spot_create_t
+struct delivery_spot_create_req_t
 {
-    static constexpr const char *packet_name = "DeliverySpotCreate";
+    static constexpr const char *packet_name = "DeliverySpotCreateReq";
     std::string delivery_id;
 };
 
-struct delivery_spot_created_t
+struct delivery_spot_create_res_t
 {
-    static constexpr const char *packet_name = "DeliverySpotCreated";
+    static constexpr const char *packet_name = "DeliverySpotCreateReqRes";
     std::string delivery_id;
 };
 
-struct delivery_spot_join_t
+struct delivery_spot_join_req_t
 {
-    static constexpr const char *packet_name = "DeliverySpotJoin";
+    static constexpr const char *packet_name = "DeliverySpotJoinReq";
     std::string delivery_id;
     std::string customer_id;
 };
 
-struct delivery_spot_joined_t
+struct delivery_spot_join_res_t
 {
-    static constexpr const char *packet_name = "DeliverySpotJoined";
+    static constexpr const char *packet_name = "DeliverySpotJoinReqRes";
     std::string delivery_id;
     std::string customer_id;
 };
@@ -227,12 +227,12 @@ inline void from_json (const nlohmann::json &json, create_delivery_req_t &value)
     value.dropoff_address = json_string (json, "dropoffAddress", "dropoff_address");
 }
 
-inline void to_json (nlohmann::json &json, const delivery_created_t &value)
+inline void to_json (nlohmann::json &json, const create_delivery_res_t &value)
 {
     json = {{"deliveryId", value.delivery_id}};
 }
 
-inline void from_json (const nlohmann::json &json, delivery_created_t &value)
+inline void from_json (const nlohmann::json &json, create_delivery_res_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
 }
@@ -249,22 +249,22 @@ inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
     value.generation = json.value ("generation", std::uint64_t{0});
 }
 
-inline void to_json (nlohmann::json &json, const ensure_customer_actor_t &value)
+inline void to_json (nlohmann::json &json, const ensure_customer_actor_req_t &value)
 {
     json = {{"customerId", value.customer_id}};
 }
 
-inline void from_json (const nlohmann::json &json, ensure_customer_actor_t &value)
+inline void from_json (const nlohmann::json &json, ensure_customer_actor_req_t &value)
 {
     value.customer_id = json_string (json, "customerId", "customer_id");
 }
 
-inline void to_json (nlohmann::json &json, const customer_actor_ensured_t &value)
+inline void to_json (nlohmann::json &json, const ensure_customer_actor_res_t &value)
 {
     json = {{"customerId", value.customer_id}, {"actor", value.actor}};
 }
 
-inline void from_json (const nlohmann::json &json, customer_actor_ensured_t &value)
+inline void from_json (const nlohmann::json &json, ensure_customer_actor_res_t &value)
 {
     value.customer_id = json_string (json, "customerId", "customer_id");
     value.actor = json.value ("actor", actor_ref_snapshot_t{});
@@ -280,33 +280,33 @@ inline void from_json (const nlohmann::json &json, subscribe_delivery_req_t &val
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
 }
 
-inline void to_json (nlohmann::json &json, const subscribe_delivery_accepted_t &value)
+inline void to_json (nlohmann::json &json, const subscribe_delivery_res_t &value)
 {
     json = {{"deliveryId", value.delivery_id}};
 }
 
-inline void from_json (const nlohmann::json &json, subscribe_delivery_accepted_t &value)
+inline void from_json (const nlohmann::json &json, subscribe_delivery_res_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
 }
 
-inline void to_json (nlohmann::json &json, const subscribe_customer_to_delivery_t &value)
+inline void to_json (nlohmann::json &json, const subscribe_customer_to_delivery_req_t &value)
 {
     json = {{"customerId", value.customer_id}, {"deliveryId", value.delivery_id}};
 }
 
-inline void from_json (const nlohmann::json &json, subscribe_customer_to_delivery_t &value)
+inline void from_json (const nlohmann::json &json, subscribe_customer_to_delivery_req_t &value)
 {
     value.customer_id = json_string (json, "customerId", "customer_id");
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
 }
 
-inline void to_json (nlohmann::json &json, const customer_delivery_subscribed_t &value)
+inline void to_json (nlohmann::json &json, const subscribe_customer_to_delivery_res_t &value)
 {
     json = {{"customerId", value.customer_id}, {"deliveryId", value.delivery_id}};
 }
 
-inline void from_json (const nlohmann::json &json, customer_delivery_subscribed_t &value)
+inline void from_json (const nlohmann::json &json, subscribe_customer_to_delivery_res_t &value)
 {
     value.customer_id = json_string (json, "customerId", "customer_id");
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
@@ -369,7 +369,7 @@ inline void from_json (const nlohmann::json &json, offer_delivery_res_t &value)
     value.reason = json.value ("reason", "");
 }
 
-inline void to_json (nlohmann::json &json, const courier_decision_t &value)
+inline void to_json (nlohmann::json &json, const courier_decision_msg_t &value)
 {
     json = {{"deliveryId", value.delivery_id},
             {"courierId", value.courier_id},
@@ -377,7 +377,7 @@ inline void to_json (nlohmann::json &json, const courier_decision_t &value)
             {"reason", value.reason}};
 }
 
-inline void from_json (const nlohmann::json &json, courier_decision_t &value)
+inline void from_json (const nlohmann::json &json, courier_decision_msg_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.courier_id = json_string (json, "courierId", "courier_id");
@@ -385,7 +385,7 @@ inline void from_json (const nlohmann::json &json, courier_decision_t &value)
     value.reason = json.value ("reason", "");
 }
 
-inline void to_json (nlohmann::json &json, const reassign_delivery_t &value)
+inline void to_json (nlohmann::json &json, const reassign_delivery_msg_t &value)
 {
     json = {{"deliveryId", value.delivery_id},
             {"previousCourierId", value.previous_courier_id},
@@ -393,7 +393,7 @@ inline void to_json (nlohmann::json &json, const reassign_delivery_t &value)
             {"reason", value.reason}};
 }
 
-inline void from_json (const nlohmann::json &json, reassign_delivery_t &value)
+inline void from_json (const nlohmann::json &json, reassign_delivery_msg_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.previous_courier_id = json_string (json, "previousCourierId", "previous_courier_id");
@@ -401,7 +401,7 @@ inline void from_json (const nlohmann::json &json, reassign_delivery_t &value)
     value.reason = json.value ("reason", "");
 }
 
-inline void to_json (nlohmann::json &json, const delivery_status_changed_t &value)
+inline void to_json (nlohmann::json &json, const delivery_status_req_t &value)
 {
     json = {{"deliveryId", value.delivery_id},
             {"status", value.status},
@@ -409,7 +409,7 @@ inline void to_json (nlohmann::json &json, const delivery_status_changed_t &valu
             {"occurredAt", value.occurred_at}};
 }
 
-inline void from_json (const nlohmann::json &json, delivery_status_changed_t &value)
+inline void from_json (const nlohmann::json &json, delivery_status_req_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.status = json.value ("status", "");
@@ -417,54 +417,54 @@ inline void from_json (const nlohmann::json &json, delivery_status_changed_t &va
     value.occurred_at = json_string (json, "occurredAt", "occurred_at");
 }
 
-inline void to_json (nlohmann::json &json, const delivery_status_ack_t &value)
+inline void to_json (nlohmann::json &json, const delivery_status_res_t &value)
 {
     json = {{"deliveryId", value.delivery_id}, {"status", value.status}};
 }
 
-inline void from_json (const nlohmann::json &json, delivery_status_ack_t &value)
+inline void from_json (const nlohmann::json &json, delivery_status_res_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.status = json.value ("status", "");
 }
 
-inline void to_json (nlohmann::json &json, const delivery_spot_create_t &value)
+inline void to_json (nlohmann::json &json, const delivery_spot_create_req_t &value)
 {
     json = {{"deliveryId", value.delivery_id}};
 }
 
-inline void from_json (const nlohmann::json &json, delivery_spot_create_t &value)
+inline void from_json (const nlohmann::json &json, delivery_spot_create_req_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
 }
 
-inline void to_json (nlohmann::json &json, const delivery_spot_created_t &value)
+inline void to_json (nlohmann::json &json, const delivery_spot_create_res_t &value)
 {
     json = {{"deliveryId", value.delivery_id}};
 }
 
-inline void from_json (const nlohmann::json &json, delivery_spot_created_t &value)
+inline void from_json (const nlohmann::json &json, delivery_spot_create_res_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
 }
 
-inline void to_json (nlohmann::json &json, const delivery_spot_join_t &value)
+inline void to_json (nlohmann::json &json, const delivery_spot_join_req_t &value)
 {
     json = {{"deliveryId", value.delivery_id}, {"customerId", value.customer_id}};
 }
 
-inline void from_json (const nlohmann::json &json, delivery_spot_join_t &value)
+inline void from_json (const nlohmann::json &json, delivery_spot_join_req_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.customer_id = json_string (json, "customerId", "customer_id");
 }
 
-inline void to_json (nlohmann::json &json, const delivery_spot_joined_t &value)
+inline void to_json (nlohmann::json &json, const delivery_spot_join_res_t &value)
 {
     json = {{"deliveryId", value.delivery_id}, {"customerId", value.customer_id}};
 }
 
-inline void from_json (const nlohmann::json &json, delivery_spot_joined_t &value)
+inline void from_json (const nlohmann::json &json, delivery_spot_join_res_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.customer_id = json_string (json, "customerId", "customer_id");

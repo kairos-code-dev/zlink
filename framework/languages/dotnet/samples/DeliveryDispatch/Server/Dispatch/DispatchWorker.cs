@@ -48,16 +48,16 @@ internal sealed class DispatchWorker(
         await ContinueAcceptedDeliveryAsync(request.DeliveryId, second.CourierId, cancellationToken);
     }
 
-    private async ValueTask<OfferDeliveryResult> TryOfferAsync(
+    private async ValueTask<OfferDeliveryRes> TryOfferAsync(
         AssignDelivery request,
         string courierId,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await RequestChannelWithRetryAsync<OfferDelivery, OfferDeliveryResult>(
+            return await RequestChannelWithRetryAsync<OfferDeliveryReq, OfferDeliveryRes>(
                 SampleNames.CourierRouteChannel,
-                new OfferDelivery(courierId, request.DeliveryId, request.PickupAddress, request.DropoffAddress),
+                new OfferDeliveryReq(courierId, request.DeliveryId, request.PickupAddress, request.DropoffAddress),
                 cancellationToken,
                 SampleTimings.OfferRequestTimeout,
                 maxAttempts: 8);
@@ -69,7 +69,7 @@ internal sealed class DispatchWorker(
                 "deliverydispatch dispatch: courier timeout delivery={DeliveryId} courier={CourierId}",
                 request.DeliveryId,
                 courierId);
-            return new OfferDeliveryResult(request.DeliveryId, courierId, Accepted: false, error.Message);
+            return new OfferDeliveryRes(request.DeliveryId, courierId, Accepted: false, error.Message);
         }
     }
 
@@ -89,15 +89,15 @@ internal sealed class DispatchWorker(
         string? courierId,
         CancellationToken cancellationToken)
     {
-        _ = await RequestChannelWithRetryAsync<DeliveryStatusChanged, DeliveryStatusAck>(
+        _ = await RequestChannelWithRetryAsync<DeliveryStatusChangedReq, DeliveryStatusChangedRes>(
             SampleNames.TrackingRouteChannel,
-            new DeliveryStatusChanged(deliveryId, status, courierId, DateTimeOffset.UtcNow),
+            new DeliveryStatusChangedReq(deliveryId, status, courierId, DateTimeOffset.UtcNow),
             cancellationToken);
     }
 
-    private async ValueTask<TReply> RequestChannelWithRetryAsync<TRequest, TReply>(
+    private async ValueTask<TRes> RequestChannelWithRetryAsync<TReq, TRes>(
         string channelName,
-        TRequest request,
+        TReq request,
         CancellationToken cancellationToken,
         TimeSpan? timeout = null,
         int maxAttempts = 40)
@@ -113,7 +113,7 @@ internal sealed class DispatchWorker(
                     call = call.Timeout(value);
                 }
 
-                return await call.Async<TReply>(cancellationToken);
+                return await call.Async<TRes>(cancellationToken);
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
@@ -124,7 +124,7 @@ internal sealed class DispatchWorker(
                         error,
                         "deliverydispatch dispatch: channel wait channel={ChannelName} request={RequestName} attempt={Attempt}",
                         channelName,
-                        typeof(TRequest).Name,
+                        typeof(TReq).Name,
                         attempt);
                 }
                 await Task.Delay(100, cancellationToken);
@@ -132,7 +132,7 @@ internal sealed class DispatchWorker(
         }
 
         throw new InvalidOperationException(
-            $"Channel '{channelName}' was not ready for request '{typeof(TRequest).Name}'.",
+            $"Channel '{channelName}' was not ready for request '{typeof(TReq).Name}'.",
             lastError);
     }
 }

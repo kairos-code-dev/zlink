@@ -9,8 +9,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.resiliencelifecycle.provider.endpoints.EvidenceHttpServer;
-import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkCommandHandler;
-import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkRequestHandler;
+import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkMsgHandler;
+import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkReqHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.infrastructure.ScenarioState;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.e2e.resiliencelifecycle.shared.Env;
@@ -76,7 +76,7 @@ public final class Program {
                         error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return CompletableFuture.completedFuture(null);
                 });
-            options.addHandlersFromPackageOf(WorkRequestHandler.class);
+            options.addHandlersFromPackageOf(WorkReqHandler.class);
             options.useDiscovery().addRegistryEndpoint(Env.get("ZLINK_JAVA_E2E_REGISTRY_ROUTER"));
             options.addClientServerChannel(Contracts.CHANNEL)
                 .enableServer(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"))
@@ -86,12 +86,12 @@ public final class Program {
     }
 
     @Bean
-    WorkRequestHandler workRequestHandler(ScenarioState state) {
-        return new WorkRequestHandler(state);
+    WorkReqHandler workRequestHandler(ScenarioState state) {
+        return new WorkReqHandler(state);
     }
 
     @Bean
-    WorkCommandHandler workCommandHandler(ScenarioState state) {
-        return new WorkCommandHandler(state);
+    WorkMsgHandler workCommandHandler(ScenarioState state) {
+        return new WorkMsgHandler(state);
     }
 }

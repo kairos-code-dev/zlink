@@ -24,13 +24,13 @@ internal static class DrD3DirectEndpointScenario
             .Build();
 
         await embedded.Post("/registry/members/wait")
-            .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
+            .Body(new MemberEndpointWaitReq(options.ApiAEndpoint))
             .SubmitRawAsync();
 
         var marker = $"dr-d3-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("dr-d3", marker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("dr-d3", marker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:dr-d3", "DR-D3 request failed.");
         ScenarioAssert.That(
             reply.ProviderRid is "api-a" or "api-b" or "embedded-api-mixed",
@@ -44,7 +44,7 @@ internal static class DrD3DirectEndpointScenario
             _ => embedded
         };
         var evidence = (await evidenceClient.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(marker))
+            .Body(new EvidenceWaitReq(marker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)

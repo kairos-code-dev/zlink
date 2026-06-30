@@ -31,17 +31,17 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
 
     @Override
     public void configure() {
-        context.handlers().addPacket(ProbeRequestHandler.class);
-        context.handlers().addPacket(HoldCommandHandler.class);
-        context.handlers().addPacket(YieldRequestHandler.class);
-        context.handlers().addPacket(YieldCommandHandler.class);
-        context.handlers().addPacket(WorkerYieldCommandHandler.class);
-        context.handlers().addPacket(ProbeCommandHandler.class);
-        context.handlers().addPacket(RemoteSpotYieldRequestHandler.class);
-        context.handlers().addPacket(TimerStartCommandHandler.class);
-        context.handlers().addPacket(TimerStopCommandHandler.class);
-        context.handlers().addPacket(YieldTimeoutCommandHandler.class);
-        context.handlers().addPacket(SpotProbeCommandHandler.class);
+        context.handlers().addPacket(ProbeReqHandler.class);
+        context.handlers().addPacket(HoldMsgHandler.class);
+        context.handlers().addPacket(YieldReqHandler.class);
+        context.handlers().addPacket(YieldMsgHandler.class);
+        context.handlers().addPacket(WorkerYieldMsgHandler.class);
+        context.handlers().addPacket(ProbeMsgHandler.class);
+        context.handlers().addPacket(RemoteSpotYieldReqHandler.class);
+        context.handlers().addPacket(TimerStartMsgHandler.class);
+        context.handlers().addPacket(TimerStopMsgHandler.class);
+        context.handlers().addPacket(YieldTimeoutMsgHandler.class);
+        context.handlers().addPacket(SpotProbeMsgHandler.class);
         context.handlers().addActorRequest(ProbeActorRequestHandler.class);
         context.handlers().addActorRequest(ProbeActorJoinHandler.class);
         context.handlers().addActorRequest(ProbeActorYieldHandler.class);
@@ -58,14 +58,14 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
         ProbeActor actor,
         ZLinkMessage request,
         CancellationToken cancellationToken) {
-        Contracts.ActorJoinRequest join = request.decode(Contracts.ActorJoinRequest.class);
-        return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinReply(
+        Contracts.ActorJoinReq join = request.decode(Contracts.ActorJoinReq.class);
+        return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinRes(
             actor.actorId(),
             context.spotRid().toString(),
             "joined:" + join.value()));
     }
 
-    Contracts.ProbeReply handle(Contracts.ProbeRequest request) {
+    Contracts.ProbeRes handle(Contracts.ProbeReq request) {
         sequence++;
         if (request.op().equals("worker")) {
             String worker = context.runWorker(token -> {
@@ -79,22 +79,22 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
         if (request.millis() <= 0) {
             return reply(request, "immediate:" + request.op() + "#" + sequence);
         }
-        Contracts.DelayReply delayed = context.outbound()
-            .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayRequest(request.op(), request.millis()))
+        Contracts.DelayRes delayed = context.outbound()
+            .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayReq(request.op(), request.millis()))
             .timeout(Duration.ofSeconds(5))
-            .yield(Contracts.DelayReply.class);
+            .yield(Contracts.DelayRes.class);
         return reply(request, delayed.value() + "#" + sequence);
     }
 
-    private Contracts.ProbeReply reply(Contracts.ProbeRequest request, String value) {
-        return new Contracts.ProbeReply(
+    private Contracts.ProbeRes reply(Contracts.ProbeReq request, String value) {
+        return new Contracts.ProbeRes(
             context.spotRid().toString(),
             context.nodeRid().toString(),
             request.op(),
             value);
     }
 
-    synchronized void startTimer(Contracts.TimerStartCommand command) {
+    synchronized void startTimer(Contracts.TimerStartMsg command) {
         ZLinkTimer previous = timers.remove(command.timerName());
         if (previous != null) {
             previous.close();

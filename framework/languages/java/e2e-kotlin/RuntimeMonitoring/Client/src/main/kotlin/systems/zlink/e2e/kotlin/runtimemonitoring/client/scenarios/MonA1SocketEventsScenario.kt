@@ -12,10 +12,10 @@ class MonA1SocketEventsScenario(
         repeat(5) { index ->
             val reply = client.requestToChannel(
                 Contracts.CHANNEL,
-                Contracts.WorkRequest("a1-$index"),
+                Contracts.WorkReq("a1-$index"),
             )
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply::class.java)
+                .await(Contracts.WorkRes::class.java)
             ScenarioAssert.ensure(reply.value == "work:a1-$index", "reply mismatch")
         }
         println("scenario MON-A1 passed")

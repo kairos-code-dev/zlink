@@ -25,20 +25,20 @@ internal static class DrC1EmbeddedRegistryScenario
             .Build();
 
         await reg1.Post("/registry/members/wait")
-            .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
+            .Body(new MemberEndpointWaitReq(options.ApiAEndpoint))
             .SubmitRawAsync();
 
         var marker = $"dr-c1-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("dr-c1", marker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("dr-c1", marker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:dr-c1", "DR-C1 request failed.");
         ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b", "DR-C1 routed to an unexpected provider.");
         ScenarioAssert.That(reply.Marker == marker, "DR-C1 marker mismatch.");
 
         var evidenceClient = reply.ProviderRid == "api-a" ? providerA : providerB;
         var evidence = (await evidenceClient.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(marker))
+            .Body(new EvidenceWaitReq(marker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)

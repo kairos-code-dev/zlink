@@ -1,9 +1,9 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
-  profileRequest,
+  profileReq,
   sendRequestBatch,
   waitTopologyReady,
   waitUntilAvailable,
@@ -20,10 +20,10 @@ export async function runRlC3(options: ClientOptions, state: ScenarioState): Pro
   }
   await waitUntilDown(options.providerBUrl);
 
-  const during = await postJson<ProfileReply>(
+  const during = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request',
-    profileRequest('rl-c3-during-down')
+    profileReq('rl-c3-during-down')
   );
   ensure(during.providerRid === 'api-a', 'RL-C3 did not use surviving provider during node down.');
 

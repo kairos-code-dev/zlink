@@ -22,7 +22,7 @@ internal static class PublisherRestartScenario
             .Query("sequence", "1")
             .Query("value", "before-publisher-restart")
             .SubmitRawAsync();
-        await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
+        await WaitForSubscribersAsync(subscribers, new EvidenceWaitReq(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=1"],
             []));
 
@@ -87,7 +87,7 @@ internal static class PublisherRestartScenario
         }
 
         // Recovery is proven by post-restart delivery to every subscriber, not by replaying downtime data.
-        await WaitForSubscribersAsync(subscribers, new EvidenceWaitRequest(
+        await WaitForSubscribersAsync(subscribers, new EvidenceWaitReq(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
             [])
         {
@@ -101,7 +101,7 @@ internal static class PublisherRestartScenario
 
     private static async Task WaitForSubscribersAsync(
         IReadOnlyList<ZLinkHttpClient> subscribers,
-        EvidenceWaitRequest request)
+        EvidenceWaitReq request)
     {
         var waits = subscribers
             .Select(subscriber => subscriber.Post("/evidence/wait").Body(request).SubmitAsync<string[]>().AsTask())

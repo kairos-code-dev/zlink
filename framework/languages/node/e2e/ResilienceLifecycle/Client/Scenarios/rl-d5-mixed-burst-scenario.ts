@@ -1,14 +1,14 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
-import { profileRequest } from '../Support/resilience-helpers';
+import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlD5(options: ClientOptions): Promise<void> {
-  const requestTasks = Array.from({ length: 60 }, (_unused, index) => postJson<ProfileReply>(
+  const requestTasks = Array.from({ length: 60 }, (_unused, index) => postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request',
-    profileRequest(`rl-d5-req-${index}`)
+    profileReq(`rl-d5-req-${index}`)
   ));
   const sendTasks = Array.from({ length: 60 }, (_unused, index) => postJson(
     options.consumerUrl,

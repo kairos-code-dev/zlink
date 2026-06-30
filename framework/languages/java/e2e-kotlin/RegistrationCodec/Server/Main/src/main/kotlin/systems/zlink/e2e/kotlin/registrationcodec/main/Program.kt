@@ -11,16 +11,17 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Scope
 import systems.zlink.e2e.kotlin.registrationcodec.Contracts
-import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleReply
-import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleRequest
-import systems.zlink.e2e.kotlin.registrationcodec.EchoManualCommand
-import systems.zlink.e2e.kotlin.registrationcodec.EchoManualRequest
-import systems.zlink.e2e.kotlin.registrationcodec.EchoReply
-import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoCommand
-import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoRequest
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoCommand
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReply
-import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoRequest
+import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleRes
+import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleReq
+import systems.zlink.e2e.kotlin.registrationcodec.EchoManualMsg
+import systems.zlink.e2e.kotlin.registrationcodec.EchoManualReq
+import systems.zlink.e2e.kotlin.registrationcodec.EchoManualRes
+import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoMsg
+import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoReq
+import systems.zlink.e2e.kotlin.registrationcodec.JsonEchoRes
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoMsg
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoRes
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReq
 import systems.zlink.e2e.kotlin.registrationcodec.isPackedType
 import systems.zlink.e2e.kotlin.registrationcodec.main.configuration.ServerOptions
 import systems.zlink.e2e.kotlin.registrationcodec.main.endpoints.EvidenceHttpServer
@@ -78,15 +79,15 @@ class ServerApplication {
                 .enableServer(serverOptions.serverEndpoint)
                 .addHandlerGroup(Contracts.AUTO_GROUP)
                 .addHandlerGroup(Contracts.ATTR_GROUP)
-            channel.addRequestHandler(ManualRequestHandler::class.java, EchoManualRequest::class.java, EchoReply::class.java, "EchoManual")
-            channel.addSendHandler(ManualSendHandler::class.java, EchoManualCommand::class.java, "EchoManual")
-            channel.addRequestHandler(DiLifecycleRequestHandler::class.java, DiLifecycleRequest::class.java, DiLifecycleReply::class.java, "DiLifecycle")
-            channel.addRequestHandler(JsonRequestHandler::class.java, JsonEchoRequest::class.java, EchoReply::class.java, "JsonEcho")
-            channel.addSendHandler(JsonSendHandler::class.java, JsonEchoCommand::class.java, "JsonEcho")
+            channel.addRequestHandler(ManualRequestHandler::class.java, EchoManualReq::class.java, EchoManualRes::class.java, "EchoManualReq")
+            channel.addSendHandler(ManualSendHandler::class.java, EchoManualMsg::class.java, "EchoManualMsg")
+            channel.addRequestHandler(DiLifecycleRequestHandler::class.java, DiLifecycleReq::class.java, DiLifecycleRes::class.java, "DiLifecycleReq")
+            channel.addRequestHandler(JsonRequestHandler::class.java, JsonEchoReq::class.java, JsonEchoRes::class.java, "JsonEchoReq")
+            channel.addSendHandler(JsonSendHandler::class.java, JsonEchoMsg::class.java, "JsonEchoMsg")
             channel.addRequestHandler(ProtobufRequestHandler::class.java, StringValue::class.java, StringValue::class.java, "ProtobufEcho")
             channel.addSendHandler(ProtobufSendHandler::class.java, StringValue::class.java, "ProtobufEcho")
-            channel.addRequestHandler(MsgpackRequestHandler::class.java, PackedEchoRequest::class.java, PackedEchoReply::class.java, "MsgpackEcho")
-            channel.addSendHandler(MsgpackSendHandler::class.java, PackedEchoCommand::class.java, "MsgpackEcho")
+            channel.addRequestHandler(MsgpackRequestHandler::class.java, PackedEchoReq::class.java, PackedEchoRes::class.java, "PackedEchoReq")
+            channel.addSendHandler(MsgpackSendHandler::class.java, PackedEchoMsg::class.java, "PackedEchoMsg")
         }
 
     @Bean fun autoRequestHandler(state: ScenarioState): AutoRequestHandler = AutoRequestHandler(state)

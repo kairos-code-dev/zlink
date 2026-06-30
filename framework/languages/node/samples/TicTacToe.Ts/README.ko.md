@@ -28,7 +28,7 @@ cd framework\languages\node\samples\TicTacToe.Ts
   client self-check 를 실행한다.
 - `Client/`: HTTP `/games` 로 room 을 만든 뒤 두 stream connector 를 Play stream
   endpoint 에 연결한다. Client 코드는 서버 process 를 직접 시작하지 않는다.
-- `Server/Api/`: HTTP `/games` 요청을 받고 Play channel 의 `CreateGame` request 로
+- `Server/Api/`: HTTP `/games` 요청을 받고 Play channel 의 `CreateGameReq` request 로
   room 생성을 위임한다. Play stream session 이 보내는 `AuthenticatePlayerReq` 도
   API channel handler 로 처리한다.
 - `Server/Play/Domain/TicTacToe/`: `tictactoe-board.ts` 와 `tictactoe-match.ts` 에

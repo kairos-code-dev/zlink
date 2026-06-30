@@ -1,12 +1,12 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
   SpotStateRouteReq,
-  SpotWorkerCompleteReply,
+  SpotWorkerCompleteRes,
   SpotWorkerCompleteReq,
   SpotWorkerStartReq,
-  StateReply,
-  WorkerStartReply
+  StateRes,
+  WorkerStartRes
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
@@ -14,27 +14,27 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmA8(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-a8-${Date.now().toString(36)}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(created.spotRid === spotRid, 'SM-A8 worker spot was not created.');
   ensure(created.nodeRid === 'play-a', 'SM-A8 worker spot was created on the wrong node.');
 
-  const worker = await postJson<WorkerStartReply>(options.playAUrl, '/spot/worker/start', {
+  const worker = await postJson<WorkerStartRes>(options.playAUrl, '/spot/worker/start', {
     spotRid,
     marker: 'sm-a8-worker',
     delayMs: 500
   } satisfies SpotWorkerStartReq);
   ensure(worker.spotRid === spotRid, 'SM-A8 worker start target mismatch.');
 
-  const duringWorker = await postJson<StateReply>(options.playAUrl, '/spot/state/local', {
+  const duringWorker = await postJson<StateRes>(options.playAUrl, '/spot/state/local', {
     spotRid,
     operation: 'add',
     delta: 1
   } satisfies SpotStateRouteReq);
   ensure(duringWorker.value === 1, 'SM-A8 concurrent spot turn did not run before worker completion.');
 
-  const completed = await postJson<SpotWorkerCompleteReply>(options.playAUrl, '/spot/worker/complete', {
+  const completed = await postJson<SpotWorkerCompleteRes>(options.playAUrl, '/spot/worker/complete', {
     spotRid,
     marker: 'sm-a8-worker'
   } satisfies SpotWorkerCompleteReq);

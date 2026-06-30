@@ -20,12 +20,12 @@ internal static class SmE4Scenario
         {
             var created = (await playA.Post("/spot/create")
                 .Body(new CreateSpotReq(spotRid))
-                .SubmitAsync<CreateSpotReply>()).Body;
+                .SubmitAsync<CreateSpotRes>()).Body;
             ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
                 "SM-E4 timer spot was not created on play-a.");
             var ready = (await playA.Post("/spot/state/request")
                 .Body(new SpotStateRouteReq(spotRid, "noop", 0))
-                .SubmitAsync<StateReply>()).Body;
+                .SubmitAsync<StateRes>()).Body;
             ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
                 "SM-E4 timer spot route did not become ready.");
         }
@@ -34,11 +34,11 @@ internal static class SmE4Scenario
         {
             var started = (await playA.Post("/spot/overrun/start")
                 .Body(new SpotOverrunStartReq(spotRid, $"sm-e4-{policy}", policy, 25))
-                .SubmitAsync<SpotOverrunStartReply>()).Body;
+                .SubmitAsync<SpotOverrunStartRes>()).Body;
             ScenarioAssert.That(started.Started, $"SM-E4 {policy} overrun timer did not start.");
         }
 
-        var evidenceRequest = new EvidenceWaitRequest(
+        var evidenceRequest = new EvidenceWaitReq(
             policySpots.Select(pair => $"timer-overrun|rid=play-a|spot={pair.Value}|name=sm-e4-{pair.Key}").ToArray(),
             15000);
         var evidence = (await playA.Post("/evidence/wait")

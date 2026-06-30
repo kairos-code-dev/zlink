@@ -11,9 +11,9 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import type {
-  MultiNodeCreateSpotReply,
+  MultiNodeCreateSpotRes,
   MultiNodeCreateSpotReq,
-  StateReply,
+  StateRes,
   StateReq
 } from '../../../Shared/messages';
 import { SpotServiceNames } from '../../../Shared/messages';
@@ -82,7 +82,7 @@ export class MultiNodeSpotB implements ZLinkSpot {
 }
 
 @Injectable()
-export class MultiNodeCreateSpotAHandler implements ZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotReply> {
+export class MultiNodeCreateSpotAHandler implements ZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER)
     private readonly spots: ZLinkSpotManager,
@@ -91,7 +91,7 @@ export class MultiNodeCreateSpotAHandler implements ZLinkRouteRequestHandler<Mul
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: MultiNodeCreateSpotReq): Promise<MultiNodeCreateSpotReply> {
+  async handle(request: MultiNodeCreateSpotReq): Promise<MultiNodeCreateSpotRes> {
     const result = await this.spots.getOrCreate(MultiNodeSpotA, request.spotRid);
     const state = await requestStateWithRetry(this.routes, SpotServiceNames.multiRouteChannelA, request.spotRid, request.delta);
     this.evidence.add(`multi-create-spot|node=${SpotServiceNames.multiSpotNodeA}|spot=${result.spotRid}|state=${result.state}`);
@@ -105,7 +105,7 @@ export class MultiNodeCreateSpotAHandler implements ZLinkRouteRequestHandler<Mul
 }
 
 @Injectable()
-export class MultiNodeCreateSpotBHandler implements ZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotReply> {
+export class MultiNodeCreateSpotBHandler implements ZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER)
     private readonly spots: ZLinkSpotManager,
@@ -114,7 +114,7 @@ export class MultiNodeCreateSpotBHandler implements ZLinkRouteRequestHandler<Mul
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: MultiNodeCreateSpotReq): Promise<MultiNodeCreateSpotReply> {
+  async handle(request: MultiNodeCreateSpotReq): Promise<MultiNodeCreateSpotRes> {
     const result = await this.spots.getOrCreate(MultiNodeSpotB, request.spotRid);
     const state = await requestStateWithRetry(this.routes, SpotServiceNames.multiRouteChannelB, request.spotRid, request.delta);
     this.evidence.add(`multi-create-spot|node=${SpotServiceNames.multiSpotNodeB}|spot=${result.spotRid}|state=${result.state}`);
@@ -128,10 +128,10 @@ export class MultiNodeCreateSpotBHandler implements ZLinkRouteRequestHandler<Mul
 }
 
 @Injectable()
-export class MultiNodeStateAHandler implements ZLinkSpotRequestHandler<MultiNodeSpotA, StateReq, StateReply> {
+export class MultiNodeStateAHandler implements ZLinkSpotRequestHandler<MultiNodeSpotA, StateReq, StateRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: MultiNodeSpotA, request: StateReq, context: ZLinkHandlerContext): Promise<StateReply> {
+  async handle(spot: MultiNodeSpotA, request: StateReq, context: ZLinkHandlerContext): Promise<StateRes> {
     void context;
     const value = spot.add(request.operation === 'add' ? request.delta : 0);
     this.evidence.add(`multi-state-request|node=${SpotServiceNames.multiSpotNodeA}|spot=${spot.context.spotRid}|value=${value}`);
@@ -144,10 +144,10 @@ export class MultiNodeStateAHandler implements ZLinkSpotRequestHandler<MultiNode
 }
 
 @Injectable()
-export class MultiNodeStateBHandler implements ZLinkSpotRequestHandler<MultiNodeSpotB, StateReq, StateReply> {
+export class MultiNodeStateBHandler implements ZLinkSpotRequestHandler<MultiNodeSpotB, StateReq, StateRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: MultiNodeSpotB, request: StateReq, context: ZLinkHandlerContext): Promise<StateReply> {
+  async handle(spot: MultiNodeSpotB, request: StateReq, context: ZLinkHandlerContext): Promise<StateRes> {
     void context;
     const value = spot.add(request.operation === 'add' ? request.delta : 0);
     this.evidence.add(`multi-state-request|node=${SpotServiceNames.multiSpotNodeB}|spot=${spot.context.spotRid}|value=${value}`);
@@ -164,7 +164,7 @@ export async function createLocalMultiNodeSpot(
   evidence: EvidenceStore,
   nodeRid: string,
   spotRid: string
-): Promise<MultiNodeCreateSpotReply> {
+): Promise<MultiNodeCreateSpotRes> {
   const created = nodeRid === SpotServiceNames.multiSpotNodeA
     ? await spots.getOrCreate(MultiNodeSpotA, spotRid)
     : await spots.getOrCreate(MultiNodeSpotB, spotRid);
@@ -182,7 +182,7 @@ export async function requestStateWithRetry(
   channelName: string,
   spotRid: string,
   delta: number
-): Promise<StateReply> {
+): Promise<StateRes> {
   const deadline = Date.now() + 10000;
   let lastError: unknown;
   while (Date.now() < deadline) {
@@ -191,7 +191,7 @@ export async function requestStateWithRetry(
         .request(channelName, spotRid, { operation: 'add', delta } satisfies StateReq)
         .packetName('StateReq')
         .timeout(2000)
-        .submit<StateReply>();
+        .submit<StateRes>();
     } catch (error) {
       lastError = error;
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -208,7 +208,7 @@ export async function requestStateViaSpotOutboundWithRetry(
   outbound: ZLinkSpotOutbound,
   spotRid: string,
   delta: number
-): Promise<StateReply> {
+): Promise<StateRes> {
   const deadline = Date.now() + 10000;
   let lastError: unknown;
   while (Date.now() < deadline) {
@@ -217,7 +217,7 @@ export async function requestStateViaSpotOutboundWithRetry(
         .requestToSpot(spotRid, { operation: 'add', delta } satisfies StateReq)
         .packetName('StateReq')
         .timeout(2000)
-        .submit<StateReply>();
+        .submit<StateRes>();
     } catch (error) {
       lastError = error;
       await new Promise((resolve) => setTimeout(resolve, 100));

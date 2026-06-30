@@ -4,13 +4,13 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
   ActorPushNotify,
   ActorPushReq,
-  AuthReply,
+  AuthRes,
   AuthReq,
-  SnapshotReply,
+  SnapshotRes,
   SnapshotReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -32,9 +32,9 @@ export async function runSmD12(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
-    const firstReply = decodeStreamReply<ActorPingReply>(await first
+    const firstReply = decodeStreamReply<ActorPingRes>(await first
       .request({ value: 'before-transfer' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)
@@ -55,9 +55,9 @@ export async function runSmD12(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
-    const snapshot = decodeStreamReply<SnapshotReply>(await second
+    const snapshot = decodeStreamReply<SnapshotRes>(await second
       .request({ actorId } satisfies SnapshotReq)
       .packetName('SnapshotReq')
       .timeout(5000)
@@ -69,7 +69,7 @@ export async function runSmD12(options: ClientOptions): Promise<void> {
       .where((message) => message.payload.actorId === actorId)
       .timeout(10000)
       .submit();
-    const resumed = decodeStreamReply<ActorPingReply>(await second
+    const resumed = decodeStreamReply<ActorPingRes>(await second
       .request({ value: 'after-transfer' } satisfies ActorPushReq)
       .packetName('ActorPushReq')
       .timeout(5000)

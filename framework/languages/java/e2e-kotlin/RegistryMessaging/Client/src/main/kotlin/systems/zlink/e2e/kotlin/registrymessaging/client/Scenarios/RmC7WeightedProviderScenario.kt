@@ -5,8 +5,8 @@ import systems.zlink.e2e.kotlin.registrymessaging.client.Support.ClientOptions
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.DynamicClusterLauncher
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.HttpJson
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.ScenarioAssert
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRequest
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
 
 object RmC7WeightedProviderScenario {
     fun run(options: ClientOptions) {
@@ -19,7 +19,7 @@ object RmC7WeightedProviderScenario {
             val beforeB = providerBHttp.get<List<String>>("/evidence")
             val marker = "rm-c7-${UUID.randomUUID().toString().replace("-", "")}"
             val replies = (0 until 240).map { index ->
-                requester.post<ProfileReply>("/profile/request", ProfileRequest("$marker-$index"))
+                requester.post<ProfileRes>("/profile/request", ProfileReq("$marker-$index"))
             }
             ScenarioAssert.that(replies.all { it.providerRid == "api-a" || it.providerRid == "api-b" }, "RM-C7 reply provider mismatch.")
             val afterA = requester.get<List<String>>("/evidence")

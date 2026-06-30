@@ -12,15 +12,15 @@ public final class AttributeRegistrationScenario {
     }
 
     public static void run(ScenarioContext context) {
-        Contracts.EchoReply attr = context.client().requestToChannel(
+        Contracts.EchoRes attr = context.client().requestToChannel(
                 Contracts.CHANNEL,
-                new Contracts.EchoAttrRequest("attr-request"))
+                new Contracts.EchoAttrReq("attr-request"))
             .packetName("EchoAttr")
             .timeout(REQUEST_TIMEOUT)
-            .await(Contracts.EchoReply.class);
+            .await(Contracts.EchoRes.class);
         ScenarioAssert.ensure("echo:attr-request".equals(attr.value()) && "attr".equals(attr.handler()),
             "RC-A2 request mismatch");
-        context.client().sendToChannel(Contracts.CHANNEL, new Contracts.EchoAttrCommand("attr-send"))
+        context.client().sendToChannel(Contracts.CHANNEL, new Contracts.EchoAttrMsg("attr-send"))
             .packetName("EchoAttr")
             .await();
         ScenarioAssert.waitForEvidence(context.evidence(), "Send", "EchoAttr", "attr-send");

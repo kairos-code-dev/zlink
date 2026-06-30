@@ -13,13 +13,13 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.kotlin.registrymessaging.provider.Configuration.ServerOptions
 import systems.zlink.e2e.kotlin.registrymessaging.provider.Infrastructure.EvidenceStore
 import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
-import systems.zlink.e2e.kotlin.registrymessaging.shared.EvidenceWaitRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileCommand
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.RouteMissingResult
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePing
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePong
+import systems.zlink.e2e.kotlin.registrymessaging.shared.EvidenceWaitReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileMsg
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.RouteMissingRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingRes
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
 
@@ -45,7 +45,7 @@ class ProviderEndpoints(
             exchange.writeJson(mapOf("status" to "cleared"))
         }
         server.createContext("/evidence/wait") { exchange ->
-            val request = exchange.readJson<EvidenceWaitRequest>()
+            val request = exchange.readJson<EvidenceWaitReq>()
             exchange.writeJson(
                 evidence.waitUntil(
                     request.contains,
@@ -54,34 +54,34 @@ class ProviderEndpoints(
             )
         }
         server.createContext("/profile/request") { exchange ->
-            val request = exchange.readJson<ProfileRequest>()
+            val request = exchange.readJson<ProfileReq>()
             exchange.writeJson(requestProfile(Contracts.PROFILE_CHANNEL, request, Duration.ofSeconds(5)))
         }
         server.createContext("/profile/manual") { exchange ->
-            val request = exchange.readJson<ProfileRequest>()
+            val request = exchange.readJson<ProfileReq>()
             exchange.writeJson(requestProfile(Contracts.PROFILE_MANUAL_CHANNEL, request, Duration.ofSeconds(5)))
         }
         server.createContext("/profile/command") { exchange ->
-            val command = exchange.readJson<ProfileCommand>()
+            val command = exchange.readJson<ProfileMsg>()
             sendProfile(Contracts.PROFILE_CHANNEL, command, Contracts.PROFILE_COMMAND_PACKET)
             exchange.writeJson(mapOf("status" to "sent"))
         }
         server.createContext("/profile/route/request") { exchange ->
-            val request = exchange.readJson<ScenarioRoutePing>()
+            val request = exchange.readJson<ScenarioRoutePingReq>()
             exchange.writeJson(requestRoute(RoutingId.from("api-b"), request))
         }
         server.createContext("/profile/route/missing") { exchange ->
-            val request = exchange.readJson<ScenarioRoutePing>()
+            val request = exchange.readJson<ScenarioRoutePingReq>()
             var failed = false
             try {
                 routes.requestTo(Contracts.PROFILE_ROUTE_CHANNEL, RoutingId.from("missing-rid"), request)
                     .packetName(Contracts.ROUTE_PACKET)
                     .timeout(Duration.ofMillis(300))
-                    .await(ScenarioRoutePong::class.java)
+                    .await(ScenarioRoutePingRes::class.java)
             } catch (_: RuntimeException) {
                 failed = true
             }
-            exchange.writeJson(RouteMissingResult(failed))
+            exchange.writeJson(RouteMissingRes(failed))
         }
         server.createContext("/shutdown") { exchange ->
             exchange.writeJson(mapOf("status" to "stopping"))
@@ -94,7 +94,7 @@ class ProviderEndpoints(
         return server
     }
 
-    private fun requestProfile(channelName: String, request: ProfileRequest, timeout: Duration): ProfileReply {
+    private fun requestProfile(channelName: String, request: ProfileReq, timeout: Duration): ProfileRes {
         val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
         var last: RuntimeException? = null
         while (System.nanoTime() < deadline) {
@@ -102,7 +102,7 @@ class ProviderEndpoints(
                 return channels.requestToChannel(channelName, request)
                     .packetName(Contracts.PROFILE_REQUEST_PACKET)
                     .timeout(timeout)
-                    .await(ProfileReply::class.java)
+                    .await(ProfileRes::class.java)
             } catch (error: RuntimeException) {
                 last = error
                 Thread.sleep(100)
@@ -111,7 +111,7 @@ class ProviderEndpoints(
         throw IllegalStateException("Timed out waiting for profile request channel route.", last)
     }
 
-    private fun sendProfile(channelName: String, command: ProfileCommand, packetName: String) {
+    private fun sendProfile(channelName: String, command: ProfileMsg, packetName: String) {
         val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
         var last: RuntimeException? = null
         while (System.nanoTime() < deadline) {
@@ -128,7 +128,7 @@ class ProviderEndpoints(
         throw IllegalStateException("Timed out waiting for profile send channel route.", last)
     }
 
-    private fun requestRoute(target: RoutingId, request: ScenarioRoutePing): ScenarioRoutePong {
+    private fun requestRoute(target: RoutingId, request: ScenarioRoutePingReq): ScenarioRoutePingRes {
         val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
         var last: RuntimeException? = null
         while (System.nanoTime() < deadline) {
@@ -136,7 +136,7 @@ class ProviderEndpoints(
                 return routes.requestTo(Contracts.PROFILE_ROUTE_CHANNEL, target, request)
                     .packetName(Contracts.ROUTE_PACKET)
                     .timeout(Duration.ofSeconds(5))
-                    .await(ScenarioRoutePong::class.java)
+                    .await(ScenarioRoutePingRes::class.java)
             } catch (error: RuntimeException) {
                 last = error
                 Thread.sleep(100)

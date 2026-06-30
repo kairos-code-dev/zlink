@@ -15,19 +15,19 @@ class profile_request_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using request_type = profile_request_t;
-    using reply_type = profile_reply_t;
+    using request_type = profile_req_t;
+    using reply_type = profile_res_t;
 
     explicit profile_request_handler_t (scenario_state_t &state) : _state (state) {}
 
-    profile_reply_t handle (const profile_request_t &request)
+    profile_res_t handle (const profile_req_t &request)
     {
         if (request.value == "slow") {
             std::this_thread::sleep_for (std::chrono::seconds (1));
         } else if (request.value == "very-slow") {
             std::this_thread::sleep_for (std::chrono::seconds (10));
         }
-        _state.record ("ProfileRequest", request.value);
+        _state.record ("ProfileReq", request.value);
         return {.value = "profile:" + request.value,
                 .provider_rid = _state.provider_rid,
                 .instance_id = _state.instance_id};
@@ -41,16 +41,16 @@ class profile_command_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using message_type = profile_command_t;
+    using message_type = profile_msg_t;
 
     explicit profile_command_handler_t (scenario_state_t &state) : _state (state) {}
 
-    void handle (const profile_command_t &command)
+    void handle (const profile_msg_t &command)
     {
         if (command.command_id.rfind ("rm-c9-slow-", 0) == 0) {
             std::this_thread::sleep_for (std::chrono::seconds (1));
         }
-        _state.record ("ProfileCommand", command.command_id);
+        _state.record ("ProfileMsg", command.command_id);
     }
 
   private:
@@ -61,15 +61,15 @@ class payload_request_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using request_type = payload_request_t;
-    using reply_type = payload_reply_t;
+    using request_type = payload_req_t;
+    using reply_type = payload_res_t;
 
     explicit payload_request_handler_t (scenario_state_t &state) : _state (state) {}
 
-    payload_reply_t handle (const payload_request_t &request)
+    payload_res_t handle (const payload_req_t &request)
     {
         const auto hash = sha256_hex (request.payload);
-        _state.record ("PayloadRequest",
+        _state.record ("PayloadReq",
                        request.marker + ":length=" + std::to_string (request.payload.size ())
                          + ":sha256=" + hash);
         return {.marker = request.marker,
@@ -85,15 +85,15 @@ class route_ping_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
-    using request_type = route_ping_t;
-    using reply_type = route_pong_t;
+    using request_type = scenario_route_req_t;
+    using reply_type = scenario_route_res_t;
 
     explicit route_ping_handler_t (scenario_state_t &state) : _state (state) {}
 
-    route_pong_t handle (const route_ping_t &request,
+    scenario_route_res_t handle (const scenario_route_req_t &request,
                          const zlink::framework::route_handler_context_t &context)
     {
-        _state.record ("ScenarioRoutePing", request.value);
+        _state.record ("ScenarioRouteReq", request.value);
         return {.value = "route:" + request.value,
                 .target_rid = _state.provider_rid,
                 .source_rid = context.source_node_rid.to_string ()};

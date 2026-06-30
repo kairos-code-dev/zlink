@@ -26,7 +26,7 @@ export async function startJsonOnlyPeer(args: readonly string[]): Promise<void> 
       path: '/codec/json-recovery',
       handle: async () => {
         const reply = await channel.requestToChannel(RegistrationCodecNames.channel, { value: 'rc-b5-json' })
-          .packetName(PacketNames.echoJson)
+          .packetName(PacketNames.echoJsonReq)
           .submit();
         evidence.add('codec-mismatch-json-recovery|status=ok');
         return reply;
@@ -55,7 +55,7 @@ function createJsonOnlyModule(options: JsonOnlyOptions, evidence: EvidenceStore)
           builder.addClientServerChannel(RegistrationCodecNames.channel)
             .enableServer(options.channelEndpoint)
             .enableClient(options.channelEndpoint)
-            .addRequestHandler(PacketNames.echoJson, JsonOnlyEchoRequestHandler);
+            .addRequestHandler(PacketNames.echoJsonReq, JsonOnlyEchoRequestHandler);
           return builder.build();
         }
       })

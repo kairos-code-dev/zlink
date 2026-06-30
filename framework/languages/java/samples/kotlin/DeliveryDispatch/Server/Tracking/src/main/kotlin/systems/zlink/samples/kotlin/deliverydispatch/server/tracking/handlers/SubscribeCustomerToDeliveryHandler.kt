@@ -10,27 +10,27 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots.deliverytrackingspot.DeliveryTrackingSpot
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CustomerDeliverySubscribed
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreate
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeCustomerToDelivery
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeCustomerToDeliveryRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreateReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeCustomerToDeliveryReq
 
 @ZLinkHandlerGroup("tracking")
 class SubscribeCustomerToDeliveryHandler(
     private val actors: ZLinkActorManager,
     private val spots: ZLinkSpotManager,
     private val json: ObjectMapper,
-) : ZLinkSuspendingRequestHandler<SubscribeCustomerToDelivery, CustomerDeliverySubscribed> {
+) : ZLinkSuspendingRequestHandler<SubscribeCustomerToDeliveryReq, SubscribeCustomerToDeliveryRes> {
     override suspend fun handle(
-        request: SubscribeCustomerToDelivery,
+        request: SubscribeCustomerToDeliveryReq,
         context: ZLinkRequestContext,
     ) = run {
         spots.getOrCreate(
             DeliveryTrackingSpot::class.java,
             RoutingId.from(request.deliveryId),
-            DeliverySpotCreate(request.deliveryId),
+            DeliverySpotCreateReq(request.deliveryId),
         ).await()
         val actor = actors.getOrCreate(request.customerId, SampleNames.CustomerActorType).await()
         require(actor.actorId().isNotBlank())
-        CustomerDeliverySubscribed(request.customerId, request.deliveryId)
+        SubscribeCustomerToDeliveryRes(request.customerId, request.deliveryId)
     }
 }

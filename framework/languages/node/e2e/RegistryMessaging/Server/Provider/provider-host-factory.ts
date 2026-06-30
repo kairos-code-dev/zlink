@@ -67,9 +67,9 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore): 
               .enableClient();
             profile.configureServerSocket().weight = options.weight;
             profile
-              .addRequestHandler(PacketNames.profileRequest, ProfileRequestHandler)
-              .addRequestHandler(PacketNames.payloadRequest, PayloadRequestHandler)
-              .addSendHandler(PacketNames.profileCommand, ProfileCommandHandler);
+              .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)
+              .addRequestHandler(PacketNames.payloadReq, PayloadRequestHandler)
+              .addSendHandler(PacketNames.profileMsg, ProfileCommandHandler);
           }
           if (options.manualClientEndpoint !== undefined) {
             builder.addClientServerChannel('profile.manual')
@@ -80,7 +80,7 @@ function createProviderModule(options: ServerOptions, evidence: EvidenceStore): 
               .enableRouter(options.routeEndpoint)
               .routingId(options.rid)
               .connect(options.routePeers)
-              .addRequestHandler(PacketNames.scenarioRoutePing, RoutePingHandler);
+              .addRequestHandler(PacketNames.scenarioRouteReq, RoutePingHandler);
           }
           return builder.build();
         }

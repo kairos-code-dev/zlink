@@ -64,7 +64,7 @@ internal static class SessionHostFactory
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {
@@ -87,7 +87,7 @@ internal static class SessionHostFactory
                     request)
                 .PacketName("ControlPingReq")
                 .Timeout(TimeSpan.FromSeconds(5))
-                .Async<ControlPingReply>();
+                .Async<ControlPingRes>();
             return Results.Ok(reply);
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>

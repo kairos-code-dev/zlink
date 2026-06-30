@@ -1,5 +1,5 @@
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import type { EvidenceWaitRequest, WorkflowReply, WorkflowRequest } from '../../../Shared/messages';
+import type { EvidenceWaitReq, WorkflowRes, WorkflowReq } from '../../../Shared/messages';
 import { PacketNames } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
@@ -12,13 +12,13 @@ export function createWorkflowEndpoints(
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'workflow', rid: evidence.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
-    { method: 'POST', path: '/workflow/request', handle: (body) => requestWorkflowWithRetry(channel, body as WorkflowRequest) },
+    { method: 'POST', path: '/workflow/request', handle: (body) => requestWorkflowWithRetry(channel, body as WorkflowReq) },
     { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
     {
       method: 'POST',
       path: '/evidence/wait',
       handle: (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
         return evidence.waitUntil((line) => line.includes(request.contains), timeout);
       }
@@ -29,17 +29,17 @@ export function createWorkflowEndpoints(
 
 async function requestWorkflowWithRetry(
   channel: ZLinkChannelClient,
-  request: WorkflowRequest
-): Promise<WorkflowReply> {
+  request: WorkflowReq
+): Promise<WorkflowRes> {
   const deadline = Date.now() + 30000;
   let last: unknown;
   while (Date.now() < deadline) {
     try {
       return await channel
         .requestToChannel('workflow', request)
-        .packetName(PacketNames.workflowRequest)
+        .packetName(PacketNames.workflowReq)
         .timeout(5000)
-        .submit<WorkflowReply>();
+        .submit<WorkflowRes>();
     } catch (error) {
       last = error;
       await new Promise((resolve) => setTimeout(resolve, 100));

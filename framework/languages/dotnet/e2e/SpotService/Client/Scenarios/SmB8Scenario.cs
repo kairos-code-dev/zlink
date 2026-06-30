@@ -22,10 +22,10 @@ internal static class SmB8Scenario
         await client.Connect.Async();
         await client.Request(new AuthReq(actorId, "destroy", "play-a"))
             .PacketName("AuthReq")
-            .Async<AuthReply>();
+            .Async<AuthRes>();
         var destroyed = await client.Request(new DestroyActorReq(actorId))
             .PacketName("DestroyActorReq")
-            .Async<DestroyActorReply>();
+            .Async<DestroyActorRes>();
         ScenarioAssert.That(destroyed.Destroyed && destroyed.ActorId == actorId, "SM-B8 destroy reply mismatch.");
 
         var snapshotFailed = false;
@@ -36,7 +36,7 @@ internal static class SmB8Scenario
                 await client.Request(new SnapshotReq(actorId))
                     .PacketName("SnapshotReq")
                     .Timeout(TimeSpan.FromSeconds(1))
-                    .Async<SnapshotReply>();
+                    .Async<SnapshotRes>();
             }
             catch
             {
@@ -50,7 +50,7 @@ internal static class SmB8Scenario
         ScenarioAssert.That(snapshotFailed, "SM-B8 expected request to destroyed actor to fail.");
 
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"actor-destroyed|rid=play-a|actor={actorId}"]))
+            .Body(new EvidenceWaitReq([$"actor-destroyed|rid=play-a|actor={actorId}"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line =>

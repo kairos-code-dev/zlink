@@ -14,20 +14,20 @@ internal static class YdB2SameActorReentryScenario
             .PacketName("ActorYieldReq")
             .Metadata(YieldDispatchNames.ActorIdMetadata, actors.ActorA)
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<ActorYieldReply>();
+            .Async<ActorYieldRes>();
         await Task.Delay(75);
         var fast = client.Request(new ActorFastReq(requestId, "b2-fast"))
             .PacketName("ActorFastReq")
             .Metadata(YieldDispatchNames.ActorIdMetadata, actors.ActorA)
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<ActorYieldReply>();
+            .Async<ActorYieldRes>();
         await Task.WhenAll(yield.AsTask(), fast.AsTask());
 
         var evidence = await client.Request(new YieldEvidenceReq(requestId))
             .PacketName("YieldEvidenceReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldEvidenceReply>();
+            .Async<YieldEvidenceRes>();
         ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "actor-yield-started",
             "actor-yield-released",

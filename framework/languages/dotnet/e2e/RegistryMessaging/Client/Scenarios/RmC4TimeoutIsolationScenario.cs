@@ -14,39 +14,39 @@ internal static class RmC4TimeoutIsolationScenario
         ZLinkHttpClient providerB)
     {
         var timeout = (await discoveryConsumer.Post("/profile/slow-request")
-            .Body(new ProfileRequest("slow"))
-            .SubmitAsync<RequestFailureResult>()).Body;
+            .Body(new ProfileReq("slow"))
+            .SubmitAsync<RequestFailureRes>()).Body;
         ScenarioAssert.That(timeout.Failed, "RM-C4 expected the slow request to time out.");
         ScenarioAssert.That(timeout.FailureType == nameof(TimeoutException), "RM-C4 expected TimeoutException.");
 
         var immediate = (await discoveryConsumer.Post("/profile/request")
-            .Body(new ProfileRequest("rm-c4-after-timeout"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("rm-c4-after-timeout"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(immediate.Value == "profile:rm-c4-after-timeout", "RM-C4 follow-up reply mismatch.");
 
         await Task.Delay(TimeSpan.FromMilliseconds(1200));
         var later = (await discoveryConsumer.Post("/profile/request")
-            .Body(new ProfileRequest("rm-c4-later"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("rm-c4-later"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(later.Value == "profile:rm-c4-later", "RM-C4 later reply mismatch.");
 
         var afterTimeoutWaitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest("rm-c4-after-timeout"))
+            .Body(new EvidenceWaitReq("rm-c4-after-timeout"))
             .SubmitAsync<string[]>()
             .AsTask();
         var afterTimeoutWaitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest("rm-c4-after-timeout"))
+            .Body(new EvidenceWaitReq("rm-c4-after-timeout"))
             .SubmitAsync<string[]>()
             .AsTask();
         var afterTimeoutCompleted = await Task.WhenAny(afterTimeoutWaitA, afterTimeoutWaitB);
         var afterTimeoutEvidence = (await afterTimeoutCompleted).Body;
 
         var laterWaitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest("rm-c4-later"))
+            .Body(new EvidenceWaitReq("rm-c4-later"))
             .SubmitAsync<string[]>()
             .AsTask();
         var laterWaitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest("rm-c4-later"))
+            .Body(new EvidenceWaitReq("rm-c4-later"))
             .SubmitAsync<string[]>()
             .AsTask();
         var laterCompleted = await Task.WhenAny(laterWaitA, laterWaitB);

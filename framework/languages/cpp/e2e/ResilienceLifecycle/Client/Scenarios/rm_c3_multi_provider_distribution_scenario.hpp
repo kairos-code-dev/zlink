@@ -17,9 +17,9 @@ inline void run_rm_c3_multi_provider_distribution_scenario (
     for (int index = 0; index < 60; ++index) {
         auto task = channels
                       .request ("registry.messaging.api.manual.multi",
-                                profile_request_t{.value = "multi-" + std::to_string (index)})
+                                profile_req_t{.value = "multi-" + std::to_string (index)})
                       .timeout (std::chrono::milliseconds (2000))
-                      .async<profile_reply_t> ();
+                      .async<profile_res_t> ();
         ensure (task.result ().has_value (), "RM-C3 request failed");
         ++counts[task.result ().value ().provider_rid];
     }

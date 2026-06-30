@@ -5,6 +5,7 @@
 #include "Scenarios/sm_a2_scenario.hpp"
 #include "Scenarios/sm_a3_scenario.hpp"
 #include "Scenarios/sm_a4_scenario.hpp"
+#include "Scenarios/sm_a5_scenario.hpp"
 #include "Scenarios/sm_a6_scenario.hpp"
 #include "Scenarios/sm_a7_scenario.hpp"
 #include "Scenarios/sm_a8_scenario.hpp"
@@ -45,6 +46,8 @@
 #include "Scenarios/sm_g2_scenario.hpp"
 #include "Scenarios/sm_g3_scenario.hpp"
 #include "Scenarios/sm_g4_scenario.hpp"
+#include "Support/client_options.hpp"
+#include "Support/client_support.hpp"
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
 
@@ -54,122 +57,26 @@
 #include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
 
 #include <chrono>
-#include <cstdlib>
 #include <future>
 #include <iostream>
-#include <mutex>
-#include <stdexcept>
 #include <string>
 #include <thread>
-#include <vector>
 
 namespace e2e = zlink::framework::e2e::spot_service;
+namespace e2e_client = zlink::framework::e2e::spot_service::client;
 
 namespace
 {
 
-std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
-void ensure (bool condition, const std::string &message)
-{
-    if (!condition) {
-        throw std::runtime_error (message);
-    }
-}
-
-zlink::framework::actor_ref_t to_actor_ref (const e2e::actor_ref_dto_t &actor)
-{
-    return zlink::framework::actor_ref_t (
-      zlink::framework::node_rid_t::from_string (actor.node_rid), actor.actor_type, actor.actor_id,
-      actor.generation);
-}
-
-template <typename T> zlink::message_t encode_json (const T &value)
-{
-    return zlink::message_t::from (nlohmann::json (value).dump ());
-}
-
-zlink::framework::detail::stream_header_t request_header (std::string packet_name)
-{
-    return zlink::framework::detail::stream_header_t (
-      zlink::framework::detail::stream_message_kind_t::request, zlink::framework::stream_codec_t::json,
-      zlink::framework::detail::stream_header_flags_t::none, std::nullopt, std::move (packet_name));
-}
-
-template <typename TResult> std::string stream_error_text (const TResult &result)
-{
-    if (result.error ()) {
-        return result.error ()->message;
-    }
-    return "unknown stream error";
-}
-
-class client_channel_state_t
-{
-  public:
-    void record (std::string marker, std::string value)
-    {
-        std::lock_guard lock (_mutex);
-        entries.push_back ({std::move (marker), std::move (value)});
-    }
-
-    bool has (const std::string &marker, const std::string &value) const
-    {
-        std::lock_guard lock (_mutex);
-        for (const auto &entry : entries) {
-            if (entry.first == marker && entry.second == value) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-  private:
-    mutable std::mutex _mutex;
-    std::vector<std::pair<std::string, std::string>> entries;
-};
-
-class channel_echo_handler_t
-{
-  public:
-    using dependency_types = zlink::framework::dependency_list_t<client_channel_state_t>;
-    using request_type = e2e::channel_echo_req_t;
-    using reply_type = e2e::channel_echo_res_t;
-
-    explicit channel_echo_handler_t (client_channel_state_t &state) : _state (state) {}
-
-    e2e::channel_echo_res_t handle (const e2e::channel_echo_req_t &request)
-    {
-        _state.record ("ChannelEcho", request.value);
-        return {.value = "channel:" + request.value, .handled_by = "client-api"};
-    }
-
-  private:
-    client_channel_state_t &_state;
-};
-
-class channel_command_handler_t
-{
-  public:
-    using dependency_types = zlink::framework::dependency_list_t<client_channel_state_t>;
-    using message_type = e2e::channel_command_t;
-
-    explicit channel_command_handler_t (client_channel_state_t &state) : _state (state) {}
-
-    void handle (const e2e::channel_command_t &command)
-    {
-        _state.record ("ChannelCommand", command.command_id);
-    }
-
-  private:
-    client_channel_state_t &_state;
-};
+using e2e_client::channel_command_handler_t;
+using e2e_client::channel_echo_handler_t;
+using e2e_client::client_channel_state_t;
+using e2e_client::encode_json;
+using e2e_client::ensure;
+using e2e_client::env_or;
+using e2e_client::request_header;
+using e2e_client::stream_error_text;
+using e2e_client::to_actor_ref;
 
 class scenario_service_t final : public zlink::framework::hosted_service_t
 {
@@ -528,7 +435,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (outbound.command_sent && outbound.published, "SM-C2 outbound flags mismatch");
         ensure (channel_state.has ("ChannelEcho", "from-spot"),
                 "SM-C2 channel request evidence missing");
-        ensure (channel_state.has ("ChannelCommand", "cmd-alice-2-from-spot"),
+        ensure (channel_state.has ("ChannelMsg", "cmd-alice-2-from-spot"),
                 "SM-C2 channel send evidence missing");
         std::cout << "scenario SM-C2 passed\n";
 
@@ -606,13 +513,13 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto publish_only = publisher
                               .publish (e2e::publisher_channel, e2e::mesh_topic,
-                                        e2e::mesh_event_t{"evt-publisher-client", "publish-only"})
+                                        e2e::mesh_msg_t{"evt-publisher-client", "publish-only"})
                               .result ();
         ensure (publish_only.has_value (), "SM-C4 publisher client publish failed");
         std::this_thread::sleep_for (std::chrono::milliseconds (100));
         auto publish_retry = publisher
                                .publish (e2e::publisher_channel, e2e::mesh_topic,
-                                         e2e::mesh_event_t{"evt-publisher-client", "publish-only"})
+                                         e2e::mesh_msg_t{"evt-publisher-client", "publish-only"})
                                .result ();
         ensure (publish_retry.has_value (), "SM-C4 publisher client retry publish failed");
         std::cout << "scenario SM-C4 passed\n";
@@ -693,12 +600,15 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         auto connected = stream.connect ().submit ();
         ensure (static_cast<bool> (connected), scenario_id + " stream connect failed");
 
-        auto auth = stream.send (e2e::stream_auth_req_t{target_node, actor_id, display_name, actor})
-                      .packet_name ("StreamAuthReq")
-                      .submit ();
+        auto auth =
+          stream.request (e2e::stream_auth_req_t{target_node, actor_id, display_name, actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<e2e::stream_auth_res_t> ();
         ensure (static_cast<bool> (auth),
                 scenario_id + " stream auth failed: " + stream_error_text (auth));
-        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+        ensure (auth.value ().session_node_rid == (target_node == "play-a" ? "session-a" : "session-b"),
+                scenario_id + " stream auth session mismatch");
 
         auto joined = stream.send (e2e::join_req_t{.key = key,
                                                 .actor_id = actor_id,
@@ -1303,27 +1213,54 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
 
 int main (int argc, char **argv)
 {
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
-    const auto route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT");
-    const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
-    const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
-    const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
-    const auto publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT");
-    const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
-    const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
-    const auto alternate_stream_endpoint = env_or ("ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT");
-    const auto tls_stream_endpoint = env_or ("ZLINK_CPP_E2E_TLS_STREAM_ENDPOINT");
-    const auto scenario_mode = env_or ("ZLINK_CPP_E2E_SCENARIO_MODE");
-    const auto play_http_endpoint = env_or ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT");
-    const auto play_b_http_endpoint = env_or ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT");
-    const auto session_http_endpoint = env_or ("ZLINK_CPP_E2E_SESSION_HTTP_ENDPOINT");
-    const auto gateway_http_endpoint = env_or ("ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT");
-    const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
-    const auto client_rid = env_or ("ZLINK_CPP_E2E_CLIENT_RID", "client-session");
-    const auto crash_ready_file = env_or ("ZLINK_CPP_E2E_CRASH_READY_FILE");
-    const auto crash_go_file = env_or ("ZLINK_CPP_E2E_CRASH_GO_FILE");
-    const auto crash_observed_file = env_or ("ZLINK_CPP_E2E_CRASH_OBSERVED_FILE");
+    const auto client_options = e2e_client::client_options_t::from_env ();
+    const auto &log_dir = client_options.log_dir;
+    const auto &route_endpoint = client_options.route_endpoint;
+    const auto &route_a_endpoint = client_options.route_a_endpoint;
+    const auto &route_b_endpoint = client_options.route_b_endpoint;
+    const auto &spot_router_endpoint = client_options.spot_router_endpoint;
+    const auto &pubsub_endpoint = client_options.pubsub_endpoint;
+    const auto &publisher_endpoint = client_options.publisher_endpoint;
+    const auto &api_endpoint = client_options.api_endpoint;
+    const auto &stream_endpoint = client_options.stream_endpoint;
+    const auto &alternate_stream_endpoint = client_options.alternate_stream_endpoint;
+    const auto &tls_stream_endpoint = client_options.tls_stream_endpoint;
+    const auto &scenario_mode = client_options.scenario_mode;
+    const auto &play_http_endpoint = client_options.play_http_endpoint;
+    const auto &play_b_http_endpoint = client_options.play_b_http_endpoint;
+    const auto &session_http_endpoint = client_options.session_http_endpoint;
+    const auto &gateway_http_endpoint = client_options.gateway_http_endpoint;
+    const auto &registry_router = client_options.registry_router;
+    const auto &client_rid = client_options.client_rid;
+    const auto &crash_ready_file = client_options.crash_ready_file;
+    const auto &crash_go_file = client_options.crash_go_file;
+    const auto &crash_observed_file = client_options.crash_observed_file;
+
+    if (scenario_mode == "sm-a1-a2-a4-f1-f2") {
+        try {
+            e2e_client::spot_lifecycle_order_context_t context;
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a1_scenario (
+              play_http_endpoint, context);
+            std::cout << "scenario SM-A1 passed\n";
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a4_scenario (
+              play_b_http_endpoint, context);
+            std::cout << "scenario SM-A4 passed\n";
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_f1_scenario (
+              play_b_http_endpoint, context);
+            std::cout << "scenario SM-F1 passed\n";
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_f2_scenario (
+              play_b_http_endpoint, context);
+            std::cout << "scenario SM-F2 passed\n";
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a2_scenario (
+              play_http_endpoint, context);
+            std::cout << "scenario SM-A2 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
 
     if (scenario_mode == "sm-a1") {
         try {
@@ -1366,6 +1303,18 @@ int main (int argc, char **argv)
             zlink::framework::e2e::spot_service::client::scenarios::run_sm_a4_scenario (
               play_http_endpoint, play_b_http_endpoint);
             std::cout << "scenario SM-A4 passed\n";
+            return 0;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "spot-service scenario failed: " << error.what () << std::endl;
+            return 1;
+        }
+    }
+    if (scenario_mode == "sm-a5") {
+        try {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_a5_scenario (
+              play_http_endpoint, play_b_http_endpoint);
+            std::cout << "scenario SM-A5 passed\n";
             return 0;
         }
         catch (const std::exception &error) {

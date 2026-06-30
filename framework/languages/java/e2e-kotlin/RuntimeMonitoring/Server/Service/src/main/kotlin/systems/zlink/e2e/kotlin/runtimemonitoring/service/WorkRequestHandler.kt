@@ -7,12 +7,12 @@ import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 
 @ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
-class WorkRequestHandler : ZLinkRequestHandler<Contracts.WorkRequest, Contracts.WorkReply> {
+class WorkRequestHandler : ZLinkRequestHandler<Contracts.WorkReq, Contracts.WorkRes> {
     override fun handle(
-        request: Contracts.WorkRequest,
+        request: Contracts.WorkReq,
         context: ZLinkRequestContext,
-    ): Contracts.WorkReply {
-        return Contracts.WorkReply(
+    ): Contracts.WorkRes {
+        return Contracts.WorkRes(
             "work:${request.value}",
             Env.get("ZLINK_KOTLIN_E2E_RID", "svc-a"),
         )

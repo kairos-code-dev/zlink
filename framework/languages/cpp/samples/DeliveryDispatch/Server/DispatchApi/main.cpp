@@ -18,13 +18,13 @@ class create_delivery_http_handler_t
 {
   public:
     using request_type = create_delivery_req_t;
-    using reply_type = delivery_created_t;
+    using reply_type = create_delivery_res_t;
     using dependency_types = dependency_list_t<channel_client_t>;
-    static constexpr const char *topic_name = "CreateDeliveryRequest";
+    static constexpr const char *topic_name = "CreateDeliveryReq";
 
     explicit create_delivery_http_handler_t (channel_client_t &channels) : _channels (channels) {}
 
-    task_t<delivery_created_t> handle (const create_delivery_req_t &request)
+    task_t<create_delivery_res_t> handle (const create_delivery_req_t &request)
     {
         assign_delivery_req_t assign{request.delivery_id,
                                      request.customer_id,
@@ -34,7 +34,7 @@ class create_delivery_http_handler_t
                           .async<assign_delivery_res_t> ();
         std::cerr << "deliverydispatch api: created delivery=" << assigned.delivery_id
                   << " courier=" << assigned.courier_id << "\n";
-        co_return delivery_created_t{assigned.delivery_id};
+        co_return create_delivery_res_t{assigned.delivery_id};
     }
 
   private:

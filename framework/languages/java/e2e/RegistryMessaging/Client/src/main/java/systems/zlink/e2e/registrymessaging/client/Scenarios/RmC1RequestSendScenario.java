@@ -10,20 +10,20 @@ public final class RmC1RequestSendScenario {
 
     public static void run(ZLinkHttpClient providerA, ZLinkHttpClient providerB) {
         String requestValue = "rm-c1-request";
-        Contracts.ProfileReply reply = providerA.post("/profile/request")
-            .body(new Contracts.ProfileRequest(requestValue))
-            .fetch(Contracts.ProfileReply.class);
+        Contracts.ProfileRes reply = providerA.post("/profile/request")
+            .body(new Contracts.ProfileReq(requestValue))
+            .fetch(Contracts.ProfileRes.class);
         ScenarioAssert.that(("profile:" + requestValue).equals(reply.value()), "RM-C1 reply mismatch");
         String commandId = "cmd-c1-" + java.util.UUID.randomUUID();
         providerA.post("/profile/command")
-            .body(new Contracts.ProfileCommand(commandId))
+            .body(new Contracts.ProfileMsg(commandId))
             .fetch(Object.class);
         String[] evidence = ScenarioAssert.waitAnyEvidence(providerA, providerB, commandId);
         ScenarioAssert.that(java.util.Arrays.stream(evidence)
-                .anyMatch(line -> line.contains("ProfileRequest") && line.contains(requestValue)),
+                .anyMatch(line -> line.contains("ProfileReq") && line.contains(requestValue)),
             "RM-C1 request evidence missing");
         ScenarioAssert.that(java.util.Arrays.stream(evidence)
-                .anyMatch(line -> line.contains("ProfileCommand") && line.contains(commandId)),
+                .anyMatch(line -> line.contains("ProfileMsg") && line.contains(commandId)),
             "RM-C1 send evidence missing");
         System.out.println("scenario RM-C1 passed");
     }

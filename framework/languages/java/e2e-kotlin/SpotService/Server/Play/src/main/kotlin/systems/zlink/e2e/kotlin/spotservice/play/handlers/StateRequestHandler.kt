@@ -9,14 +9,14 @@ class StateRequestHandler {
     @ZLinkSpotRequest
     fun handle(
         spot: UserSpot,
-        request: Contracts.StateRequest,
-    ): Contracts.StateReply {
+        request: Contracts.StateReq,
+    ): Contracts.StateRes {
         val value = if (request.op == "worker-start" || request.op == "worker-start-long") {
             spot.startWorker(request.op)
         } else {
             spot.apply(request.op)
         }
-        return Contracts.StateReply(
+        return Contracts.StateRes(
             spot.context().spotRid().toString(),
             spot.context().nodeRid().toString(),
             value,

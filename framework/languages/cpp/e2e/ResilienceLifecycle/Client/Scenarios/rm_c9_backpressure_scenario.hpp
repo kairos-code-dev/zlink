@@ -19,7 +19,7 @@ inline void run_rm_c9_backpressure_scenario (zlink::framework::channel_client_t 
         sends.push_back (std::async (std::launch::async, [&channels, index] {
             auto task = channels
                           .send ("registry.messaging.api.manual.backpressure",
-                                 profile_command_t{.command_id = "rm-c9-slow-"
+                                 profile_msg_t{.command_id = "rm-c9-slow-"
                                                                  + std::to_string (index)})
                           .async ();
             return task.result ().has_value ();
@@ -33,18 +33,18 @@ inline void run_rm_c9_backpressure_scenario (zlink::framework::channel_client_t 
         }
     }
     ensure (accepted > 0, "RM-C9 send pressure did not submit any command");
-    wait_provider_evidence_contains ("ProfileCommand", "rm-c9-slow-0", std::chrono::seconds (20));
+    wait_provider_evidence_contains ("ProfileMsg", "rm-c9-slow-0", std::chrono::seconds (20));
 
     std::this_thread::sleep_for (std::chrono::seconds (5));
     auto recovery = channels
                       .request ("registry.messaging.api.manual.backpressure",
-                                profile_request_t{.value = "rm-c9-after"})
+                                profile_req_t{.value = "rm-c9-after"})
                       .timeout (std::chrono::milliseconds (2000))
-                      .async<profile_reply_t> ();
+                      .async<profile_res_t> ();
     ensure (recovery.result ().has_value (), "RM-C9 recovery request failed");
     ensure (recovery.result ().value ().value == "profile:rm-c9-after",
             "RM-C9 recovery reply mismatch");
-    wait_provider_evidence_contains ("ProfileRequest", "rm-c9-after", std::chrono::seconds (20));
+    wait_provider_evidence_contains ("ProfileReq", "rm-c9-after", std::chrono::seconds (20));
     std::cout << "scenario RM-C9 passed\n";
 }
 

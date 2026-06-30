@@ -1,8 +1,8 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
-  SpotOverrunStartReply,
+  EvidenceWaitReq,
+  SpotOverrunStartRes,
   SpotOverrunStartReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -18,7 +18,7 @@ export async function runSmE4(options: ClientOptions): Promise<void> {
   }
 
   for (const spotRid of policySpots.values()) {
-    const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+    const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
       spotRid
     } satisfies CreateSpotReq);
     ensure(created.spotRid === spotRid, 'SM-E4 timer spot was not created.');
@@ -26,7 +26,7 @@ export async function runSmE4(options: ClientOptions): Promise<void> {
   }
 
   for (const [policy, spotRid] of policySpots) {
-    const started = await postJson<SpotOverrunStartReply>(options.playAUrl, '/spot/overrun/start', {
+    const started = await postJson<SpotOverrunStartRes>(options.playAUrl, '/spot/overrun/start', {
       spotRid,
       name: `sm-e4-${policy}`,
       policy,
@@ -40,7 +40,7 @@ export async function runSmE4(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: markers,
     timeoutMilliseconds: 15000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     [...policySpots].every(([policy, spotRid]) =>
       evidence.filter((line) => line.includes(`timer-overrun|rid=play-a|spot=${spotRid}|name=sm-e4-${policy}`)).length >= 3),

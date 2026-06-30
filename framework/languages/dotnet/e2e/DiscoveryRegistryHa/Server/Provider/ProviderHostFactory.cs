@@ -35,14 +35,14 @@ internal static class ProviderHostFactory
             var channel = framework.AddClientServerChannel(DiscoveryRegistryHaNames.Channel)
                 .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
-            channel.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
+            channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
         });
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {

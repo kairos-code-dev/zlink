@@ -15,16 +15,16 @@ public final class YdD3RouteBridgeYieldScenario {
         String requestId = "YD-D3-" + UUID.randomUUID();
         String spotRid = requestId + "-spot";
 
-        Contracts.EnsureSpotReply target = ClientStreamSupport.await(
-            connector.request(new Contracts.EnsureSpotRequest(spotRid))
+        Contracts.EnsureSpotRes target = ClientStreamSupport.await(
+            connector.request(new Contracts.EnsureSpotReq(spotRid))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-b")
                 .timeout(ClientStreamSupport.REQUEST_TIMEOUT),
-            Contracts.EnsureSpotReply.class);
+            Contracts.EnsureSpotRes.class);
         ScenarioAssert.that(spotRid.equals(target.spotRid()), "YD-D3 target spot mismatch");
         ScenarioAssert.that("play-b".equals(target.nodeRid()), "YD-D3 target node mismatch");
 
         ClientStreamSupport.send(
-            connector.send(new Contracts.YieldCommand(requestId, 1000, "route-bridge"))
+            connector.send(new Contracts.YieldMsg(requestId, 1000, "route-bridge"))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-b")
                 .metadata(Contracts.SPOT_RID_METADATA, spotRid));
         waitForMarkers(connector, requestId, "play-b", List.of(
@@ -32,7 +32,7 @@ public final class YdD3RouteBridgeYieldScenario {
             "yield-released"));
 
         ClientStreamSupport.send(
-            connector.send(new Contracts.ProbeCommand(requestId, "route-bridge-probe"))
+            connector.send(new Contracts.ProbeMsg(requestId, "route-bridge-probe"))
                 .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-b")
                 .metadata(Contracts.SPOT_RID_METADATA, spotRid));
         List<String> markers = waitForMarkers(connector, requestId, "play-b", List.of(
@@ -57,12 +57,12 @@ public final class YdD3RouteBridgeYieldScenario {
         List<String> expected) {
         List<String> latest = List.of();
         for (int attempt = 0; attempt < 80; attempt++) {
-            Contracts.EvidenceReply evidence = ClientStreamSupport.await(
-                connector.request(new Contracts.EvidenceRequest(requestId))
+            Contracts.EvidenceRes evidence = ClientStreamSupport.await(
+                connector.request(new Contracts.EvidenceReq(requestId))
                     .metadata(Contracts.TARGET_NODE_RID_METADATA, targetNode)
                     .metadata(Contracts.SPOT_RID_METADATA, "room-a")
                     .timeout(ClientStreamSupport.REQUEST_TIMEOUT),
-                Contracts.EvidenceReply.class);
+                Contracts.EvidenceRes.class);
             latest = evidence.markers();
             if (startsWithMarkers(latest, expected)) {
                 return latest;

@@ -12,8 +12,8 @@ internal static class MonB1KindFilterScenario
         using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
 
         var reply = (await trigger.Post("/profile/request/service-b")
-            .Body(new ProfileRequest("filter", "mon-b1-request"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("filter", "mon-b1-request"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.ProviderRid == "svc-b", "MON-B1 direct trigger did not hit filtered service.");
 
         var serviceBEvidence = await WaitForFilteredSocketEvidenceAsync(serviceB);
@@ -32,7 +32,7 @@ internal static class MonB1KindFilterScenario
     private static async Task<string[]> WaitForFilteredSocketEvidenceAsync(ZLinkHttpClient serviceB)
     {
         var evidence = (await serviceB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 ["monitor-socket|"],
                 [["kind=ConnectionReady"]]))
             .SubmitAsync<string[]>()).Body;

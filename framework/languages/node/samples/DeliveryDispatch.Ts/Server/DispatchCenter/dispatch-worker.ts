@@ -5,7 +5,7 @@ import { deliveryStatusChanged, offerDelivery } from '../../Shared/Contracts/mes
 import { retry } from '../Configuration/request-retry';
 import { DispatchWorkQueue } from './dispatch-work-queue';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
-import type { AssignDelivery, DeliveryStatusChanged, OfferDeliveryResult } from '../../Shared/Contracts/messages';
+import type { AssignDeliveryReq, DeliveryStatusReq, OfferDeliveryRes } from '../../Shared/Contracts/messages';
 
 @Injectable()
 class DispatchWorker implements OnModuleInit {
@@ -29,7 +29,7 @@ class DispatchWorker implements OnModuleInit {
     }
   }
 
-  private async dispatch(request: AssignDelivery): Promise<void> {
+  private async dispatch(request: AssignDeliveryReq): Promise<void> {
     console.error(`deliverydispatch dispatch: assign delivery=${request.deliveryId} customer=${request.customerId}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
     await this.publishStatus(deliveryStatusChanged(request.deliveryId, 'Assigned', 'courier-a'));
@@ -41,7 +41,7 @@ class DispatchWorker implements OnModuleInit {
     }
 
     await this.publishStatus(deliveryStatusChanged(request.deliveryId, 'Reassigned', 'courier-b'));
-    const second = await this.requestChannel<OfferDeliveryResult>(
+    const second = await this.requestChannel<OfferDeliveryRes>(
       courierChannel('courier-b'),
       offerDelivery(request.deliveryId, request.pickupAddress, request.dropoffAddress)
     );
@@ -53,7 +53,7 @@ class DispatchWorker implements OnModuleInit {
     await this.continueAcceptedDelivery(request.deliveryId, second.courierId);
   }
 
-  private async tryOffer(request: AssignDelivery, courierId: string): Promise<OfferDeliveryResult> {
+  private async tryOffer(request: AssignDeliveryReq, courierId: string): Promise<OfferDeliveryRes> {
     const maxAttempts = request.deliveryId.toLowerCase().includes('reassign') ? 1 : 5;
     let lastError: unknown;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -61,7 +61,7 @@ class DispatchWorker implements OnModuleInit {
         return await this.channels
           .requestToChannel(courierChannel(courierId), offerDelivery(request.deliveryId, request.pickupAddress, request.dropoffAddress))
           .timeout(SampleTimings.dispatchTimeout)
-          .submit<OfferDeliveryResult>();
+          .submit<OfferDeliveryRes>();
       } catch (error) {
         lastError = error;
         if (attempt < maxAttempts) {
@@ -83,7 +83,7 @@ class DispatchWorker implements OnModuleInit {
     await this.publishStatus(deliveryStatusChanged(deliveryId, 'Delivered', courierId));
   }
 
-  private async publishStatus(status: DeliveryStatusChanged): Promise<void> {
+  private async publishStatus(status: DeliveryStatusReq): Promise<void> {
     await this.requestChannel(SampleNames.trackingChannel, status);
   }
 

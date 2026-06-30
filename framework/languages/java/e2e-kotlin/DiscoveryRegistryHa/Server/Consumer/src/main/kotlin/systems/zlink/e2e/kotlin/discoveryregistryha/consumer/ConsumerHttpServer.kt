@@ -47,7 +47,7 @@ class ConsumerHttpServer(
 
     private fun handleRequest(exchange: HttpExchange, waitForRoute: Boolean) {
         try {
-            val request = json.readValue(exchange.requestBody, Contracts.WorkRequest::class.java)
+            val request = json.readValue(exchange.requestBody, Contracts.WorkReq::class.java)
             val reply = if (waitForRoute) requestWithRetry(request) else requestOnce(request)
             write(exchange, json.writeValueAsString(reply))
         } catch (error: Exception) {
@@ -56,7 +56,7 @@ class ConsumerHttpServer(
         }
     }
 
-    private fun requestWithRetry(request: Contracts.WorkRequest): Contracts.WorkReply {
+    private fun requestWithRetry(request: Contracts.WorkReq): Contracts.WorkRes {
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
         var last: Exception? = null
         while (System.nanoTime() < deadline) {
@@ -70,10 +70,10 @@ class ConsumerHttpServer(
         throw IllegalStateException("Timed out waiting for profile request routing.", last)
     }
 
-    private fun requestOnce(request: Contracts.WorkRequest): Contracts.WorkReply =
+    private fun requestOnce(request: Contracts.WorkReq): Contracts.WorkRes =
         client.requestToChannel(Contracts.CHANNEL, request)
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkReply::class.java)
+            .await(Contracts.WorkRes::class.java)
 
     private fun write(exchange: HttpExchange, value: String, status: Int = 200) {
         val body = value.toByteArray(StandardCharsets.UTF_8)

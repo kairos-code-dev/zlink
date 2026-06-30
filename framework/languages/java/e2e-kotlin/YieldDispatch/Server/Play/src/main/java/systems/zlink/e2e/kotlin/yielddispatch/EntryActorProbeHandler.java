@@ -6,28 +6,28 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 
 public final class EntryActorProbeHandler {
-    @ZLinkSpotActorRequest(packetName = "ProbeRequest")
-    public Contracts.ProbeReply handle(
+    @ZLinkSpotActorRequest(packetName = "ProbeReq")
+    public Contracts.ProbeRes handle(
         ProbeEntrySpot spot,
         ProbeActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ProbeRequest request,
+        Contracts.ProbeReq request,
         CancellationToken cancellationToken) {
         if (request.millis() <= 0) {
             return reply(spot, request, "immediate:" + request.op());
         }
-        Contracts.DelayReply delayed = spot.context().outbound()
-            .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayRequest(request.op(), request.millis()))
+        Contracts.DelayRes delayed = spot.context().outbound()
+            .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayReq(request.op(), request.millis()))
             .timeout(Duration.ofSeconds(5))
-            .await(Contracts.DelayReply.class);
+            .await(Contracts.DelayRes.class);
         return reply(spot, request, delayed.value());
     }
 
-    private Contracts.ProbeReply reply(
+    private Contracts.ProbeRes reply(
         ProbeEntrySpot spot,
-        Contracts.ProbeRequest request,
+        Contracts.ProbeReq request,
         String value) {
-        return new Contracts.ProbeReply(
+        return new Contracts.ProbeRes(
             spot.context().spotRid().toString(),
             spot.context().nodeRid().toString(),
             request.op(),

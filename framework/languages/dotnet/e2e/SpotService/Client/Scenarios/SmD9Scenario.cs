@@ -37,7 +37,7 @@ internal static class SmD9Scenario
                     await client.Connect.Async();
                     await client.Request(new AuthReq("actor-sm-d9", "observer", "play-a"))
                         .PacketName("AuthReq")
-                        .Async<AuthReply>();
+                        .Async<AuthRes>();
                     stream = client;
                     break;
                 }
@@ -59,10 +59,10 @@ internal static class SmD9Scenario
             var activeStream = stream;
             await activeStream.Request(new ActorPingReq("observer-1"))
                 .PacketName("ActorPingReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             await activeStream.Request(new ActorPingReq("observer-2"))
                 .PacketName("ActorPingReq")
-                .Async<ActorPingReply>();
+                .Async<ActorPingRes>();
             ScenarioAssert.That(observed.Count >= 2, "SM-D9 inbound observer did not observe stream replies.");
         }
         finally

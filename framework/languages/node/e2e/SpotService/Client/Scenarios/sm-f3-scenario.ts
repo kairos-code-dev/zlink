@@ -1,8 +1,8 @@
 import type {
-  CreateSpotReply,
+  CreateSpotRes,
   CreateSpotReq,
-  EvidenceWaitRequest,
-  SpotMixedRouteReply,
+  EvidenceWaitReq,
+  SpotMixedRouteRes,
   SpotMixedRouteReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
@@ -11,13 +11,13 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmF3(options: ClientOptions): Promise<void> {
   const spotRid = `spot-sm-f3-${Date.now()}`;
-  const created = await postJson<CreateSpotReply>(options.playAUrl, '/spot/create', {
+  const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
     spotRid
   } satisfies CreateSpotReq);
   ensure(created.spotRid === spotRid, 'SM-F3 did not create the requested spot.');
   ensure(created.nodeRid === 'play-a', 'SM-F3 created spot on the wrong node.');
 
-  const mixed = await postJson<SpotMixedRouteReply>(options.playBUrl, '/spot/mixed-route/request', {
+  const mixed = await postJson<SpotMixedRouteRes>(options.playBUrl, '/spot/mixed-route/request', {
     spotRid,
     targetNodeRid: 'play-a',
     channelValue: 'sm-f3-channel',
@@ -33,7 +33,7 @@ export async function runSmF3(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedEvidence,
     timeoutMilliseconds: 10000
-  } satisfies EvidenceWaitRequest);
+  } satisfies EvidenceWaitReq);
   ensure(
     expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
     'SM-F3 mixed route evidence mismatch.'

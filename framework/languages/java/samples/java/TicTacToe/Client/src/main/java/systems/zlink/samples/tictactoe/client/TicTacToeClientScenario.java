@@ -10,7 +10,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.CreateGameHttpRes;
 import systems.zlink.samples.tictactoe.shared.contracts.GameStateNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
-import systems.zlink.samples.tictactoe.shared.contracts.LeaveGameReq;
+import systems.zlink.samples.tictactoe.shared.contracts.LeaveGameMsg;
 import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneReq;
 import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkReq;
@@ -221,8 +221,8 @@ public final class TicTacToeClientScenario {
                 + " wins=" + milestone.wins()
                 + " receivingSpotNodeRid=" + milestone.receivingSpotNodeRid());
 
-            host.send(new LeaveGameReq(game.roomId())).await();
-            guest.send(new LeaveGameReq(game.roomId())).await();
+            host.send(new LeaveGameMsg(game.roomId())).await();
+            guest.send(new LeaveGameMsg(game.roomId())).await();
             System.out.println("tictactoe completed");
         } finally {
             host.close().await();

@@ -26,12 +26,12 @@ internal static class RmC7WeightedProviderScenario
         var values = Enumerable.Range(0, 240)
             .Select(index => $"{marker}-{index}")
             .ToArray();
-        var replies = new List<ProfileReply>(values.Length);
+        var replies = new List<ProfileRes>(values.Length);
         foreach (var value in values)
         {
             var reply = (await requester.Post("/profile/request")
-                .Body(new ProfileRequest(value))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq(value))
+                .SubmitAsync<ProfileRes>()).Body;
             replies.Add(reply);
         }
 
@@ -74,7 +74,7 @@ internal static class RmC7WeightedProviderScenario
     private static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains)
     {
         return (await http.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains, 20000))
+            .Body(new EvidenceWaitReq(contains, 20000))
             .SubmitAsync<string[]>()).Body;
     }
 }

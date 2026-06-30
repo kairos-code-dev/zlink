@@ -21,14 +21,14 @@ std::string run_yd_d2_remote_spot_yield_scenario (TConnector &connector)
       connector.request (ensure_spot_req_t{.spot_rid = owner_spot_rid})
         .packet_name (ensure_spot_req_t::packet_name)
         .timeout (std::chrono::milliseconds (15000))
-        .template submit<ensure_spot_reply_t> ();
+        .template submit<ensure_spot_res_t> ();
     ensure (static_cast<bool> (owner), "YD-D2 owner spot ensure failed");
     auto target =
       connector.request (ensure_spot_req_t{.spot_rid = target_spot_rid})
         .packet_name (ensure_spot_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-b")
         .timeout (std::chrono::milliseconds (15000))
-        .template submit<ensure_spot_reply_t> ();
+        .template submit<ensure_spot_res_t> ();
     ensure (static_cast<bool> (target), "YD-D2 target spot ensure failed");
     const auto request_id = unique_id ("YD-D2");
     auto remote_reply =
@@ -38,7 +38,7 @@ std::string run_yd_d2_remote_spot_yield_scenario (TConnector &connector)
         .packet_name (remote_spot_yield_req_t::packet_name)
         .metadata (spot_rid_metadata, owner_spot_rid)
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_dispatch_reply_t> ();
+        .template submit<yield_dispatch_res_t> ();
     ensure (static_cast<bool> (remote_reply), "YD-D2 RemoteSpotYieldReq failed");
     ensure (remote_reply.value ().scenario_id == "YD-D2",
             "YD-D2 reply scenario mismatch");
@@ -70,7 +70,7 @@ std::string run_yd_d2_remote_spot_yield_scenario (TConnector &connector)
         .packet_name (yield_evidence_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-b")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (target_evidence), "YD-D2 target evidence request failed");
     bool saw_target_yield = false;
     for (const auto &line : target_evidence.value ().evidence) {

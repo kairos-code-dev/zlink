@@ -23,14 +23,14 @@ std::string run_yd_b1_other_actor_progress_scenario (
   const yield_actor_scenario_context_t &actors)
 {
     const auto request_id = unique_id ("YD-B1");
-    std::promise<zlink::stream_connector::result_t<actor_yield_reply_t>> actor_yield_promise;
+    std::promise<zlink::stream_connector::result_t<actor_yield_res_t>> actor_yield_promise;
     auto actor_yield = actor_yield_promise.get_future ();
     connector.request (actor_yield_req_t{.request_id = request_id, .delay_ms = 350})
       .packet_name (actor_yield_req_t::packet_name)
       .metadata (actor_id_metadata, actors.actor_a)
       .timeout (std::chrono::milliseconds (30000))
-      .template submit<actor_yield_reply_t> (
-        [&] (zlink::stream_connector::result_t<actor_yield_reply_t> result) {
+      .template submit<actor_yield_res_t> (
+        [&] (zlink::stream_connector::result_t<actor_yield_res_t> result) {
             actor_yield_promise.set_value (std::move (result));
         });
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
@@ -39,7 +39,7 @@ std::string run_yd_b1_other_actor_progress_scenario (
         .packet_name (actor_fast_req_t::packet_name)
         .metadata (actor_id_metadata, actors.actor_b)
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<actor_yield_reply_t> ();
+        .template submit<actor_yield_res_t> ();
     ensure (static_cast<bool> (actor_fast), "YD-B1 ActorFastReq failed");
     auto actor_yield_reply = actor_yield.get ();
     ensure (static_cast<bool> (actor_yield_reply), "YD-B1 ActorYieldReq failed");
@@ -48,7 +48,7 @@ std::string run_yd_b1_other_actor_progress_scenario (
         .packet_name (yield_evidence_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (evidence), "YD-B1 evidence request failed");
     ensure (contains_in_order (evidence.value ().evidence, request_id,
                                {"actor-yield-started", "actor-yield-released",

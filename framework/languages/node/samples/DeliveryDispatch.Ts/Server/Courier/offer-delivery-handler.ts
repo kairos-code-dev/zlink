@@ -3,14 +3,14 @@ import { zlinkRequestHandler } from '@zlink-systems/nestjs';
 import { PacketNames } from '../../Shared/Contracts/messages';
 import { delay } from '../Configuration/request-retry';
 import type { ZLinkRequestContext, ZLinkRequestHandler } from '@zlink-systems/framework';
-import type { OfferDelivery, OfferDeliveryResult } from '../../Shared/Contracts/messages';
+import type { OfferDeliveryReq, OfferDeliveryRes } from '../../Shared/Contracts/messages';
 import type { CourierOptions } from './courier-module';
 
 @zlinkRequestHandler('courier', PacketNames.offerDelivery)
-class OfferDeliveryHandler implements ZLinkRequestHandler<OfferDelivery, OfferDeliveryResult> {
+class OfferDeliveryHandler implements ZLinkRequestHandler<OfferDeliveryReq, OfferDeliveryRes> {
   constructor(@Inject('DELIVERYDISPATCH_COURIER_OPTIONS') private readonly options: CourierOptions) {}
 
-  async handle(request: OfferDelivery, context: ZLinkRequestContext): Promise<OfferDeliveryResult> {
+  async handle(request: OfferDeliveryReq, context: ZLinkRequestContext): Promise<OfferDeliveryRes> {
     void context;
     if (this.shouldTimeout(request.deliveryId)) {
       console.error(`deliverydispatch courier: no response delivery=${request.deliveryId} courier=${this.options.courierId}`);

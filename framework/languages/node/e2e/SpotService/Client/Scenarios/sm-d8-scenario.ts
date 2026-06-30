@@ -4,9 +4,9 @@ import {
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
 import type {
-  ActorPingReply,
+  ActorPingRes,
   ActorPingReq,
-  AuthReply,
+  AuthRes,
   AuthReq,
   SlowActorPingReq
 } from '../../Shared/messages';
@@ -29,7 +29,7 @@ export async function runSmD8(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
     const pending = first
       .request({
@@ -61,9 +61,9 @@ export async function runSmD8(options: ClientOptions): Promise<void> {
       } satisfies AuthReq)
       .packetName('AuthReq')
       .timeout(5000)
-      .submit<AuthReply>();
+      .submit<AuthRes>();
 
-    const resumed = decodeStreamReply<ActorPingReply>(await second
+    const resumed = decodeStreamReply<ActorPingRes>(await second
       .request({ value: 'after-reconnect' } satisfies ActorPingReq)
       .packetName('ActorPingReq')
       .timeout(5000)

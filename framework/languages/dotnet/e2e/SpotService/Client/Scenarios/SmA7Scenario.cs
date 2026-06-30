@@ -11,12 +11,12 @@ internal static class SmA7Scenario
         var spotRid = $"spot-sm-a7-{Guid.NewGuid():N}";
         var mismatch = (await playA.Post("/spot/type-mismatch")
             .Body(new SpotTypeMismatchReq(spotRid))
-            .SubmitAsync<SpotTypeMismatchReply>()).Body;
+            .SubmitAsync<SpotTypeMismatchRes>()).Body;
         ScenarioAssert.That(mismatch.Failed, "SM-A7 expected SpotTypeMismatch.");
         ScenarioAssert.That(mismatch.ErrorKind == "SpotTypeMismatch", "SM-A7 error kind mismatch.");
         var expectedEvidence = new[] { $"spot-type-mismatch|rid=play-a|spot={mismatch.SpotRid}|kind=SpotTypeMismatch" };
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(expectedEvidence))
+            .Body(new EvidenceWaitReq(expectedEvidence))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),

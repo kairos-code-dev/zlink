@@ -1,9 +1,9 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
-  profileRequest,
+  profileReq,
   sendRequestBatch,
   waitTopologyAbsent,
   waitTopologyReady,
@@ -23,10 +23,10 @@ export async function runRlC2(options: ClientOptions, state: ScenarioState): Pro
   await waitTopologyAbsent(options.registryUrl, 'api-b');
 
   for (let i = 0; i < 8; i += 1) {
-    const reply = await postJson<ProfileReply>(
+    const reply = await postJson<ProfileRes>(
       options.consumerUrl,
       '/profile/request/new-client',
-      profileRequest(`rl-c2-after-crash-${i}`)
+      profileReq(`rl-c2-after-crash-${i}`)
     );
     ensure(reply.providerRid === 'api-a', 'RL-C2 request used stale crashed api-b.');
   }

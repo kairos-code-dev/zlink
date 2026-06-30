@@ -15,10 +15,10 @@ using namespace framework;
 class gameplay_event_handler_t
 {
   public:
-    using event_type = event_res_t;
+    using event_type = quest_event_msg_t;
     static constexpr const char *topic_name = sample_names_t::gameplay_topic;
 
-    void handle (const event_res_t &event, const publish_context_t &)
+    void handle (const quest_event_msg_t &event, const publish_context_t &)
     {
         std::cerr << "gamequest mission observed event=" << event.event_id << "\n";
     }

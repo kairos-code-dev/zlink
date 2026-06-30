@@ -9,9 +9,9 @@ namespace YieldDispatch.Server.Play.Handlers;
 
 [ZLinkSpotActorRequestHandler("ActorYieldReq")]
 internal sealed class EntryActorYieldHandler(EvidenceStore evidence)
-    : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorYieldReq, ActorYieldReply>
+    : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorYieldReq, ActorYieldRes>
 {
-    public async ValueTask<ActorYieldReply> HandleAsync(
+    public async ValueTask<ActorYieldRes> HandleAsync(
         YieldEntrySpot entrySpot,
         YieldActor actor,
         ZLinkSpotActorRequestContext context,
@@ -31,7 +31,7 @@ internal sealed class EntryActorYieldHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-yield-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        await call.Async<DelayReply>(cancellationToken);
+        await call.Async<DelayRes>(cancellationToken);
         evidence.Add(
             $"actor-yield-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
@@ -44,9 +44,9 @@ internal sealed class EntryActorYieldHandler(EvidenceStore evidence)
 
 [ZLinkSpotActorRequestHandler("ActorFastReq")]
 internal sealed class EntryActorFastHandler(EvidenceStore evidence)
-    : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorFastReq, ActorYieldReply>
+    : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorFastReq, ActorYieldRes>
 {
-    public ValueTask<ActorYieldReply> HandleAsync(
+    public ValueTask<ActorYieldRes> HandleAsync(
         YieldEntrySpot entrySpot,
         YieldActor actor,
         ZLinkSpotActorRequestContext context,
@@ -70,9 +70,9 @@ internal sealed class EntryActorFastHandler(EvidenceStore evidence)
 
 [ZLinkSpotActorRequestHandler("ActorJoinYieldReq")]
 internal sealed class EntryActorJoinYieldHandler(EvidenceStore evidence)
-    : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorJoinYieldReq, ActorYieldReply>
+    : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorJoinYieldReq, ActorYieldRes>
 {
-    public async ValueTask<ActorYieldReply> HandleAsync(
+    public async ValueTask<ActorYieldRes> HandleAsync(
         YieldEntrySpot entrySpot,
         YieldActor actor,
         ZLinkSpotActorRequestContext context,
@@ -103,9 +103,9 @@ internal sealed class EntryActorJoinYieldHandler(EvidenceStore evidence)
 
 [ZLinkSpotActorRequestHandler("ActorPushYieldReq")]
 internal sealed class EntryActorPushYieldHandler(EvidenceStore evidence)
-    : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorPushYieldReq, ActorYieldReply>
+    : IZLinkEntrySpotActorRequestHandler<YieldEntrySpot, YieldActor, ActorPushYieldReq, ActorYieldRes>
 {
-    public async ValueTask<ActorYieldReply> HandleAsync(
+    public async ValueTask<ActorYieldRes> HandleAsync(
         YieldEntrySpot entrySpot,
         YieldActor actor,
         ZLinkSpotActorRequestContext context,
@@ -125,7 +125,7 @@ internal sealed class EntryActorPushYieldHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-yield-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        await call.Async<DelayReply>(cancellationToken);
+        await call.Async<DelayRes>(cancellationToken);
         evidence.Add(
             $"actor-push-yield-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");

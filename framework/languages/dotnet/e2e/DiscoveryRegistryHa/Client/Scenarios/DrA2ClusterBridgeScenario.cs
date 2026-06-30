@@ -20,19 +20,19 @@ internal static class DrA2ClusterBridgeScenario
             .Build();
 
         await reg2.Post("/registry/members/wait")
-            .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
+            .Body(new MemberEndpointWaitReq(options.ApiAEndpoint))
             .SubmitRawAsync();
 
         var marker = $"dr-a2-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("dr-a2", marker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("dr-a2", marker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:dr-a2", "DR-A2 request failed.");
         ScenarioAssert.That(reply.ProviderRid == "api-a", "DR-A2 request should route to api-a.");
         ScenarioAssert.That(reply.Marker == marker, "DR-A2 marker mismatch.");
 
         var evidence = (await providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(marker))
+            .Body(new EvidenceWaitReq(marker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)

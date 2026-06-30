@@ -12,7 +12,7 @@ internal static class SmB7Scenario
         var actorId = $"actor-sm-b7-order-{Guid.NewGuid():N}";
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
         Exception? last = null;
-        var replies = new List<ActorPingReply>();
+        var replies = new List<ActorPingRes>();
         while (DateTimeOffset.UtcNow < deadline)
         {
             replies.Clear();
@@ -30,13 +30,13 @@ internal static class SmB7Scenario
                 await client.Connect.Async();
                 await client.Request(new AuthReq(actorId, "order", "play-a"))
                     .PacketName("AuthReq")
-                    .Async<AuthReply>();
+                    .Async<AuthRes>();
                 replies.Add(await client.Request(new ActorPingReq("order-1"))
                     .PacketName("ActorPingReq")
-                    .Async<ActorPingReply>());
+                    .Async<ActorPingRes>());
                 replies.Add(await client.Request(new ActorPingReq("order-2"))
                     .PacketName("ActorPingReq")
-                    .Async<ActorPingReply>());
+                    .Async<ActorPingRes>());
                 break;
             }
             catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
@@ -56,7 +56,7 @@ internal static class SmB7Scenario
                                           && replies[1].Value == "order-2" && replies[1].Seen == 2,
             "SM-B7 stream replies did not preserve actor packet order.");
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest([$"actor-ping|rid=play-a|actor={actorId}", "value=order-2|seen=2"]))
+            .Body(new EvidenceWaitReq([$"actor-ping|rid=play-a|actor={actorId}", "value=order-2|seen=2"]))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line =>

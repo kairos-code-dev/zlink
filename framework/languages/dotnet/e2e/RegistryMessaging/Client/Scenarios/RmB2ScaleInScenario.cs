@@ -26,12 +26,12 @@ internal static class RmB2ScaleInScenario
         var valuesBefore = Enumerable.Range(0, 40)
             .Select(index => $"{markerBefore}-{index}")
             .ToArray();
-        var repliesBefore = new List<ProfileReply>(valuesBefore.Length);
+        var repliesBefore = new List<ProfileRes>(valuesBefore.Length);
         foreach (var value in valuesBefore)
         {
             var reply = (await requester.Post("/profile/request")
-                .Body(new ProfileRequest(value))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq(value))
+                .SubmitAsync<ProfileRes>()).Body;
             repliesBefore.Add(reply);
         }
 
@@ -67,12 +67,12 @@ internal static class RmB2ScaleInScenario
         var valuesAfter = Enumerable.Range(0, 20)
             .Select(index => $"{markerAfter}-{index}")
             .ToArray();
-        var repliesAfter = new List<ProfileReply>(valuesAfter.Length);
+        var repliesAfter = new List<ProfileRes>(valuesAfter.Length);
         foreach (var value in valuesAfter)
         {
             var reply = (await requester.Post("/profile/request")
-                .Body(new ProfileRequest(value))
-                .SubmitAsync<ProfileReply>()).Body;
+                .Body(new ProfileReq(value))
+                .SubmitAsync<ProfileRes>()).Body;
             repliesAfter.Add(reply);
         }
 
@@ -110,7 +110,7 @@ internal static class RmB2ScaleInScenario
     private static async Task<string[]> WaitEvidenceAsync(ZLinkHttpClient http, string contains)
     {
         return (await http.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(contains))
+            .Body(new EvidenceWaitReq(contains))
             .SubmitAsync<string[]>()).Body;
     }
 }

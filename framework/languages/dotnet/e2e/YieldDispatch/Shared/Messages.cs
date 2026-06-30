@@ -19,59 +19,59 @@ public sealed record YieldShutdownRecoveryReq(string RequestId, string SpotRid);
 
 public sealed record BindYieldActorsReq(string SpotRid, string[] ActorIds);
 
-public sealed record BindYieldActorsReply(string SpotRid, YieldActorBinding[] Actors);
+public sealed record BindYieldActorsRes(string SpotRid, YieldActorBinding[] Actors);
 
 public sealed record YieldActorBinding(string ActorId, string NodeRid, ulong Generation);
 
 public sealed record YieldEvidenceReq(string RequestId);
 
-public sealed record YieldEvidenceReply(string RequestId, string[] Evidence);
+public sealed record YieldEvidenceRes(string RequestId, string[] Evidence);
 
 public sealed record YieldEvidenceWaitReq(string RequestId, string Marker, int TimeoutMilliseconds = 20000);
 
 public sealed record DelayReq(string RequestId, int DelayMs, string Marker);
 
-public sealed record DelayReply(string RequestId, string Marker, string NodeRid);
+public sealed record DelayRes(string RequestId, string Marker, string NodeRid);
 
 public sealed record HoldReq(string RequestId, int DelayMs);
 
-public sealed record HoldCommand(string RequestId, int DelayMs);
+public sealed record HoldMsg(string RequestId, int DelayMs);
 
 public sealed record YieldReq(string RequestId, int DelayMs, string CorrelationId);
 
-public sealed record YieldCommand(string RequestId, int DelayMs, string CorrelationId);
+public sealed record YieldMsg(string RequestId, int DelayMs, string CorrelationId);
 
 public sealed record WorkerYieldReq(string RequestId, int DelayMs);
 
-public sealed record WorkerYieldCommand(string RequestId, int DelayMs);
+public sealed record WorkerYieldMsg(string RequestId, int DelayMs);
 
 public sealed record YieldTimeoutReq(string RequestId, int DelayMs, int TimeoutMs);
 
-public sealed record YieldTimeoutCommand(string RequestId, int DelayMs, int TimeoutMs);
+public sealed record YieldTimeoutMsg(string RequestId, int DelayMs, int TimeoutMs);
 
 public sealed record YieldCancelReq(string RequestId, int DelayMs, int CancelAfterMs);
 
-public sealed record YieldCancelCommand(string RequestId, int DelayMs, int CancelAfterMs);
+public sealed record YieldCancelMsg(string RequestId, int DelayMs, int CancelAfterMs);
 
 public sealed record RemoteSpotYieldReq(string RequestId, string TargetSpotRid, int DelayMs);
 
-public sealed record RemoteSpotYieldCommand(string RequestId, string TargetSpotRid, int DelayMs);
+public sealed record RemoteSpotYieldMsg(string RequestId, string TargetSpotRid, int DelayMs);
 
 public sealed record EnsureSpotReq(string SpotRid);
 
-public sealed record EnsureSpotReply(string SpotRid, string NodeRid);
+public sealed record EnsureSpotRes(string SpotRid, string NodeRid);
 
 public sealed record ProbeReq(string RequestId, string Marker);
 
-public sealed record ProbeCommand(string RequestId, string Marker);
+public sealed record ProbeMsg(string RequestId, string Marker);
 
 public sealed record TimerStartReq(string RequestId, string TimerName, string Mode, int PeriodMs, int DelayMs);
 
-public sealed record TimerStartCommand(string RequestId, string TimerName, string Mode, int PeriodMs, int DelayMs);
+public sealed record TimerStartMsg(string RequestId, string TimerName, string Mode, int PeriodMs, int DelayMs);
 
 public sealed record TimerStopReq(string RequestId);
 
-public sealed record TimerStopCommand(string RequestId);
+public sealed record TimerStopMsg(string RequestId);
 
 public sealed record ActorYieldReq(string RequestId, int DelayMs);
 
@@ -83,7 +83,7 @@ public sealed record ActorPushYieldReq(string RequestId, int DelayMs, string Val
 
 public sealed record ActorPushNotify(string ActorId, string RequestId, string Value, string NodeRid);
 
-public sealed record ActorYieldReply(
+public sealed record ActorYieldRes(
     string ScenarioId,
     string RequestId,
     string ActorId,
@@ -91,14 +91,14 @@ public sealed record ActorYieldReply(
     string NodeRid,
     string Marker);
 
-public sealed record YieldDispatchReply(
+public sealed record YieldDispatchRes(
     string ScenarioId,
     string RequestId,
     string SpotRid,
     string NodeRid,
     string Marker);
 
-public sealed record YieldTimeoutReply(
+public sealed record YieldTimeoutRes(
     string ScenarioId,
     string RequestId,
     string SpotRid,
@@ -106,7 +106,7 @@ public sealed record YieldTimeoutReply(
     bool TimedOut,
     string Error);
 
-public sealed record YieldCancelReply(
+public sealed record YieldCancelRes(
     string ScenarioId,
     string RequestId,
     string SpotRid,
@@ -114,7 +114,12 @@ public sealed record YieldCancelReply(
     bool Canceled,
     string Error);
 
-public sealed record YieldScenarioResult(
+public sealed record YieldShutdownScenarioRes(
+    string Operation,
+    string SpotRid,
+    string[] Evidence);
+
+public sealed record YieldShutdownRecoveryRes(
     string Operation,
     string SpotRid,
     string[] Evidence);

@@ -16,7 +16,7 @@ public final class ShutdownYieldSessionHandlers {
     }
 
     public static final class Wait
-        implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.YieldShutdownScenarioRequest> {
+        implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.YieldShutdownScenarioReq> {
         private final ZLinkRouteClient routes;
 
         public Wait(ZLinkRouteClient routes) {
@@ -25,37 +25,37 @@ public final class ShutdownYieldSessionHandlers {
 
         @Override
         public String packetName() {
-            return "YieldShutdownScenarioRequest";
+            return "YieldShutdownScenarioReq";
         }
 
         @Override
-        public Class<Contracts.YieldShutdownScenarioRequest> messageType() {
-            return Contracts.YieldShutdownScenarioRequest.class;
+        public Class<Contracts.YieldShutdownScenarioReq> messageType() {
+            return Contracts.YieldShutdownScenarioReq.class;
         }
 
         @Override
         public void handle(
             ZLinkSessionContext context,
             ZLinkSessionDispatchContext dispatch,
-            Contracts.YieldShutdownScenarioRequest request) {
+            Contracts.YieldShutdownScenarioReq request) {
             RoutingId playNode = RoutingId.from(Contracts.PLAY_NODE_A);
             RoutingId spotRid = RoutingId.from(request.spotRid());
             routes.requestTo(
                     Contracts.ROUTE_CHANNEL,
                     playNode,
-                    new Contracts.EnsureSpotRequest(request.spotRid()))
+                    new Contracts.EnsureSpotReq(request.spotRid()))
                 .timeout(RECOVERY_REQUEST_TIMEOUT)
-                .await(Contracts.EnsureSpotReply.class);
+                .await(Contracts.EnsureSpotRes.class);
             routes.requestToSpot(
                     Contracts.ROUTE_CHANNEL,
                     playNode,
                     spotRid,
-                    new Contracts.YieldRequest("YD-E3", request.requestId(), "shutdown"))
+                    new Contracts.YieldReq("YD-E3", request.requestId(), "shutdown"))
                 .metadata(Contracts.SPOT_RID_METADATA, request.spotRid())
                 .timeout(ROUTE_REQUEST_TIMEOUT)
-                .await(Contracts.ScenarioReply.class);
+                .await(Contracts.ScenarioRes.class);
             context.client()
-                .reply(new Contracts.YieldShutdownResult(
+                .reply(new Contracts.YieldShutdownRes(
                     "yield.e3-shutdown-unexpected-completion",
                     request.requestId(),
                     request.spotRid()))
@@ -64,7 +64,7 @@ public final class ShutdownYieldSessionHandlers {
     }
 
     public static final class Recovery
-        implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.YieldShutdownRecoveryRequest> {
+        implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Contracts.YieldShutdownRecoveryReq> {
         private final ZLinkRouteClient routes;
 
         public Recovery(ZLinkRouteClient routes) {
@@ -73,30 +73,30 @@ public final class ShutdownYieldSessionHandlers {
 
         @Override
         public String packetName() {
-            return "YieldShutdownRecoveryRequest";
+            return "YieldShutdownRecoveryReq";
         }
 
         @Override
-        public Class<Contracts.YieldShutdownRecoveryRequest> messageType() {
-            return Contracts.YieldShutdownRecoveryRequest.class;
+        public Class<Contracts.YieldShutdownRecoveryReq> messageType() {
+            return Contracts.YieldShutdownRecoveryReq.class;
         }
 
         @Override
         public void handle(
             ZLinkSessionContext context,
             ZLinkSessionDispatchContext dispatch,
-            Contracts.YieldShutdownRecoveryRequest request) {
+            Contracts.YieldShutdownRecoveryReq request) {
             RoutingId playNode = RoutingId.from(Contracts.PLAY_NODE_A);
             RoutingId spotRid = RoutingId.from(request.spotRid());
             routes.requestTo(
                     Contracts.ROUTE_CHANNEL,
                     playNode,
-                    new Contracts.EnsureSpotRequest(request.spotRid()))
+                    new Contracts.EnsureSpotReq(request.spotRid()))
                 .timeout(RECOVERY_REQUEST_TIMEOUT)
-                .await(Contracts.EnsureSpotReply.class);
+                .await(Contracts.EnsureSpotRes.class);
             awaitProbeAfterRecovery(routes, playNode, spotRid, request.requestId());
             context.client()
-                .reply(new Contracts.YieldShutdownResult(
+                .reply(new Contracts.YieldShutdownRes(
                     "yield.e3-shutdown-recovery",
                     request.requestId(),
                     request.spotRid()))
@@ -115,9 +115,9 @@ public final class ShutdownYieldSessionHandlers {
                             Contracts.ROUTE_CHANNEL,
                             playNode,
                             spotRid,
-                            new Contracts.ProbeRequest(requestId))
+                            new Contracts.ProbeReq(requestId))
                         .timeout(RECOVERY_PROBE_ATTEMPT_TIMEOUT)
-                        .await(Contracts.ProbeReply.class);
+                        .await(Contracts.ProbeRes.class);
                     return;
                 } catch (RuntimeException error) {
                     lastError = error;

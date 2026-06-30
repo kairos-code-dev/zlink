@@ -19,16 +19,16 @@ public final class RmC8PayloadRoundTripScenario {
             String marker = "rm-c8-" + size + "-" + java.util.UUID.randomUUID();
             markers.add(marker);
             String payload = buildPayload(size);
-            Contracts.PayloadReply reply = singleConsumer.post("/profile/payload")
-                .body(new Contracts.PayloadRequest(marker, payload))
-                .fetch(Contracts.PayloadReply.class);
+            Contracts.PayloadRes reply = singleConsumer.post("/profile/payload")
+                .body(new Contracts.PayloadReq(marker, payload))
+                .fetch(Contracts.PayloadRes.class);
             ScenarioAssert.that(reply.marker().equals(marker), "RM-C8 payload marker mismatch for " + size);
             ScenarioAssert.that(reply.length() == payload.length(), "RM-C8 payload length mismatch for " + size);
             ScenarioAssert.that(reply.sha256().equals(sha256(payload)), "RM-C8 payload hash mismatch for " + size);
         }
-        Contracts.ProfileReply followUp = singleConsumer.post("/profile/request")
-            .body(new Contracts.ProfileRequest("rm-c8-after"))
-            .fetch(Contracts.ProfileReply.class);
+        Contracts.ProfileRes followUp = singleConsumer.post("/profile/request")
+            .body(new Contracts.ProfileReq("rm-c8-after"))
+            .fetch(Contracts.ProfileRes.class);
         ScenarioAssert.that("profile:rm-c8-after".equals(followUp.value()), "RM-C8 follow-up request failed");
         String[] evidence = ScenarioAssert.evidence(providerA);
         ScenarioAssert.that(markers.stream().allMatch(marker -> java.util.Arrays.stream(evidence)

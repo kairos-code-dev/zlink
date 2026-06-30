@@ -30,7 +30,7 @@
 | `Client/Support/ProcessSupport.cs` | `Client/Support/process-support.ts` | support | done | invalid startup failure process 확인 |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario-assert.ts` | assertion-support | done | assertion와 eventually |
 | `Client/Support/EvidenceText.cs` | `Client/Scenarios/*` | assertion-support | done | evidence substring 검증 |
-| `Client/Support/CodecScenarioResult.cs` | `Shared/messages.ts` | shared-contract | done | codec result DTO |
+| `Client/Support/CodecScenarioRes.cs` | `Shared/messages.ts` | shared-contract | done | codec result DTO |
 | `Server/Main/RegistrationCodec.Server.csproj` | `Server/Main/package.json`, `Server/Main/tsconfig.json` | project | done | main role build 설정 |
 | `Server/Main/Program.cs` | `Server/Main/main.ts` | server-entry | done | main role 실행 진입점 |
 | `Server/Main/RegistrationCodecServerHostFactory.cs` | `Server/Main/main-host.ts` | server-role | done | channel server/client와 handler 등록 |

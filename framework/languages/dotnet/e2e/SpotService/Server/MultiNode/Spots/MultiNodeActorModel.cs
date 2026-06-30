@@ -29,7 +29,7 @@ internal sealed class ScenarioActor(string actorId, IZLinkActorContext context) 
     public IZLinkActorContext Context { get; } = context;
 }
 
-internal sealed record ScenarioActorCreateRequest(string DisplayName);
+internal sealed record ScenarioActorCreateReq(string DisplayName);
 
 internal sealed class ScenarioEntrySpot(
     IZLinkEntrySpotContext context,
@@ -43,7 +43,7 @@ internal sealed class ScenarioEntrySpot(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!createRequest.IsEmpty) actor.DisplayName = createRequest.Decode<ScenarioActorCreateRequest>().DisplayName;
+        if (!createRequest.IsEmpty) actor.DisplayName = createRequest.Decode<ScenarioActorCreateReq>().DisplayName;
 
         evidence.Add($"entry-created|rid={evidence.Rid}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
@@ -97,7 +97,7 @@ internal sealed class ScenarioUserSpot(
 
     public void Configure()
     {
-        Context.Handlers.AddSubscribe<SpotEventHandler>(SpotServiceNames.SpotEventTopic);
+        Context.Handlers.AddSubscribe<SpotMsgHandler>(SpotServiceNames.SpotMsgTopic);
     }
 
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)

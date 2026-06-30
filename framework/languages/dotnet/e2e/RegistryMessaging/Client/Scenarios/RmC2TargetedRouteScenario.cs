@@ -21,7 +21,7 @@ internal static class RmC2TargetedRouteScenario
         ScenarioAssert.That(reply.Value == $"route:{marker}", "RM-C2 route reply value mismatch.");
 
         var afterB = (await providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(marker))
+            .Body(new EvidenceWaitReq(marker))
             .SubmitAsync<string[]>()).Body;
         var afterA = providerA.Get("/evidence").Fetch<string[]>();
         ScenarioAssert.That(
@@ -33,7 +33,7 @@ internal static class RmC2TargetedRouteScenario
 
         var missing = (await providerA.Post("/profile/route/missing")
             .Body(new ScenarioRoutePing("missing"))
-            .SubmitAsync<RouteMissingResult>()).Body;
+            .SubmitAsync<RouteMissingRes>()).Body;
         ScenarioAssert.That(missing.Failed, "RM-C2 missing rid request should fail.");
         Console.WriteLine("scenario RM-C2 passed");
     }

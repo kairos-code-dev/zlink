@@ -16,7 +16,7 @@ internal static class WorkflowEndpoints
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/workflow/request", async (
-            WorkflowRequest request,
+            WorkflowReq request,
             IZLinkChannelClient channel) =>
         {
             var reply = await RequestWorkflowWithRetryAsync(channel, request);
@@ -28,7 +28,7 @@ internal static class WorkflowEndpoints
             return Results.Ok(new { status = "cleared" });
         });
         app.MapPost("/evidence/wait", async (
-            EvidenceWaitRequest request,
+            EvidenceWaitReq request,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
         {
@@ -46,9 +46,9 @@ internal static class WorkflowEndpoints
         });
     }
 
-    static async Task<WorkflowReply> RequestWorkflowWithRetryAsync(
+    static async Task<WorkflowRes> RequestWorkflowWithRetryAsync(
         IZLinkChannelClient channel,
-        WorkflowRequest request)
+        WorkflowReq request)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         Exception? last = null;
@@ -57,9 +57,9 @@ internal static class WorkflowEndpoints
             try
             {
                 return await channel.RequestToChannel("workflow", request)
-                    .PacketName("WorkflowRequest")
+                    .PacketName("WorkflowReq")
                     .Timeout(TimeSpan.FromSeconds(5))
-                    .Async<WorkflowReply>();
+                    .Async<WorkflowRes>();
             }
             catch (ZLinkFrameworkException ex) when (IsRetriableRequestStartupFailure(ex))
             {

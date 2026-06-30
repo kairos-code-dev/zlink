@@ -9,33 +9,33 @@ import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CustomerActorEnsured
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CustomerDeliverySubscribed
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCustomerActor
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeCustomerToDelivery
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDelivery
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryAccepted
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCustomerActorRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeCustomerToDeliveryRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCustomerActorReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeCustomerToDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryRes
 import systems.zlink.samples.kotlin.deliverydispatch.server.session.sessions.CustomerSessionDirectory
 
 class SubscribeDeliveryHandler(
     private val channels: ZLinkClient,
     private val sessions: CustomerSessionDirectory,
-) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, SubscribeDelivery> {
-    override fun packetName(): String = "SubscribeDelivery"
+) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, SubscribeDeliveryReq> {
+    override fun packetName(): String = "SubscribeDeliveryReq"
 
-    override fun messageType(): Class<SubscribeDelivery> = SubscribeDelivery::class.java
+    override fun messageType(): Class<SubscribeDeliveryReq> = SubscribeDeliveryReq::class.java
 
     override suspend fun handle(
         context: ZLinkSessionContext,
         dispatch: ZLinkSessionDispatchContext,
-        request: SubscribeDelivery,
+        request: SubscribeDeliveryReq,
     ) {
-        require(request.deliveryId.isNotBlank()) { "SubscribeDelivery requires deliveryId." }
+        require(request.deliveryId.isNotBlank()) { "SubscribeDeliveryReq requires deliveryId." }
 
         val ensured = channels
-            .requestToChannel(SampleNames.TrackingChannel, EnsureCustomerActor(CustomerId))
+            .requestToChannel(SampleNames.TrackingChannel, EnsureCustomerActorReq(CustomerId))
             .timeout(SampleTimings.RequestTimeout)
-            .submit(CustomerActorEnsured::class.java)
+            .submit(EnsureCustomerActorRes::class.java)
             .await()
         context.actors()
             .bind(
@@ -51,14 +51,14 @@ class SubscribeDeliveryHandler(
         val subscribed = channels
             .requestToChannel(
                 SampleNames.TrackingChannel,
-                SubscribeCustomerToDelivery(CustomerId, request.deliveryId),
+                SubscribeCustomerToDeliveryReq(CustomerId, request.deliveryId),
             )
             .timeout(SampleTimings.RequestTimeout)
-            .submit(CustomerDeliverySubscribed::class.java)
+            .submit(SubscribeCustomerToDeliveryRes::class.java)
             .await()
         sessions.subscribe(context, subscribed.deliveryId)
         context.client()
-            .reply(SubscribeDeliveryAccepted(subscribed.deliveryId))
+            .reply(SubscribeDeliveryRes(subscribed.deliveryId))
             .submit()
             .await()
     }

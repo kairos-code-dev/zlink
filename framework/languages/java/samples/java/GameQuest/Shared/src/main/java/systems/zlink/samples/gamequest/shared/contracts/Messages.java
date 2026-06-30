@@ -128,8 +128,8 @@ public final class Messages {
         long updatedAtUnixMs) {
     }
 
-    @ZLinkPacket("GameplayEventEnvelope")
-    public record GameplayEventEnvelope(
+    @ZLinkPacket("GameplayEventMsg")
+    public record GameplayEventMsg(
         String eventId,
         String playerId,
         String idempotencyKey,

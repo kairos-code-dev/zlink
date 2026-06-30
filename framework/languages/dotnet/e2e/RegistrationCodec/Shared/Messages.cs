@@ -10,32 +10,32 @@ public static class RegistrationCodecNames
 
 public sealed record EchoReq(string Value);
 
-public sealed record EchoReply(string Value, string ContentType);
+public sealed record EchoRes(string Value, string ContentType);
 
-public sealed record EchoCommand(string CommandId, string Value);
+public sealed record EchoMsg(string CommandId, string Value);
 
 [ZLinkPacket("EchoAuto")]
 public sealed record EchoAutoReq(string Value);
 
-[ZLinkPacket("EchoAutoCommand")]
-public sealed record EchoAutoCommand(string CommandId, string Value);
+[ZLinkPacket("EchoAutoMsg")]
+public sealed record EchoAutoMsg(string CommandId, string Value);
 
 [ZLinkPacket("EchoManual")]
 public sealed record EchoManualReq(string Value);
 
-[ZLinkPacket("EchoManualCommand")]
-public sealed record EchoManualCommand(string CommandId, string Value);
+[ZLinkPacket("EchoManualMsg")]
+public sealed record EchoManualMsg(string CommandId, string Value);
 
 public sealed record JsonEchoReq(string Value);
 
-public sealed record JsonEchoCommand(string CommandId, string Value);
+public sealed record JsonEchoMsg(string CommandId, string Value);
 
-public sealed record CodecMismatchProbeReply(
+public sealed record CodecMismatchProbeRes(
     bool Rejected,
     string? FailureType,
     string? Value);
 
-public sealed record EvidenceWaitRequest(
+public sealed record EvidenceWaitReq(
     string[] ContainsAll,
     int TimeoutMilliseconds = 10000);
 
@@ -46,7 +46,7 @@ public sealed class PackedEchoReq
 }
 
 [MessagePackObject]
-public sealed class PackedEchoCommand
+public sealed class PackedEchoMsg
 {
     [Key(0)] public string CommandId { get; set; } = string.Empty;
 

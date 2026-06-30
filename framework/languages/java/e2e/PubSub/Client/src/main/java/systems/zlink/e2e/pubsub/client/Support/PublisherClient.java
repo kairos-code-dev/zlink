@@ -17,15 +17,15 @@ public final class PublisherClient {
         this.endpoint = endpoint;
     }
 
-    public void publish(String topic, Contracts.EventNotify message) {
+    public void publish(String topic, Contracts.EventMsg message) {
         post("/publish/event", topic, message);
     }
 
-    public void publishMissing(String topic, Contracts.EventNotify message) {
+    public void publishMissing(String topic, Contracts.EventMsg message) {
         post("/publish/missing", topic, message);
     }
 
-    private void post(String path, String topic, Contracts.EventNotify message) {
+    private void post(String path, String topic, Contracts.EventMsg message) {
         String uri = endpoint + path
             + "?topic=" + encode(topic)
             + "&scenario=" + encode(message.scenario())

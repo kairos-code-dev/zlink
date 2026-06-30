@@ -9,24 +9,24 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLinkMessageFlowOutcome } from '@zlink-systems/framework';
 import type {
-  PayloadReply,
-  PayloadRequest,
-  ProfileCommand,
-  ProfileReply,
-  ProfileRequest
+  PayloadRes,
+  PayloadReq,
+  ProfileMsg,
+  ProfileRes,
+  ProfileReq
 } from '../../../Shared/messages';
 import { sha256Hex } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import { FaultState } from '../Infrastructure/fault-state';
 
 @Injectable()
-export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileRequest, ProfileReply> {
+export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileReq, ProfileRes> {
   constructor(
     private readonly evidence: EvidenceStore,
     private readonly fault: FaultState
   ) {}
 
-  async handle(request: ProfileRequest, context: ZLinkRequestContext): Promise<ProfileReply> {
+  async handle(request: ProfileReq, context: ZLinkRequestContext): Promise<ProfileRes> {
     const marker = request.marker ?? '<none>';
     this.evidence.add(`profile-start|rid=${this.evidence.rid}|value=${request.value}|marker=${marker}|packet=${context.packetName}`);
     if (this.fault.mode === 'gray' && request.value === 'fast') {
@@ -45,10 +45,10 @@ export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileRequest
 }
 
 @Injectable()
-export class ProfileCommandHandler implements ZLinkSendHandler<ProfileCommand> {
+export class ProfileCommandHandler implements ZLinkSendHandler<ProfileMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(command: ProfileCommand, context: ZLinkSendContext): Promise<void> {
+  async handle(command: ProfileMsg, context: ZLinkSendContext): Promise<void> {
     if (command.commandId.startsWith('rl-c9-slow-')) {
       await delay(1000);
     }
@@ -59,10 +59,10 @@ export class ProfileCommandHandler implements ZLinkSendHandler<ProfileCommand> {
 }
 
 @Injectable()
-export class PayloadRequestHandler implements ZLinkRequestHandler<PayloadRequest, PayloadReply> {
+export class PayloadRequestHandler implements ZLinkRequestHandler<PayloadReq, PayloadRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: PayloadRequest, context: ZLinkRequestContext): Promise<PayloadReply> {
+  async handle(request: PayloadReq, context: ZLinkRequestContext): Promise<PayloadRes> {
     const hash = sha256Hex(request.payload);
     this.evidence.add(
       `payload-request|rid=${this.evidence.rid}|marker=${request.marker}`

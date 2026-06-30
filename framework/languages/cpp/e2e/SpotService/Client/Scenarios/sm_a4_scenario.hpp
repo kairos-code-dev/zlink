@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "../Support/spot_lifecycle_order_context.hpp"
 #include "../../Shared/spot_service_contracts.hpp"
 
 #include <zlink/http_client.hpp>
@@ -10,6 +11,43 @@
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
+
+inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
+                                spot_lifecycle_order_context_t &context)
+{
+    if (play_http_endpoint.empty ()) {
+        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-A4");
+    }
+
+    auto api = zlink::http_client::client_t::create ()
+                 .base_url (play_http_endpoint)
+                 .build ();
+    auto raw =
+      api.post ("/spot/state/request")
+        .body (spot_state_route_req_t{.spot_rid = context.spot_rid,
+                                      .state = state_req_t{.op = "noop", .amount = 0}})
+        .submit_raw ()
+        .result ();
+    if (!raw) {
+        throw std::runtime_error (raw.error () ? raw.error ()->what ()
+                                               : "SM-A4 route HTTP failed");
+    }
+    if (raw.value ().status >= 400) {
+        throw std::runtime_error ("SM-A4 route HTTP status "
+                                  + std::to_string (raw.value ().status) + ": "
+                                  + raw.value ().body);
+    }
+
+    const auto reply = nlohmann::json::parse (raw.value ().body).get<state_res_t> ();
+    if (reply.spot_rid != context.spot_rid) {
+        throw std::runtime_error ("SM-A4 request reached wrong spot: " + reply.spot_rid);
+    }
+    if (reply.owner_node_rid != "play-a") {
+        throw std::runtime_error ("SM-A4 request reached wrong owner: "
+                                  + reply.owner_node_rid);
+    }
+    context.current_value = reply.value;
+}
 
 inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
                                 const std::string &play_b_http_endpoint)

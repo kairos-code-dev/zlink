@@ -11,17 +11,17 @@ internal static class YdA1BasicTerminatorScenario
         var spot = await client.Request(new EnsureSpotReq(spotRid))
             .PacketName("EnsureSpotReq")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<EnsureSpotReply>();
+            .Async<EnsureSpotRes>();
         ScenarioAssert.That(spot.SpotRid == spotRid, "YD-A spot creation mismatch.");
 
         var requestId = $"YD-A1-{Guid.NewGuid():N}";
-        await client.Send(new HoldCommand(requestId, 350))
-            .PacketName("HoldCommand")
+        await client.Send(new HoldMsg(requestId, 350))
+            .PacketName("HoldMsg")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
         await Task.Delay(75);
-        await client.Send(new ProbeCommand(requestId, "hold-probe"))
-            .PacketName("ProbeCommand")
+        await client.Send(new ProbeMsg(requestId, "hold-probe"))
+            .PacketName("ProbeMsg")
             .Metadata(YieldDispatchNames.SpotRidMetadata, spotRid)
             .Async();
 
@@ -29,7 +29,7 @@ internal static class YdA1BasicTerminatorScenario
             .PacketName("YieldEvidenceWaitReq")
             .Metadata(YieldDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
-            .Async<YieldEvidenceReply>();
+            .Async<YieldEvidenceRes>();
         ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "hold-started",
             "hold-resumed",

@@ -1,12 +1,12 @@
 import type { ZLinkChannelClient, ZLinkRouteClient } from '@zlink-systems/framework';
 import type {
-  EvidenceWaitRequest,
-  ProfileCommand,
-  ProfileReply,
-  ProfileRequest,
-  RouteMissingResult,
-  ScenarioRoutePing,
-  ScenarioRoutePong
+  EvidenceWaitReq,
+  ProfileMsg,
+  ProfileRes,
+  ProfileReq,
+  RouteMissingRes,
+  ScenarioRouteReq,
+  ScenarioRouteRes
 } from '../../../Shared/messages';
 import { PacketNames } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -24,37 +24,37 @@ export function createProviderEndpoints(
     {
       method: 'POST',
       path: '/profile/request',
-      handle: (body) => requestProfileWithRetry(channel, 'profile', body as ProfileRequest)
+      handle: (body) => requestProfileWithRetry(channel, 'profile', body as ProfileReq)
     },
     {
       method: 'POST',
       path: '/profile/manual',
-      handle: (body) => requestProfileWithRetry(channel, 'profile.manual', body as ProfileRequest)
+      handle: (body) => requestProfileWithRetry(channel, 'profile.manual', body as ProfileReq)
     },
     {
       method: 'POST',
       path: '/profile/command',
       handle: async (body) => {
-        await sendProfileWithRetry(channel, 'profile', body as ProfileCommand);
+        await sendProfileWithRetry(channel, 'profile', body as ProfileMsg);
         return { status: 'sent' };
       }
     },
     {
       method: 'POST',
       path: '/profile/route/request',
-      handle: (body) => requestRouteWithRetry(route, 'api-b', body as ScenarioRoutePing)
+      handle: (body) => requestRouteWithRetry(route, 'api-b', body as ScenarioRouteReq)
     },
     {
       method: 'POST',
       path: '/profile/route/missing',
-      handle: async (body): Promise<RouteMissingResult> => {
+      handle: async (body): Promise<RouteMissingRes> => {
         let failed = false;
         try {
           await route
-            .request('profile.route', 'missing-rid', body as ScenarioRoutePing)
-            .packetName(PacketNames.scenarioRoutePing)
+            .request('profile.route', 'missing-rid', body as ScenarioRouteReq)
+            .packetName(PacketNames.scenarioRouteReq)
             .timeout(300)
-            .submit<ScenarioRoutePong>();
+            .submit<ScenarioRouteRes>();
         } catch {
           failed = true;
         }
@@ -66,7 +66,7 @@ export function createProviderEndpoints(
       method: 'POST',
       path: '/evidence/wait',
       handle: (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
         return evidence.waitUntil((line) => line.includes(request.contains), timeout);
       }
@@ -78,36 +78,36 @@ export function createProviderEndpoints(
 async function requestProfileWithRetry(
   channel: ZLinkChannelClient,
   channelName: string,
-  request: ProfileRequest
-): Promise<ProfileReply> {
+  request: ProfileReq
+): Promise<ProfileRes> {
   return retryUntil(async () => channel
     .requestToChannel(channelName, request)
-    .packetName(PacketNames.profileRequest)
+    .packetName(PacketNames.profileReq)
     .timeout(5000)
-    .submit<ProfileReply>(), 'profile request channel route');
+    .submit<ProfileRes>(), 'profile request channel route');
 }
 
 async function sendProfileWithRetry(
   channel: ZLinkChannelClient,
   channelName: string,
-  command: ProfileCommand
+  command: ProfileMsg
 ): Promise<void> {
   await retryUntil(async () => channel
     .sendToChannel(channelName, command)
-    .packetName(PacketNames.profileCommand)
+    .packetName(PacketNames.profileMsg)
     .submit(), 'profile send channel route');
 }
 
 async function requestRouteWithRetry(
   route: ZLinkRouteClient,
   targetRid: string,
-  request: ScenarioRoutePing
-): Promise<ScenarioRoutePong> {
+  request: ScenarioRouteReq
+): Promise<ScenarioRouteRes> {
   return retryUntil(async () => route
     .request('profile.route', targetRid, request)
-    .packetName(PacketNames.scenarioRoutePing)
+    .packetName(PacketNames.scenarioRouteReq)
     .timeout(5000)
-    .submit<ScenarioRoutePong>(), 'route mesh target');
+    .submit<ScenarioRouteRes>(), 'route mesh target');
 }
 
 async function retryUntil<T>(operation: () => Promise<T>, label: string): Promise<T> {

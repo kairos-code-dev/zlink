@@ -20,7 +20,7 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 - `logs/20260630-121736-3954627` full runner에서는 `spot-outbound`, `spot-to-spot`,
   `route-mesh`, `actor-session`, `gateway-publish`, `multi-node`를 포함한 구현 mode가 통과했고,
   최종 `spot-service kotlin e2e result=passed` marker를 확인했다.
-- 이전 `ActorPush` drop은 public `boundSession().send(...)`가 actor relay path로 frame을 다시 보내던
+- 이전 `ActorPushNotify` drop은 public `boundSession().send(...)`가 actor relay path로 frame을 다시 보내던
   runtime 문제였다. 현재 구현은 bound session send를 stream session rid로 직접 보내며 private/raw
   우회를 추가하지 않았다.
 
@@ -84,10 +84,10 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   `ActorDisconnectNotified`, `ActorEntryDisconnected` evidence를 확인했다.
 - `SM-D6`: `session-a`와 `session-b`에 각각 연결한 stream session 중 request를 보낸 actor의 bound
   session에만 public `ZLinkSessionActor.boundSession().send` push가 전달되고, 다른 gateway의 session에는
-  `ActorPush`가 전달되지 않는지 확인한다. `logs/focused-actor-session-20260630-031506-2451994`에서
+  `ActorPushNotify`가 전달되지 않는지 확인한다. `logs/focused-actor-session-20260630-031506-2451994`에서
   `SM-D6` marker와 actor-session 통과 marker를 확인했다.
 - `SM-D7`: auth 전에 actor packet을 보내면 public stream connector request가 실패하고, 새 stream
-  session에서 `ActorAuthRequest`로 actor를 bind한 뒤에는 같은 actor request와 push가 정상 dispatch되는지
+  session에서 `ActorAuthReq`로 actor를 bind한 뒤에는 같은 actor request와 push가 정상 dispatch되는지
   확인한다. `logs/focused-actor-session-20260630-022502-2354570`에서 `SM-D7` marker와
   actor-session 통과 marker를 확인했다.
 - `SM-D8`: stream reconnect 중 끊긴 stream의 pending request가 실패하고, disconnect callback evidence가

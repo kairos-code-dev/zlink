@@ -3,7 +3,7 @@ import {
   ZLinkTopologyState,
   type ZLinkRegistryQuery
 } from '@zlink-systems/framework';
-import type { EvidenceWaitRequest } from '../../../Shared/messages';
+import type { EvidenceWaitReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../../Provider/Infrastructure/evidence-store';
 import type { EmbeddedOptions } from '../Configuration/embedded-options';
 import type { HttpRoute } from '../../Registry/Support/http-server';
@@ -21,7 +21,7 @@ export function createEmbeddedEndpoints(
       method: 'POST',
       path: '/evidence/wait',
       handle: (body) => {
-        const request = body as EvidenceWaitRequest;
+        const request = body as EvidenceWaitReq;
         return evidence.waitUntil(request.contains, Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000)));
       }
     },

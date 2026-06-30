@@ -1,17 +1,17 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.dispatchcenter
 
 import java.util.concurrent.LinkedBlockingQueue
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeliveryReq
 
 class DispatchWorkQueue {
-    private val poison = AssignDelivery("", "", "", "")
-    private val queue = LinkedBlockingQueue<AssignDelivery>()
+    private val poison = AssignDeliveryReq("", "", "", "")
+    private val queue = LinkedBlockingQueue<AssignDeliveryReq>()
 
-    fun enqueue(delivery: AssignDelivery) {
+    fun enqueue(delivery: AssignDeliveryReq) {
         queue.add(delivery)
     }
 
-    fun take(): AssignDelivery? {
+    fun take(): AssignDeliveryReq? {
         val delivery = queue.take()
         return if (delivery === poison) null else delivery
     }

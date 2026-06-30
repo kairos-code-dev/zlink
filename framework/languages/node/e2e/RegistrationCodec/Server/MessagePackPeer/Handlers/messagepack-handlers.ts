@@ -5,24 +5,24 @@ import type {
   ZLinkSendContext,
   ZLinkSendHandler
 } from '@zlink-systems/framework';
-import { type CodecScenarioResult, type EchoCommand, type EchoReq } from '../../../Shared/messages';
+import { type CodecScenarioRes, type EchoMsg, type EchoReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
-export class MessagePackEchoRequestHandler implements ZLinkRequestHandler<EchoReq, CodecScenarioResult> {
+export class MessagePackEchoRequestHandler implements ZLinkRequestHandler<EchoReq, CodecScenarioRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: EchoReq, context: ZLinkRequestContext): Promise<CodecScenarioResult> {
+  async handle(request: EchoReq, context: ZLinkRequestContext): Promise<CodecScenarioRes> {
     this.evidence.add(`codec-request|codec=msgpack|value=${request.value}|content=${context.contentType}`);
     return { value: `echo:${request.value}`, contentType: context.contentType ?? '<null>' };
   }
 }
 
 @Injectable()
-export class MessagePackEchoCommandHandler implements ZLinkSendHandler<EchoCommand> {
+export class MessagePackEchoCommandHandler implements ZLinkSendHandler<EchoMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(message: EchoCommand, context: ZLinkSendContext): Promise<void> {
+  async handle(message: EchoMsg, context: ZLinkSendContext): Promise<void> {
     this.evidence.add(`codec-command|codec=msgpack|id=${message.commandId}|value=${message.value}|content=${context.contentType}`);
   }
 }

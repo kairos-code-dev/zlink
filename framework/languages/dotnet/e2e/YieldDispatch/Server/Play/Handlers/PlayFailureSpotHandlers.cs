@@ -8,9 +8,9 @@ namespace YieldDispatch.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("YieldTimeoutReq")]
 internal sealed class YieldTimeoutHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<YieldProbeSpot, YieldTimeoutReq, YieldTimeoutReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, YieldTimeoutReq, YieldTimeoutRes>
 {
-    public async ValueTask<YieldTimeoutReply> HandleAsync(
+    public async ValueTask<YieldTimeoutRes> HandleAsync(
         YieldProbeSpot spot,
         YieldTimeoutReq request,
         CancellationToken cancellationToken)
@@ -26,10 +26,10 @@ internal sealed class YieldTimeoutHandler(EvidenceStore evidence)
                 .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs));
             evidence.Add(
                 $"timeout-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            await call.Yield<DelayReply>(cancellationToken);
+            await call.Yield<DelayRes>(cancellationToken);
             evidence.Add(
                 $"timeout-yield-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            return new YieldTimeoutReply("YD-E1", request.RequestId, spot.Context.SpotRid.ToString(),
+            return new YieldTimeoutRes("YD-E1", request.RequestId, spot.Context.SpotRid.ToString(),
                 spot.Context.NodeRid.ToString(), false, "");
         }
         catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
@@ -37,7 +37,7 @@ internal sealed class YieldTimeoutHandler(EvidenceStore evidence)
             evidence.Add(
                 $"timeout-yield-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}|handler=spot");
-            return new YieldTimeoutReply(
+            return new YieldTimeoutRes(
                 "YD-E1",
                 request.RequestId,
                 spot.Context.SpotRid.ToString(),
@@ -48,13 +48,13 @@ internal sealed class YieldTimeoutHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("YieldTimeoutCommand")]
+[ZLinkSpotPacketHandler("YieldTimeoutMsg")]
 internal sealed class YieldTimeoutCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<YieldProbeSpot, YieldTimeoutCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, YieldTimeoutMsg>
 {
     public async ValueTask HandleAsync(
         YieldProbeSpot spot,
-        YieldTimeoutCommand request,
+        YieldTimeoutMsg request,
         CancellationToken cancellationToken)
     {
         evidence.Add(
@@ -68,7 +68,7 @@ internal sealed class YieldTimeoutCommandHandler(EvidenceStore evidence)
                 .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs));
             evidence.Add(
                 $"timeout-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            await call.Yield<DelayReply>(cancellationToken);
+            await call.Yield<DelayRes>(cancellationToken);
             evidence.Add(
                 $"timeout-yield-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         }
@@ -83,9 +83,9 @@ internal sealed class YieldTimeoutCommandHandler(EvidenceStore evidence)
 
 [ZLinkSpotRequestHandler("YieldCancelReq")]
 internal sealed class YieldCancelHandler(EvidenceStore evidence)
-    : IZLinkSpotRequestHandler<YieldProbeSpot, YieldCancelReq, YieldCancelReply>
+    : IZLinkSpotRequestHandler<YieldProbeSpot, YieldCancelReq, YieldCancelRes>
 {
-    public async ValueTask<YieldCancelReply> HandleAsync(
+    public async ValueTask<YieldCancelRes> HandleAsync(
         YieldProbeSpot spot,
         YieldCancelReq request,
         CancellationToken cancellationToken)
@@ -103,10 +103,10 @@ internal sealed class YieldCancelHandler(EvidenceStore evidence)
                 .Timeout(TimeSpan.FromSeconds(5));
             evidence.Add(
                 $"cancel-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            await call.Yield<DelayReply>(cts.Token);
+            await call.Yield<DelayRes>(cts.Token);
             evidence.Add(
                 $"cancel-yield-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            return new YieldCancelReply("YD-E2", request.RequestId, spot.Context.SpotRid.ToString(),
+            return new YieldCancelRes("YD-E2", request.RequestId, spot.Context.SpotRid.ToString(),
                 spot.Context.NodeRid.ToString(), false, "");
         }
         catch (Exception ex) when (ex is OperationCanceledException or ZLinkFrameworkException)
@@ -114,7 +114,7 @@ internal sealed class YieldCancelHandler(EvidenceStore evidence)
             evidence.Add(
                 $"cancel-yield-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}|handler=spot");
-            return new YieldCancelReply(
+            return new YieldCancelRes(
                 "YD-E2",
                 request.RequestId,
                 spot.Context.SpotRid.ToString(),
@@ -125,13 +125,13 @@ internal sealed class YieldCancelHandler(EvidenceStore evidence)
     }
 }
 
-[ZLinkSpotPacketHandler("YieldCancelCommand")]
+[ZLinkSpotPacketHandler("YieldCancelMsg")]
 internal sealed class YieldCancelCommandHandler(EvidenceStore evidence)
-    : IZLinkSpotPacketHandler<YieldProbeSpot, YieldCancelCommand>
+    : IZLinkSpotPacketHandler<YieldProbeSpot, YieldCancelMsg>
 {
     public async ValueTask HandleAsync(
         YieldProbeSpot spot,
-        YieldCancelCommand request,
+        YieldCancelMsg request,
         CancellationToken cancellationToken)
     {
         evidence.Add(
@@ -147,7 +147,7 @@ internal sealed class YieldCancelCommandHandler(EvidenceStore evidence)
                 .Timeout(TimeSpan.FromSeconds(5));
             evidence.Add(
                 $"cancel-yield-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            await call.Yield<DelayReply>(cts.Token);
+            await call.Yield<DelayRes>(cts.Token);
             evidence.Add(
                 $"cancel-yield-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         }

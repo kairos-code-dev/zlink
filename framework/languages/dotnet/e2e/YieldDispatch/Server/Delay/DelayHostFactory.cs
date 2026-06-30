@@ -27,7 +27,7 @@ internal static class DelayHostFactory
             framework.AddClientServerChannel(YieldDispatchNames.DelayChannel)
                 .EnableServer(options.DelayEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .AddRequestHandler<DelayHandler, DelayReq, DelayReply>("DelayReq");
+                .AddRequestHandler<DelayHandler, DelayReq, DelayRes>("DelayReq");
         });
 
         var app = builder.Build();

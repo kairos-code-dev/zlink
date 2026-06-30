@@ -10,10 +10,10 @@ import systems.zlink.e2e.spotservice.shared.ActorAuthHandler;
 import systems.zlink.e2e.spotservice.shared.Contracts;
 import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.e2e.spotservice.shared.EvidenceHttpServer;
-import systems.zlink.e2e.spotservice.shared.IngressCommandHandler;
+import systems.zlink.e2e.spotservice.shared.IngressMsgHandler;
 import systems.zlink.e2e.spotservice.shared.MismatchedSpot;
 import systems.zlink.e2e.spotservice.shared.NoopIngressHandler;
-import systems.zlink.e2e.spotservice.shared.RoutePingHandler;
+import systems.zlink.e2e.spotservice.shared.RouteReqHandler;
 import systems.zlink.e2e.spotservice.shared.ScenarioActorFactory;
 import systems.zlink.e2e.spotservice.shared.ScenarioEntrySpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioSession;
@@ -93,9 +93,9 @@ public final class Program {
                 .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid))
                 .addRequestHandler(
-                    RoutePingHandler.class,
-                    Contracts.RoutePing.class,
-                    Contracts.RoutePong.class,
+                    RouteReqHandler.class,
+                    Contracts.RouteReq.class,
+                    Contracts.RouteRes.class,
                     Contracts.ROUTE_PACKET);
             String peerIngress = "play-a".equals(nodeRid)
                 ? Env.get("ZLINK_JAVA_E2E_INGRESS_B_ENDPOINT")
@@ -105,9 +105,9 @@ public final class Program {
                 .enableClient(peerIngress)
                 .setRoutingId(RoutingId.from(nodeRid));
             ingress.addSendHandler(
-                IngressCommandHandler.class,
-                Contracts.OutboundCommand.class,
-                "OutboundCommand");
+                IngressMsgHandler.class,
+                Contracts.OutboundMsg.class,
+                "OutboundMsg");
             ingress.addRequestHandler(NoopIngressHandler.class, String.class, String.class, "Noop");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))

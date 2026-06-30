@@ -15,9 +15,9 @@ inline void run_rm_a1_discovery_request_scenario (zlink::framework::channel_clie
     std::set<std::string> providers;
     for (int index = 0; index < 80 && providers.size () < 2; ++index) {
         auto task = channels.request (api_channel,
-                                      profile_request_t{.value = "auto-" + std::to_string (index)})
+                                      profile_req_t{.value = "auto-" + std::to_string (index)})
                       .timeout (std::chrono::milliseconds (2000))
-                      .async<profile_reply_t> ();
+                      .async<profile_res_t> ();
         const auto &result = task.result ();
         ensure (result.has_value (),
                 "RM-A1 request failed: "

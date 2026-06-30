@@ -64,10 +64,10 @@ class TriggerHttpServer(
     private fun requestService(): String {
         val reply = client.requestToChannel(
             Contracts.CHANNEL,
-            Contracts.WorkRequest("mon-a4-trigger"),
+            Contracts.WorkReq("mon-a4-trigger"),
         )
             .timeout(Duration.ofSeconds(3))
-            .await(Contracts.WorkReply::class.java)
+            .await(Contracts.WorkRes::class.java)
         return "{\"providerRid\":\"${reply.providerRid}\",\"value\":\"${reply.value}\"}\n"
     }
 
@@ -89,10 +89,10 @@ class TriggerHttpServer(
         try {
             val reply = lifecycle.requestToChannel(
                 Contracts.CHANNEL,
-                Contracts.WorkRequest("mon-d1-request"),
+                Contracts.WorkReq("mon-d1-request"),
             )
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply::class.java)
+                .await(Contracts.WorkRes::class.java)
             return "{\"providerRid\":\"${reply.providerRid}\",\"value\":\"${reply.value}\"}\n"
         } finally {
             lifecycle.stop()

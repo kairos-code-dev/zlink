@@ -1,4 +1,4 @@
-import type { EvidenceWaitRequest } from '../../Shared/messages';
+import type { EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
@@ -16,12 +16,12 @@ export async function runMonA5(options: ClientOptions): Promise<void> {
         ['timer=stopping']
       ],
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest),
+    } satisfies EvidenceWaitReq),
     postJson<string[]>(options.registryUrl, '/evidence/wait', {
       containsAll: ['monitor-registry|source=registry'],
       containsAnyGroups: [['kind=StatusChanged']],
       timeoutMilliseconds: 10000
-    } satisfies EvidenceWaitRequest)
+    } satisfies EvidenceWaitReq)
   ]);
 
   ensure(

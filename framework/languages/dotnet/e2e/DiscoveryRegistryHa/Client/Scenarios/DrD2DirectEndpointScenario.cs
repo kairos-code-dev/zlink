@@ -24,20 +24,20 @@ internal static class DrD2DirectEndpointScenario
             .Build();
 
         await registry.Post("/registry/members/wait")
-            .Body(new MemberEndpointWaitRequest(options.ApiAEndpoint))
+            .Body(new MemberEndpointWaitReq(options.ApiAEndpoint))
             .SubmitRawAsync();
 
         var marker = $"dr-d2-{Guid.NewGuid():N}";
         var reply = (await consumer.Post("/profile/request")
-            .Body(new ProfileRequest("dr-d2", marker))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("dr-d2", marker))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(reply.Value == "profile:dr-d2", "DR-D2 request failed.");
         ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b", "DR-D2 routed to an unexpected provider.");
         ScenarioAssert.That(reply.Marker == marker, "DR-D2 marker mismatch.");
 
         var evidenceClient = reply.ProviderRid == "api-a" ? providerA : providerB;
         var evidence = (await evidenceClient.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(marker))
+            .Body(new EvidenceWaitReq(marker))
             .SubmitAsync<string[]>()).Body;
         ScenarioAssert.That(
             evidence.Any(line => line.Contains(marker, StringComparison.Ordinal)

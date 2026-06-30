@@ -40,8 +40,8 @@ public final class EmbeddedEndpoints implements SmartLifecycle {
             server.createContext("/evidence", exchange ->
                 HttpSupport.writeJson(exchange, json, evidence.snapshot()));
             server.createContext("/evidence/wait", exchange -> {
-                Contracts.EvidenceWaitRequest request =
-                    HttpSupport.readJson(exchange, json, Contracts.EvidenceWaitRequest.class);
+                Contracts.EvidenceWaitReq request =
+                    HttpSupport.readJson(exchange, json, Contracts.EvidenceWaitReq.class);
                 HttpSupport.writeJson(exchange, json, evidence.waitFor(
                     request.contains(),
                     Duration.ofMillis(Math.max(1, request.timeoutMilliseconds()))));
@@ -58,8 +58,8 @@ public final class EmbeddedEndpoints implements SmartLifecycle {
             server.createContext("/topology-rids", exchange ->
                 HttpSupport.writeJson(exchange, json, topologyRids()));
             server.createContext("/registry/members/wait", exchange -> {
-                Contracts.MemberEndpointWaitRequest request =
-                    HttpSupport.readJson(exchange, json, Contracts.MemberEndpointWaitRequest.class);
+                Contracts.MemberEndpointWaitReq request =
+                    HttpSupport.readJson(exchange, json, Contracts.MemberEndpointWaitReq.class);
                 Wait.until(Duration.ofMillis(Math.max(1, request.timeoutMilliseconds())),
                     "timed out waiting for member endpoint " + request.endpoint(),
                     () -> await(query.memberPeers(Contracts.CHANNEL)).stream()

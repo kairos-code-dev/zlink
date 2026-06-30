@@ -17,28 +17,28 @@ internal object SmD6Scenario {
             val shadowProfile = Contracts.ActorProfile("Shadow", 6, listOf("shadow"))
             bound.connect().await()
             bound
-                .request(Contracts.ActorAuthRequest("actor-sm-d6", boundProfile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq("actor-sm-d6", boundProfile))
+                .await(Contracts.ActorAuthRes::class.java)
             shadow.connect().await()
             shadow
-                .request(Contracts.ActorAuthRequest("actor-sm-d6-shadow", shadowProfile))
-                .await(Contracts.ActorAuthReply::class.java)
+                .request(Contracts.ActorAuthReq("actor-sm-d6-shadow", shadowProfile))
+                .await(Contracts.ActorAuthRes::class.java)
 
-            val shadowPush = shadow.waitFor(Contracts.ActorPush::class.java)
+            val shadowPush = shadow.waitFor(Contracts.ActorPushNotify::class.java)
                 .timeout(Duration.ofMillis(400))
-                .submit(Contracts.ActorPush::class.java)
-            val boundPush = bound.waitFor(Contracts.ActorPush::class.java)
-                .submit(Contracts.ActorPush::class.java)
+                .submit(Contracts.ActorPushNotify::class.java)
+            val boundPush = bound.waitFor(Contracts.ActorPushNotify::class.java)
+                .submit(Contracts.ActorPushNotify::class.java)
             val reply = bound
-                .request(Contracts.ActorEchoRequest("push-bound-only", 20, boundProfile))
-                .await(Contracts.ActorEchoReply::class.java)
+                .request(Contracts.ActorEchoReq("push-bound-only", 20, boundProfile))
+                .await(Contracts.ActorEchoRes::class.java)
             val notify = bound.await(boundPush).payload()
 
             ensure(reply.actorId == "actor-sm-d6", "SM-D6 reply actor mismatch")
             ensure(notify.actorId == "actor-sm-d6", "SM-D6 push actor mismatch")
             ensure(notify.value == "push:push-bound-only", "SM-D6 push value mismatch")
             expectFailure { awaitUnchecked(shadow, shadowPush) }
-            ensure(shadow.receivedCount("ActorPush") == 0, "SM-D6 shadow session received push")
+            ensure(shadow.receivedCount("ActorPushNotify") == 0, "SM-D6 shadow session received push")
 
             println("scenario SM-D6 passed")
         } finally {

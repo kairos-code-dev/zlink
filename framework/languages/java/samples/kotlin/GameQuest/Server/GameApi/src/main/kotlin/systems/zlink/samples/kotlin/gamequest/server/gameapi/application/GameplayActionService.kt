@@ -10,7 +10,7 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.CompleteMissionRe
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CompleteMissionRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.EnterAreaReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.EnterAreaRes
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventMsg
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.KillMonsterReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.KillMonsterRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgressReq
@@ -83,7 +83,7 @@ class GameplayActionService(
         return quests.sync(missionName, playerId)
     }
 
-    private fun storeAndPublish(candidate: GameplayEventEnvelope): GameplayEventEnvelope {
+    private fun storeAndPublish(candidate: GameplayEventMsg): GameplayEventMsg {
         val stored = store.getOrAddGameplayEvent(candidate)
         events.publish(stored)
         System.err.printf(
@@ -94,11 +94,11 @@ class GameplayActionService(
     }
 
     interface GameplayEventStore {
-        fun getOrAddGameplayEvent(candidate: GameplayEventEnvelope): GameplayEventEnvelope
+        fun getOrAddGameplayEvent(candidate: GameplayEventMsg): GameplayEventMsg
     }
 
     interface GameplayEventPublisher {
-        fun publish(event: GameplayEventEnvelope)
+        fun publish(event: GameplayEventMsg)
     }
 
     interface QuestProgressSynchronizer {

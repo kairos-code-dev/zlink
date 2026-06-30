@@ -19,6 +19,7 @@
 #include "Scenarios/rl_b4_runtime_drain_scenario.hpp"
 #include "Scenarios/rl_c4_registry_outage_scenario.hpp"
 #include "Scenarios/rl_d1_high_fanout_scenario.hpp"
+#include "Scenarios/rl_d2_observer_fault_scenario.hpp"
 
 #include <iostream>
 #include <memory>
@@ -92,6 +93,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 rm_client::run_registry_outage_scenario (channels);
             } else if (scenario == "resilience-stress") {
                 rm_client::run_resilience_stress_scenario (channels);
+            } else if (scenario == "observer-fault") {
+                rm_client::run_observer_fault_scenario (channels);
             } else {
                 throw std::runtime_error ("unknown scenario " + scenario);
             }

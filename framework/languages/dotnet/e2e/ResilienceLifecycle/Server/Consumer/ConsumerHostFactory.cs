@@ -40,7 +40,7 @@ internal static class ConsumerHostFactory
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
         app.MapPost("/profile/request", async (
-            ProfileRequest request,
+            ProfileReq request,
             IZLinkChannelClient channel) =>
         {
             var reply = await RequestProfileWithRetryAsync(channel, request);
@@ -48,15 +48,15 @@ internal static class ConsumerHostFactory
         });
         app.MapPost("/profile/request/timeout/{milliseconds:int}", async (
             int milliseconds,
-            ProfileRequest request,
+            ProfileReq request,
             IZLinkChannelClient channel) =>
         {
             try
             {
                 var reply = await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
-                    .PacketName("ProfileRequest")
+                    .PacketName("ProfileReq")
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
-                    .Async<ProfileReply>();
+                    .Async<ProfileRes>();
                 return Results.Ok(reply);
             }
             catch (TimeoutException)
@@ -65,15 +65,15 @@ internal static class ConsumerHostFactory
             }
         });
         app.MapPost("/profile/request/missing", async (
-            ProfileRequest request,
+            ProfileReq request,
             IZLinkChannelClient channel) =>
         {
             try
             {
                 var reply = await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
-                    .PacketName("MissingProfileRequest")
+                    .PacketName("MissingProfileReq")
                     .Timeout(TimeSpan.FromSeconds(3))
-                    .Async<ProfileReply>();
+                    .Async<ProfileRes>();
                 return Results.Ok(reply);
             }
             catch (Exception ex)
@@ -82,15 +82,15 @@ internal static class ConsumerHostFactory
             }
         });
         app.MapPost("/profile/command", async (
-            ProfileCommand command,
+            ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
             await channel.SendToChannel(ResilienceLifecycleNames.Channel, command)
-                .PacketName("ProfileCommand")
+                .PacketName("ProfileMsg")
                 .Async();
             return Results.Ok(new { status = "sent" });
         });
-        app.MapPost("/profile/request/new-client", async (ProfileRequest request) =>
+        app.MapPost("/profile/request/new-client", async (ProfileReq request) =>
         {
             using var host = CreateClientHost(options, $"storm-{request.Marker}");
             await host.StartAsync();
@@ -139,9 +139,9 @@ internal static class ConsumerHostFactory
         }
     }
 
-    static async Task<ProfileReply> RequestProfileWithRetryAsync(
+    static async Task<ProfileRes> RequestProfileWithRetryAsync(
         IZLinkChannelClient channel,
-        ProfileRequest request)
+        ProfileReq request)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         Exception? last = null;
@@ -150,9 +150,9 @@ internal static class ConsumerHostFactory
             try
             {
                 return await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
-                    .PacketName("ProfileRequest")
+                    .PacketName("ProfileReq")
                     .Timeout(TimeSpan.FromSeconds(5))
-                    .Async<ProfileReply>();
+                    .Async<ProfileRes>();
             }
             catch (ZLinkFrameworkException ex) when (IsRetriableStartupFailure(ex))
             {

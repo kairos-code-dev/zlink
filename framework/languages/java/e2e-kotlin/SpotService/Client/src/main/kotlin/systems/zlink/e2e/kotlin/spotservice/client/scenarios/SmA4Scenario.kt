@@ -12,18 +12,18 @@ internal object SmA4Scenario {
         val first = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("owner-stable-1"),
+                Contracts.StateReq("owner-stable-1"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         val second = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("owner-stable-2"),
+                Contracts.StateReq("owner-stable-2"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         ensure(first.nodeRid == "play-a", "SM-A4 first owner mismatch")
         ensure(second.nodeRid == first.nodeRid, "SM-A4 owner was not stable")

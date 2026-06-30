@@ -112,6 +112,96 @@ class direct_spot_route_handler_t
     zlink::framework::route_client_t &_routes;
 };
 
+class spot_stage_probe_route_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::route_client_t>;
+
+    explicit spot_stage_probe_route_handler_t (zlink::framework::route_client_t &routes) :
+        _routes (routes)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    {
+        const auto request =
+          nlohmann::json::parse (http.body).get<e2e::spot_stage_probe_req_t> ();
+        auto reply =
+          _routes
+            .request (e2e::route_channel,
+                      zlink::routing_id_t::from (owner_node_rid_from_spot_rid (
+                        request.spot_rid)),
+                      zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                      e2e::stage_probe_req_t{.marker = request.marker,
+                                             .delta = request.delta})
+            .packet_name ("StageProbeReq")
+            .timeout (std::chrono::seconds (5))
+            .async<e2e::state_res_t> ()
+            .result ();
+        if (!reply) {
+            throw zlink::framework::framework_exception_t (
+              reply.error_kind (),
+              reply.error () ? reply.error ()->what () : "StageProbeReq route failed");
+        }
+
+        zlink::framework::http_response_t response;
+        response.body = nlohmann::json (reply.value ()).dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::route_client_t &_routes;
+};
+
+class spot_stage_timer_route_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::route_client_t,
+                                          scenario_state_t>;
+
+    spot_stage_timer_route_handler_t (zlink::framework::route_client_t &routes,
+                                      scenario_state_t &state) :
+        _routes (routes), _state (state)
+    {
+    }
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    {
+        const auto request =
+          nlohmann::json::parse (http.body).get<e2e::spot_stage_timer_req_t> ();
+        auto sent =
+          _routes
+            .send (e2e::route_channel,
+                   zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
+                   zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                   e2e::stage_timer_start_msg_t{.name = request.name,
+                                                .period_ms = request.period_ms})
+            .packet_name ("StageTimerStartMsg")
+            .async ()
+            .result ();
+        if (!sent) {
+            throw zlink::framework::framework_exception_t (
+              sent.error_kind (),
+              sent.error () ? sent.error ()->what () : "StageTimerStartMsg route failed");
+        }
+
+        zlink::framework::http_response_t response;
+        response.body =
+          nlohmann::json (e2e::spot_stage_timer_res_t{.spot_rid = request.spot_rid,
+                                                      .name = request.name,
+                                                      .started = true,
+                                                      .evidence = _state.snapshot ()})
+            .dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::route_client_t &_routes;
+    scenario_state_t &_state;
+};
+
 class spot_state_command_route_handler_t
 {
   public:
@@ -131,14 +221,14 @@ class spot_state_command_route_handler_t
           _routes
             .send (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                    zlink::framework::spot_rid_t::from_string (request.spot_rid),
-                   e2e::direct_spot_command_t{"sm-c1-client", request.marker})
-            .packet_name ("DirectSpotCommand")
+                   e2e::direct_spot_msg_t{"sm-c1-client", request.marker})
+            .packet_name ("DirectSpotMsg")
             .async ()
             .result ();
         if (!sent) {
             throw zlink::framework::framework_exception_t (
               sent.error_kind (),
-              sent.error () ? sent.error ()->what () : "DirectSpotCommand failed");
+              sent.error () ? sent.error ()->what () : "DirectSpotMsg failed");
         }
 
         zlink::framework::http_response_t response;
@@ -170,7 +260,7 @@ class spot_publish_route_handler_t
         auto published =
           _publisher
             .publish (e2e::publisher_channel, e2e::mesh_topic,
-                      e2e::mesh_event_t{"evt-sm-c1", request.marker})
+                      e2e::mesh_msg_t{"evt-sm-c1", request.marker})
             .result ();
         if (!published) {
             throw zlink::framework::framework_exception_t (
@@ -224,7 +314,7 @@ class spot_publish_wait_handler_t
                                       const e2e::spot_publish_route_req_t &request)
     {
         for (const auto &entry : snapshot.entries) {
-            if (entry.marker == "MeshEventReceived" && entry.spot_rid == request.spot_rid
+            if (entry.marker == "MeshMsgReceived" && entry.spot_rid == request.spot_rid
                 && entry.value == "evt-sm-c4:" + request.marker) {
                 return true;
             }
@@ -342,7 +432,7 @@ class spot_idle_close_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_idle_close_req_t> ();
         const auto created = _spots.get_or_create_spot (
           e2e::user_spot, zlink::framework::spot_rid_t::from_string (request.spot_rid),
-          e2e::idle_close_command_t{.name = request.name, .period_ms = request.period_ms});
+          e2e::idle_close_msg_t{.name = request.name, .period_ms = request.period_ms});
         if (created.state != zlink::framework::spot_create_state_t::created) {
             throw std::runtime_error ("idle close spot already exists");
         }
@@ -411,7 +501,7 @@ class spot_overrun_start_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_overrun_start_req_t> ();
         const auto created = _spots.get_or_create_spot (
           e2e::user_spot, zlink::framework::spot_rid_t::from_string (request.spot_rid),
-          e2e::overrun_timer_command_t{
+          e2e::overrun_timer_msg_t{
             .name = request.name, .policy = request.policy, .period_ms = request.period_ms});
         if (created.state != zlink::framework::spot_create_state_t::created) {
             throw std::runtime_error ("overrun timer spot already exists");
@@ -495,7 +585,7 @@ class spot_missing_route_handler_t
             .send (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                    zlink::framework::spot_rid_t::from_string (request.spot_rid),
                    e2e::unhandled_spot_req_t{request.value + ":send"})
-            .packet_name ("MissingSpotSend")
+            .packet_name ("MissingSpotMsg")
             .async ()
             .result ();
 
@@ -576,7 +666,7 @@ class spot_missing_handler_command_handler_t
                    zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
                    zlink::framework::spot_rid_t::from_string (request.spot_rid),
                    e2e::unhandled_spot_req_t{request.marker})
-            .packet_name ("MissingSpotCommand")
+            .packet_name ("MissingSpotMsg")
             .async ()
             .result ();
 

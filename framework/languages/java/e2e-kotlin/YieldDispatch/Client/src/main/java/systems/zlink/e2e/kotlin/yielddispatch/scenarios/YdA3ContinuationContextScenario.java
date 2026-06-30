@@ -16,11 +16,11 @@ public final class YdA3ContinuationContextScenario {
         String actorA,
         ZLinkStreamConnector roomB,
         String actorB) {
-        CompletableFuture<Contracts.ProbeReply> slow = CompletableFuture.supplyAsync(() ->
+        CompletableFuture<Contracts.ProbeRes> slow = CompletableFuture.supplyAsync(() ->
             ClientStreamSupport.request(roomA, actorA, "cross-slow", 900));
         ClientStreamSupport.sleep(120);
         long started = System.nanoTime();
-        Contracts.ProbeReply other = ClientStreamSupport.request(roomB, actorB, "cross-other", 0);
+        Contracts.ProbeRes other = ClientStreamSupport.request(roomB, actorB, "cross-other", 0);
         long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
         slow.join();
         ScenarioAssert.that(

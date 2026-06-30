@@ -47,7 +47,7 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
     }
     auto lifecycle_evidence =
       play_a.post ("/evidence/wait")
-        .body (evidence_wait_request_t{
+        .body (evidence_wait_req_t{
           .contains_all = {"SpotLifecycleClosed", user_spot_rid_for_key ("sm-a6-life")},
           .timeout_milliseconds = 5000})
         .submit_raw ()

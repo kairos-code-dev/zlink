@@ -48,7 +48,7 @@ inline void add_bingo_protobuf_codecs (framework::codec_options_builder_t codecs
     add_bingo_protobuf_serializer<state_notify_t> (codecs);
     add_bingo_protobuf_serializer<game_ended_notify_t> (codecs);
     add_bingo_protobuf_serializer<bingo_reward_announced_notify_t> (codecs);
-    add_bingo_protobuf_serializer<bingo_reward_acquired_event_t> (codecs);
+    add_bingo_protobuf_serializer<bingo_reward_acquired_msg_t> (codecs);
 }
 
 } // namespace zlink::samples::bingo

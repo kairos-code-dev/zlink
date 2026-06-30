@@ -80,7 +80,7 @@ int main ()
           client.request (yd::ensure_spot_req_t{.spot_rid = spot_rid})
             .packet_name (yd::ensure_spot_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
-            .submit<yd::ensure_spot_reply_t> ();
+            .submit<yd::ensure_spot_res_t> ();
         ensure_result (spot, "YD-A ensure spot request failed");
         ensure (spot.value ().spot_rid == spot_rid, "YD-A ensure spot reply mismatch");
         const yd_client::yield_actor_scenario_context_t actors{
@@ -90,7 +90,7 @@ int main ()
                                                       .actor_ids = {actors.actor_a, actors.actor_b}})
             .packet_name (yd::bind_yield_actors_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
-            .submit<yd::bind_yield_actors_reply_t> ();
+            .submit<yd::bind_yield_actors_res_t> ();
         ensure (static_cast<bool> (bound_actors), "YD-B bind actors failed");
         ensure (bound_actors.value ().actors.size () == 2, "YD-B bind actor count mismatch");
         auto observer_bound_actors =
@@ -99,7 +99,7 @@ int main ()
                                                 .actor_ids = {actors.actor_a, actors.actor_b}})
             .packet_name (yd::bind_yield_actors_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
-            .submit<yd::bind_yield_actors_reply_t> ();
+            .submit<yd::bind_yield_actors_res_t> ();
         ensure (static_cast<bool> (observer_bound_actors),
                 "YD-B observer bind actors failed");
 
@@ -117,7 +117,7 @@ int main ()
           client.request (yd::ensure_spot_req_t{.spot_rid = timer_spot_rid})
             .packet_name (yd::ensure_spot_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
-            .submit<yd::ensure_spot_reply_t> ();
+            .submit<yd::ensure_spot_res_t> ();
         ensure (static_cast<bool> (timer_spot), "YD-C ensure timer spot request failed");
         ensure (timer_spot.value ().spot_rid == timer_spot_rid,
                 "YD-C ensure timer spot reply mismatch");

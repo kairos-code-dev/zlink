@@ -32,7 +32,7 @@ import type {
 } from '../../../../Domain/Bingo/bingo-room-game';
 import type { BingoRoomSettings as BingoRoomRuntimeSettings } from '../../../../Domain/Bingo/bingo-room-models';
 import type {
-  BingoRewardAcquiredEvent,
+  BingoRewardAcquiredMsg,
   BingoRoomJoinReq,
   BingoRoomJoinRes,
   SubmitBingoCardReq,
@@ -174,7 +174,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     return state;
   }
 
-  async announceReward(event: BingoRewardAcquiredEvent): Promise<void> {
+  async announceReward(event: BingoRewardAcquiredMsg): Promise<void> {
     if (
       !this.isObserverRoom() ||
       this.settings.observedRoomId !== event.roomId ||

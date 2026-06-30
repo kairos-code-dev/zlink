@@ -2,11 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { ZLinkActorManager, ZLinkHandlerContext, ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import type {
-  BindYieldActorsReply,
+  BindYieldActorsRes,
   BindYieldActorsReq,
-  EnsureSpotReply,
+  EnsureSpotRes,
   EnsureSpotReq,
-  YieldEvidenceReply,
+  YieldEvidenceRes,
   YieldEvidenceReq,
   YieldEvidenceWaitReq
 } from '../../../Shared/messages';
@@ -15,10 +15,10 @@ import { EvidenceStore } from '../../Support/evidence-store';
 import { YieldProbeSpot } from '../Spots/yield-probe-spot';
 
 @Injectable()
-export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotReq, EnsureSpotReply> {
+export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotReq, EnsureSpotRes> {
   constructor(@Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager) {}
 
-  async handle(request: EnsureSpotReq, context: ZLinkHandlerContext): Promise<EnsureSpotReply> {
+  async handle(request: EnsureSpotReq, context: ZLinkHandlerContext): Promise<EnsureSpotRes> {
     void context;
     const created = await this.spots.getOrCreate(YieldProbeSpot, request.spotRid);
     return {
@@ -29,10 +29,10 @@ export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotR
 }
 
 @Injectable()
-export class BindYieldActorsControlHandler implements ZLinkRequestHandler<BindYieldActorsReq, BindYieldActorsReply> {
+export class BindYieldActorsControlHandler implements ZLinkRequestHandler<BindYieldActorsReq, BindYieldActorsRes> {
   constructor(@Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager) {}
 
-  async handle(request: BindYieldActorsReq, context: ZLinkHandlerContext): Promise<BindYieldActorsReply> {
+  async handle(request: BindYieldActorsReq, context: ZLinkHandlerContext): Promise<BindYieldActorsRes> {
     void context;
     const actors = await Promise.all(request.actorIds.map(async (actorId) => {
       const actor = await this.actors.getOrCreate(actorId, YieldDispatchNames.actorType, { spotRid: request.spotRid });
@@ -50,10 +50,10 @@ export class BindYieldActorsControlHandler implements ZLinkRequestHandler<BindYi
 }
 
 @Injectable()
-export class YieldEvidenceControlHandler implements ZLinkRequestHandler<YieldEvidenceReq, YieldEvidenceReply> {
+export class YieldEvidenceControlHandler implements ZLinkRequestHandler<YieldEvidenceReq, YieldEvidenceRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: YieldEvidenceReq, context: ZLinkHandlerContext): Promise<YieldEvidenceReply> {
+  async handle(request: YieldEvidenceReq, context: ZLinkHandlerContext): Promise<YieldEvidenceRes> {
     void context;
     return {
       requestId: request.requestId,
@@ -63,10 +63,10 @@ export class YieldEvidenceControlHandler implements ZLinkRequestHandler<YieldEvi
 }
 
 @Injectable()
-export class YieldEvidenceWaitControlHandler implements ZLinkRequestHandler<YieldEvidenceWaitReq, YieldEvidenceReply> {
+export class YieldEvidenceWaitControlHandler implements ZLinkRequestHandler<YieldEvidenceWaitReq, YieldEvidenceRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: YieldEvidenceWaitReq, context: ZLinkHandlerContext): Promise<YieldEvidenceReply> {
+  async handle(request: YieldEvidenceWaitReq, context: ZLinkHandlerContext): Promise<YieldEvidenceRes> {
     void context;
     const timeoutMs = Math.max(1, Math.min(request.timeoutMilliseconds ?? 20000, 30000));
     const snapshot = await this.evidence.waitUntil((entries) =>

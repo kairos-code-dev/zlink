@@ -5,19 +5,19 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 
 public final class EntryActorEchoHandler {
-    @ZLinkSpotActorRequest(packetName = "ActorEchoRequest")
-    public Contracts.ActorEchoReply handle(
+    @ZLinkSpotActorRequest(packetName = "ActorEchoReq")
+    public Contracts.ActorEchoRes handle(
         ScenarioEntrySpot spot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
-        Contracts.ActorEchoRequest request,
+        Contracts.ActorEchoReq request,
         CancellationToken cancellationToken) {
         int seq = actor.nextSequence();
-        spot.record("ActorEntryRequest", actor.actorId() + "/" + request.value() + "#" + seq);
+        spot.record("ActorEntryReq", actor.actorId() + "/" + request.value() + "#" + seq);
         actor.context().boundSession()
-            .send(new Contracts.ActorPush(actor.actorId(), "entry", "push:" + request.value(), request.seq(), seq))
+            .send(new Contracts.ActorPushNotify(actor.actorId(), "entry", "push:" + request.value(), request.seq(), seq))
             .submit();
-        return new Contracts.ActorEchoReply(
+        return new Contracts.ActorEchoRes(
             actor.actorId(),
             "entry",
             spot.nodeRid(),

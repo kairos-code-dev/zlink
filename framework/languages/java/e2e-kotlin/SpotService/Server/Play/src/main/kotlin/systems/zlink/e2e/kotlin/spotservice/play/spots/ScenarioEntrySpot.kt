@@ -32,7 +32,7 @@ class ScenarioEntrySpot(
         cancellationToken: CancellationToken
     ) {
         if (!createRequest.isEmpty) {
-            val request = createRequest.decode(Contracts.ActorAuthRequest::class.java)
+            val request = createRequest.decode(Contracts.ActorAuthReq::class.java)
             actor.applyProfile(request.profile)
             evidence.record(
                 "ActorCreatedPayload",

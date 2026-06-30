@@ -24,7 +24,7 @@ public final class YieldEntrySpot implements ZLinkEntrySpot<YieldActor> {
         context.handlers().addActorRequest(YieldProbeHandlers.ActorYieldHandler.class);
         context.handlers().addActorRequest(YieldProbeHandlers.ActorFastHandler.class);
         context.handlers().addActorRequest(YieldProbeHandlers.ActorJoinYieldHandler.class);
-        context.handlers().addActorRequest(YieldProbeHandlers.ActorPushYieldHandler.class);
+        context.handlers().addActorRequest(YieldProbeHandlers.ActorPushNotifyYieldHandler.class);
     }
 
     @Override

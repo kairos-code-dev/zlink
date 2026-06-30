@@ -55,7 +55,7 @@ public final class EmbeddedApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(options.logDir() + "/" + options.rid() + "-flow.log")
                 .traceLabel(options.rid());
-            framework.addHandlersFromPackageOf(ProfileRequestHandler.class);
+            framework.addHandlersFromPackageOf(ProfileReqHandler.class);
             for (String registry : options.discoveryEndpoints()) {
                 framework.useDiscovery().addRegistryEndpoint(registry);
             }
@@ -67,8 +67,8 @@ public final class EmbeddedApplication {
     }
 
     @Bean
-    ProfileRequestHandler profileRequestHandler(EmbeddedEvidenceStore evidence) {
-        return new ProfileRequestHandler(evidence);
+    ProfileReqHandler profileRequestHandler(EmbeddedEvidenceStore evidence) {
+        return new ProfileReqHandler(evidence);
     }
 
     @Bean

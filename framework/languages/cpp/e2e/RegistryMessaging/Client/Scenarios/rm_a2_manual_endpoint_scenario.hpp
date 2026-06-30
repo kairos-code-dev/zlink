@@ -13,9 +13,9 @@ inline void run_rm_a2_manual_endpoint_scenario (zlink::framework::channel_client
 {
     auto request = channels
                      .request ("registry.messaging.api.manual",
-                               profile_request_t{.value = "manual"})
+                               profile_req_t{.value = "manual"})
                      .timeout (std::chrono::milliseconds (2000))
-                     .async<profile_reply_t> ();
+                     .async<profile_res_t> ();
     ensure (request.result ().has_value (), "RM-A2 request failed");
     ensure (request.result ().value ().provider_rid == "api-a",
             "RM-A2 did not use the requested provider endpoint");

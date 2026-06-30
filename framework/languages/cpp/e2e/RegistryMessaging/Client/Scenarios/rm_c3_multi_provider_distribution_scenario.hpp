@@ -21,8 +21,8 @@ inline void run_rm_c3_multi_provider_distribution_scenario (
     std::map<std::string, int> counts;
     for (int index = 0; index < 60; ++index) {
         const auto value = marker + "-" + std::to_string (index);
-        const auto reply = post_json<profile_request_t, profile_reply_t> (
-          consumer, "/profile/request", profile_request_t{.value = value});
+        const auto reply = post_json<profile_req_t, profile_res_t> (
+          consumer, "/profile/request", profile_req_t{.value = value});
         ensure (reply.value == "profile:" + value, "RM-C3 reply value mismatch");
         ensure (reply.provider_rid == "api-a" || reply.provider_rid == "api-b",
                 "RM-C3 reply provider mismatch");
@@ -34,10 +34,10 @@ inline void run_rm_c3_multi_provider_distribution_scenario (
     const auto after_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
     const auto after_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
     const auto evidence_delta =
-      evidence_value_prefix_count (after_a, "ProfileRequest", marker)
-      - evidence_value_prefix_count (before_a, "ProfileRequest", marker)
-      + evidence_value_prefix_count (after_b, "ProfileRequest", marker)
-      - evidence_value_prefix_count (before_b, "ProfileRequest", marker);
+      evidence_value_prefix_count (after_a, "ProfileReq", marker)
+      - evidence_value_prefix_count (before_a, "ProfileReq", marker)
+      + evidence_value_prefix_count (after_b, "ProfileReq", marker)
+      - evidence_value_prefix_count (before_b, "ProfileReq", marker);
     ensure (evidence_delta == 60, "RM-C3 provider evidence count mismatch");
     std::cout << "scenario RM-C3 passed\n";
 }

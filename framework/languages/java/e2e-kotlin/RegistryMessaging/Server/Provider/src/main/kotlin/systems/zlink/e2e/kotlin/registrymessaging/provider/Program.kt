@@ -16,13 +16,13 @@ import systems.zlink.e2e.kotlin.registrymessaging.provider.Handlers.ProfileReque
 import systems.zlink.e2e.kotlin.registrymessaging.provider.Handlers.RoutePingHandler
 import systems.zlink.e2e.kotlin.registrymessaging.provider.Infrastructure.EvidenceStore
 import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
-import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileCommand
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRequest
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePing
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePong
+import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.PayloadReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileMsg
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingReq
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingRes
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -66,19 +66,19 @@ class ProviderApplication {
                     .setRoutingId(RoutingId.from(options.rid))
                 channel.addRequestHandler(
                     ProfileRequestHandler::class.java,
-                    ProfileRequest::class.java,
-                    ProfileReply::class.java,
+                    ProfileReq::class.java,
+                    ProfileRes::class.java,
                     Contracts.PROFILE_REQUEST_PACKET,
                 )
                 channel.addRequestHandler(
                     PayloadRequestHandler::class.java,
-                    PayloadRequest::class.java,
-                    PayloadReply::class.java,
+                    PayloadReq::class.java,
+                    PayloadRes::class.java,
                     Contracts.PAYLOAD_REQUEST_PACKET,
                 )
                 channel.addSendHandler(
                     ProfileCommandHandler::class.java,
-                    ProfileCommand::class.java,
+                    ProfileMsg::class.java,
                     Contracts.PROFILE_COMMAND_PACKET,
                 )
             }
@@ -97,8 +97,8 @@ class ProviderApplication {
                 }
                 route.addRequestHandler(
                     RoutePingHandler::class.java,
-                    ScenarioRoutePing::class.java,
-                    ScenarioRoutePong::class.java,
+                    ScenarioRoutePingReq::class.java,
+                    ScenarioRoutePingRes::class.java,
                     Contracts.ROUTE_PACKET,
                 )
             }

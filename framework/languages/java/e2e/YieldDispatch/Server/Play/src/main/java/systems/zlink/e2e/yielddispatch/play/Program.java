@@ -73,12 +73,12 @@ public final class Program {
             }
             route.addRequestHandler(
                 PlayBindActorsHandler.class,
-                Contracts.BindActorsRequest.class,
-                Contracts.BindActorsReply.class);
+                Contracts.BindActorsReq.class,
+                Contracts.BindActorsRes.class);
             route.addRequestHandler(
                 EnsureSpotHandler.Play.class,
-                Contracts.EnsureSpotRequest.class,
-                Contracts.EnsureSpotReply.class);
+                Contracts.EnsureSpotReq.class,
+                Contracts.EnsureSpotRes.class);
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(Env.get("ZLINK_JAVA_E2E_DELAY_ENDPOINT"));
             options.useRegistrySpotRemoteAddresses(Contracts.SPOT_MESH)
@@ -123,28 +123,28 @@ public final class Program {
     }
 
     @Bean
-    YieldProbeHandlers.WorkerYieldCommandHandler workerYieldCommandHandler(EvidenceStore evidence) {
-        return new YieldProbeHandlers.WorkerYieldCommandHandler(evidence);
+    YieldProbeHandlers.WorkerYieldMsgHandler workerYieldMsgHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.WorkerYieldMsgHandler(evidence);
     }
 
     @Bean
-    YieldProbeHandlers.ProbeCommandHandler probeCommandHandler(EvidenceStore evidence) {
-        return new YieldProbeHandlers.ProbeCommandHandler(evidence);
+    YieldProbeHandlers.ProbeMsgHandler probeCommandHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.ProbeMsgHandler(evidence);
     }
 
     @Bean
-    YieldProbeHandlers.YieldCommandHandler yieldCommandHandler(EvidenceStore evidence) {
-        return new YieldProbeHandlers.YieldCommandHandler(evidence);
+    YieldProbeHandlers.YieldMsgHandler yieldCommandHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.YieldMsgHandler(evidence);
     }
 
     @Bean
-    YieldProbeHandlers.YieldTimeoutCommandHandler yieldTimeoutCommandHandler(EvidenceStore evidence) {
-        return new YieldProbeHandlers.YieldTimeoutCommandHandler(evidence);
+    YieldProbeHandlers.YieldTimeoutMsgHandler yieldTimeoutCommandHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.YieldTimeoutMsgHandler(evidence);
     }
 
     @Bean
-    YieldProbeHandlers.YieldCancelCommandHandler yieldCancelCommandHandler(EvidenceStore evidence) {
-        return new YieldProbeHandlers.YieldCancelCommandHandler(evidence);
+    YieldProbeHandlers.YieldCancelMsgHandler yieldCancelCommandHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.YieldCancelMsgHandler(evidence);
     }
 
     @Bean
@@ -153,13 +153,13 @@ public final class Program {
     }
 
     @Bean
-    YieldProbeHandlers.TimerStartCommandHandler timerStartCommandHandler() {
-        return new YieldProbeHandlers.TimerStartCommandHandler();
+    YieldProbeHandlers.TimerStartMsgHandler timerStartCommandHandler() {
+        return new YieldProbeHandlers.TimerStartMsgHandler();
     }
 
     @Bean
-    YieldProbeHandlers.TimerStopCommandHandler timerStopCommandHandler() {
-        return new YieldProbeHandlers.TimerStopCommandHandler();
+    YieldProbeHandlers.TimerStopMsgHandler timerStopCommandHandler() {
+        return new YieldProbeHandlers.TimerStopMsgHandler();
     }
 
     @Bean
@@ -183,8 +183,8 @@ public final class Program {
     }
 
     @Bean
-    YieldProbeHandlers.ActorPushYieldHandler actorPushYieldHandler(EvidenceStore evidence) {
-        return new YieldProbeHandlers.ActorPushYieldHandler(evidence);
+    YieldProbeHandlers.ActorPushNotifyYieldHandler actorPushYieldHandler(EvidenceStore evidence) {
+        return new YieldProbeHandlers.ActorPushNotifyYieldHandler(evidence);
     }
 
     @Bean

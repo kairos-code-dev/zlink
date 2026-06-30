@@ -11,12 +11,12 @@ import org.springframework.stereotype.Component
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusAck
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChanged
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedRes
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatuses
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDelivery
-import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryResult
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryReq
+import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryRes
 
 @Component
 class DispatchWorker(
@@ -61,7 +61,7 @@ class DispatchWorker(
         }
     }
 
-    private suspend fun dispatch(request: AssignDelivery) {
+    private suspend fun dispatch(request: AssignDeliveryReq) {
         System.err.println(
             "deliverydispatch dispatch: assign delivery=${request.deliveryId} customer=${request.customerId}",
         )
@@ -76,8 +76,8 @@ class DispatchWorker(
         publishStatus(request.deliveryId, DeliveryStatuses.Reassigned, SampleNames.CourierB)
         val second = requestWithRetry(
             SampleNames.courierChannel(SampleNames.CourierB),
-            OfferDelivery(request.deliveryId, request.pickupAddress, request.dropoffAddress),
-            OfferDeliveryResult::class.java,
+            OfferDeliveryReq(request.deliveryId, request.pickupAddress, request.dropoffAddress),
+            OfferDeliveryRes::class.java,
             null,
             SampleTimings.MaxChannelAttempts,
         )
@@ -88,12 +88,12 @@ class DispatchWorker(
         continueAccepted(request.deliveryId, second.courierId)
     }
 
-    private suspend fun tryOffer(request: AssignDelivery, courierId: String): OfferDeliveryResult =
+    private suspend fun tryOffer(request: AssignDeliveryReq, courierId: String): OfferDeliveryRes =
         try {
             requestWithRetry(
                 SampleNames.courierChannel(courierId),
-                OfferDelivery(request.deliveryId, request.pickupAddress, request.dropoffAddress),
-                OfferDeliveryResult::class.java,
+                OfferDeliveryReq(request.deliveryId, request.pickupAddress, request.dropoffAddress),
+                OfferDeliveryRes::class.java,
                 SampleTimings.DispatchTimeout,
                 1,
             )
@@ -101,7 +101,7 @@ class DispatchWorker(
             System.err.println(
                 "deliverydispatch dispatch: courier timeout delivery=${request.deliveryId} courier=$courierId",
             )
-            OfferDeliveryResult(request.deliveryId, courierId, false, error.message)
+            OfferDeliveryRes(request.deliveryId, courierId, false, error.message)
         }
 
     private suspend fun continueAccepted(deliveryId: String, courierId: String) {
@@ -113,8 +113,8 @@ class DispatchWorker(
     private suspend fun publishStatus(deliveryId: String, status: String, courierId: String?) {
         requestWithRetry(
             SampleNames.TrackingChannel,
-            DeliveryStatusChanged(deliveryId, status, courierId, System.currentTimeMillis()),
-            DeliveryStatusAck::class.java,
+            DeliveryStatusChangedReq(deliveryId, status, courierId, System.currentTimeMillis()),
+            DeliveryStatusChangedRes::class.java,
             null,
             SampleTimings.MaxChannelAttempts,
         )

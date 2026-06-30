@@ -12,16 +12,16 @@ internal static class MonC1DispatchFailureScenario
         using var throwService = ZLinkHttpClient.Create(options.ThrowServiceUrl).Build();
 
         var failureReply = (await trigger.Post("/profile/request/throw")
-            .Body(new ProfileRequest("throw", "mon-c1-request"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("throw", "mon-c1-request"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(failureReply.ProviderRid == "svc-throw",
             "MON-C1 direct trigger did not hit throwing-monitor service.");
 
         var (throwServiceEvidence, throwStderr) = await WaitForDispatchFailureEvidenceAsync(trigger, throwService);
 
         var recoveryReply = (await trigger.Post("/profile/request/throw")
-            .Body(new ProfileRequest("throw", "mon-c1-recovery"))
-            .SubmitAsync<ProfileReply>()).Body;
+            .Body(new ProfileReq("throw", "mon-c1-recovery"))
+            .SubmitAsync<ProfileRes>()).Body;
         ScenarioAssert.That(recoveryReply.Value == "profile:throw",
             "MON-C1 messaging did not recover after monitoring handler failure.");
 
@@ -44,12 +44,12 @@ internal static class MonC1DispatchFailureScenario
             ZLinkHttpClient throwService)
     {
         var evidenceTask = throwService.Post("/evidence/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 [],
                 [["monitor-socket|"], ["monitor-throw|"]]))
             .SubmitAsync<string[]>();
         var stderrTask = trigger.Post("/logs/throw-stderr/wait")
-            .Body(new EvidenceWaitRequest(
+            .Body(new EvidenceWaitReq(
                 [],
                 [["monitoring-event-dispatch"], ["monitoring dispatch failure for e2e"]]))
             .SubmitAsync<string[]>();

@@ -30,7 +30,7 @@ public final class ScenarioAssert {
 
     public static String[] waitEvidence(ZLinkHttpClient role, String contains) {
         return role.post("/evidence/wait")
-            .body(new Contracts.EvidenceWaitRequest(contains))
+            .body(new Contracts.EvidenceWaitReq(contains))
             .fetch(String[].class);
     }
 

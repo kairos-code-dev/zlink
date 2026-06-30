@@ -12,14 +12,14 @@
 | `Shared/SpotService.Shared.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
 | `Client/SpotService.Client.csproj` | `CMakeLists.txt` | build | not-needed | C++는 `zlink_cpp_e2e_spot_service_client` target으로 빌드된다. |
 | `Client/Program.cs` | `Client/main.cpp` | client | done | scenario 실행 순서와 client framework 설정 |
-| `Client/Support/ClientOptions.cs` | `run_e2e.sh`, `Client/main.cpp` | support | done | C++ runner env와 client main이 옵션을 나누어 처리한다. |
-| `Client/Support/ScenarioAssert.cs` | `Client/main.cpp` | support | done | `ensure(...)` helper와 scenario별 예외로 대응 |
-| `Client/Support/SpotLifecycleOrderContext.cs` | `Client/main.cpp` | support | done | lifecycle order 검증은 client evidence assertion으로 대응 |
+| `Client/Support/ClientOptions.cs` | `run_e2e.sh`, `Client/Support/client_options.hpp`, `Client/main.cpp` | support | partial | C++ runner env와 client option 객체가 값을 나누어 처리한다. `.NET`은 CLI argument parser이고 C++ runner는 env를 주입하므로 같은 파일 책임으로 완전히 합치지는 않는다. |
+| `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp` | support | done | `ensure(...)` helper와 scenario별 예외로 대응 |
+| `Client/Support/SpotLifecycleOrderContext.cs` | `Client/Support/spot_lifecycle_order_context.hpp`, `Client/main.cpp` | support | done | `.NET`의 shared spot rid/current value context를 C++ grouped mode에서 같은 의미로 유지한다. |
 | `Client/Scenarios/SmA1Scenario.cs` | `Client/Scenarios/sm_a1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A1 |
 | `Client/Scenarios/SmA2Scenario.cs` | `Client/Scenarios/sm_a2_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A2 |
 | `Client/Scenarios/SmA3Scenario.cs` | `Client/Scenarios/sm_a3_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A3 |
 | `Client/Scenarios/SmA4Scenario.cs` | `Client/Scenarios/sm_a4_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A4 |
-| `Client/Scenarios/SmA5Scenario.cs` | `feature-map.ko.md` | scenario | gap | C++ public framework는 Stage wrapper를 별도 계약으로 제공하지 않아 feature-map gap으로 남긴다. |
+| `Client/Scenarios/SmA5Scenario.cs` | `Client/Scenarios/sm_a5_scenario.hpp`, `Server/Play/Spots/play_actor_model.hpp`, `run_e2e.sh` | scenario | done | `.NET`의 app-level `ScenarioStage` 의미를 C++ user spot handler와 public timer API 위에서 검증한다. |
 | `Client/Scenarios/SmA6Scenario.cs` | `Client/Scenarios/sm_a6_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A6 |
 | `Client/Scenarios/SmA7Scenario.cs` | `Client/Scenarios/sm_a7_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A7 |
 | `Client/Scenarios/SmA8Scenario.cs` | `Client/Scenarios/sm_a8_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A8. `/spot/worker/start`와 `/spot/worker/complete`로 spot-level worker offload와 interleaved state request evidence를 검증한다. |
@@ -47,7 +47,7 @@
 | `Client/Scenarios/SmD10Scenario.cs` | `Client/Scenarios/sm_d10_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-D10 |
 | `Client/Scenarios/SmD11Scenario.cs` | `Client/Scenarios/sm_d11_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-D11 |
 | `Client/Scenarios/SmD12Scenario.cs` | `Client/Scenarios/sm_d12_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-D12 |
-| `Client/Scenarios/SmD13Scenario.cs` | `Client/Scenarios/sm_d13_scenario.hpp`, `feature-map.ko.md` | scenario | gap | 유지 경로는 구현됐지만 heartbeat 중단을 유도하는 public harness knob이 없다. |
+| `Client/Scenarios/SmD13Scenario.cs` | `Client/Scenarios/sm_d13_scenario.hpp`, `run_e2e.sh`, `feature-map.ko.md` | scenario | done | `.NET`과 같은 heartbeat-enabled stream 유지 경로를 검증하고, 후속 actor request와 evidence를 focused run으로 확인했다. |
 | `Client/Scenarios/SmD14Scenario.cs` | `Client/Scenarios/sm_d14_scenario.hpp`, `Server/Session/session_host_factory.hpp`, `run_e2e.sh`, `feature-map.ko.md` | scenario | done | public stream node TLS server 설정과 stream connector strict rejection/skip-validation 성공 경로로 bind, relay, push를 검증한다. |
 | `Client/Scenarios/SmE1Scenario.cs` | `Client/Scenarios/sm_e1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-E1 |
 | `Client/Scenarios/SmE2Scenario.cs` | `Client/Scenarios/sm_e2_scenario.hpp`, `Server/Play/Spots/play_actor_model.hpp`, `run_e2e.sh` | scenario | done | SM-E2 public spot timer tick evidence |
@@ -71,13 +71,13 @@
 | `Server/Play/SpotService.Play.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
 | `Server/Play/Endpoints/OperationalEndpoints.cs` | `Server/Play/Endpoints/operational_endpoints.hpp`, `Server/Shared/Endpoints/evidence_endpoint.hpp`, `Server/Shared/Handlers/channel_control_ping_handler.hpp` | endpoint | done | health/evidence/evidence-wait/control-ping/shutdown/crash mapping을 endpoint 파일로 분리했고, `/evidence/wait`는 SM-A6 focused run에서 직접 검증했다. |
 | `Server/Play/Endpoints/SpotFailureEndpoints.cs` | `Server/Play/Endpoints/spot_failure_endpoints.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | endpoint | done | slow, missing-handler request/command, missing-target, missing-route, spot-to-spot timeout/negative endpoint mapping을 endpoint 파일로 분리했고 SM-E1 focused run에서 missing-handler/missing-target endpoint를 직접 검증했다. |
-| `Server/Play/Endpoints/SpotInteractionEndpoints.cs` | `Server/Play/Endpoints/spot_interaction_endpoints.hpp`, `Server/Play/Handlers/play_actor_handlers.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | endpoint | gap | 구현된 spot interaction endpoint mapping과 publish-wait endpoint는 endpoint 파일로 분리했고 SM-C4 focused run에서 `/spot/publish/wait`를 직접 검증했다. idle-close endpoint는 SM-E3 focused run에서 검증했고 overrun timer endpoint는 SM-E4 focused run에서 검증했다. `/spot/worker/start`와 `/spot/worker/complete`는 SM-A8 focused run에서 검증했다. stage 계열은 feature-map gap으로 남긴다. |
+| `Server/Play/Endpoints/SpotInteractionEndpoints.cs` | `Server/Play/Endpoints/spot_interaction_endpoints.hpp`, `Server/Play/Handlers/play_actor_handlers.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | endpoint | done | 구현된 spot interaction endpoint mapping과 publish-wait endpoint는 endpoint 파일로 분리했고 SM-C4 focused run에서 `/spot/publish/wait`를 직접 검증했다. idle-close endpoint는 SM-E3 focused run에서 검증했고 overrun timer endpoint는 SM-E4 focused run에서 검증했다. `/spot/worker/start`와 `/spot/worker/complete`는 SM-A8 focused run에서 검증했다. `/spot/stage/request`와 `/spot/stage/timer`는 SM-A5 focused run에서 검증했다. |
 | `Server/Play/Endpoints/SpotLifecycleEndpoints.cs` | `Server/Play/Endpoints/spot_lifecycle_endpoints.hpp`, `Server/Play/Handlers/play_control_handlers.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | endpoint | done | lifecycle create/alternate/close/type-mismatch endpoint mapping은 endpoint 파일로 분리했다. C++의 state request/command route mapping은 interaction endpoint 파일에 둔다. |
 | `Server/Play/Handlers/PlayActorHandlers.cs` | `Server/Play/Handlers/play_actor_handlers.hpp`, `Server/Play/Spots/play_actor_model.hpp` | handler | done | actor/channel HTTP bridge와 channel handlers는 handler 파일로 분리했고, spot actor packet handler 구현은 role-local spot model에 유지했다. |
 | `Server/Play/Handlers/PlayControlHandlers.cs` | `Server/Play/Handlers/play_control_handlers.hpp`, `Server/Shared/Handlers/channel_control_ping_handler.hpp` | handler | done | ensure/lifecycle/create/close/type-mismatch control handler는 play handler 파일로 분리했고, play/session 공통 control-ping handler는 shared handler로 분리했다. |
 | `Server/Play/Handlers/PlaySessionHandlers.cs` | `Server/Play/Handlers/play_session_handlers.hpp`, `Server/Session/Handlers/session_session_handlers.hpp`, `Server/Play/Spots/play_actor_model.hpp` | handler | done | Play-local bound session push HTTP bridge는 play session handler 파일로 분리했고, stream lifecycle/auth/relay 책임은 C++ Session role handler에 대응시켰다. SM-D6 focused run으로 `/spot/push-bound-session` 경로를 검증했다. |
 | `Server/Play/Handlers/PlaySpotRouteHandlers.cs` | `Server/Play/Handlers/play_spot_route_handlers.hpp` | handler | done | route client HTTP bridge handler를 목표 handler 파일로 분리했고 SM-C1/SM-C3 focused run으로 검증했다. |
-| `Server/Play/Handlers/PlayStageHandlers.cs` | `feature-map.ko.md` | handler | gap | C++는 Stage wrapper를 public E2E로 제공하지 않는다. |
+| `Server/Play/Handlers/PlayStageHandlers.cs` | `Server/Play/Spots/play_actor_model.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | handler | done | `.NET`의 app-level `ScenarioStage` wrapper 책임을 C++ user spot의 `StageProbeReq`/`StageTimerStartMsg` handler와 HTTP route bridge로 대응했다. |
 | `Server/Play/Spots/PlayActorModel.cs` | `Server/Play/Spots/play_actor_model.hpp`, `Server/Shared/spot_actor_support.hpp` | spot | done | actor model은 role-local spot 파일로 분리했고 actor ref 변환 helper는 shared support로 분리했다. |
 | `Server/Play/Spots/PlayMultiNodeScenario.cs` | `feature-map.ko.md` | spot | not-needed | `.NET` 전용 SM-Q9 관련 파일이며 공통 Config 2 완료 범위에 넣지 않는다. |
 | `Server/Gateway/Program.cs` | `Server/Gateway/main.cpp` | server-role | done | gateway role 진입점 |
@@ -89,7 +89,7 @@
 | `Server/Session/SpotService.Session.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
 | `Server/Session/Handlers/SessionControlHandlers.cs` | `Server/Shared/Handlers/channel_control_ping_handler.hpp` | handler | done | `/channel/control-ping` route-client probe는 play/session 공통 handler로 분리했고 SM-D11 focused run으로 검증했다. |
 | `Server/Session/Handlers/SessionSessionHandlers.cs` | `Server/Session/Handlers/session_session_handlers.hpp` | handler | done | session stream lifecycle, auth binding, actor relay 책임을 role-local handler header로 분리했다. |
-| `Server/Session/Handlers/SessionStageHandlers.cs` | `feature-map.ko.md` | handler | gap | Stage/timer 관련 항목은 C++ feature-map gap으로 남긴다. |
+| `Server/Session/Handlers/SessionStageHandlers.cs` | `Server/Play/Spots/play_actor_model.hpp` | handler | not-needed | SM-A5는 Play role HTTP/spot 경로로 검증한다. C++ Session role은 stream lifecycle/auth/relay 책임만 분리하고 user spot stage handler를 별도로 두지 않는다. |
 | `Server/Session/Spots/SessionActorModel.cs` | `Server/Play/Spots/play_actor_model.hpp`, `Server/Session/Handlers/session_session_handlers.hpp` | spot | done | `.NET` Session role의 actor/entry/user spot model 책임은 C++에서 Play role spot model로 재분류하고, stream session bind/relay 책임은 Session handler로 분리했다. |
 | `Server/Session/Spots/SessionMultiNodeScenario.cs` | `feature-map.ko.md` | spot | not-needed | `.NET` 전용 SM-Q9 관련 파일이며 공통 Config 2 완료 범위에 넣지 않는다. |
 | `Server/MultiNode/Program.cs` | `Server/MultiNode/main.cpp` | server-role | not-needed | `.NET` 전용 SM-Q9 scaffold로 남긴다. C++ 완료 판정은 build proof까지만 기록하고 runtime scenario로 승격하지 않는다. |
@@ -98,7 +98,7 @@
 | `Server/MultiNode/SpotService.MultiNode.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
 | `Server/MultiNode/Handlers/MultiNodeControlHandlers.cs` | `Server/MultiNode/Handlers/multi_node_handlers.hpp` | handler | not-needed | `.NET` 전용 SM-Q9 scaffold다. `.NET`식 spot-rid-only route request는 현재 C++ public route client 계약으로 받지 않는다. |
 | `Server/MultiNode/Handlers/MultiNodeSessionHandlers.cs` | `Server/Session/Handlers/session_session_handlers.hpp` | handler | done | multi-node stream session binding/relay 책임은 session handler 파일로 분리했다. |
-| `Server/MultiNode/Handlers/MultiNodeStageHandlers.cs` | `feature-map.ko.md` | handler | not-needed | `.NET` 전용 SM-Q9/Stage 조합은 C++ 공통 완료 범위에 넣지 않는다. Stage wrapper 자체는 SM-A5 gap에 기록한다. |
+| `Server/MultiNode/Handlers/MultiNodeStageHandlers.cs` | `feature-map.ko.md` | handler | not-needed | `.NET` 전용 SM-Q9/Stage 조합은 C++ 공통 완료 범위에 넣지 않는다. SM-A5의 stage/timer 흐름은 Play role에서 별도로 검증한다. |
 | `Server/MultiNode/Spots/MultiNodeActorModel.cs` | `feature-map.ko.md` | spot | not-needed | `.NET` 전용 SM-Q9 관련 파일이며 C++ 공통 완료 범위에 넣지 않는다. |
 | `Server/MultiNode/Spots/MultiNodeMultiNodeScenario.cs` | `Server/MultiNode/Spots/multi_node_spots.hpp`, `Server/MultiNode/Handlers/multi_node_handlers.hpp` | spot | not-needed | MultiNode spot scaffold는 build proof까지만 유지하고, `.NET` 전용 SM-Q9 runtime proof는 완료 판정에 요구하지 않는다. |
 
@@ -258,6 +258,36 @@
   - 비고: integrated base remote actor join 경로와 SM-C3 retry parity 조정 뒤 play/client target build를 확인했다.
 - `bash -n framework/languages/cpp/e2e/SpotService/run_e2e.sh`
   - 결과: passed
+- `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_client -j 4`
+  - 결과: passed
+  - 비고: `Client/Support/client_support.hpp` 분리 뒤 client target build를 확인했다.
+- `timeout 180s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-A1`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-174754-600016`
+  - 비고: `Client/Support/client_options.hpp` 분리 뒤 entry spot join과 evidence 검증 경로가 유지되는지 확인했다.
+- `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_client zlink_cpp_e2e_spot_service_session -j 4`
+  - 결과: passed
+  - 비고: `Shared/spot_service_contracts.hpp`의 generic JSON stream payload hook과 SM-D13 retry loop 적용 뒤 client/session target build를 확인했다.
+- `timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D13`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-175548-640631`
+  - 비고: `.NET`과 같은 heartbeat-enabled stream 유지 경로, 후속 `ActorPingReq`, play/session evidence를 확인했다.
+- `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_client -j 4`
+  - 결과: passed
+  - 비고: `Client/Support/spot_lifecycle_order_context.hpp`와 SM-A1/A2/A4/F1/F2 grouped mode 추가 뒤 client target build를 확인했다.
+- `timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-A1-A2-A4-F1-F2`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-180648-679962`
+  - 비고: `.NET`의 `RunA1A2A4F1F2Async`처럼 같은 lifecycle context를 공유하며 SM-A1, SM-A4, SM-F1, SM-F2, SM-A2 순서와 evidence를 검증했다.
+- `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_client -j 4`
+  - 결과: passed
+  - 비고: SM-A5 stage DTO, spot handler, HTTP route bridge, client scenario 추가 뒤 play/client target build를 확인했다.
+- `bash -n framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+  - 결과: passed
+- `timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-A5`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-181455-697805`
+  - 비고: `.NET` SM-A5처럼 spot create, state route readiness, stage request, stage timer tick, spot close evidence를 focused run으로 검증했다.
 - `./framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-075600-3183386`
@@ -294,6 +324,8 @@
   focused runtime 검증에서 직접 호출했다.
 - play interaction endpoint의 worker start/complete route를 public spot handler와 evidence wait
   경로로 연결했고, SM-A8 focused runtime 검증에서 직접 호출했다.
+- play interaction endpoint의 stage request/timer route를 public spot handler와 `spot_context_t::add_timer`
+  경로로 연결했고, SM-A5 focused runtime 검증에서 직접 호출했다.
 - SM-F1/SM-F2/SM-F4 scenario 책임은 `Client/Scenarios/sm_f*_scenario.hpp` 파일로 분리했고
   focused runtime 검증에서 route evidence를 확인했다.
 - SM-G1 crash/recovery scenario 책임은 `Client/Scenarios/sm_g1_scenario.hpp` 파일로 분리했고
@@ -310,5 +342,5 @@
   `Client/Scenarios/sm_d14_scenario.hpp`와 focused runtime 검증을 통과했다.
 - MultiNode scaffold는 build proof까지만 유지하며, `.NET` 전용 SM-Q9는 C++ public route client
   계약 차이 때문에 공통 완료 판정에 넣지 않는다.
-- 남은 `gap` 행은 Stage wrapper public contract gap과 SM-D13 heartbeat-stop harness gap이다. 내부 helper,
-  raw frame, 테스트 전용 adapter로 메우지 않고 feature-map에 남긴다.
+- 현재 남은 `gap` 행은 없다. `.NET` 전용 SM-Q9는 `not-needed`로 분리했고, 새 public API가 필요한
+  항목은 feature-map에서 별도 검토 대상으로 남긴다.

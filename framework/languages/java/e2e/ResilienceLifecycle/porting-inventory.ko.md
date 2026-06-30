@@ -67,7 +67,7 @@
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/resiliencelifecycle/provider/Program.java` | server-role | done | Spring entrypoint가 host factory 역할 |
 | `Server/Provider/ProviderEndpoints.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/resiliencelifecycle/provider/endpoints/EvidenceHttpServer.java` | server-role | done | health, evidence, drain, restore, fault, shutdown endpoint |
 | `Server/Provider/ProviderSupport.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/resiliencelifecycle/provider/infrastructure/ScenarioState.java` | server-role | done | evidence state, slow release, gray fault state |
-| `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/resiliencelifecycle/provider/handlers/WorkRequestHandler.java`, `Server/Provider/src/main/java/systems/zlink/e2e/resiliencelifecycle/provider/handlers/WorkCommandHandler.java` | server-role | done | request/send handler |
+| `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/resiliencelifecycle/provider/handlers/WorkReqHandler.java`, `Server/Provider/src/main/java/systems/zlink/e2e/resiliencelifecycle/provider/handlers/WorkMsgHandler.java` | server-role | done | request/send handler |
 | `Server/Provider/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Provider/src/main/java/systems/zlink/e2e/resiliencelifecycle/provider/Program.java` | server-role | done | message flow observer가 dispatch error marker를 evidence에 기록 |
 
 ## 남은 gap

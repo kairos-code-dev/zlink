@@ -1,9 +1,9 @@
-import type { ProfileReply } from '../../Shared/messages';
+import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
-  profileRequest,
+  profileReq,
   waitTopologyEndpointAbsent,
   waitTopologyEndpointReady,
   waitTopologyReady,
@@ -34,10 +34,10 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
     await waitTopologyReady(options.registryUrl, 'api-b');
 
     for (let i = 0; i < 12; i += 1) {
-      const reply = await postJson<ProfileReply>(
+      const reply = await postJson<ProfileRes>(
         options.consumerUrl,
         '/profile/request',
-        profileRequest(`rl-a4-rolling-${i}`)
+        profileReq(`rl-a4-rolling-${i}`)
       );
       ensure(reply.value === 'profile:fast', 'RL-A4 rolling request returned an unexpected value.');
       ensure(reply.providerRid === 'api-a' || reply.providerRid === 'api-b', 'RL-A4 rolling request used an unexpected provider.');
@@ -50,10 +50,10 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
 
     await waitTopologyReady(options.registryUrl, 'api-b');
     for (let i = 0; i < 32; i += 1) {
-      const reply = await postJson<ProfileReply>(
+      const reply = await postJson<ProfileRes>(
         options.consumerUrl,
         '/profile/request',
-        profileRequest(`rl-a4-green-${i}`)
+        profileReq(`rl-a4-green-${i}`)
       );
       ensure(reply.value === 'profile:fast', 'RL-A4 green request returned an unexpected value.');
     }
@@ -100,10 +100,10 @@ async function sendUntilProvider(
   maxAttempts: number
 ): Promise<void> {
   for (let i = 0; i < maxAttempts; i += 1) {
-    const reply = await postJson<ProfileReply>(
+    const reply = await postJson<ProfileRes>(
       consumerUrl,
       '/profile/request',
-      profileRequest(`${markerPrefix}-${i}`)
+      profileReq(`${markerPrefix}-${i}`)
     );
     ensure(reply.value === 'profile:fast', `${markerPrefix} request returned an unexpected value.`);
     if (reply.providerRid === expectedProviderRid) {

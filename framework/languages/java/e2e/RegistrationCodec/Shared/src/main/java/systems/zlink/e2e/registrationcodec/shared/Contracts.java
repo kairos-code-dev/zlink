@@ -12,51 +12,51 @@ public final class Contracts {
     }
 
     @ZLinkPacket("EchoAuto")
-    public record EchoAutoRequest(String value) {
+    public record EchoAutoReq(String value) {
     }
 
     @ZLinkPacket("EchoAuto")
-    public record EchoAutoCommand(String value) {
+    public record EchoAutoMsg(String value) {
     }
 
-    public record EchoAttrRequest(String value) {
+    public record EchoAttrReq(String value) {
     }
 
-    public record EchoAttrCommand(String value) {
+    public record EchoAttrMsg(String value) {
     }
 
-    public record EchoManualRequest(String value) {
+    public record EchoManualReq(String value) {
     }
 
-    public record EchoManualCommand(String value) {
+    public record EchoManualMsg(String value) {
     }
 
-    public record DiLifecycleRequest(String value) {
+    public record DiLifecycleReq(String value) {
     }
 
-    public record DiLifecycleReply(
+    public record DiLifecycleRes(
         String value,
         int scopedId,
         int singletonId,
         int disposedCount) {
     }
 
-    public record JsonEchoRequest(String value) {
+    public record JsonEchoReq(String value) {
     }
 
-    public record JsonEchoCommand(String value) {
+    public record JsonEchoMsg(String value) {
     }
 
-    public record PackedEchoRequest(String value) {
+    public record PackedEchoReq(String value) {
     }
 
-    public record PackedEchoReply(String value) {
+    public record PackedEchoRes(String value) {
     }
 
-    public record PackedEchoCommand(String value) {
+    public record PackedEchoMsg(String value) {
     }
 
-    public record EchoReply(String value, String handler) {
+    public record EchoRes(String value, String handler) {
     }
 
     public record EvidenceEntry(String marker, String packetName, String value) {

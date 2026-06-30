@@ -80,8 +80,8 @@ class PlayApplication {
                 .setRoutingId(RoutingId.from(nodeRid))
                 .addRequestHandler(
                     RoutePingHandler::class.java,
-                    Contracts.RoutePing::class.java,
-                    Contracts.RoutePong::class.java,
+                    Contracts.RoutePingReq::class.java,
+                    Contracts.RoutePingRes::class.java,
                     Contracts.ROUTE_PACKET
                 )
             val peerIngress = if (nodeRid == "play-a") {
@@ -95,8 +95,8 @@ class PlayApplication {
                 .setRoutingId(RoutingId.from(nodeRid))
             ingress.addSendHandler(
                 IngressCommandHandler::class.java,
-                Contracts.OutboundCommand::class.java,
-                "OutboundCommand"
+                Contracts.OutboundMsg::class.java,
+                "OutboundMsg"
             )
             ingress.addRequestHandler(NoopIngressHandler::class.java, String::class.java, String::class.java, "Noop")
             val node: ZLinkSpotNodeBuilder = options.addSpotMesh(Contracts.SPOT_MESH)

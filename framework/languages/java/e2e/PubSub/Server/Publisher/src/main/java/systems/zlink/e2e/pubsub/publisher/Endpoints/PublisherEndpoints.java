@@ -62,7 +62,7 @@ public final class PublisherEndpoints implements SmartLifecycle {
             fanout.publish(
                     Contracts.EVENT_CHANNEL,
                     topic,
-                    new Contracts.EventNotify(scenario, sequence, value))
+                    new Contracts.EventMsg(scenario, sequence, value))
                 .packetName(packetName)
                 .await();
             evidence.record(packetName + "|" + topic + "|" + scenario + "|" + sequence);

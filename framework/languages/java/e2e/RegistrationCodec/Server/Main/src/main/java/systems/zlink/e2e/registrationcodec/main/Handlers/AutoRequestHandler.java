@@ -8,7 +8,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 
 @ZLinkHandlerGroup(Contracts.AUTO_GROUP)
 public final class AutoRequestHandler
-    implements ZLinkRequestHandler<Contracts.EchoAutoRequest, Contracts.EchoReply> {
+    implements ZLinkRequestHandler<Contracts.EchoAutoReq, Contracts.EchoRes> {
     private final EvidenceStore state;
 
     public AutoRequestHandler(EvidenceStore state) {
@@ -16,10 +16,10 @@ public final class AutoRequestHandler
     }
 
     @Override
-    public Contracts.EchoReply handle(
-        Contracts.EchoAutoRequest request,
+    public Contracts.EchoRes handle(
+        Contracts.EchoAutoReq request,
         ZLinkRequestContext context) {
         state.record("Request", "EchoAuto", request.value());
-        return new Contracts.EchoReply("echo:" + request.value(), "auto");
+        return new Contracts.EchoRes("echo:" + request.value(), "auto");
     }
 }

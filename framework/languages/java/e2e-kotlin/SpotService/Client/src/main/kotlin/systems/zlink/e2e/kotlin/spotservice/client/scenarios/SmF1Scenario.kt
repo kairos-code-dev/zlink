@@ -6,7 +6,7 @@ import systems.zlink.framework.spots.ZLinkSpotOutbound
 
 internal object SmF1Scenario {
     fun run(outbound: ZLinkSpotOutbound) {
-        outbound.sendToSpot(RoutingId.from("room-a"), Contracts.StateCommand("mixed-route-send"))
+        outbound.sendToSpot(RoutingId.from("room-a"), Contracts.StateMsg("mixed-route-send"))
             .await()
         println("scenario SM-F1 passed")
     }

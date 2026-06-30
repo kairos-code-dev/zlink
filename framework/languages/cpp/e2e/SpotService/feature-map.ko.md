@@ -5,11 +5,17 @@
 
 ## 구현됨
 
-- `SM-A1`: entry spot join으로 user spot 생성과 reply spot id를 검증한다.
-- `SM-A2`: 같은 user spot에 연속 상태 변경 request를 보내 누적 상태와 순서를 검증한다.
+- `SM-A1`: entry spot join과 `.NET`식 lifecycle context group의 spot create로 user spot 생성과
+  reply spot id를 검증한다.
+- `SM-A2`: 같은 user spot에 연속 상태 변경 request를 보내 누적 상태와 순서를 검증하고,
+  `.NET`식 lifecycle context group에서는 앞선 SM-A4/F1/F2 state evidence가 보존되는지 확인한다.
 - `SM-A3`: route client가 `target_node_rid`와 특정 `spot_rid_t`를 함께 지정해 원격 user spot으로
   직접 request를 보내고, 해당 owner node와 spot id의 reply가 오는지 검증한다.
-- `SM-A4`: 같은 key가 같은 owner node와 같은 spot rid로 매핑되는지 검증한다.
+- `SM-A4`: 같은 key가 같은 owner node와 같은 spot rid로 매핑되는지 검증하고, `.NET`식 lifecycle
+  context group에서는 같은 context spot rid가 play-a owner에 유지되는지 확인한다.
+- `SM-A5`: `.NET`의 app-level `ScenarioStage` wrapper에 대응해 C++ user spot이 public spot
+  request handler와 `spot_context_t::add_timer<THandler>`를 사용하고, stage request, stage timer,
+  spot close lifecycle evidence를 검증한다.
 - `SM-A6`: actor 없는 user spot을 생성한 뒤 public `close_spot`으로 닫아 initialize/closing
   lifecycle evidence를 검증한다.
 - `SM-A7`: 같은 spot rid를 다른 spot 타입으로 다시 `get_or_create_spot`할 때
@@ -64,6 +70,8 @@
   각각 stream dispatcher와 channel dispatcher에서 reply를 받는지 검증한다.
 - `SM-D12`: `session-a`에서 join/state/push를 수행한 actor가 연결을 끊은 뒤 `session-b`로
   다시 auth/rebind해 play 노드의 기존 state snapshot과 후속 push를 이어받는지 검증한다.
+- `SM-D13`: `.NET`과 같이 heartbeat-enabled stream이 유지되는지 확인하고, 같은 stream에서
+  후속 actor request가 성공하는지 검증한다.
 - `SM-D14`: public stream node TLS server 설정으로 `tls://` endpoint를 열고, stream connector가
   self-signed certificate를 strict mode에서 거부한 뒤 skip-validation mode에서 bind, relay, push를
   평문 stream과 같은 의미로 수행하는지 검증한다.
@@ -77,9 +85,11 @@
   `timer_tick_t`의 delivery/scheduled/skipped evidence로 skip, bounded catch-up, delayed next tick
   동작을 검증한다.
 - `SM-F1`: route client가 target spot id를 지정해 request/send를 보내는 public API 경로를
-  검증한다.
+  검증하고, `.NET`식 lifecycle context group에서는 같은 context spot에 state request와 command를
+  보낸다.
 - `SM-F2`: route mesh channel에서 target node와 target spot을 함께 지정해 cross-node spot
-  request/send가 동작하는지 검증한다.
+  request/send가 동작하는지 검증하고, `.NET`식 lifecycle context group에서는 같은 context spot에
+  후속 state request와 command를 보낸다.
 - `SM-F3`: 같은 route mesh channel에서 일반 route packet과 spot route packet이 함께 오가도 각각
   올바른 dispatcher로 분기되는지 검증한다.
 - `SM-F4`: 존재하지 않는 target spot, handler 없는 spot route request, slow spot timeout이
@@ -105,13 +115,6 @@
   C++ MultiNode scaffold는 build까지만 확인했고, `.NET` 흐름처럼 spot rid만 public target으로 넘기는
   route-to-spot request는 현재 C++ public route client 계약에 없다. 이 동작을 공통 계약으로 받을지는
   별도 spec/guide 검토 뒤 결정해야 한다.
-- `SM-A5`: C++ framework는 Stage wrapper를 별도 타입으로 제공하지 않고 응용이 SPOT 위에
-  직접 구성한다. request/timer/lifecycle의 하위 동작은 기존 SPOT 공개 표면으로 검증할 수 있지만,
-  Stage wrapper 자체의 public lifecycle 의미는 C++ 공통 계약으로 받지 않아 별도 완료 항목으로
-  세지 않는다.
-- `SM-D13`: heartbeat-enabled stream이 유지된 뒤 request가 성공하는 경로는 focused harness로
-  확인할 수 있다. 하지만 heartbeat 중단을 의도적으로 유도하는 public harness knob은 아직 없어,
-  공통 시나리오가 요구하는 중단 감지 검증은 별도 harness 설계가 필요하다.
 
 ## 남은 구현 후보
 

@@ -193,9 +193,9 @@ struct leave_game_req_t
     std::string room_id;
 };
 
-struct player_win_milestone_event_t
+struct player_win_milestone_msg_t
 {
-    static constexpr const char *packet_name = "PlayerWinMilestoneEvent";
+    static constexpr const char *packet_name = "PlayerWinMilestoneMsg";
     std::string room_id;
     std::string actor_id;
     std::string display_name;
@@ -520,7 +520,7 @@ inline void from_json (const nlohmann::json &json, leave_game_req_t &value)
     value.room_id = json.value ("roomId", "");
 }
 
-inline void to_json (nlohmann::json &json, const player_win_milestone_event_t &value)
+inline void to_json (nlohmann::json &json, const player_win_milestone_msg_t &value)
 {
     json = {{"roomId", value.room_id},
             {"actorId", value.actor_id},
@@ -528,7 +528,7 @@ inline void to_json (nlohmann::json &json, const player_win_milestone_event_t &v
             {"wins", value.wins}};
 }
 
-inline void from_json (const nlohmann::json &json, player_win_milestone_event_t &value)
+inline void from_json (const nlohmann::json &json, player_win_milestone_msg_t &value)
 {
     value.room_id = json.value ("roomId", "");
     value.actor_id = json.value ("actorId", "");

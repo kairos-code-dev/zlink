@@ -12,22 +12,22 @@ internal object SmC3Scenario {
         val requestReply = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-a"),
-                Contracts.StateRequest("c3-source"),
+                Contracts.StateReq("c3-source"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.StateReply::class.java)
+                .await(Contracts.StateRes::class.java)
         }
         ensure(requestReply.nodeRid == "play-a", "SM-C3 source spot owner mismatch")
-        outbound.sendToSpot(RoutingId.from("room-b"), Contracts.OutboundCommand("c3-send"))
-            .packetName("OutboundCommand")
+        outbound.sendToSpot(RoutingId.from("room-b"), Contracts.OutboundMsg("c3-send"))
+            .packetName("OutboundMsg")
             .await()
         val reply = eventually {
             outbound.requestToSpot(
                 RoutingId.from("room-b"),
-                Contracts.OutboundRequest("c3-request"),
+                Contracts.OutboundReq("c3-request"),
             )
                 .timeout(REQUEST_TIMEOUT)
-                .await(Contracts.OutboundReply::class.java)
+                .await(Contracts.OutboundRes::class.java)
         }
         ensure(reply.spotRid == "room-b", "SM-C3 wrong target spot")
         ensure(reply.nodeRid == "play-b", "SM-C3 wrong target node")

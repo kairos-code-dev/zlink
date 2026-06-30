@@ -18,12 +18,12 @@ std::string run_yd_c2_timer_reentry_scenario (TConnector &connector,
 {
     const auto request_id = unique_id ("YD-C2");
     auto timer_reentry_start =
-      connector.send (timer_start_command_t{.request_id = request_id,
+      connector.send (timer_start_msg_t{.request_id = request_id,
                                             .timer_name = request_id + "-same",
                                             .mode = "yield-then-next",
                                             .period_ms = 340,
                                             .delay_ms = 350})
-        .packet_name (timer_start_command_t::packet_name)
+        .packet_name (timer_start_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
     ensure (static_cast<bool> (timer_reentry_start), "YD-C2 timer start failed");
@@ -35,7 +35,7 @@ std::string run_yd_c2_timer_reentry_scenario (TConnector &connector,
         .packet_name (yield_evidence_wait_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-a")
         .timeout (std::chrono::milliseconds (30000))
-        .template submit<yield_evidence_reply_t> ();
+        .template submit<yield_evidence_res_t> ();
     ensure_result (evidence, "YD-C2 evidence wait failed");
     ensure_contains_in_order (evidence.value ().evidence, request_id,
                               {"timer-yield-started",
@@ -46,8 +46,8 @@ std::string run_yd_c2_timer_reentry_scenario (TConnector &connector,
                                "timer-next-completed"},
                               "YD-C2 marker order mismatch");
     auto timer_stop =
-      connector.send (timer_stop_command_t{.request_id = request_id})
-        .packet_name (timer_stop_command_t::packet_name)
+      connector.send (timer_stop_msg_t{.request_id = request_id})
+        .packet_name (timer_stop_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
     ensure (static_cast<bool> (timer_stop), "YD-C2 timer stop failed");

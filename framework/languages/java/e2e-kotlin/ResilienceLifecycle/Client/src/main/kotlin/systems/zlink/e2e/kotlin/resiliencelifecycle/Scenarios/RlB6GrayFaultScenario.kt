@@ -11,9 +11,9 @@ fun ClientScenarioContext.runGrayFaultScenario() {
     var index = 0
     while (index < 80 && successes < 10) {
         try {
-            val reply = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkRequest("b6-gray-$index"))
+            val reply = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq("b6-gray-$index"))
                 .timeout(Duration.ofSeconds(3))
-                .await(Contracts.WorkReply::class.java)
+                .await(Contracts.WorkRes::class.java)
             ensure(reply.value() == "work:b6-gray-$index", "RL-B6 reply payload mismatch")
             providers.add(reply.providerRid())
             successes++
@@ -27,9 +27,9 @@ fun ClientScenarioContext.runGrayFaultScenario() {
     ensure(failures > 0, "RL-B6 did not observe public failures from degraded provider")
     ensure(successes >= 10, "RL-B6 healthy provider did not maintain enough successful traffic")
     ensure(providers.contains("api-b"), "RL-B6 did not receive successful replies from api-b")
-    val followUp = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkRequest("b6-follow-up"))
+    val followUp = client.requestToChannel(Contracts.CHANNEL, Contracts.WorkReq("b6-follow-up"))
         .timeout(Duration.ofSeconds(3))
-        .await(Contracts.WorkReply::class.java)
+        .await(Contracts.WorkRes::class.java)
     ensure(followUp.value() == "work:b6-follow-up", "RL-B6 follow-up payload mismatch")
     println("scenario RL-B6 passed")
 }

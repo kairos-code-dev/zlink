@@ -3,7 +3,7 @@ const PacketNames = Object.freeze({
   authenticateRes: 'AuthenticateRes',
   authenticatePlayerReq: 'AuthenticatePlayerReq',
   authenticatePlayerRes: 'AuthenticatePlayerRes',
-  createGame: 'CreateGame',
+  createGameReq: 'CreateGameReq',
   createGameHttpReq: 'CreateGameHttpReq',
   createGameHttpRes: 'CreateGameHttpRes',
   joinGameReq: 'JoinGameReq',
@@ -12,11 +12,11 @@ const PacketNames = Object.freeze({
   observeMilestoneRes: 'ObserveMilestoneRes',
   placeMarkReq: 'PlaceMarkReq',
   placeMarkRes: 'PlaceMarkRes',
-  leaveGameReq: 'LeaveGameReq',
+  leaveGameMsg: 'LeaveGameMsg',
   playerJoinedNotify: 'PlayerJoinedNotify',
   gameStateNotify: 'GameStateNotify',
   winMilestoneNotify: 'WinMilestoneNotify',
-  playerWinMilestoneEvent: 'PlayerWinMilestoneEvent'
+  playerWinMilestoneEvent: 'PlayerWinMilestoneMsg'
 });
 
 export interface AuthenticateReq {
@@ -51,7 +51,7 @@ export interface CreateGameReq {
   gameName?: string;
 }
 
-export class CreateGame implements CreateGameReq {
+export class CreateGameReq implements CreateGameReq {
   gameName?: string;
 
   constructor(gameName?: string) {
@@ -136,7 +136,7 @@ export interface PlaceMarkRes {
   state: unknown;
 }
 
-export class LeaveGameReq {
+export class LeaveGameMsg {
   constructor(readonly roomId: string) {}
 }
 
@@ -186,7 +186,7 @@ export interface WinMilestoneNotify {
   receivingSpotNodeRid: string;
 }
 
-export interface PlayerWinMilestoneEvent {
+export interface PlayerWinMilestoneMsg {
   roomId: string;
   actorId: string;
   displayName: string;
@@ -251,7 +251,7 @@ function authenticatePlayerRes(accessToken: string): AuthenticatePlayerRes {
 }
 
 function createGameReq(gameName?: string): CreateGameReq {
-  return new CreateGame(gameName);
+  return new CreateGameReq(gameName);
 }
 
 function createGameRes(
@@ -320,12 +320,12 @@ function playerWinMilestoneEvent(
   actorId: string,
   displayName: string,
   wins: number
-): PlayerWinMilestoneEvent {
+): PlayerWinMilestoneMsg {
   return { roomId, actorId, displayName, wins };
 }
 
 function winMilestoneNotify(
-  event: PlayerWinMilestoneEvent,
+  event: PlayerWinMilestoneMsg,
   receivingSpotNodeRid: string
 ): WinMilestoneNotify {
   return { ...event, receivingSpotNodeRid };

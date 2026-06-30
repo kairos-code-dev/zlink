@@ -40,7 +40,7 @@ public static class DispatchServerHostFactory
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { ready = true, role = "dispatch" }));
         app.MapPost("/deliveries", async (
-            CreateDeliveryRequest request,
+            CreateDeliveryReq request,
             DispatchWorkQueue queue,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
@@ -53,7 +53,7 @@ public static class DispatchServerHostFactory
             await queue.EnqueueAsync(assign, cancellationToken);
             loggerFactory.CreateLogger("DeliveryDispatch.Server.Dispatch")
                 .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);
-            return Results.Ok(new DeliveryCreated(request.DeliveryId));
+            return Results.Ok(new CreateDeliveryRes(request.DeliveryId));
         });
         app.MapPost("/self-check/assert", (
             ServerAssertionReq request,

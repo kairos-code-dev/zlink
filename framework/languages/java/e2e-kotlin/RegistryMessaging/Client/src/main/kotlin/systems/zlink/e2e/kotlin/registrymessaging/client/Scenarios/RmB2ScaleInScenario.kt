@@ -4,8 +4,8 @@ import systems.zlink.e2e.kotlin.registrymessaging.client.Support.ClientOptions
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.DynamicClusterLauncher
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.HttpJson
 import systems.zlink.e2e.kotlin.registrymessaging.client.Support.ScenarioAssert
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReply
-import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRequest
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileRes
+import systems.zlink.e2e.kotlin.registrymessaging.shared.ProfileReq
 
 object RmB2ScaleInScenario {
     fun run(options: ClientOptions) {
@@ -16,9 +16,9 @@ object RmB2ScaleInScenario {
             val before = mutableSetOf<String>()
             var index = 0
             while (index < 100 && before.size < 2) {
-                before += requester.post<ProfileReply>(
+                before += requester.post<ProfileRes>(
                     "/profile/request",
-                    ProfileRequest("scale-in-before-$index"),
+                    ProfileReq("scale-in-before-$index"),
                 ).providerRid
                 index++
             }
@@ -26,7 +26,7 @@ object RmB2ScaleInScenario {
             cluster.stop(providerB)
             Thread.sleep(3000)
             repeat(20) { afterIndex ->
-                val reply = requester.post<ProfileReply>("/profile/request", ProfileRequest("scale-in-after-$afterIndex"))
+                val reply = requester.post<ProfileRes>("/profile/request", ProfileReq("scale-in-after-$afterIndex"))
                 ScenarioAssert.that(reply.providerRid == "api-a", "RM-B2 routed to removed provider.")
             }
         }

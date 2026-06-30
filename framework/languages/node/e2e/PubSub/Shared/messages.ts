@@ -5,23 +5,23 @@ export const PubSubNames = {
 } as const;
 
 export const PacketNames = {
-  eventNotify: 'EventNotify',
-  missingEventNotify: 'MissingEventNotify'
+  eventMsg: 'EventMsg',
+  missingEventMsg: 'MissingEventMsg'
 } as const;
 
-export interface EventNotify {
+export interface EventMsg {
   readonly runId: string;
   readonly sequence: number;
   readonly value: string;
 }
 
-export interface MissingEventNotify {
+export interface MissingEventMsg {
   readonly runId: string;
   readonly sequence: number;
   readonly value: string;
 }
 
-export interface EvidenceWaitRequest {
+export interface EvidenceWaitReq {
   readonly containsAll?: readonly string[];
   readonly containsAnyGroups?: readonly (readonly string[])[];
   readonly containsAllLineGroups?: readonly (readonly string[])[];

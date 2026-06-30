@@ -54,7 +54,7 @@ class game_quest_client_scenario_t
             auto first_kill = http.post ("/combat/kill")
                                 .body (kill_monster_req_t{
                                   "player-alice", "wolf", "forest", "kill-1"})
-                                .fetch<event_res_t> ();
+                                .fetch<kill_monster_res_t> ();
             ensure (first_kill.event_id == "player-alice-kill-1", "first kill failed");
             (void) first_progress.get ();
 
@@ -69,18 +69,18 @@ class game_quest_client_scenario_t
                 .to_future ("first quest completed wait failed");
             (void) http.post ("/combat/kill")
               .body (kill_monster_req_t{"player-alice", "wolf", "forest", "kill-2"})
-              .fetch<event_res_t> ();
+              .fetch<kill_monster_res_t> ();
             const auto third_kill = http.post ("/combat/kill")
                                       .body (kill_monster_req_t{
                                         "player-alice", "wolf", "forest", "kill-3"})
-                                      .fetch<event_res_t> ();
+                                      .fetch<kill_monster_res_t> ();
             ensure (third_kill.event_id == "player-alice-kill-3", "third kill failed");
             (void) first_completed.get ();
 
             const auto duplicate = http.post ("/combat/kill")
                                      .body (kill_monster_req_t{
                                        "player-alice", "wolf", "forest", "kill-3"})
-                                     .fetch<event_res_t> ();
+                                     .fetch<kill_monster_res_t> ();
             ensure (duplicate.event_id == third_kill.event_id, "idempotency failed");
 
             auto auction_completed =
@@ -91,10 +91,10 @@ class game_quest_client_scenario_t
                 })
                 .timeout (std::chrono::seconds (10))
                 .to_future ("auction quest completed wait failed");
-            const auto auction = http.post ("/feature/unlock")
-                                   .body (unlock_feature_req_t{
-                                     "player-alice", "auction", "unlock-auction"})
-                                   .fetch<event_res_t> ();
+	            const auto auction = http.post ("/feature/unlock")
+	                                   .body (unlock_feature_req_t{
+	                                     "player-alice", "auction", "unlock-auction"})
+	                                   .fetch<unlock_feature_res_t> ();
             ensure (auction.event_id == "player-alice-unlock-auction", "auction unlock failed");
             (void) auction_completed.get ();
 
@@ -103,25 +103,25 @@ class game_quest_client_scenario_t
                                     .fetch<get_gameplay_snapshot_res_t> ();
             ensure (contains (snapshot.unlocked_feature_ids, "auction"), "snapshot failed");
 
-            (void) http.post ("/mission/complete")
-              .body (complete_mission_req_t{"player-alice", "tutorial", "mission-tutorial"})
-              .fetch<event_res_t> ();
-            (void) http.post ("/world/enter")
-              .body (enter_area_req_t{"player-alice", "ruins", "enter-ruins"})
-              .fetch<event_res_t> ();
+	            (void) http.post ("/mission/complete")
+	              .body (complete_mission_req_t{"player-alice", "tutorial", "mission-tutorial"})
+	              .fetch<complete_mission_res_t> ();
+	            (void) http.post ("/world/enter")
+	              .body (enter_area_req_t{"player-alice", "ruins", "enter-ruins"})
+	              .fetch<enter_area_res_t> ();
 
-            (void) http.post ("/inventory/collect")
-              .body (collect_item_req_t{"player-bob", "healing-herb", 1, "herb-1"})
-              .fetch<event_res_t> ();
+	            (void) http.post ("/inventory/collect")
+	              .body (collect_item_req_t{"player-bob", "healing-herb", 1, "herb-1"})
+	              .fetch<collect_item_res_t> ();
             const auto bob =
               stream.request (subscribe_quest_req_t{"player-bob"})
                 .async<subscribe_quest_res_t> ()
                 .result ();
             ensure (bob && any_progress (bob.value ().active_quests, "herb-gathering", 1, ""),
                     "bob subscribe failed");
-            (void) http.post ("/inventory/collect")
-              .body (collect_item_req_t{"player-bob", "healing-herb", 4, "herb-2"})
-              .fetch<event_res_t> ();
+	            (void) http.post ("/inventory/collect")
+	              .body (collect_item_req_t{"player-bob", "healing-herb", 4, "herb-2"})
+	              .fetch<collect_item_res_t> ();
             const auto bob_progress =
               stream.request (get_quest_progress_req_t{"player-bob"})
                 .async<get_quest_progress_res_t> ()

@@ -10,7 +10,7 @@ internal static class SmA4Scenario
     {
         var reply = (await api.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(context.SpotRid, "noop", 0))
-            .SubmitAsync<StateReply>()).Body;
+            .SubmitAsync<StateRes>()).Body;
         ScenarioAssert.That(reply.SpotRid == context.SpotRid, "SM-A4 request reached the wrong spot.");
         ScenarioAssert.That(reply.NodeRid == "play-a", "SM-A4 owner routing did not stay on play-a.");
         context.CurrentValue = reply.Value;

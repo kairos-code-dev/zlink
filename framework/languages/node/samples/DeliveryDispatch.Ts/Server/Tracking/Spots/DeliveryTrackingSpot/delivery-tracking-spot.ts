@@ -7,9 +7,9 @@ import type {
   ZLinkSpotCreateResponse
 } from '@zlink-systems/framework';
 import type {
-  DeliverySpotCreate,
-  DeliverySpotJoined,
-  DeliveryStatusChanged
+  DeliverySpotCreateReq,
+  DeliverySpotJoinRes,
+  DeliveryStatusReq
 } from '../../../../Shared/Contracts/messages';
 import type { CustomerActor } from '../../customer-actor';
 
@@ -17,7 +17,7 @@ class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
   private static directory: DeliverySpotDirectory | null = null;
   readonly context!: ZLinkSpotContext<CustomerActor>;
   private readonly customers = new Map<string, CustomerActor>();
-  private readonly history: DeliveryStatusChanged[] = [];
+  private readonly history: DeliveryStatusReq[] = [];
   private deliveryId = '';
 
   static useDirectory(directory: DeliverySpotDirectory): void {
@@ -25,7 +25,7 @@ class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
   }
 
   async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
-    const create = request.decode<DeliverySpotCreate>(Object as never);
+    const create = request.decode<DeliverySpotCreateReq>(Object as never);
     this.deliveryId = create.deliveryId;
     this.requireDirectory().add(this.deliveryId, this);
     return { accepted: true, reply: { deliveryId: this.deliveryId } };
@@ -38,10 +38,10 @@ class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
     }
     this.customers.set(actor.actorId, actor);
     console.error(`deliverydispatch tracking spot: joined delivery=${join.deliveryId} customer=${actor.actorId}`);
-    return { accepted: true, reply: { deliveryId: join.deliveryId, customerId: actor.actorId } satisfies DeliverySpotJoined };
+    return { accepted: true, reply: { deliveryId: join.deliveryId, customerId: actor.actorId } satisfies DeliverySpotJoinRes };
   }
 
-  record(status: DeliveryStatusChanged): void {
+  record(status: DeliveryStatusReq): void {
     this.history.push(status);
   }
 

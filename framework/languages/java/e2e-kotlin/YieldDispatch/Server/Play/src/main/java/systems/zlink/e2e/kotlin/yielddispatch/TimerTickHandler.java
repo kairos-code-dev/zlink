@@ -27,9 +27,9 @@ public final class TimerTickHandler implements ZLinkSpotTimerHandler<ProbeSpot> 
             spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
-                    new Contracts.DelayRequest(scenario.requestId(), scenario.delayMillis()))
+                    new Contracts.DelayReq(scenario.requestId(), scenario.delayMillis()))
                 .timeout(Duration.ofSeconds(5))
-                .yield(Contracts.DelayReply.class);
+                .yield(Contracts.DelayRes.class);
             evidence.record(scenario.requestId(), "timer-yield-resumed", value);
             evidence.record(scenario.requestId(), "timer-yield-completed", value);
             if ("yield-on-first".equals(scenario.mode())) {

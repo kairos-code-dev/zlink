@@ -31,7 +31,8 @@ E5 marker report 생성을 통과했다.
 shutdown recovery diagnostic은 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 실행하며,
 `logs/20260630-134740-48684`에서 pending yield 중 play-a SIGTERM shutdown, public framework error
 reply, 같은 endpoint 재시작 뒤 recovery request를 통과했다. `YD-E2` cancellation cleanup은 Java
-framework public yield terminator에 cancellation-aware 계약이 아직 없어 gap으로 남긴다.
+framework public yield terminator에 cancellation-aware 계약이 아직 없어 gap으로 남긴다. 후보 계약은
+`framework/doc/framework/java/spec/draft/yield-cancellation.ko.md`에서 검토한다.
 남은 gap은 `feature-map.ko.md`와 `porting-inventory.ko.md`에 기록한다.
 
 ## 목표 역할

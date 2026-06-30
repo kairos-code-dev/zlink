@@ -26,7 +26,8 @@ yield 중일 때 bound session push를 원래 stream connector로 보내고, 다
 reply, 같은 endpoint 재시작 뒤 recovery request를 통과했다. 아직 `YD-E2`는 gap으로 남아 있다.
 `YD-E2`는 Java `ZLinkRequestCall`, actor join yield, worker yield public surface에 cancellation-aware
 terminator 계약이 없어서 구현하지 않는다. 공통 E2E만 근거로 새 public API를 추가하지 않고, Java
-framework spec/guide 또는 draft에서 계약을 먼저 정한 뒤 닫는다.
+framework draft인 `framework/doc/framework/java/spec/draft/yield-cancellation.ko.md`에서 계약을 먼저
+정한 뒤 닫는다.
 이 inventory는
 `.NET` 기준 파일과 Java 대응 위치를 고정하고, 남은 scenario를
 internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지한다.
@@ -68,7 +69,7 @@ internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지�
 | `Client/Scenarios/YdD4SessionRelayActorYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | Java는 현재 Program 안에서 stream session relay actor yield와 bound session push reply 흐름을 검증한다. `logs/20260630-123141-4002944`에서 통과했다 |
 | `Client/Scenarios/YdE1TimeoutScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | `YieldTimeoutCommand`와 post-timeout probe marker 검증을 구현했다. `logs/20260630-123141-4002944`에서 통과했다 |
 | `Client/Scenarios/YdE5MarkerReportScenario.cs` | `run_e2e.sh` | runner | done | Java runner가 `yield-dispatch-marker-report.json`을 생성하고 scenario id별 공통 marker 이름을 검증한다. `logs/20260630-123141-4002944/yield-dispatch-marker-report.json`에서 확인했다 |
-| `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/scenarios/YdE2CancellationScenario.java` | scenario | public contract gap | Java public yield terminator에 cancellation token overload 또는 같은 의미의 cancellable terminator 계약이 없어 미구현 |
+| `Client/Scenarios/YdE2CancellationScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/scenarios/YdE2CancellationScenario.java` | scenario | public contract gap | Java public yield terminator에 cancellation token overload 또는 같은 의미의 cancellable terminator 계약이 없어 미구현. 후보 계약은 `framework/doc/framework/java/spec/draft/yield-cancellation.ko.md`에 분리했다 |
 | `Client/Scenarios/ShutdownYieldScenario.cs` | `Client/src/main/java/systems/zlink/e2e/yielddispatch/client/Program.java` | scenario | done | YD-E3 diagnostic client mode가 pending yield 중 shutdown wait와 restart recovery를 검증한다. `logs/20260630-134740-48684`에서 통과했다 |
 | `Server/Registry/*` | `Server/Registry/src/main/java/systems/zlink/e2e/yielddispatch/registry/` | server-role | done | embedded registry role 구현 |
 | `Server/Delay/*` | `Server/Delay/src/main/java/systems/zlink/e2e/yielddispatch/delay/` | server-role | done | delay service role 구현 |
@@ -101,3 +102,4 @@ YD-E1에서 검증했다. marker report는 YD-E5에서 생성한다. Java Config
 통과했고 `yield-dispatch-marker-report.json`을 생성한다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`는
 `logs/20260630-134740-48684`에서 YD-E3 shutdown/restart recovery를 통과했다. YD-E2 cancellation
 cleanup은 Java public cancellation-aware yield 계약이 먼저 필요하므로 public contract gap으로 남아 있다.
+후보 계약은 `framework/doc/framework/java/spec/draft/yield-cancellation.ko.md`에서 검토한다.

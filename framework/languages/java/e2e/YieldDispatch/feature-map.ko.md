@@ -32,7 +32,7 @@
 | YD-D3 | done | session gateway가 route mesh를 통해 `play-b` target spot으로 `YieldCommand`와 `ProbeCommand`를 보낸다. target spot handler가 delay service reply를 `yield(Class<TReply>)`로 기다리는 동안 같은 target spot의 probe가 먼저 처리되고, 이후 원래 handler가 resume/completion marker를 남기는 순서를 검증한다. `logs/20260630-123141-4002944`에서 `scenario YD-D3 passed`를 확인했다. |
 | YD-D4 | done | stream session relay가 bound actor handler로 보낸 request에서 actor가 `yield(Class<TReply>)`로 delay service reply를 기다린다. actor는 bound session push를 원래 stream connector로 보내고, 같은 시간 다른 actor의 push wait가 진행되지 않는 것을 검증한다. `logs/20260630-123141-4002944`에서 `scenario YD-D4 passed`를 확인했다. |
 | YD-E1 | done | `YieldTimeoutCommand`가 timeout 뒤 `timeout-yield-completed`를 남기고, 같은 Spot mailbox가 post-timeout `ProbeCommand`를 처리하는 순서를 검증한다. `logs/20260630-123141-4002944`에서 `scenario YD-E1 passed`를 확인했다. |
-| YD-E2 | public contract gap | .NET 기준은 `Yield<TReply>(token)` 취소를 검증하지만, Java `ZLinkRequestCall`, actor join yield, worker yield public surface에는 cancellation token overload가 없다. 공통 E2E 문서는 누락 식별 기준이며, 그 자체만으로 Java public API를 추가하지 않는다. Java framework spec/guide 또는 draft에서 cancellation-aware yield terminator 계약을 먼저 정한 뒤 구현한다. 내부 helper로 우회하지 않고 public contract gap으로 남긴다. |
+| YD-E2 | public contract gap | .NET 기준은 `Yield<TReply>(token)` 취소를 검증하지만, Java `ZLinkRequestCall`, actor join yield, worker yield public surface에는 cancellation token overload가 없다. 공통 E2E 문서는 누락 식별 기준이며, 그 자체만으로 Java public API를 추가하지 않는다. `framework/doc/framework/java/spec/draft/yield-cancellation.ko.md`에서 cancellation-aware yield terminator 후보 계약을 분리했다. 내부 helper로 우회하지 않고 public contract gap으로 남긴다. |
 | YD-E3 | done | `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`가 pending yield 중 `play-a`에 SIGTERM을 보내고, client가 public framework error를 받은 뒤 `play-a`를 같은 endpoint로 재시작해 recovery request를 통과시키는지 검증한다. `logs/20260630-134740-48684`에서 `yield-dispatch shutdown wait result=passed`, `yield-dispatch shutdown recovery result=passed`, `scenario YD-E3 passed`를 확인했다. |
 | YD-E4 | done | `run_e2e.sh`가 HTTP scenario trigger, handler 밖 `.yield(`, real stream connector 생성 여부를 정적으로 검사한 뒤 full runner를 실행한다. `logs/20260630-123141-4002944`에서 정적 검증과 runner marker gate가 모두 통과했다. |
 | YD-E5 | done | `run_e2e.sh`가 `yield-dispatch-marker-report.json`을 생성하고, Java가 구현한 YD-A/B/C/D/E1 scenario id별 marker 이름이 공통 정의와 맞는지 검증한다. `logs/20260630-123141-4002944/yield-dispatch-marker-report.json`에서 확인했다. 여러 언어 report를 모으는 aggregation은 공통 문서처럼 별도 parity gate가 담당한다. |
@@ -40,5 +40,5 @@
 ## 다음 구현 순서
 
 1. `YD-E2` cancellation cleanup은 Java framework public contract 설계가 먼저 필요하다. 후보 표면은
-   `yield(Class<TReply>, CancellationToken)` 또는 별도 cancellable call terminator이며, spec/guide/draft
-   검토 전에는 구현하지 않는다.
+   `framework/doc/framework/java/spec/draft/yield-cancellation.ko.md`에서 검토한다. draft가 정식 계약으로
+   채택되기 전에는 구현하지 않는다.

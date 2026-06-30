@@ -12,7 +12,7 @@
 | `Shared/SpotService.Shared.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
 | `Client/SpotService.Client.csproj` | `CMakeLists.txt` | build | not-needed | C++는 `zlink_cpp_e2e_spot_service_client` target으로 빌드된다. |
 | `Client/Program.cs` | `Client/main.cpp` | client | done | scenario 실행 순서와 client framework 설정 |
-| `Client/Support/ClientOptions.cs` | `run_e2e.sh`, `Client/Support/client_options.hpp`, `Client/main.cpp` | support | partial | C++ runner env와 client option 객체가 값을 나누어 처리한다. `.NET`은 CLI argument parser이고 C++ runner는 env를 주입하므로 같은 파일 책임으로 완전히 합치지는 않는다. |
+| `Client/Support/ClientOptions.cs` | `run_e2e.sh`, `Client/Support/client_options.hpp`, `Client/main.cpp` | support | done | `.NET`은 CLI argument parser로 endpoint와 scenario 값을 받지만, C++는 runner env 주입과 client option 객체로 같은 실행 계약을 유지한다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp` | support | done | `ensure(...)` helper와 scenario별 예외로 대응 |
 | `Client/Support/SpotLifecycleOrderContext.cs` | `Client/Support/spot_lifecycle_order_context.hpp`, `Client/main.cpp` | support | done | `.NET`의 shared spot rid/current value context를 C++ grouped mode에서 같은 의미로 유지한다. |
 | `Client/Scenarios/SmA1Scenario.cs` | `Client/Scenarios/sm_a1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A1 |
@@ -55,10 +55,12 @@
 | `Client/Scenarios/SmE4Scenario.cs` | `Client/Scenarios/sm_e4_scenario.hpp`, `Server/Play/Spots/play_actor_model.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp`, `run_e2e.sh` | scenario | done | SM-E4 public timer overrun policy와 tick delivery/scheduled/skipped evidence를 검증한다. |
 | `Client/Scenarios/SmF1Scenario.cs` | `Client/Scenarios/sm_f1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-F1 |
 | `Client/Scenarios/SmF2Scenario.cs` | `Client/Scenarios/sm_f2_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-F2 |
+| 공통 E2E `SM-F3` | `Client/Scenarios/sm_f3_scenario.hpp`, `Client/main.cpp` | scenario | done | `.NET`에는 별도 scenario 파일이 없지만 feature-map과 공통 Config 2에 있는 SM-F3를 C++ scenario header로 분리했다. 같은 route mesh channel에서 일반 route request와 target spot route request가 함께 처리되는지 검증한다. |
 | `Client/Scenarios/SmF4Scenario.cs` | `Client/Scenarios/sm_f4_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-F4 |
+| 공통 E2E `SM-F5` | `Client/Scenarios/sm_f5_scenario.hpp`, `Client/main.cpp` | scenario | done | `.NET`에는 별도 scenario 파일이 없지만 feature-map과 공통 Config 2에 있는 SM-F5를 C++ scenario header로 분리했다. spot route negative 뒤 같은 route channel의 일반 route request와 target spot route request가 계속 성공하는지 검증한다. |
 | `Client/Scenarios/SmG1Scenario.cs` | `Client/Scenarios/sm_g1_scenario.hpp`, `Client/main.cpp`, `run_e2e.sh` | scenario | done | SM-G1 crash/restart evidence |
 | `Client/Scenarios/SmG2Scenario.cs` | `Client/Scenarios/sm_g2_scenario.hpp` | scenario | done | SM-G2 |
-| `Client/Scenarios/SmG3Scenario.cs` | `Client/Scenarios/sm_g3_scenario.hpp` | scenario | done | SM-G3 |
+| `Client/Scenarios/SmG3Scenario.cs` | `Client/Scenarios/sm_g3_scenario.hpp` | scenario | done | `.NET`처럼 두 stream client를 먼저 순차 auth/bind한 뒤 ping/leave만 동시에 실행한다. 이전 C++ 구현은 auth/join까지 동시에 실행해 session `StreamBound` evidence가 중복될 수 있었다. |
 | `Client/Scenarios/SmG4Scenario.cs` | `Client/Scenarios/sm_g4_scenario.hpp` | scenario | done | SM-G4 |
 | `Client/Scenarios/SmQ9Scenario.cs` | `Client/Scenarios/sm_q9_scenario.hpp`, `Server/MultiNode/`, `run_e2e.sh` | scenario | done | `.NET`의 multi-node route-to-spot 흐름에 대응해 multi-node A/B role을 띄우고, 외부 route client가 target spot id로 state request를 보내 state/evidence가 유지되는지 검증한다. |
 | `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | done | registry role 진입점 |
@@ -323,11 +325,46 @@
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-205514-1176161`
   - 비고: base, stream, crash/recovery evidence와 SM-B3, SM-B4, SM-B7, SM-D3, SM-D8, SM-D10, SM-D14, SM-E2, SM-E3, SM-E4, SM-G2, SM-G3, SM-G4, SM-Q9 focused sweep를 통과했다. SM-G2와 SM-G3는 runner retry에서 2회차가 통과했다.
+- `timeout 1200s framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-232540-1458783`
+  - 비고: `.NET` runner처럼 full `all`을 focused scenario child sweep로 실행했다. SM-E3, SM-B7, SM-G1은 첫 시도에서 server startup `config_error_t`가 발생했지만 runner retry에서 통과했다.
+- `bash -n framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+  - 결과: passed
+- `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_client -j 4`
+  - 결과: passed
+  - 비고: SM-F3/SM-F5 인라인 검증을 `Client/Scenarios/sm_f3_scenario.hpp`,
+    `Client/Scenarios/sm_f5_scenario.hpp`로 분리한 뒤 client target build를 확인했다.
+- `timeout 300s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F3`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260701-014358-1695850`
+  - 비고: 같은 route mesh channel에서 일반 route request와 target spot route request가 함께
+    처리되는지 focused runner와 play-b evidence로 확인했다.
+- `timeout 300s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F5`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260701-014425-1696662`
+  - 비고: spot route negative 뒤 같은 route channel의 정상 route request와 target spot route request가
+    계속 성공하는지 focused runner와 play-b evidence로 확인했다.
+- `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_client -j 4`
+  - 결과: passed
+  - 비고: SM-G3 client flow를 `.NET`처럼 순차 auth/bind 뒤 동시 ping/leave 구조로 맞춘 뒤 client target
+    build를 확인했다.
+- `timeout 300s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-G3`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260701-024519-1802586`,
+    `framework/languages/cpp/e2e/SpotService/logs/20260701-024547-1803383`
+  - 비고: SM-G3의 actor join/leave와 session StreamBound evidence가 수정 후 연속 focused run에서 통과했다.
+- `timeout 1200s framework/languages/cpp/e2e/SpotService/run_e2e.sh`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260701-024713-1805184`
+  - 비고: SM-G3 수정 뒤 `.NET`식 focused child sweep 기반 full `all` runner가 통과했다. SM-D3와
+    SM-G1은 첫 시도 실패 뒤 runner retry에서 통과했고, SM-G3는 full sweep 안에서
+    `scenario SM-G3 evidence passed`를 출력했다.
 
 ## 완료 판정
 
 - server runtime 통합 header는 제거했고, 남은 공통 support는 shared support/endpoint 파일로 분리했다.
-- 최신 SM-Q9 build/focused 검증과 full `all` runner 검증이 통과했다.
+- 최신 SM-Q9 focused 검증과 `.NET`식 focused child sweep 기반 full `all` runner 검증이 통과했다.
 - `feature-map.ko.md`는 public API 또는 harness gap을 별도로 기록한다.
 - registry, play, session, gateway host factory 책임은 role-local header로 분리했다.
 - play actor model 책임은 `Server/Play/Spots/play_actor_model.hpp`로 분리했다.
@@ -355,6 +392,9 @@
   경로로 연결했고, SM-A5 focused runtime 검증에서 직접 호출했다.
 - SM-F1/SM-F2/SM-F4 scenario 책임은 `Client/Scenarios/sm_f*_scenario.hpp` 파일로 분리했고
   focused runtime 검증에서 route evidence를 확인했다.
+- SM-F3/SM-F5 scenario 책임도 공통 E2E scenario ID에 맞춰 `Client/Scenarios/sm_f3_scenario.hpp`,
+  `Client/Scenarios/sm_f5_scenario.hpp` 파일로 분리했고 focused runtime 검증에서 route evidence를
+  확인했다.
 - SM-G1 crash/recovery scenario 책임은 `Client/Scenarios/sm_g1_scenario.hpp` 파일로 분리했고
   focused runtime 검증과 full `all` runner에서 crash observation/recovery evidence를 확인했다.
 - SM-D10 stream backpressure scenario는 C++ stream connector의 public bounded receive queue 정책에

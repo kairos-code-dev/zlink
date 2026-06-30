@@ -127,17 +127,17 @@ template <typename T, typename TResult> concept has_callback_async = requires (T
 
 static_assert (!has_blocking_submit<zlink::framework::request_call_t<int>>);
 static_assert (!has_callback_async<zlink::framework::request_call_t<int>, int>);
-static_assert (!has_blocking_submit<zlink::framework::send_call_t>);
+static_assert (has_blocking_submit<zlink::framework::send_call_t>);
 static_assert (!has_callback_async<zlink::framework::send_call_t, void>);
 static_assert (!has_yield<zlink::framework::send_call_t>);
-static_assert (!has_blocking_submit<zlink::framework::relay_call_t>);
+static_assert (has_blocking_submit<zlink::framework::relay_call_t>);
 static_assert (!has_callback_async<zlink::framework::relay_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::relay_request_call_t>);
 static_assert (
   !has_callback_async<zlink::framework::relay_request_call_t, zlink::framework::message_t>);
-static_assert (!has_blocking_submit<zlink::framework::stream_write_call_t>);
+static_assert (has_blocking_submit<zlink::framework::stream_write_call_t>);
 static_assert (!has_callback_async<zlink::framework::stream_write_call_t, void>);
-static_assert (!has_blocking_submit<zlink::framework::route_send_call_t>);
+static_assert (has_blocking_submit<zlink::framework::route_send_call_t>);
 static_assert (!has_callback_async<zlink::framework::route_send_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::route_request_call_t>);
 static_assert (!has_callback_async<zlink::framework::route_request_call_t, std::uint64_t>);
@@ -448,10 +448,7 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::bound_session_t &> ().disconnect ()),
                  zlink::framework::bound_session_send_call_t>);
-static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::framework::bound_session_send_call_t &> ().yield ()),
-    zlink::framework::task_t<void>>);
+static_assert (!has_yield<zlink::framework::bound_session_send_call_t>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ()
                                           .bind<typed_config_t> ("server")),

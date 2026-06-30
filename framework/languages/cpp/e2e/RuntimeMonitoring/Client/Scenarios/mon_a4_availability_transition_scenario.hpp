@@ -25,17 +25,17 @@ inline bool mon_a4_contains_nonzero_registry_event (const std::vector<std::strin
     return false;
 }
 
-inline void run_mon_a4_availability_transition_scenario ()
+inline void run_mon_a4_availability_transition_scenario (const client_options_t &options)
 {
     auto http = zlink::http_client::client_t::create ()
-                  .base_url (env_or ("ZLINK_CPP_E2E_SERVICE_URL"))
+                  .base_url (options.service_url)
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
 
     auto drained = http.post ("/admin/server-weight?weight=0").submit_raw ().result ();
     ensure (drained && drained.value ().status < 400, "MON-A4 drain admin call failed");
     auto drain_entries =
-      wait_evidence_contains (env_or ("ZLINK_CPP_E2E_SERVICE_URL"),
+      wait_evidence_contains (options.service_url,
                               "admin|rid=svc-a|action=server-weight|weight=0",
                               std::chrono::milliseconds (10000));
     ensure (any_contains (drain_entries, "kind=PeerAdmissionChanged"),
@@ -44,13 +44,13 @@ inline void run_mon_a4_availability_transition_scenario ()
     auto restored = http.post ("/admin/server-weight?weight=100").submit_raw ().result ();
     ensure (restored && restored.value ().status < 400, "MON-A4 restore admin call failed");
     auto restore_entries =
-      wait_evidence_contains (env_or ("ZLINK_CPP_E2E_SERVICE_URL"),
+      wait_evidence_contains (options.service_url,
                               "admin|rid=svc-a|action=server-weight|weight=100",
                               std::chrono::milliseconds (10000));
     ensure (count_contains (restore_entries, "kind=PeerAdmissionChanged") >= 2,
             "MON-A4 restore socket admission evidence missing");
     const auto registry_entries = wait_evidence_count_at_least (
-      env_or ("ZLINK_CPP_E2E_REGISTRY_URL"), "kind=TopologyChanged", 2,
+      options.registry_url, "kind=TopologyChanged", 2,
       std::chrono::milliseconds (10000));
     ensure (mon_a4_contains_nonzero_registry_event (registry_entries, "kind=TopologyChanged",
                                                    "topology=0"),

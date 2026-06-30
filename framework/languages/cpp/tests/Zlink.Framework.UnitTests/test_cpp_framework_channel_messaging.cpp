@@ -689,10 +689,7 @@ int main ()
     if (outbound_runtime.outbound_calls ().size () != 2) {
         return 32;
     }
-    auto send_result = send_call.async ().result ();
-    if (!send_result) {
-        return 3;
-    }
+    send_call.submit ();
     if (outbound_runtime.outbound_calls ().size () != 3
         || outbound_runtime.outbound_calls ()[2].kind != "send"
         || outbound_runtime.outbound_calls ()[2].packet_name != "profile.command"
@@ -700,15 +697,11 @@ int main ()
         return 33;
     }
 
-    auto publish_result = zlink.publisher ()
-                            .publish ("events", "profile.changed", event_t{3})
-                            .packet_name ("profile.changed.event")
-                            .metadata ("trace-id", "publish-trace")
-                            .async ()
-                            .result ();
-    if (!publish_result) {
-        return 4;
-    }
+    zlink.publisher ()
+      .publish ("events", "profile.changed", event_t{3})
+      .packet_name ("profile.changed.event")
+      .metadata ("trace-id", "publish-trace")
+      .submit ();
     if (outbound_runtime.outbound_calls ().size () != 4
         || outbound_runtime.outbound_calls ()[3].kind != "publish"
         || outbound_runtime.outbound_calls ()[3].topic != "profile.changed"
@@ -717,12 +710,7 @@ int main ()
         return 34;
     }
 
-    auto disconnected_result = bus.send ("missing", request_t{4}).async ().result ();
-    if (disconnected_result
-        || disconnected_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::disconnected) {
-        return 5;
-    }
+    bus.send ("missing", request_t{4}).submit ();
 
     zlink::framework::zlink_builder_t full_queue;
     full_queue.max_pending (0);
@@ -1294,16 +1282,12 @@ int main ()
         hosted_service.stop ();
         return 246;
     }
-    auto hosted_send = hosted_builder.message_bus ()
-                         .send ("hosted", event_t{30})
-                         .packet_name ("event")
-                         .async ()
-                         .result ();
+    hosted_builder.message_bus ().send ("hosted", event_t{30}).packet_name ("event").submit ();
     for (int attempt = 0;
          attempt < 50 && provider.get_required<local_handler_t> ().last_event != 30; ++attempt) {
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
-    if (!hosted_send || provider.get_required<local_handler_t> ().last_event != 30) {
+    if (provider.get_required<local_handler_t> ().last_event != 30) {
         hosted_service.stop ();
         return 87;
     }
@@ -2411,15 +2395,12 @@ int main ()
           ++send_backend_seen;
           return zlink::framework::result_t<void>::success ();
       });
-    auto public_route_send =
-      public_route_client
-        .send ("public.route", zlink::routing_id_t::from (std::string ("target-node")), event_t{31})
-        .packet_name ("client.event")
-        .metadata ("trace-id", "trace-send")
-        .async ()
-        .result ();
-    if (!public_route_send || public_route.outbound_packets ().size () != 1
-        || send_backend_seen != 1) {
+    public_route_client
+      .send ("public.route", zlink::routing_id_t::from (std::string ("target-node")), event_t{31})
+      .packet_name ("client.event")
+      .metadata ("trace-id", "trace-send")
+      .submit ();
+    if (public_route.outbound_packets ().size () != 1 || send_backend_seen != 1) {
         return 58;
     }
     auto public_send_header =

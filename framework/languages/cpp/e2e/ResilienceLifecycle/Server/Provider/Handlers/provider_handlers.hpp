@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../Infrastructure/scenario_state.hpp"
+#include "../Infrastructure/evidence_store.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -11,104 +11,118 @@
 namespace zlink::framework::e2e::registry_messaging::provider
 {
 
+inline const std::string &profile_marker_or_value (const profile_req_t &request)
+{
+    return request.marker.empty () ? request.value : request.marker;
+}
+
+inline const std::string &profile_marker_or_command (const profile_msg_t &command)
+{
+    return command.marker.empty () ? command.command_id : command.marker;
+}
+
 class profile_request_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
     using request_type = profile_req_t;
     using reply_type = profile_res_t;
 
-    explicit profile_request_handler_t (scenario_state_t &state) : _state (state) {}
+    explicit profile_request_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
 
     profile_res_t handle (const profile_req_t &request)
     {
+        const auto &marker = profile_marker_or_value (request);
         if (request.value == "slow") {
-            _state.record ("ProfileReq", request.value);
+            _evidence.record ("ProfileReq", marker);
             std::this_thread::sleep_for (std::chrono::seconds (1));
             return {.value = "profile:" + request.value,
-                    .provider_rid = _state.provider_rid,
-                    .instance_id = _state.instance_id};
+                    .provider_rid = _evidence.provider_rid (),
+                    .instance_id = _evidence.instance_id (),
+                    .marker = marker};
         } else if (request.value == "very-slow") {
-            _state.record ("ProfileReq", request.value);
+            _evidence.record ("ProfileReq", marker);
             std::this_thread::sleep_for (std::chrono::seconds (10));
             return {.value = "profile:" + request.value,
-                    .provider_rid = _state.provider_rid,
-                    .instance_id = _state.instance_id};
+                    .provider_rid = _evidence.provider_rid (),
+                    .instance_id = _evidence.instance_id (),
+                    .marker = marker};
         }
-        _state.record ("ProfileReq", request.value);
+        _evidence.record ("ProfileReq", marker);
         return {.value = "profile:" + request.value,
-                .provider_rid = _state.provider_rid,
-                .instance_id = _state.instance_id};
+                .provider_rid = _evidence.provider_rid (),
+                .instance_id = _evidence.instance_id (),
+                .marker = marker};
     }
 
   private:
-    scenario_state_t &_state;
+    evidence_store_t &_evidence;
 };
 
 class profile_command_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
     using message_type = profile_msg_t;
 
-    explicit profile_command_handler_t (scenario_state_t &state) : _state (state) {}
+    explicit profile_command_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
 
     void handle (const profile_msg_t &command)
     {
         if (command.command_id.rfind ("rm-c9-slow-", 0) == 0) {
             std::this_thread::sleep_for (std::chrono::seconds (1));
         }
-        _state.record ("ProfileMsg", command.command_id);
+        _evidence.record ("ProfileMsg", profile_marker_or_command (command));
     }
 
   private:
-    scenario_state_t &_state;
+    evidence_store_t &_evidence;
 };
 
 class payload_request_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
     using request_type = payload_req_t;
     using reply_type = payload_res_t;
 
-    explicit payload_request_handler_t (scenario_state_t &state) : _state (state) {}
+    explicit payload_request_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
 
     payload_res_t handle (const payload_req_t &request)
     {
         const auto hash = sha256_hex (request.payload);
-        _state.record ("PayloadReq",
-                       request.marker + ":length=" + std::to_string (request.payload.size ())
-                         + ":sha256=" + hash);
+        _evidence.record ("PayloadReq",
+                          request.marker + ":length=" + std::to_string (request.payload.size ())
+                            + ":sha256=" + hash);
         return {.marker = request.marker,
                 .length = static_cast<int> (request.payload.size ()),
                 .sha256 = hash};
     }
 
   private:
-    scenario_state_t &_state;
+    evidence_store_t &_evidence;
 };
 
 class route_ping_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<scenario_state_t>;
+    using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
     using request_type = scenario_route_req_t;
     using reply_type = scenario_route_res_t;
 
-    explicit route_ping_handler_t (scenario_state_t &state) : _state (state) {}
+    explicit route_ping_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
 
     scenario_route_res_t handle (const scenario_route_req_t &request,
                          const zlink::framework::route_handler_context_t &context)
     {
-        _state.record ("ScenarioRouteReq", request.value);
+        _evidence.record ("ScenarioRouteReq", request.value);
         return {.value = "route:" + request.value,
-                .target_rid = _state.provider_rid,
+                .target_rid = _evidence.provider_rid (),
                 .source_rid = context.source_node_rid.to_string ()};
     }
 
   private:
-    scenario_state_t &_state;
+    evidence_store_t &_evidence;
 };
 
 } // namespace zlink::framework::e2e::registry_messaging::provider

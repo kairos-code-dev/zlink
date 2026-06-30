@@ -17,8 +17,7 @@ inline void run_rm_c1_request_send_scenario (zlink::framework::channel_client_t 
     ensure (request.result ().has_value (), "RM-C1 request failed");
     ensure (request.result ().value ().value == "profile:c1", "RM-C1 reply mismatch");
 
-    auto send = channels.send (api_channel, profile_msg_t{.command_id = "cmd-c1"}).async ();
-    ensure (send.result ().has_value (), "RM-C1 send failed");
+    channels.send (api_channel, profile_msg_t{.command_id = "cmd-c1"}).submit ();
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
 
     const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));

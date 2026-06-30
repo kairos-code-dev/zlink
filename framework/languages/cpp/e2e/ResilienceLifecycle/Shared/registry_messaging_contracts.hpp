@@ -22,6 +22,7 @@ inline constexpr const char *handler_group = "registry-messaging";
 struct profile_req_t
 {
     std::string value;
+    std::string marker;
 };
 
 struct profile_res_t
@@ -29,11 +30,13 @@ struct profile_res_t
     std::string value;
     std::string provider_rid;
     std::string instance_id;
+    std::string marker;
 };
 
 struct profile_msg_t
 {
     std::string command_id;
+    std::string marker;
 };
 
 struct payload_req_t
@@ -47,6 +50,17 @@ struct payload_res_t
     std::string marker;
     int length = 0;
     std::string sha256;
+};
+
+struct request_failure_res_t
+{
+    bool failed = false;
+    std::string error_type;
+};
+
+struct operation_status_t
+{
+    std::string status;
 };
 
 struct workflow_req_t
@@ -100,11 +114,17 @@ inline std::string sha256_hex (const std::string &value)
 inline void to_json (nlohmann::json &json, const profile_req_t &value)
 {
     json = nlohmann::json{{"value", value.value}};
+    if (!value.marker.empty ()) {
+        json["marker"] = value.marker;
+    }
 }
 
 inline void from_json (const nlohmann::json &json, profile_req_t &value)
 {
     json.at ("value").get_to (value.value);
+    if (json.contains ("marker")) {
+        json.at ("marker").get_to (value.marker);
+    }
 }
 
 inline void to_json (nlohmann::json &json, const profile_res_t &value)
@@ -112,6 +132,9 @@ inline void to_json (nlohmann::json &json, const profile_res_t &value)
     json = nlohmann::json{{"value", value.value},
                           {"provider_rid", value.provider_rid},
                           {"instance_id", value.instance_id}};
+    if (!value.marker.empty ()) {
+        json["marker"] = value.marker;
+    }
 }
 
 inline void from_json (const nlohmann::json &json, profile_res_t &value)
@@ -121,16 +144,30 @@ inline void from_json (const nlohmann::json &json, profile_res_t &value)
     if (json.contains ("instance_id")) {
         json.at ("instance_id").get_to (value.instance_id);
     }
+    if (json.contains ("marker")) {
+        json.at ("marker").get_to (value.marker);
+    }
 }
 
 inline void to_json (nlohmann::json &json, const profile_msg_t &value)
 {
     json = nlohmann::json{{"command_id", value.command_id}};
+    if (!value.marker.empty ()) {
+        json["marker"] = value.marker;
+    }
 }
 
 inline void from_json (const nlohmann::json &json, profile_msg_t &value)
 {
-    json.at ("command_id").get_to (value.command_id);
+    if (json.contains ("command_id")) {
+        json.at ("command_id").get_to (value.command_id);
+    }
+    if (json.contains ("marker")) {
+        json.at ("marker").get_to (value.marker);
+        if (value.command_id.empty ()) {
+            value.command_id = value.marker;
+        }
+    }
 }
 
 inline void to_json (nlohmann::json &json, const payload_req_t &value)
@@ -155,6 +192,27 @@ inline void from_json (const nlohmann::json &json, payload_res_t &value)
     json.at ("marker").get_to (value.marker);
     json.at ("length").get_to (value.length);
     json.at ("sha256").get_to (value.sha256);
+}
+
+inline void to_json (nlohmann::json &json, const request_failure_res_t &value)
+{
+    json = nlohmann::json{{"failed", value.failed}, {"error_type", value.error_type}};
+}
+
+inline void from_json (const nlohmann::json &json, request_failure_res_t &value)
+{
+    json.at ("failed").get_to (value.failed);
+    json.at ("error_type").get_to (value.error_type);
+}
+
+inline void to_json (nlohmann::json &json, const operation_status_t &value)
+{
+    json = nlohmann::json{{"status", value.status}};
+}
+
+inline void from_json (const nlohmann::json &json, operation_status_t &value)
+{
+    json.at ("status").get_to (value.status);
 }
 
 inline void to_json (nlohmann::json &json, const workflow_req_t &value)

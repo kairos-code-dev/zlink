@@ -268,9 +268,9 @@ int main ()
       zlink::framework::detail::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
       zlink::framework::detail::stream_header_flags_t::none, std::nullopt, "move");
     zlink::framework::detail::enter_stream_relay_dispatch (header);
-    auto relay = actor.value ().relay (payload).async ().result ();
+    actor.value ().relay (payload).submit ();
     zlink::framework::detail::exit_stream_relay_dispatch ();
-    if (!relay || query.monitoring_snapshot ().spot_lookup_count != lookup_after_actor_bind) {
+    if (query.monitoring_snapshot ().spot_lookup_count != lookup_after_actor_bind) {
         return 16;
     }
 

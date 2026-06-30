@@ -48,15 +48,14 @@ class stream_write_call_state_t
 
     void compress () { _compressed = true; }
 
-    task_t<void> async ()
+    result_t<void> submit_now ()
     {
         if (_immediate) {
-            return task_t<void> (*_immediate);
+            return *_immediate;
         }
         if (!_submit || !_header || !_payload) {
-            return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "STREAM write call is not bound to a stream"));
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "STREAM write call is not bound to a stream");
         }
 
         auto metadata = _header->metadata ().values ();
@@ -67,16 +66,15 @@ class stream_write_call_state_t
         auto payload = *_payload;
         if (_compressed) {
             if (!_compression_codec) {
-                return task_t<void> (result_t<void>::failure (
-                  framework_error_kind_t::request_failed,
-                  "STREAM compression codec is not configured"));
+                return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                "STREAM compression codec is not configured");
             }
             try {
                 payload = _compression_codec->compress (payload);
             }
             catch (const std::exception &error) {
-                return task_t<void> (result_t<void>::failure (
-                  framework_error_kind_t::request_failed, error.what ()));
+                return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                error.what ());
             }
             flags = flags | stream_header_flags_t::payload_compressed;
         }
@@ -177,9 +175,14 @@ stream_write_call_t &stream_write_call_t::compress ()
     return *this;
 }
 
-task_t<void> stream_write_call_t::async ()
+void stream_write_call_t::submit ()
 {
-    return _state->async ();
+    (void) _state->submit_now ();
+}
+
+result_t<void> stream_write_call_t::submit_now ()
+{
+    return _state->submit_now ();
 }
 
 stream_error_t::stream_error_t (stream_session_error_t error,
@@ -365,20 +368,19 @@ stream_write_call_t stream_t::write_packet_with_header (detail::stream_header_t 
     auto state = _state;
     return stream_write_call_t (
       std::move (header), std::move (payload), state->compression_codec,
-      [state] (const stream_header_t &submitted_header, const zlink::message_t &submitted_payload) {
-          if (state->closed.load (std::memory_order_acquire)) {
-              return task_t<void> (result_t<void>::failure (
-                framework_error_kind_t::disconnected, "STREAM session is disconnected"));
-          }
-          if (state->transport_writer) {
-              const std::lock_guard<std::mutex> lock (state->transport_writer_mutex);
-              const auto written = state->transport_writer (submitted_header, submitted_payload);
-              return task_t<void> (written);
-          }
-          state->written_headers.push_back (submitted_header);
-          state->written_payloads.push_back (submitted_payload);
-          return task_t<void> (result_t<void>::success ());
-      });
+	      [state] (const stream_header_t &submitted_header, const zlink::message_t &submitted_payload) {
+	          if (state->closed.load (std::memory_order_acquire)) {
+	              return result_t<void>::failure (framework_error_kind_t::disconnected,
+	                                             "STREAM session is disconnected");
+	          }
+	          if (state->transport_writer) {
+	              const std::lock_guard<std::mutex> lock (state->transport_writer_mutex);
+	              return state->transport_writer (submitted_header, submitted_payload);
+	          }
+	          state->written_headers.push_back (submitted_header);
+	          state->written_payloads.push_back (submitted_payload);
+	          return result_t<void>::success ();
+	      });
 }
 
 stream_write_call_t stream_t::reply_packet (const zlink::message_t &payload)

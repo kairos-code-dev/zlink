@@ -136,9 +136,8 @@ int main ()
     auto relay_with_header = [&] (zlink::framework::session_actor_t &actor,
                                   const zlink::message_t &message) {
         zlink::framework::detail::enter_stream_relay_dispatch (header);
-        auto result = actor.relay (message).async ().result ();
+        actor.relay (message).submit ();
         zlink::framework::detail::exit_stream_relay_dispatch ();
-        return result;
     };
     auto relay_request_with_header = [&] (zlink::framework::session_actor_t &actor,
                                           const zlink::message_t &message) {
@@ -147,8 +146,8 @@ int main ()
         zlink::framework::detail::exit_stream_relay_dispatch ();
         return result;
     };
-    auto relay = relay_with_header (bound.value (), payload);
-    if (!relay || gateway.relayed_frames ().size () != 1
+    relay_with_header (bound.value (), payload);
+    if (gateway.relayed_frames ().size () != 1
         || gateway.relayed_frames ()[0].payload.to_string () != "payload"
         || payload.to_string () != "payload") {
         return 7;
@@ -164,8 +163,8 @@ int main ()
         return zlink::framework::result_t<std::optional<zlink::message_t>>::success (
           zlink::message_t::from (std::string ("relay-reply")));
     });
-    auto dispatched_relay = relay_with_header (bound.value (), payload);
-    if (!dispatched_relay || !relay_dispatch_seen || gateway.relayed_frames ().size () != 1) {
+    relay_with_header (bound.value (), payload);
+    if (!relay_dispatch_seen || gateway.relayed_frames ().size () != 1) {
         return 22;
     }
     auto relay_request = relay_request_with_header (bound.value (), payload);
@@ -174,36 +173,29 @@ int main ()
     }
 
     zlink::framework::session_actor_t unbound;
-    auto missing_relay = relay_with_header (unbound, payload);
-    if (missing_relay
-        || missing_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
-        return 8;
-    }
+    relay_with_header (unbound, payload);
 
-    auto push_result =
-      bound.value ().context ().bound_session ().send (framework_payload).async ().result ();
-    if (!push_result || gateway.bound_session_pushes ().size () != 1
+    bound.value ().context ().bound_session ().send (framework_payload).submit ();
+    if (gateway.bound_session_pushes ().size () != 1
         || gateway.bound_session_pushes ()[0].payload.to_string () != "payload") {
         return 9;
     }
 
-    auto typed_push = bound.value ()
-                        .context ()
-                        .bound_session ()
-                        .send (typed_session_push_t{"typed-payload"})
-                        .async ()
-                        .result ();
-    if (!typed_push || gateway.bound_session_pushes ().size () != 2
+    bound.value ()
+      .context ()
+      .bound_session ()
+      .send (typed_session_push_t{"typed-payload"})
+      .submit ();
+    if (gateway.bound_session_pushes ().size () != 2
         || gateway.bound_session_pushes ()[1].payload.to_string () != "typed-payload") {
         return 13;
     }
-    auto json_push = bound.value ()
-                       .context ()
-                       .bound_session ()
-                       .send (json_session_push_t{"json-payload"})
-                       .async ()
-                       .result ();
-    if (!json_push || gateway.bound_session_pushes ().size () != 3
+    bound.value ()
+      .context ()
+      .bound_session ()
+      .send (json_session_push_t{"json-payload"})
+      .submit ();
+    if (gateway.bound_session_pushes ().size () != 3
         || gateway.bound_session_pushes ()[2].payload.to_string ()
              != R"({"body":"json-payload"})") {
         return 24;
@@ -213,16 +205,9 @@ int main ()
     if (!disconnect || gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 10;
     }
-    auto disconnected_push =
-      bound.value ().bound_session ().send (framework_payload).async ().result ();
-    if (disconnected_push
-        || disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
-        return 16;
-    }
-    auto disconnected_relay = relay_with_header (bound.value (), payload);
-    if (disconnected_relay
-        || disconnected_relay.error_kind () != framework_error_kind_t::disconnected
-        || payload.to_string () != "payload") {
+    bound.value ().bound_session ().send (framework_payload).submit ();
+    relay_with_header (bound.value (), payload);
+    if (payload.to_string () != "payload") {
         return 17;
     }
 
@@ -304,16 +289,11 @@ int main ()
         || join_spot.value ().reply.decode<join_reply_t> (serializers).mark != "O") {
         return 14;
     }
-    const auto stale_relay = relay_with_header (rebound.value (), payload);
-    if (stale_relay || stale_relay.error_kind () != framework_error_kind_t::actor_stale_generation
-        || payload.to_string () != "payload") {
+    relay_with_header (rebound.value (), payload);
+    if (payload.to_string () != "payload") {
         return 20;
     }
-    const auto stale_push =
-      rebound.value ().bound_session ().send (framework_payload).async ().result ();
-    if (stale_push || stale_push.error_kind () != framework_error_kind_t::actor_stale_generation) {
-        return 21;
-    }
+    rebound.value ().bound_session ().send (framework_payload).submit ();
 
     bool entry_join_seen = false;
     gateway.on_join_entry_spot ([&] (const zlink::framework::actor_ref_t &actor,
@@ -351,18 +331,8 @@ int main ()
     if (!destroy_bound || gateway.actor_bound ("bob") || gateway.actor_disconnected ("bob")) {
         return 25;
     }
-    const auto post_destroy_push =
-      rebound_after_entry.value ().bound_session ().send (framework_payload).async ().result ();
-    if (post_destroy_push
-        || post_destroy_push.error_kind () != framework_error_kind_t::actor_session_not_bound) {
-        return 26;
-    }
-    const auto post_destroy_relay =
-      relay_with_header (rebound_after_entry.value (), payload);
-    if (post_destroy_relay
-        || post_destroy_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
-        return 27;
-    }
+    rebound_after_entry.value ().bound_session ().send (framework_payload).submit ();
+    relay_with_header (rebound_after_entry.value (), payload);
 
     return 0;
 }

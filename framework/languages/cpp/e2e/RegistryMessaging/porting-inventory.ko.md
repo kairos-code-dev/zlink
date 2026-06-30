@@ -38,10 +38,10 @@ C++ `RegistryMessaging` E2E의 대응 파일과 남은 gap을 기록한다. 상�
 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp` | scenario | done | discovery consumer HTTP role을 거쳐 RM-C5 missing packet negative path를 검증한다. |
 | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm_c7_weighted_provider_scenario.hpp` | scenario | done | RM-C7 weighted provider distribution을 직접 실행한다. |
 | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm_c8_payload_round_trip_scenario.hpp` | scenario | done | single consumer HTTP role을 거쳐 RM-C8 payload round-trip과 max-size subflow를 검증한다. |
-| `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm_c9_backpressure_scenario.hpp` | scenario | partial | C++는 send pressure와 recovery evidence를 검증하지만, public send submit이 bounded failure를 노출하지 않아 .NET bounded-failure oracle은 P2 gap으로 남긴다. 2026-06-30에 bounded-failure 단언을 켠 확인 실행은 `logs/20260630-081601-3230989/client-rm-c9.stderr.log`의 `RM-C9 expected at least one bounded failure...` 오류로 실패했다. |
-| `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer_options.hpp` | consumer-role | done | consumer HTTP endpoint, registry router, direct provider endpoints, low-HWM option을 env에서 읽는다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/main.cpp` | consumer-role | done | C++ consumer role이 direct, single, discovery, low-HWM 구성의 framework client와 HTTP endpoint를 구성한다. payload scenario의 JSON wrapper 크기를 받기 위해 public HTTP server option으로 request body limit을 높인다. |
-| `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer_endpoints.hpp` | consumer-role | partial | profile request, slow/missing request, missing command, payload, backpressure endpoint가 scenario 검증 경로에 쓰인다. batch endpoint는 남아 있지만 C++ HTTP array body binding 차이 때문에 RM-C3은 단건 request endpoint 반복 호출로 검증한다. RM-C9 bounded-failure oracle도 public send submit 차이로 gap이다. 2026-06-30 단언 확인 실행은 bounded failure 없이 실패했다. |
+| `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm_c9_backpressure_scenario.hpp` | scenario | done | one-way send pressure 제출과 recovery evidence를 검증한다. public send는 bounded-failure oracle을 노출하지 않는다. |
+| `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer_options.hpp` | consumer-role | done | consumer HTTP endpoint, registry router, direct provider endpoints를 env에서 읽는다. |
+| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/main.cpp` | consumer-role | done | C++ consumer role이 direct, single, discovery, backpressure 구성의 framework client와 HTTP endpoint를 구성한다. payload scenario의 JSON wrapper 크기를 받기 위해 public HTTP server option으로 request body limit을 높인다. |
+| `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer_endpoints.hpp` | consumer-role | partial | profile request, slow/missing request, missing command, payload, backpressure endpoint가 scenario 검증 경로에 쓰인다. batch endpoint는 남아 있지만 C++ HTTP array body binding 차이 때문에 RM-C3은 단건 request endpoint 반복 호출로 검증한다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.cpp` | consumer-role | done | consumer role executable 진입점이 있다. |
 | `Server/Consumer/RegistryMessaging.Consumer.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registry_messaging_consumer` target이 대응한다. |
 | `Server/Provider/Configuration/ServerOptions.cs` | `Server/Provider/Configuration/provider_options.hpp` | server-role | done | provider rid, endpoints, weight, max message size, log dir를 env에서 읽는다. |
@@ -82,26 +82,24 @@ C++ `RegistryMessaging` E2E의 대응 파일과 남은 gap을 기록한다. 상�
 | `RM-C5` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C7` | `Client/Scenarios/rm_c7_weighted_provider_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C8` | `Client/Scenarios/rm_c8_payload_round_trip_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
-| `RM-C9` | `Client/Scenarios/rm_c9_backpressure_scenario.hpp` | partial | P2 send pressure/recovery는 검증하고 bounded-failure oracle은 gap으로 남긴다. 2026-06-30 bounded-failure 단언 확인 실행 로그: `logs/20260630-081601-3230989`. |
+| `RM-C9` | `Client/Scenarios/rm_c9_backpressure_scenario.hpp` | done | P2 send pressure/recovery를 public one-way send 계약에 맞춰 검증한다. |
 
 ## 검증
 
 - 2026-06-30: `./framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh RM-C9`
   - 결과: 통과
   - 로그: `logs/20260630-081704-3233416`
-  - 의미: 현재 C++ partial 경로의 send pressure, provider evidence, recovery 검증은 유지된다.
+  - 의미: 현재 C++ 경로의 send pressure, provider evidence, recovery 검증은 유지된다.
 - 2026-06-30: `./framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all`
   - 결과: 통과
   - parent 로그: `logs/20260630-081727-3234507`
   - RM-C9 child 로그: `logs/20260630-081915-3246228`
-  - 의미: 구현된 RegistryMessaging 시나리오는 전체 sweep에서 통과하지만, RM-C9 bounded-failure
-    oracle은 위 gap 때문에 완료 판정에서 제외한다.
+  - 의미: 구현된 RegistryMessaging 시나리오는 전체 sweep에서 통과한다.
 - 2026-06-30: `timeout 420s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all`
   - 결과: 통과
   - parent 로그: `logs/20260630-161051-366893`
   - RM-C9 child 로그: `logs/20260630-161317-377857`
   - 의미: 현재 checkout에서도 RM-A1, RM-A2, RM-A4, RM-A6, RM-B1, RM-B2, RM-C1, RM-C2,
     RM-C3, RM-C4, RM-C5, RM-C7, RM-C8, RM-C9 sweep가 모두 통과한다. RM-C9 child log의
-    `backpressure-consumer-flow.log`와 `api-a-flow.log`에는 low-HWM send pressure와 후속 recovery
-    request/reply flow가 남는다. bounded-failure oracle은 public send submit gap으로 계속 완료 판정에서
-    제외한다.
+    `backpressure-consumer-flow.log`와 `api-a-flow.log`에는 send pressure와 후속 recovery
+    request/reply flow가 남는다.

@@ -41,7 +41,9 @@
 #include "Scenarios/sm_e4_scenario.hpp"
 #include "Scenarios/sm_f1_scenario.hpp"
 #include "Scenarios/sm_f2_scenario.hpp"
+#include "Scenarios/sm_f3_scenario.hpp"
 #include "Scenarios/sm_f4_scenario.hpp"
+#include "Scenarios/sm_f5_scenario.hpp"
 #include "Scenarios/sm_g1_scenario.hpp"
 #include "Scenarios/sm_g2_scenario.hpp"
 #include "Scenarios/sm_g3_scenario.hpp"
@@ -382,8 +384,24 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
               routes, remote_spot);
             return;
         }
+        if (_scenario_mode == "sm-f3") {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_f1_scenario (
+              routes, remote_spot);
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_f2_scenario (
+              routes, remote_spot);
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_f3_scenario (
+              routes, remote_spot);
+            return;
+        }
         if (_scenario_mode == "sm-f4") {
             zlink::framework::e2e::spot_service::client::scenarios::run_sm_f4_scenario (
+              routes, remote_spot);
+            return;
+        }
+        if (_scenario_mode == "sm-f5") {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_f4_scenario (
+              routes, remote_spot);
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_f5_scenario (
               routes, remote_spot);
             return;
         }
@@ -464,28 +482,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         }
         std::cout << "scenario SM-C1 passed\n";
 
-        auto normal_route_after_spot =
-          routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
-                      e2e::ensure_actor_req_t{"route-mixed-f3", "Route Mixed"})
-            .packet_name ("EnsureActor")
-            .timeout (std::chrono::milliseconds (3000))
-            .async<e2e::ensure_actor_res_t> ()
-            .result ();
-        ensure (normal_route_after_spot.has_value (),
-                "SM-F3 normal route packet failed after spot route");
-        auto spot_route_after_normal =
-          routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
-                      remote_spot, e2e::direct_spot_req_t{"external-client", "route-mixed"})
-            .packet_name ("DirectSpotReq")
-            .timeout (std::chrono::milliseconds (3000))
-            .async<e2e::direct_spot_res_t> ()
-            .result ();
-        ensure (spot_route_after_normal.has_value ()
-                  && spot_route_after_normal.value ().value == "route-mixed:reply",
-                "SM-F3 spot route packet failed after normal route");
-        std::cout << "scenario SM-F3 passed\n";
+        zlink::framework::e2e::spot_service::client::scenarios::run_sm_f3_scenario (
+          routes, remote_spot);
 
         auto missing_spot_handler =
           routes
@@ -513,7 +511,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             return;
         }
         std::cout << "scenario SM-E1 passed\n";
-        std::cout << "scenario SM-F5 passed\n";
+        zlink::framework::e2e::spot_service::client::scenarios::run_sm_f5_scenario (
+          routes, remote_spot);
 
         auto publish_only = publisher
                               .publish (e2e::publisher_channel, e2e::mesh_topic,
@@ -614,21 +613,22 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (auth.value ().session_node_rid == "session-a",
                 scenario_id + " stream auth session mismatch");
 
-        auto joined = stream.send (e2e::join_req_t{.key = key,
-                                                .actor_id = actor_id,
-                                                .display_name = actor_id + "-display",
-                                                .level = target_node == "play-a" ? 31 : 41,
-                                                .tags = {"stream", scenario_id}})
+        auto joined = stream.request (e2e::join_req_t{.key = key,
+                                                   .actor_id = actor_id,
+                                                   .display_name = actor_id + "-display",
+                                                   .level = target_node == "play-a" ? 31 : 41,
+                                                   .tags = {"stream", scenario_id}})
                         .packet_name ("JoinReq")
-                        .submit ();
+                        .submit<e2e::join_res_t> ();
         ensure (static_cast<bool> (joined),
                 scenario_id + " stream join send failed: " + stream_error_text (joined));
         std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
         auto state =
-          stream.send (e2e::state_req_t{.op = "add", .amount = target_node == "play-a" ? 13 : 17})
+          stream.request (
+            e2e::state_req_t{.op = "add", .amount = target_node == "play-a" ? 13 : 17})
             .packet_name ("StateReq")
-            .submit ();
+            .submit<e2e::state_res_t> ();
         ensure (static_cast<bool> (state),
                 scenario_id + " stream state send failed: " + stream_error_text (state));
 
@@ -636,9 +636,9 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           stream.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
             .to_future (scenario_id + " push notify missing");
         auto pushed =
-          stream.send (e2e::actor_push_req_t{push_value})
+          stream.request (e2e::actor_push_req_t{push_value})
             .packet_name ("PushReq")
-            .submit ();
+            .submit<e2e::actor_push_res_t> ();
         ensure (static_cast<bool> (pushed),
                 scenario_id + " push trigger failed: " + stream_error_text (pushed));
         (void) push_wait.get ();

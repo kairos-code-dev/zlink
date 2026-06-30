@@ -1005,19 +1005,18 @@ route_send_call_t &route_send_call_t::metadata (std::string key, std::string val
     return *this;
 }
 
-task_t<void> route_send_call_t::async ()
+result_t<void> route_send_call_t::submit_now ()
 {
     if (!_submit) {
-        return task_t<void> (
-          result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                   "route send call is not bound to a route client"));
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "route send call is not bound to a route client");
     }
     return _submit (_packet_name, _metadata);
 }
 
 void route_send_call_t::submit ()
 {
-    detail::submit_one_way_task (async ());
+    (void) submit_now ();
 }
 
 route_request_call_t::route_request_call_t (std::string packet_name, submit_fn_t submit) :
@@ -1067,7 +1066,7 @@ route_client_t::route_client_t (route_client_t &&) noexcept = default;
 
 route_client_t &route_client_t::operator= (route_client_t &&) noexcept = default;
 
-task_t<void>
+result_t<void>
 route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
                                     const std::string &router_channel_id,
                                     const zlink::routing_id_t &target_node_rid,
@@ -1077,8 +1076,8 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                     const route_send_call_t::metadata_map_t &metadata)
 {
     if (!state || !state->runtime || state->serializers == nullptr) {
-        return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error, "route client is not configured"));
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "route client is not configured");
     }
     runtime::messaging::message_parts_t parts;
     try {
@@ -1106,10 +1105,9 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                             *state->serializers);
     }
     catch (const framework_exception_t &error) {
-        return task_t<void> (
-          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
     }
-    return runtime::handler_coroutine_executor ().submit<void> (
+    auto submitted = runtime::handler_coroutine_executor ().submit<void> (
       [state, router_channel_id, target_node_rid,
        parts = std::move (parts)] () mutable -> boost::asio::awaitable<result_t<void>> {
           try {
@@ -1126,6 +1124,8 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
                                                  error.what ());
           }
       });
+    detail::submit_one_way_task (std::move (submitted));
+    return result_t<void>::success ();
 }
 
 task_t<std::uint64_t>
@@ -1193,7 +1193,7 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
       });
 }
 
-task_t<void> route_client_t::submit_spot_send_erased (
+result_t<void> route_client_t::submit_spot_send_erased (
   const std::shared_ptr<detail::route_client_state_t> &state,
   const std::string &router_channel_id,
   const zlink::routing_id_t &target_node_rid,
@@ -1204,8 +1204,8 @@ task_t<void> route_client_t::submit_spot_send_erased (
   const route_send_call_t::metadata_map_t &metadata)
 {
     if (!state || !state->runtime || state->serializers == nullptr) {
-        return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::request_protocol_error, "route client is not configured"));
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "route client is not configured");
     }
     runtime::messaging::message_parts_t parts;
     const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
@@ -1234,10 +1234,9 @@ task_t<void> route_client_t::submit_spot_send_erased (
                                             *state->serializers);
     }
     catch (const framework_exception_t &error) {
-        return task_t<void> (
-          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
     }
-    return runtime::handler_coroutine_executor ().submit<void> (
+    auto submitted = runtime::handler_coroutine_executor ().submit<void> (
       [state, router_channel_id, target_node_rid,
        spot_rid, parts = std::move (parts)] () mutable -> boost::asio::awaitable<result_t<void>> {
           try {
@@ -1255,6 +1254,8 @@ task_t<void> route_client_t::submit_spot_send_erased (
                                                  error.what ());
           }
       });
+    detail::submit_one_way_task (std::move (submitted));
+    return result_t<void>::success ();
 }
 
 task_t<std::uint64_t> route_client_t::submit_spot_request_erased (

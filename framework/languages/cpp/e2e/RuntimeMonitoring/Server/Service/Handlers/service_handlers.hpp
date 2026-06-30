@@ -150,42 +150,4 @@ class shutdown_handler_t
     }
 };
 
-inline std::string socket_kind_name (zlink::framework::socket_event_kind_t kind)
-{
-    switch (kind) {
-        case zlink::framework::socket_event_kind_t::connected:
-            return "Connected";
-        case zlink::framework::socket_event_kind_t::connection_ready:
-            return "ConnectionReady";
-        case zlink::framework::socket_event_kind_t::disconnected:
-            return "Disconnected";
-        case zlink::framework::socket_event_kind_t::closed:
-            return "Closed";
-        case zlink::framework::socket_event_kind_t::handshake_failed:
-            return "HandshakeFailed";
-        case zlink::framework::socket_event_kind_t::peer_admission_changed:
-            return "PeerAdmissionChanged";
-        case zlink::framework::socket_event_kind_t::internal:
-            return "Internal";
-    }
-    return "Unknown";
-}
-
-inline std::string spot_kind_name (zlink::framework::spot_event_kind_t kind)
-{
-    switch (kind) {
-        case zlink::framework::spot_event_kind_t::status_changed:
-            return "StatusChanged";
-        case zlink::framework::spot_event_kind_t::peers_changed:
-            return "PeersChanged";
-        case zlink::framework::spot_event_kind_t::subjects_changed:
-            return "SubjectsChanged";
-        case zlink::framework::spot_event_kind_t::timer_handler_failed:
-            return "TimerHandlerFailed";
-        case zlink::framework::spot_event_kind_t::timer_stopped_after_unhandled_exception:
-            return "TimerStoppedAfterUnhandledException";
-    }
-    return "Unknown";
-}
-
 } // namespace zlink::framework::e2e::runtime_monitoring::service

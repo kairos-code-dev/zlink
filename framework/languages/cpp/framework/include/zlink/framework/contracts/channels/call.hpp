@@ -218,7 +218,7 @@ class send_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<task_t<void> (
+    using submit_fn_t = std::function<result_t<void> (
       const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
     explicit send_call_t (result_t<void> result) : _immediate (std::move (result)) {}
@@ -246,22 +246,24 @@ class send_call_t
         return *this;
     }
 
-    task_t<void> async ()
+    void submit ()
+    {
+        (void) submit_now ();
+    }
+
+  private:
+    result_t<void> submit_now ()
     {
         if (_immediate) {
-            return task_t<void> (*_immediate);
+            return *_immediate;
         }
         if (!_submit) {
-            return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "send call is not bound to a channel client"));
+            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                            "send call is not bound to a channel client");
         }
         return _submit (_packet_name, _timeout, _metadata);
     }
 
-    void submit () { detail::submit_one_way_task (async ()); }
-
-  private:
     std::optional<result_t<void>> _immediate;
     std::string _packet_name;
     std::chrono::milliseconds _timeout{0};
@@ -294,7 +296,6 @@ class bound_session_send_call_t
         return *this;
     }
 
-    task_t<void> async () { return _call.async (); }
     void submit () { _call.submit (); }
 
   private:
@@ -309,8 +310,9 @@ class relay_call_t : private detail::call_facade_t<relay_call_t, void>
   public:
     explicit relay_call_t (result_t<void> result) : base_t (std::move (result)) {}
 
-    using base_t::async;
     using base_t::timeout;
+
+    void submit () { detail::submit_one_way_task (base_t::async ()); }
 };
 
 class stream_write_call_t
@@ -329,11 +331,11 @@ class stream_write_call_t
     stream_write_call_t &metadata (std::string key, std::string value);
     stream_write_call_t &packet_name (std::string packet_name);
     stream_write_call_t &compress ();
-    task_t<void> async ();
+    void submit ();
 
   private:
     using submit_fn_t =
-      std::function<task_t<void> (const detail::stream_header_t &, const zlink::message_t &)>;
+      std::function<result_t<void> (const detail::stream_header_t &, const zlink::message_t &)>;
 
     friend class stream_t;
     friend class detail::stream_write_call_state_t;
@@ -342,6 +344,8 @@ class stream_write_call_t
                          zlink::message_t payload,
                          std::shared_ptr<const stream_compression_codec_t> compression_codec,
                          submit_fn_t submit);
+
+    result_t<void> submit_now ();
 
     std::shared_ptr<detail::stream_write_call_state_t> _state;
 };

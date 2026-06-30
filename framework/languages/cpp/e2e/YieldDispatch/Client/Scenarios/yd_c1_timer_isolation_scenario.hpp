@@ -17,16 +17,14 @@ std::string run_yd_c1_timer_isolation_scenario (TConnector &connector,
                                                 const std::string &spot_rid)
 {
     const auto request_id = unique_id ("YD-C1");
-    auto timer_yield_start =
-      connector.send (timer_start_msg_t{.request_id = request_id,
-                                            .timer_name = request_id + "-yield",
-                                            .mode = "yield-on-first",
-                                            .period_ms = 500,
-                                            .delay_ms = 350})
+    connector.send (timer_start_msg_t{.request_id = request_id,
+                                      .timer_name = request_id + "-yield",
+                                      .mode = "yield-on-first",
+                                      .period_ms = 500,
+                                      .delay_ms = 350})
         .packet_name (timer_start_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (timer_yield_start), "YD-C1 yield timer start failed");
     auto timer_yield_released =
       observer.request (
                 yield_evidence_wait_req_t{.request_id = request_id,
@@ -38,16 +36,14 @@ std::string run_yd_c1_timer_isolation_scenario (TConnector &connector,
         .template submit<yield_evidence_res_t> ();
     ensure (static_cast<bool> (timer_yield_released),
             "YD-C1 timer-yield-released wait failed");
-    auto timer_fast_start =
-      connector.send (timer_start_msg_t{.request_id = request_id,
-                                            .timer_name = request_id + "-fast",
-                                            .mode = "fast",
-                                            .period_ms = 50,
-                                            .delay_ms = 0})
+    connector.send (timer_start_msg_t{.request_id = request_id,
+                                      .timer_name = request_id + "-fast",
+                                      .mode = "fast",
+                                      .period_ms = 50,
+                                      .delay_ms = 0})
         .packet_name (timer_start_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (timer_fast_start), "YD-C1 fast timer start failed");
     auto timer_fast_completed =
       observer.request (
                 yield_evidence_wait_req_t{.request_id = request_id,
@@ -77,12 +73,10 @@ std::string run_yd_c1_timer_isolation_scenario (TConnector &connector,
                                "timer-yield-resumed",
                                "timer-yield-completed"},
                               "YD-C1 marker order mismatch");
-    auto timer_stop =
-      connector.send (timer_stop_msg_t{.request_id = request_id})
+    connector.send (timer_stop_msg_t{.request_id = request_id})
         .packet_name (timer_stop_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (timer_stop), "YD-C1 timer stop failed");
     std::cout << "scenario YD-C1 passed\n";
     return request_id;
 }

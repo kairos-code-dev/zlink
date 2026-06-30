@@ -37,7 +37,6 @@ struct consumer_options_t
     std::vector<std::string> provider_endpoints;
     std::string log_dir;
     std::string trace_label;
-    bool low_high_water_mark = false;
 };
 
 inline consumer_options_t read_consumer_options ()
@@ -46,8 +45,7 @@ inline consumer_options_t read_consumer_options ()
             .registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),
             .provider_endpoints = split_csv (env_or ("ZLINK_CPP_E2E_PROVIDER_ENDPOINTS")),
             .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-            .trace_label = env_or ("ZLINK_CPP_E2E_TRACE_LABEL", "consumer"),
-            .low_high_water_mark = env_or ("ZLINK_CPP_E2E_LOW_HWM") == "true"};
+            .trace_label = env_or ("ZLINK_CPP_E2E_TRACE_LABEL", "consumer")};
 }
 
 } // namespace zlink::framework::e2e::registry_messaging::consumer

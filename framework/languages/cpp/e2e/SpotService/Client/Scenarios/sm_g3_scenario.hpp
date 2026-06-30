@@ -14,6 +14,8 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
@@ -58,9 +60,15 @@ inline evidence_snapshot_t fetch_sm_g3_evidence_until (zlink::http_client::clien
     throw std::runtime_error ("SM-G3 expected actor join/leave evidence was not observed");
 }
 
-inline void run_sm_g3_actor_flow (const std::string &session_stream_endpoint,
-                                  const std::string &spot_key,
-                                  const std::string &actor_id)
+struct sm_g3_bound_client_t
+{
+    std::string actor_id;
+    zlink::stream_connector::connector_t stream;
+};
+
+inline sm_g3_bound_client_t connect_sm_g3_actor (const std::string &session_stream_endpoint,
+                                                 const std::string &spot_key,
+                                                 const std::string &actor_id)
 {
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;
@@ -113,6 +121,12 @@ inline void run_sm_g3_actor_flow (const std::string &session_stream_endpoint,
         throw std::runtime_error ("SM-G3 join failed for " + actor_id);
     }
 
+    return sm_g3_bound_client_t{actor_id, std::move (stream)};
+}
+
+inline void run_sm_g3_actor_flow (zlink::stream_connector::connector_t &stream,
+                                  const std::string &actor_id)
+{
     auto ping = stream.request (actor_ping_req_t{actor_id})
                   .packet_name ("ActorPingReq")
                   .metadata ("actor-id", actor_id)
@@ -132,8 +146,6 @@ inline void run_sm_g3_actor_flow (const std::string &session_stream_endpoint,
         (void) stream.close ();
         throw std::runtime_error ("SM-G3 leave reply mismatch for " + actor_id);
     }
-
-    (void) stream.close ();
 }
 
 inline void run_sm_g3_scenario (const std::string &play_http_endpoint,
@@ -150,15 +162,24 @@ inline void run_sm_g3_scenario (const std::string &play_http_endpoint,
     constexpr auto spot_rid = "user:play-a:sm-g3-concurrent";
     const std::array<std::string, 2> actor_ids{"actor-sm-g3-0", "actor-sm-g3-1"};
 
-    auto first =
-      std::async (std::launch::async,
-                  [&] { run_sm_g3_actor_flow (session_stream_endpoint, spot_key, actor_ids[0]); });
-    auto second =
-      std::async (std::launch::async,
-                  [&] { run_sm_g3_actor_flow (session_stream_endpoint, spot_key, actor_ids[1]); });
+    std::vector<sm_g3_bound_client_t> clients;
+    clients.reserve (actor_ids.size ());
+    for (const auto &actor_id : actor_ids) {
+        clients.push_back (connect_sm_g3_actor (session_stream_endpoint, spot_key, actor_id));
+    }
+
+    auto first = std::async (std::launch::async, [&] {
+        run_sm_g3_actor_flow (clients[0].stream, clients[0].actor_id);
+    });
+    auto second = std::async (std::launch::async, [&] {
+        run_sm_g3_actor_flow (clients[1].stream, clients[1].actor_id);
+    });
 
     first.get ();
     second.get ();
+    for (auto &client : clients) {
+        (void) client.stream.close ();
+    }
 
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)

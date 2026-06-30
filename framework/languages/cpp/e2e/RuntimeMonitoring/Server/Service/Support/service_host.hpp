@@ -4,6 +4,7 @@
 
 #include "service_options.hpp"
 
+#include "../Handlers/service_event_recorders.hpp"
 #include "../Handlers/service_handlers.hpp"
 #include "../../Shared/evidence_store.hpp"
 #include "../../../Shared/runtime_monitoring_contracts.hpp"
@@ -58,28 +59,16 @@ inline int run_service_host (int argc,
         monitoring.add_spot_timer_events (spot_node);
         monitoring.on<zlink::framework::socket_event_payload_t> (
           [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
-              evidence_ptr->add ("monitor-socket|source=" + event.source_name
-                                 + "|kind=" + socket_kind_name (event.event)
-                                 + "|remote=" + event.remote_address);
+              record_socket_event (*evidence_ptr, event);
           });
         monitoring.on<zlink::framework::spot_event_payload_t> (
           [evidence_ptr] (const zlink::framework::spot_event_payload_t &event) {
-              evidence_ptr->add ("monitor-spot|source=" + event.source_name
-                                 + "|node=" + event.spot_node_name
-                                 + "|kind=" + spot_kind_name (event.event)
-                                 + "|peers=" + std::to_string (event.peers.size ())
-                                 + "|subjects=" + std::to_string (event.subjects.size ())
-                                 + "|timer="
-                                 + (event.timer_diagnostic
-                                      ? event.timer_diagnostic->timer_name
-                                      : std::string ("<null>")));
+              record_spot_event (*evidence_ptr, event);
           });
         if (options.monitor_profile == "throwing") {
             monitoring.on<zlink::framework::socket_event_payload_t> (
               [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
-                  evidence_ptr->add ("monitor-throw|source=" + event.source_name
-                                     + "|kind=" + socket_kind_name (event.event));
-                  throw std::runtime_error ("monitoring dispatch failure for e2e");
+                  record_throwing_socket_event (*evidence_ptr, event);
               });
         }
         if (!options.http_endpoint.empty ()) {

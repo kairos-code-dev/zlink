@@ -24,14 +24,12 @@ std::string run_yd_e1_timeout_scenario (TConnector &connector)
     ensure (spot.value ().spot_rid == spot_rid, "YD-E1 ensure spot reply mismatch");
 
     const auto request_id = unique_id ("YD-E1");
-    auto sent_timeout =
-      connector.send (yield_timeout_msg_t{.request_id = request_id,
-                                              .delay_ms = 700,
-                                              .timeout_ms = 100})
+    connector.send (yield_timeout_msg_t{.request_id = request_id,
+                                        .delay_ms = 700,
+                                        .timeout_ms = 100})
         .packet_name (yield_timeout_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (sent_timeout), "YD-E1 YieldTimeoutMsg failed");
 
     auto timeout_evidence =
       connector.request (
@@ -49,12 +47,10 @@ std::string run_yd_e1_timeout_scenario (TConnector &connector)
                                "timeout-yield-completed"},
                               "YD-E1 timeout marker order mismatch");
 
-    auto sent_probe =
-      connector.send (probe_msg_t{.request_id = request_id, .marker = "timeout-probe"})
+    connector.send (probe_msg_t{.request_id = request_id, .marker = "timeout-probe"})
         .packet_name (probe_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (sent_probe), "YD-E1 ProbeMsg failed");
 
     auto probe_evidence =
       connector.request (

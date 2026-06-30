@@ -82,9 +82,8 @@ class delivery_status_changed_handler_t
         _directory.get_or_create (request.delivery_id).record (request);
         delivery_status_notify_t notify{
           request.delivery_id, request.status, request.courier_id, request.occurred_at};
-        co_await _fanout.publish (sample_names_t::status_fanout_channel, sample_names_t::status_topic,
-                                  notify)
-          .async ();
+        _fanout.publish (sample_names_t::status_fanout_channel, sample_names_t::status_topic, notify)
+          .submit ();
         std::cerr << "deliverydispatch tracking: status delivery=" << request.delivery_id
                   << " status=" << request.status << " courier=" << request.courier_id << "\n";
         co_return delivery_status_res_t{request.delivery_id, request.status};

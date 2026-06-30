@@ -189,6 +189,55 @@ select_weighted_discovery_endpoint (const std::shared_ptr<channel_runtime_state_
 
 } // namespace
 
+class channel_native_client_t
+{
+  public:
+    channel_native_client_t (std::string channel_name,
+                             const channel_capability_snapshot_t &client,
+                             const discovery_snapshot_t &discovery) :
+        _channel_name (std::move (channel_name)), _socket (_context)
+    {
+        apply_weighted_channel_socket_options (_socket, client);
+        _socket.channel_name (_channel_name);
+        _socket.options ().immediate (true);
+        for (const auto &endpoint : client.connect_endpoints) {
+            _socket.connect (endpoint);
+        }
+        for (const auto &endpoint : client.bind_endpoints) {
+            _socket.connect (endpoint);
+        }
+        if (client.discovery && !discovery.registry_endpoints.empty ()) {
+            _discovery = std::make_unique<zlink::service::discovery_t> (
+              _context, zlink::auto_connect_type::client_server, _channel_name);
+            for (const auto &registry_endpoint : discovery.registry_endpoints) {
+                connect_registry_with_retry (*_discovery, registry_endpoint);
+            }
+            _socket.attach_discovery (*_discovery);
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+    }
+
+    result_t<void> send (const runtime::messaging::message_parts_t &parts)
+    {
+        std::lock_guard lock (_mutex);
+        zlink::message_t send_header = parts[0];
+        zlink::message_t send_body = parts[1];
+        const bool sent = _socket.send ().message (send_header).message (send_body).submit ();
+        if (!sent) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            "channel native send failed");
+        }
+        return result_t<void>::success ();
+    }
+
+  private:
+    std::string _channel_name;
+    zlink::context_t _context;
+    zlink::dealer_socket_t _socket;
+    std::unique_ptr<zlink::service::discovery_t> _discovery;
+    std::mutex _mutex;
+};
+
 class channel_native_publisher_t
 {
   public:
@@ -537,24 +586,7 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
         return result_t<void>::failure (framework_error_kind_t::disconnected,
                                         "channel client is not connected");
     }
-    const bool client_uses_discovery =
-      client != nullptr && client->discovery && !_state->discovery.registry_endpoints.empty ();
-    const bool client_has_manual_endpoint =
-      client != nullptr
-      && (!client->connect_endpoints.empty () || !client->bind_endpoints.empty ());
-    if (_state->serializers != nullptr && client != nullptr
-        && (client_uses_discovery || client_has_manual_endpoint)) {
-        channel_runtime_t runtime (_state);
-        const auto pending_send = runtime.queue_pending_send (channel_name);
-        if (!pending_send) {
-            return result_t<void>::failure (
-              pending_send.error_kind (),
-              pending_send.error () ? pending_send.error ()->what () : "channel send was rejected");
-        }
-        const auto fail_pending_send = [&runtime, operation_id = pending_send.value ()] {
-            (void) runtime.retry_pending (operation_id);
-            (void) runtime.expire_pending (operation_id);
-        };
+    if (_state->serializers != nullptr && client != nullptr) {
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
@@ -577,66 +609,25 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
             auto parts =
               encode_channel_payload_parts (header, message_type, encode_payload,
                                             *_state->serializers);
-
-            zlink::context_t context;
-            zlink::dealer_socket_t dealer (context);
-            apply_weighted_channel_socket_options (dealer, *client);
-            dealer.channel_name (channel_name);
-            dealer.options ().immediate (true);
-            dealer.options ().connect_timeout (timeout);
-            detail::channel_runtime_manager_t manager (_state);
-            std::vector<std::string> endpoints;
+            std::shared_ptr<detail::channel_native_client_t> native_client;
             {
                 std::lock_guard lock (_state->mutex);
-                auto &bundle = manager.get_or_create_client_bundle (channel_name);
-                endpoints = bundle.manual_connections_from_next ();
-            }
-            if (endpoints.empty ()) {
-                if (!client_uses_discovery) {
-                    fail_pending_send ();
-                    return result_t<void>::failure (framework_error_kind_t::disconnected,
-                                                    "channel client has no endpoint");
+                auto &stored = _state->native_clients[channel_name];
+                if (!stored) {
+                    stored = std::make_shared<detail::channel_native_client_t> (
+                      channel_name, *client, _state->discovery);
                 }
+                native_client = stored;
             }
-            std::unique_ptr<zlink::service::discovery_t> discovery;
-            if (client_uses_discovery && endpoints.empty ()) {
-                discovery = std::make_unique<zlink::service::discovery_t> (
-                  context, zlink::auto_connect_type::client_server, channel_name);
-                for (const auto &registry_endpoint : _state->discovery.registry_endpoints) {
-                    connect_registry_with_retry (*discovery, registry_endpoint);
-                }
-                dealer.attach_discovery (*discovery);
-            } else {
-                for (const auto &endpoint : endpoints) {
-                    dealer.connect (endpoint);
-                }
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (200));
-
-            zlink::message_t send_header = parts[0];
-            zlink::message_t send_body = parts[1];
-            const bool sent = dealer.send ().message (send_header).message (send_body).submit ();
-            if (!sent) {
-                fail_pending_send ();
-                return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                                "channel native send failed");
-            }
-            auto completed = runtime.mark_send_ready (pending_send.value ());
-            if (!completed) {
-                return completed;
-            }
-            return result_t<void>::success ();
+            return native_client->send (parts);
         }
         catch (const framework_exception_t &error) {
-            fail_pending_send ();
             return result_t<void>::failure (error.kind (), error.what ());
         }
         catch (const std::exception &error) {
-            fail_pending_send ();
             return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
         }
         catch (...) {
-            fail_pending_send ();
             return result_t<void>::failure (framework_error_kind_t::request_failed,
                                             "channel native send failed");
         }

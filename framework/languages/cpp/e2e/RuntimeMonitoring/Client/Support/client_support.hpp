@@ -3,15 +3,15 @@
 #pragma once
 
 #include "../../Shared/runtime_monitoring_contracts.hpp"
+#include "client_options.hpp"
 
 #include <zlink/http_client.hpp>
 
 #include <chrono>
-#include <stdexcept>
-#include <string>
 #include <thread>
 #include <vector>
-#include <cstdlib>
+#include <stdexcept>
+#include <string>
 
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
@@ -26,14 +26,6 @@ inline void ensure (bool condition, const std::string &message)
 inline bool contains (const std::string &value, const std::string &needle)
 {
     return value.find (needle) != std::string::npos;
-}
-
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
 }
 
 inline bool any_contains (const std::vector<std::string> &entries, const std::string &needle)

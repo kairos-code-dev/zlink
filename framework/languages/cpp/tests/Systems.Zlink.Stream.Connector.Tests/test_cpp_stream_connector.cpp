@@ -204,6 +204,15 @@ void to_json (nlohmann::json &json, const auto_payload_t &payload)
     json = nlohmann::json{{"text", payload.text}};
 }
 
+void to_json (nlohmann::json &json, const login_request_t &)
+{
+    json = nlohmann::json::object ();
+}
+
+void from_json (const nlohmann::json &, login_reply_t &)
+{
+}
+
 void from_json (const nlohmann::json &json, auto_payload_t &payload)
 {
     payload.text = json.at ("text").get<std::string> ();
@@ -222,7 +231,8 @@ void from_stream_payload (const zlink::message_t &payload, auto_payload_t &messa
 zlink::stream_e2e_client::task_t<void>
 send_with_coroutine_submit (zlink::stream_e2e_client::coroutine_connector_t &connector)
 {
-    co_await connector.send (login_request_t{}).packet_name ("coroutine.send").async ();
+    connector.send (login_request_t{}).packet_name ("coroutine.send").submit ();
+    co_return;
 }
 
 zlink::stream_e2e_client::task_t<login_reply_t>
@@ -788,19 +798,10 @@ int main ()
         return 3;
     }
 
-    bool callback_seen = false;
-    callback_latch_t send_callback_latch;
     connector.send (login_request_t{})
       .metadata ("trace", "t1")
       .compress ()
-      .submit ([&] (zlink::stream_connector::result_t<void> result) {
-          callback_seen = static_cast<bool> (result);
-          send_callback_latch.signal ();
-      });
-    dispatch_until (connector, send_callback_latch, std::chrono::milliseconds (100));
-    if (!callback_seen) {
-        return 4;
-    }
+      .submit ();
     auto runtime = zlink::stream_connector::detail::connector_runtime_t::from (connector);
     if (runtime.sent_packets ().size () != 1
         || runtime.sent_packets ()[0].name != login_request_t::packet_name
@@ -809,11 +810,7 @@ int main ()
         return 5;
     }
 
-    auto uncompressed_send =
-      connector.send (login_request_t{}).packet_name ("login.uncompressed").submit ();
-    if (!uncompressed_send) {
-        return 68;
-    }
+    connector.send (login_request_t{}).packet_name ("login.uncompressed").submit ();
 
     auto request = connector.request (login_request_t{})
                      .packet_name ("login.request")
@@ -852,12 +849,7 @@ int main ()
         if (!disabled_connector.connect ()) {
             return 147;
         }
-        auto disabled_send = disabled_connector.send (login_request_t{}).compress ().submit ();
-        if (disabled_send
-            || disabled_send.error_code ()
-                 != zlink::stream_connector::error_code_t::compression_failed) {
-            return 142;
-        }
+        disabled_connector.send (login_request_t{}).compress ().submit ();
     }
 
     {
@@ -893,13 +885,7 @@ int main ()
         if (!custom_connector.connect ()) {
             return 148;
         }
-        auto custom_send = custom_connector.send (login_request_t{})
-                             .packet_name ("custom.outbound")
-                             .compress ()
-                             .submit ();
-        if (!custom_send) {
-            return 144;
-        }
+        custom_connector.send (login_request_t{}).packet_name ("custom.outbound").compress ().submit ();
         custom_server_thread.join ();
         if (!custom_payload_seen) {
             return 145;
@@ -932,9 +918,7 @@ int main ()
     if (!receive_connector.connect ()) {
         return 56;
     }
-    if (!receive_connector.send (login_request_t{}).packet_name ("receive.trigger").submit ()) {
-        return 57;
-    }
+    receive_connector.send (login_request_t{}).packet_name ("receive.trigger").submit ();
     auto received_first =
       receive_connector.wait_for ("server.receive.one", std::chrono::milliseconds (100));
     auto received_second =
@@ -1135,14 +1119,14 @@ int main ()
       [] (const zlink::stream_connector::inbound_observation_t &) {
           throw std::runtime_error ("observer failed");
       });
-    if (!failing_registration || !failing_observer_connector.connect ()
-        || !failing_observer_connector.send (login_request_t{})
-              .packet_name ("observer.failure.trigger")
-              .submit ()) {
+    if (!failing_registration || !failing_observer_connector.connect ()) {
         failing_observer_connector.close ();
         failing_observer_server_thread.join ();
         return 84;
     }
+    failing_observer_connector.send (login_request_t{})
+      .packet_name ("observer.failure.trigger")
+      .submit ();
     const auto failure_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (100);
     while (!observer_failed_seen && std::chrono::steady_clock::now () < failure_deadline) {
@@ -1213,33 +1197,22 @@ int main ()
         return 87;
     }
 
-    auto oversized_payload =
-      connector
-        .send (zlink::stream_connector::packet_t{"oversized.payload",
-                                                 {},
-                                                 zlink::stream_connector::codec_t::raw,
-                                                 false,
-                                                 zlink::message_t::from (std::string (17, 'x'))})
-        .submit ();
-    if (oversized_payload
-        || oversized_payload.error_code ()
-             != zlink::stream_connector::error_code_t::frame_too_large) {
-        return 40;
-    }
+    connector
+      .send (zlink::stream_connector::packet_t{"oversized.payload",
+                                               {},
+                                               zlink::stream_connector::codec_t::raw,
+                                               false,
+                                               zlink::message_t::from (std::string (17, 'x'))})
+      .submit ();
 
     zlink::stream_connector::metadata_t oversized_metadata;
     oversized_metadata.with ("trace", std::string (9 * 1024, 'm'));
-    auto oversized_metadata_result = connector
-                                       .send (zlink::stream_connector::packet_t{
-                                         "oversized.metadata", std::move (oversized_metadata),
-                                         zlink::stream_connector::codec_t::raw, false,
-                                         zlink::message_t::from (std::string ("ok"))})
-                                       .submit ();
-    if (oversized_metadata_result
-        || oversized_metadata_result.error_code ()
-             != zlink::stream_connector::error_code_t::validation_failed) {
-        return 41;
-    }
+    connector
+      .send (zlink::stream_connector::packet_t{
+        "oversized.metadata", std::move (oversized_metadata),
+        zlink::stream_connector::codec_t::raw, false,
+        zlink::message_t::from (std::string ("ok"))})
+      .submit ();
 
     int manual_dispatch_count = 0;
     connector.on<zlink::stream_connector::packet_t> (
@@ -1326,12 +1299,7 @@ int main ()
         return 12;
     }
 
-    auto send_after_close =
-      connector.send (login_request_t{}).packet_name ("after.close").submit ();
-    if (send_after_close
-        || send_after_close.error_code () != zlink::stream_connector::error_code_t::closed) {
-        return 13;
-    }
+    connector.send (login_request_t{}).packet_name ("after.close").submit ();
     bool request_after_close_callback_seen = false;
     callback_latch_t request_after_close_latch;
     connector.request (login_request_t{})
@@ -1382,9 +1350,7 @@ int main ()
     if (!auto_connector.connect ()) {
         return 30;
     }
-    if (!auto_connector.send (auto_payload_t{"auto"}).submit ()) {
-        return 31;
-    }
+    auto_connector.send (auto_payload_t{"auto"}).submit ();
     auto_server_thread.join ();
     if (!auto_json_seen) {
         return 32;
@@ -1766,9 +1732,7 @@ int main ()
     if (!partial_connector.connect ()) {
         return 64;
     }
-    if (!partial_connector.send (login_request_t{}).packet_name ("partial.trigger").submit ()) {
-        return 65;
-    }
+    partial_connector.send (login_request_t{}).packet_name ("partial.trigger").submit ();
     auto partial_packet =
       partial_connector.wait_for ("server.partial", std::chrono::milliseconds (100));
     partial_server_thread.join ();
@@ -1803,11 +1767,9 @@ int main ()
     if (!large_receive_connector.connect ()) {
         return 70;
     }
-    if (!large_receive_connector.send (login_request_t{})
-           .packet_name ("large.receive.trigger")
-           .submit ()) {
-        return 71;
-    }
+    large_receive_connector.send (login_request_t{})
+      .packet_name ("large.receive.trigger")
+      .submit ();
     auto large_received =
       large_receive_connector.wait_for ("server.large", std::chrono::milliseconds (100));
     large_receive_server_thread.join ();
@@ -1910,11 +1872,9 @@ int main ()
     if (!oversized_wait_connector.connect ()) {
         return 124;
     }
-    if (!oversized_wait_connector.send (login_request_t{})
-           .packet_name ("oversized.wait.trigger")
-           .submit ()) {
-        return 125;
-    }
+    oversized_wait_connector.send (login_request_t{})
+      .packet_name ("oversized.wait.trigger")
+      .submit ();
     auto oversized_wait_result =
       oversized_wait_connector.wait_for ("oversized.wait", std::chrono::milliseconds (100));
     oversized_wait_server_thread.join ();
@@ -2021,9 +1981,7 @@ int main ()
     if (!websocket_connector.connect ()) {
         return 47;
     }
-    if (!websocket_connector.send (login_request_t{}).submit ()) {
-        return 48;
-    }
+    websocket_connector.send (login_request_t{}).submit ();
     websocket_connector.close ();
     websocket_server_thread.join ();
     if (!websocket_send_seen) {
@@ -2075,9 +2033,7 @@ int main ()
     if (!tls_connector.connect ()) {
         return 50;
     }
-    if (!tls_connector.send (login_request_t{}).submit ()) {
-        return 51;
-    }
+    tls_connector.send (login_request_t{}).submit ();
     tls_connector.close ();
     tls_server_thread.join ();
     if (!tls_send_seen) {
@@ -2126,9 +2082,7 @@ int main ()
     if (!wss_connector.connect ()) {
         return 53;
     }
-    if (!wss_connector.send (login_request_t{}).submit ()) {
-        return 54;
-    }
+    wss_connector.send (login_request_t{}).submit ();
     wss_connector.close ();
     wss_server_thread.join ();
     if (!wss_send_seen) {
@@ -2201,11 +2155,7 @@ int main ()
         reconnect_success_server_thread.join ();
         return 67;
     }
-    if (!reconnect_success_connector.send (login_request_t{}).submit ()) {
-        reconnect_success_connector.close ();
-        reconnect_success_server_thread.join ();
-        return 68;
-    }
+    reconnect_success_connector.send (login_request_t{}).submit ();
     reconnect_success_connector.close ();
     reconnect_success_server_thread.join ();
     if (!reconnect_success_send_seen) {

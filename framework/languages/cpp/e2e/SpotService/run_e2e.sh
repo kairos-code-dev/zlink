@@ -337,14 +337,15 @@ wait_control_ping() {
   local http="$2"
   local target="$3"
   local value="$4"
-  for attempt in $(seq 1 20); do
+  local attempts="${ZLINK_SPOT_SERVICE_WAIT_ROUTE_ATTEMPTS:-180}"
+  for attempt in $(seq 1 "$attempts"); do
     if run_control_ping "$output-attempt-$attempt" "$http" "$target" "$value"; then
       cat "$LOG_DIR/$output-attempt-$attempt.stdout.log"
       return 0
     fi
-    sleep 1
+    sleep 0.5
   done
-  echo "Timed out waiting for SpotService control ping $output -> $target" >&2
+  echo "Timed out waiting for SpotService control ping $output via $http -> $target" >&2
   return 1
 }
 
@@ -421,6 +422,21 @@ wait_route_ready_on_endpoint() {
     sleep 1
   done
   echo "Timed out waiting for SpotService route mesh readiness at $route_endpoint" >&2
+  return 1
+}
+
+wait_play_b_route_ready_on_endpoint() {
+  local output="$1"
+  local route_endpoint="$2"
+  for attempt in $(seq 1 20); do
+    if run_base_client route-ready-play-b "$output-attempt-$attempt" "$route_endpoint"; then
+      wait_port_closed "$output-route-client" "$route_endpoint"
+      return 0
+    fi
+    wait_port_closed "$output-route-client" "$route_endpoint" || true
+    sleep 1
+  done
+  echo "Timed out waiting for SpotService play-b route readiness at $route_endpoint" >&2
   return 1
 }
 
@@ -1409,7 +1425,9 @@ fi
 
 if [[ "$SCENARIO" == "SM-F1" || "$SCENARIO" == "sm-f1" \
    || "$SCENARIO" == "SM-F2" || "$SCENARIO" == "sm-f2" \
-   || "$SCENARIO" == "SM-F4" || "$SCENARIO" == "sm-f4" ]]; then
+   || "$SCENARIO" == "SM-F3" || "$SCENARIO" == "sm-f3" \
+   || "$SCENARIO" == "SM-F4" || "$SCENARIO" == "sm-f4" \
+   || "$SCENARIO" == "SM-F5" || "$SCENARIO" == "sm-f5" ]]; then
   start_registry
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
@@ -1438,8 +1456,13 @@ if scenario == "sm-f1":
 elif scenario == "sm-f2":
     assert has("SpotToSpotRequest", "route-direct-f2", "external-client")
     assert has("SpotToSpotMsg", "route-direct-f2:command", "external-client")
+elif scenario == "sm-f3":
+    assert has("SpotToSpotRequest", "route-mixed", "external-client")
 elif scenario == "sm-f4":
     assert has("SpotToSpotRequest", "route-recovery", "external-client")
+elif scenario == "sm-f5":
+    assert has("SpotToSpotRequest", "route-recovery", "external-client")
+    assert has("SpotToSpotRequest", "route-survived-f5", "external-client")
 else:
     raise AssertionError(f"unexpected scenario {scenario}")
 print(f"scenario {scenario.upper()} evidence passed")
@@ -1456,14 +1479,15 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   wait_route_ready sm-g1-route-ready
   wait_control_ping sm-g1-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g1-session-a-play-a-ready"
   wait_control_ping sm-g1-session-a-play-b "$HTTP_SESSION_A" play-b "sm-g1-session-a-play-b-ready"
-  wait_route_ready_on_endpoint sm-g1-setup-route-ready "$ROUTE_CLIENT"
+  CRASH_SETUP_ROUTE="$(allocate_tcp_endpoint)"
+  wait_route_ready_on_endpoint sm-g1-setup-route-ready "$CRASH_SETUP_ROUTE"
   sleep 2
 
   CRASH_READY="$LOG_DIR/sm-g1-ready"
   CRASH_GO="$LOG_DIR/sm-g1-go"
   CRASH_OBSERVED="$LOG_DIR/sm-g1-observed"
 
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
+  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_SETUP_ROUTE" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
@@ -1493,6 +1517,7 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   sleep 2
 
   CRASH_RECOVER_ROUTE="$(allocate_tcp_endpoint)"
+  wait_play_b_route_ready_on_endpoint sm-g1-recover-client-route-ready "$CRASH_RECOVER_ROUTE"
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_RECOVER_ROUTE" \
   ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="" \
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
@@ -2667,260 +2692,16 @@ PY
   exit 0
 fi
 
-start_registry
-start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
-start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-start_session session-b "$ROUTE_SESSION_B" "$SPOT_SESSION_B" "$PUB_SESSION_B" "$STREAM_B" "$HTTP_SESSION_B"
-sleep 20
-wait_route_ready route-ready
-wait_route_ready_on_endpoint base-client-route-ready "$ROUTE_CLIENT"
-sleep 2
-
-run_base_client base client
-
-wait_stream_route_ready stream-route-ready
-wait_control_ping stream-session-a-control "$HTTP_SESSION_A" play-a "stream-session-a-ready"
-wait_control_ping stream-session-a-play-b-control "$HTTP_SESSION_A" play-b "stream-session-a-play-b-ready"
-wait_control_ping stream-session-b-control "$HTTP_SESSION_B" play-b "stream-session-b-ready"
-
-ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_STREAM_CLIENT" \
-ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT="$STREAM_B" \
-ZLINK_CPP_E2E_SCENARIO_MODE=stream \
-ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-ZLINK_CPP_E2E_CLIENT_RID="client-stream" \
-ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$CLIENT" >"$LOG_DIR/stream-client.stdout.log" 2>"$LOG_DIR/stream-client.stderr.log"
-
-cat "$LOG_DIR/stream-client.stdout.log"
-sleep 1
-fetch_evidence play-a "$HTTP_A"
-fetch_evidence play-b "$HTTP_B"
-fetch_evidence session-a "$HTTP_SESSION_A"
-fetch_evidence session-b "$HTTP_SESSION_B"
-grep -q "surface=spot_actor.*reason=handler_missing.*action=reply_error.*packet=MissingActorPacket" \
-  "$LOG_DIR/play-a.stderr.log"
-
-python3 - "$LOG_DIR/play-a-evidence.json" "$LOG_DIR/play-b-evidence.json" "$LOG_DIR/session-a-evidence.json" "$LOG_DIR/session-b-evidence.json" <<'PY'
-import json
-import sys
-
-play_a = json.load(open(sys.argv[1], encoding="utf-8"))
-play_b = json.load(open(sys.argv[2], encoding="utf-8"))
-session_a = json.load(open(sys.argv[3], encoding="utf-8"))
-session_b = json.load(open(sys.argv[4], encoding="utf-8"))
-
-def has(snapshot, marker, actor=None):
-    for entry in snapshot["entries"]:
-        if entry["marker"] != marker:
-            continue
-        if actor is not None and entry["actor_id"] != actor:
-            continue
-        return True
-    return False
-
-def has_value(snapshot, marker, actor, value):
-    for entry in snapshot["entries"]:
-        if entry["marker"] == marker and entry["actor_id"] == actor and entry["value"] == value:
-            return True
-    return False
-
-def has_marker_value(snapshot, marker, value):
-    for entry in snapshot["entries"]:
-        if entry["marker"] == marker and entry["value"] == value:
-            return True
-    return False
-
-def marker_index(snapshot, marker, actor):
-    for index, entry in enumerate(snapshot["entries"]):
-        if entry["marker"] == marker and entry["actor_id"] == actor:
-            return index
-    raise AssertionError(f"missing marker {marker} for {actor}")
-
-def assert_order(snapshot, actor, markers):
-    indices = [marker_index(snapshot, marker, actor) for marker in markers]
-    assert indices == sorted(indices), (actor, markers, indices)
-
-def count(snapshot, marker, actor=None):
-    total = 0
-    for entry in snapshot["entries"]:
-        if entry["marker"] != marker:
-            continue
-        if actor is not None and entry["actor_id"] != actor:
-            continue
-        total += 1
-    return total
-
-assert has(play_a, "ActorEnsured", "alice")
-assert has(play_a, "EntryJoin", "alice")
-assert has(play_a, "StateMutated", "alice")
-assert has(play_a, "SpotTypeMismatch", "alice")
-assert has(play_a, "SpotClosing")
-assert has(play_a, "SpotLifecycleClosed")
-assert has(play_a, "ActorLeaveRequested", "alice")
-assert has(play_a, "ActorDestroyed", "alice")
-assert has_value(play_a, "WorkerStarted", "alice-2", "7")
-assert has_value(play_a, "WorkerCompleted", "alice-2", "25")
-assert has(play_a, "SpotOutbound", "alice-2")
-assert has_value(play_a, "SpotToSpotOutbound", "alice-2", "spot-to-spot:reply")
-assert has(play_a, "MeshMsgReceived")
-assert has_marker_value(play_a, "MeshMsgReceived", "evt-spot-to-spot:alice-2:spot-to-spot")
-assert has_marker_value(play_a, "MeshMsgReceived", "evt-publisher-client:publish-only")
-assert has_value(play_b, "SpotToSpotRequest", "alice-2", "spot-to-spot")
-assert has_value(play_b, "SpotToSpotMsg", "alice-2", "spot-to-spot:command")
-assert has_marker_value(play_b, "MeshMsgReceived", "evt-spot-to-spot:alice-2:spot-to-spot")
-assert has_marker_value(play_b, "MeshMsgReceived", "evt-publisher-client:publish-only")
-assert has_value(play_a, "ActorPushedSession", "stream-local", "stream-local-push")
-assert has_value(play_a, "ActorPushedSession", "stream-multi-a", "stream-multi-a-push")
-assert has_value(play_a, "ActorPushedSession", "actor-sm-d6", "push-bound-only")
-assert has(play_a, "EntryJoin", "stream-auth-d7")
-assert has_value(play_a, "StateMutated", "stream-auth-d7", "7")
-assert has(play_a, "ActorDisconnected", "stream-disconnect-d5-notified")
-assert count(play_a, "ActorDisconnected", "stream-disconnect-d5-muted") == 0
-assert has_value(play_a, "StateMutated", "stream-reconnect-d12", "11")
-assert has_value(play_a, "StateMutated", "stream-reconnect-d12", "16")
-assert has_value(play_a, "ActorPushedSession", "stream-reconnect-d12", "stream-reconnect-d12-push")
-assert has(play_b, "ActorJoined", "bob")
-assert has(play_b, "StateMutated", "bob")
-assert has_value(play_b, "ActorPushedSession", "stream-remote", "stream-remote-push")
-assert has_value(play_b, "ActorPushedSession", "stream-multi-b", "stream-multi-b-push")
-assert_order(play_a, "alice",
-             ["ActorCreated", "EntryJoin", "ActorJoined", "ActorJoinedCallback",
-              "StateMutated"])
-assert_order(play_b, "bob",
-             ["ActorCreated", "EntryJoin", "ActorJoined", "ActorJoinedCallback", "StateMutated"])
-assert has(session_a, "StreamBound", "stream-local")
-assert has(session_a, "StreamBound", "stream-remote")
-assert has(session_a, "StreamBound", "stream-multi-a")
-assert has(session_a, "StreamBound", "stream-multi-b")
-assert has(session_a, "StreamBound", "actor-sm-d6")
-assert has(session_a, "StreamBound", "stream-auth-d7")
-assert has(session_a, "StreamAuthFailed", "stream-auth-d7")
-assert has(session_a, "StreamBound", "stream-disconnect-d5-notified")
-assert has(session_a, "StreamBound", "stream-disconnect-d5-muted")
-assert has(session_a, "StreamDisconnectNotified", "stream-disconnect-d5-notified")
-assert has(session_a, "StreamBound", "stream-reconnect-d12")
-assert has(session_b, "StreamBound", "stream-reconnect-d12")
-print("scenario SM-B7 passed")
-print("spot-service evidence result=passed")
-PY
-
-if [[ -n "$PLAY_A_PID" ]] && kill -0 "$PLAY_A_PID" >/dev/null 2>&1; then
-  kill -9 "$PLAY_A_PID" >/dev/null 2>&1 || true
-  wait "$PLAY_A_PID" >/dev/null 2>&1 || true
-fi
-wait_port_closed play-a-route "$ROUTE_A"
-wait_port_closed play-a-spot "$SPOT_A"
-wait_port_closed play-a-http "$HTTP_A"
-if [[ -n "$SESSION_A_PID" ]] && kill -0 "$SESSION_A_PID" >/dev/null 2>&1; then
-  kill -9 "$SESSION_A_PID" >/dev/null 2>&1 || true
-  wait "$SESSION_A_PID" >/dev/null 2>&1 || true
-fi
-wait_port_closed session-a-route "$ROUTE_SESSION_A"
-wait_port_closed session-a-spot "$SPOT_SESSION_A"
-wait_port_closed session-a-stream "$STREAM_A"
-wait_port_closed session-a-http "$HTTP_SESSION_A"
-if [[ -n "$PLAY_B_PID" ]] && kill -0 "$PLAY_B_PID" >/dev/null 2>&1; then
-  kill -9 "$PLAY_B_PID" >/dev/null 2>&1 || true
-  wait "$PLAY_B_PID" >/dev/null 2>&1 || true
-fi
-wait_port_closed play-b-route "$ROUTE_B"
-wait_port_closed play-b-spot "$SPOT_B"
-wait_port_closed play-b-http "$HTTP_B"
-start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
-start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-wait_route_ready crash-route-ready
-wait_control_ping crash-session-a-play-a "$HTTP_SESSION_A" play-a "crash-session-a-play-a-ready"
-wait_control_ping crash-session-a-play-b "$HTTP_SESSION_A" play-b "crash-session-a-play-b-ready"
-CRASH_SETUP_ROUTE="$(allocate_tcp_endpoint)"
-wait_route_ready_on_endpoint crash-client-route-ready "$CRASH_SETUP_ROUTE"
-sleep 2
-
-CRASH_READY="$LOG_DIR/sm-g1-ready"
-CRASH_GO="$LOG_DIR/sm-g1-go"
-CRASH_OBSERVED="$LOG_DIR/sm-g1-observed"
-
-ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_SETUP_ROUTE" \
-ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-ZLINK_CPP_E2E_SCENARIO_MODE=crash-setup \
-ZLINK_CPP_E2E_CLIENT_RID="client-crash-setup" \
-ZLINK_CPP_E2E_CRASH_READY_FILE="$CRASH_READY" \
-ZLINK_CPP_E2E_CRASH_GO_FILE="$CRASH_GO" \
-ZLINK_CPP_E2E_CRASH_OBSERVED_FILE="$CRASH_OBSERVED" \
-ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$CLIENT" >"$LOG_DIR/crash-client.stdout.log" 2>"$LOG_DIR/crash-client.stderr.log" &
-CRASH_CLIENT_PID="$!"
-PIDS+=("$CRASH_CLIENT_PID")
-
-wait_file "SM-G1 ready" "$CRASH_READY"
-kill -9 "$PLAY_A_PID" >/dev/null 2>&1 || true
-wait "$PLAY_A_PID" >/dev/null 2>&1 || true
-touch "$CRASH_GO"
-wait_file "SM-G1 crash observed" "$CRASH_OBSERVED"
-wait "$CRASH_CLIENT_PID"
-cat "$LOG_DIR/crash-client.stdout.log"
-wait_play_b_route_ready crash-recover-route-ready
-sleep 2
-
-CRASH_RECOVER_ROUTE="$(allocate_tcp_endpoint)"
-ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_RECOVER_ROUTE" \
-ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="" \
-ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-ZLINK_CPP_E2E_SCENARIO_MODE=crash-recover \
-ZLINK_CPP_E2E_CLIENT_RID="client-crash-recover" \
-ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$CLIENT" >"$LOG_DIR/crash-recover-client.stdout.log" 2>"$LOG_DIR/crash-recover-client.stderr.log"
-cat "$LOG_DIR/crash-recover-client.stdout.log"
-
-fetch_evidence play-b-crash "$HTTP_B"
-fetch_evidence session-a-crash "$HTTP_SESSION_A"
-
-python3 - "$LOG_DIR/play-b-crash-evidence.json" "$LOG_DIR/session-a-crash-evidence.json" <<'PY'
-import json
-import sys
-
-play_b = json.load(open(sys.argv[1], encoding="utf-8"))
-session_a = json.load(open(sys.argv[2], encoding="utf-8"))
-
-def has(snapshot, marker, actor=None):
-    return any(entry["marker"] == marker and (actor is None or entry["actor_id"] == actor)
-               for entry in snapshot["entries"])
-
-def has_value(snapshot, marker, actor, value):
-    return any(entry["marker"] == marker and entry["actor_id"] == actor and entry["value"] == value
-               for entry in snapshot["entries"])
-
-assert has_value(play_b, "StateMutated", "crash-g1-play-b", "42")
-assert has_value(play_b, "StateMutated", "crash-g1-play-b", "49")
-assert has(session_a, "StreamBound", "crash-g1-play-a")
-assert has(session_a, "StreamBound", "crash-g1-play-b")
-print("spot-service crash evidence result=passed")
-PY
-
-stop_all_processes
-for scenario in SM-B3 SM-B4 SM-B7 SM-D3 SM-D8 SM-D10 SM-D14 SM-E2 SM-E3 SM-E4 SM-G2 SM-G3 SM-G4 SM-Q9; do
+for scenario in \
+  SM-B1 SM-B2 SM-B3 SM-B5 \
+  SM-B6 SM-B8 \
+  SM-D1 SM-D6 SM-D3 SM-D4 SM-D5 SM-D7 SM-D8 SM-D9 SM-D11 SM-D13 SM-D10 SM-D12 SM-D14 \
+  SM-C1 SM-C2 SM-C3 \
+  SM-E4 SM-E1 SM-E2 SM-E3 \
+  SM-A7 SM-A8 SM-C4 \
+  SM-A3 SM-A6 SM-B4 SM-B7 \
+  SM-A5 SM-A1-A2-A4-F1-F2 \
+  SM-G2 SM-G3 SM-G4 SM-G1 SM-Q9; do
   run_focused_from_all "$scenario"
 done
 

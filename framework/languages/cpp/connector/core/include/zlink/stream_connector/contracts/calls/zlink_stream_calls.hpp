@@ -68,11 +68,8 @@ class send_call_t
     /// Marks the outbound packet for compression when compression is available.
     send_call_t &compress ();
 
-    /// Sends the packet and blocks until the send result is known.
-    result_t<void> submit ();
-
-    /// Sends the packet and invokes the callback with the completion result.
-    void submit (std::function<void (result_t<void>)> callback);
+    /// Gives the packet to the connector for delivery.
+    void submit ();
 
   private:
     friend class connector_t;

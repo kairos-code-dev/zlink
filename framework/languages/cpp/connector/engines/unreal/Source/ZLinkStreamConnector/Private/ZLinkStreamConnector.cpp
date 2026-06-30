@@ -163,7 +163,7 @@ class FZLinkStreamConnectorRuntime
         if (Options.bCompress) {
             call.compress ();
         }
-        call.submit ([] (zlink::stream_connector::result_t<void>) {});
+        call.submit ();
     }
 
     void RequestJson (const FName &PacketName, const FString &JsonPayload, float TimeoutSeconds)

@@ -147,7 +147,7 @@ class customer_session_t final : public packet_stream_session_t
                 _sessions.bind_courier (request.courier_id, stream);
                 const auto reply = zlink::message_t::from_json (bind_courier_session_res_t{
                   bound.courier_id, bound.actor, bound.session_route});
-                co_await stream.reply_packet (reply).async ();
+                stream.reply_packet (reply).submit ();
                 std::cerr << "deliverydispatch session: courier bound courier="
                           << request.courier_id << "\n";
                 co_return;
@@ -173,7 +173,7 @@ class customer_session_t final : public packet_stream_session_t
             _sessions.subscribe (subscribed.delivery_id, stream);
             const auto reply =
               zlink::message_t::from_json (subscribe_delivery_res_t{subscribed.delivery_id});
-            co_await stream.reply_packet (reply).async ();
+            stream.reply_packet (reply).submit ();
             std::cerr << "deliverydispatch session: reply subscribed delivery="
                       << subscribed.delivery_id << "\n";
         }

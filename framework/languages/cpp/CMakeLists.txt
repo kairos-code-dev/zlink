@@ -1269,6 +1269,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_resilience_lifecycle_workflow PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
+  add_executable(zlink_cpp_e2e_resilience_lifecycle_consumer
+    e2e/ResilienceLifecycle/Server/Consumer/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_consumer PRIVATE
+    zlink::framework
+    OpenSSL::Crypto)
+  target_include_directories(zlink_cpp_e2e_resilience_lifecycle_consumer PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
   add_executable(zlink_cpp_e2e_resilience_lifecycle_client
     e2e/ResilienceLifecycle/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_client PRIVATE

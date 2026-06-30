@@ -1,0 +1,92 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "Configuration/provider_options.hpp"
+#include "Endpoints/provider_endpoints.hpp"
+#include "Handlers/evidence_dispatch_error_observer.hpp"
+#include "Handlers/provider_handlers.hpp"
+#include "Infrastructure/evidence_store.hpp"
+#include "Infrastructure/fault_state.hpp"
+
+#include "../../Shared/registry_messaging_contracts.hpp"
+
+#include <zlink/framework.hpp>
+
+#include <cstdint>
+#include <memory>
+
+namespace zlink::framework::e2e::registry_messaging::provider
+{
+
+inline void configure_common_codecs (zlink::framework::codec_options_builder_t)
+{
+}
+
+inline void configure_provider_host (zlink::framework::zlink_framework_options_t &framework,
+                                     const provider_options_t &options)
+{
+    framework.configure_dispatch ()
+      .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+      .trace_log_file (options.log_dir + "/" + options.rid + "-flow.log")
+      .trace_label ("cpp-rm-" + options.rid);
+    auto evidence = std::make_unique<evidence_store_t> (options.rid, options.instance_id);
+    auto *evidence_ptr = evidence.get ();
+    auto fault_state = std::make_unique<fault_state_t> ();
+    auto *fault_state_ptr = fault_state.get ();
+    configure_evidence_dispatch_error_observer (framework, evidence_ptr, fault_state_ptr);
+    framework.services ().add_singleton<evidence_store_t> (std::move (evidence));
+    framework.services ().add_singleton<fault_state_t> (std::move (fault_state));
+    framework.services ().add_transient<route_ping_handler_t, evidence_store_t> ();
+    framework.services ().add_transient<server_weight_handler_t,
+                                        zlink::framework::channel_runtime_options_t> ();
+    configure_common_codecs (framework.codecs ());
+    if (!options.embedded_registry_pub.empty () && !options.embedded_registry_router.empty ()) {
+        framework.enable_registry (options.embedded_registry_pub,
+                                   options.embedded_registry_router);
+        for (const auto &peer : options.embedded_registry_peers) {
+            framework.add_registry_peer (peer);
+        }
+    }
+    for (const auto &endpoint : split_csv (options.registry_router)) {
+        framework.use_discovery ().add_registry_endpoint (endpoint);
+    }
+    if (!options.api_endpoint.empty ()) {
+        auto channel = framework.add_client_server_channel (api_channel);
+        channel.enable_server (options.api_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (options.rid));
+        if (options.server_weight) {
+            channel.server_peer_weight (
+              zlink::peer_weight_t::value (static_cast<std::uint32_t> (*options.server_weight)));
+        }
+        if (options.max_message_size) {
+            channel.server_max_message_size (
+              zlink::byte_size_t::bytes (static_cast<std::int64_t> (*options.max_message_size)));
+        }
+        channel.use_handler_group (handler_group);
+    }
+    if (!options.route_endpoint.empty ()) {
+        framework.add_route_mesh (route_channel)
+          .enable_server (options.route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (options.rid))
+          .add_request_handler<route_ping_handler_t,
+                               scenario_route_req_t,
+                               scenario_route_res_t> ("ScenarioRouteReq",
+                                                       &route_ping_handler_t::handle);
+    }
+    if (!options.http_endpoint.empty ()) {
+        framework.http ()
+          .listen (options.http_endpoint)
+          .map_health ("/health")
+          .map_get<evidence_handler_t> ("/evidence")
+          .map_post<server_weight_handler_t> ("/admin/server-weight")
+          .map_post<observer_fault_handler_t> ("/admin/fault/observer-throws")
+          .map_post<clear_fault_handler_t> ("/admin/fault/none");
+    }
+    framework.handlers ()
+      .group (handler_group)
+      .add<profile_request_handler_t> ()
+      .add<payload_request_handler_t> ()
+      .add_send<profile_command_handler_t> ();
+}
+
+} // namespace zlink::framework::e2e::registry_messaging::provider

@@ -132,7 +132,7 @@ void stream_connector_t::send_json (std::string packet_name,
     if (options.compress) {
         call.compress ();
     }
-    call.submit ([] (zlink::stream_connector::result_t<void>) {});
+    call.submit ();
 }
 
 void stream_connector_t::request_json (std::string packet_name,

@@ -12,11 +12,11 @@
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline void run_mon_a5_fixed_kinds_scenario ()
+inline void run_mon_a5_fixed_kinds_scenario (const client_options_t &options)
 {
-    if (const auto trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"); !trigger_url.empty ()) {
+    if (!options.trigger_url.empty ()) {
         auto trigger = zlink::http_client::client_t::create ()
-                         .base_url (trigger_url)
+                         .base_url (options.trigger_url)
                          .timeout (std::chrono::milliseconds (3000))
                          .build ();
         auto handshake = trigger.post ("/socket/handshake-failure").submit_raw ().result ();
@@ -25,28 +25,28 @@ inline void run_mon_a5_fixed_kinds_scenario ()
     }
 
     const auto socket_entries = wait_evidence_contains (
-      env_or ("ZLINK_CPP_E2E_SERVICE_URL"),
+      options.service_url,
       "monitor-socket|source=monitor.profile|kind=HandshakeFailed",
       std::chrono::milliseconds (10000));
     ensure (any_contains (socket_entries, "kind=HandshakeFailed"),
             "MON-A5 handshake failure evidence missing");
 
     const auto registry_entries = wait_evidence_contains (
-      env_or ("ZLINK_CPP_E2E_REGISTRY_URL"),
+      options.registry_url,
       "monitor-registry|source=registry|kind=StatusChanged",
       std::chrono::milliseconds (10000));
     ensure (any_contains (registry_entries, "kind=StatusChanged"),
             "MON-A5 registry status evidence missing");
 
     const auto spot_status_entries = wait_evidence_contains (
-      env_or ("ZLINK_CPP_E2E_SERVICE_URL"),
+      options.service_url,
       "monitor-spot|source=monitor.spot|node=monitor.spot|kind=StatusChanged",
       std::chrono::milliseconds (10000));
     ensure (any_contains (spot_status_entries, "kind=StatusChanged"),
             "MON-A5 spot status evidence missing");
 
     const auto service_entries = wait_evidence_contains (
-      env_or ("ZLINK_CPP_E2E_SERVICE_URL"),
+      options.service_url,
       "monitor-spot|source=monitor.spot|node=monitor.spot|kind=TimerStoppedAfterUnhandledException",
       std::chrono::milliseconds (10000));
     ensure (any_contains (service_entries, "timer=stopping"),

@@ -90,14 +90,14 @@
 - `SM-F2`: route mesh channel에서 target node와 target spot을 함께 지정해 cross-node spot
   request/send가 동작하는지 검증하고, `.NET`식 lifecycle context group에서는 같은 context spot에
   후속 state request와 command를 보낸다.
-- `SM-F3`: 같은 route mesh channel에서 일반 route packet과 spot route packet이 함께 오가도 각각
-  올바른 dispatcher로 분기되는지 검증한다.
+- `SM-F3`: `Client/Scenarios/sm_f3_scenario.hpp`가 같은 route mesh channel에서 일반 route packet과
+  spot route packet이 함께 오가도 각각 올바른 dispatcher로 분기되는지 검증한다.
 - `SM-F4`: 존재하지 않는 target spot, handler 없는 spot route request, slow spot timeout이
   client-visible failure로 끝나고 후속 정상 spot route request가 복구되는지 검증한다. v1 implicit
   route에는 ingress opt-out이 없으므로 ingress 거부는 적용 대상이 아니다. malformed relay packet은
   public typed route client로 만들 수 없어 raw-frame harness가 필요하다.
-- `SM-F5`: spot route negative 이후에도 같은 route channel의 정상 spot route와 이후 stream/crash
-  시나리오가 계속 통과해 channel socket lifecycle이 유지되는지 검증한다.
+- `SM-F5`: `Client/Scenarios/sm_f5_scenario.hpp`가 spot route negative 이후에도 같은 route channel의
+  일반 route request와 정상 spot route request가 계속 성공하는지 검증한다.
 - `SM-G1`: actor와 stream session이 붙은 `play-a`를 실제 SIGKILL하고, 같은 gateway에 bind된
   `play-b` actor/session은 계속 동작하는지 확인한 뒤 살아 있는 `play-b`에 재auth/rebind해
   상태를 복구한다.

@@ -57,22 +57,7 @@ class coroutine_send_call_t
         return *this;
     }
 
-    result_t<void> submit () { return _inner.submit (); }
-
-    void submit (std::function<void (result_t<void>)> callback)
-    {
-        _inner.submit (std::move (callback));
-    }
-
-    task_t<void> async ()
-    {
-        auto task = task_t<void> (
-          [inner = std::move (_inner)] (std::function<void (result_t<void>)> callback) mutable {
-              inner.submit (std::move (callback));
-          });
-        task.start ();
-        return task;
-    }
+    void submit () { _inner.submit (); }
 
   private:
     send_call_t _inner;

@@ -10,10 +10,10 @@
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline void run_mon_a3_spot_events_scenario ()
+inline void run_mon_a3_spot_events_scenario (const client_options_t &options)
 {
     auto http = zlink::http_client::client_t::create ()
-                  .base_url (env_or ("ZLINK_CPP_E2E_SERVICE_URL"))
+                  .base_url (options.service_url)
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
 
@@ -21,14 +21,14 @@ inline void run_mon_a3_spot_events_scenario ()
     ensure (created && created.value ().status < 400, "MON-A3 spot create call failed");
 
     const auto peer_entries = wait_evidence_contains (
-      env_or ("ZLINK_CPP_E2E_SERVICE_URL"),
+      options.service_url,
       "monitor-spot|source=monitor.spot|node=monitor.spot|kind=PeersChanged",
       std::chrono::milliseconds (10000));
     ensure (any_contains (peer_entries, "peers=1"),
             "MON-A3 spot peer count evidence missing");
 
     auto timer_entries =
-      wait_evidence_contains (env_or ("ZLINK_CPP_E2E_SERVICE_URL"),
+      wait_evidence_contains (options.service_url,
                               "monitor-spot|source=monitor.spot|node=monitor.spot|kind=TimerHandlerFailed",
                               std::chrono::milliseconds (10000));
     ensure (any_contains (

@@ -26,24 +26,20 @@ std::string run_yd_d3_route_bridge_yield_scenario (TConnector &connector)
     ensure (static_cast<bool> (spot), "YD-D3 ensure spot failed");
     ensure (spot.value ().spot_rid == spot_rid, "YD-D3 ensure spot reply mismatch");
 
-    auto sent_yield =
-      connector.send (yield_msg_t{.request_id = request_id,
-                                      .delay_ms = 250,
-                                      .correlation_id = "route-bridge"})
+    connector.send (yield_msg_t{.request_id = request_id,
+                                .delay_ms = 250,
+                                .correlation_id = "route-bridge"})
         .packet_name (yield_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .metadata (target_node_rid_metadata, "play-b")
         .submit ();
-    ensure (static_cast<bool> (sent_yield), "YD-D3 YieldMsg failed");
     std::this_thread::sleep_for (std::chrono::milliseconds (75));
 
-    auto sent_probe =
-      connector.send (probe_msg_t{.request_id = request_id, .marker = "route-bridge-probe"})
+    connector.send (probe_msg_t{.request_id = request_id, .marker = "route-bridge-probe"})
         .packet_name (probe_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .metadata (target_node_rid_metadata, "play-b")
         .submit ();
-    ensure (static_cast<bool> (sent_probe), "YD-D3 ProbeMsg failed");
 
     auto evidence =
       connector.request (

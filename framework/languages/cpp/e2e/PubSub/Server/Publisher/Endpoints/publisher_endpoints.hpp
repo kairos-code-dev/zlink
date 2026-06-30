@@ -26,15 +26,7 @@ inline zlink::framework::http_response_t publish_from_query (
     if (packet_name != nullptr) {
         call.packet_name (packet_name);
     }
-    auto result = call.async ().result ();
-    if (!result.has_value ()) {
-        zlink::framework::http_response_t response;
-        response.status = 500;
-        response.body = nlohmann::json{
-          {"error", result.error () ? result.error ()->what () : "unknown publish error"}}
-                          .dump ();
-        return response;
-    }
+    call.submit ();
 
     zlink::framework::http_response_t response;
     response.body = nlohmann::json{

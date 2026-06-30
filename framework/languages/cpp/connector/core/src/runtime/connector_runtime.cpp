@@ -346,27 +346,12 @@ send_call_t &send_call_t::compress ()
     return *this;
 }
 
-result_t<void> send_call_t::submit ()
+void send_call_t::submit ()
 {
     if (!_state) {
-        return result_t<void>::failure (error_code_t::configuration_error,
-                                        "send call has no connector");
-    }
-    return detail::submit_send (detail::state_from (_state), std::move (_packet));
-}
-
-void send_call_t::submit (std::function<void (result_t<void>)> callback)
-{
-    if (!_state) {
-        if (callback) {
-            callback (result_t<void>::failure (error_code_t::configuration_error,
-                                               "send call has no connector"));
-        }
         return;
     }
-    auto state = detail::state_from (_state);
-    auto packet = std::move (_packet);
-    detail::submit_send_async (state, std::move (packet), std::move (callback));
+    (void) detail::submit_send (detail::state_from (_state), std::move (_packet));
 }
 
 connector_t::connector_t () : connector_t (connector_options_t{})

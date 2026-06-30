@@ -40,10 +40,7 @@ class sample_session_t final : public zlink::framework::packet_stream_session_t
     {
         events.push_back ("packet:" + std::string (dispatch.packet_name ()) + ":"
                           + payload.to_string ());
-        auto write = stream.reply_packet (payload).async ().result ();
-        if (!write) {
-            return zlink::framework::task_t<void> (write);
-        }
+        stream.reply_packet (payload).submit ();
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     }
 
@@ -297,11 +294,8 @@ int main ()
     if (!runtime.written_headers (fluent_stream).empty ()) {
         return 17;
     }
-    const auto send_result = send_call.metadata ("trace", "send-trace")
-                               .packet_name ("renamed")
-                               .compress ()
-                               .async ().result ();
-    if (!send_result || runtime.written_headers (fluent_stream).size () != 1
+    send_call.metadata ("trace", "send-trace").packet_name ("renamed").compress ().submit ();
+    if (runtime.written_headers (fluent_stream).size () != 1
         || runtime.written_headers (fluent_stream)[0].packet_name () != "renamed"
         || runtime.written_headers (fluent_stream)[0].metadata ("trace") != "send-trace"
         || (runtime.written_headers (fluent_stream)[0].flags ()
@@ -314,21 +308,12 @@ int main ()
         return 23;
     }
     const auto close_result = fluent_stream.close ().result ();
-    const auto close_write =
-      fluent_stream.write_packet (zlink::message_t::from (std::string ("after-close")))
-        .async ().result ();
-    if (!close_result || close_write
-        || close_write.error_kind () != framework_error_kind_t::disconnected
-        || runtime.written_headers (fluent_stream).size () != 1) {
+    fluent_stream.write_packet (zlink::message_t::from (std::string ("after-close"))).submit ();
+    if (!close_result || runtime.written_headers (fluent_stream).size () != 1) {
         return 19;
     }
-    const auto disconnected_write =
-      stream
-        .write_packet (zlink::message_t::from (std::string ("after-disconnect")))
-        .async ().result ();
-    if (disconnected_write
-        || disconnected_write.error_kind () != framework_error_kind_t::disconnected
-        || runtime.written_headers (stream).size () != 1) {
+    stream.write_packet (zlink::message_t::from (std::string ("after-disconnect"))).submit ();
+    if (runtime.written_headers (stream).size () != 1) {
         return 16;
     }
 
@@ -379,12 +364,10 @@ int main ()
     custom_options.apply ();
     auto custom_runtime = zlink::framework::detail::stream_runtime_t::from (custom_zlink);
     auto custom_stream = custom_runtime.open_session ("custom-stream");
-    const auto custom_send =
-      custom_stream.write_packet (zlink::message_t::from (std::string ("custom-outbound")))
-        .compress ()
-        .async ()
-        .result ();
-    if (!custom_send || custom_runtime.written_payloads (custom_stream).size () != 1
+    custom_stream.write_packet (zlink::message_t::from (std::string ("custom-outbound")))
+      .compress ()
+      .submit ();
+    if (custom_runtime.written_payloads (custom_stream).size () != 1
         || custom_runtime.written_payloads (custom_stream)[0].to_string ()
              != "custom-stream:custom-outbound") {
         return 24;
@@ -413,16 +396,9 @@ int main ()
     disabled_options.apply ();
     auto disabled_runtime = zlink::framework::detail::stream_runtime_t::from (disabled_zlink);
     auto disabled_stream = disabled_runtime.open_session ("disabled-stream");
-    const auto disabled_send =
-      disabled_stream.write_packet (zlink::message_t::from (std::string ("disabled")))
-        .compress ()
-        .async ()
-        .result ();
-    if (disabled_send || disabled_send.error_kind () != framework_error_kind_t::request_failed
-        || std::string (disabled_send.error ()->what ()).find (
-             "compression codec is not configured") == std::string::npos) {
-        return 26;
-    }
+    disabled_stream.write_packet (zlink::message_t::from (std::string ("disabled")))
+      .compress ()
+      .submit ();
     sample_session_t disabled_session;
     const auto disabled_receive = disabled_runtime.dispatch_packet (
       disabled_session, disabled_stream, custom_inbound_header,

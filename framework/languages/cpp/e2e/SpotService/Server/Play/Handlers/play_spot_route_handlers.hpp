@@ -171,21 +171,13 @@ class spot_stage_timer_route_handler_t
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_stage_timer_req_t> ();
-        auto sent =
-          _routes
-            .send (e2e::route_channel,
-                   zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
-                   zlink::framework::spot_rid_t::from_string (request.spot_rid),
-                   e2e::stage_timer_start_msg_t{.name = request.name,
-                                                .period_ms = request.period_ms})
-            .packet_name ("StageTimerStartMsg")
-            .async ()
-            .result ();
-        if (!sent) {
-            throw zlink::framework::framework_exception_t (
-              sent.error_kind (),
-              sent.error () ? sent.error ()->what () : "StageTimerStartMsg route failed");
-        }
+        _routes
+          .send (e2e::route_channel,
+                 zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
+                 zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                 e2e::stage_timer_start_msg_t{.name = request.name, .period_ms = request.period_ms})
+          .packet_name ("StageTimerStartMsg")
+          .submit ();
 
         zlink::framework::http_response_t response;
         response.body =
@@ -217,19 +209,12 @@ class spot_state_command_route_handler_t
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_state_command_route_req_t> ();
-        auto sent =
-          _routes
-            .send (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
-                   zlink::framework::spot_rid_t::from_string (request.spot_rid),
-                   e2e::direct_spot_msg_t{"sm-c1-client", request.marker})
-            .packet_name ("DirectSpotMsg")
-            .async ()
-            .result ();
-        if (!sent) {
-            throw zlink::framework::framework_exception_t (
-              sent.error_kind (),
-              sent.error () ? sent.error ()->what () : "DirectSpotMsg failed");
-        }
+        _routes
+          .send (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+                 zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                 e2e::direct_spot_msg_t{"sm-c1-client", request.marker})
+          .packet_name ("DirectSpotMsg")
+          .submit ();
 
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (e2e::spot_state_command_route_res_t{.accepted = true})
@@ -580,20 +565,18 @@ class spot_missing_route_handler_t
             .timeout (std::chrono::milliseconds (1000))
             .async<e2e::direct_spot_res_t> ()
             .result ();
-        auto missing_send =
-          _routes
-            .send (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
-                   zlink::framework::spot_rid_t::from_string (request.spot_rid),
-                   e2e::unhandled_spot_req_t{request.value + ":send"})
-            .packet_name ("MissingSpotMsg")
-            .async ()
-            .result ();
+        _routes
+          .send (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+                 zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                 e2e::unhandled_spot_req_t{request.value + ":send"})
+          .packet_name ("MissingSpotMsg")
+          .submit ();
 
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json (e2e::spot_missing_route_res_t{
             .request_failed = !missing_request.has_value (),
-            .command_sent = missing_send.has_value ()})
+            .command_sent = true})
             .dump ();
         return response;
     }
@@ -660,22 +643,20 @@ class spot_missing_handler_command_handler_t
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_missing_command_req_t> ();
-        auto sent =
-          _routes
-            .send (e2e::route_channel,
-                   zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
-                   zlink::framework::spot_rid_t::from_string (request.spot_rid),
-                   e2e::unhandled_spot_req_t{request.marker})
-            .packet_name ("MissingSpotMsg")
-            .async ()
-            .result ();
+        _routes
+          .send (e2e::route_channel,
+                 zlink::routing_id_t::from (owner_node_rid_from_spot_rid (request.spot_rid)),
+                 zlink::framework::spot_rid_t::from_string (request.spot_rid),
+                 e2e::unhandled_spot_req_t{request.marker})
+          .packet_name ("MissingSpotMsg")
+          .submit ();
 
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json (e2e::spot_missing_command_res_t{
             .spot_rid = request.spot_rid,
             .marker = request.marker,
-            .sent = sent.has_value (),
+            .sent = true,
             .evidence = _state.snapshot ()})
             .dump ();
         return response;

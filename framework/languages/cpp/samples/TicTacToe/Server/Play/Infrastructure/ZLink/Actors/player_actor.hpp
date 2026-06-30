@@ -43,9 +43,9 @@ struct player_actor_t
 
     void apply_player (player_info_t value) const { player = std::move (value); }
 
-    template <typename TNotify> auto push (const TNotify &notify) const
+    template <typename TNotify> void push (const TNotify &notify) const
     {
-        return context.bound_session ().send (notify).async ();
+        context.bound_session ().send (notify).submit ();
     }
 
     player_info_t require_player () const

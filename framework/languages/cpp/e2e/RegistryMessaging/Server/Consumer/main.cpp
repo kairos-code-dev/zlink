@@ -31,10 +31,6 @@ int main (int argc, char **argv)
                 channel.enable_client (endpoint);
             }
         }
-        if (options.low_high_water_mark) {
-            channel.client_send_high_water_mark (zlink::message_count_t::value (1))
-              .client_receive_high_water_mark (zlink::message_count_t::value (1));
-        }
         if (!options.http_endpoint.empty ()) {
             framework.http ()
               .listen (options.http_endpoint)

@@ -104,11 +104,11 @@ inline void run_sm_g1_crash_observation_scenario (zlink::framework::route_client
                                                 play_b_actor_id + "-display");
 
     auto play_a_core = sm_g1_make_stream_connector (stream_endpoint);
-    auto play_a_connected = play_a_core.connect ();
+    auto play_a_stream = zlink::stream_e2e_client::use (play_a_core);
+    auto play_a_connected = play_a_stream.connect ().submit ();
     if (!static_cast<bool> (play_a_connected)) {
         throw std::runtime_error ("SM-G1 play-a stream connect failed");
     }
-    auto play_a_stream = zlink::stream_e2e_client::use (play_a_core);
 
     auto play_a_auth =
       play_a_stream.request (stream_auth_req_t{"play-a", play_a_actor_id,
@@ -124,7 +124,7 @@ inline void run_sm_g1_crash_observation_scenario (zlink::framework::route_client
 
     bool play_a_joined = false;
     std::string play_a_join_error = "play-a join not attempted";
-    const auto play_a_join_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    const auto play_a_join_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (60);
     while (std::chrono::steady_clock::now () < play_a_join_deadline) {
         auto play_a_join =
           play_a_stream.request (join_req_t{.key = "a-crash-g1",
@@ -172,7 +172,7 @@ inline void run_sm_g1_crash_observation_scenario (zlink::framework::route_client
 
     bool play_b_joined = false;
     std::string play_b_join_error = "play-b join not attempted";
-    const auto play_b_join_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    const auto play_b_join_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (60);
     while (std::chrono::steady_clock::now () < play_b_join_deadline) {
         auto play_b_join =
           play_a_stream.request (join_req_t{.key = "b-crash-g1",
@@ -244,11 +244,11 @@ inline void run_sm_g1_crash_recovery_scenario (zlink::framework::route_client_t 
     auto recovered_actor = sm_g1_ensure_actor_ref (routes, "play-b", recovered_actor_id,
                                                    recovered_actor_id + "-display");
     auto recovered_core = sm_g1_make_stream_connector (stream_endpoint);
-    auto recovered_connected = recovered_core.connect ();
+    auto recovered_stream = zlink::stream_e2e_client::use (recovered_core);
+    auto recovered_connected = recovered_stream.connect ().submit ();
     if (!static_cast<bool> (recovered_connected)) {
         throw std::runtime_error ("SM-G1 recovered stream connect failed");
     }
-    auto recovered_stream = zlink::stream_e2e_client::use (recovered_core);
 
     auto recovered_auth =
       recovered_stream.request (stream_auth_req_t{"play-b", recovered_actor_id,

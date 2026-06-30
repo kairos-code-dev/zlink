@@ -173,10 +173,7 @@ class missing_command_handler_t
 
     operation_status_t handle (const profile_msg_t &command)
     {
-        auto send = _channels.send (api_channel, command)
-                      .packet_name ("MissingProfileMsg")
-                      .async ();
-        (void) send.result ();
+        _channels.send (api_channel, command).packet_name ("MissingProfileMsg").submit ();
         return {.status = "sent"};
     }
 
@@ -230,14 +227,8 @@ class backpressure_send_handler_t
 
     backpressure_send_res_t handle (const profile_msg_t &command)
     {
-        auto send = _channels.send (api_channel, command)
-                      .timeout (std::chrono::milliseconds (500))
-                      .async ();
-        const auto &result = send.result ();
-        if (result) {
-            return {.outcome = "Accepted"};
-        }
-        return {.outcome = "BoundedFailure"};
+        _channels.send (api_channel, command).timeout (std::chrono::milliseconds (500)).submit ();
+        return {.outcome = "Submitted"};
     }
 
   private:

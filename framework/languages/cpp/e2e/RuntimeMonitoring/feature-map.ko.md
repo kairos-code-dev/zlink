@@ -2,10 +2,11 @@
 
 기준 문서: `framework/doc/framework/common/e2e/config-7-monitoring.ko.md`
 
-이 디렉터리는 기존 `Monitoring` 보조 runner를 대체하기 위한 Config 7 전용 포팅 위치다. 현재 slice는
-service role에서 socket/spot monitoring event를 일부 수집하고, C++ public monitoring builder가 구성
-단계와 framework 적용 단계에서 검증하는 등록 오류를 실행한다. C++ runtime source event가 아직 없는
-항목은 trigger marker로 완료 처리하지 않고 gap으로 유지한다.
+이 디렉터리는 기존 `Monitoring` 보조 runner를 대체하기 위한 Config 7 전용 포팅 위치다. 현재 구현은
+registry, service, filtered service, throwing service, trigger, client role을 분리해서 실행하고,
+C++ public monitoring builder와 runtime event evidence로 MON-A1부터 MON-D1까지 검증한다. trigger는
+검증을 유도하는 HTTP 역할로만 사용하고, runtime source event가 없는 항목을 trigger marker만으로
+완료 처리하지 않는다.
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|

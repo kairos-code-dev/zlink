@@ -13,11 +13,11 @@
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline void run_mon_b1_kind_filter_scenario ()
+inline void run_mon_b1_kind_filter_scenario (const client_options_t &options)
 {
-    if (const auto trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"); !trigger_url.empty ()) {
+    if (!options.trigger_url.empty ()) {
         auto trigger = zlink::http_client::client_t::create ()
-                         .base_url (trigger_url)
+                         .base_url (options.trigger_url)
                          .timeout (std::chrono::milliseconds (3000))
                          .build ();
         auto request =
@@ -30,7 +30,7 @@ inline void run_mon_b1_kind_filter_scenario ()
     }
 
     const auto entries = wait_evidence_contains (
-      env_or ("ZLINK_CPP_E2E_FILTERED_SERVICE_URL"),
+      options.filtered_service_url,
       "monitor-socket|source=monitor.profile|kind=ConnectionReady",
       std::chrono::milliseconds (10000));
     ensure (any_contains (entries, "kind=ConnectionReady"),

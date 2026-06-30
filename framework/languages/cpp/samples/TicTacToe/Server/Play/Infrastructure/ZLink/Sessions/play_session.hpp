@@ -65,10 +65,10 @@ class play_session_t final : public packet_stream_session_t
         }
         if (dispatch.can_reply ()) {
             auto reply = co_await actor.value ().relay_request (payload).async ();
-            co_await stream.reply_packet (reply).async ();
+            stream.reply_packet (reply).submit ();
             co_return;
         }
-        co_await actor.value ().relay (payload).async ();
+        actor.value ().relay (payload).submit ();
         co_return;
     }
 

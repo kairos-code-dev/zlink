@@ -142,11 +142,9 @@ start_consumer() {
   local http="$2"
   local endpoints="$3"
   local registry_router="$4"
-  local low_hwm="$5"
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
   ZLINK_CPP_E2E_PROVIDER_ENDPOINTS="$endpoints" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$registry_router" \
-  ZLINK_CPP_E2E_LOW_HWM="$low_hwm" \
   ZLINK_CPP_E2E_TRACE_LABEL="$name" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$CONSUMER_SERVER" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
@@ -338,7 +336,7 @@ if [[ "$SCENARIO" == "RM-C3" || "$SCENARIO" == "rm-c3" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  start_consumer direct-consumer "$HTTP_DIRECT_CONSUMER" "$API_A,$API_B" "" false
+  start_consumer direct-consumer "$HTTP_DIRECT_CONSUMER" "$API_A,$API_B" ""
   DIRECT_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c3 rm-c3 env
@@ -351,7 +349,7 @@ if [[ "$SCENARIO" == "RM-C4" || "$SCENARIO" == "rm-c4" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  start_consumer discovery-consumer "$HTTP_DISCOVERY_CONSUMER" "" "$REGISTRY_ROUTER" false
+  start_consumer discovery-consumer "$HTTP_DISCOVERY_CONSUMER" "" "$REGISTRY_ROUTER"
   DISCOVERY_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c4 rm-c4 env
@@ -364,7 +362,7 @@ if [[ "$SCENARIO" == "RM-C5" || "$SCENARIO" == "rm-c5" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  start_consumer discovery-consumer "$HTTP_DISCOVERY_CONSUMER" "" "$REGISTRY_ROUTER" false
+  start_consumer discovery-consumer "$HTTP_DISCOVERY_CONSUMER" "" "$REGISTRY_ROUTER"
   DISCOVERY_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c5 rm-c5 env
@@ -388,7 +386,7 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  start_consumer single-consumer "$HTTP_SINGLE_CONSUMER" "$API_A" "" false
+  start_consumer single-consumer "$HTTP_SINGLE_CONSUMER" "$API_A" ""
   SINGLE_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c8 rm-c8 env
@@ -399,7 +397,7 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
 
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a ZLINK_CPP_E2E_MAX_MESSAGE_SIZE=2048
   API_A_PID="$LAST_PID"
-  start_consumer single-consumer-max "$HTTP_SINGLE_CONSUMER" "$API_A" "" false
+  start_consumer single-consumer-max "$HTTP_SINGLE_CONSUMER" "$API_A" ""
   SINGLE_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c8-max rm-c8-max env
@@ -410,7 +408,7 @@ fi
 if [[ "$SCENARIO" == "RM-C9" || "$SCENARIO" == "rm-c9" ]]; then
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
   API_A_PID="$LAST_PID"
-  start_consumer backpressure-consumer "$HTTP_BACKPRESSURE_CONSUMER" "$API_A" "" true
+  start_consumer backpressure-consumer "$HTTP_BACKPRESSURE_CONSUMER" "$API_A" ""
   BACKPRESSURE_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c9 rm-c9 env

@@ -2329,11 +2329,7 @@ int main ()
         return 21;
     }
 
-    auto publish_result =
-      context.publish ("stage.state.updated", state_update_t{1}).async ().result ();
-    if (!publish_result) {
-        return 14;
-    }
+    context.publish ("stage.state.updated", state_update_t{1}).submit ();
 
     zlink::framework::zlink_builder_t pubsub_host;
     zlink::framework::detail::channel_runtime_t::from (pubsub_host.message_bus ())
@@ -2349,11 +2345,7 @@ int main ()
     auto native_node = std::make_shared<zlink::service::spot_node_t> (native_context);
     native_node->set_pub_bind ("inproc://cpp-framework-spot-pubsub");
     pubsub_runtime.attach_native_node (native_node);
-    auto native_publish =
-      pubsub_created.context.publish ("stage.state.updated", state_update_t{9}).async ().result ();
-    if (!native_publish) {
-        return 91;
-    }
+    pubsub_created.context.publish ("stage.state.updated", state_update_t{9}).submit ();
     const auto subscription_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (500);
     while (subscription_spot->last_value != 9
@@ -2369,13 +2361,7 @@ int main ()
         return 92;
     }
 
-    auto send_result =
-      context.send_to (remote_route->node_rid, remote_route->spot_rid, state_update_t{2})
-        .async ()
-        .result ();
-    if (!send_result) {
-        return 15;
-    }
+    context.send_to (remote_route->node_rid, remote_route->spot_rid, state_update_t{2}).submit ();
 
     auto request_result = context
                             .request_to<move_reply_t> (remote_route->node_rid,

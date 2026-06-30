@@ -43,7 +43,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             if (_notify_on_disconnect.contains (actor_id)) {
                 if (auto actor = _bound_session_actors.find (actor_id);
                     actor != _bound_session_actors.end ()) {
-                    co_await actor->second.notify_disconnected ().async ();
+                    actor->second.notify_disconnected ().submit ();
                     _state.record ("StreamDisconnectNotified", actor_id);
                 }
             }
@@ -89,11 +89,11 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
             if (dispatch.can_reply ()) {
-                co_await stream
+                stream
                   .reply_packet (
                     zlink::message_t::from_json (
                       e2e::stream_auth_res_t{request.actor, _state.node_rid}))
-                  .async ();
+                  .submit ();
             }
             co_return;
         }
@@ -122,11 +122,11 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
             if (dispatch.can_reply ()) {
-                co_await stream
+                stream
                   .reply_packet (
                     zlink::message_t::from_json (
                       e2e::stream_auth_res_t{ensured.actor, _state.node_rid}))
-                  .async ();
+                  .submit ();
             }
             co_return;
         }
@@ -139,10 +139,10 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
         }
         if (dispatch.can_reply ()) {
             auto reply = co_await actor.value ().relay_request (payload).async ();
-            co_await stream.reply_packet (reply).async ();
+            stream.reply_packet (reply).submit ();
             co_return;
         }
-        co_await actor.value ().relay (payload).async ();
+        actor.value ().relay (payload).submit ();
         co_return;
     }
 

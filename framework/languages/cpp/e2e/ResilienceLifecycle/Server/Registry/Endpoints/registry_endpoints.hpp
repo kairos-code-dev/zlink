@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Configuration/registry_options.hpp"
+#include "../Infrastructure/evidence_store.hpp"
 
 #include "../../../Shared/registry_messaging_contracts.hpp"
 
@@ -64,6 +65,43 @@ class topology_handler_t
 
   private:
     registry_options_t _options;
+};
+
+class evidence_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
+
+    explicit evidence_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        zlink::framework::http_response_t response;
+        response.body = nlohmann::json (_evidence.snapshot ()).dump ();
+        return response;
+    }
+
+  private:
+    evidence_store_t &_evidence;
+};
+
+class evidence_clear_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<evidence_store_t>;
+
+    explicit evidence_clear_handler_t (evidence_store_t &evidence) : _evidence (evidence) {}
+
+    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
+    {
+        _evidence.clear ();
+        zlink::framework::http_response_t response;
+        response.body = R"({"status":"cleared"})";
+        return response;
+    }
+
+  private:
+    evidence_store_t &_evidence;
 };
 
 } // namespace zlink::framework::e2e::registry_messaging::registry

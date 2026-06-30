@@ -35,7 +35,7 @@ inline std::string post_validation (const std::string &trigger_url, const std::s
     return http.post (path).fetch<std::string> ();
 }
 
-inline void run_mon_b2_registration_validation_scenario ()
+inline void run_mon_b2_registration_validation_scenario (const client_options_t &options)
 {
     using namespace std::chrono_literals;
 
@@ -44,12 +44,14 @@ inline void run_mon_b2_registration_validation_scenario ()
     std::string missing_spot_line;
     std::string missing_socket_line;
 
-    if (const auto trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"); !trigger_url.empty ()) {
-        duplicate_line = post_validation (trigger_url, "/validation/registration/duplicate-source");
-        interval_line = post_validation (trigger_url, "/validation/registration/interval");
-        missing_spot_line = post_validation (trigger_url, "/validation/registration/missing-spot");
+    if (!options.trigger_url.empty ()) {
+        duplicate_line =
+          post_validation (options.trigger_url, "/validation/registration/duplicate-source");
+        interval_line = post_validation (options.trigger_url, "/validation/registration/interval");
+        missing_spot_line =
+          post_validation (options.trigger_url, "/validation/registration/missing-spot");
         missing_socket_line =
-          post_validation (trigger_url, "/validation/registration/missing-socket");
+          post_validation (options.trigger_url, "/validation/registration/missing-socket");
     } else {
         duplicate_line = "mon-b2|duplicate=" + capture_error ([] {
             auto app = zlink::framework::app_t::create ();

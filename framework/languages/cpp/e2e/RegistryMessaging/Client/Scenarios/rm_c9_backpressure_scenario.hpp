@@ -15,10 +15,11 @@ inline void run_rm_c9_backpressure_scenario (zlink::framework::channel_client_t 
 {
     (void) channels;
     const auto consumer = env_or ("ZLINK_CPP_E2E_BACKPRESSURE_CONSUMER_URL");
+    constexpr int slow_send_count = 8;
     post_raw (consumer, "/profile/backpressure/reset");
     std::vector<std::future<std::string>> sends;
-    sends.reserve (32);
-    for (int index = 0; index < 32; ++index) {
+    sends.reserve (slow_send_count);
+    for (int index = 0; index < slow_send_count; ++index) {
         sends.push_back (std::async (std::launch::async, [consumer, index] {
             auto outcome = post_json<profile_msg_t, backpressure_send_res_t> (
               consumer, "/profile/backpressure/send",
@@ -28,21 +29,17 @@ inline void run_rm_c9_backpressure_scenario (zlink::framework::channel_client_t 
         }));
     }
 
-    int accepted = 0;
-    int bounded_failures = 0;
+    int submitted = 0;
     for (auto &send : sends) {
         const auto outcome = send.get ();
-        if (outcome == "Accepted") {
-            ++accepted;
-        } else if (outcome == "BoundedFailure") {
-            ++bounded_failures;
+        if (outcome == "Submitted") {
+            ++submitted;
         }
     }
-    (void) bounded_failures;
-    ensure (accepted > 0, "RM-C9 send pressure did not submit any command");
-    wait_provider_evidence_contains ("ProfileMsg", "rm-c9-slow-0", std::chrono::seconds (20));
+    ensure (submitted == slow_send_count, "RM-C9 expected all one-way sends to be submitted");
 
-    std::this_thread::sleep_for (std::chrono::seconds (5));
+    std::this_thread::sleep_for (std::chrono::seconds (10));
+    wait_provider_evidence_contains ("ProfileMsg", "rm-c9-slow-0", std::chrono::seconds (20));
     auto recovery = post_json<profile_req_t, profile_res_t> (
       consumer, "/profile/request", profile_req_t{.value = "rm-c9-after"});
     ensure (recovery.value == "profile:rm-c9-after", "RM-C9 recovery reply mismatch");

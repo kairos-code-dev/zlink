@@ -199,9 +199,7 @@ class delivery_dispatch_client_scenario_t
                                const std::string &courier_id,
                                bool accepted)
     {
-        auto sent =
-          courier.send (courier_decision_msg_t{delivery_id, courier_id, accepted, ""}).async ().result ();
-        ensure (static_cast<bool> (sent), "courier decision send failed");
+        courier.send (courier_decision_msg_t{delivery_id, courier_id, accepted, ""}).submit ();
     }
 
     static void ensure (bool condition, const char *message)

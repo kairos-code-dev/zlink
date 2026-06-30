@@ -32,6 +32,7 @@ class spot_node_builder_state_t;
 class channel_runtime_state_t;
 class monitoring_runtime_state_t;
 class stream_runtime_state_t;
+class channel_native_client_t;
 class channel_native_publisher_t;
 
 result_t<void> validate_channel_native_reply (
@@ -100,6 +101,7 @@ class channel_runtime_state_t
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> client_bundles;
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> publisher_bundles;
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> subscriber_bundles;
+    std::map<std::string, std::shared_ptr<channel_native_client_t>> native_clients;
     std::map<std::string, std::shared_ptr<channel_native_publisher_t>> native_publishers;
     std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
     std::map<std::string, route_handler_registry_t> route_handlers;

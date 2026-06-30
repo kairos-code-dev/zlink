@@ -209,21 +209,22 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
         return bound_session_send_call_t (send_call_t (result_t<void>::success ()));
     }
     return bound_session_send_call_t (send_call_t (
-      std::move (packet_name),
-      [sink = std::move (sink), payload] (const std::string &name, std::chrono::milliseconds,
-                                          const send_call_t::metadata_map_t &) mutable {
-          try {
-              return sink (name, payload);
-          }
-          catch (const framework_exception_t &error) {
-              return task_t<void> (
-                result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
-          }
-          catch (const std::exception &error) {
-              return task_t<void> (
-                result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
-          }
-      }));
+	      std::move (packet_name),
+	      [sink = std::move (sink), payload] (const std::string &name, std::chrono::milliseconds,
+	                                          const send_call_t::metadata_map_t &) mutable {
+	          try {
+	              detail::submit_one_way_task (sink (name, payload));
+	              return result_t<void>::success ();
+	          }
+	          catch (const framework_exception_t &error) {
+	              return result_t<void>::failure (error.kind (), error.what (),
+	                                             error.is_retriable ());
+	          }
+	          catch (const std::exception &error) {
+	              return result_t<void>::failure (framework_error_kind_t::request_failed,
+	                                             error.what ());
+	          }
+	      }));
 }
 
 actor_context_t::actor_context_t () :
@@ -911,7 +912,8 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
                                             const zlink::message_t &payload) mutable {
           stream_header_t header (stream_message_kind_t::send, codec, stream_header_flags_t::none,
                                   std::nullopt, std::move (packet_name));
-          return stream.write_packet_with_header (std::move (header), payload).async ();
+          stream.write_packet_with_header (std::move (header), payload).submit ();
+          return task_t<void> (result_t<void>::success ());
       };
 }
 
@@ -947,11 +949,12 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
               }
               current_actor_ref = found->second.ref;
           }
-          return route_client
+          route_client
             .send (route_channel_name, target_node_rid,
                    make_actor_bound_session_route_request (current_actor_ref, packet_name, payload))
             .packet_name (actor_bound_session_route_request_t::packet_name)
-            .async ();
+            .submit ();
+          return task_t<void> (result_t<void>::success ());
       };
 }
 

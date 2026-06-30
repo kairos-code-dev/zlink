@@ -724,12 +724,12 @@ send_call_t spot_context_t::publish_erased (std::string topic,
     auto state = _state;
     return send_call_t (
       std::move (packet_name), [state, topic = std::move (topic), payload = std::move (payload)] (
-                                 const std::string &submitted_packet_name,
-                                 std::chrono::milliseconds, const send_call_t::metadata_map_t &) {
-          if (!state) {
-              return task_t<void> (result_t<void>::failure (
-                framework_error_kind_t::request_protocol_error, "spot context is not configured"));
-          }
+	                                 const std::string &submitted_packet_name,
+	                                 std::chrono::milliseconds, const send_call_t::metadata_map_t &) {
+	          if (!state) {
+	              return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+	                                             "spot context is not configured");
+	          }
           state->ordering_log.push_back ("publish:" + topic + ":" + submitted_packet_name + ":"
                                          + payload.to_string ());
           auto native = state->native_spot.lock ();
@@ -737,11 +737,11 @@ send_call_t spot_context_t::publish_erased (std::string topic,
               try {
                   auto outbound = payload;
                   std::move (native->publish (topic)).message (std::move (outbound)).submit ();
-              }
-              catch (const std::exception &error) {
-                  return task_t<void> (result_t<void>::failure (
-                    framework_error_kind_t::request_failed, error.what ()));
-              }
+	              }
+	              catch (const std::exception &error) {
+	                  return result_t<void>::failure (framework_error_kind_t::request_failed,
+	                                                 error.what ());
+	              }
               if (state->node) {
                   detail::message_flow_tracer_t (state->node->dispatch)
                     .trace (message_flow_outcome_t::sent, [&] {
@@ -757,10 +757,10 @@ send_call_t spot_context_t::publish_erased (std::string topic,
                                                     std::nullopt,
                                                     std::nullopt};
                     });
-              }
-          }
-          return task_t<void> (result_t<void>::success ());
-      });
+	              }
+	          }
+	          return result_t<void>::success ();
+	      });
 }
 
 serializer_registry_t *spot_context_t::serializer_registry () const noexcept
@@ -790,14 +790,13 @@ send_call_t spot_context_t::send_to_erased (node_rid_t node_rid,
     return send_call_t (
       std::move (packet_name),
       [state, route_channel_name = route_channel.value (), node_rid = std::move (node_rid),
-       spot_rid = std::move (spot_rid), payload = std::move (payload)] (
-        const std::string &submitted_packet_name, std::chrono::milliseconds,
-        const send_call_t::metadata_map_t &metadata) mutable -> task_t<void> {
-          if (!state || !state->channel_runtime) {
-              return task_t<void> (
-                result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                         "SPOT route runtime is not configured"));
-          }
+	       spot_rid = std::move (spot_rid), payload = std::move (payload)] (
+	        const std::string &submitted_packet_name, std::chrono::milliseconds,
+	        const send_call_t::metadata_map_t &metadata) mutable -> result_t<void> {
+	          if (!state || !state->channel_runtime) {
+	              return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+	                                             "SPOT route runtime is not configured");
+	          }
           try {
               detail::channel_runtime_manager_t manager (state->channel_runtime);
               auto &runtime = manager.get_route_channel (route_channel_name);
@@ -807,16 +806,16 @@ send_call_t spot_context_t::send_to_erased (node_rid_t node_rid,
               auto submitted = runtime.submit_spot_send_parts (
                 zlink::routing_id_t::from (std::string (node_rid.value ())),
                 zlink::routing_id_t::from (std::string (spot_rid.value ())), std::move (parts));
-              if (submitted && state) {
-                  state->ordering_log.push_back ("send_to:" + std::string (spot_rid.value ()));
-              }
-              return task_t<void> (std::move (submitted));
-          }
-          catch (const framework_exception_t &error) {
-              return task_t<void> (
-                result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
-          }
-      });
+	              if (submitted && state) {
+	                  state->ordering_log.push_back ("send_to:" + std::string (spot_rid.value ()));
+	              }
+	              return submitted;
+	          }
+	          catch (const framework_exception_t &error) {
+	              return result_t<void>::failure (error.kind (), error.what (),
+	                                             error.is_retriable ());
+	          }
+	      });
 }
 
 spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_rid_t node_rid,

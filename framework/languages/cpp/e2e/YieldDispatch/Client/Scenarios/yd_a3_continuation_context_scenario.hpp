@@ -17,14 +17,12 @@ std::string run_yd_a3_continuation_context_scenario (TConnector &connector,
                                                      const std::string &spot_rid)
 {
     const auto request_id = unique_id ("YD-A3");
-    auto context_send =
-      connector.send (yield_msg_t{.request_id = request_id,
-                                      .delay_ms = 50,
-                                      .correlation_id = "corr-a3"})
+    connector.send (yield_msg_t{.request_id = request_id,
+                                .delay_ms = 50,
+                                .correlation_id = "corr-a3"})
         .packet_name (yield_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
         .submit ();
-    ensure (static_cast<bool> (context_send), "YD-A3 YieldMsg send failed");
     auto evidence =
       observer.request (
                   yield_evidence_wait_req_t{.request_id = request_id,

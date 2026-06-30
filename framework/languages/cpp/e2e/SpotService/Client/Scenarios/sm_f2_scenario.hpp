@@ -89,16 +89,11 @@ inline void run_sm_f2_scenario (zlink::framework::route_client_t &routes,
         throw std::runtime_error ("SM-F2 direct spot reply mismatch");
     }
 
-    auto command_route =
-      routes
-        .send (route_channel, zlink::routing_id_t::from (std::string ("play-b")), remote_spot,
-               direct_spot_msg_t{"external-client", "route-direct-f2:command"})
-        .packet_name ("DirectSpotMsg")
-        .async ()
-        .result ();
-    if (!command_route.has_value ()) {
-        throw std::runtime_error ("SM-F2 direct spot command failed");
-    }
+    routes
+      .send (route_channel, zlink::routing_id_t::from (std::string ("play-b")), remote_spot,
+             direct_spot_msg_t{"external-client", "route-direct-f2:command"})
+      .packet_name ("DirectSpotMsg")
+      .submit ();
 
     std::cout << "scenario SM-F2 passed\n";
 }

@@ -22,10 +22,10 @@ inline bool contains_nonzero_registry_event (const std::vector<std::string> &ent
     return false;
 }
 
-inline void run_mon_a2_registry_events_scenario ()
+inline void run_mon_a2_registry_events_scenario (const client_options_t &options)
 {
     const auto entries = wait_evidence_contains (
-      env_or ("ZLINK_CPP_E2E_REGISTRY_URL"), "kind=ServiceSummaryChanged",
+      options.registry_url, "kind=ServiceSummaryChanged",
       std::chrono::milliseconds (10000));
     ensure (contains_nonzero_registry_event (entries, "kind=TopologyChanged", "topology=0"),
             "MON-A2 registry topology evidence missing");

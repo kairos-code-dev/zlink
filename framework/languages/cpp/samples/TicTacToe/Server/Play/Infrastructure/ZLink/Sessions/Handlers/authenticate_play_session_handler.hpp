@@ -62,7 +62,7 @@ class authenticate_play_session_handler_t
 
         const auto reply_payload = authenticate_res_t{authenticated.player};
         const auto reply_message = zlink::message_t::from_json (reply_payload);
-        co_await stream.reply_packet (reply_message).async ();
+        stream.reply_packet (reply_message).submit ();
 
         co_return actor;
     }

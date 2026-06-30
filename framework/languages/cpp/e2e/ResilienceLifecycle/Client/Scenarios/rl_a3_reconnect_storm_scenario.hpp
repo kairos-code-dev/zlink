@@ -28,4 +28,10 @@ inline void run_quick_resilience_scenario (zlink::framework::channel_client_t &c
     throw std::runtime_error ("quick scenario did not recover within timeout");
 }
 
+inline void run_rl_a3_reconnect_storm_probe (zlink::framework::channel_client_t &channels)
+{
+    run_quick_resilience_scenario (channels);
+    std::cout << "scenario RL-A3 client passed\n";
+}
+
 } // namespace zlink::framework::e2e::registry_messaging::client

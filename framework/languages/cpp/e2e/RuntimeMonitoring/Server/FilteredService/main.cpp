@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../Service/Support/service_host.hpp"
-
-namespace rm_service = zlink::framework::e2e::runtime_monitoring::service;
+#include "filtered_service_host_factory.hpp"
 
 int main (int argc, char **argv)
 {
-    return rm_service::run_service_host (argc, argv, "socket-filter");
+    return zlink::framework::e2e::runtime_monitoring::filtered_service::
+      run_filtered_service_host (argc, argv);
 }

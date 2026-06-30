@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "Support/service_host.hpp"
-
-namespace rm_service = zlink::framework::e2e::runtime_monitoring::service;
+#include "service_host_factory.hpp"
 
 int main (int argc, char **argv)
 {
-    return rm_service::run_service_host (argc, argv);
+    return zlink::framework::e2e::runtime_monitoring::service::run_all_service_host (argc,
+                                                                                     argv);
 }

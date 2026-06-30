@@ -17,12 +17,10 @@ inline void run_resilience_stress_scenario (zlink::framework::channel_client_t &
         const auto reply =
           request_profile (channels, api_channel, "rl-d1-request-" + std::to_string (index));
         ensure (!reply.provider_rid.empty (), "stress request returned empty provider");
-        auto send =
-          channels
-            .send (api_channel,
-                   profile_msg_t{.command_id = "rl-d5-command-" + std::to_string (index)})
-            .async ();
-        ensure (send.result ().has_value (), "stress send failed");
+        channels
+          .send (api_channel,
+                 profile_msg_t{.command_id = "rl-d5-command-" + std::to_string (index)})
+          .submit ();
     }
 
     auto missing = channels.request (api_channel, profile_req_t{.value = "rl-d4-missing"})

@@ -4,6 +4,7 @@
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/stream_connector/contracts/codec_registry.hpp>
 
+#include <string>
 #include <utility>
 
 namespace zlink::framework_codecs
@@ -74,10 +75,11 @@ template <typename... TPayloads> class protobuf_serializers_t
         template <typename TPayload>
         serializers_proxy_t &add_serializer (
           typename zlink::framework::serializer_t<TPayload>::serialize_fn_t serialize,
-          typename zlink::framework::serializer_t<TPayload>::deserialize_fn_t deserialize)
+          typename zlink::framework::serializer_t<TPayload>::deserialize_fn_t deserialize,
+          std::string content_type = "application/x-protobuf")
         {
             _serializers->template add<TPayload> (std::move (serialize), std::move (deserialize),
-                                                  "application/x-protobuf");
+                                                  std::move (content_type));
             return *this;
         }
 

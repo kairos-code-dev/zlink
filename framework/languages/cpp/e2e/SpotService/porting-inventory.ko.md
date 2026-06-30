@@ -60,7 +60,7 @@
 | `Client/Scenarios/SmG2Scenario.cs` | `Client/Scenarios/sm_g2_scenario.hpp` | scenario | done | SM-G2 |
 | `Client/Scenarios/SmG3Scenario.cs` | `Client/Scenarios/sm_g3_scenario.hpp` | scenario | done | SM-G3 |
 | `Client/Scenarios/SmG4Scenario.cs` | `Client/Scenarios/sm_g4_scenario.hpp` | scenario | done | SM-G4 |
-| `Client/Scenarios/SmQ9Scenario.cs` | `feature-map.ko.md`, `Server/MultiNode/` | scenario | not-needed | 공통 Config 2 scenario ID가 아니므로 C++ feature-map의 완료 범위에 넣지 않는다. 별도 MultiNode scaffold는 build까지만 확인했고, .NET식 spot-rid-only route request는 C++ public route client 계약과 맞지 않아 runner scenario로 승격하지 않았다. |
+| `Client/Scenarios/SmQ9Scenario.cs` | `Client/Scenarios/sm_q9_scenario.hpp`, `Server/MultiNode/`, `run_e2e.sh` | scenario | done | `.NET`의 multi-node route-to-spot 흐름에 대응해 multi-node A/B role을 띄우고, 외부 route client가 target spot id로 state request를 보내 state/evidence가 유지되는지 검증한다. |
 | `Server/Registry/Program.cs` | `Server/Registry/main.cpp` | server-role | done | registry role 진입점 |
 | `Server/Registry/RegistryHostFactory.cs` | `Server/Registry/registry_host_factory.hpp` | server-role | done | registry host factory 책임을 role-local header로 분리했다. |
 | `Server/Registry/RegistrySupport.cs` | `Server/Shared/Support/env.hpp`, `Server/Registry/registry_host_factory.hpp` | support | done | registry role의 env option helper와 host 설정을 shared runtime 없이 분리했다. |
@@ -79,7 +79,7 @@
 | `Server/Play/Handlers/PlaySpotRouteHandlers.cs` | `Server/Play/Handlers/play_spot_route_handlers.hpp` | handler | done | route client HTTP bridge handler를 목표 handler 파일로 분리했고 SM-C1/SM-C3 focused run으로 검증했다. |
 | `Server/Play/Handlers/PlayStageHandlers.cs` | `Server/Play/Spots/play_actor_model.hpp`, `Server/Play/Handlers/play_spot_route_handlers.hpp` | handler | done | `.NET`의 app-level `ScenarioStage` wrapper 책임을 C++ user spot의 `StageProbeReq`/`StageTimerStartMsg` handler와 HTTP route bridge로 대응했다. |
 | `Server/Play/Spots/PlayActorModel.cs` | `Server/Play/Spots/play_actor_model.hpp`, `Server/Shared/spot_actor_support.hpp` | spot | done | actor model은 role-local spot 파일로 분리했고 actor ref 변환 helper는 shared support로 분리했다. |
-| `Server/Play/Spots/PlayMultiNodeScenario.cs` | `feature-map.ko.md` | spot | not-needed | `.NET` 전용 SM-Q9 관련 파일이며 공통 Config 2 완료 범위에 넣지 않는다. |
+| `Server/Play/Spots/PlayMultiNodeScenario.cs` | `Server/MultiNode/Spots/multi_node_spots.hpp`, `Server/MultiNode/Handlers/multi_node_handlers.hpp` | spot | done | C++에서는 Play role에 섞지 않고 MultiNode role-local spot/handler로 재분류해 SM-Q9 runtime proof에서 검증한다. |
 | `Server/Gateway/Program.cs` | `Server/Gateway/main.cpp` | server-role | done | gateway role 진입점 |
 | `Server/Gateway/GatewayHostFactory.cs` | `Server/Gateway/gateway_host_factory.hpp` | server-role | done | gateway host factory 책임을 role-local header로 분리했다. |
 | `Server/Gateway/SpotService.Gateway.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
@@ -92,15 +92,15 @@
 | `Server/Session/Handlers/SessionStageHandlers.cs` | `Server/Play/Spots/play_actor_model.hpp` | handler | not-needed | SM-A5는 Play role HTTP/spot 경로로 검증한다. C++ Session role은 stream lifecycle/auth/relay 책임만 분리하고 user spot stage handler를 별도로 두지 않는다. |
 | `Server/Session/Spots/SessionActorModel.cs` | `Server/Play/Spots/play_actor_model.hpp`, `Server/Session/Handlers/session_session_handlers.hpp` | spot | done | `.NET` Session role의 actor/entry/user spot model 책임은 C++에서 Play role spot model로 재분류하고, stream session bind/relay 책임은 Session handler로 분리했다. |
 | `Server/Session/Spots/SessionMultiNodeScenario.cs` | `feature-map.ko.md` | spot | not-needed | `.NET` 전용 SM-Q9 관련 파일이며 공통 Config 2 완료 범위에 넣지 않는다. |
-| `Server/MultiNode/Program.cs` | `Server/MultiNode/main.cpp` | server-role | not-needed | `.NET` 전용 SM-Q9 scaffold로 남긴다. C++ 완료 판정은 build proof까지만 기록하고 runtime scenario로 승격하지 않는다. |
-| `Server/MultiNode/MultiNodeHostFactory.cs` | `Server/MultiNode/multi_node_host_factory.hpp` | server-role | not-needed | public framework API로 작성한 scaffold build는 통과했지만, SM-Q9가 공통 완료 범위가 아니므로 추가 runner proof를 요구하지 않는다. |
-| `Server/MultiNode/MultiNodeSupport.cs` | `Server/MultiNode/multi_node_host_factory.hpp`, `Server/Shared/Support/env.hpp`, `Server/Shared/Support/codecs.hpp`, `Server/Shared/Endpoints/evidence_endpoint.hpp`, `Server/Shared/scenario_state.hpp` | support | not-needed | `.NET` 전용 SM-Q9 scaffold가 shared support를 재사용한다. 공통 완료 범위에는 포함하지 않는다. |
+| `Server/MultiNode/Program.cs` | `Server/MultiNode/main.cpp` | server-role | done | SM-Q9 focused runner가 multi-node A/B role을 실제 process로 실행한다. |
+| `Server/MultiNode/MultiNodeHostFactory.cs` | `Server/MultiNode/multi_node_host_factory.hpp` | server-role | done | public framework API로 route mesh, spot mesh, HTTP evidence endpoint를 구성하고 SM-Q9 runtime proof에서 검증한다. |
+| `Server/MultiNode/MultiNodeSupport.cs` | `Server/MultiNode/multi_node_host_factory.hpp`, `Server/Shared/Support/env.hpp`, `Server/Shared/Support/codecs.hpp`, `Server/Shared/Endpoints/evidence_endpoint.hpp`, `Server/Shared/scenario_state.hpp` | support | done | MultiNode role이 shared env/codec/evidence support를 재사용하며 SM-Q9 runtime proof에서 검증한다. |
 | `Server/MultiNode/SpotService.MultiNode.csproj` | `CMakeLists.txt` | build | not-needed | C++는 상위 CMake target에 통합된다. |
-| `Server/MultiNode/Handlers/MultiNodeControlHandlers.cs` | `Server/MultiNode/Handlers/multi_node_handlers.hpp` | handler | not-needed | `.NET` 전용 SM-Q9 scaffold다. `.NET`식 spot-rid-only route request는 현재 C++ public route client 계약으로 받지 않는다. |
+| `Server/MultiNode/Handlers/MultiNodeControlHandlers.cs` | `Server/MultiNode/Handlers/multi_node_handlers.hpp` | handler | done | create-local HTTP bridge와 route-to-spot state request handler를 MultiNode handler 파일로 분리했고 SM-Q9 runtime proof에서 검증한다. |
 | `Server/MultiNode/Handlers/MultiNodeSessionHandlers.cs` | `Server/Session/Handlers/session_session_handlers.hpp` | handler | done | multi-node stream session binding/relay 책임은 session handler 파일로 분리했다. |
-| `Server/MultiNode/Handlers/MultiNodeStageHandlers.cs` | `feature-map.ko.md` | handler | not-needed | `.NET` 전용 SM-Q9/Stage 조합은 C++ 공통 완료 범위에 넣지 않는다. SM-A5의 stage/timer 흐름은 Play role에서 별도로 검증한다. |
-| `Server/MultiNode/Spots/MultiNodeActorModel.cs` | `feature-map.ko.md` | spot | not-needed | `.NET` 전용 SM-Q9 관련 파일이며 C++ 공통 완료 범위에 넣지 않는다. |
-| `Server/MultiNode/Spots/MultiNodeMultiNodeScenario.cs` | `Server/MultiNode/Spots/multi_node_spots.hpp`, `Server/MultiNode/Handlers/multi_node_handlers.hpp` | spot | not-needed | MultiNode spot scaffold는 build proof까지만 유지하고, `.NET` 전용 SM-Q9 runtime proof는 완료 판정에 요구하지 않는다. |
+| `Server/MultiNode/Handlers/MultiNodeStageHandlers.cs` | `Server/MultiNode/Spots/multi_node_spots.hpp` | handler | done | MultiNode spot의 state request handler로 대응한다. SM-A5의 stage/timer 흐름은 Play role에서 별도로 검증한다. |
+| `Server/MultiNode/Spots/MultiNodeActorModel.cs` | `Server/MultiNode/Spots/multi_node_spots.hpp` | spot | done | SM-Q9에 필요한 MultiNode spot state model을 role-local spot 파일로 구현한다. |
+| `Server/MultiNode/Spots/MultiNodeMultiNodeScenario.cs` | `Server/MultiNode/Spots/multi_node_spots.hpp`, `Server/MultiNode/Handlers/multi_node_handlers.hpp` | spot | done | MultiNode spot scaffold를 runtime scenario로 승격하고 SM-Q9 focused runner에서 검증한다. |
 
 ## 현재 검증
 
@@ -288,6 +288,13 @@
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-181455-697805`
   - 비고: `.NET` SM-A5처럼 spot create, state route readiness, stage request, stage timer tick, spot close evidence를 focused run으로 검증했다.
+- `cmake --build framework/languages/cpp/build --target zlink_cpp_e2e_spot_service_client zlink_cpp_e2e_spot_service_multinode -j 4`
+  - 결과: passed
+  - 비고: SM-Q9 client scenario와 MultiNode role route mesh self/client 연결 변경 뒤 client/multinode target build를 확인했다.
+- `timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-Q9`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-185724-816862`
+  - 비고: multi-node A/B process를 띄우고 외부 route client가 각 node의 target spot id로 state request를 보내 `.NET` SmQ9Scenario와 같은 state/evidence 검증을 수행했다.
 - `./framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-075600-3183386`
@@ -296,11 +303,31 @@
   - 결과: passed
   - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-080501-3203717`
   - 비고: `all` runner가 base/stream/crash 외에 SM-B3, SM-B4, SM-B7, SM-D3, SM-D8, SM-D10, SM-D14, SM-E2, SM-E3, SM-E4, SM-G2, SM-G3, SM-G4 focused evidence gate도 함께 실행하도록 확장한 뒤 검증했다.
+- `timeout 600s framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
+  - 결과: failed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-190027-827802`
+  - 비고: SM-Q9를 `all` focused list에 추가한 뒤 재실행했지만, SM-Q9 도달 전 stream readiness 구간에서 `SM-D2 stream auth session mismatch`가 발생했다. 이후 `.NET` 기준처럼 session-a stream에서 play-b actor를 relay하도록 검증식을 수정했다.
+- `timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh stream`
+  - 결과: failed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-190241-838617`
+  - 비고: SM-D2 검증식 수정 뒤 stream focused를 재실행했지만, stream client 실행 전 session-a control ping이 play-a로 route되지 않아 HTTP 500으로 타임아웃됐다. SM-Q9 focused proof와 별개로 stream readiness 후속 조사가 필요하다.
+- `timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-D2`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-205103-1167276`
+  - 비고: `.NET` SmD2Scenario처럼 session-a에서 play-b로 control-ping readiness를 확인한 뒤 remote stream relay와 push notify를 검증했다.
+- `timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-G1`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-204440-1154566`
+  - 비고: crash observation과 play-b recovery를 focused runner에서 다시 검증했다.
+- `timeout 900s framework/languages/cpp/e2e/SpotService/run_e2e.sh all`
+  - 결과: passed
+  - 로그: `framework/languages/cpp/e2e/SpotService/logs/20260630-205514-1176161`
+  - 비고: base, stream, crash/recovery evidence와 SM-B3, SM-B4, SM-B7, SM-D3, SM-D8, SM-D10, SM-D14, SM-E2, SM-E3, SM-E4, SM-G2, SM-G3, SM-G4, SM-Q9 focused sweep를 통과했다. SM-G2와 SM-G3는 runner retry에서 2회차가 통과했다.
 
 ## 완료 판정
 
 - server runtime 통합 header는 제거했고, 남은 공통 support는 shared support/endpoint 파일로 분리했다.
-- 최신 build 검증, focused runtime 검증, full `all` runner 검증은 통과했다.
+- 최신 SM-Q9 build/focused 검증과 full `all` runner 검증이 통과했다.
 - `feature-map.ko.md`는 public API 또는 harness gap을 별도로 기록한다.
 - registry, play, session, gateway host factory 책임은 role-local header로 분리했다.
 - play actor model 책임은 `Server/Play/Spots/play_actor_model.hpp`로 분리했다.
@@ -340,7 +367,6 @@
   `Client/Scenarios/sm_e4_scenario.hpp`와 focused runtime 검증을 통과했다.
 - SM-D14 stream TLS scenario는 public stream node TLS server 설정과 C++ stream connector TLS 옵션으로
   `Client/Scenarios/sm_d14_scenario.hpp`와 focused runtime 검증을 통과했다.
-- MultiNode scaffold는 build proof까지만 유지하며, `.NET` 전용 SM-Q9는 C++ public route client
-  계약 차이 때문에 공통 완료 판정에 넣지 않는다.
-- 현재 남은 `gap` 행은 없다. `.NET` 전용 SM-Q9는 `not-needed`로 분리했고, 새 public API가 필요한
-  항목은 feature-map에서 별도 검토 대상으로 남긴다.
+- MultiNode scaffold는 runtime proof로 승격했고, `.NET` SmQ9Scenario에 대응하는 target spot route
+  request를 focused runner에서 검증했다.
+- 현재 남은 `gap` 행은 없다.

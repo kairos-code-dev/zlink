@@ -37,14 +37,14 @@ class assign_delivery_handler_t
         std::cerr << "deliverydispatch dispatch: assign delivery=" << request.delivery_id
                   << " customer=" << request.customer_id << "\n";
         co_await publish_status (request.delivery_id, delivery_status_t::assigned, "courier-a");
-        auto first = co_await offer (sample_names_t::courier_a_channel, request, "courier-a");
+        auto first = co_await offer (request, "courier-a");
         if (first.accepted) {
             co_await continue_delivery (request.delivery_id, first.courier_id);
             co_return assign_delivery_res_t{request.delivery_id, first.courier_id};
         }
 
         co_await publish_status (request.delivery_id, delivery_status_t::reassigned, "courier-b");
-        auto second = co_await offer (sample_names_t::courier_b_channel, request, "courier-b");
+        auto second = co_await offer (request, "courier-b");
         if (!second.accepted) {
             co_await publish_status (request.delivery_id, delivery_status_t::failed,
                                      second.courier_id);
@@ -55,13 +55,14 @@ class assign_delivery_handler_t
     }
 
   private:
-    task_t<offer_delivery_res_t> offer (const std::string &channel,
-                                        const assign_delivery_req_t &request,
+    task_t<offer_delivery_res_t> offer (const assign_delivery_req_t &request,
                                         const std::string &courier_id)
     {
         offer_delivery_req_t offer{courier_id, request.delivery_id, request.pickup_address,
                                    request.dropoff_address};
-        auto result = co_await _channels.request (channel, offer).async<offer_delivery_res_t> ();
+        auto result =
+          co_await _channels.request (sample_names_t::courier_route_channel, offer)
+            .async<offer_delivery_res_t> ();
         if (result.courier_id.empty ()) {
             result.courier_id = courier_id;
         }
@@ -106,8 +107,7 @@ int main (int argc, char **argv)
         options.add_client_server_channel (sample_names_t::dispatch_route_channel)
           .enable_server (topology.dispatch_center_route_endpoint)
           .use_handler_group ("dispatch");
-        options.add_client_server_channel (sample_names_t::courier_a_channel).enable_client ();
-        options.add_client_server_channel (sample_names_t::courier_b_channel).enable_client ();
+        options.add_client_server_channel (sample_names_t::courier_route_channel).enable_client ();
         options.add_client_server_channel (sample_names_t::tracking_route_channel).enable_client ();
         options.handlers ().group ("dispatch").add<assign_delivery_handler_t> ();
     });

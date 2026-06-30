@@ -396,6 +396,12 @@ REGISTRY_PID="$LAST_PID"
 sleep 5
 wait "$C4_CLIENT_PID"
 grep -q "scenario RL-C4 passed" "$LOG_DIR/client-rl-c4.stdout.log"
+stop_pid "$API_A_PID"
+start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
+API_A_PID="$LAST_PID"
+sleep 5
+run_client registry-recovered rl-c4-recovered env
+grep -q "scenario RL-C4 recovery passed" "$LOG_DIR/client-rl-c4-recovered.stdout.log"
 echo "scenario RL-C4 passed"
 stop_pid "$API_B_PID"
 stop_pid "$API_A_PID"

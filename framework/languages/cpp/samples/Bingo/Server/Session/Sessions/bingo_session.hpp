@@ -55,7 +55,7 @@ class bingo_session_t final : public packet_stream_session_t
         if (_authenticate.can_handle (dispatch)) {
             auto authenticated = co_await _authenticate.handle (_actors, stream, payload);
             _bound_actor_id = std::string (authenticated.actor_id ());
-            _gateway.bind_session_stream (*_bound_actor_id, stream, stream_codec_t::protobuf);
+            _gateway.bind_session_stream (*_bound_actor_id, stream, stream_codec_t::json);
             co_return;
         }
 

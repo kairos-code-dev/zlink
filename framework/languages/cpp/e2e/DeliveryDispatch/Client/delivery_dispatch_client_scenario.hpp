@@ -20,11 +20,13 @@ namespace zlink::samples::deliverydispatch
 class delivery_dispatch_client_scenario_t
 {
   public:
-    bool run (const std::string &api_http_url, const std::string &stream_endpoint)
+    bool run (const std::string &api_http_url,
+              const std::string &customer_stream_endpoint,
+              const std::string &courier_stream_endpoint)
     {
         try {
             zlink::stream_connector::connector_options_t connector_options;
-            connector_options.endpoint = stream_endpoint;
+            connector_options.endpoint = customer_stream_endpoint;
             connector_options.connect_timeout = std::chrono::seconds (5);
             connector_options.request_timeout = std::chrono::seconds (12);
             connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
@@ -34,6 +36,7 @@ class delivery_dispatch_client_scenario_t
             auto customer_connected = customer.connect ().submit ();
             ensure (static_cast<bool> (customer_connected), "customer stream connect failed");
 
+            connector_options.endpoint = courier_stream_endpoint;
             auto core_courier_a =
               zlink::stream_connector::connector_factory_t::create (connector_options);
             auto courier_a = zlink::stream_e2e_client::use (core_courier_a);

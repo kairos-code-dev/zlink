@@ -790,11 +790,11 @@ class entry_spot_t : public zlink::framework::entry_spot_t
           zlink::framework::spot_actor_request_context_t &,
           const e2e::join_req_t &request)
     {
-        const auto rid = user_spot_rid (request.key);
-        _context.manager ().get_or_create_spot (e2e::user_spot, rid, request);
-        _state.record ("EntryJoin", actor.actor_id, std::string (_context.spot_rid ().value ()),
-                       request.key);
         try {
+            const auto rid = user_spot_rid (request.key);
+            _context.manager ().get_or_create_spot (e2e::user_spot, rid, request);
+            _state.record ("EntryJoin", actor.actor_id,
+                           std::string (_context.spot_rid ().value ()), request.key);
             auto joined =
               co_await actor.context.join_spot (rid, request).async<e2e::join_res_t> ();
             co_return joined.reply;

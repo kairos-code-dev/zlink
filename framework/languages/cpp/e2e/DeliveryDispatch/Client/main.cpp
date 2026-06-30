@@ -39,10 +39,18 @@ int main (int argc, char **argv)
     }
     auto stream_endpoint = read_option (argc, argv, "--stream-endpoint");
     if (stream_endpoint.empty ()) {
-        stream_endpoint = env_or ("DELIVERYDISPATCH_SESSION_STREAM", "tcp://127.0.0.1:7400");
+        stream_endpoint = env_or (
+          "DELIVERYDISPATCH_CUSTOMER_STREAM",
+          env_or ("DELIVERYDISPATCH_SESSION_STREAM", "tcp://127.0.0.1:7400"));
+    }
+    auto courier_stream_endpoint = read_option (argc, argv, "--courier-stream-endpoint");
+    if (courier_stream_endpoint.empty ()) {
+        courier_stream_endpoint =
+          env_or ("DELIVERYDISPATCH_COURIER_STREAM", env_or ("DELIVERYDISPATCH_SESSION_STREAM",
+                                                             stream_endpoint));
     }
     if (!zlink::samples::deliverydispatch::delivery_dispatch_client_scenario_t{}.run (
-          api_url, stream_endpoint)) {
+          api_url, stream_endpoint, courier_stream_endpoint)) {
         std::cerr << "deliverydispatch=failed\n";
         return 1;
     }

@@ -46,6 +46,7 @@
 #include "Scenarios/sm_g2_scenario.hpp"
 #include "Scenarios/sm_g3_scenario.hpp"
 #include "Scenarios/sm_g4_scenario.hpp"
+#include "Scenarios/sm_q9_scenario.hpp"
 #include "Support/client_options.hpp"
 #include "Support/client_support.hpp"
 
@@ -196,6 +197,12 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
               client_channel_state_t &channel_state,
               zlink::framework::spot_publisher_client_t &publisher)
     {
+        if (_scenario_mode == "sm-q9") {
+            zlink::framework::e2e::spot_service::client::scenarios::run_sm_q9_scenario (
+              routes, env_or ("ZLINK_CPP_E2E_MULTI_A_HTTP_ENDPOINT"),
+              env_or ("ZLINK_CPP_E2E_MULTI_B_HTTP_ENDPOINT"));
+            return;
+        }
         if (_scenario_mode == "route-ready") {
             (void) ensure_actor_ref (routes, "play-a", "route-ready-play-a",
                                      "Route Ready Play A");
@@ -247,12 +254,13 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto local = bind_actor (routes, actors, "play-a", "alice", "Alice");
         auto local_join =
-          relay_request<e2e::join_res_t> (local, "JoinReq",
-                                          e2e::join_req_t{.key = "a-room",
-                                                          .actor_id = "alice",
-                                                          .display_name = "Alice",
-                                                          .level = 7,
-                                                          .tags = {"alpha", "local"}});
+          relay_request_with_retry<e2e::join_res_t> (
+            local, "JoinReq",
+            e2e::join_req_t{.key = "a-room",
+                            .actor_id = "alice",
+                            .display_name = "Alice",
+                            .level = 7,
+                            .tags = {"alpha", "local"}});
         ensure (local_join.owner_node_rid == "play-a",
                 "SM-A1/SM-B1 owner mismatch: owner=" + local_join.owner_node_rid
                   + " spot=" + local_join.spot_rid);
@@ -315,52 +323,48 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto same_key_actor = bind_actor (routes, actors, "play-a", "alice-2", "Alice Two");
         auto same_key_join =
-          relay_request<e2e::join_res_t> (same_key_actor, "JoinReq",
-                                          e2e::join_req_t{.key = "a-room",
-                                                          .actor_id = "alice-2",
-                                                          .display_name = "Alice Two",
-                                                          .level = 2,
-                                                          .tags = {"same-key"}});
+          relay_request_with_retry<e2e::join_res_t> (
+            same_key_actor, "JoinReq",
+            e2e::join_req_t{.key = "a-room",
+                            .actor_id = "alice-2",
+                            .display_name = "Alice Two",
+                            .level = 2,
+                            .tags = {"same-key"}});
         ensure (same_key_join.owner_node_rid == "play-a"
                   && same_key_join.spot_rid == local_join.spot_rid,
                 "SM-A4 same key did not keep the same owner");
         same_key_actor = refresh_actor ("alice-2");
 
-        auto remote = bind_actor (routes, actors, "play-b", "bob", "Bob");
         const auto remote_join_request =
           e2e::join_req_t{.key = "b-room",
                           .actor_id = "bob",
                           .display_name = "Bob",
                           .level = 9,
                           .tags = {"beta", "remote"}};
-        auto remote_spot_ready =
-          routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("play-b")),
-                      remote_join_request)
-            .packet_name ("EnsureUserSpot")
-            .timeout (std::chrono::milliseconds (3000))
-            .async<e2e::join_res_t> ()
+        auto remote_flow =
+          zlink::http_client::client_t::create ()
+            .base_url (_play_http_endpoint)
+            .build ()
+            .post ("/spot/remote-actor")
+            .body (e2e::remote_actor_flow_req_t{
+              .join = remote_join_request, .state = e2e::state_req_t{.op = "add", .amount = 11}})
+            .submit_raw ()
             .result ();
-        ensure (remote_spot_ready.has_value (),
-                std::string ("SM-B2 remote user SPOT ensure failed: ")
-                  + (remote_spot_ready.error () ? remote_spot_ready.error ()->what () : "unknown"));
-        auto remote_join_result =
-          remote.context ()
-            .join_spot (
-              zlink::framework::spot_rid_t::from_string (remote_spot_ready.value ().spot_rid),
-              remote_join_request)
-            .async<e2e::join_res_t> ()
-            .result ();
-        ensure (remote_join_result.has_value (),
-                std::string ("SM-B2 remote user SPOT join failed: ")
-                  + (remote_join_result.error () ? remote_join_result.error ()->what () : "unknown"));
-        auto remote_join = remote_join_result.value ().reply;
+        ensure (remote_flow.has_value (),
+                std::string ("SM-B2 remote actor HTTP failed: ")
+                  + (remote_flow.error () ? remote_flow.error ()->what () : "unknown"));
+        ensure (remote_flow.value ().status < 400,
+                "SM-B2 remote actor HTTP status " + std::to_string (remote_flow.value ().status)
+                  + ": " + remote_flow.value ().body);
+        auto remote_reply =
+          nlohmann::json::parse (remote_flow.value ().body)
+            .template get<e2e::remote_actor_flow_res_t> ();
+        auto remote_join = remote_reply.join;
         ensure (remote_join.owner_node_rid == "play-b", "SM-B2 owner mismatch");
         ensure (remote_join.spot_rid == "user:play-b:b-room", "SM-A4 remote spot rid mismatch");
-        remote = refresh_actor ("bob");
-        auto remote_state =
-          relay_request<e2e::state_res_t> (remote, "StateReq", e2e::state_req_t{"add", 11});
-        ensure (remote_state.owner_node_rid == "play-b" && remote_state.value == 11,
+        ensure (remote_reply.state.owner_node_rid == "play-b"
+                  && remote_reply.state.spot_rid == remote_join.spot_rid
+                  && remote_reply.state.value == 11,
                 "SM-B4 remote actor request mismatch");
         std::cout << "scenario SM-A3 passed\n";
         std::cout << "scenario SM-A4 passed\n";
@@ -607,7 +611,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             .submit<e2e::stream_auth_res_t> ();
         ensure (static_cast<bool> (auth),
                 scenario_id + " stream auth failed: " + stream_error_text (auth));
-        ensure (auth.value ().session_node_rid == (target_node == "play-a" ? "session-a" : "session-b"),
+        ensure (auth.value ().session_node_rid == "session-a",
                 scenario_id + " stream auth session mismatch");
 
         auto joined = stream.send (e2e::join_req_t{.key = key,
@@ -1218,6 +1222,10 @@ int main (int argc, char **argv)
     const auto &route_endpoint = client_options.route_endpoint;
     const auto &route_a_endpoint = client_options.route_a_endpoint;
     const auto &route_b_endpoint = client_options.route_b_endpoint;
+    const auto &multi_route_client_a_endpoint = client_options.multi_route_client_a_endpoint;
+    const auto &multi_route_client_b_endpoint = client_options.multi_route_client_b_endpoint;
+    const auto &multi_route_a_endpoint = client_options.multi_route_a_endpoint;
+    const auto &multi_route_b_endpoint = client_options.multi_route_b_endpoint;
     const auto &spot_router_endpoint = client_options.spot_router_endpoint;
     const auto &pubsub_endpoint = client_options.pubsub_endpoint;
     const auto &publisher_endpoint = client_options.publisher_endpoint;
@@ -1228,6 +1236,8 @@ int main (int argc, char **argv)
     const auto &scenario_mode = client_options.scenario_mode;
     const auto &play_http_endpoint = client_options.play_http_endpoint;
     const auto &play_b_http_endpoint = client_options.play_b_http_endpoint;
+    const auto &multi_a_http_endpoint = client_options.multi_a_http_endpoint;
+    const auto &multi_b_http_endpoint = client_options.multi_b_http_endpoint;
     const auto &session_http_endpoint = client_options.session_http_endpoint;
     const auto &gateway_http_endpoint = client_options.gateway_http_endpoint;
     const auto &registry_router = client_options.registry_router;
@@ -1789,6 +1799,16 @@ int main (int argc, char **argv)
         }
         if (!route_b_endpoint.empty ()) {
             route.enable_client (route_b_endpoint);
+        }
+        if (scenario_mode == "sm-q9") {
+            options.add_route_mesh (e2e::multi_route_channel_a)
+              .enable_server (multi_route_client_a_endpoint)
+              .set_routing_id (zlink::routing_id_t::from (std::string ("client-sm-q9-a")))
+              .enable_client (multi_route_a_endpoint);
+            options.add_route_mesh (e2e::multi_route_channel_b)
+              .enable_server (multi_route_client_b_endpoint)
+              .set_routing_id (zlink::routing_id_t::from (std::string ("client-sm-q9-b")))
+              .enable_client (multi_route_b_endpoint);
         }
         options.add_spot_mesh (e2e::spot_mesh)
           .use_registry_spot_resolver (e2e::route_channel)

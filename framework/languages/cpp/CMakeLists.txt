@@ -1198,6 +1198,26 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_dispatch_center PRIVATE
     zlink::framework)
 
+  add_executable(zlink_cpp_e2e_delivery_dispatch_courier_gateway
+    e2e/DeliveryDispatch/Server/CourierGateway/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_gateway PRIVATE
+    zlink::framework)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_courier_actor_node
+    e2e/DeliveryDispatch/Server/CourierActorNode/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_actor_node PRIVATE
+    zlink::framework)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_customer_gateway
+    e2e/DeliveryDispatch/Server/CustomerGateway/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_customer_gateway PRIVATE
+    zlink::framework)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_courier_session
+    e2e/DeliveryDispatch/Server/CourierSession/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier_session PRIVATE
+    zlink::framework)
+
   add_executable(zlink_cpp_e2e_delivery_dispatch_courier
     e2e/DeliveryDispatch/Server/Courier/main.cpp)
   target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier PRIVATE
@@ -1358,126 +1378,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   target_link_libraries(sample_cpp_framework_tictactoe_client PRIVATE
     zlink::http_client
     zlink::stream_e2e_client)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_registry
-    samples/DeliveryDispatch/Server/Registry/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_dispatch_api
-    samples/DeliveryDispatch/Server/DispatchApi/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-server"
-    zlink::framework
-    zlink::http_client)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_dispatch_center
-    samples/DeliveryDispatch/Server/DispatchCenter/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_courier
-    samples/DeliveryDispatch/Server/Courier/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_tracking
-    samples/DeliveryDispatch/Server/Tracking/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_session
-    samples/DeliveryDispatch/Server/Session/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_probe
-    samples/DeliveryDispatch/Probe/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-client"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_client
-    samples/DeliveryDispatch/Client/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-client"
-    zlink::framework
-    zlink::http_client
-    zlink::stream_connector
-    zlink::stream_e2e_client)
-  add_zlink_framework_sample(
-    sample_cpp_framework_gamequest_registry
-    samples/GameQuest/Server/Registry/main.cpp
-    "framework-sample-gamequest;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_gamequest_game_api
-    samples/GameQuest/Server/GameApi/main.cpp
-    "framework-sample-gamequest;framework-sample-server"
-    zlink::framework
-    zlink::http_client)
-  add_zlink_framework_sample(
-    sample_cpp_framework_gamequest_quest_mission
-    samples/GameQuest/Server/QuestMission/main.cpp
-    "framework-sample-gamequest;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_gamequest_client
-    samples/GameQuest/Client/main.cpp
-    "framework-sample-gamequest;framework-sample-client"
-    zlink::framework
-    zlink::http_client
-    zlink::stream_connector
-    zlink::stream_e2e_client)
-  add_zlink_framework_sample(
-    sample_cpp_framework_shoppingmall_registry
-    samples/ShoppingMall/Server/Registry/main.cpp
-    "framework-sample-shoppingmall;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_shoppingmall_commerce_api
-    samples/ShoppingMall/Server/CommerceApi/main.cpp
-    "framework-sample-shoppingmall;framework-sample-server"
-    zlink::framework
-    zlink::http_client)
-  add_zlink_framework_sample(
-    sample_cpp_framework_shoppingmall_order_workflow
-    samples/ShoppingMall/Server/OrderWorkflow/main.cpp
-    "framework-sample-shoppingmall;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_shoppingmall_client
-    samples/ShoppingMall/Client/main.cpp
-    "framework-sample-shoppingmall;framework-sample-client"
-    zlink::framework
-    zlink::http_client)
-  add_zlink_framework_sample(
-    sample_cpp_framework_supportchat_registry
-    samples/SupportChat/Server/Registry/main.cpp
-    "framework-sample-supportchat;framework-sample-registry"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_supportchat_api
-    samples/SupportChat/Server/Api/main.cpp
-    "framework-sample-supportchat;framework-sample-api"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_supportchat_support
-    samples/SupportChat/Server/Support/main.cpp
-    "framework-sample-supportchat;framework-sample-support"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_supportchat_session
-    samples/SupportChat/Server/Session/main.cpp
-    "framework-sample-supportchat;framework-sample-session"
-    zlink::framework
-    zlink::stream_connector)
-  add_zlink_framework_sample(
-    sample_cpp_framework_supportchat_probe
-    samples/SupportChat/Probe/main.cpp
-    "framework-sample-supportchat;framework-sample-probe"
-    zlink::framework)
-  add_executable(sample_cpp_framework_supportchat_client
-    samples/SupportChat/Client/main.cpp)
-  target_link_libraries(sample_cpp_framework_supportchat_client PRIVATE
-    zlink::stream_e2e_client)
 
   function(add_zlink_framework_sample_runner sample_name labels timeout_seconds)
     add_test(
@@ -1497,22 +1397,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   add_zlink_framework_sample_runner(
     TicTacToe
     "framework-sample-tictactoe;framework-sample-api;framework-sample-play"
-    180)
-  add_zlink_framework_sample_runner(
-    DeliveryDispatch
-    "framework-sample-deliverydispatch;framework-sample-server;framework-sample-client"
-    90)
-  add_zlink_framework_sample_runner(
-    GameQuest
-    "framework-sample-gamequest;framework-sample-server;framework-sample-client"
-    90)
-  add_zlink_framework_sample_runner(
-    ShoppingMall
-    "framework-sample-shoppingmall;framework-sample-server;framework-sample-client"
-    90)
-  add_zlink_framework_sample_runner(
-    SupportChat
-    "framework-sample-supportchat;framework-sample-api;framework-sample-registry;framework-sample-session;framework-sample-support"
     180)
 endif()
 

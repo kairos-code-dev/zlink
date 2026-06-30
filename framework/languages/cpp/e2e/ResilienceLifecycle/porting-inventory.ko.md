@@ -12,7 +12,7 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 |----------------|---------------|------|------|------|
 | `.gitignore` | `.gitignore` | config | done | 실행 로그 제외 규칙만 있다. |
 | `feature-map.ko.md` | `feature-map.ko.md` | docs | done | 현재 gap 상태를 과장 없이 기록한다. |
-| `run_e2e.sh` | `run_e2e.sh` | runner | partial | 전용 role target을 빌드하고 RL-A1/A2/A3/A4/A5, RL-B1/B2/B3/B4/B5/B6, RL-C1/C2/C3/C4, RL-D1/D3/D4/D5 slice를 실행한다. |
+| `run_e2e.sh` | `run_e2e.sh` | runner | partial | 전용 role target을 빌드하고 RL-A1/A2/A3/A4/A5, RL-B1/B2/B3/B4/B5/B6, RL-C1/C2/C3/C4, RL-D1/D2/D3/D4/D5 slice를 실행한다. RL-C4는 registry outage 뒤 registry와 provider A를 재기동하고 새 discovery client 복구까지 검증한다. |
 | `Shared/ResilienceLifecycle.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | ResilienceLifecycle 전용 C++ target 묶음이 추가됐다. |
 | `Shared/Messages.cs` | `Shared/registry_messaging_contracts.hpp` | shared | partial | 현재 slice는 RegistryMessaging contract를 재사용한다. 전용 contract 이름 정리는 남아 있다. |
 | `Client/ResilienceLifecycle.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | 전용 client target이 추가됐다. |
@@ -36,9 +36,9 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | scenario | partial | 반복 client 실행 뒤 follow-up request 성공과 정상 종료를 검증한다. C1 전용 header 분리는 남아 있다. |
 | `Client/Scenarios/RlC2TopologyRecoveryScenario.cs` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | scenario | partial | provider crash 뒤 public retry window 안의 follow-up request 성공을 검증한다. topology DTO 단언은 남아 있다. |
 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | scenario | partial | provider 정지/복구 뒤 각각 follow-up request 성공을 검증한다. split-brain topology 단언은 남아 있다. |
-| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp`; `run_e2e.sh` | scenario | partial | registry outage 중 established manual channel request가 계속 성공하는지 검증한다. registry 재시작 뒤 provider heartbeat 재등록과 새 discovery client 복구는 남아 있다. |
+| `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp`; `run_e2e.sh` | scenario | done | registry outage 중 established manual channel request가 계속 성공하는지 검증한다. registry와 provider A 재기동 뒤 새 discovery client request와 provider evidence도 검증한다. |
 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `Client/Scenarios/rl_d1_high_fanout_scenario.hpp` | scenario | partial | burst request workload를 검증한다. 장시간 high fanout soak는 남아 있다. |
-| `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | scenario | gap | observer failure event 수집 harness가 필요하다. |
+| `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | scenario | done | provider observer fault mode를 켠 뒤 missing request dispatch error evidence, observer exception isolation, follow-up request evidence를 검증한다. |
 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp`; `run_e2e.sh` | scenario | partial | missing send 뒤 provider flow log의 dispatch error marker를 검증한다. |
 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/Scenarios/rl_d1_high_fanout_scenario.hpp` | scenario | partial | missing request가 typed reply 없이 public error path로 끝나는지 검증한다. raw wire code 검증은 남아 있다. |
 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/Scenarios/rl_d1_high_fanout_scenario.hpp` | scenario | partial | request/send mixed burst workload를 검증한다. 장시간 soak는 남아 있다. |
@@ -54,9 +54,9 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 | `Server/Provider/ResilienceLifecycle.Provider.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | provider role target이 추가됐다. |
 | `Server/Provider/Program.cs` | `Server/Provider/main.cpp` | server-role | done | provider role 진입점이 있다. |
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/main.cpp` | server-role | partial | C++ provider host 구성은 main에 있다. 별도 factory 파일 분리는 남아 있다. |
-| `Server/Provider/ProviderEndpoints.cs` | `Server/Provider/Endpoints/provider_endpoints.hpp` | endpoint | partial | evidence와 server-weight admin endpoint가 있다. fault endpoint는 남아 있다. |
-| `Server/Provider/ProviderSupport.cs` | `Server/Provider/Configuration/provider_options.hpp`; `Server/Provider/Infrastructure/scenario_state.hpp` | support | partial | provider option과 scenario state가 있다. fault/drain 전용 support는 남아 있다. |
-| `Server/Provider/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Provider/main.cpp`; `Server/Provider/Infrastructure/scenario_state.hpp` | handler | partial | message flow observer가 dispatch error를 state에 기록한다. 전용 observer 파일은 남아 있다. |
+| `Server/Provider/ProviderEndpoints.cs` | `Server/Provider/Endpoints/provider_endpoints.hpp` | endpoint | partial | evidence, server-weight admin, observer fault mode endpoint가 있다. |
+| `Server/Provider/ProviderSupport.cs` | `Server/Provider/Configuration/provider_options.hpp`; `Server/Provider/Infrastructure/scenario_state.hpp` | support | partial | provider option, scenario state, observer fault mode state가 있다. fault/drain 전용 파일 분리는 남아 있다. |
+| `Server/Provider/Handlers/EvidenceDispatchErrorObserver.cs` | `Server/Provider/main.cpp`; `Server/Provider/Infrastructure/scenario_state.hpp` | handler | partial | message flow observer가 dispatch error를 state에 기록하고 fault mode에서는 예외를 던진다. 전용 observer 파일은 남아 있다. |
 | `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/Handlers/provider_handlers.hpp` | handler | partial | request/send/slow handler가 있다. gray fault handler는 남아 있다. |
 | `Server/Consumer/ResilienceLifecycle.Consumer.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | gap | consumer role target이 필요하다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.cpp` | server-role | gap | consumer role 진입점이 필요하다. |
@@ -80,9 +80,9 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 | `RL-C1` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | partial |
 | `RL-C2` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | partial |
 | `RL-C3` | `Client/Scenarios/rl_a3_reconnect_storm_scenario.hpp`; `run_e2e.sh` | partial |
-| `RL-C4` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp`; `run_e2e.sh` | partial |
+| `RL-C4` | `Client/Scenarios/rl_c4_registry_outage_scenario.hpp`; `run_e2e.sh` | done |
 | `RL-D1` | `Client/Scenarios/rl_d1_high_fanout_scenario.hpp` | partial |
-| `RL-D2` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | gap |
+| `RL-D2` | `Client/Scenarios/rl_d2_observer_fault_scenario.hpp` | done |
 | `RL-D3` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp`; `run_e2e.sh` | partial |
 | `RL-D4` | `Client/Scenarios/rl_d1_high_fanout_scenario.hpp` | partial |
 | `RL-D5` | `Client/Scenarios/rl_d1_high_fanout_scenario.hpp` | partial |
@@ -91,8 +91,8 @@ scenario는 `.NET` 기준 파일명에 맞춰 계속 분리해야 한다.
 
 - 2026-06-30: `timeout 420s framework/languages/cpp/e2e/ResilienceLifecycle/run_e2e.sh`
   - 결과: 통과
-  - 로그: `logs/20260630-165805-488960`
+  - 로그: `logs/20260630-184559-770532`
   - 의미: 현재 runner에 포함된 RL-A1, RL-A2, RL-A3, RL-A4, RL-A5, RL-B1, RL-B2, RL-B3,
-    RL-B4, RL-B5, RL-B6, RL-C1, RL-C2, RL-C3, RL-C4, RL-D1, RL-D3, RL-D4, RL-D5 slice는
-    통과한다. RL-C4는 registry outage 중 established channel 유지까지만 검증한다. registry 재시작 뒤
-    provider heartbeat 재등록과 새 discovery client 복구, RL-D2 observer fault는 gap으로 남긴다.
+    RL-B4, RL-B5, RL-B6, RL-C1, RL-C2, RL-C3, RL-C4, RL-D1, RL-D2, RL-D3, RL-D4, RL-D5 slice는
+    통과한다. RL-C4는 registry outage 중 established channel 유지와 registry/provider A 재기동 뒤
+    새 discovery client 복구까지 검증한다.

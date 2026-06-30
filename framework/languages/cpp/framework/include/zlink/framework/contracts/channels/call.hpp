@@ -26,6 +26,12 @@ namespace detail
 {
 class stream_write_call_state_t;
 class stream_header_t;
+
+inline void submit_one_way_task (task_t<void> task)
+{
+    auto observed = std::make_shared<task_t<void>> (std::move (task));
+    detail::observe_task_completion (*observed, [observed] (const result_t<void> &) {});
+}
 } // namespace detail
 
 template <typename TReply> class request_call_t
@@ -253,6 +259,8 @@ class send_call_t
         return _submit (_packet_name, _timeout, _metadata);
     }
 
+    void submit () { detail::submit_one_way_task (async ()); }
+
   private:
     std::optional<result_t<void>> _immediate;
     std::string _packet_name;
@@ -287,22 +295,7 @@ class bound_session_send_call_t
     }
 
     task_t<void> async () { return _call.async (); }
-
-    task_t<void> yield ()
-    {
-        auto yield_turn = detail::capture_current_serial_yield_turn ();
-        if (!yield_turn) {
-            return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "yield requires a framework Spot handler turn"));
-        }
-        if (!yield_turn->release ()) {
-            return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "yield could not release the current Spot handler turn"));
-        }
-        return detail::reschedule_task (_call.async (), yield_turn->resume_scheduler ());
-    }
+    void submit () { _call.submit (); }
 
   private:
     send_call_t _call;

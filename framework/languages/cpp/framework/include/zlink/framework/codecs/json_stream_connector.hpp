@@ -69,10 +69,20 @@ connector_t &on (connector_t &connector, std::function<void (const T &)> callbac
 namespace zlink::stream_connector
 {
 
+template <typename T> zlink::message_t to_stream_payload (const T &value)
+{
+    return codecs::codec_traits<T>::encode (value);
+}
+
 template <typename T>
 void from_stream_payload (codec_t codec, const zlink::message_t &payload, T &value)
 {
     codecs::decode_payload (codec, payload, value);
+}
+
+template <typename T> void from_stream_payload (const zlink::message_t &payload, T &value)
+{
+    value = codecs::codec_traits<T>::decode (payload);
 }
 
 } // namespace zlink::stream_connector

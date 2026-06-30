@@ -3,7 +3,7 @@
 기준 문서: `framework/doc/framework/common/e2e/config-8-yield-dispatch.ko.md`
 
 이 디렉터리는 Config 8 `YieldDispatch`의 C++ 포팅 위치다. 현재 C++ 트리에는 role target과
-Track A YD-A1~YD-A4, Track B YD-B1~YD-B3, Track C YD-C1~YD-C3, Track D YD-D1~YD-D4, Track E YD-E1, YD-E3, YD-E4 정적 검증 코드가 있다. C++ framework에는 channel request,
+Track A YD-A1~YD-A4, Track B YD-B1~YD-B3, Track C YD-C1~YD-C3, Track D YD-D1~YD-D4, Track E YD-E1, YD-E3, YD-E4 정적 검증, YD-E5 report 생성 코드가 있다. C++ framework에는 channel request,
 actor join, timer, bound session send, worker call에 `yield()` 공개 표면이 있지만, Config 8 완료 기준은 실제
 stream connector client request가 session gateway를 거쳐 play node의 Spot/Entry Spot handler까지
 도달하는 전체 배포 경로다.
@@ -19,7 +19,7 @@ stream connector client request가 session gateway를 거쳐 play node의 Spot/E
 | `YD-B3` | done | Entry Spot actor handler가 public `actor_context_t::join_entry_spot(...).yield<T>()`로 actor join 결과를 기다리는 동안 actor B의 fast request가 먼저 완료되는 marker를 검증한다. 공통 문서가 허용한 `JoinEntrySpot` terminator 경로를 사용한다. 로그: `logs/20260630-101935-3481095`, 출력: `scenario YD-B3 passed`. |
 | `YD-C1` | done | stream connector request가 Session gateway를 거쳐 같은 Play Spot에 timer A와 timer B를 등록한다. timer A가 delay request를 `yield()`로 기다리는 동안 timer B fast tick이 먼저 완료되는 marker 순서를 검증한다. timer handler coroutine이 지역 `timer_runtime_t`의 `this`를 suspension 뒤에도 읽는 수명 문제와 routed reply context 보관 문제를 정리한 뒤 반복 runner에서 통과했다. 로그: `logs/20260630-114500-3835073`, `logs/20260630-114512-3836412`, `logs/20260630-114544-3838681`, 출력: `scenario YD-C1 passed`. |
 | `YD-C2` | done | 같은 timer가 delay request를 `yield()`로 기다리는 동안 다음 tick이 먼저 재진입하지 않고, continuation/completion 뒤에 실행되는 marker 순서를 검증한다. timer async dispatch가 coroutine frame 안에 Spot context를 보관하고 pending fire를 같은 context로 다시 게시하도록 고친 뒤 반복 runner에서 통과했다. 로그: `logs/20260630-114500-3835073`, `logs/20260630-114512-3836412`, `logs/20260630-114544-3838681`, 출력: `scenario YD-C2 passed`. |
-| `YD-C3` | partial | actor A가 `yield()` 중일 때 timer fast tick이 완료되는 순서와, timer가 `yield()` 중일 때 actor B fast request가 완료되는 순서를 모두 검증한다. 로그: `logs/20260630-182120-718488`, 출력: `scenario YD-C3 passed`. 다만 actor-yield 중 timer-fast half는 C++ stream connector의 pending request 직렬화 한계를 피하려고 같은 session에 actor binding을 공유한 observer connector에서 timer command를 보낸다. `.NET`의 같은 stream session 증거와 완전히 같지는 않으므로 partial로 둔다. |
+| `YD-C3` | partial | actor A가 `yield()` 중일 때 timer fast tick이 완료되는 순서와, timer가 `yield()` 중일 때 actor B fast request가 완료되는 순서를 모두 검증한다. 로그: `logs/20260630-211459-1245708`, 출력: `scenario YD-C3 passed`. 다만 actor-yield 중 timer-fast half는 C++ stream connector의 pending request 직렬화 한계를 피하려고 같은 session에 actor binding을 공유한 observer connector에서 timer command를 보낸다. 같은 connector로 시도한 로그 `logs/20260630-210837-1224464`에서는 `ActorYieldReq`가 완료된 뒤 `TimerStartMsg`가 들어가 marker 순서가 깨졌으므로 `.NET`의 같은 stream session 증거와 완전히 같지는 않다. |
 | `YD-D1` | done | runner가 full client 실행 뒤 `play-a.evidence.log`에서 local topology marker를 직접 확인한다. `hold-completed`, `yield-completed`, `worker-yield-completed`, `actor-yield-completed`, `timer-yield-completed`, `timeout-yield-completed`가 모두 `rid=play-a`로 남아야 통과한다. 로그: `logs/20260630-160702-358191`, 출력: `scenario YD-D1 passed`, `yield-dispatch e2e result=passed`. |
 | `YD-D2` | done | `RemoteSpotYieldReq`가 `play-a` owner Spot에서 `play-b` target Spot으로 public `spot_context_t::request_to(...).yield()`를 보내고, caller continuation marker가 `play-a`에 남는지 검증한다. spot-route async reply가 full `received_t` 대신 routing id, spot id, request seq만 보관하도록 고친 뒤 반복 runner에서 통과했다. 로그: `logs/20260630-114500-3835073`, `logs/20260630-114512-3836412`, `logs/20260630-114544-3838681`, 출력: `scenario YD-D2 passed`, `yield-dispatch track-a-d result=passed`. |
 | `YD-D3` | done | stream connector command가 Session gateway route bridge를 거쳐 `play-b` target Spot handler로 들어가고, 해당 Spot handler가 `yield()` 중 probe command를 먼저 처리한 뒤 원래 continuation을 재개하는 marker 순서를 검증한다. 로그: `logs/20260630-144300-193620`, 출력: `scenario YD-D3 passed`, `yield-dispatch track-a-d result=passed`. |
@@ -28,14 +28,14 @@ stream connector client request가 session gateway를 거쳐 play node의 Spot/E
 | `YD-E2` | gap | `.NET` 기준은 `Yield<DelayReply>(CancellationToken)`으로 handler 내부 cancellation token을 넘겨 yield 대기를 중단한다. 현재 C++ public `request_call_t::yield()`와 actor/Spot yield 표면에는 cancellation token 인자가 없고 내부 pending cancellation API만 있으므로, handler-local timeout이나 private cancel 우회로 구현하지 않는다. |
 | `YD-E3` | done | `shutdown-wait` client scenario가 stream connector request로 long yield를 시작하고, runner가 `play-a.evidence.log`의 `yield-released` marker를 확인한 뒤 play-a에 SIGTERM을 보내 정상 종료한다. client는 request timeout이 아니라 connector closed/disconnected 계열 public error를 받아야 통과한다. 같은 spot rid로 play-a를 재시작한 뒤 `shutdown-recovery` scenario가 recovery probe를 보내 routing id 재사용과 mailbox cleanup을 검증한다. 로그: `logs/20260630-160702-358191`, 출력: `yield-dispatch shutdown wait result=passed`, `yield-dispatch shutdown recovery result=passed`, `yield-dispatch e2e result=passed`. |
 | `YD-E4` | done | `run_e2e.sh` static gate가 `/yield` HTTP trigger/client 사용, Play Spot/Entry Spot handler 밖 `yield()` 사용, client scenario thin helper 사용을 금지하고, full client가 실제 `connector_factory_t::create`로 stream connector를 만들며 각 `yd_*.hpp` scenario가 connector 참조를 직접 받는지 검사한다. 로그: `logs/20260630-160702-358191`, 출력: `yield-dispatch e2e result=passed`. |
-| `YD-E5` | gap | cross-language report 집계 단계는 C++ 단독 포팅 밖의 후속 parity 작업이다. `.NET`도 부분 구현으로 남긴다. |
+| `YD-E5` | done | runner가 `yield-dispatch-report.json`을 생성하고 YD-A1~YD-E5 scenario id, C++ marker 이름, gap/partial 상태를 검증한다. 로그: `logs/20260630-211459-1245708`, 출력: `scenario YD-E5 passed`, `yield-dispatch e2e result=passed`. 여러 언어 report를 모아 비교하는 aggregation은 별도 cross-language parity gate에서 수행한다. |
 
 ## 다음 구현 기준
 
 - 첫 구현 slice는 `.NET` 구조처럼 Registry, Delay, Play, Session, Client target을 나누고,
   `run_e2e.sh`가 실제 stream connector client request로 scenario를 시작한다. 현재 Track A의
   YD-A1~YD-A4, Track B의 YD-B1~YD-B3, Track C의 YD-C1~YD-C3, Track D의 YD-D1~YD-D4, Track E의
-  YD-E1, YD-E3, YD-E4 static gate는 runner 증거가 있다. 다음 slice는 남은 public contract gap 정리다.
+  YD-E1, YD-E3, YD-E4 static gate, YD-E5 report 생성은 runner 증거가 있다. 다음 slice는 남은 public contract gap 정리다.
 - yield 검증을 HTTP endpoint나 direct route/Spot test driver로 시작하지 않는다.
 - C++ public API로 아직 확인되지 않은 항목은 내부 helper나 raw frame 우회로 메우지 않고
   별도 public contract gap으로 유지한다.

@@ -626,6 +626,7 @@ class route_send_call_t
     route_send_call_t &packet_name (std::string packet_name);
     route_send_call_t &metadata (std::string key, std::string value);
     task_t<void> async ();
+    void submit ();
 
   private:
     std::string _packet_name;

@@ -1015,6 +1015,11 @@ task_t<void> route_send_call_t::async ()
     return _submit (_packet_name, _metadata);
 }
 
+void route_send_call_t::submit ()
+{
+    detail::submit_one_way_task (async ());
+}
+
 route_request_call_t::route_request_call_t (std::string packet_name, submit_fn_t submit) :
     _packet_name (std::move (packet_name)), _submit (std::move (submit))
 {

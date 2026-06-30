@@ -18,7 +18,7 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 - allocate room, join room, card submit handler
 - bingo room state, 3 x 3 card, server draw, winner 판단
 - Stream Connector public wait helper 기반 client push 검증
-- framework Protobuf codec extension으로 등록한 stream/channel/actor/Spot payload
+- framework 기본 JSON codec을 사용하는 stream/channel/actor/Spot payload
 - channel request/reply handler
 - handler logger와 callback log sink
 - STREAM packet relay

@@ -47,15 +47,22 @@ inline void sm_d10_auth (zlink::stream_connector::connector_t &stream,
                          const std::string &actor_id,
                          const std::string &display_name)
 {
-    auto auth =
-      stream.request (stream_ensure_auth_req_t{target_node, actor_id, display_name})
-        .packet_name ("StreamEnsureAuthReq")
-        .timeout (std::chrono::milliseconds (5000))
-        .submit<stream_auth_res_t> ();
-    if (!auth || auth.value ().actor.actor_id != actor_id
-        || auth.value ().session_node_rid.empty ()) {
-        throw std::runtime_error ("SM-D10 auth failed for " + actor_id);
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    std::string last_error = "auth was not attempted";
+    while (std::chrono::steady_clock::now () < deadline) {
+        auto auth =
+          stream.request (stream_ensure_auth_req_t{target_node, actor_id, display_name})
+            .packet_name ("StreamEnsureAuthReq")
+            .timeout (std::chrono::milliseconds (5000))
+            .submit<stream_auth_res_t> ();
+        if (auth && auth.value ().actor.actor_id == actor_id
+            && !auth.value ().session_node_rid.empty ()) {
+            return;
+        }
+        last_error = "auth failed for " + actor_id;
+        std::this_thread::sleep_for (std::chrono::milliseconds (200));
     }
+    throw std::runtime_error ("SM-D10 " + last_error);
 }
 
 inline void run_sm_d10_scenario (const std::string &session_a_stream_endpoint,

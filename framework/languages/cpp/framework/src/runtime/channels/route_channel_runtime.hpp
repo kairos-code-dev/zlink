@@ -146,6 +146,7 @@ class route_channel_runtime_t
     std::vector<route_outbound_packet_t> _outbound_packets;
     send_backend_t _send_backend;
     request_backend_t _request_backend;
+    std::mutex _send_backend_mutex;
 };
 
 } // namespace zlink::framework::detail

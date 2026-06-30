@@ -58,6 +58,21 @@ struct ensure_customer_actor_res_t
     actor_ref_snapshot_t actor;
 };
 
+struct bind_courier_req_t
+{
+    static constexpr const char *packet_name = "BindCourierReq";
+    std::string courier_id;
+    std::string session_route;
+};
+
+struct bind_courier_res_t
+{
+    static constexpr const char *packet_name = "BindCourierRes";
+    std::string courier_id;
+    actor_ref_snapshot_t actor;
+    std::string session_route;
+};
+
 struct bind_courier_session_req_t
 {
     static constexpr const char *packet_name = "BindCourierSessionReq";
@@ -72,6 +87,19 @@ struct bind_courier_session_res_t
     std::string courier_id;
     actor_ref_snapshot_t actor;
     std::string session_route;
+};
+
+struct ensure_courier_actor_req_t
+{
+    static constexpr const char *packet_name = "EnsureCourierActorReq";
+    std::string courier_id;
+};
+
+struct ensure_courier_actor_res_t
+{
+    static constexpr const char *packet_name = "EnsureCourierActorRes";
+    std::string courier_id;
+    actor_ref_snapshot_t actor;
 };
 
 struct subscribe_delivery_req_t
@@ -296,6 +324,31 @@ inline void from_json (const nlohmann::json &json, ensure_customer_actor_res_t &
     value.actor = json.value ("actor", actor_ref_snapshot_t{});
 }
 
+inline void to_json (nlohmann::json &json, const bind_courier_req_t &value)
+{
+    json = {{"courierId", value.courier_id}, {"sessionRoute", value.session_route}};
+}
+
+inline void from_json (const nlohmann::json &json, bind_courier_req_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.session_route = json_string (json, "sessionRoute", "session_route");
+}
+
+inline void to_json (nlohmann::json &json, const bind_courier_res_t &value)
+{
+    json = {{"courierId", value.courier_id},
+            {"actor", value.actor},
+            {"sessionRoute", value.session_route}};
+}
+
+inline void from_json (const nlohmann::json &json, bind_courier_res_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+    value.session_route = json_string (json, "sessionRoute", "session_route");
+}
+
 inline void to_json (nlohmann::json &json, const bind_courier_session_req_t &value)
 {
     json = {{"courierId", value.courier_id},
@@ -322,6 +375,27 @@ inline void from_json (const nlohmann::json &json, bind_courier_session_res_t &v
     value.courier_id = json_string (json, "courierId", "courier_id");
     value.actor = json.value ("actor", actor_ref_snapshot_t{});
     value.session_route = json_string (json, "sessionRoute", "session_route");
+}
+
+inline void to_json (nlohmann::json &json, const ensure_courier_actor_req_t &value)
+{
+    json = {{"courierId", value.courier_id}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_courier_actor_req_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+}
+
+inline void to_json (nlohmann::json &json, const ensure_courier_actor_res_t &value)
+{
+    json = {{"courierId", value.courier_id}, {"actor", value.actor}};
+}
+
+inline void from_json (const nlohmann::json &json, ensure_courier_actor_res_t &value)
+{
+    value.courier_id = json_string (json, "courierId", "courier_id");
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
 }
 
 inline void to_json (nlohmann::json &json, const subscribe_delivery_req_t &value)

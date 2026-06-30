@@ -33,9 +33,9 @@ struct player_actor_t
 
     void mark_disconnected () const { disconnected = true; }
 
-    template <typename TNotify> auto push (const TNotify &notify) const
+    template <typename TNotify> void push (const TNotify &notify) const
     {
-        return context.bound_session ().send (notify).async ();
+        context.bound_session ().send (notify).submit ();
     }
 };
 

@@ -482,42 +482,6 @@ class remote_actor_flow_handler_t
     zlink::framework::session_actor_manager_t &_actors;
 };
 
-class ensure_user_spot_handler_t
-{
-  public:
-    using dependency_types =
-      zlink::framework::dependency_list_t<scenario_state_t,
-                                          zlink::framework::spot_node_manager_t>;
-    using request_type = e2e::join_req_t;
-    using reply_type = e2e::join_res_t;
-
-    ensure_user_spot_handler_t (scenario_state_t &state,
-                                zlink::framework::spot_node_manager_t &spots) :
-        _state (state), _spots (spots)
-    {
-    }
-
-    e2e::join_res_t handle (const e2e::join_req_t &request,
-                            const zlink::framework::route_handler_context_t &)
-    {
-        auto rid =
-          zlink::framework::spot_rid_t::from_string (e2e::user_spot_rid_for_key (request.key));
-        _spots.get_or_create_spot (e2e::user_spot, rid, request);
-        _state.record ("RemoteUserSpotEnsured", request.actor_id, std::string (rid.value ()),
-                       request.key);
-        return {.spot_rid = std::string (rid.value ()),
-                .owner_node_rid = _state.node_rid,
-                .actor_id = request.actor_id,
-                .display_name = request.display_name,
-                .level = request.level,
-                .tags = request.tags};
-    }
-
-  private:
-    scenario_state_t &_state;
-    zlink::framework::spot_node_manager_t &_spots;
-};
-
 class remote_actor_request_handler_t
 {
   public:
@@ -538,60 +502,54 @@ class remote_actor_request_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::remote_actor_request_req_t> ();
         const auto target_node = e2e::owner_node_rid_for_key (request.join.key);
-        auto ensured =
-          _routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
-                      e2e::ensure_actor_req_t{.actor_id = request.join.actor_id,
-                                              .display_name = request.join.display_name})
-            .packet_name ("EnsureActor")
-            .async<e2e::ensure_actor_res_t> ()
-            .result ();
-        if (!ensured) {
-            throw zlink::framework::framework_exception_t (
-              ensured.error_kind (),
-              ensured.error () ? ensured.error ()->what () : "remote actor ensure failed");
+        if (target_node != _state.node_rid) {
+            return forward_to_owner (request, target_node);
         }
-        auto spot_ready =
-          _routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
-                      request.join)
-            .packet_name ("EnsureUserSpot")
-            .async<e2e::join_res_t> ()
-            .result ();
-        if (!spot_ready) {
+        auto actor = _actors.get_or_create (e2e::actor_type, request.join.actor_id);
+        if (!actor) {
             throw zlink::framework::framework_exception_t (
-              spot_ready.error_kind (),
-              spot_ready.error () ? spot_ready.error ()->what () : "remote user SPOT ensure failed");
+              actor.error_kind (),
+              actor.error () ? actor.error ()->what () : "remote actor create failed");
         }
-        auto actor_ref =
-          zlink::framework::actor_ref_t (
-            zlink::framework::node_rid_t::from_string (ensured.value ().actor.node_rid),
-            ensured.value ().actor.actor_type, ensured.value ().actor.actor_id,
-            ensured.value ().actor.generation);
-        auto bound = _actors.bind (actor_ref).async ().result ();
+        _state.record ("ActorEnsured", request.join.actor_id, {}, request.join.display_name);
+        auto bound = _actors.bind (actor.value ().ref ()).async ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
               bound.error () ? bound.error ()->what () : "remote request actor bind failed");
         }
-        auto joined =
+        auto entry_joined =
           bound.value ()
             .context ()
-            .join_spot (zlink::framework::spot_rid_t::from_string (
-                          e2e::user_spot_rid_for_key (request.join.key)),
-                        request.join)
-            .async<e2e::join_res_t> ()
+            .join_entry_spot (zlink::framework::node_rid_t::from_string (_state.node_rid),
+                              zlink::framework::message_t {})
+            .async ()
             .result ();
-        if (!joined) {
+        if (!entry_joined) {
             throw zlink::framework::framework_exception_t (
-              joined.error_kind (),
-              joined.error () ? joined.error ()->what () : "remote actor user SPOT join failed");
+              entry_joined.error_kind (),
+              entry_joined.error () ? entry_joined.error ()->what ()
+                                    : "remote actor entry SPOT join failed");
+        }
+        auto current = _actors.find (request.join.actor_id);
+        if (!current) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "remote actor route was not found");
+        }
+        auto join_reply =
+          current->relay_request ("JoinReq", zlink::message_t::from_json (request.join))
+            .async ()
+            .result ();
+        if (!join_reply) {
+            throw zlink::framework::framework_exception_t (
+              join_reply.error_kind (),
+              join_reply.error () ? join_reply.error ()->what () : "remote actor JoinReq failed");
         }
         _state.record ("RemoteActorRequestSent", request.join.actor_id, {},
                        target_node + ":" + std::to_string (request.state.amount));
         auto reply =
-          bound.value ()
-            .relay_request ("StateReq", zlink::message_t::from_json (request.state))
+          current->relay_request ("StateReq", zlink::message_t::from_json (request.state))
             .async ()
             .result ();
         if (!reply) {
@@ -609,6 +567,45 @@ class remote_actor_request_handler_t
     }
 
   private:
+    static std::string env_or (const char *name)
+    {
+        if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
+            return value;
+        }
+        return {};
+    }
+
+    zlink::framework::http_response_t
+    forward_to_owner (const e2e::remote_actor_request_req_t &request,
+                      const std::string &target_node)
+    {
+        auto endpoint = target_node == "play-b" ? env_or ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT")
+                                                : env_or ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT");
+        if (endpoint.empty ()) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "remote actor request owner HTTP endpoint is not configured");
+        }
+        auto owner = zlink::http_client::client_t::create ().base_url (endpoint).build ();
+        auto forwarded =
+          owner.post ("/spot/remote-actor-request").body (request).submit_raw ().result ();
+        if (!forwarded) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_failed,
+              forwarded.error () ? forwarded.error ()->what ()
+                                  : "remote actor request HTTP forward failed");
+        }
+        if (forwarded.value ().status >= 400) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "remote actor request HTTP forward status "
+                + std::to_string (forwarded.value ().status) + ": " + forwarded.value ().body);
+        }
+        zlink::framework::http_response_t response;
+        response.body = forwarded.value ().body;
+        return response;
+    }
+
     scenario_state_t &_state;
     zlink::framework::route_client_t &_routes;
     zlink::framework::session_actor_manager_t &_actors;

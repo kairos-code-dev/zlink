@@ -225,6 +225,15 @@ start_server() {
 start_server registry "$REGISTRY_BIN"
 wait_port registry-router "$REGISTRY_ROUTER_ENDPOINT"
 
+start_server play-a "$PLAY_BIN" --sample.topology.playNode=a
+wait_port play-a "$PLAY_A_CHANNEL_ENDPOINT"
+wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
+wait_port play-a-spot-pub "$PLAY_A_SPOT_ENDPOINT"
+start_server play-b "$PLAY_BIN" --sample.topology.playNode=b
+wait_port play-b "$PLAY_B_CHANNEL_ENDPOINT"
+wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
+wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"
+
 start_server api-a "$API_BIN" --sample.topology.apiNode=a
 wait_port api-a "$API_A_CHANNEL_ENDPOINT"
 wait_port api-a-play-route "$API_A_PLAY_ROUTE_ENDPOINT"
@@ -250,16 +259,7 @@ wait_port session-b-router "$SESSION_B_ROUTER_ENDPOINT"
 wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
 wait_port session-b-play-route "$SESSION_B_PLAY_ROUTE_ENDPOINT"
 
-start_server play-a "$PLAY_BIN" --sample.topology.playNode=a
-wait_port play-a "$PLAY_A_CHANNEL_ENDPOINT"
-wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
-wait_port play-a-spot-pub "$PLAY_A_SPOT_ENDPOINT"
-start_server play-b "$PLAY_BIN" --sample.topology.playNode=b
-wait_port play-b "$PLAY_B_CHANNEL_ENDPOINT"
-wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
-wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"
-
-sleep "${BINGO_STARTUP_SETTLE_SECONDS:-2}"
+sleep "${BINGO_STARTUP_SETTLE_SECONDS:-4}"
 
 "$CLIENT_BIN" \
   --session-a-stream-endpoint "$SESSION_A_STREAM_ENDPOINT" \

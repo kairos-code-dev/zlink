@@ -15,6 +15,10 @@ struct client_options_t
     std::string route_endpoint;
     std::string route_a_endpoint;
     std::string route_b_endpoint;
+    std::string multi_route_client_a_endpoint;
+    std::string multi_route_client_b_endpoint;
+    std::string multi_route_a_endpoint;
+    std::string multi_route_b_endpoint;
     std::string spot_router_endpoint;
     std::string pubsub_endpoint;
     std::string publisher_endpoint;
@@ -25,6 +29,8 @@ struct client_options_t
     std::string scenario_mode;
     std::string play_http_endpoint;
     std::string play_b_http_endpoint;
+    std::string multi_a_http_endpoint;
+    std::string multi_b_http_endpoint;
     std::string session_http_endpoint;
     std::string gateway_http_endpoint;
     std::string registry_router;
@@ -39,6 +45,12 @@ struct client_options_t
                 .route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT"),
                 .route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT"),
                 .route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT"),
+                .multi_route_client_a_endpoint =
+                  env_or ("ZLINK_CPP_E2E_MULTI_ROUTE_CLIENT_A_ENDPOINT"),
+                .multi_route_client_b_endpoint =
+                  env_or ("ZLINK_CPP_E2E_MULTI_ROUTE_CLIENT_B_ENDPOINT"),
+                .multi_route_a_endpoint = env_or ("ZLINK_CPP_E2E_MULTI_ROUTE_A_ENDPOINT"),
+                .multi_route_b_endpoint = env_or ("ZLINK_CPP_E2E_MULTI_ROUTE_B_ENDPOINT"),
                 .spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT"),
                 .pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT"),
                 .publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT"),
@@ -49,6 +61,8 @@ struct client_options_t
                 .scenario_mode = env_or ("ZLINK_CPP_E2E_SCENARIO_MODE"),
                 .play_http_endpoint = env_or ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT"),
                 .play_b_http_endpoint = env_or ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT"),
+                .multi_a_http_endpoint = env_or ("ZLINK_CPP_E2E_MULTI_A_HTTP_ENDPOINT"),
+                .multi_b_http_endpoint = env_or ("ZLINK_CPP_E2E_MULTI_B_HTTP_ENDPOINT"),
                 .session_http_endpoint = env_or ("ZLINK_CPP_E2E_SESSION_HTTP_ENDPOINT"),
                 .gateway_http_endpoint = env_or ("ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT"),
                 .registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER"),

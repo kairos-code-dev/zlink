@@ -44,11 +44,10 @@ class play_server_host_factory_t
               .trace_log_file (flow_log_path ("play-" + topology.selected_play_node_rid ()))
               .trace_label ("tictactoe-play-" + topology.selected_play_node_rid ());
             options.services ()
+              .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
               .add_singleton<redis_room_route_store_t, sample_topology_t> ()
               .add_singleton<tictactoe_game_creator_t, sample_topology_t,
                              redis_room_route_store_t> ();
-                options.services ().add_singleton<sample_topology_t> (
-              std::make_unique<sample_topology_t> (topology));
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_endpoint ())
               .use_handler_group ("play");
@@ -72,8 +71,7 @@ class play_server_host_factory_t
               .register_session<play_session_t> ();
             options.handlers ()
               .group ("play")
-              .add<create_game_handler_t> ()
-              .add<ensure_player_actor_handler_t> ();
+              .add<create_game_handler_t> ();
         });
         return app;
     }

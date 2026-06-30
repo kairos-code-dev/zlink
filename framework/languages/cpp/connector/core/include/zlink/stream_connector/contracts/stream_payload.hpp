@@ -41,9 +41,9 @@ auto to_packet_payload (const TMessage &message, int) -> decltype (to_stream_pay
     }
 }
 
-template <typename TMessage> zlink::message_t to_packet_payload (const TMessage &, ...)
+template <typename TMessage> zlink::message_t to_packet_payload (const TMessage &message, ...)
 {
-    return zlink::message_t::from (std::string ("{}"));
+    return zlink::message_t::from_json (message);
 }
 
 template <typename TMessage>

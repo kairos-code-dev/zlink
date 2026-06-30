@@ -9,7 +9,7 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 | 기준 | C++ 대응 | 분류 | 상태 | 비고 |
 |------|----------|------|------|------|
 | `.NET: Bingo.csproj`, `Bingo.sln` | `framework/languages/cpp/CMakeLists.txt` | build-root | done | CMake target이 registry/api/play/session/client 실행 파일을 만든다. |
-| `.NET: Shared/Contracts/bingo_messages.proto` | `Shared/Contracts/bingo_messages.proto`, `Shared/Contracts/messages.hpp` | shared-contract | done | Protobuf schema와 C++ message adapter를 함께 둔다. |
+| `.NET: Shared/Contracts/bingo_messages.proto` | `Shared/Contracts/messages.hpp` | shared-contract | done | C++ framework 기본 JSON codec에 맞춘 message adapter를 둔다. |
 | `.NET: Shared/Contracts/SampleConstants.cs` | `Shared/Contracts/messages.hpp`, `Server/Configuration/sample_names.hpp` | shared-contract | done | packet 이름, player id, mode, reward 상수를 C++ public message/header로 대응한다. |
 | `.NET: Client/Program.cs` | `Client/main.cpp` | client-entry | done | Session stream connector 세 개를 만들고 client scenario를 실행한다. |
 | `.NET: Client/Configuration/SampleNames.cs` | `Client/Configuration/sample_topology.hpp`, `Client/Configuration/sample_configuration.hpp` | client-config | done | client endpoint와 sample 설정을 C++ CLI/env 설정으로 받는다. |
@@ -67,7 +67,7 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 | `common: Redis-backed match queue` | `Server/Play/Infrastructure/ZLink/Matchmaking/redis_bingo_match_queue.hpp` | external-adapter | done | Redis client dependency는 match queue adapter 안에 있다. |
 | `common: remote Spot join은 Registry-backed resolver 사용` | `Server/Play/play_server_host_factory.hpp`, `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp` | message-flow | done | room owner가 다른 Play node일 때 public Spot join 경로를 사용한다. |
 | `common: Spot pub/sub reward fan-out` | `Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp` | message-flow | done | `bingo.room.reward` 의미의 reward event를 room Spot에서 publish/subscribe한다. |
-| `common: Protobuf payload` | `Shared/Contracts/bingo_messages.proto`, `Shared/Contracts/messages.hpp`, `Server/common_codecs.hpp` | codec | done | stream, channel, actor, Spot payload를 Protobuf codec으로 등록한다. |
+| `common: payload codec` | `Shared/Contracts/messages.hpp`, `Server/common_codecs.hpp` | codec | done | stream, channel, actor, Spot payload는 framework 기본 JSON codec을 사용한다. |
 | `common: public connector wait interface로 push 대기` | `Client/bingo_client_scenario.hpp` | validation | done | wait filter와 future를 직접 사용하고 sample-local inbox로 숨기지 않는다. |
 | `common: `bingo=completed` marker` | `Client/main.cpp`, `run_sample.sh` | validation | done | runner가 client log marker를 검사한다. |
 | `common: stream-inbound marker와 Notify marker` | `Client/main.cpp`, `run_sample.sh` | validation | done | inbound observer log와 notify 수신 marker를 검사한다. |

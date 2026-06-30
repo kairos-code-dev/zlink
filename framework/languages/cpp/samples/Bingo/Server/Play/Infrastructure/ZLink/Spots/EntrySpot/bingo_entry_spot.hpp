@@ -44,7 +44,7 @@ class bingo_entry_spot_t : public entry_spot_t
         _context.manager ().get_or_create_spot (sample_names_t::room_spot, observer_rid, payload);
 
         const auto join_request = bingo_room_join_req_t{request.room_id, actor.actor.actor_id, display_name, true};
-        auto joined = co_await actor.context.join_spot (observer_rid, join_request).yield<bingo_room_join_res_t> ();
+        auto joined = co_await actor.context.join_spot (observer_rid, join_request).async<bingo_room_join_res_t> ();
         co_return observe_bingo_events_res_t{true, std::string (joined.actor.node_rid ().value ())};
     }
 
@@ -64,12 +64,12 @@ class bingo_entry_spot_t : public entry_spot_t
         };
 
         auto matched = co_await _context.outbound ()
-            .request (sample_names_t::api_channel, match_request).yield<match_bingo_api_res_t> ();
+            .request (sample_names_t::api_channel, match_request).async<match_bingo_api_res_t> ();
 
         const auto spot_rid = spot_rid_t::from_string (matched.room_id);
         const auto join_request = bingo_room_join_req_t{matched.room_id, actor.actor.actor_id, display_name};
 
-        auto joined = co_await actor.context.join_spot (spot_rid, join_request).yield<bingo_room_join_res_t> ();
+        auto joined = co_await actor.context.join_spot (spot_rid, join_request).async<bingo_room_join_res_t> ();
 
         co_return match_bingo_res_t{matched.room_id, joined.reply.state, matched.room_owner_node_rid};
     }

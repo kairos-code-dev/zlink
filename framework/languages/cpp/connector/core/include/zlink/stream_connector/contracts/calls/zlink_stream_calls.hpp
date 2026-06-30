@@ -184,9 +184,7 @@ class request_call_t
             if constexpr (std::is_same_v<T, zlink::message_t>) {
                 return result_t<T>::success (_result.value ());
             } else {
-                T value{};
-                detail::apply_packet_payload (value, _result.value (), 0);
-                return result_t<T>::success (std::move (value));
+                return result_t<T>::success (_result.value ().template parse_json<T> ());
             }
         }
 

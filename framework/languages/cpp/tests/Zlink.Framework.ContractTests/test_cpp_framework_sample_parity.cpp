@@ -23,20 +23,6 @@
 #include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp"
 #include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
-#include "../../samples/SupportChat/Server/Configuration/sample_names.hpp"
-#include "../../samples/SupportChat/Shared/Contracts/messages.hpp"
-#include "../../samples/SupportChat/Server/Support/Domain/SupportChat/conversation.hpp"
-#include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp"
-#include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/agent_availability_directory.hpp"
-#include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/support_conversation_allocator.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Actors/support_user_actor_factory.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/allocate_conversation_handler.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/assign_agent_handler.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/ensure_support_user_actor_handler.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation_idle_timer_handler.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation_spot.hpp"
-#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/EntrySpot/support_entry_spot.hpp"
-#include "../../samples/SupportChat/Server/Api/Handlers/authenticate_user_handler.hpp"
 
 #include <gtest/gtest.h>
 
@@ -261,266 +247,6 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (publisher.game_state.size (), 1U);
 }
 
-TEST (CppFrameworkSampleParity, SupportChatUsesDotNetSamplePacketSurface)
-{
-    using namespace zlink::samples::supportchat;
-
-    EXPECT_STREQ (sample_names_t::participant_joined_packet, "ParticipantJoinedNotify");
-    EXPECT_STREQ (sample_names_t::conversation_assigned_packet, "ConversationAssignedNotify");
-    EXPECT_STREQ (sample_names_t::chat_message_packet, "ChatMessageNotify");
-    EXPECT_STREQ (sample_names_t::typing_changed_packet, "TypingChangedNotify");
-    EXPECT_STREQ (sample_names_t::conversation_idle_packet, "ConversationIdleNotify");
-    EXPECT_STREQ (sample_names_t::conversation_closed_packet, "ConversationClosedNotify");
-
-    authenticate_user_handler_t auth;
-    const auto customer = auth.handle ({support_chat_tokens_t::customer1});
-    ASSERT_TRUE (customer.accepted);
-    EXPECT_EQ (customer.actor_id, std::string ("customer-1"));
-    EXPECT_EQ (customer.role, std::string (support_chat_roles_t::customer));
-    const auto agent = auth.handle ({support_chat_tokens_t::agent1});
-    ASSERT_TRUE (agent.accepted);
-    EXPECT_EQ (agent.role, std::string (support_chat_roles_t::agent));
-    const auto rejected = auth.handle ({"unknown-token"});
-    EXPECT_FALSE (rejected.accepted);
-
-    ensure_support_user_actor_handler_t actors;
-    const auto ensured = actors.handle ({customer.actor_id, customer.display_name, customer.role});
-    EXPECT_EQ (ensured.actor_type, std::string (sample_names_t::support_actor_type));
-    EXPECT_EQ (ensured.actor.actor_id, customer.actor_id);
-    const auto ensured_again =
-      actors.handle ({customer.actor_id, customer.display_name, customer.role});
-    EXPECT_EQ (ensured_again.actor.generation, ensured.actor.generation)
-      << "reconnect must reuse the existing actor generation";
-
-    support_user_actor_factory_t actor_factory;
-    const auto customer_actor =
-      actor_factory.create (ensured.actor, customer.display_name, customer.role);
-    EXPECT_EQ (customer_actor.actor_id (), customer.actor_id);
-    EXPECT_EQ (customer_actor.role, std::string (support_chat_roles_t::customer));
-
-    support_conversation_allocator_t allocator;
-    const auto conversation_id = allocator.allocate (customer.actor_id, "checkout payment failed");
-    EXPECT_FALSE (conversation_id.empty ());
-
-    agent_availability_directory_t availability;
-    agent_assignment_service_t assignment (availability);
-    EXPECT_FALSE (assignment.assign_next_agent ().has_value ());
-    availability.set_available (agent.actor_id, agent.display_name, true);
-    const auto picked = assignment.assign_next_agent ();
-    ASSERT_TRUE (picked.has_value ());
-    EXPECT_EQ (picked->actor_id, agent.actor_id);
-
-    allocate_conversation_handler_t allocate_handler (allocator);
-    const auto allocated =
-      allocate_handler.handle ({customer.actor_id, customer.display_name, "subject"});
-    EXPECT_EQ (allocated.status, std::string (conversation_statuses_t::waiting_for_agent));
-
-    agent_availability_directory_t empty_availability;
-    agent_assignment_service_t empty_assignment (empty_availability);
-    assign_agent_handler_t assign_handler (empty_assignment);
-    const auto unassigned =
-      assign_handler.handle ({allocated.conversation_id, ""}).result ().value ();
-    EXPECT_EQ (unassigned.status, std::string (conversation_statuses_t::waiting_for_agent))
-      << "no available agent must stay in WaitingForAgent, not error";
-    EXPECT_TRUE (unassigned.agent_actor_id.empty ());
-
-    // Domain aggregate state transitions.
-    conversation_t conversation (allocated.conversation_id, "checkout payment failed",
-                                 customer.actor_id, customer.display_name, 1000);
-    EXPECT_EQ (conversation.status (), std::string (conversation_statuses_t::waiting_for_agent));
-    const auto assigned = conversation.join_agent (agent.actor_id, agent.display_name, 1100);
-    EXPECT_EQ (assigned.state.status, std::string (conversation_statuses_t::active));
-    EXPECT_EQ (assigned.state.agent_actor_id, agent.actor_id);
-    ASSERT_EQ (assigned.events.size (), 2U);
-    EXPECT_EQ (assigned.events[0].kind, conversation_event_kind_t::participant_joined);
-    EXPECT_EQ (assigned.events[1].kind, conversation_event_kind_t::assigned);
-
-    const auto sent = conversation.send_message (agent.actor_id, "greeting", 2000);
-    EXPECT_EQ (sent.state.last_message_seq, 1ULL);
-    ASSERT_FALSE (sent.events.empty ());
-    ASSERT_TRUE (sent.events[0].message.has_value ());
-    EXPECT_EQ (sent.events[0].message->message_seq, 1ULL);
-    EXPECT_TRUE (sent.state.has_idle_deadline);
-
-    const auto typing = conversation.set_typing (agent.actor_id, true);
-    ASSERT_FALSE (typing.events.empty ());
-    EXPECT_EQ (typing.events[0].kind, conversation_event_kind_t::typing_changed);
-    EXPECT_TRUE (typing.events[0].is_typing.value_or (false));
-
-    const auto idle = conversation.mark_idle (sent.state.idle_deadline_unix_ms + 1);
-    EXPECT_EQ (idle.state.status, std::string (conversation_statuses_t::waiting_for_close));
-    ASSERT_FALSE (idle.events.empty ());
-    EXPECT_EQ (idle.events[0].kind, conversation_event_kind_t::idle);
-
-    const auto closed = conversation.close (customer.actor_id, "resolved");
-    EXPECT_EQ (closed.state.status, std::string (conversation_statuses_t::closed));
-    EXPECT_THROW ((void) conversation.send_message (customer.actor_id, "after close", 9000),
-                  std::runtime_error);
-    EXPECT_THROW ((void) conversation.close (customer.actor_id, "again"), std::runtime_error);
-
-    // Conversation Spot registers the in-conversation actor handlers.
-    conversation_spot_t conversation_spot;
-    zlink::framework::spot_context_t conversation_context;
-    conversation_spot.configure (conversation_context);
-    const auto conversation_handlers = conversation_context.handlers ().descriptors ();
-    ASSERT_EQ (conversation_handlers.size (), 3U);
-    for (const auto &descriptor : conversation_handlers) {
-        EXPECT_EQ (descriptor.kind, zlink::framework::spot_handler_kind_t::actor_packet);
-    }
-
-    // Entry Spot registers the admission handlers and rejects non-customer opens.
-    support_entry_spot_t entry_spot;
-    zlink::framework::spot_context_t entry_context;
-    entry_spot.configure (entry_context);
-    const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 2U);
-
-    auto agent_actor = actor_factory.create (actor_ref_snapshot_t{{}, "agent-9", 1}, "Agent 9",
-                                             support_chat_roles_t::agent);
-    zlink::framework::spot_actor_request_context_t available_context{
-      set_agent_available_req_t::packet_name, "application/json", {}, {}};
-    const auto availability_reply =
-      entry_spot.set_agent_available (agent_actor, available_context, {true});
-    EXPECT_TRUE (availability_reply.is_available);
-
-    auto customer_only = actor_factory.create (actor_ref_snapshot_t{{}, "customer-9", 1},
-                                               "Customer 9", support_chat_roles_t::customer);
-    EXPECT_THROW ((void) entry_spot.set_agent_available (customer_only, available_context, {true}),
-                  zlink::framework::framework_exception_t)
-      << "customer actors must not register availability";
-
-    // Idle timer handler forwards a time signal to the spot domain.
-    conversation_idle_timer_handler_t idle_timer;
-    (void) idle_timer;
-}
-
-TEST (CppFrameworkSampleParity, SupportChatEntrySpotUsesApiChannelOrchestration)
-{
-    const auto support_entry = read_file (cpp_language_root ()
-                                          / "samples/SupportChat/Server/Support/Infrastructure/"
-                                            "ZLink/Spots/EntrySpot/support_entry_spot.hpp");
-    const auto api_handler =
-      read_file (cpp_language_root ()
-                 / "samples/SupportChat/Server/Api/Handlers/open_conversation_handler.hpp");
-
-    EXPECT_NE (support_entry.find ("_context.outbound ()"), std::string::npos);
-    EXPECT_NE (support_entry.find ("request_to_channel"), std::string::npos);
-    EXPECT_NE (support_entry.find ("sample_names_t::api_channel"), std::string::npos);
-    EXPECT_NE (support_entry.find ("open_conversation_api_req_t"), std::string::npos);
-    EXPECT_EQ (support_entry.find ("allocator.allocate"), std::string::npos)
-      << "Entry Spot must not bypass the API channel allocation path";
-    EXPECT_EQ (support_entry.find ("assign_agent ("), std::string::npos)
-      << "Entry Spot must not run local agent assignment";
-
-    EXPECT_NE (api_handler.find ("sample_names_t::support_channel"), std::string::npos);
-    EXPECT_NE (api_handler.find ("allocate_conversation_req_t"), std::string::npos);
-    EXPECT_NE (api_handler.find ("assign_agent_req_t"), std::string::npos);
-}
-
-TEST (CppFrameworkSampleParity, SupportChatUsesDotNetProbeAndTopologySurface)
-{
-    const auto cmake = read_file (cpp_language_root () / "CMakeLists.txt");
-    const auto runner = read_file (cpp_language_root () / "samples/SupportChat/run_sample.sh");
-    const auto probe = read_file (cpp_language_root () / "samples/SupportChat/Probe/main.cpp");
-    const auto support =
-      read_file (cpp_language_root () / "samples/SupportChat/Server/Support/support_server_host_factory.hpp");
-    const auto session =
-      read_file (cpp_language_root () / "samples/SupportChat/Server/Session/session_server_host_factory.hpp");
-
-    EXPECT_NE (cmake.find ("sample_cpp_framework_supportchat_probe"), std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_supportchat_probe"), std::string::npos);
-    EXPECT_NE (runner.find ("--registry-endpoint"), std::string::npos);
-    EXPECT_NE (runner.find ("topology=ready"), std::string::npos);
-    EXPECT_NE (probe.find ("registry_query_client_t"), std::string::npos);
-    EXPECT_NE (probe.find ("sample_names_t::api_channel"), std::string::npos);
-    EXPECT_NE (probe.find ("sample_names_t::support_channel"), std::string::npos);
-    EXPECT_NE (support.find ("add_spot_mesh (sample_names_t::support_spot_discovery)"),
-               std::string::npos);
-    EXPECT_NE (session.find ("add_spot_mesh (sample_names_t::support_spot_discovery)"),
-               std::string::npos);
-}
-
-TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleScenarioSurface)
-{
-    const auto client =
-      read_file (cpp_language_root ()
-                 / "samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp");
-    const auto dispatch_api =
-      read_file (cpp_language_root () / "samples/DeliveryDispatch/Server/DispatchApi/main.cpp");
-    const auto dispatch_center =
-      read_file (cpp_language_root ()
-                 / "samples/DeliveryDispatch/Server/DispatchCenter/main.cpp");
-    const auto session =
-      read_file (cpp_language_root () / "samples/DeliveryDispatch/Server/Session/main.cpp");
-    const auto tracking =
-      read_file (cpp_language_root () / "samples/DeliveryDispatch/Server/Tracking/main.cpp");
-    const auto runner = read_file (cpp_language_root () / "samples/DeliveryDispatch/run_sample.sh");
-
-    EXPECT_NE (client.find ("zlink::http_client::client_t::create"), std::string::npos);
-    EXPECT_NE (client.find ("customer.wait_for<delivery_status_notify_t>"), std::string::npos);
-    EXPECT_NE (client.find ("customer.request (subscribe_delivery_req_t"), std::string::npos);
-    EXPECT_NE (dispatch_api.find (".map_post<create_delivery_http_handler_t> (\"/deliveries\")"),
-               std::string::npos);
-    EXPECT_NE (dispatch_center.find ("sample_names_t::courier_a_channel"), std::string::npos);
-    EXPECT_NE (dispatch_center.find ("sample_names_t::tracking_route_channel"), std::string::npos);
-    EXPECT_NE (tracking.find ("sample_names_t::status_fanout_channel"), std::string::npos);
-    EXPECT_NE (session.find (".register_session<customer_session_t> ()"), std::string::npos);
-    EXPECT_NE (session.find (".add_publish<delivery_status_fanout_handler_t> ()"),
-               std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_deliverydispatch_dispatch_api"),
-               std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_deliverydispatch_session"), std::string::npos);
-}
-
-TEST (CppFrameworkSampleParity, GameQuestUsesDotNetSampleScenarioSurface)
-{
-    const auto client =
-      read_file (cpp_language_root () / "samples/GameQuest/Client/game_quest_client_scenario.hpp");
-    const auto api =
-      read_file (cpp_language_root () / "samples/GameQuest/Server/GameApi/main.cpp");
-    const auto mission =
-      read_file (cpp_language_root () / "samples/GameQuest/Server/QuestMission/main.cpp");
-    const auto runner = read_file (cpp_language_root () / "samples/GameQuest/run_sample.sh");
-
-    EXPECT_NE (client.find ("zlink::http_client::client_t::create"), std::string::npos);
-    EXPECT_NE (client.find ("zlink::stream_e2e_client::use"), std::string::npos);
-    EXPECT_NE (client.find ("stream.request (subscribe_quest_req_t"), std::string::npos);
-    EXPECT_NE (api.find (".map_post<kill_http_handler_t> (\"/combat/kill\")"),
-               std::string::npos);
-    EXPECT_NE (api.find (".register_session<game_quest_session_t> ()"), std::string::npos);
-    EXPECT_NE (mission.find (".add_publish<gameplay_event_handler_t> ()"), std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_gamequest_registry"), std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_gamequest_game_api"), std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_gamequest_quest_mission"), std::string::npos);
-}
-
-TEST (CppFrameworkSampleParity, ShoppingMallUsesDotNetSampleScenarioSurface)
-{
-    const auto client =
-      read_file (cpp_language_root () / "samples/ShoppingMall/Client/shopping_mall_client_scenario.hpp");
-    const auto api =
-      read_file (cpp_language_root () / "samples/ShoppingMall/Server/CommerceApi/main.cpp");
-    const auto workflow =
-      read_file (cpp_language_root () / "samples/ShoppingMall/Server/OrderWorkflow/main.cpp");
-    const auto runner = read_file (cpp_language_root () / "samples/ShoppingMall/run_sample.sh");
-
-    EXPECT_NE (client.find ("zlink::http_client::client_t::create"), std::string::npos);
-    EXPECT_EQ (client.find ("../Server/"), std::string::npos);
-    EXPECT_NE (api.find (".map_post<start_order_http_handler_t> (\"/orders/start\")"),
-               std::string::npos);
-    EXPECT_NE (api.find ("route_client_t"), std::string::npos);
-    EXPECT_NE (api.find ("sample_names_t::workflow_route_channel"), std::string::npos);
-    EXPECT_NE (workflow.find (".add_request_handler<start_order_workflow_route_handler_t"),
-               std::string::npos);
-    EXPECT_NE (workflow.find ("start_order_workflow_req_t::packet_name"), std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_shoppingmall_registry"), std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_shoppingmall_commerce_api"),
-               std::string::npos);
-    EXPECT_NE (runner.find ("sample_cpp_framework_shoppingmall_order_workflow"),
-               std::string::npos);
-    EXPECT_NE (runner.find ("SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT"), std::string::npos);
-}
-
 TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 {
     const std::vector<std::string> banned_patterns{"configure_registry_host",
@@ -555,8 +281,7 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    const std::vector<std::string> expected_samples{
-      "Bingo", "DeliveryDispatch", "GameQuest", "ShoppingMall", "SupportChat", "TicTacToe"};
+    const std::vector<std::string> expected_samples{"Bingo", "TicTacToe"};
 
     for (const auto &sample : expected_samples) {
         EXPECT_TRUE (std::filesystem::is_directory (samples_root / sample))
@@ -580,8 +305,7 @@ TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 TEST (CppFrameworkSampleParity, SharedSampleDirectoryContainsOnlyContracts)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    for (const auto &sample :
-         {"Bingo", "DeliveryDispatch", "GameQuest", "ShoppingMall", "SupportChat", "TicTacToe"}) {
+    for (const auto &sample : {"Bingo", "TicTacToe"}) {
         const auto shared_root = samples_root / sample / "Shared";
         ASSERT_TRUE (std::filesystem::is_directory (shared_root)) << shared_root;
         for (const auto &entry : std::filesystem::recursive_directory_iterator (shared_root)) {
@@ -936,16 +660,16 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> (sample_names_t::room_spot)"),
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<bingo_room_t>"), std::string::npos);
-    EXPECT_NE (api_framework.find ("add_bingo_protobuf_codecs (options.codecs ())"),
+    EXPECT_NE (api_framework.find ("use_default_bingo_codecs (options.codecs ())"),
                std::string::npos);
-    EXPECT_NE (play_factory.find ("add_bingo_protobuf_codecs (options.codecs ())"),
+    EXPECT_NE (play_factory.find ("use_default_bingo_codecs (options.codecs ())"),
                std::string::npos);
-    EXPECT_NE (session_factory.find ("add_bingo_protobuf_codecs (options.codecs ())"),
+    EXPECT_NE (session_factory.find ("use_default_bingo_codecs (options.codecs ())"),
                std::string::npos);
-    EXPECT_NE (common_codecs.find ("codecs.use (framework_codecs::protobuf ())"),
+    EXPECT_EQ (common_codecs.find ("codecs.use (framework_codecs::protobuf ())"),
                std::string::npos);
-    EXPECT_NE (client_main.find ("core_client1.codecs ().use"), std::string::npos);
-    EXPECT_NE (client_main.find ("core_client2.codecs ().use"), std::string::npos);
+    EXPECT_EQ (client_main.find ("core_client1.codecs ().use"), std::string::npos);
+    EXPECT_EQ (client_main.find ("core_client2.codecs ().use"), std::string::npos);
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (api_framework.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_message_pack"), std::string::npos);

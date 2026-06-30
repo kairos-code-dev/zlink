@@ -24,10 +24,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-read -r DELIVERYDISPATCH_REGISTRY_PUB DELIVERYDISPATCH_REGISTRY DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_A_ROUTE DELIVERYDISPATCH_COURIER_B_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_SESSION_STREAM <<<"$(python3 - <<'PY'
+read -r DELIVERYDISPATCH_REGISTRY_PUB DELIVERYDISPATCH_REGISTRY DELIVERYDISPATCH_API_HTTP_PORT DELIVERYDISPATCH_CENTER_ROUTE DELIVERYDISPATCH_COURIER_ROUTE DELIVERYDISPATCH_TRACKING_ROUTE DELIVERYDISPATCH_STATUS_FANOUT DELIVERYDISPATCH_CUSTOMER_STREAM DELIVERYDISPATCH_COURIER_STREAM DELIVERYDISPATCH_COURIER_SESSION_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE <<<"$(python3 - <<'PY'
 import socket
 sockets = []
-for _ in range(9):
+for _ in range(12):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     sockets.append(sock)
@@ -41,7 +41,10 @@ print(
     f"tcp://127.0.0.1:{ports[5]} "
     f"tcp://127.0.0.1:{ports[6]} "
     f"tcp://127.0.0.1:{ports[7]} "
-    f"tcp://127.0.0.1:{ports[8]}"
+    f"tcp://127.0.0.1:{ports[8]} "
+    f"tcp://127.0.0.1:{ports[9]} "
+    f"tcp://127.0.0.1:{ports[10]} "
+    f"tcp://127.0.0.1:{ports[11]}"
 )
 for sock in sockets:
     sock.close()
@@ -51,11 +54,15 @@ export DELIVERYDISPATCH_REGISTRY_PUB
 export DELIVERYDISPATCH_REGISTRY
 export DELIVERYDISPATCH_API_HTTP="http://127.0.0.1:${DELIVERYDISPATCH_API_HTTP_PORT}"
 export DELIVERYDISPATCH_CENTER_ROUTE
-export DELIVERYDISPATCH_COURIER_A_ROUTE
-export DELIVERYDISPATCH_COURIER_B_ROUTE
+export DELIVERYDISPATCH_COURIER_ROUTE
 export DELIVERYDISPATCH_TRACKING_ROUTE
 export DELIVERYDISPATCH_STATUS_FANOUT
-export DELIVERYDISPATCH_SESSION_STREAM
+export DELIVERYDISPATCH_CUSTOMER_STREAM
+export DELIVERYDISPATCH_COURIER_STREAM
+export DELIVERYDISPATCH_SESSION_STREAM="$DELIVERYDISPATCH_CUSTOMER_STREAM"
+export DELIVERYDISPATCH_COURIER_SESSION_ROUTE
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE
+export DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE
 
 port_of() {
   local endpoint="$1"
@@ -86,8 +93,11 @@ cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_delivery_dispatch_registry \
   zlink_cpp_e2e_delivery_dispatch_dispatch_api \
   zlink_cpp_e2e_delivery_dispatch_dispatch_center \
+  zlink_cpp_e2e_delivery_dispatch_courier_gateway \
+  zlink_cpp_e2e_delivery_dispatch_courier_actor_node \
+  zlink_cpp_e2e_delivery_dispatch_customer_gateway \
+  zlink_cpp_e2e_delivery_dispatch_courier_session \
   zlink_cpp_e2e_delivery_dispatch_tracking \
-  zlink_cpp_e2e_delivery_dispatch_session \
   zlink_cpp_e2e_delivery_dispatch_probe \
   zlink_cpp_e2e_delivery_dispatch_client >/dev/null
 
@@ -97,10 +107,21 @@ wait_port registry "$(port_of "$DELIVERYDISPATCH_REGISTRY")"
 start_role tracking "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_tracking"
 wait_port tracking "$(port_of "$DELIVERYDISPATCH_TRACKING_ROUTE")"
 
-start_role session "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_session"
-wait_port session-stream "$(port_of "$DELIVERYDISPATCH_SESSION_STREAM")"
-wait_port courier-a "$(port_of "$DELIVERYDISPATCH_COURIER_A_ROUTE")"
-wait_port courier-b "$(port_of "$DELIVERYDISPATCH_COURIER_B_ROUTE")"
+start_role customer-gateway "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_customer_gateway"
+wait_port customer-stream "$(port_of "$DELIVERYDISPATCH_CUSTOMER_STREAM")"
+
+start_role courier-session "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier_session"
+wait_port courier-stream "$(port_of "$DELIVERYDISPATCH_COURIER_STREAM")"
+wait_port courier-session "$(port_of "$DELIVERYDISPATCH_COURIER_SESSION_ROUTE")"
+
+start_role courier-actor-node-1 "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier_actor_node" delivery-courier-node-1
+wait_port courier-actor-node-1 "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE")"
+
+start_role courier-actor-node-2 "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier_actor_node" delivery-courier-node-2
+wait_port courier-actor-node-2 "$(port_of "$DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE")"
+
+start_role courier-gateway "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_courier_gateway"
+wait_port courier-gateway "$(port_of "$DELIVERYDISPATCH_COURIER_ROUTE")"
 
 start_role dispatch-center "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_dispatch_center"
 wait_port dispatch-center "$(port_of "$DELIVERYDISPATCH_CENTER_ROUTE")"
@@ -115,7 +136,8 @@ wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
 
 "$BIN_DIR/zlink_cpp_e2e_delivery_dispatch_client" \
   --api-url "$DELIVERYDISPATCH_API_HTTP" \
-  --stream-endpoint "$DELIVERYDISPATCH_SESSION_STREAM" >"$LOG_DIR/client.log" 2>&1 || {
+  --stream-endpoint "$DELIVERYDISPATCH_CUSTOMER_STREAM" \
+  --courier-stream-endpoint "$DELIVERYDISPATCH_COURIER_STREAM" >"$LOG_DIR/client.log" 2>&1 || {
   cat "$LOG_DIR/client.log" >&2
   for log in "$LOG_DIR"/*.log; do
     echo "===== ${log}" >&2
@@ -127,4 +149,9 @@ wait_port dispatch-api "$DELIVERYDISPATCH_API_HTTP_PORT"
 grep -q "deliverydispatch-server-evidence=completed" "$LOG_DIR/client.log"
 grep -q "deliverydispatch-reassignment=completed" "$LOG_DIR/client.log"
 grep -Rq "message flow" "$DELIVERYDISPATCH_LOG_DIR"
+grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-courier-gateway.log"
+grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-1.log"
+grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-delivery-courier-node-2.log"
+grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-customer-gateway.log"
+grep -q "message flow" "$DELIVERYDISPATCH_LOG_DIR/flow-courier-session.log"
 echo "delivery-dispatch e2e result=passed"

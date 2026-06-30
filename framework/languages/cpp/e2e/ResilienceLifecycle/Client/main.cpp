@@ -91,6 +91,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 rm_client::run_drain_restore_scenario (channels);
             } else if (scenario == "registry-outage") {
                 rm_client::run_registry_outage_scenario (channels);
+            } else if (scenario == "registry-recovered") {
+                rm_client::run_registry_recovered_scenario (channels);
             } else if (scenario == "resilience-stress") {
                 rm_client::run_resilience_stress_scenario (channels);
             } else if (scenario == "observer-fault") {

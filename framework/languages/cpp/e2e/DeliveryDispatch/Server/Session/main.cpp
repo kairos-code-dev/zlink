@@ -142,11 +142,11 @@ class customer_session_t final : public packet_stream_session_t
         try {
             if (dispatch.packet_name () == bind_courier_session_req_t::packet_name) {
                 const auto request = payload.parse_json<bind_courier_session_req_t> ();
+                auto bound = co_await request_courier_gateway<bind_courier_req_t, bind_courier_res_t> (
+                  bind_courier_req_t{request.courier_id, "courier-session:" + request.courier_id});
                 _sessions.bind_courier (request.courier_id, stream);
                 const auto reply = zlink::message_t::from_json (bind_courier_session_res_t{
-                  request.courier_id,
-                  actor_ref_snapshot_t{"courier-session", request.courier_id, 1},
-                  "courier-session:" + request.courier_id});
+                  bound.courier_id, bound.actor, bound.session_route});
                 co_await stream.reply_packet (reply).async ();
                 std::cerr << "deliverydispatch session: courier bound courier="
                           << request.courier_id << "\n";
@@ -199,6 +199,13 @@ class customer_session_t final : public packet_stream_session_t
             std::this_thread::sleep_for (std::chrono::milliseconds (100));
         }
         throw std::runtime_error (last_error);
+    }
+
+    template <typename TRequest, typename TReply> task_t<TReply> request_courier_gateway (TRequest request)
+    {
+        auto reply = co_await _channels.request (sample_names_t::courier_route_channel, request)
+          .template async<TReply> ();
+        co_return reply;
     }
 
     channel_client_t &_channels;
@@ -266,17 +273,15 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
         options.add_client_server_channel (sample_names_t::tracking_route_channel).enable_client ();
-        options.add_client_server_channel (sample_names_t::courier_a_channel)
-          .enable_server (topology.courier_a_endpoint)
-          .use_handler_group ("courier");
-        options.add_client_server_channel (sample_names_t::courier_b_channel)
-          .enable_server (topology.courier_b_endpoint)
-          .use_handler_group ("courier");
+        options.add_client_server_channel (sample_names_t::courier_route_channel).enable_client ();
+        options.add_client_server_channel (sample_names_t::courier_session_route_channel)
+          .enable_server (topology.courier_session_route_endpoint)
+          .use_handler_group ("courier-session");
         options.add_fanout_channel (sample_names_t::status_fanout_channel)
           .enable_subscriber (topology.status_fanout_endpoint)
           .use_handler_group ("status");
         options.handlers ().group ("status").add_publish<delivery_status_fanout_handler_t> ();
-        options.handlers ().group ("courier").add<stream_offer_delivery_handler_t> ();
+        options.handlers ().group ("courier-session").add<stream_offer_delivery_handler_t> ();
         options.add_stream_node (sample_names_t::customer_stream_node)
           .bind (topology.session_stream_endpoint)
           .register_session<customer_session_t> ();

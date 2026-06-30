@@ -156,7 +156,7 @@ class bingo_room_spot_t : public spot_t
             bingo_reward_items_t::golden_dauber_name,
             bingo_reward_items_t::legendary_rarity
         };
-        (void) _context.publish (sample_names_t::reward_topic, reward_event).async ();
+        _context.publish (sample_names_t::reward_topic, reward_event).submit ();
     }
 
     template <typename TNotify>
@@ -166,7 +166,7 @@ class bingo_room_spot_t : public spot_t
             if (!excluded_actor_id.empty () && actor_id == excluded_actor_id) {
                 continue;
             }
-            (void) actor->push (notify);
+            actor->push (notify);
         }
     }
 
@@ -189,7 +189,7 @@ class bingo_room_spot_t : public spot_t
                 event.rarity,
                 std::string (_context.node_rid ().value ())
             };
-            (void) actor->push (notify);
+            actor->push (notify);
         }
     }
 

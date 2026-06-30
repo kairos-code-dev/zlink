@@ -51,6 +51,9 @@ inline int run_multi_node_server (int argc, char **argv)
                          e2e::multi_node_create_spot_res_t> (
                          "MultiNodeCreateSpotReq",
                          &multi_node_create_local_handler_t::handle_route);
+        if (!route_endpoint.empty ()) {
+            route.enable_client (route_endpoint);
+        }
         if (!peer_route_endpoint.empty ()) {
             route.enable_client (peer_route_endpoint);
         }

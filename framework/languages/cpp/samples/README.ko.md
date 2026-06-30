@@ -12,15 +12,11 @@ process 로 시작하는 방식을 사용한다.
 둔다. 서버 topology, endpoint 이름, packet 이름, host 설정은 `Server/Configuration`에
 두고, client 전용 설정은 `Client/Configuration`에 둔다.
 
-Bingo 샘플 payload는 framework Protobuf codec extension으로 등록하고, TicTacToe 샘플
-payload는 JSON codec으로 등록한다. HTTP JSON request와 response는 HTTP route의 외부
-표면에만 사용한다.
+Bingo와 TicTacToe 샘플 payload는 framework 기본 JSON codec을 사용한다. 샘플 코드에서
+별도 codec이나 type serializer를 등록하지 않는다.
 
-Bingo와 TicTacToe를 제외한 정본 샘플은 공통 샘플 기준에 따라 JSON
-codec과 Registry/Discovery 기반 자동 연결을 사용한다. 다만 C++ framework는 compile-time
-타입과 public builder 표면을 기준으로 하므로 handler 자동 등록 예외다. C++ 샘플은 handler를
-자동 스캔하지 않고 명시 등록하되, 메시지 이름, 서버 역할, client self-check 순서는
-[공통 샘플 포팅 기준](../../../doc/framework/common/sample/README.ko.md#샘플-포팅-기준)을 따른다.
+C++ framework 샘플은 현재 `Bingo`와 `TicTacToe`만 유지한다. 다른 샘플은 다시 작성 대상이므로
+이 디렉토리에 두지 않는다.
 
 ## 실행
 
@@ -35,9 +31,6 @@ Linux 또는 WSL:
 ```bash
 ./framework/languages/cpp/samples/TicTacToe/run_sample.sh
 ./framework/languages/cpp/samples/Bingo/run_sample.sh
-./framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh
-./framework/languages/cpp/samples/GameQuest/run_sample.sh
-./framework/languages/cpp/samples/ShoppingMall/run_sample.sh
 ./framework/languages/cpp/samples/run_samples.sh
 ```
 

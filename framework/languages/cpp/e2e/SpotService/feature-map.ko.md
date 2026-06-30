@@ -108,13 +108,13 @@
   `ActorJoined`/`ActorLeft` evidence가 정확히 1회씩 남는지 검증한다.
 - `SM-G4`: 다수 stream client가 각각 다른 actor에 bind된 상태에서 동시에 push를 트리거하고,
   각 client가 자기 actor의 `ActorPushNotify`만 수신하는지 검증한다.
+- `SM-Q9`: `.NET`의 multi-node route-to-spot scaffold에 대응해 multi-node A/B role을 실제로 띄우고,
+  외부 C++ route client가 각 node의 target spot id로 `StateReq`를 보내 같은 spot state와 evidence가
+  유지되는지 검증한다.
 
 ## 남은 시나리오
 
-- `SM-Q9`: `.NET` 전용 Client/Scenarios 파일이며 공통 Config 2 scenario ID로 세지 않는다.
-  C++ MultiNode scaffold는 build까지만 확인했고, `.NET` 흐름처럼 spot rid만 public target으로 넘기는
-  route-to-spot request는 현재 C++ public route client 계약에 없다. 이 동작을 공통 계약으로 받을지는
-  별도 spec/guide 검토 뒤 결정해야 한다.
+- 없음
 
 ## 남은 구현 후보
 

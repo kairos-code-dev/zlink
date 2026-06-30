@@ -12,6 +12,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #define ensure(condition) ensure ((condition), #condition)
@@ -51,9 +52,7 @@ class bingo_client_scenario_t
 
             trace ("authenticate client1");
             const auto client1_auth_request = authenticate_req_t{bingo_sample_players_t::player1};
-            auto client1_auth =
-              co_await client1.request (client1_auth_request)
-                .async<authenticate_res_t> ();
+            auto client1_auth = co_await authenticate_with_retry (client1, client1_auth_request);
             ensure (client1_auth.actor_id == bingo_sample_players_t::player1);
             ensure (!client1_auth.actor_node_rid.empty ());
 
@@ -75,9 +74,7 @@ class bingo_client_scenario_t
 
             trace ("authenticate observer");
             const auto observer_auth_request = authenticate_req_t{bingo_sample_players_t::observer};
-            auto observer_auth =
-              co_await observer.request (observer_auth_request)
-                .async<authenticate_res_t> ();
+            auto observer_auth = co_await authenticate_with_retry (observer, observer_auth_request);
             ensure (observer_auth.actor_id == bingo_sample_players_t::observer);
             ensure (observer_auth.actor_node_rid != client1_match.room_owner_node_rid);
 
@@ -91,9 +88,7 @@ class bingo_client_scenario_t
 
             trace ("authenticate client2");
             const auto client2_auth_request = authenticate_req_t{bingo_sample_players_t::player2};
-            auto client2_auth =
-              co_await client2.request (client2_auth_request)
-                .async<authenticate_res_t> ();
+            auto client2_auth = co_await authenticate_with_retry (client2, client2_auth_request);
             ensure (client2_auth.actor_id == bingo_sample_players_t::player2);
             ensure (client2_auth.actor_id != client1_auth.actor_id);
             ensure (client2_auth.actor_node_rid != client1_auth.actor_node_rid);
@@ -157,12 +152,10 @@ class bingo_client_scenario_t
             auto reward_future = observer.wait_for<bingo_reward_announced_notify_t> ()
                                    .where (&bingo_reward_announced_notify_t::room_id, room_id)
                                    .to_future ("reward announcement wait failed");
-            auto client1_ended_future =
-              client1.wait_for<game_ended_notify_t> ().to_future ("client1 game ended wait failed");
-            auto client2_ended_future =
-              client2.wait_for<game_ended_notify_t> ().to_future ("client2 game ended wait failed");
             std::vector<std::future<number_drawn_notify_t>> client1_draw_futures;
             std::vector<std::future<number_drawn_notify_t>> client2_draw_futures;
+            client1_draw_futures.reserve (expected_draw_count);
+            client2_draw_futures.reserve (expected_draw_count);
             for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
                 client1_draw_futures.push_back (
                   client1.wait_for<number_drawn_notify_t> ()
@@ -173,6 +166,10 @@ class bingo_client_scenario_t
                     .where (&number_drawn_notify_t::draw_seq, draw_seq)
                     .to_future ("client2 draw notify wait failed"));
             }
+            auto client1_ended_future =
+              client1.wait_for<game_ended_notify_t> ().to_future ("client1 game ended wait failed");
+            auto client2_ended_future =
+              client2.wait_for<game_ended_notify_t> ().to_future ("client2 game ended wait failed");
             const auto client1_card_request =
               submit_bingo_card_req_t{room_id, client1_card_numbers};
             auto client1_card =
@@ -182,8 +179,10 @@ class bingo_client_scenario_t
             auto reward = reward_future.get ();
             std::vector<number_drawn_notify_t> drawn_numbers;
             for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
-                auto client1_drawn = client1_draw_futures[draw_seq - 1].get ();
-                auto client2_drawn = client2_draw_futures[draw_seq - 1].get ();
+                auto client1_drawn =
+                  client1_draw_futures[static_cast<std::size_t> (draw_seq - 1)].get ();
+                auto client2_drawn =
+                  client2_draw_futures[static_cast<std::size_t> (draw_seq - 1)].get ();
                 drawn_numbers.push_back (client1_drawn);
                 ensure (client1_drawn.draw_seq == draw_seq);
                 ensure (client2_drawn.draw_seq == draw_seq);
@@ -244,6 +243,26 @@ class bingo_client_scenario_t
         if (!condition) {
             throw std::runtime_error (std::string ("Ensure failed: ") + expression);
         }
+    }
+
+    static stream_e2e_client::task_t<authenticate_res_t>
+    authenticate_with_retry (stream_e2e_client::coroutine_connector_t &client,
+                             const authenticate_req_t &request)
+    {
+        std::exception_ptr last_error;
+        for (int attempt = 0; attempt < 5; ++attempt) {
+            try {
+                co_return co_await client.request (request).async<authenticate_res_t> ();
+            }
+            catch (...) {
+                last_error = std::current_exception ();
+                std::this_thread::sleep_for (std::chrono::milliseconds (300));
+            }
+        }
+        if (last_error) {
+            std::rethrow_exception (last_error);
+        }
+        throw std::runtime_error ("authenticate retry failed");
     }
 
     static void ensure (bool condition) { ensure (condition, "condition"); }

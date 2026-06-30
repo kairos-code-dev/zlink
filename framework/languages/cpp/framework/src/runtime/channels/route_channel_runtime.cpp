@@ -126,6 +126,7 @@ route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_no
         }
     }
     if (backend) {
+        std::lock_guard send_lock (_send_backend_mutex);
         return backend (*backend_target, backend_spot_target, backend_parts);
     }
     return result_t<void>::success ();
@@ -199,6 +200,7 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
         }
     }
     if (backend) {
+        std::lock_guard send_lock (_send_backend_mutex);
         return backend (*backend_target, backend_spot_target, backend_parts);
     }
     return result_t<void>::success ();

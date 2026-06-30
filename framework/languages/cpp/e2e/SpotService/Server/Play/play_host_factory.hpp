@@ -65,8 +65,6 @@ inline int run_play_server (int argc, char **argv)
                          zlink::framework::session_actor_manager_t> ()
           .add_transient<remote_actor_flow_handler_t, scenario_state_t,
                          zlink::framework::session_actor_manager_t> ()
-          .add_transient<ensure_user_spot_handler_t, scenario_state_t,
-                         zlink::framework::spot_node_manager_t> ()
           .add_transient<remote_actor_request_handler_t, scenario_state_t,
                          zlink::framework::route_client_t,
                          zlink::framework::session_actor_manager_t> ()
@@ -127,9 +125,6 @@ inline int run_play_server (int argc, char **argv)
                             .add_request_handler<ensure_actor_handler_t, e2e::ensure_actor_req_t,
                                                  e2e::ensure_actor_res_t> (
                               "EnsureActor", &ensure_actor_handler_t::handle)
-                            .add_request_handler<ensure_user_spot_handler_t, e2e::join_req_t,
-                                                 e2e::join_res_t> (
-                              "EnsureUserSpot", &ensure_user_spot_handler_t::handle)
                             .add_request_handler<channel_echo_handler_t, e2e::channel_echo_req_t,
                                                  e2e::channel_echo_res_t> (
                               "ChannelEchoReq", &channel_echo_handler_t::route_handle)

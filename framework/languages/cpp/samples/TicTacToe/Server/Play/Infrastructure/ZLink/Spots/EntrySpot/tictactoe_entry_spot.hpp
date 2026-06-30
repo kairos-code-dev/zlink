@@ -48,7 +48,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
             payload.player = {actor.actor_id, actor.actor_id, sample_names_t::required_level, 0};
         }
         auto joined =
-          co_await actor.context.join_spot (spot_rid, payload).yield<join_game_res_t> ();
+          co_await actor.context.join_spot (spot_rid, payload).async<join_game_res_t> ();
         co_return joined.reply;
     }
 

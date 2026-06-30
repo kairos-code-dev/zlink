@@ -21,7 +21,7 @@ inline app_t &add_bingo_api_server (app_t &app, const sample_topology_t &topolog
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (flow_log_path ("api-" + topology.api_node))
           .trace_label ("api-" + topology.api_node);
-        add_bingo_protobuf_codecs (options.codecs ());
+        use_default_bingo_codecs (options.codecs ());
 
         options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
 

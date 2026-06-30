@@ -29,16 +29,25 @@ struct sample_topology_t
     std::string dispatch_api_http_url = env_or ("DELIVERYDISPATCH_API_HTTP", "http://127.0.0.1:7392");
     std::string dispatch_center_route_endpoint =
       env_or ("DELIVERYDISPATCH_CENTER_ROUTE", "tcp://127.0.0.1:7394");
-    std::string courier_a_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_A_ROUTE", "tcp://127.0.0.1:7395");
-    std::string courier_b_endpoint =
-      env_or ("DELIVERYDISPATCH_COURIER_B_ROUTE", "tcp://127.0.0.1:7396");
+    std::string courier_route_endpoint =
+      env_or ("DELIVERYDISPATCH_COURIER_ROUTE", "tcp://127.0.0.1:7395");
     std::string tracking_route_endpoint =
       env_or ("DELIVERYDISPATCH_TRACKING_ROUTE", "tcp://127.0.0.1:7397");
     std::string status_fanout_endpoint =
       env_or ("DELIVERYDISPATCH_STATUS_FANOUT", "tcp://127.0.0.1:7411");
+    std::string customer_stream_endpoint =
+      env_or ("DELIVERYDISPATCH_CUSTOMER_STREAM",
+              env_or ("DELIVERYDISPATCH_SESSION_STREAM", "tcp://127.0.0.1:7400"));
+    std::string courier_stream_endpoint =
+      env_or ("DELIVERYDISPATCH_COURIER_STREAM", "tcp://127.0.0.1:7402");
     std::string session_stream_endpoint =
       env_or ("DELIVERYDISPATCH_SESSION_STREAM", "tcp://127.0.0.1:7400");
+    std::string courier_session_route_endpoint =
+      env_or ("DELIVERYDISPATCH_COURIER_SESSION_ROUTE", "tcp://127.0.0.1:7403");
+    std::string courier_actor_node_1_route_endpoint =
+      env_or ("DELIVERYDISPATCH_COURIER_ACTOR_NODE1_ROUTE", "tcp://127.0.0.1:7405");
+    std::string courier_actor_node_2_route_endpoint =
+      env_or ("DELIVERYDISPATCH_COURIER_ACTOR_NODE2_ROUTE", "tcp://127.0.0.1:7408");
 };
 
 inline int port_from_http_url (const std::string &url)

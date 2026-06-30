@@ -13,12 +13,12 @@
 | `.gitignore` | `.gitignore` | config | done | 실행 산출물을 제외한다. |
 | `DeliveryDispatch.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | CMake target 묶음이 역할별 project 참조를 대신한다. |
 | `README.ko.md` | `README.ko.md`; `feature-map.ko.md` | docs | done | 실행 방법과 검증 항목을 C++ 기준으로 기록한다. |
-| `run_sample.sh` | `run_e2e.sh` | runner | done | registry, tracking, session, dispatch center, dispatch API, probe, client를 실행한다. Session role이 courier route endpoint와 customer/courier stream endpoint를 함께 연다. |
+| `run_sample.sh` | `run_e2e.sh` | runner | done | registry, tracking, session, courier gateway, courier actor node 2개, dispatch center, dispatch API, probe, client를 실행한다. Session role이 customer/courier stream을 함께 받는 점은 아직 partial이다. |
 | `run_sample.ps1` | not-needed | runner | not-needed | 이번 C++ E2E runner는 Linux shell 경로만 제공한다. |
 | `logs/.gitignore` | `logs/.gitignore` | config | done | role flow/evidence log를 제외한다. |
 | `logs/*.log` | `logs/*.log` | evidence | done | 실행 중 생성되는 flow/evidence log가 대응한다. |
 | `Shared/DeliveryDispatch.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | shared header를 각 target include 경로로 사용한다. |
-| `Shared/Contracts/Messages.cs` | `Shared/Contracts/messages.hpp` | shared | partial | delivery request, reply, notify, evidence, courier bind, offer notify, courier decision DTO가 대응한다. Courier gateway/actor-node 내부 DTO는 role gap과 함께 남아 있다. |
+| `Shared/Contracts/Messages.cs` | `Shared/Contracts/messages.hpp` | shared | partial | delivery request, reply, notify, evidence, `BindCourierReq`, `BindCourierSessionReq`, `EnsureCourierActorReq`, offer notify, courier decision DTO가 대응한다. CustomerGateway 쪽 actor-bound session 흐름은 아직 단순화되어 있다. |
 | `Server/Configuration/DeliveryDispatch.Server.Configuration.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | configuration headers를 각 role target에서 include한다. |
 | `Server/Configuration/EvidenceStore.cs` | `Server/Configuration/evidence_store.hpp` | infrastructure | done | 상태 evidence append/read/sequence 검증을 담당한다. |
 | `Server/Configuration/SampleFlowLog.cs` | `sample_log_dir.hpp`; role `main.cpp` trace option | infrastructure | done | role별 message-flow log 파일 경로를 제공한다. |
@@ -34,7 +34,7 @@
 | `Server/DispatchCenter/DispatchCenterHostFactory.cs` | `Server/DispatchCenter/main.cpp` | server-role | done | C++ dispatch center role은 main에서 handler group과 client channels를 구성한다. |
 | `Server/DispatchCenter/AssignDeliveryHandler.cs` | `Server/DispatchCenter/main.cpp` | handler | done | assign request를 받아 dispatch worker로 전달한다. |
 | `Server/DispatchCenter/DispatchWorkQueue.cs` | `Server/DispatchCenter/main.cpp` | infrastructure | done | C++ role 내부 queue와 worker loop가 대응한다. |
-| `Server/DispatchCenter/DispatchWorker.cs` | `Server/DispatchCenter/main.cpp` | support | partial | courier offer, timeout 재배정, tracking status publish가 대응한다. 최신 .NET처럼 별도 courier gateway와 actor node를 거치지는 않는다. |
+| `Server/DispatchCenter/DispatchWorker.cs` | `Server/DispatchCenter/main.cpp` | support | done | courier offer를 CourierGateway channel로 보내고, timeout 재배정과 tracking status publish를 처리한다. |
 | `Server/DispatchCenter/Program.cs` | `Server/DispatchCenter/main.cpp` | server-role | done | dispatch center role 진입점이다. |
 | `Server/Courier/DeliveryDispatch.Server.Courier.csproj` | `Server/Session/main.cpp`; legacy `Server/Courier/main.cpp` | build | not-needed | 최신 .NET 샘플에는 별도 Courier role이 없다. C++ runner는 Session role의 courier stream 경로를 사용하고, legacy target은 직접 응답 fallback으로만 남아 있다. |
 | `Server/Courier/CourierServerHostFactory.cs` | `Server/Session/main.cpp`; legacy `Server/Courier/main.cpp` | server-role | not-needed | 최신 .NET 샘플의 courier client-visible 흐름은 stream session bind와 decision send로 검증한다. |
@@ -67,7 +67,7 @@
 | `Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | C++의 dispatch API와 dispatch center target이 .NET Dispatch server 책임을 나눠 맡는다. |
 | `Server/Dispatch/DispatchServerHostFactory.cs` | `Server/DispatchApi/main.cpp`; `Server/DispatchCenter/main.cpp` | server-role | done | HTTP API host와 dispatch worker host 구성이 C++에서 두 executable로 분리되어 있다. |
 | `Server/Dispatch/DispatchWorkQueue.cs` | `Server/DispatchCenter/main.cpp` | infrastructure | done | C++ dispatch center role 내부 queue/worker loop가 대응한다. |
-| `Server/Dispatch/DispatchWorker.cs` | `Server/DispatchCenter/main.cpp` | support | partial | courier offer, timeout 재배정, tracking status publish는 대응하지만 최신 .NET처럼 courier gateway/actor/session 경로로 제안하지 않는다. |
+| `Server/Dispatch/DispatchWorker.cs` | `Server/DispatchCenter/main.cpp` | support | done | courier offer는 CourierGateway를 거쳐 ActorNode와 Session offer route로 전달되고, timeout 재배정과 tracking status publish가 대응한다. |
 | `Server/Dispatch/Program.cs` | `Server/DispatchApi/main.cpp`; `Server/DispatchCenter/main.cpp` | server-role | done | C++는 HTTP edge와 worker를 별도 role executable로 실행한다. |
 | `Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | partial | C++는 별도 CustomerGateway target이 없고 `Server/Session`과 `Server/Tracking`으로 고객 session/tracking 책임을 나눠 구현한다. |
 | `Server/CustomerGateway/CustomerGatewayHostFactory.cs` | `Server/Session/main.cpp`; `Server/Tracking/main.cpp` | server-role | partial | customer stream bind와 tracking notification이 분리되어 있지만 .NET의 CustomerGateway 단일 role과 같은 actor/session binding 구조는 아니다. |
@@ -84,28 +84,28 @@
 | `Server/CourierSession/CourierSession.cs` | `Server/Session/main.cpp` | session | done | courier-a/courier-b stream session을 받고 offer push와 decision receive를 처리한다. |
 | `Server/CourierSession/BindCourierSessionHandler.cs` | `Server/Session/main.cpp` | handler | done | `BindCourierSessionReq`를 public stream request로 받아 courier id와 stream을 bind한다. |
 | `Server/CourierSession/Program.cs` | `Server/Session/main.cpp` | server-role | partial | 별도 CourierSession executable은 없고 Session role 안에서 customer/courier stream을 함께 처리한다. |
-| `Server/CourierGateway/DeliveryDispatch.Server.CourierGateway.csproj` | not-implemented | build | gap | C++에는 courier gateway 전용 executable이 없다. |
-| `Server/CourierGateway/CourierGatewayHostFactory.cs` | not-implemented | server-role | gap | courier id를 actor node rid/session route로 해석하는 gateway host가 없다. |
-| `Server/CourierGateway/CourierDirectory.cs` | not-implemented | infrastructure | gap | courier id별 actor node/session route directory가 없다. |
-| `Server/CourierGateway/CourierGatewayHandlers.cs` | `Server/Session/main.cpp` | handler | partial | C++ Session role이 offer를 bound courier stream으로 직접 push한다. 최신 .NET의 gateway -> actor node route 경로와 다르다. |
-| `Server/CourierGateway/Program.cs` | not-implemented | server-role | gap | courier gateway role executable이 없다. |
-| `Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj` | not-implemented | build | gap | C++에는 courier actor node target이 없다. |
-| `Server/CourierActorNode/NodeHostFactory.cs` | not-implemented | server-role | gap | courier actor node host와 node rid별 placement가 없다. |
-| `Server/CourierActorNode/ActorDirectory.cs` | not-implemented | infrastructure | gap | courier actor directory가 없다. |
-| `Server/CourierActorNode/CourierActor.cs` | not-implemented | actor | gap | courier actor가 session route로 offer를 push하고 decision을 받는 경로가 없다. |
-| `Server/CourierActorNode/RouteHandlers.cs` | not-implemented | handler | gap | courier actor node route handlers가 없다. |
+| `Server/CourierGateway/DeliveryDispatch.Server.CourierGateway.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | courier gateway target이 대응한다. |
+| `Server/CourierGateway/CourierGatewayHostFactory.cs` | `Server/CourierGateway/main.cpp` | server-role | done | courier route server와 actor node route client를 구성한다. |
+| `Server/CourierGateway/CourierDirectory.cs` | `Server/CourierGateway/main.cpp` | infrastructure | done | courier id별 actor node/session route binding을 role 내부 directory에 저장한다. |
+| `Server/CourierGateway/CourierGatewayHandlers.cs` | `Server/CourierGateway/main.cpp` | handler | done | bind 요청은 actor node ensure route로 보내고, offer는 저장된 actor node rid로 라우팅한다. |
+| `Server/CourierGateway/Program.cs` | `Server/CourierGateway/main.cpp` | server-role | done | courier gateway role 진입점이다. |
+| `Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | courier actor node target이 대응한다. runner가 node 1/2를 같은 executable의 다른 routing id로 실행한다. |
+| `Server/CourierActorNode/NodeHostFactory.cs` | `Server/CourierActorNode/main.cpp` | server-role | done | courier actor node route mesh와 courier session route client를 구성한다. |
+| `Server/CourierActorNode/ActorDirectory.cs` | `Server/CourierActorNode/main.cpp` | infrastructure | partial | C++ role은 courier id와 node rid를 route handler에서 유지한다. 별도 actor directory 타입은 아직 없다. |
+| `Server/CourierActorNode/CourierActor.cs` | `Server/CourierActorNode/main.cpp` | actor | partial | ActorNode role이 offer를 Session offer route로 전달한다. `.NET`처럼 actor context의 bound session으로 직접 push하는 구조는 아직 아니다. |
+| `Server/CourierActorNode/RouteHandlers.cs` | `Server/CourierActorNode/main.cpp` | handler | done | `EnsureCourierActorReq`와 `OfferDeliveryReq` route handler가 대응한다. |
 | `Server/CourierActorNode/Spots/EntrySpot/EntrySpot.cs` | not-implemented | spot | gap | courier entry spot이 없다. |
 | `Server/CourierActorNode/Spots/EntrySpot/Handlers/BindCourierSessionActorHandler.cs` | not-implemented | handler | gap | courier actor session bind handler가 없다. |
 | `Server/CourierActorNode/Spots/EntrySpot/Handlers/CourierDecisionActorHandler.cs` | not-implemented | handler | gap | courier decision actor handler가 없다. |
-| `Server/CourierActorNode/Program.cs` | not-implemented | server-role | gap | courier actor node role executable이 없다. |
+| `Server/CourierActorNode/Program.cs` | `Server/CourierActorNode/main.cpp` | server-role | done | courier actor node role 진입점이다. |
 
 ## Scenario 대응
 
 | Scenario | C++ 대응 | 상태 | 비고 |
 |----------|----------|------|------|
 | registry discovery readiness | `Probe/main.cpp`; `run_e2e.sh` | done | Tracking route readiness를 client 실행 전에 확인한다. |
-| successful delivery | `Client/delivery_dispatch_client_scenario.hpp`; `Server/Session/main.cpp` | done | 고객 session 상태 push와 courier-a stream offer/decision 경로를 검증한다. |
-| reassigned delivery | `Client/delivery_dispatch_client_scenario.hpp`; `Server/Session/main.cpp`; `Server/DispatchCenter/main.cpp` | done | courier-a stream offer timeout 뒤 courier-b stream offer/decision과 재배정 상태를 검증한다. |
+| successful delivery | `Client/delivery_dispatch_client_scenario.hpp`; `Server/CourierGateway/main.cpp`; `Server/CourierActorNode/main.cpp`; `Server/Session/main.cpp` | done | 고객 session 상태 push와 courier-a gateway/actor-node/session offer/decision 경로를 검증한다. |
+| reassigned delivery | `Client/delivery_dispatch_client_scenario.hpp`; `Server/CourierGateway/main.cpp`; `Server/CourierActorNode/main.cpp`; `Server/Session/main.cpp`; `Server/DispatchCenter/main.cpp` | done | courier-a stream offer timeout 뒤 gateway가 courier-b actor node로 재요청하고, courier-b stream offer/decision과 재배정 상태를 검증한다. |
 | server evidence self-check | `Server/DispatchApi/main.cpp`; `Server/Configuration/evidence_store.hpp` | done | `/self-check/assert`가 evidence log를 검증한다. |
 | message-flow evidence | role `main.cpp`; `run_e2e.sh` | done | role별 trace log에 message-flow 기록이 남는지 확인한다. |
 
@@ -129,4 +129,9 @@
   - 결과: 통과
   - 의미: customer stream 1개와 courier stream 2개를 열고, `BindCourierSessionReq`,
     `OfferDeliveryNotify`, `CourierDecisionMsg` 흐름으로 successful delivery와 reassignment를 검증한다.
-    남은 차이는 별도 CourierGateway/CourierActorNode role split이다.
+    이 시점의 남은 차이는 별도 CourierGateway/CourierActorNode role split이었다.
+- 2026-06-30: `timeout 420s framework/languages/cpp/e2e/DeliveryDispatch/run_e2e.sh`
+  - 결과: 통과
+  - 의미: CourierGateway와 CourierActorNode 1/2 target을 runner에 추가한 뒤에도 successful delivery,
+    reassignment, server evidence self-check가 통과했다. runner는 `flow-courier-gateway.log`,
+    `flow-delivery-courier-node-1.log`, `flow-delivery-courier-node-2.log`의 `message flow`도 확인한다.

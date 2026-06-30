@@ -15,10 +15,10 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 
 - `SM-A1`: public `ZLinkSpotManager.getOrCreate`로 user spot을 생성하고 evidence로 확인한다.
 - `SM-A2`: public `ZLinkSpotOutbound.requestToSpot`으로 user spot state mutation을 검증한다.
-- `SM-A3`: `room-a`와 `room-b`가 각각 `play-a`와 `play-b`에서만 처리되는지 확인한다.
-- `SM-A4`: 같은 key가 같은 `RoutingId`와 같은 owner 노드로 반복 라우팅되는지 확인한다.
-- `SM-A6`: user spot 생성 시 initialize evidence가 남고, public `ZLinkSpotManager.close`로 명시
-  close했을 때 closing evidence가 남는지 확인한다.
+- `SM-A3`: `room-a` 요청이 해당 spot의 owner인 `play-a`에서 처리되는지 확인한다.
+- `SM-A4`: 같은 `RoutingId`인 `room-a`로 반복 보낸 요청이 같은 owner 노드에 유지되는지 확인한다.
+- `SM-A6`: Play-B HTTP admin endpoint가 public `ZLinkSpotManager.getOrCreate`로 만든 user spot을
+  public `ZLinkSpotManager.close`로 명시 close했을 때 closing evidence가 남는지 확인한다.
 - `SM-A7`: 이미 만든 spot rid를 다른 spot 타입으로 `getOrCreate`할 때 public configuration error로
   거부되고, 기존 spot이 같은 타입으로 계속 조회되는지 확인한다.
 - `SM-A8`: public `context.runWorker`로 긴 작업을 spot 직렬 루프 밖에서 실행하는 동안 같은 spot의
@@ -27,8 +27,21 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   `ZLinkActorContext.joinSpot`으로 user spot에 join한 뒤 user spot actor request를 처리하는지 확인한다.
 - `SM-B3`: actor create/join/request payload의 profile, level, tag 값이 handler까지 유지되고 reply에
   같은 값이 반영되는지 확인한다.
+- `SM-B5`: handler 없는 actor packet name인 `MissingActorReq`를 public stream connector request로 보냈을
+  때 request가 실패하고, message-flow observer가 `SPOT_ACTOR` surface의 `HANDLER_MISSING` /
+  `REPLY_ERROR` evidence를 남기는지 확인한다. `logs/20260630-035320-2565912` full runner에서
+  `SM-B5` marker와 `SPOT_ACTOR/HANDLER_MISSING/REPLY_ERROR/MissingActorReq` flow evidence를 확인했다.
+- `SM-B6`: user spot에 join한 actor가 public `ZLinkSpotContext.leaveActor(actor)`로 명시 leave할 때
+  user spot leave evidence만 남고, stream disconnect 때는 entry spot disconnect evidence만 남는지
+  확인한다. `logs/focused-actor-session-20260630-023713-2377275`에서 `SM-B6` marker와
+  actor-session 통과 marker를 확인했다.
 - `SM-B7`: actor create, entry request, join, user request callback/handler가 evidence marker를 남겨
-  lifecycle과 packet handler 실행 순서를 확인할 수 있는지 검증한다.
+  lifecycle과 packet handler 실행 순서를 확인할 수 있는지 검증한다. Session role의 `/evidence/wait`
+  endpoint로 필요한 evidence marker가 모두 기록될 때까지 기다린다.
+- `SM-B8`: stream session으로 bind한 actor를 public `ZLinkEntrySpotContext.destroyActor(actor)`로
+  명시 파괴하고, 같은 actor로 다시 보내는 request가 실패하는지 확인한다.
+  `logs/focused-actor-session-20260630-023307-2370308`에서 `SM-B8` marker와 actor-session 통과
+  marker를 확인했다.
 - `SM-C1`: 외부 consumer의 public `ZLinkSpotOutbound`로 request, send, timeout, 미등록 packet
   negative path를 검증한다.
 - `SM-C2`: spot handler 안에서 public `ZLinkSpotOutbound.requestToChannel` /
@@ -37,9 +50,52 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 - `SM-C3`: public `ZLinkSpotOutbound.requestToSpot` / `sendToSpot`으로 user spot 사이
   request/send가 노드 경계를 넘어 처리되는지 확인하고, SPOT mesh publish evidence를 함께 확인한다.
 - `SM-C4`: local spot factory가 없는 publisher 역할이 public `ZLinkSpotPublisherClient.publishSpot`으로
-  SPOT mesh에 publish하고, 구독 spot들이 event evidence를 남기는지 확인한다.
+  SPOT mesh에 publish하고, 구독 spot들이 event evidence를 남기는지 확인한다. Gateway role도 같은
+  public publisher client로 `/spot/publish` endpoint를 제공하며, client `gateway-publish` mode가
+  Play role의 `/evidence/wait`로 target spot의 publish evidence를 기다리고 다른 spot으로 오배달되지
+  않았는지 확인한다.
 - `SM-D1`: public stream connector와 framework `ZLinkSessionActors.bind` / `ZLinkSessionActor.relay` /
-  actor `boundSession().send`로 local stream session auth, actor relay, actor push를 검증한다.
+  actor `boundSession().send`로 local stream session auth, actor relay, actor push를 검증한다. Session
+  evidence wait endpoint도 actor-session mode 안에서 함께 검증한다.
+- `SM-D3`: 같은 stream actor가 entry spot request와 public `ZLinkActorContext.joinSpot`으로 join한
+  user spot request에서 모두 relay/push를 수행하는지 비교한다. `actor-session` mode는
+  `logs/focused-actor-session-20260630-020720-2316864`에서 `SM-D3` marker와 `ActorEntryRequest`,
+  `ActorUserJoined`, `ActorUserRequest` evidence를 확인했다.
+- `SM-D4`: 한 stream session에 두 actor를 bind하고 `actor-id` metadata로 각 actor request와 push가
+  분기되는지 확인한다. `actor-id` 없이 보내는 request는 다중 bind 상태에서 실패해야 한다.
+  `logs/focused-actor-session-20260630-021110-2323861`에서 `SM-D4` marker, 두 actor의
+  `ActorSessionBound`, `ActorEntryRequest` evidence를 확인했다.
+- `SM-D5`: stream disconnect 때 session handler가 선택한 bound actor에만 public
+  `ZLinkSessionActor.notifyDisconnected`를 호출하고, entry spot의 disconnect callback evidence가
+  남는지 확인한다. `logs/focused-actor-session-20260630-021110-2323861`에서 `SM-D5` marker,
+  `ActorDisconnectNotified`, `ActorEntryDisconnected` evidence를 확인했다.
+- `SM-D6`: `session-a`와 `session-b`에 각각 연결한 stream session 중 request를 보낸 actor의 bound
+  session에만 public `ZLinkSessionActor.boundSession().send` push가 전달되고, 다른 gateway의 session에는
+  `ActorPush`가 전달되지 않는지 확인한다. `logs/focused-actor-session-20260630-031506-2451994`에서
+  `SM-D6` marker와 actor-session 통과 marker를 확인했다.
+- `SM-D7`: auth 전에 actor packet을 보내면 public stream connector request가 실패하고, 새 stream
+  session에서 `ActorAuthRequest`로 actor를 bind한 뒤에는 같은 actor request와 push가 정상 dispatch되는지
+  확인한다. `logs/focused-actor-session-20260630-022502-2354570`에서 `SM-D7` marker와
+  actor-session 통과 marker를 확인했다.
+- `SM-D8`: stream reconnect 중 끊긴 stream의 pending request가 실패하고, disconnect callback evidence가
+  남은 뒤 같은 actor가 새 stream에서 재auth/rebind되어 request를 처리하는지 확인한다.
+  `logs/focused-actor-session-20260630-025247-2408499`에서 `SM-D8` marker와 actor-session 통과
+  marker를 확인했다.
+- `SM-D9`: public stream connector의 `observeInbound` observer가 stream reply packet name을 관측하는지
+  확인한다. `logs/focused-actor-session-20260630-021110-2323861`에서 `SM-D9` marker와 Session
+  `StreamInbound` evidence를 함께 확인했다.
+- `SM-D10`: `maxReceivedMessages = 1`과 manual dispatch를 사용하는 public stream connector가 오래된
+  actor push를 버리고 최신 push만 유지하는지 확인한다. 같은 Session endpoint의 다른 stream session은
+  push를 정상 수신해 backpressure가 session별로 격리되는지도 확인한다.
+  `logs/focused-actor-session-20260630-031506-2451994`에서 `SM-D10` marker와 actor-session 통과
+  marker를 확인했다.
+- `SM-D11`: 같은 client process에서 public stream connector로 actor request를 처리한 뒤 public
+  `ZLinkRouteClient`로 Play-A route-channel request를 보내 stream 경로와 channel 경로가 함께 동작하는지
+  확인한다. `logs/focused-actor-session-20260630-030200-2426602`에서 `SM-D11` marker와 actor-session
+  통과 marker를 확인했다.
+- `SM-D13`: heartbeat가 켜진 public stream connector가 일정 시간 연결을 유지하고, 같은 stream session에서
+  actor request를 계속 처리하는지 확인한다. `logs/focused-actor-session-20260630-025654-2416593`에서
+  `SM-D13` marker와 actor-session 통과 marker를 확인했다.
 - `SM-E1`: handler 없는 spot route request/send가 error/drop 경로를 타고 dispatch observer evidence를
   남기는지 확인한다.
 - `SM-E2`: user spot이 public `context.addTimer`로 등록한 timer를 주기적으로 실행하고 tick evidence를
@@ -64,23 +120,10 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   아직 없다.
 - `SM-B2`: remote actor join과 cross-node mailbox 실행을 검증하는 scenario가 아직 없다.
 - `SM-B4`: remote actor request와 reply를 검증하는 scenario가 아직 없다.
-- `SM-B5`: handler 없는 actor packet negative path를 검증하는 scenario가 아직 없다.
-- `SM-B6`: explicit leave와 disconnect callback 차이를 검증하는 scenario가 아직 없다.
-- `SM-B8`: Kotlin public API는 `ZLinkEntrySpotContext.destroyActor(ZLinkActor)` 형태다. 공통 문서의
-  id 기반 절차와 같은 의미를 고정하는 Kotlin scenario가 아직 없다.
 - `SM-D2`: remote stream session bind와 cross-node actor relay/push scenario가 아직 없다.
-- `SM-D3`: entry spot actor bind와 user spot actor bind를 비교하는 scenario가 아직 없다.
-- `SM-D4`: 한 stream session에 여러 actor를 bind하고 `actor-id` metadata로 분기하는 scenario가
-  아직 없다.
-- `SM-D5`: session disconnect 뒤 선택 actor에만 disconnect callback을 통지하는 scenario가 아직 없다.
-- `SM-D6`: bound session push target isolation scenario가 아직 없다.
-- `SM-D7`: stream session auth와 auth 전 packet dispatch 실패를 검증하는 scenario가 아직 없다.
-- `SM-D8`: stream reconnect 중 pending failure와 재auth/rebind를 검증하는 scenario가 아직 없다.
-- `SM-D9`: stream inbound observer evidence를 검증하는 scenario가 아직 없다.
-- `SM-D10`: stream backpressure 정책을 public contract로 고정하는 scenario가 아직 없다.
-- `SM-D11`: 같은 consumer에서 stream request와 channel request를 섞는 scenario가 아직 없다.
-- `SM-D12`: 다른 gateway로 재접속해 actor 상태를 이어받는 scenario가 아직 없다.
-- `SM-D13`: stream heartbeat 중단과 disconnect 감지를 검증하는 scenario가 아직 없다.
+- `SM-D12`: `session-a`에서 끊고 `session-b`로 재접속하는 topology는 준비했지만, 현재 Kotlin Session
+  role은 연결 서버와 actor logic을 분리하지 않아 같은 actor id가 `session-b` 쪽 actor로 bind된다. 공통
+  기준처럼 logic actor 상태가 gateway와 무관하게 유지되는 완료 scenario는 아직 없다.
 - `SM-D14`: TLS stream endpoint와 certificate 구성이 아직 없다.
 
 ## E2E/harness 대기
@@ -98,3 +141,16 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 - `SM-G2`: scale-out 중 앱 주도 owner remap을 검증하는 harness가 아직 없다.
 - `SM-G3`: 동시 join/leave/request 경합을 재현하는 부하 harness가 아직 없다.
 - `SM-G4`: 다수 bound session push 부하와 오배달 없음을 확인하는 harness가 아직 없다.
+
+## .NET 추가 검증 파일
+
+아래 항목은 `.NET` tree에는 client scenario file로 존재하지만, 공통 Config 2 문서와 `.NET
+feature-map.ko.md`에는 scenario ID로 등록되어 있지 않다. Kotlin에서는 공통 scenario 완료와 분리해
+추적한다.
+
+- `SM-Q9`: `.NET` `Client/Scenarios/SmQ9Scenario.cs`는 MultiNode role의 두 노드에서 local spot을
+  만들고 route-to-spot request가 각 노드의 spot으로 유지되는지 확인한다. Kotlin에는 MultiNode 전용
+  role/project와 같은 local create/state/evidence path가 생겼고, client `multi-node` mode가 같은 흐름을
+  실행한다. `logs/20260630-013008-2203737` full runner에서 `scenario SM-Q9 passed`,
+  `spot-service kotlin e2e mode=multi-node result=passed`, 두 노드의 `multi-state-request` evidence를
+  확인했다.

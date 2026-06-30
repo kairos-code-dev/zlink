@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.registrationcodec\.Program'
+role_pattern='systems\.zlink\.e2e\.registrationcodec\.(client|main|invalidduplicate|jsononlypeer|codecrequester)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -58,7 +58,7 @@ cleanup() {
 trap cleanup EXIT
 
 reserve_ports() {
-  local count="${1:-3}"
+  local count="${1:-5}"
   python3 - "${count}" <<'PY'
 import socket
 import sys
@@ -105,12 +105,51 @@ wait_port() {
   return 1
 }
 
+wait_health() {
+  local name="$1"
+  local endpoint="$2"
+  for _ in $(seq 1 600); do
+    if python3 - "${endpoint}/health" <<'PY'
+import sys
+import urllib.request
+
+try:
+    with urllib.request.urlopen(sys.argv[1], timeout=0.2) as response:
+        sys.exit(0 if 200 <= response.status < 300 else 1)
+except Exception:
+    sys.exit(1)
+PY
+    then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} health at ${endpoint}" >&2
+  return 1
+}
+
 gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/install/registration-codec/bin/registration-codec"
+client_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/registration-codec-client/bin/registration-codec-client"
+}
+
+main_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Main/install/registration-codec-main/bin/registration-codec-main"
+}
+
+invalid_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-InvalidDuplicate/install/registration-codec-invalid-duplicate/bin/registration-codec-invalid-duplicate"
+}
+
+json_only_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-JsonOnlyPeer/install/registration-codec-json-only-peer/bin/registration-codec-json-only-peer"
+}
+
+requester_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-CodecRequester/install/registration-codec-requester/bin/registration-codec-requester"
 }
 
 read -r SERVER_PORT HTTP_PORT INVALID_PORT MISMATCH_PORT MISMATCH_HTTP_PORT <<<"$(reserve_ports 5)"
@@ -120,13 +159,13 @@ INVALID_ENDPOINT="$(tcp "${INVALID_PORT}")"
 MISMATCH_ENDPOINT="$(tcp "${MISMATCH_PORT}")"
 MISMATCH_HTTP_ENDPOINT="$(http "${MISMATCH_HTTP_PORT}")"
 
+rm -rf "${ZLINK_JAVA_E2E_BUILD_DIR}"
 gradle_run installDist
 
 set +e
-ZLINK_JAVA_E2E_ROLE=invalid-server \
 ZLINK_JAVA_E2E_SERVER_ENDPOINT="${INVALID_ENDPOINT}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/invalid-server.stdout.log" 2>"${log_dir}/invalid-server.stderr.log"
+  "$(invalid_bin)" >"${log_dir}/invalid-server.stdout.log" 2>"${log_dir}/invalid-server.stderr.log"
 invalid_status="$?"
 set -e
 if [[ "${invalid_status}" == "0" ]]; then
@@ -137,21 +176,19 @@ cat "${log_dir}/invalid-server.stdout.log" "${log_dir}/invalid-server.stderr.log
   | grep -Eq "duplicate|Duplicate|registration|packet"
 echo "scenario RC-A6 passed"
 
-ZLINK_JAVA_E2E_ROLE=server \
 ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
+  "$(main_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
 pids+=("$!")
 wait_port server "${SERVER_ENDPOINT}"
-wait_port evidence "${HTTP_ENDPOINT}"
+wait_health server "${HTTP_ENDPOINT}"
 sleep 1
 
-ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+  "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
 python3 - "${HTTP_ENDPOINT}/evidence" >"${log_dir}/server-evidence.json" <<'PY'
@@ -166,35 +203,25 @@ grep -q "EchoAuto" "${log_dir}/server-evidence.json"
 grep -q "ProtobufEcho" "${log_dir}/server-evidence.json"
 grep -q "MsgpackEcho" "${log_dir}/server-evidence.json"
 
-stop_current() {
-  set +e
-  for ((i=${#pids[@]}-1; i>=0; i--)); do
-    kill "${pids[$i]}" >/dev/null 2>&1 || true
-  done
-  wait >/dev/null 2>&1 || true
-  pids=()
-  set -e
-}
+for ((i=${#pids[@]}-1; i>=0; i--)); do
+  kill "${pids[$i]}" >/dev/null 2>&1 || true
+done
+wait >/dev/null 2>&1 || true
+pids=()
 
-stop_current
-
-ZLINK_JAVA_E2E_ROLE=server \
-ZLINK_JAVA_E2E_CODEC_MODE=json-only \
 ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
+  "$(json_only_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
 pids+=("$!")
 wait_port mismatch-server "${MISMATCH_ENDPOINT}"
-wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
+wait_health mismatch-server "${MISMATCH_HTTP_ENDPOINT}"
 sleep 1
 
-ZLINK_JAVA_E2E_ROLE=client \
-ZLINK_JAVA_E2E_CLIENT_MODE=codec-mismatch \
 ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
 ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/mismatch-client.stdout.log" 2>"${log_dir}/mismatch-client.stderr.log"
+  "$(requester_bin)" >"${log_dir}/mismatch-client.stdout.log" 2>"${log_dir}/mismatch-client.stderr.log"
 
 cat "${log_dir}/mismatch-client.stdout.log"
 grep -q "scenario RC-A4 passed" "${log_dir}/client.stdout.log"

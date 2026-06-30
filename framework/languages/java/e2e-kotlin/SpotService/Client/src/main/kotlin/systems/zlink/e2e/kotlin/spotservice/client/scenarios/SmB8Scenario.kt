@@ -1,0 +1,57 @@
+package systems.zlink.e2e.kotlin.spotservice.client.scenarios
+
+import java.time.Duration
+import systems.zlink.e2e.kotlin.spotservice.Contracts
+import systems.zlink.e2e.kotlin.spotservice.Env
+import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
+import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
+import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
+import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
+
+internal object SmB8Scenario {
+    fun run() {
+        val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        try {
+            val actorId = "actor-sm-b8-destroy"
+            val profile = Contracts.ActorProfile("Destroy", 8, listOf("destroy"))
+            connector.connect().await()
+            val auth = connector
+                .request(Contracts.ActorAuthRequest(actorId, profile))
+                .await(Contracts.ActorAuthReply::class.java)
+            ensure(auth.actorId == actorId, "SM-B8 auth actor mismatch")
+
+            val destroyed = connector
+                .request(Contracts.DestroyActorRequest(actorId))
+                .await(Contracts.DestroyActorReply::class.java)
+            ensure(destroyed.destroyed && destroyed.actorId == actorId, "SM-B8 destroy reply mismatch")
+
+            val evidence = postJson(
+                Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
+                "/evidence/wait",
+                Contracts.EvidenceWaitRequest(
+                    listOf("ActorDestroyed|session-a|entry|$actorId"),
+                    10_000,
+                ),
+                Contracts.EvidenceSnapshot::class.java,
+            )
+            ensure(
+                evidence.entries.none { it.marker == "ActorDestroyFailed" && it.value?.contains(actorId) == true },
+                "SM-B8 actor destroy reported a failure",
+            )
+
+            expectFailure {
+                connector
+                    .request(Contracts.ActorEchoRequest("after-destroy", 8, profile))
+                    .timeout(Duration.ofMillis(500))
+                    .await(Contracts.ActorEchoReply::class.java)
+            }
+
+            println("scenario SM-B8 passed")
+        } finally {
+            try {
+                connector.close().await()
+            } catch (_: Exception) {
+            }
+        }
+    }
+}

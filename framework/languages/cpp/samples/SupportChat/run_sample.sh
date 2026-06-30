@@ -17,9 +17,10 @@ REGISTRY_BIN="$BIN_DIR/sample_cpp_framework_supportchat_registry"
 SUPPORT_BIN="$BIN_DIR/sample_cpp_framework_supportchat_support"
 API_BIN="$BIN_DIR/sample_cpp_framework_supportchat_api"
 SESSION_BIN="$BIN_DIR/sample_cpp_framework_supportchat_session"
+PROBE_BIN="$BIN_DIR/sample_cpp_framework_supportchat_probe"
 CLIENT_BIN="$BIN_DIR/sample_cpp_framework_supportchat_client"
 
-for binary in "$REGISTRY_BIN" "$SUPPORT_BIN" "$API_BIN" "$SESSION_BIN" "$CLIENT_BIN"; do
+for binary in "$REGISTRY_BIN" "$SUPPORT_BIN" "$API_BIN" "$SESSION_BIN" "$PROBE_BIN" "$CLIENT_BIN"; do
   if [[ ! -x "$binary" ]]; then
     echo "Missing executable: $binary" >&2
     echo "Build C++ samples first or set ZLINK_CPP_BUILD_DIR." >&2
@@ -187,6 +188,19 @@ wait_port session-spot "$SESSION_SPOT_ENDPOINT"
 wait_port session-actor-route "$SESSION_ACTOR_ROUTE_ENDPOINT"
 wait_port session-stream "$STREAM_ENDPOINT"
 
+"$PROBE_BIN" \
+  --registry-endpoint "$REGISTRY_ROUTER_ENDPOINT" \
+  --api-channel-endpoint "$API_CHANNEL_ENDPOINT" \
+  --support-channel-endpoint "$SUPPORT_CHANNEL_ENDPOINT" \
+  --timeout-seconds 10 >"$LOG_DIR/probe.log" 2>&1 || {
+  cat "$LOG_DIR/probe.log" >&2
+  cat "$LOG_DIR/registry.log" >&2
+  cat "$LOG_DIR/support.log" >&2
+  cat "$LOG_DIR/api.log" >&2
+  cat "$LOG_DIR/session.log" >&2
+  exit 1
+}
+
 sleep "${SUPPORTCHAT_CPP_STARTUP_SETTLE_SECONDS:-1}"
 
 "$CLIENT_BIN" --stream-endpoint "$STREAM_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
@@ -199,6 +213,7 @@ sleep "${SUPPORTCHAT_CPP_STARTUP_SETTLE_SECONDS:-1}"
 }
 
 grep -q "supportchat=completed" "$LOG_DIR/client.log"
+grep -q "topology=ready" "$LOG_DIR/probe.log"
 grep -Rq "message flow" "$SUPPORTCHAT_LOG_DIR"
 
 cleanup

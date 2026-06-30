@@ -22,6 +22,7 @@ public static class DispatchServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path("dispatch"))
                 .TraceLabel("dispatch");
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
+            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableClient(topology.CourierRouteEndpoint)

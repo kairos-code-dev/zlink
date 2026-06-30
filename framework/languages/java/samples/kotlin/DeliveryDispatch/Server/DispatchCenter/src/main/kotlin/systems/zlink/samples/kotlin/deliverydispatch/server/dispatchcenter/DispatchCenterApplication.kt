@@ -29,7 +29,6 @@ class DispatchCenterApplication {
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-dispatch-center.log")
                 traceLabel("dispatch-center")
             }
-            options.codecs().addJson()
             options.addHandlersFromPackageOf(DispatchCenterApplication::class.java)
             options.addClientServerChannel(SampleNames.DispatchChannel)
                 .enableServer(SampleTopology.DispatchChannelEndpoint)

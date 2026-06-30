@@ -155,7 +155,7 @@ public final class Program {
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
         connector
-            .send(new Contracts.WorkerYieldCommand(requestId, 1200))
+            .send(new Contracts.WorkerYieldCommand(requestId, 4000))
             .metadata(metadata)
             .await();
         assertOrder(playEvidence, requestId, List.of(

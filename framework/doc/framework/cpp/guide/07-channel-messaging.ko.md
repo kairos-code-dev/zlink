@@ -40,8 +40,8 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
 });
 ```
 
-- **codec** — 채널 메시지의 직렬화 형식. JSON은 기본 codec으로 제공되며 별도 등록 없이
-  사용한다. MessagePack과 Protobuf는
+- **codec** — 채널 메시지의 직렬화 형식. JSON은 기본 codec으로 제공하며
+  `add_json()` 또는 `add_json<T>()`로 명시 등록할 수 있다. MessagePack과 Protobuf는
   framework codec extension package를 참조한 뒤 `codecs().use(extension)`으로 등록한다.
 - **커스텀 codec(Avro·Thrift 등)** — 기본 codec 외 포맷은
   extension 객체에서 `add_serializer<T>(serialize, deserialize)`를 호출해 등록한다.

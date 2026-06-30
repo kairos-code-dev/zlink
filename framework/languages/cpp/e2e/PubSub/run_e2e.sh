@@ -5,18 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER HTTP_1 HTTP_2 HTTP_3 <<<"$(python3 - <<'PY'
+read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER PUBLISHER_HTTP HTTP_1 HTTP_2 HTTP_3 <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(6):
+for _ in range(7):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
 print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:3]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[3:6]))
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[3:7]))
 for s in sockets:
     s.close()
 PY
@@ -26,16 +26,22 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 echo "log_dir=$LOG_DIR"
+SCENARIO="${1:-all}"
 
 cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
 cmake --build "$BUILD_DIR" --target \
-  zlink_cpp_e2e_pubsub_server \
+  zlink_cpp_e2e_pubsub_registry \
+  zlink_cpp_e2e_pubsub_publisher \
+  zlink_cpp_e2e_pubsub_subscriber \
   zlink_cpp_e2e_pubsub_client >/dev/null
 
-SERVER="$BUILD_DIR/zlink_cpp_e2e_pubsub_server"
+REGISTRY="$BUILD_DIR/zlink_cpp_e2e_pubsub_registry"
+PUBLISHER_SERVER="$BUILD_DIR/zlink_cpp_e2e_pubsub_publisher"
+SUBSCRIBER="$BUILD_DIR/zlink_cpp_e2e_pubsub_subscriber"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_pubsub_client"
 PIDS=()
 LAST_PID=""
+PUBLISHER_PID=""
 
 cleanup() {
   local code=$?
@@ -102,13 +108,25 @@ wait_marker() {
 }
 
 start_registry() {
-  ZLINK_CPP_E2E_ROLE=registry \
   ZLINK_CPP_E2E_REGISTRY_PUB="$REGISTRY_PUB" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SERVER" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
+    "$REGISTRY" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
   PIDS+=("$!")
   wait_port registry-router "$REGISTRY_ROUTER"
+}
+
+start_publisher() {
+  local suffix="${1:-publisher}"
+  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
+  ZLINK_CPP_E2E_PUBLISHER_HTTP_ENDPOINT="$PUBLISHER_HTTP" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+    "$PUBLISHER_SERVER" >"$LOG_DIR/$suffix.stdout.log" 2>"$LOG_DIR/$suffix.stderr.log" &
+  LAST_PID="$!"
+  PUBLISHER_PID="$LAST_PID"
+  PIDS+=("$LAST_PID")
+  wait_port "$suffix-http" "$PUBLISHER_HTTP"
 }
 
 start_subscriber() {
@@ -116,15 +134,16 @@ start_subscriber() {
   local topics="$2"
   local http="$3"
   local delay="${4:-0}"
-  ZLINK_CPP_E2E_ROLE=subscriber \
+  local accepted_topics="${5:-$topics}"
   ZLINK_CPP_E2E_SUBSCRIBER_ID="$id" \
   ZLINK_CPP_E2E_TOPICS="$topics" \
+  ZLINK_CPP_E2E_ACCEPTED_TOPICS="$accepted_topics" \
   ZLINK_CPP_E2E_HANDLER_DELAY_MS="$delay" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SERVER" >"$LOG_DIR/$id.stdout.log" 2>"$LOG_DIR/$id.stderr.log" &
+    "$SUBSCRIBER" >"$LOG_DIR/$id.stdout.log" 2>"$LOG_DIR/$id.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$id-http" "$http"
@@ -148,13 +167,16 @@ stop_all_subscribers() {
   SUB_PIDS=()
 }
 
+should_run() {
+  [[ "$SCENARIO" == "all" || "$SCENARIO" == "$1" || "$SCENARIO" == "$2" ]]
+}
+
 run_client() {
   local scenario="$1"
   local suffix="$2"
   shift 2
   ZLINK_CPP_E2E_SCENARIO="$scenario" \
-  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
+  ZLINK_CPP_E2E_PUBLISHER_URL="$PUBLISHER_HTTP" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$@" \
     "$CLIENT" >"$LOG_DIR/client-$suffix.stdout.log" 2>"$LOG_DIR/client-$suffix.stderr.log"
@@ -205,6 +227,12 @@ def values(snapshot, topic=None):
         items = [event for event in items if event["topic"] == topic]
     return [event["value"] for event in items]
 
+def ignored_values(snapshot, topic=None):
+    items = snapshot.get("ignored_events", [])
+    if topic is not None:
+        items = [event for event in items if event["topic"] == topic]
+    return [event["value"] for event in items]
+
 if mode == "basic":
     expected = [f"measure-{index}" for index in range(20)]
     wait_for(lambda ss: all(all(value in values(s, "fanout") for value in expected) for s in ss),
@@ -215,9 +243,15 @@ elif mode == "topic":
         sub1 = values(by_id["sub-1"], "alpha")
         sub2 = values(by_id["sub-2"], "beta")
         sub3 = values(by_id["sub-3"], "alpha")
+        sub1_ignored = ignored_values(by_id["sub-1"], "beta")
+        sub2_ignored = ignored_values(by_id["sub-2"], "alpha")
+        sub3_ignored = ignored_values(by_id["sub-3"], "beta")
         return all(f"alpha-{i}" in sub1 for i in range(8)) and \
             all(f"beta-{i}" in sub2 for i in range(8)) and \
             all(f"alpha-{i}" in sub3 for i in range(8)) and \
+            all(f"beta-{i}" in sub1_ignored for i in range(8)) and \
+            all(f"alpha-{i}" in sub2_ignored for i in range(8)) and \
+            all(f"beta-{i}" in sub3_ignored for i in range(8)) and \
             not values(by_id["sub-1"], "beta") and \
             not values(by_id["sub-2"], "alpha") and \
             not values(by_id["sub-3"], "beta")
@@ -255,7 +289,7 @@ elif mode == "slow":
     wait_for(ok, "PS-B1 evidence check failed")
 elif mode == "publisher-restart":
     def ok(ss):
-        expected = [f"publisher-restart-{i}" for i in range(8)]
+        expected = [f"after-publisher-restart-{i}" for i in range(20, 43)]
         return all(all(value in values(s, "fanout") for value in expected) for s in ss)
     wait_for(ok, "PS-B2 evidence check failed")
 elif mode == "negative":
@@ -278,143 +312,174 @@ else:
 PY
 }
 
+case "$SCENARIO" in
+  all|PS-A1|ps-a1|PS-A2|ps-a2|PS-A3|ps-a3|PS-A4|ps-a4|PS-B1|ps-b1|PS-B2|ps-b2|PS-C1|ps-c1)
+    ;;
+  *)
+    echo "Unknown PubSub scenario: $SCENARIO" >&2
+    exit 1
+    ;;
+esac
+
 start_registry
+start_publisher publisher
 
 SUB_PIDS=()
-START_READY="$LOG_DIR/ps-a1-start-ready"
-START_CONTINUE="$LOG_DIR/ps-a1-start-continue"
-start_client_waiting basic basic "$START_READY" "$START_CONTINUE"
-BASIC_CLIENT_PID="$LAST_PID"
-wait_marker "$START_READY"
-start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-sleep 1
-touch "$START_CONTINUE"
-wait "$BASIC_CLIENT_PID"
-cat "$LOG_DIR/client-basic.stdout.log"
-verify basic "$HTTP_1" "$HTTP_2" "$HTTP_3"
-stop_all_subscribers
+if should_run PS-A1 ps-a1; then
+  START_READY="$LOG_DIR/ps-a1-start-ready"
+  START_CONTINUE="$LOG_DIR/ps-a1-start-continue"
+  start_client_waiting basic basic "$START_READY" "$START_CONTINUE"
+  BASIC_CLIENT_PID="$LAST_PID"
+  wait_marker "$START_READY"
+  start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
+  sleep 1
+  touch "$START_CONTINUE"
+  wait "$BASIC_CLIENT_PID"
+  cat "$LOG_DIR/client-basic.stdout.log"
+  verify basic "$HTTP_1" "$HTTP_2" "$HTTP_3"
+  stop_all_subscribers
+fi
 
-START_READY="$LOG_DIR/ps-a2-start-ready"
-START_CONTINUE="$LOG_DIR/ps-a2-start-continue"
-start_client_waiting topic topic "$START_READY" "$START_CONTINUE"
-TOPIC_CLIENT_PID="$LAST_PID"
-wait_marker "$START_READY"
-start_subscriber sub-1 fanout,alpha "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-2 fanout,beta "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-3 fanout,alpha "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-sleep 1
-touch "$START_CONTINUE"
-wait "$TOPIC_CLIENT_PID"
-cat "$LOG_DIR/client-topic.stdout.log"
-verify topic "$HTTP_1" "$HTTP_2" "$HTTP_3"
-stop_all_subscribers
+if should_run PS-A2 ps-a2; then
+  START_READY="$LOG_DIR/ps-a2-start-ready"
+  START_CONTINUE="$LOG_DIR/ps-a2-start-continue"
+  start_client_waiting topic topic "$START_READY" "$START_CONTINUE"
+  TOPIC_CLIENT_PID="$LAST_PID"
+  wait_marker "$START_READY"
+  start_subscriber sub-1 alpha,beta "$HTTP_1" 0 alpha; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-2 alpha,beta "$HTTP_2" 0 beta; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-3 alpha,beta "$HTTP_3" 0 alpha; SUB_PIDS+=("$LAST_PID")
+  sleep 1
+  touch "$START_CONTINUE"
+  wait "$TOPIC_CLIENT_PID"
+  cat "$LOG_DIR/client-topic.stdout.log"
+  verify topic "$HTTP_1" "$HTTP_2" "$HTTP_3"
+  stop_all_subscribers
+fi
 
-START_READY="$LOG_DIR/ps-a3-start-ready"
-START_CONTINUE="$LOG_DIR/ps-a3-start-continue"
-READY="$LOG_DIR/ps-a3-ready"
-CONTINUE="$LOG_DIR/ps-a3-continue"
-start_client_waiting late late "$START_READY" "$START_CONTINUE" \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE"
-LATE_CLIENT_PID="$LAST_PID"
-wait_marker "$START_READY"
-start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-sleep 1
-touch "$START_CONTINUE"
-wait_marker "$READY"
-start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-sleep 1
-touch "$CONTINUE"
-wait "$LATE_CLIENT_PID"
-cat "$LOG_DIR/client-late.stdout.log"
-verify late "$HTTP_1" "$HTTP_2" "$HTTP_3"
-stop_all_subscribers
+if should_run PS-A3 ps-a3; then
+  START_READY="$LOG_DIR/ps-a3-start-ready"
+  START_CONTINUE="$LOG_DIR/ps-a3-start-continue"
+  READY="$LOG_DIR/ps-a3-ready"
+  CONTINUE="$LOG_DIR/ps-a3-continue"
+  start_client_waiting late late "$START_READY" "$START_CONTINUE" \
+    ZLINK_CPP_E2E_READY_FILE="$READY" \
+    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE"
+  LATE_CLIENT_PID="$LAST_PID"
+  wait_marker "$START_READY"
+  start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+  sleep 1
+  touch "$START_CONTINUE"
+  wait_marker "$READY"
+  start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
+  sleep 1
+  touch "$CONTINUE"
+  wait "$LATE_CLIENT_PID"
+  cat "$LOG_DIR/client-late.stdout.log"
+  verify late "$HTTP_1" "$HTTP_2" "$HTTP_3"
+  stop_all_subscribers
+fi
 
-START_READY="$LOG_DIR/ps-a4-start-ready"
-START_CONTINUE="$LOG_DIR/ps-a4-start-continue"
-READY="$LOG_DIR/ps-a4-ready"
-CONTINUE="$LOG_DIR/ps-a4-continue"
-RESTART_READY="$LOG_DIR/ps-a4-restart-ready"
-RESTART_CONTINUE="$LOG_DIR/ps-a4-restart-continue"
-start_client_waiting reconnect reconnect "$START_READY" "$START_CONTINUE" \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
-  ZLINK_CPP_E2E_RESTART_READY_FILE="$RESTART_READY" \
-  ZLINK_CPP_E2E_RESTART_CONTINUE_FILE="$RESTART_CONTINUE"
-RECONNECT_CLIENT_PID="$LAST_PID"
-wait_marker "$START_READY"
-start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-3 fanout "$HTTP_3"; SUB3_PID="$LAST_PID"; SUB_PIDS+=("$LAST_PID")
-sleep 1
-touch "$START_CONTINUE"
-wait_marker "$READY"
-stop_pid "$SUB3_PID"
-wait_port_closed sub-3-http "$HTTP_3"
-touch "$CONTINUE"
-wait_marker "$RESTART_READY"
-start_subscriber sub-3 fanout "$HTTP_3"; SUB3_PID="$LAST_PID"; SUB_PIDS+=("$LAST_PID")
-sleep 1
-touch "$RESTART_CONTINUE"
-wait "$RECONNECT_CLIENT_PID"
-cat "$LOG_DIR/client-reconnect.stdout.log"
-verify reconnect "$HTTP_1" "$HTTP_2" "$HTTP_3"
-stop_all_subscribers
+if should_run PS-A4 ps-a4; then
+  START_READY="$LOG_DIR/ps-a4-start-ready"
+  START_CONTINUE="$LOG_DIR/ps-a4-start-continue"
+  READY="$LOG_DIR/ps-a4-ready"
+  CONTINUE="$LOG_DIR/ps-a4-continue"
+  RESTART_READY="$LOG_DIR/ps-a4-restart-ready"
+  RESTART_CONTINUE="$LOG_DIR/ps-a4-restart-continue"
+  start_client_waiting reconnect reconnect "$START_READY" "$START_CONTINUE" \
+    ZLINK_CPP_E2E_READY_FILE="$READY" \
+    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" \
+    ZLINK_CPP_E2E_RESTART_READY_FILE="$RESTART_READY" \
+    ZLINK_CPP_E2E_RESTART_CONTINUE_FILE="$RESTART_CONTINUE"
+  RECONNECT_CLIENT_PID="$LAST_PID"
+  wait_marker "$START_READY"
+  start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-3 fanout "$HTTP_3"; SUB3_PID="$LAST_PID"; SUB_PIDS+=("$LAST_PID")
+  sleep 1
+  touch "$START_CONTINUE"
+  wait_marker "$READY"
+  stop_pid "$SUB3_PID"
+  wait_port_closed sub-3-http "$HTTP_3"
+  touch "$CONTINUE"
+  wait_marker "$RESTART_READY"
+  start_subscriber sub-3 fanout "$HTTP_3"; SUB3_PID="$LAST_PID"; SUB_PIDS+=("$LAST_PID")
+  sleep 1
+  touch "$RESTART_CONTINUE"
+  wait "$RECONNECT_CLIENT_PID"
+  cat "$LOG_DIR/client-reconnect.stdout.log"
+  verify reconnect "$HTTP_1" "$HTTP_2" "$HTTP_3"
+  stop_all_subscribers
+fi
 
-START_READY="$LOG_DIR/ps-b1-start-ready"
-START_CONTINUE="$LOG_DIR/ps-b1-start-continue"
-start_client_waiting slow slow "$START_READY" "$START_CONTINUE"
-SLOW_CLIENT_PID="$LAST_PID"
-wait_marker "$START_READY"
-start_subscriber sub-1 fanout "$HTTP_1" 250; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-sleep 1
-touch "$START_CONTINUE"
-wait "$SLOW_CLIENT_PID"
-cat "$LOG_DIR/client-slow.stdout.log"
-verify slow "$HTTP_1" "$HTTP_2" "$HTTP_3"
-stop_all_subscribers
+if should_run PS-B1 ps-b1; then
+  START_READY="$LOG_DIR/ps-b1-start-ready"
+  START_CONTINUE="$LOG_DIR/ps-b1-start-continue"
+  start_client_waiting slow slow "$START_READY" "$START_CONTINUE"
+  SLOW_CLIENT_PID="$LAST_PID"
+  wait_marker "$START_READY"
+  start_subscriber sub-1 fanout "$HTTP_1" 250; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
+  sleep 1
+  touch "$START_CONTINUE"
+  wait "$SLOW_CLIENT_PID"
+  cat "$LOG_DIR/client-slow.stdout.log"
+  verify slow "$HTTP_1" "$HTTP_2" "$HTTP_3"
+  stop_all_subscribers
+fi
 
-START_READY="$LOG_DIR/ps-b2-start-ready"
-START_CONTINUE="$LOG_DIR/ps-b2-start-continue"
-start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-start_client_waiting publisher-restart publisher-before "$START_READY" "$START_CONTINUE"
-PUB_RESTART_CLIENT_PID="$LAST_PID"
-wait_marker "$START_READY"
-sleep 1
-touch "$START_CONTINUE"
-wait "$PUB_RESTART_CLIENT_PID"
-cat "$LOG_DIR/client-publisher-before.stdout.log"
-sleep 1
-START_READY="$LOG_DIR/ps-b2-restart-ready"
-START_CONTINUE="$LOG_DIR/ps-b2-restart-continue"
-start_client_waiting publisher-restart publisher-after "$START_READY" "$START_CONTINUE"
-PUB_RESTART_CLIENT_PID="$LAST_PID"
-wait_marker "$START_READY"
-sleep 1
-touch "$START_CONTINUE"
-wait "$PUB_RESTART_CLIENT_PID"
-cat "$LOG_DIR/client-publisher-after.stdout.log"
-verify publisher-restart "$HTTP_1" "$HTTP_2" "$HTTP_3"
-stop_all_subscribers
+if should_run PS-B2 ps-b2; then
+  START_READY="$LOG_DIR/ps-b2-start-ready"
+  START_CONTINUE="$LOG_DIR/ps-b2-start-continue"
+  start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
+  start_client_waiting publisher-restart publisher-before "$START_READY" "$START_CONTINUE" \
+    ZLINK_CPP_E2E_PUBLISHER_RESTART_PHASE=before
+  PUB_RESTART_CLIENT_PID="$LAST_PID"
+  wait_marker "$START_READY"
+  sleep 1
+  touch "$START_CONTINUE"
+  wait "$PUB_RESTART_CLIENT_PID"
+  cat "$LOG_DIR/client-publisher-before.stdout.log"
+  sleep 1
+  stop_pid "$PUBLISHER_PID"
+  wait_port_closed publisher-http "$PUBLISHER_HTTP"
+  start_publisher publisher-restart
+  START_READY="$LOG_DIR/ps-b2-restart-ready"
+  START_CONTINUE="$LOG_DIR/ps-b2-restart-continue"
+  start_client_waiting publisher-restart publisher-after "$START_READY" "$START_CONTINUE" \
+    ZLINK_CPP_E2E_PUBLISHER_RESTART_PHASE=after
+  PUB_RESTART_CLIENT_PID="$LAST_PID"
+  wait_marker "$START_READY"
+  sleep 1
+  touch "$START_CONTINUE"
+  wait "$PUB_RESTART_CLIENT_PID"
+  cat "$LOG_DIR/client-publisher-after.stdout.log"
+  verify publisher-restart "$HTTP_1" "$HTTP_2" "$HTTP_3"
+  stop_all_subscribers
+fi
 
-START_READY="$LOG_DIR/ps-c1-start-ready"
-START_CONTINUE="$LOG_DIR/ps-c1-start-continue"
-start_client_waiting negative negative "$START_READY" "$START_CONTINUE"
-NEGATIVE_CLIENT_PID="$LAST_PID"
-wait_marker "$START_READY"
-start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
-start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
-sleep 1
-touch "$START_CONTINUE"
-wait "$NEGATIVE_CLIENT_PID"
-cat "$LOG_DIR/client-negative.stdout.log"
-verify negative "$HTTP_1" "$HTTP_2" "$HTTP_3"
-stop_all_subscribers
+if should_run PS-C1 ps-c1; then
+  START_READY="$LOG_DIR/ps-c1-start-ready"
+  START_CONTINUE="$LOG_DIR/ps-c1-start-continue"
+  start_client_waiting negative negative "$START_READY" "$START_CONTINUE"
+  NEGATIVE_CLIENT_PID="$LAST_PID"
+  wait_marker "$START_READY"
+  start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
+  start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
+  sleep 1
+  touch "$START_CONTINUE"
+  wait "$NEGATIVE_CLIENT_PID"
+  cat "$LOG_DIR/client-negative.stdout.log"
+  verify negative "$HTTP_1" "$HTTP_2" "$HTTP_3"
+  stop_all_subscribers
+fi
+
+echo "pubsub e2e result=passed"

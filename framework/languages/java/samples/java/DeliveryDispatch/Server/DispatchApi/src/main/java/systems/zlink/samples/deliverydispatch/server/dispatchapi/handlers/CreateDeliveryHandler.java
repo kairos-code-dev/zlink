@@ -1,26 +1,29 @@
 package systems.zlink.samples.deliverydispatch.server.dispatchapi.handlers;
 
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.GetMapping;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
-@ZLinkHandlerGroup("api")
-public final class CreateDeliveryHandler
-    implements ZLinkRequestHandler<Messages.CreateDeliveryRequest, Messages.DeliveryCreated> {
+@RestController
+public final class CreateDeliveryHandler {
     private final ZLinkClient channels;
 
     public CreateDeliveryHandler(ZLinkClient channels) {
         this.channels = channels;
     }
 
-    @Override
-    public Messages.DeliveryCreated handle(
-        Messages.CreateDeliveryRequest request,
-        ZLinkRequestContext context) {
+    @GetMapping("/health")
+    public java.util.Map<String, Object> health() {
+        return java.util.Map.of("ready", true, "role", "dispatch-api");
+    }
+
+    @PostMapping("/deliveries")
+    public Messages.DeliveryCreated handle(@RequestBody Messages.CreateDeliveryRequest request) {
         Messages.AssignDelivery assign = new Messages.AssignDelivery(
             request.deliveryId(),
             request.customerId(),

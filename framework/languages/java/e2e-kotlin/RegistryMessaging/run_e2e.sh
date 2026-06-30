@@ -1,46 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${ROOT_DIR}"
 
-pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.registrymessaging\.ProgramKt'
-run_id="$(date +%Y%m%d-%H%M%S)-$$"
-log_dir="$(pwd)/logs/${run_id}"
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
+LOG_DIR="${ROOT_DIR}/logs/${RUN_ID}"
+SCENARIO="${1:-all}"
+mkdir -p "${LOG_DIR}"
+echo "log_dir=${LOG_DIR}"
+
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
-mkdir -p "${log_dir}"
-echo "log_dir=${log_dir}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
+
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/RegistryMessaging}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/RegistryMessaging-gradle-cache}"
+
+pids=()
+role_pattern='systems\.zlink\.e2e\.kotlin\.registrymessaging\.(client|consumer|provider|registry|workflow)\.ProgramKt'
 
 print_logs() {
   local status="$1"
   if [[ "${status}" == "0" ]]; then
     return
   fi
-  for log in "${log_dir}"/*.log; do
+  for log in "${LOG_DIR}"/*.log; do
     [[ -f "${log}" ]] || continue
     echo "===== ${log} =====" >&2
     tail -n 200 "${log}" >&2 || true
-  done
-}
-
-descendants() {
-  local pid="$1"
-  local child
-  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
-    descendants "${child}"
-    echo "${child}"
-  done
-}
-
-kill_role_processes() {
-  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill "${pid}" >/dev/null 2>&1 || true
   done
 }
 
@@ -49,73 +39,40 @@ cleanup() {
   set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill "${child}" >/dev/null 2>&1 || true
-    done
+    kill "${pids[$i]}" >/dev/null 2>&1 || true
+  done
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill "${pid}" >/dev/null 2>&1 || true
   done
-  kill_role_processes
   sleep 0.5
   for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill -9 "${child}" >/dev/null 2>&1 || true
-    done
-    kill -9 "${pid}" >/dev/null 2>&1 || true
+    kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
   done
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
 trap cleanup EXIT
 
-reserve_ports() {
+pick_port() {
   python3 - <<'PY'
 import socket
-sockets = []
-ports = []
-try:
-    for _ in range(11):
-        sock = socket.socket()
-        sock.bind(("127.0.0.1", 0))
-        sockets.append(sock)
-        ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports))
-finally:
-    for sock in sockets:
-        sock.close()
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
 PY
 }
 
-port_of() {
-  local endpoint="$1"
-  echo "${endpoint##*:}"
-}
-
-wait_port() {
-  local name="$1"
-  local endpoint="$2"
-  local port
-  port="$(port_of "${endpoint}")"
-  for _ in $(seq 1 600); do
-    if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+wait_health() {
+  local url="$1"
+  local name="$2"
+  for _ in $(seq 1 120); do
+    if curl -fsS "${url}/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep 0.25
   done
-  echo "Timed out waiting for ${name} at ${endpoint}" >&2
-  return 1
-}
-
-wait_marker() {
-  local file="$1"
-  for _ in $(seq 1 400); do
-    if [[ -f "${file}" ]]; then
-      return 0
-    fi
-    sleep 0.05
-  done
-  echo "Timed out waiting for marker ${file}" >&2
+  echo "Timed out waiting for ${name} at ${url}" >&2
   return 1
 }
 
@@ -123,148 +80,127 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/install/registry-messaging-kotlin/bin/registry-messaging-kotlin"
+bin_path() {
+  local path="$1"
+  local app="$2"
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/${path}/install/${app}/bin/${app}"
 }
 
-start_registry() {
-  ZLINK_KOTLIN_E2E_ROLE=registry \
-  ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
-  pids+=("$!")
-  wait_port registry-router "${REGISTRY_ROUTER}"
-}
+CLIENT_BIN="$(bin_path Client registry-messaging-kotlin-client)"
+CONSUMER_BIN="$(bin_path Server-Consumer registry-messaging-kotlin-consumer)"
+PROVIDER_BIN="$(bin_path Server-Provider registry-messaging-kotlin-provider)"
+REGISTRY_BIN="$(bin_path Server-Registry registry-messaging-kotlin-registry)"
+WORKFLOW_BIN="$(bin_path Server-Workflow registry-messaging-kotlin-workflow)"
 
-start_provider() {
-  local rid="$1"
-  local api="$2"
-  local route="$3"
-  local workflow="$4"
-  local instance="${5:-$rid}"
-  local weight="${6:-}"
-  ZLINK_KOTLIN_E2E_ROLE=provider \
-  ZLINK_KOTLIN_E2E_PROVIDER_RID="${rid}" \
-  ZLINK_KOTLIN_E2E_PROVIDER_INSTANCE="${instance}" \
-  ZLINK_KOTLIN_E2E_API_WEIGHT="${weight}" \
-  ZLINK_KOTLIN_E2E_API_ENDPOINT="${api}" \
-  ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT="${route}" \
-  ZLINK_KOTLIN_E2E_WORKFLOW_ENDPOINT="${workflow}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
-  LAST_PID="$!"
-  pids+=("${LAST_PID}")
-  [[ -z "${api}" ]] || wait_port "${rid}-api" "${api}"
-  [[ -z "${route}" ]] || wait_port "${rid}-route" "${route}"
-  [[ -z "${workflow}" ]] || wait_port "${rid}-workflow" "${workflow}"
-}
-
-stop_pid() {
-  local pid="$1"
-  if kill -0 "${pid}" >/dev/null 2>&1; then
-    kill "${pid}" >/dev/null 2>&1 || true
-    wait "${pid}" >/dev/null 2>&1 || true
-  fi
-}
-
-run_client() {
-  local scenario="$1"
-  local suffix="$2"
+start_server() {
+  local name="$1"
+  local binary="$2"
   shift 2
-  ZLINK_KOTLIN_E2E_ROLE=client \
-  ZLINK_KOTLIN_E2E_SCENARIO="${scenario}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_KOTLIN_E2E_API_A_ENDPOINT="${API_A}" \
-  ZLINK_KOTLIN_E2E_API_B_ENDPOINT="${API_B}" \
-  ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
-  ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
-  ZLINK_KOTLIN_E2E_CLIENT_ROUTE_ENDPOINT="${CLIENT_ROUTE}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$@" \
-    "$(app_bin)" >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
+  "${binary}" "$@" >"${LOG_DIR}/${name}.stdout.log" 2>"${LOG_DIR}/${name}.stderr.log" &
+  pids+=("$!")
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A CLIENT_ROUTE API_A2 ROUTE_A2 UNUSED <<<"$(reserve_ports)"
+REG_HTTP_PORT="$(pick_port)"
+PROVIDER_A_HTTP_PORT="$(pick_port)"
+PROVIDER_B_HTTP_PORT="$(pick_port)"
+WORKFLOW_HTTP_PORT="$(pick_port)"
+CONSUMER_HTTP_PORT="$(pick_port)"
+SINGLE_CONSUMER_HTTP_PORT="$(pick_port)"
+DISCOVERY_CONSUMER_HTTP_PORT="$(pick_port)"
+REG_PUB_PORT="$(pick_port)"
+REG_ROUTER_PORT="$(pick_port)"
+API_A_PORT="$(pick_port)"
+API_B_PORT="$(pick_port)"
+WORKFLOW_PORT="$(pick_port)"
+ROUTE_A_PORT="$(pick_port)"
+ROUTE_B_PORT="$(pick_port)"
+CLIENT_ROUTE_PORT="$(pick_port)"
+
+REG_PUB="tcp://127.0.0.1:${REG_PUB_PORT}"
+REG_ROUTER="tcp://127.0.0.1:${REG_ROUTER_PORT}"
+API_A="tcp://127.0.0.1:${API_A_PORT}"
+API_B="tcp://127.0.0.1:${API_B_PORT}"
+WORKFLOW="tcp://127.0.0.1:${WORKFLOW_PORT}"
+ROUTE_A="tcp://127.0.0.1:${ROUTE_A_PORT}"
+ROUTE_B="tcp://127.0.0.1:${ROUTE_B_PORT}"
 
 gradle_run installDist
 
-start_registry
+start_server registry "${REGISTRY_BIN}" \
+  --rid registry \
+  --http-url "http://127.0.0.1:${REG_HTTP_PORT}" \
+  --registry-pub-endpoint "${REG_PUB}" \
+  --registry-router-endpoint "${REG_ROUTER}" \
+  --log-dir "${LOG_DIR}"
+wait_health "http://127.0.0.1:${REG_HTTP_PORT}" registry
 
-start_provider api-a "${API_A}" "${ROUTE_A}" ""
-API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" ""
-API_B_PID="${LAST_PID}"
-start_provider workflow-a "" "" "${WORKFLOW_A}"
-WORKFLOW_A_PID="${LAST_PID}"
-sleep 2
-run_client common common env
-cat "${log_dir}/client-common.stdout.log"
-stop_pid "${API_A_PID}"
-stop_pid "${API_B_PID}"
-stop_pid "${WORKFLOW_A_PID}"
+start_server api-a "${PROVIDER_BIN}" \
+  --rid api-a \
+  --http-url "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" \
+  --registry-router-endpoint "${REG_ROUTER}" \
+  --channel-endpoint "${API_A}" \
+  --manual-client-endpoint "${API_A}" \
+  --route-endpoint "${ROUTE_A}" \
+  --route-peer "${ROUTE_B}" \
+  --evidence-file "${LOG_DIR}/api-a.evidence.log" \
+  --log-dir "${LOG_DIR}"
+wait_health "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" api-a
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a 75
-API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b 25
-API_B_PID="${LAST_PID}"
-sleep 2
-run_client weighted rm-c7 env
-cat "${log_dir}/client-rm-c7.stdout.log"
-stop_pid "${API_A_PID}"
-stop_pid "${API_B_PID}"
+start_server api-b "${PROVIDER_BIN}" \
+  --rid api-b \
+  --http-url "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" \
+  --registry-router-endpoint "${REG_ROUTER}" \
+  --channel-endpoint "${API_B}" \
+  --manual-client-endpoint "${API_B}" \
+  --route-endpoint "${ROUTE_B}" \
+  --route-peer "${ROUTE_A}" \
+  --evidence-file "${LOG_DIR}/api-b.evidence.log" \
+  --log-dir "${LOG_DIR}"
+wait_health "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" api-b
 
-start_provider api-a "${API_A}" "${ROUTE_A}" ""
-API_A_PID="${LAST_PID}"
-READY="${log_dir}/rm-b1-ready"
-CONTINUE="${log_dir}/rm-b1-continue"
-run_client scale-out rm-b1 env \
-  ZLINK_KOTLIN_E2E_READY_FILE="${READY}" \
-  ZLINK_KOTLIN_E2E_CONTINUE_FILE="${CONTINUE}" &
-B1_CLIENT_PID="$!"
-wait_marker "${READY}"
-start_provider api-b "${API_B}" "${ROUTE_B}" ""
-API_B_PID="${LAST_PID}"
-sleep 5
-touch "${CONTINUE}"
-wait "${B1_CLIENT_PID}"
-cat "${log_dir}/client-rm-b1.stdout.log"
-stop_pid "${API_A_PID}"
-stop_pid "${API_B_PID}"
+start_server workflow-a "${WORKFLOW_BIN}" \
+  --rid workflow-a \
+  --http-url "http://127.0.0.1:${WORKFLOW_HTTP_PORT}" \
+  --registry-router-endpoint "${REG_ROUTER}" \
+  --workflow-endpoint "${WORKFLOW}" \
+  --evidence-file "${LOG_DIR}/workflow-a.evidence.log" \
+  --log-dir "${LOG_DIR}"
+wait_health "http://127.0.0.1:${WORKFLOW_HTTP_PORT}" workflow-a
 
-start_provider api-a "${API_A}" "${ROUTE_A}" ""
-API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" ""
-API_B_PID="${LAST_PID}"
-READY="${log_dir}/rm-b2-ready"
-CONTINUE="${log_dir}/rm-b2-continue"
-run_client scale-in rm-b2 env \
-  ZLINK_KOTLIN_E2E_READY_FILE="${READY}" \
-  ZLINK_KOTLIN_E2E_CONTINUE_FILE="${CONTINUE}" &
-B2_CLIENT_PID="$!"
-wait_marker "${READY}"
-stop_pid "${API_B_PID}"
-sleep 5
-touch "${CONTINUE}"
-wait "${B2_CLIENT_PID}"
-cat "${log_dir}/client-rm-b2.stdout.log"
-stop_pid "${API_A_PID}"
+start_server direct-consumer "${CONSUMER_BIN}" \
+  --http-url "http://127.0.0.1:${CONSUMER_HTTP_PORT}" \
+  --provider-endpoint "${API_A}" \
+  --provider-endpoint "${API_B}" \
+  --trace-label direct-consumer \
+  --log-dir "${LOG_DIR}"
+wait_health "http://127.0.0.1:${CONSUMER_HTTP_PORT}" direct-consumer
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a-v1
-API_A_PID="${LAST_PID}"
-READY="${log_dir}/rm-a4-ready"
-CONTINUE="${log_dir}/rm-a4-continue"
-run_client failover rm-a4 env \
-  ZLINK_KOTLIN_E2E_READY_FILE="${READY}" \
-  ZLINK_KOTLIN_E2E_CONTINUE_FILE="${CONTINUE}" &
-A4_CLIENT_PID="$!"
-wait_marker "${READY}"
-stop_pid "${API_A_PID}"
-start_provider api-a "${API_A2}" "${ROUTE_A2}" "" api-a-v2
-API_A_PID="${LAST_PID}"
-sleep 5
-touch "${CONTINUE}"
-wait "${A4_CLIENT_PID}"
-cat "${log_dir}/client-rm-a4.stdout.log"
-stop_pid "${API_A_PID}"
+start_server single-consumer "${CONSUMER_BIN}" \
+  --http-url "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" \
+  --provider-endpoint "${API_A}" \
+  --trace-label single-consumer \
+  --log-dir "${LOG_DIR}"
+wait_health "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" single-consumer
+
+start_server discovery-consumer "${CONSUMER_BIN}" \
+  --http-url "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" \
+  --registry-router-endpoint "${REG_ROUTER}" \
+  --trace-label discovery-consumer \
+  --log-dir "${LOG_DIR}"
+wait_health "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" discovery-consumer
+
+"${CLIENT_BIN}" \
+  --registry-url "http://127.0.0.1:${REG_HTTP_PORT}" \
+  --provider-a-url "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" \
+  --provider-b-url "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" \
+  --workflow-url "http://127.0.0.1:${WORKFLOW_HTTP_PORT}" \
+  --direct-consumer-url "http://127.0.0.1:${CONSUMER_HTTP_PORT}" \
+  --single-consumer-url "http://127.0.0.1:${SINGLE_CONSUMER_HTTP_PORT}" \
+  --discovery-consumer-url "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" \
+  --registry-bin "${REGISTRY_BIN}" \
+  --provider-bin "${PROVIDER_BIN}" \
+  --log-dir "${LOG_DIR}" \
+  --scenario "${SCENARIO}" \
+  >"${LOG_DIR}/client.stdout.log" 2>"${LOG_DIR}/client.stderr.log"
+
+cat "${LOG_DIR}/client.stdout.log"

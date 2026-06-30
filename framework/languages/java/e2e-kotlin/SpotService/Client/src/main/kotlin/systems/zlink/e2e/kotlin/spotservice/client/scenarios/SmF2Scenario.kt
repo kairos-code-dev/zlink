@@ -1,0 +1,23 @@
+package systems.zlink.e2e.kotlin.spotservice.client.scenarios
+
+import systems.zlink.contracts.core.RoutingId
+import systems.zlink.e2e.kotlin.spotservice.Contracts
+import systems.zlink.e2e.kotlin.spotservice.client.support.REQUEST_TIMEOUT
+import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
+import systems.zlink.e2e.kotlin.spotservice.client.support.eventually
+import systems.zlink.framework.spots.ZLinkSpotOutbound
+
+internal object SmF2Scenario {
+    fun run(outbound: ZLinkSpotOutbound) {
+        val reply = eventually {
+            outbound.requestToSpot(
+                RoutingId.from("room-a"),
+                Contracts.StateRequest("route-mesh"),
+            )
+                .timeout(REQUEST_TIMEOUT)
+                .await(Contracts.StateReply::class.java)
+        }
+        ensure(reply.nodeRid == "play-a", "SM-F2 route mesh target mismatch")
+        println("scenario SM-F2 passed")
+    }
+}

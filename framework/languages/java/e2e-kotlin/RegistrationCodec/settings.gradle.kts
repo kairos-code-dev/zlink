@@ -48,3 +48,10 @@ includeBuild("../../../../../bindings/java") {
         substitute(module("systems.zlink:zlink")).using(project(":"))
     }
 }
+
+include(":Shared")
+include(":Client")
+include(":Server:Main")
+include(":Server:CodecRequester")
+include(":Server:JsonOnlyPeer")
+include(":Server:InvalidDuplicate")

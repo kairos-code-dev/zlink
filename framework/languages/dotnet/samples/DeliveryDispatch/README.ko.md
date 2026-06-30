@@ -5,6 +5,12 @@
 기다린다. 내부 역할은 ZLink channel, entry spot, actor, stream session binding을
 사용해서 배차 요청, 배송원 제안, timeout 재배정, 고객별 상태 push를 처리한다.
 
+이 샘플은 실제 배송 플랫폼을 그대로 구현한 예제가 아니다. 실무에서 자주 나오는
+"요청을 만들고, 수행자를 찾고, 특정 사용자 연결로 push하고, 응답이 없으면 재시도하는"
+기능을 구현할 때 그 책임이 ZLink framework의 어떤 기능에 대응되는지 보여 주는 통합
+샘플이다. 따라서 배송 도메인 자체보다 HTTP 경계, channel, entry spot, actor,
+stream session binding이 한 업무 흐름 안에서 어떻게 이어지는지를 보는 것이 핵심이다.
+
 공통 시나리오 기준은
 [`framework/doc/framework/common/sample/deliverydispatch/README.ko.md`](../../../../doc/framework/common/sample/deliverydispatch/README.ko.md)에
 있다. 이 README는 .NET 샘플의 실행 방법과 구성을 설명한다.

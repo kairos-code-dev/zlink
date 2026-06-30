@@ -46,6 +46,24 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
         || !lifecycle_reply.created || !lifecycle_reply.closed) {
         throw std::runtime_error ("SM-A6 lifecycle reply mismatch");
     }
+    auto lifecycle_evidence =
+      play_a.post ("/evidence/wait")
+        .body (evidence_wait_request_t{
+          .contains_all = {"SpotLifecycleClosed", user_spot_rid_for_key ("sm-a6-life")},
+          .timeout_milliseconds = 5000})
+        .submit_raw ()
+        .result ();
+    if (!lifecycle_evidence) {
+        throw std::runtime_error (lifecycle_evidence.error ()
+                                    ? lifecycle_evidence.error ()->what ()
+                                    : "SM-A6 lifecycle evidence wait HTTP failed");
+    }
+    ensure_http_success (lifecycle_evidence.value (), "SM-A6 lifecycle evidence wait");
+    const auto evidence =
+      nlohmann::json::parse (lifecycle_evidence.value ().body).get<evidence_snapshot_t> ();
+    if (evidence.node_rid != "play-a" || evidence.entries.empty ()) {
+        throw std::runtime_error ("SM-A6 lifecycle evidence wait reply mismatch");
+    }
 
     auto joined =
       play_a.post ("/spot/join")

@@ -1,0 +1,37 @@
+package systems.zlink.e2e.kotlin.yielddispatch.scenarios;
+
+import java.util.UUID;
+import systems.zlink.e2e.kotlin.yielddispatch.Contracts;
+import systems.zlink.e2e.kotlin.yielddispatch.support.ClientStreamSupport;
+import systems.zlink.e2e.kotlin.yielddispatch.support.ScenarioAssert;
+import systems.zlink.stream.connector.ZLinkStreamConnector;
+
+public final class YdA4WorkerYieldScenario {
+    private YdA4WorkerYieldScenario() {
+    }
+
+    public static void run(ZLinkStreamConnector connector, String actorId) {
+        ScenarioAssert.that(actorId != null && !actorId.isBlank(), "YD-A4 actor setup mismatch");
+        String requestId = "YD-A4-" + UUID.randomUUID();
+        ClientStreamSupport.send(
+            connector.send(new Contracts.WorkerYieldCommand(requestId, 1200))
+                .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
+        ClientStreamSupport.waitForEvidence(connector, requestId, "worker-yield-released");
+        ClientStreamSupport.send(
+            connector.send(new Contracts.ProbeCommand(requestId, "worker-probe"))
+                .metadata(Contracts.SPOT_RID_METADATA, "room-a"));
+        Contracts.EvidenceReply evidence = ClientStreamSupport.waitForEvidence(
+            connector,
+            requestId,
+            "worker-yield-completed");
+        ScenarioAssert.containsMarkersInOrder(
+            evidence.markers(),
+            "worker-yield-started",
+            "worker-yield-released",
+            "probe-started",
+            "probe-completed",
+            "worker-yield-resumed",
+            "worker-yield-completed");
+        System.out.println("scenario YD-A4 passed");
+    }
+}

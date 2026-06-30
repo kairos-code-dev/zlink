@@ -52,25 +52,58 @@ void format_blob_routing_id_debug (const zlink::blob_t &routing_id_, char *buf_,
     format_routing_id_debug (&rid, buf_, buf_size_);
 }
 
-void clear_dispatch_source_rid (zlink_routing_id_t *rid_, bool *valid_)
+void store_dispatch_source_rid (std::map<zlink::pipe_t *, zlink_routing_id_t> *sources_,
+                                zlink::pipe_t *pipe_,
+                                zlink_routing_id_t *fallback_rid_,
+                                bool *fallback_valid_,
+                                zlink::msg_t *msg_)
 {
-    if (!rid_ || !valid_)
+    if (!sources_ || !msg_)
         return;
-    rid_->size = 0;
-    *valid_ = false;
-}
 
-void store_dispatch_source_rid (zlink_routing_id_t *rid_, bool *valid_, zlink::msg_t *msg_)
-{
-    if (!rid_ || !valid_ || !msg_)
-        return;
+    zlink_routing_id_t rid;
+    rid.size = 0;
 
     const size_t size = msg_->size ();
-    zlink_assert (size <= sizeof (rid_->data));
-    rid_->size = static_cast<uint8_t> (size);
+    zlink_assert (size <= sizeof (rid.data));
+    rid.size = static_cast<uint8_t> (size);
     if (size > 0)
-        memcpy (rid_->data, msg_->data (), size);
-    *valid_ = true;
+        memcpy (rid.data, msg_->data (), size);
+    if (pipe_) {
+        (*sources_)[pipe_] = rid;
+    } else if (fallback_rid_ && fallback_valid_) {
+        *fallback_rid_ = rid;
+        *fallback_valid_ = true;
+    }
+}
+
+bool take_dispatch_source_rid (std::map<zlink::pipe_t *, zlink_routing_id_t> *sources_,
+                               zlink::pipe_t *pipe_,
+                               zlink_routing_id_t *fallback_rid_,
+                               bool *fallback_valid_,
+                               zlink_routing_id_t *out_)
+{
+    if (!sources_ || !out_)
+        return false;
+
+    if (pipe_) {
+        const std::map<zlink::pipe_t *, zlink_routing_id_t>::iterator it =
+          sources_->find (pipe_);
+        if (it == sources_->end ())
+            return false;
+
+        *out_ = it->second;
+        sources_->erase (it);
+        return true;
+    }
+
+    if (!fallback_rid_ || !fallback_valid_ || !*fallback_valid_)
+        return false;
+
+    *out_ = *fallback_rid_;
+    fallback_rid_->size = 0;
+    *fallback_valid_ = false;
+    return true;
 }
 
 void copy_router_pipe_source_rid (zlink::pipe_t *pipe_, zlink_routing_id_t *out_)
@@ -132,7 +165,15 @@ zlink::router_t::~router_t ()
 {
     zlink_assert (_anonymous_pipes.empty ());
     close_socket_msg_parts (&_dispatch_parts);
-    clear_dispatch_source_rid (&_dispatch_source_rid, &_dispatch_source_rid_valid);
+    for (std::map<pipe_t *, std::vector<zlink_msg_t>>::iterator it =
+           _dispatch_parts_by_pipe.begin ();
+         it != _dispatch_parts_by_pipe.end (); ++it) {
+        close_socket_msg_parts (&it->second);
+    }
+    _dispatch_parts_by_pipe.clear ();
+    _dispatch_source_rids.clear ();
+    _dispatch_source_rid.size = 0;
+    _dispatch_source_rid_valid = false;
     _prefetched_id.close ();
     _prefetched_msg.close ();
 }
@@ -218,6 +259,13 @@ void zlink::router_t::xpipe_terminated (pipe_t *pipe_)
     }
     if (0 == _anonymous_pipes.erase (pipe_)) {
         erase_out_pipe (pipe_);
+        _dispatch_source_rids.erase (pipe_);
+        std::map<pipe_t *, std::vector<zlink_msg_t>>::iterator parts_it =
+          _dispatch_parts_by_pipe.find (pipe_);
+        if (parts_it != _dispatch_parts_by_pipe.end ()) {
+            close_socket_msg_parts (&parts_it->second);
+            _dispatch_parts_by_pipe.erase (parts_it);
+        }
         _fq.pipe_terminated (pipe_);
         pipe_->rollback ();
         if (pipe_ == _current_out)
@@ -239,52 +287,72 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
                  socket_msg_handler () ? 1 : 0);
     }
 
+    pipe_t *source_pipe = pipe_ ? pipe_ : current_socket_msg_dispatch_pipe ();
+
     if (msg_->is_routing_id ()) {
-        pipe_t *socket_pipe = pipe_;
+        pipe_t *socket_pipe = source_pipe;
         if (socket_pipe && _anonymous_pipes.count (socket_pipe) == 0
             && lookup_out_pipe (socket_pipe->get_routing_id ()) == NULL) {
             socket_pipe = socket_pipe->get_peer ();
             if (!socket_pipe) {
-                store_dispatch_source_rid (&_dispatch_source_rid, &_dispatch_source_rid_valid,
-                                           msg_);
+                store_dispatch_source_rid (&_dispatch_source_rids, source_pipe,
+                                           &_dispatch_source_rid,
+                                           &_dispatch_source_rid_valid, msg_);
                 return 1;
             }
         }
 
-        const bool needs_route_registration =
-          socket_pipe
-          && (_anonymous_pipes.count (socket_pipe) != 0
-              || lookup_out_pipe (blob_t (
-                   const_cast<unsigned char *> (static_cast<unsigned char *> (msg_->data ())),
-                   msg_->size (), zlink::reference_tag_t ()))
-                   == NULL);
+        bool needs_route_registration = false;
+        if (socket_pipe) {
+            blob_t routing_id_ref (
+              const_cast<unsigned char *> (static_cast<unsigned char *> (msg_->data ())),
+              msg_->size (), zlink::reference_tag_t ());
+            const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id_ref);
+            needs_route_registration =
+              _anonymous_pipes.count (socket_pipe) != 0 || existing_outpipe == NULL
+              || !existing_outpipe->active || existing_outpipe->weight == 0;
+        }
         if (needs_route_registration) {
             blob_t routing_id (static_cast<unsigned char *> (msg_->data ()), msg_->size ());
             if (adopt_peer_routing_id (socket_pipe, ZLINK_MOVE (routing_id), false))
                 promote_anonymous_pipe_for_dispatch (socket_pipe);
         }
-        store_dispatch_source_rid (&_dispatch_source_rid, &_dispatch_source_rid_valid, msg_);
+        store_dispatch_source_rid (&_dispatch_source_rids, source_pipe, &_dispatch_source_rid,
+                                   &_dispatch_source_rid_valid, msg_);
         return 1;
     }
 
-    store_socket_msg_part (&_dispatch_parts, msg_);
-    if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags () & msg_t::more) != 0) {
+    std::vector<zlink_msg_t> *dispatch_parts = source_pipe ? &_dispatch_parts_by_pipe[source_pipe]
+                                                           : &_dispatch_parts;
+    store_socket_msg_part (dispatch_parts, msg_);
+    if ((reinterpret_cast<msg_t *> (&dispatch_parts->back ())->flags () & msg_t::more) != 0) {
         return 1;
     }
 
     zlink_socket_msg_handler_fn handler = socket_msg_handler ();
     if (!handler) {
-        close_socket_msg_parts (&_dispatch_parts);
-        clear_dispatch_source_rid (&_dispatch_source_rid, &_dispatch_source_rid_valid);
+        close_socket_msg_parts (dispatch_parts);
+        if (source_pipe)
+            _dispatch_parts_by_pipe.erase (source_pipe);
+        if (source_pipe)
+            _dispatch_source_rids.erase (source_pipe);
+        else {
+            _dispatch_source_rid.size = 0;
+            _dispatch_source_rid_valid = false;
+        }
         return 1;
     }
 
     zlink_routing_id_t source_rid;
-    copy_router_pipe_source_rid (pipe_, &source_rid);
+    if (!take_dispatch_source_rid (&_dispatch_source_rids, source_pipe, &_dispatch_source_rid,
+                                   &_dispatch_source_rid_valid, &source_rid))
+        resolve_socket_msg_source_rid (source_pipe, &source_rid);
 
-    invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0], _dispatch_parts.size ());
-    _dispatch_parts.clear ();
-    clear_dispatch_source_rid (&_dispatch_source_rid, &_dispatch_source_rid_valid);
+    invoke_socket_msg_handler (handler, &source_rid, &(*dispatch_parts)[0],
+                               dispatch_parts->size ());
+    dispatch_parts->clear ();
+    if (source_pipe)
+        _dispatch_parts_by_pipe.erase (source_pipe);
     return 1;
 }
 

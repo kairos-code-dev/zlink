@@ -4,6 +4,7 @@
 #include "../../Shared/spot_service_contracts.hpp"
 
 #include <zlink/framework/codecs/json_stream_connector.hpp>
+#include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
 
 #include <chrono>
@@ -14,15 +15,40 @@ namespace zlink::framework::e2e::spot_service::client::scenarios
 {
 
 inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
-                                const std::string &alternate_stream_endpoint)
+                                const std::string &alternate_stream_endpoint,
+                                const std::string &play_http_endpoint)
 {
-    if (session_stream_endpoint.empty () || alternate_stream_endpoint.empty ()) {
+    if (session_stream_endpoint.empty () || alternate_stream_endpoint.empty ()
+        || play_http_endpoint.empty ()) {
         throw std::runtime_error (
-          "ZLINK_CPP_E2E_STREAM_ENDPOINT and ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT are required for SM-D6");
+          "ZLINK_CPP_E2E_STREAM_ENDPOINT, ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT, and ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT are required for SM-D6");
     }
 
     constexpr auto actor_id = "actor-sm-d6";
     constexpr auto shadow_actor_id = "actor-sm-d6-shadow";
+
+    auto play_a = zlink::http_client::client_t::create ()
+                    .base_url (play_http_endpoint)
+                    .json ()
+                    .build ();
+    auto joined =
+      play_a.post ("/spot/join")
+        .body (join_req_t{.key = "sm-d6-bound",
+                          .actor_id = actor_id,
+                          .display_name = "SM-D6 Bound",
+                          .level = 6,
+                          .tags = {"stream", "SM-D6"}})
+        .submit_raw ()
+        .result ();
+    if (!joined || joined.value ().status >= 400) {
+        auto reason = std::string ("SM-D6 actor join failed");
+        if (joined) {
+            reason += ": status=" + std::to_string (joined.value ().status)
+                      + " body=" + joined.value ().body;
+        }
+        throw std::runtime_error (reason);
+    }
+    const auto join_reply = nlohmann::json::parse (joined.value ().body).get<join_res_t> ();
 
     zlink::stream_connector::connector_options_t bound_options;
     bound_options.endpoint = session_stream_endpoint;
@@ -36,12 +62,21 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
         throw std::runtime_error ("SM-D6 bound stream connect failed");
     }
     auto bound_auth =
-      bound.request (stream_ensure_auth_req_t{"play-a", actor_id, "SM-D6 Bound"})
-        .packet_name ("StreamEnsureAuthReq")
+      bound.request (stream_auth_req_t{"play-a", actor_id, "SM-D6 Bound", join_reply.actor})
+        .packet_name ("StreamAuthReq")
         .timeout (std::chrono::milliseconds (5000))
         .submit<stream_auth_res_t> ();
     if (!bound_auth) {
         throw std::runtime_error ("SM-D6 bound stream auth failed");
+    }
+    auto routed =
+      bound.request (actor_ping_req_t{"sm-d6-route"})
+        .packet_name ("ActorPingReq")
+        .metadata ("actor-id", actor_id)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit<actor_ping_res_t> ();
+    if (!routed || routed.value ().actor_id != actor_id) {
+        throw std::runtime_error ("SM-D6 route establishment failed");
     }
 
     zlink::stream_connector::connector_options_t unbound_options;
@@ -70,13 +105,17 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
     auto unbound_wait =
       unbound.wait_for<actor_push_notify_t> (std::chrono::milliseconds (500));
     auto pushed =
-      bound.request (actor_push_req_t{"push-bound-only"})
-        .packet_name ("PushReq")
-        .metadata ("actor-id", actor_id)
-        .timeout (std::chrono::milliseconds (5000))
-        .submit<actor_push_res_t> ();
-    if (!pushed || !pushed.value ().pushed || pushed.value ().actor_id != actor_id) {
+      play_a.post ("/spot/push-bound-session")
+        .body (bound_session_push_req_t{.actor_id = actor_id,
+                                        .push = actor_push_req_t{"push-bound-only"}})
+        .submit_raw ()
+        .result ();
+    if (!pushed || pushed.value ().status >= 400) {
         throw std::runtime_error ("SM-D6 push trigger failed");
+    }
+    const auto pushed_reply = nlohmann::json::parse (pushed.value ().body).get<actor_push_res_t> ();
+    if (!pushed_reply.pushed || pushed_reply.actor_id != actor_id) {
+        throw std::runtime_error ("SM-D6 push trigger reply mismatch");
     }
 
     auto notify = bound_wait.get ();

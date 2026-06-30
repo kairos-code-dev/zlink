@@ -19,6 +19,7 @@ internal sealed class ApiServer(SampleSettings settings)
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
+            options.Codecs.AddJson();
 
             options.AddClientServerChannel(SampleChannels.Api)
                 .EnableServer(settings.ApiChannelEndpoint)

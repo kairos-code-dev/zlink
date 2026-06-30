@@ -65,6 +65,7 @@ public final class QuestMissionApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs") + "/flow-" + instance.missionName() + ".log")
                 .traceLabel(instance.missionName());
+            configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(QuestMissionApplication.class);
 
             // gameplay event fanout subscriber (both GameApi publishers)

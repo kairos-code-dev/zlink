@@ -9,11 +9,9 @@
 #include <zlink/stream_connector/contracts/zlink_stream_models.hpp>
 
 #include <chrono>
-#include <condition_variable>
 #include <functional>
+#include <future>
 #include <memory>
-#include <mutex>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -213,39 +211,6 @@ class request_call_t
     std::chrono::milliseconds _timeout{0};
 };
 
-template <typename TMessage> class wait_future_t
-{
-  public:
-    wait_future_t () : _state (std::make_shared<state_t> ()) {}
-
-    TMessage get ()
-    {
-        std::unique_lock lock (_state->mutex);
-        _state->ready.wait (lock, [&] { return _state->result.has_value (); });
-        auto result = std::move (*_state->result);
-        lock.unlock ();
-        if (!result) {
-            throw std::runtime_error (_state->failure_message);
-        }
-        return std::move (result.value ());
-    }
-
-  private:
-    template <typename> friend class wait_call_t;
-
-    struct state_t
-    {
-        std::mutex mutex;
-        std::condition_variable ready;
-        std::optional<result_t<TMessage>> result;
-        std::string failure_message;
-    };
-
-    explicit wait_future_t (std::shared_ptr<state_t> state) : _state (std::move (state)) {}
-
-    std::shared_ptr<state_t> _state;
-};
-
 template <typename TMessage> class wait_call_t
 {
   public:
@@ -371,19 +336,20 @@ template <typename TMessage> class wait_call_t
           });
     }
 
-    wait_future_t<TMessage>
-    to_future (std::string failure_message = "stream connector wait failed")
+    std::future<TMessage> to_future (std::string failure_message = "stream connector wait failed")
     {
-        auto state = std::make_shared<typename wait_future_t<TMessage>::state_t> ();
-        state->failure_message = std::move (failure_message);
-        submit ([state] (result_t<TMessage> result) mutable {
-            {
-                std::lock_guard lock (state->mutex);
-                state->result = std::move (result);
+        auto promise = std::make_shared<std::promise<TMessage>> ();
+        auto future = promise->get_future ();
+        submit ([promise, failure_message = std::move (failure_message)] (
+                  result_t<TMessage> result) mutable {
+            if (!result) {
+                promise->set_exception (std::make_exception_ptr (
+                  std::runtime_error (failure_message)));
+                return;
             }
-            state->ready.notify_all ();
+            promise->set_value (std::move (result.value ()));
         });
-        return wait_future_t<TMessage> (std::move (state));
+        return future;
     }
 
   private:

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../Shared/server_runtime.hpp"
+#include "registry_host_factory.hpp"
 
 int main (int argc, char **argv)
 {

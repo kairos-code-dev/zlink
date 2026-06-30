@@ -1,0 +1,54 @@
+package systems.zlink.e2e.kotlin.registrymessaging.consumer
+
+import java.io.File
+import org.springframework.boot.WebApplicationType
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.context.annotation.Bean
+import systems.zlink.e2e.kotlin.registrymessaging.consumer.Configuration.ConsumerOptions
+import systems.zlink.e2e.kotlin.registrymessaging.consumer.Endpoints.ConsumerEndpoints
+import systems.zlink.e2e.kotlin.registrymessaging.shared.Contracts
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.spring.EnableZLinkFramework
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+
+private lateinit var parsedOptions: ConsumerOptions
+
+fun main(args: Array<String>) {
+    parsedOptions = ConsumerOptions.parse(args)
+    File(parsedOptions.logDir).mkdirs()
+    val context = SpringApplicationBuilder(ConsumerApplication::class.java)
+        .web(WebApplicationType.NONE)
+        .run(*args)
+    ConsumerEndpoints(parsedOptions, context).start()
+}
+
+@EnableZLinkFramework
+@SpringBootApplication(proxyBeanMethods = false)
+class ConsumerApplication {
+    @Bean
+    fun consumerOptions(): ConsumerOptions = parsedOptions
+
+    @Bean
+    fun framework(options: ConsumerOptions): ZLinkFrameworkConfigurer =
+        ZLinkFrameworkConfigurer { framework ->
+            framework.codecs().addJson()
+            framework.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile("${options.logDir}/${options.traceLabel}-flow.log")
+                .traceLabel(options.traceLabel)
+
+            val profile = framework.addClientServerChannel(Contracts.PROFILE_CHANNEL)
+            if (!options.registryRouterEndpoint.isNullOrBlank()) {
+                framework.useDiscovery().addRegistryEndpoint(options.registryRouterEndpoint)
+                profile.enableClient()
+            } else {
+                for (endpoint in options.providerEndpoints) {
+                    profile.enableClient(endpoint)
+                }
+            }
+
+            // Java/Kotlin public channel builder does not expose low-HWM socket setup here.
+            // RM-C9 records this as a public contract gap instead of using internal socket access.
+        }
+}

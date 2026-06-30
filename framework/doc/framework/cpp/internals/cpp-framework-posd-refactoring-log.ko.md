@@ -9061,8 +9061,8 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 ### 적용한 리팩토링
 
 - `discovery_options_builder_t::add(...)`가 registry discovery endpoint를 options state에도 기록한다.
-- `add_client_server_channel(...).enable_client()`는 client 역할에 `use_discovery()`를 적용한다.
-- `add_fanout_channel(...).enable_subscriber()`는 subscriber 역할에 `use_discovery()`를 적용한다.
+- `add_client_server_channel(...).enable_client()`는 root discovery endpoint가 있으면 client 역할에 자동 연결을 적용한다.
+- `add_fanout_channel(...).enable_subscriber()`는 root discovery endpoint가 있으면 subscriber 역할에 자동 연결을 적용한다.
 - discovery-backed 역할이 있는데 registry discovery endpoint가 없으면 `zlink_framework_options_t::apply()`가
   `request_protocol_error`로 실패한다.
 - module/options regression이 정상 `.enable_client()` snapshot의 discovery flag와 discovery 없는 `.enable_client()` 실패를

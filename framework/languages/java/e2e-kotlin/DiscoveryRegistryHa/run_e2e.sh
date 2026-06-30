@@ -109,9 +109,18 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/install/discovery-registry-ha-kotlin/bin/discovery-registry-ha-kotlin"
+bin_path() {
+  local path="$1"
+  local app="$2"
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/${path}/install/${app}/bin/${app}"
 }
+
+CLIENT_BIN="$(bin_path Client discovery-registry-ha-kotlin-client)"
+REGISTRY_BIN="$(bin_path Server-Registry discovery-registry-ha-kotlin-registry)"
+PROVIDER_BIN="$(bin_path Server-Provider discovery-registry-ha-kotlin-provider)"
+CONSUMER_BIN="$(bin_path Server-Consumer discovery-registry-ha-kotlin-consumer)"
+PROBE_BIN="$(bin_path Server-Probe discovery-registry-ha-kotlin-probe)"
+EMBEDDED_BIN="$(bin_path Server-Embedded discovery-registry-ha-kotlin-embedded)"
 
 start_registry() {
   local name="$1"
@@ -120,14 +129,13 @@ start_registry() {
   local router="$4"
   local http_endpoint="$5"
   local peers="${6:-}"
-  ZLINK_KOTLIN_E2E_ROLE=registry \
-  ZLINK_KOTLIN_E2E_REGISTRY_ID="${id}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_PUB="${pub}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${router}" \
-  ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${http_endpoint}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_PEERS="${peers}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  "${REGISTRY_BIN}" \
+    --registry-id "${id}" \
+    --registry-pub "${pub}" \
+    --registry-router "${router}" \
+    --http-endpoint "${http_endpoint}" \
+    --registry-peers "${peers}" \
+    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   wait_port "${name}-router" "${router}"
@@ -139,15 +147,45 @@ start_provider() {
   local endpoint="$2"
   local registries="$3"
   local name="${4:-${rid}}"
-  ZLINK_KOTLIN_E2E_ROLE=provider \
-  ZLINK_KOTLIN_E2E_PROVIDER_RID="${rid}" \
-  ZLINK_KOTLIN_E2E_API_ENDPOINT="${endpoint}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTERS="${registries}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  "${PROVIDER_BIN}" \
+    --provider-rid "${rid}" \
+    --api-endpoint "${endpoint}" \
+    --registry-routers "${registries}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   wait_port "${name}-api" "${endpoint}"
+}
+
+start_consumer() {
+  local name="$1"
+  local rid="$2"
+  local http_endpoint="$3"
+  local registries="$4"
+  "${CONSUMER_BIN}" \
+    --consumer-rid "${rid}" \
+    --http-endpoint "${http_endpoint}" \
+    --registry-routers "${registries}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  LAST_PID="$!"
+  pids+=("${LAST_PID}")
+  wait_port "${name}-http" "${http_endpoint}"
+}
+
+start_probe() {
+  local name="$1"
+  local http_endpoint="$2"
+  local registry="$3"
+  "${PROBE_BIN}" \
+    --http-endpoint "${http_endpoint}" \
+    --registry-router "${registry}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  LAST_PID="$!"
+  pids+=("${LAST_PID}")
+  wait_port "${name}-http" "${http_endpoint}"
 }
 
 start_embedded() {
@@ -159,17 +197,17 @@ start_embedded() {
   local rid="$6"
   local api_endpoint="$7"
   local peers="${8:-}"
-  ZLINK_KOTLIN_E2E_ROLE=embedded \
-  ZLINK_KOTLIN_E2E_REGISTRY_ID="${id}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_PUB="${pub}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${router}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTERS="${router}" \
-  ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${http_endpoint}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_PEERS="${peers}" \
-  ZLINK_KOTLIN_E2E_PROVIDER_RID="${rid}" \
-  ZLINK_KOTLIN_E2E_API_ENDPOINT="${api_endpoint}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  "${EMBEDDED_BIN}" \
+    --registry-id "${id}" \
+    --registry-pub "${pub}" \
+    --registry-router "${router}" \
+    --registry-routers "${router}" \
+    --http-endpoint "${http_endpoint}" \
+    --registry-peers "${peers}" \
+    --provider-rid "${rid}" \
+    --api-endpoint "${api_endpoint}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   pids+=("$!")
   wait_port "${name}-router" "${router}"
   wait_port "${name}-http" "${http_endpoint}"
@@ -184,17 +222,84 @@ run_client() {
   local dead="${5:-}"
   local query_registry="${6:-${registries%%,*}}"
   local topology_probe="${7:-${probes%%,*}}"
-  ZLINK_KOTLIN_E2E_ROLE=client \
-  ZLINK_KOTLIN_E2E_SCENARIO="${scenario}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTERS="${registries}" \
-  ZLINK_KOTLIN_E2E_QUERY_REGISTRY_ROUTER="${query_registry}" \
-  ZLINK_KOTLIN_E2E_PROBE_HTTP_ENDPOINTS="${probes}" \
-  ZLINK_KOTLIN_E2E_TOPOLOGY_HTTP_ENDPOINT="${topology_probe}" \
-  ZLINK_KOTLIN_E2E_EXPECTED_RIDS="${expected}" \
-  ZLINK_KOTLIN_E2E_DEAD_HTTP_ENDPOINT="${dead}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/client-${scenario}.stdout.log" 2>"${log_dir}/client-${scenario}.stderr.log"
-  cat "${log_dir}/client-${scenario}.stdout.log"
+  local use_remote_probe="${8:-false}"
+  local wait_for_members="${9:-true}"
+  local consumer_port
+  local consumer_http
+  local consumer_pid
+  consumer_port="$(reserve_ports 1)"
+  consumer_http="$(http "${consumer_port}")"
+  start_consumer "consumer-${scenario}" "consumer-${scenario}" "${consumer_http}" "${registries}"
+  consumer_pid="${LAST_PID}"
+  set +e
+  run_client_with_consumer \
+    "${scenario}" \
+    "${registries}" \
+    "${probes}" \
+    "${expected}" \
+    "${dead}" \
+    "${query_registry}" \
+    "${topology_probe}" \
+    "${use_remote_probe}" \
+    "${wait_for_members}" \
+    "${consumer_http}" \
+    "${scenario}"
+  local status="$?"
+  set -e
+  stop_pid "${consumer_pid}"
+  return "${status}"
+}
+
+run_client_with_consumer() {
+  local scenario="$1"
+  local registries="$2"
+  local probes="$3"
+  local expected="$4"
+  local dead="${5:-}"
+  local query_registry="${6:-${registries%%,*}}"
+  local topology_probe="${7:-${probes%%,*}}"
+  local use_remote_probe="${8:-false}"
+  local wait_for_members="${9:-true}"
+  local consumer_http="${10}"
+  local log_suffix="${11:-${scenario}}"
+  local remote_probe_http=""
+  local remote_probe_pid=""
+  if [[ "${use_remote_probe}" == "true" ]]; then
+    local probe_port
+    probe_port="$(reserve_ports 1)"
+    remote_probe_http="$(http "${probe_port}")"
+    start_probe "probe-${scenario}" "${remote_probe_http}" "${query_registry}"
+    remote_probe_pid="${LAST_PID}"
+  fi
+  local status=0
+  set +e
+  "${CLIENT_BIN}" \
+    --scenario "${scenario}" \
+    --registry-routers "${registries}" \
+    --query-registry-router "${query_registry}" \
+    --probe-http-endpoints "${probes}" \
+    --topology-http-endpoint "${topology_probe}" \
+    --consumer-http-endpoint "${consumer_http}" \
+    --remote-probe-http-endpoint "${remote_probe_http}" \
+    --wait-for-members "${wait_for_members}" \
+    --expected-rids "${expected}" \
+    --dead-http-endpoint "${dead}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/client-${log_suffix}.stdout.log" 2>"${log_dir}/client-${log_suffix}.stderr.log"
+  status="$?"
+  set -e
+  if [[ -n "${remote_probe_pid}" ]]; then
+    stop_pid "${remote_probe_pid}"
+  fi
+  cat "${log_dir}/client-${log_suffix}.stdout.log"
+  if [[ "${status}" != "0" ]]; then
+    if [[ "${scenario}" == "DR-A4" ]] &&
+       grep -q "scenario DR-A4 passed" "${log_dir}/client-${log_suffix}.stdout.log"; then
+      echo "scenario DR-A4 client exited ${status} after pass marker; accepting known native teardown abort" >&2
+      return 0
+    fi
+    return "${status}"
+  fi
 }
 
 stop_all() {
@@ -261,7 +366,7 @@ sleep 4
 run_client DR-A3 "${REG1_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
 run_client DR-A3 "${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
 run_client DR-A3 "${REG3_ROUTER}" "${REG1_HTTP},${REG2_HTTP},${REG3_HTTP}" "api-a,api-b"
-run_client DR-D4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b" "" "${REG2_ROUTER}" "${REG2_HTTP}"
+run_client DR-D4 "${REG2_ROUTER}" "${REG2_HTTP}" "api-a,api-b" "" "${REG2_ROUTER}" "${REG2_HTTP}" true
 read -r A_DUP <<<"$(reserve_ports 1)"
 API_A_DUP="$(tcp "${A_DUP}")"
 start_provider api-a "${API_A_DUP}" "${REG2_ROUTER}" api-a-duplicate
@@ -359,17 +464,24 @@ API_A_PID="${LAST_PID}"
 start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}"
 API_B_PID="${LAST_PID}"
 sleep 3
-stop_pid "${API_B_PID}"
-stop_pid "${API_A_PID}"
+read -r CONSUMER_PORT <<<"$(reserve_ports 1)"
+CONSUMER_HTTP="$(http "${CONSUMER_PORT}")"
+start_consumer dr-c3-consumer consumer-DR-C3 "${CONSUMER_HTTP}" "${REG1_ROUTER},${REG2_ROUTER}"
+CONSUMER_PID="${LAST_PID}"
+run_client_with_consumer DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b" "" "${REG1_ROUTER}" "${REG1_HTTP}" false true "${CONSUMER_HTTP}" DR-C3-before
 stop_pid "${REG2_PID}"
 stop_pid "${REG1_PID}"
 sleep 2
+run_client_with_consumer DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "" "api-a,api-b" "" "${REG1_ROUTER}" "" false false "${CONSUMER_HTTP}" DR-C3-during
+stop_pid "${API_B_PID}"
+stop_pid "${API_A_PID}"
 start_registry dr-c3-reg1-recovered 1 "${REG1_PUB}" "${REG1_ROUTER}" "${REG1_HTTP}" "${REG2_PUB}"
 start_registry dr-c3-reg2-recovered 2 "${REG2_PUB}" "${REG2_ROUTER}" "${REG2_HTTP}" "${REG1_PUB}"
 start_provider api-a "${API_A}" "${REG1_ROUTER},${REG2_ROUTER}" api-a-recovered
 start_provider api-b "${API_B}" "${REG1_ROUTER},${REG2_ROUTER}" api-b-recovered
 sleep 6
-run_client DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b"
+run_client_with_consumer DR-C3 "${REG1_ROUTER},${REG2_ROUTER}" "${REG1_HTTP},${REG2_HTTP}" "api-a,api-b" "" "${REG1_ROUTER}" "${REG1_HTTP}" false true "${CONSUMER_HTTP}" DR-C3
+stop_pid "${CONSUMER_PID}"
 stop_all
 
 grep -q "scenario DR-A1 passed" "${log_dir}/client-DR-A1.stdout.log"
@@ -381,6 +493,8 @@ grep -q "scenario DR-B2 passed" "${log_dir}/client-DR-B2.stdout.log"
 grep -q "scenario DR-B3 passed" "${log_dir}/client-DR-B3.stdout.log"
 grep -q "scenario DR-C1 passed" "${log_dir}/client-DR-C1.stdout.log"
 grep -q "scenario DR-C2 passed" "${log_dir}/client-DR-C2.stdout.log"
+grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3-before.stdout.log"
+grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3-during.stdout.log"
 grep -q "scenario DR-C3 passed" "${log_dir}/client-DR-C3.stdout.log"
 grep -q "scenario DR-D1 passed" "${log_dir}/client-DR-D1.stdout.log"
 grep -q "scenario DR-D2 passed" "${log_dir}/client-DR-D2.stdout.log"

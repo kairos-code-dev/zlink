@@ -63,6 +63,21 @@ struct get_order_state_res_t
     order_state_t state;
 };
 
+struct start_order_workflow_req_t
+{
+    static constexpr const char *packet_name = "StartOrderWorkflowReq";
+    std::string order_id;
+    std::string cart_id;
+    std::string shipping_address_id;
+    std::string payment_method_id;
+    std::string idempotency_key;
+};
+
+struct start_order_workflow_res_t
+{
+    order_state_t state;
+};
+
 struct continue_order_workflow_req_t
 {
     static constexpr const char *packet_name = "ContinueOrderWorkflowReq";
@@ -188,6 +203,34 @@ inline void to_json (nlohmann::json &json, const get_order_state_res_t &value)
 }
 
 inline void from_json (const nlohmann::json &json, get_order_state_res_t &value)
+{
+    value.state = json.value ("state", order_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const start_order_workflow_req_t &value)
+{
+    json = nlohmann::json{{"orderId", value.order_id},
+                          {"cartId", value.cart_id},
+                          {"shippingAddressId", value.shipping_address_id},
+                          {"paymentMethodId", value.payment_method_id},
+                          {"idempotencyKey", value.idempotency_key}};
+}
+
+inline void from_json (const nlohmann::json &json, start_order_workflow_req_t &value)
+{
+    value.order_id = json.value ("orderId", "");
+    value.cart_id = json.value ("cartId", "");
+    value.shipping_address_id = json.value ("shippingAddressId", "");
+    value.payment_method_id = json.value ("paymentMethodId", "");
+    value.idempotency_key = json.value ("idempotencyKey", "");
+}
+
+inline void to_json (nlohmann::json &json, const start_order_workflow_res_t &value)
+{
+    json = nlohmann::json{{"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, start_order_workflow_res_t &value)
 {
     value.state = json.value ("state", order_state_t{});
 }

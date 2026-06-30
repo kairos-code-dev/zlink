@@ -841,12 +841,48 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     ? ZLinkScannedHandlerKind.ACTOR_REQUEST
                     : ZLinkScannedHandlerKind.ACTOR_SEND);
         if (handler == null) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "actor packet handler is not registered: " + header.packetName()));
+            ZLinkConfigurationException error = new ZLinkConfigurationException(
+                "actor packet handler is not registered: " + header.packetName());
+            reportDispatchError(
+                ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                isRequest
+                    ? ZLinkDispatchMessageKind.ACTOR_REQUEST
+                    : ZLinkDispatchMessageKind.ACTOR_SEND,
+                ZLinkDispatchErrorReason.HANDLER_MISSING,
+                isRequest
+                    ? ZLinkDispatchErrorAction.REPLY_ERROR
+                    : ZLinkDispatchErrorAction.DROP,
+                header.packetName(),
+                null,
+                null,
+                joinedSpotRid.orElse(null),
+                actor.actorId(),
+                null,
+                header.requestSequence().map(Object::toString).orElse(null),
+                error);
+            return CompletableFuture.failedFuture(error);
         }
         if (isRequest != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "actor packet kind does not match handler kind: " + header.packetName()));
+            ZLinkConfigurationException error = new ZLinkConfigurationException(
+                "actor packet kind does not match handler kind: " + header.packetName());
+            reportDispatchError(
+                ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                isRequest
+                    ? ZLinkDispatchMessageKind.ACTOR_REQUEST
+                    : ZLinkDispatchMessageKind.ACTOR_SEND,
+                ZLinkDispatchErrorReason.HANDLER_MISSING,
+                isRequest
+                    ? ZLinkDispatchErrorAction.REPLY_ERROR
+                    : ZLinkDispatchErrorAction.DROP,
+                header.packetName(),
+                null,
+                null,
+                joinedSpotRid.orElse(null),
+                actor.actorId(),
+                null,
+                header.requestSequence().map(Object::toString).orElse(null),
+                error);
+            return CompletableFuture.failedFuture(error);
         }
         if (!handler.actorType().isInstance(actor)) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(

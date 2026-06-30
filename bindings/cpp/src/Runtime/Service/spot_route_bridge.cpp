@@ -51,6 +51,12 @@ endpoint_options (spot_route_bridge_t::endpoint_capabilities_t capabilities_) no
 
 void throw_config_rc (int rc_)
 {
+    if (rc_ == 0)
+        return;
+    if (rc_ == -1) {
+        throw config_error_t (zlink::detail::config_result_from_errno (zlink_errno ()),
+                              zlink_errno ());
+    }
     zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (rc_));
 }
 

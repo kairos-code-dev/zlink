@@ -55,3 +55,12 @@ if (useLocalBindings) {
         }
     }
 }
+
+include(":Shared")
+include(":Client")
+include(":Server:Registry")
+include(":Server:Play")
+include(":Server:Publisher")
+include(":Server:Gateway")
+include(":Server:MultiNode")
+include(":Server:Session")

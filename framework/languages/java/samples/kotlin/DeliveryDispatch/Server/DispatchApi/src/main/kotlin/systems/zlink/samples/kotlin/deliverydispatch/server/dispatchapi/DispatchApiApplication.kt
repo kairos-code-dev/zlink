@@ -11,11 +11,17 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.EvidenceStore
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.deliverydispatch.server.dispatchapi.handlers.CreateDeliveryHandler
+import systems.zlink.samples.kotlin.deliverydispatch.server.dispatchapi.handlers.ServerAssertionHandler
 
 @EnableZLinkFramework
 @SpringBootApplication(
     proxyBeanMethods = false,
-    scanBasePackageClasses = [DispatchApiApplication::class],
+    scanBasePackageClasses = [
+        DispatchApiApplication::class,
+        CreateDeliveryHandler::class,
+        ServerAssertionHandler::class,
+    ],
 )
 class DispatchApiApplication {
     @Bean
@@ -30,11 +36,6 @@ class DispatchApiApplication {
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-dispatch-api.log")
                 traceLabel("dispatch-api")
             }
-            options.codecs().addJson()
-            options.addHandlersFromPackageOf(DispatchApiApplication::class.java)
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(SampleTopology.ApiChannelEndpoint)
-                .addHandlerGroup("api")
             options.addClientServerChannel(SampleNames.DispatchChannel)
                 .enableClient()
         }
@@ -42,7 +43,11 @@ class DispatchApiApplication {
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {
             val builder = SpringApplicationBuilder(DispatchApiApplication::class.java)
-                .web(WebApplicationType.NONE)
+                .web(WebApplicationType.SERVLET)
+                .properties(
+                    "server.address=127.0.0.1",
+                    "server.port=${java.net.URI.create(SampleTopology.ApiHttpUrl).port}",
+                )
             builder.application().setKeepAlive(true)
             val context = builder.run(*args)
             return AutoCloseable { context.close() }

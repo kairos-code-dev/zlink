@@ -86,10 +86,10 @@ C++ e2e에는 이미 상당 부분 진행된 config가 있다. 이 작업물은 
 | `SpotService` | 리팩토링 대상 | scenario 구현이 가장 많이 진행되어 있으므로 삭제하지 않는다. 현재 세부 scenario header와 server role 코드를 `.NET` 분류에 맞춰 정리하고, 남은 gap은 feature-map에 유지한다. |
 | `PubSub` | 리팩토링 대상 | runner와 client/server/shared 구현이 있으므로 보존한다. 단일 server 파일은 `.NET`의 publisher, registry, subscriber 역할 분류에 맞춰 나눈다. |
 | `RegistrationCodec` | 리팩토링 대상 | 구현된 codec/registration scenario를 보존한다. server 역할과 handler/filter/support 파일을 `.NET` 분류에 맞춰 나눈다. |
-| `DiscoveryRegistryHa` | runner 보존, source 보강 대상 | HA scenario와 runner는 보존한다. 다만 현재 자체 source는 client와 registry 중심이고 provider 역할은 `RegistryMessaging` binary를 재사용한다. `.NET`의 provider, registry, consumer, probe, embedded 역할을 inventory에 먼저 매핑하고, 없는 role source는 새로 작성한다. |
+| `DiscoveryRegistryHa` | 삭제 후 DeliveryDispatch 포팅으로 대체 | 기존 C++ 구현은 `RegistryMessaging` 계약과 binary를 재사용한 별도 HA harness라 `.NET DeliveryDispatch` 포팅 기준과 맞지 않는다. 잘못된 source와 runner는 보존하지 않고 제거한 뒤, `.NET DeliveryDispatch`의 registry, dispatch API, dispatch center, courier, tracking, session, probe, client 역할을 기준으로 새 C++ 포팅을 작성한다. |
 | `ResilienceLifecycle` | runner 보존, source 신규 분리 대상 | 현재 C++에는 `run_e2e.sh`와 `feature-map.ko.md`만 있고 source는 `RegistryMessaging` binary를 재사용한다. runner의 scenario orchestration은 보존하되, `.NET` 기준 `Client/Scenarios`, `Client/Support`, `Server/<Role>` source는 새로 분리한다. |
 | `Monitoring` | RuntimeMonitoring 전환 대상 | `.NET` 기준 config 이름은 `RuntimeMonitoring`이다. 현재 C++ `Monitoring`은 PubSub runner를 감싼 보조 검증 성격이고 자체 source가 없다. `RuntimeMonitoring` inventory를 만든 뒤 유지할 evidence 검증만 옮기고, 전환이 끝나면 기존 `Monitoring` 디렉터리는 삭제한다. |
-| `YieldDispatch` | 신규 작성 대상 | C++ e2e에 해당 config가 없다. `.NET`과 공통 e2e Config 8을 기준으로 새로 만든다. |
+| `YieldDispatch` | Track A/B/C/D 진행 중 | C++ e2e config와 runner가 생겼고 YD-A1~YD-A4, YD-B1~YD-B3, YD-C1~YD-C3, YD-D2는 반복 runner 통과 증거가 있다. B2와 C3 일부는 같은 stream session 증거가 아니라 partial로 남긴다. 남은 YD-D/E scenario와 파일 분리가 있어 config 완료 판정은 보류한다. |
 
 ## 표준 C++ E2E 구조
 
@@ -211,7 +211,7 @@ find framework/languages/dotnet/e2e/<Config> -type f \
 | 1 | `RegistryMessaging` | `config-1-registry-messaging.ko.md` | `.NET`의 RM-* scenario, registry/provider/workflow/consumer role 전부 대응 |
 | 2 | `PubSub` | `config-3-pubsub.ko.md` | publisher/subscriber/registry role과 pubsub scenario 전부 대응 |
 | 3 | `RegistrationCodec` | `config-4-registration-codec.ko.md` | registration, codec variant, invalid registration scenario 전부 대응 |
-| 4 | `DiscoveryRegistryHa` | `config-6-discovery-registry-ha.ko.md` | cluster, failover, embedded registry, direct endpoint scenario 전부 대응 |
+| 4 | `DeliveryDispatch` | `.NET DeliveryDispatch` sample | registry, dispatch API, dispatch center, courier A/B, tracking, session, probe, client role을 C++ sample/e2e로 포팅하고 registry discovery readiness와 delivery reassignment flow까지 검증 |
 | 5 | `ResilienceLifecycle` | `config-5-resilience-lifecycle.ko.md` | restart, remap, drain, crash, outage, observer failure scenario 전부 대응 |
 | 6 | `RuntimeMonitoring` | `config-7-monitoring.ko.md` | monitoring event, filter, dispatch failure, recovery scenario 전부 대응 |
 | 7 | `SpotService` | `config-2-spot-service.ko.md` | spot, actor, session, route, timer, multi-node scenario 전부 대응 |

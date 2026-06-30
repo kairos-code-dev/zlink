@@ -4,6 +4,7 @@
 #include "../Configuration/sample_configuration.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
+#include "../common_codecs.hpp"
 #include "../sample_log_dir.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
@@ -14,8 +15,6 @@
 #include "Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp"
 #include "Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp"
 #include "Application/RoomAllocation/bingo_room_allocator.hpp"
-
-#include <zlink/codecs/protobuf.hpp>
 
 #include <memory>
 
@@ -50,7 +49,7 @@ class play_server_host_factory_t
               .add_singleton<bingo_match_queue_t> (
                 std::make_unique<redis_bingo_match_queue_t> (topology))
               .add_singleton<bingo_room_allocator_t, bingo_match_queue_t> ();
-            options.codecs ().use (framework_codecs::protobuf ());
+            add_bingo_protobuf_codecs (options.codecs ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_route_mesh (sample_names_t::play_channel)
               .enable_server (topology.selected_play_channel_endpoint ())

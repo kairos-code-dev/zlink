@@ -52,6 +52,21 @@ static bool provider_less_local (const provider_info_t &lhs_, const provider_inf
     return lhs_.endpoint < rhs_.endpoint;
 }
 
+static void merge_registry_provider_snapshots_local (
+  const std::map<uint32_t, std::vector<provider_info_t> > &snapshots_,
+  std::vector<provider_info_t> *out_)
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    for (std::map<uint32_t, std::vector<provider_info_t> >::const_iterator it =
+           snapshots_.begin ();
+         it != snapshots_.end (); ++it) {
+        out_->insert (out_->end (), it->second.begin (), it->second.end ());
+    }
+    std::sort (out_->begin (), out_->end (), provider_less_local);
+}
+
 }
 
 discovery_service_change_t::discovery_service_change_t () : changed (false)
@@ -188,15 +203,19 @@ void discovery_service_state_t::apply_provider_snapshot (
 
     std::vector<provider_info_t> sorted_updated = updated_;
     std::sort (sorted_updated.begin (), sorted_updated.end (), provider_less_local);
+    _providers_by_registry[registry_id_] = sorted_updated;
 
-    if (providers_equal_local (_providers, sorted_updated)) {
-        _providers.swap (sorted_updated);
+    std::vector<provider_info_t> merged;
+    merge_registry_provider_snapshots_local (_providers_by_registry, &merged);
+
+    if (providers_equal_local (_providers, merged)) {
+        _providers.swap (merged);
         return;
     }
 
     const bool had_providers = !_providers.empty ();
     _service_seq = _update_seq + 1;
-    _providers.swap (sorted_updated);
+    _providers.swap (merged);
     ++_update_seq;
 
     if (!change_out_)

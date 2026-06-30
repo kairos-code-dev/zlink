@@ -4,7 +4,6 @@ import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
-import systems.zlink.framework.configuration.ZLinkDiscoveryBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -33,11 +32,6 @@ public final class SpotBuilders {
         public ZLinkSpotNodeBuilder setRoutingId(RoutingId routingId) {
             node.setRoutingId(routingId);
             return this;
-        }
-
-        @Override
-        public ZLinkDiscoveryBuilder useDiscovery() {
-            return registration.registryEndpoints()::add;
         }
 
         @Override

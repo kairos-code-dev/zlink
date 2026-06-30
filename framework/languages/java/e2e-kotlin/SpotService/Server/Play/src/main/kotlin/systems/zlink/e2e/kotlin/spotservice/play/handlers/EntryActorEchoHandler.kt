@@ -1,0 +1,36 @@
+package systems.zlink.e2e.kotlin.spotservice.play.handlers
+
+import systems.zlink.e2e.kotlin.spotservice.Contracts
+import systems.zlink.e2e.kotlin.spotservice.ScenarioState
+import systems.zlink.e2e.kotlin.spotservice.play.spots.*
+import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.handlers.ZLinkSpotActorRequest
+import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+
+class EntryActorEchoHandler {
+    @ZLinkSpotActorRequest(packetName = "ActorEchoRequest")
+    fun handle(
+        spot: ScenarioEntrySpot,
+        actor: ScenarioActor,
+        context: ZLinkSpotActorRequestContext,
+        request: Contracts.ActorEchoRequest,
+        cancellationToken: CancellationToken
+    ): Contracts.ActorEchoReply {
+        val seq = actor.nextSequence()
+        spot.record("ActorEntryRequest", actor.actorId() + "/" + request.value + "#" + seq)
+        actor.context().boundSession()
+            .send(Contracts.ActorPush(actor.actorId(), "entry", "push:" + request.value, request.seq, seq))
+            .submit()
+        return Contracts.ActorEchoReply(
+            actor.actorId(),
+            "entry",
+            spot.nodeRid(),
+            "entry:" + request.value,
+            request.seq,
+            seq,
+            request.profile.displayName,
+            request.profile.level,
+            request.profile.tags
+        )
+    }
+}

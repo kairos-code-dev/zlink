@@ -1,76 +1,30 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../Shared/registry_messaging_contracts.hpp"
+#include "Scenarios/rm_a1_discovery_request_scenario.hpp"
+#include "Scenarios/rm_a2_manual_endpoint_scenario.hpp"
+#include "Scenarios/rm_a4_same_rid_failover_scenario.hpp"
+#include "Scenarios/rm_a6_multiple_channels_scenario.hpp"
+#include "Scenarios/rm_b1_scale_out_scenario.hpp"
+#include "Scenarios/rm_b2_scale_in_scenario.hpp"
+#include "Scenarios/rm_c1_request_send_scenario.hpp"
+#include "Scenarios/rm_c2_targeted_route_scenario.hpp"
+#include "Scenarios/rm_c3_multi_provider_distribution_scenario.hpp"
+#include "Scenarios/rm_c4_timeout_isolation_scenario.hpp"
+#include "Scenarios/rm_c5_missing_packet_scenario.hpp"
+#include "Scenarios/rm_c7_weighted_provider_scenario.hpp"
+#include "Scenarios/rm_c8_payload_round_trip_scenario.hpp"
+#include "Scenarios/rm_c9_backpressure_scenario.hpp"
 
-#include <zlink/framework.hpp>
-#include <zlink/http_client.hpp>
-
-#include <chrono>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <future>
 #include <iostream>
-#include <map>
 #include <memory>
-#include <set>
 #include <stdexcept>
 #include <string>
-#include <thread>
-#include <vector>
 
-namespace e2e = zlink::framework::e2e::registry_messaging;
+namespace rm = zlink::framework::e2e::registry_messaging;
+namespace rm_client = zlink::framework::e2e::registry_messaging::client;
 
 namespace
 {
-
-std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
-void ensure (bool condition, const std::string &message)
-{
-    if (!condition) {
-        throw std::runtime_error (message);
-    }
-}
-
-void touch_file (const std::string &path)
-{
-    if (path.empty ()) {
-        return;
-    }
-    std::ofstream file (path);
-    file << "ready\n";
-}
-
-void wait_for_file (const std::string &path)
-{
-    if (path.empty ()) {
-        return;
-    }
-    for (int attempt = 0; attempt < 200; ++attempt) {
-        if (std::filesystem::exists (path)) {
-            return;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (50));
-    }
-    throw std::runtime_error ("timed out waiting for " + path);
-}
-
-void configure_common_codecs (zlink::framework::codec_options_builder_t codecs)
-{
-    codecs.add_json ();
-    codecs.add_json<e2e::profile_request_t,
-                    e2e::profile_reply_t,
-                    e2e::profile_command_t,
-                    e2e::route_ping_t,
-                    e2e::route_pong_t> ();
-}
 
 class scenario_service_t final : public zlink::framework::hosted_service_t
 {
@@ -82,53 +36,47 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         try {
             auto &channels = services.get_required<zlink::framework::channel_client_t> ();
             auto &routes = services.get_required<zlink::framework::route_client_t> ();
-            const auto scenario = env_or ("ZLINK_CPP_E2E_SCENARIO", "common");
+            const auto scenario = rm_client::env_or ("ZLINK_CPP_E2E_SCENARIO", "common");
             if (scenario == "rm-a1") {
-                run_registry_client_server (channels, false);
+                rm_client::run_rm_a1_discovery_request_scenario (channels);
             } else if (scenario == "rm-a2") {
-                run_manual_endpoint (channels);
+                rm_client::run_rm_a2_manual_endpoint_scenario (channels);
             } else if (scenario == "common") {
-                run_registry_client_server (channels);
-                run_request_send_happy_path (channels);
-                run_manual_endpoint (channels);
-                run_manual_multi_endpoint (channels);
-                run_cross_channel_discovery (channels);
-                run_message_size_variation (channels);
-                run_route_mesh (routes);
+                rm_client::run_rm_a1_discovery_request_scenario (channels);
+                rm_client::run_rm_c1_request_send_scenario (channels);
+                rm_client::run_rm_a2_manual_endpoint_scenario (channels);
+                rm_client::run_rm_c3_multi_provider_distribution_scenario (channels);
+                rm_client::run_rm_a6_multiple_channels_scenario (channels);
+                rm_client::run_rm_c8_payload_round_trip_scenario (channels);
+                rm_client::run_rm_c2_targeted_route_scenario (routes);
+                rm_client::run_rm_c4_timeout_isolation_scenario (channels);
+                rm_client::run_rm_c5_missing_packet_scenario (channels);
             } else if (scenario == "rm-a6") {
-                run_cross_channel_discovery (channels);
+                rm_client::run_rm_a6_multiple_channels_scenario (channels);
             } else if (scenario == "rm-c1") {
-                run_request_send_happy_path (channels);
+                rm_client::run_rm_c1_request_send_scenario (channels);
             } else if (scenario == "rm-c2") {
-                run_route_mesh (routes);
+                rm_client::run_rm_c2_targeted_route_scenario (routes);
             } else if (scenario == "rm-c3") {
-                run_manual_multi_endpoint (channels);
+                rm_client::run_rm_c3_multi_provider_distribution_scenario (channels);
             } else if (scenario == "rm-c4" || scenario == "timeout-cleanup") {
-                run_timeout_late_reply (channels);
+                rm_client::run_rm_c4_timeout_isolation_scenario (channels);
             } else if (scenario == "rm-c5") {
-                run_missing_packet (channels);
+                rm_client::run_rm_c5_missing_packet_scenario (channels);
             } else if (scenario == "rm-b1" || scenario == "scale-out") {
-                run_scale_out (channels);
+                rm_client::run_rm_b1_scale_out_scenario (channels);
             } else if (scenario == "rm-b2" || scenario == "scale-in") {
-                run_scale_in (channels);
+                rm_client::run_rm_b2_scale_in_scenario (channels);
             } else if (scenario == "rm-a4" || scenario == "failover") {
-                run_failover (channels);
+                rm_client::run_rm_a4_same_rid_failover_scenario (channels);
             } else if (scenario == "rm-c7" || scenario == "weighted") {
-                run_weighted_distribution (channels);
+                rm_client::run_rm_c7_weighted_provider_scenario (channels);
             } else if (scenario == "rm-c8") {
-                run_message_size_variation (channels);
+                rm_client::run_rm_c8_payload_round_trip_scenario (channels);
             } else if (scenario == "rm-c8-max" || scenario == "max-size") {
-                run_max_message_size_limit (channels);
-            } else if (scenario == "drain-restore") {
-                run_drain_restore (channels);
+                rm_client::run_rm_c8_max_message_size_scenario (channels);
             } else if (scenario == "rm-c9" || scenario == "backpressure") {
-                run_backpressure (channels);
-            } else if (scenario == "resilience-stress") {
-                run_resilience_stress (channels);
-            } else if (scenario == "quick") {
-                run_quick_request (channels);
-            } else if (scenario == "inflight-crash") {
-                run_inflight_crash (channels);
+                rm_client::run_rm_c9_backpressure_scenario (channels);
             } else {
                 throw std::runtime_error ("unknown scenario " + scenario);
             }
@@ -145,613 +93,6 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     bool passed = false;
 
   private:
-    void run_registry_client_server (zlink::framework::channel_client_t &channels,
-                                     bool include_follow_up_scenarios = true)
-    {
-        std::set<std::string> providers;
-        for (int index = 0; index < 80 && providers.size () < 2; ++index) {
-            auto task =
-              channels
-                .request (e2e::api_channel,
-                          e2e::profile_request_t{.value = "auto-" + std::to_string (index)})
-                .timeout (std::chrono::milliseconds (2000))
-                .async<e2e::profile_reply_t> ();
-            const auto &result = task.result ();
-            ensure (result.has_value (),
-                    "RM-A1 request failed: "
-                      + std::string (result.error () ? result.error ()->what () : "unknown"));
-            ensure (result.value ().value.rfind ("profile:auto-", 0) == 0,
-                    "RM-A1 reply payload mismatch");
-            providers.insert (result.value ().provider_rid);
-        }
-        ensure (providers.contains ("api-a") && providers.contains ("api-b"),
-                "RM-A1 did not reach both providers");
-        std::cout << "scenario RM-A1 passed\n";
-
-        if (!include_follow_up_scenarios) {
-            return;
-        }
-
-        run_timeout_late_reply (channels);
-
-        run_missing_packet (channels);
-    }
-
-    void run_request_send_happy_path (zlink::framework::channel_client_t &channels)
-    {
-        auto request = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "c1"})
-                         .timeout (std::chrono::milliseconds (2000))
-                         .async<e2e::profile_reply_t> ();
-        ensure (request.result ().has_value (), "RM-C1 request failed");
-        ensure (request.result ().value ().value == "profile:c1", "RM-C1 reply mismatch");
-
-        auto send =
-          channels.send (e2e::api_channel, e2e::profile_command_t{.command_id = "cmd-c1"}).async ();
-        ensure (send.result ().has_value (), "RM-C1 send failed");
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
-
-        const auto api_a_http = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
-        const auto api_b_http = env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT");
-        auto evidence_client_a = zlink::http_client::client_t::create ()
-                                   .base_url (api_a_http)
-                                   .json ()
-                                   .timeout (std::chrono::milliseconds (1000))
-                                   .build ();
-        auto evidence_client_b = zlink::http_client::client_t::create ()
-                                   .base_url (api_b_http)
-                                   .json ()
-                                   .timeout (std::chrono::milliseconds (1000))
-                                   .build ();
-        const auto evidence_a = evidence_client_a.get ("/evidence").fetch<e2e::evidence_snapshot_t> ();
-        const auto evidence_b = evidence_client_b.get ("/evidence").fetch<e2e::evidence_snapshot_t> ();
-        bool command_recorded = false;
-        for (const auto &snapshot : {evidence_a, evidence_b}) {
-            for (const auto &entry : snapshot.entries) {
-                if (entry.marker == "ProfileCommand" && entry.value == "cmd-c1") {
-                    command_recorded = true;
-                }
-            }
-        }
-        ensure (command_recorded, "RM-C1 send handler evidence was not recorded");
-        std::cout << "scenario RM-C1 passed\n";
-    }
-
-    void run_manual_endpoint (zlink::framework::channel_client_t &channels)
-    {
-        auto request =
-          channels
-            .request ("registry.messaging.api.manual", e2e::profile_request_t{.value = "manual"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (request.result ().has_value (), "RM-A2 request failed");
-        ensure (request.result ().value ().provider_rid == "api-a",
-                "RM-A2 did not use the requested provider endpoint");
-        std::cout << "scenario RM-A2 passed\n";
-    }
-
-    void run_manual_multi_endpoint (zlink::framework::channel_client_t &channels)
-    {
-        std::map<std::string, int> counts;
-        for (int index = 0; index < 60; ++index) {
-            auto task =
-              channels
-                .request ("registry.messaging.api.manual.multi",
-                          e2e::profile_request_t{.value = "multi-" + std::to_string (index)})
-                .timeout (std::chrono::milliseconds (2000))
-                .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RM-C3 request failed");
-            ++counts[task.result ().value ().provider_rid];
-        }
-        ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
-                "RM-C3 did not distribute to both providers");
-        ensure (counts["api-a"] + counts["api-b"] == 60, "RM-C3 count mismatch");
-        std::cout << "scenario RM-C3 passed\n";
-    }
-
-    void run_timeout_late_reply (zlink::framework::channel_client_t &channels)
-    {
-        auto slow = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "slow"})
-                      .timeout (std::chrono::milliseconds (100))
-                      .async<e2e::profile_reply_t> ();
-        ensure (!slow.result ().has_value (), "RM-C4 slow request unexpectedly succeeded");
-        auto after = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "after"})
-                       .timeout (std::chrono::milliseconds (2000))
-                       .async<e2e::profile_reply_t> ();
-        ensure (after.result ().has_value (), "RM-C4 post-timeout request failed");
-        std::this_thread::sleep_for (std::chrono::milliseconds (1100));
-        auto later = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "later"})
-                       .timeout (std::chrono::milliseconds (2000))
-                       .async<e2e::profile_reply_t> ();
-        ensure (later.result ().has_value (), "RM-C4 later request failed");
-        std::cout << "scenario RM-C4 passed\n";
-
-    }
-
-    void run_missing_packet (zlink::framework::channel_client_t &channels)
-    {
-        auto missing =
-          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "missing"})
-            .packet_name ("MissingProfileRequest")
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (!missing.result ().has_value (), "RM-C5 missing request unexpectedly succeeded");
-        auto dropped =
-          channels.send (e2e::api_channel, e2e::profile_command_t{.command_id = "missing-send"})
-            .packet_name ("MissingProfileCommand")
-            .async ();
-        ensure (dropped.result ().has_value (), "RM-C5 missing send should complete as drop");
-        auto normal = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "normal"})
-                        .timeout (std::chrono::milliseconds (2000))
-                        .async<e2e::profile_reply_t> ();
-        ensure (normal.result ().has_value (), "RM-C5 normal request after missing packet failed");
-
-        std::this_thread::sleep_for (std::chrono::milliseconds (200));
-        auto evidence_client_a = zlink::http_client::client_t::create ()
-                                   .base_url (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"))
-                                   .json ()
-                                   .timeout (std::chrono::milliseconds (1000))
-                                   .build ();
-        auto evidence_client_b = zlink::http_client::client_t::create ()
-                                   .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
-                                   .json ()
-                                   .timeout (std::chrono::milliseconds (1000))
-                                   .build ();
-        const auto evidence_a = evidence_client_a.get ("/evidence").fetch<e2e::evidence_snapshot_t> ();
-        const auto evidence_b = evidence_client_b.get ("/evidence").fetch<e2e::evidence_snapshot_t> ();
-        bool reply_error_recorded = false;
-        bool drop_recorded = false;
-        for (const auto &snapshot : {evidence_a, evidence_b}) {
-            for (const auto &entry : snapshot.entries) {
-                if (entry.marker != "DispatchError") {
-                    continue;
-                }
-                if (entry.value == "handler_missing:reply_error") {
-                    reply_error_recorded = true;
-                }
-                if (entry.value == "handler_missing:drop") {
-                    drop_recorded = true;
-                }
-            }
-        }
-        ensure (reply_error_recorded, "RM-C5 missing request dispatch evidence was not recorded");
-        ensure (drop_recorded, "RM-C5 missing send dispatch evidence was not recorded");
-        std::cout << "scenario RM-C5 passed\n";
-    }
-
-    void run_weighted_distribution (zlink::framework::channel_client_t &channels)
-    {
-        std::map<std::string, int> counts;
-        constexpr int request_count = 100;
-        for (int index = 0; index < request_count; ++index) {
-            auto task =
-              channels
-                .request (e2e::api_channel,
-                          e2e::profile_request_t{.value = "weighted-" + std::to_string (index)})
-                .timeout (std::chrono::milliseconds (750))
-                .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RM-C7 weighted request failed");
-            ++counts[task.result ().value ().provider_rid];
-        }
-        ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
-                "RM-C7 did not use both weighted providers");
-        ensure (counts["api-a"] + counts["api-b"] == request_count, "RM-C7 count mismatch");
-        std::cout << "scenario RM-C7 counts api-a=" << counts["api-a"]
-                  << " api-b=" << counts["api-b"] << "\n";
-        ensure (counts["api-a"] >= counts["api-b"] + (request_count / 10),
-                "RM-C7 did not clearly prefer the higher weight provider");
-        std::cout << "scenario RM-C7 passed\n";
-    }
-
-    void run_cross_channel_discovery (zlink::framework::channel_client_t &channels)
-    {
-        auto api = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "a6-api"})
-                     .timeout (std::chrono::milliseconds (2000))
-                     .async<e2e::profile_reply_t> ();
-        ensure (api.result ().has_value (), "RM-A6 api channel request failed");
-        ensure (api.result ().value ().provider_rid.rfind ("api-", 0) == 0,
-                "RM-A6 api channel resolved a non-api provider");
-
-        auto workflow =
-          channels.request (e2e::workflow_channel, e2e::profile_request_t{.value = "a6-workflow"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (workflow.result ().has_value (), "RM-A6 workflow channel request failed");
-        ensure (workflow.result ().value ().provider_rid == "workflow-a",
-                "RM-A6 workflow channel resolved the wrong provider");
-        std::cout << "scenario RM-A6 passed\n";
-    }
-
-    void run_message_size_variation (zlink::framework::channel_client_t &channels)
-    {
-        const std::vector<std::size_t> sizes = {8, 64 * 1024, 256 * 1024};
-        for (const auto size : sizes) {
-            const auto payload = std::string (size, static_cast<char> ('a' + (size % 23)));
-            auto task =
-              channels.request (e2e::api_channel, e2e::profile_request_t{.value = payload})
-                .timeout (std::chrono::milliseconds (5000))
-                .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (),
-                    "RM-C8 request failed for payload size " + std::to_string (size));
-            ensure (task.result ().value ().value == "profile:" + payload,
-                    "RM-C8 reply payload mismatch for payload size " + std::to_string (size));
-        }
-        std::cout << "scenario RM-C8 passed\n";
-    }
-
-    void run_max_message_size_limit (zlink::framework::channel_client_t &channels)
-    {
-        const auto oversized_payload = std::string (32 * 1024, 'x');
-        auto oversized =
-          channels
-            .request ("registry.messaging.api.manual.max",
-                      e2e::profile_request_t{.value = oversized_payload})
-            .timeout (std::chrono::milliseconds (1000))
-            .async<e2e::profile_reply_t> ();
-        ensure (!oversized.result ().has_value (),
-                "RM-C8 oversized request unexpectedly succeeded");
-
-        auto normal =
-          channels
-            .request ("registry.messaging.api.manual.max",
-                      e2e::profile_request_t{.value = "after-oversized"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (normal.result ().has_value (), "RM-C8 normal request after oversized failed");
-        ensure (normal.result ().value ().value == "profile:after-oversized",
-                "RM-C8 normal reply after oversized mismatch");
-        std::cout << "scenario RM-C8-max passed\n";
-    }
-
-    void run_backpressure (zlink::framework::channel_client_t &channels)
-    {
-        std::vector<std::future<bool>> requests;
-        requests.reserve (24);
-        for (int index = 0; index < 24; ++index) {
-            requests.push_back (std::async (std::launch::async, [&channels, index] {
-                auto task =
-                  channels
-                    .request ("registry.messaging.api.manual.backpressure",
-                              e2e::profile_request_t{.value = "slow"})
-                    .timeout (std::chrono::milliseconds (150))
-                    .async<e2e::profile_reply_t> ();
-                return task.result ().has_value ();
-            }));
-        }
-
-        int timed_out = 0;
-        for (auto &request : requests) {
-            if (!request.get ()) {
-                ++timed_out;
-            }
-        }
-        ensure (timed_out > 0, "RM-C9 did not observe any bounded backpressure timeout");
-
-        std::this_thread::sleep_for (std::chrono::milliseconds (1300));
-        auto recovery =
-          channels
-            .request ("registry.messaging.api.manual.backpressure",
-                      e2e::profile_request_t{.value = "after-backpressure"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (recovery.result ().has_value (), "RM-C9 recovery request failed");
-        ensure (recovery.result ().value ().value == "profile:after-backpressure",
-                "RM-C9 recovery reply mismatch");
-        std::cout << "scenario RM-C9 passed\n";
-    }
-
-    void run_resilience_stress (zlink::framework::channel_client_t &channels)
-    {
-        std::vector<std::future<zlink::framework::result_t<e2e::profile_reply_t>>> fanout;
-        fanout.reserve (24);
-        for (int index = 0; index < 24; ++index) {
-            fanout.push_back (std::async (std::launch::async, [&channels, index] {
-                auto task =
-                  channels
-                    .request (e2e::api_channel,
-                              e2e::profile_request_t{.value = "rl-d1-"
-                                                               + std::to_string (index)})
-                    .timeout (std::chrono::milliseconds (2500))
-                    .async<e2e::profile_reply_t> ();
-                return task.result ();
-            }));
-        }
-        for (auto &request : fanout) {
-            ensure (request.get ().has_value (), "RL-D1 high fanout request failed");
-        }
-        std::cout << "scenario RL-D1 passed\n";
-
-        auto missing =
-          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "rl-d4-error"})
-            .packet_name ("MissingProfileRequest")
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (!missing.result ().has_value (), "RL-D4 missing request unexpectedly succeeded");
-        ensure (missing.result ().error () != nullptr
-                  && std::string (missing.result ().error ()->what ()).size () > 0,
-                "RL-D4 missing request did not expose an error message");
-        auto recovery =
-          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "rl-d4-after"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (recovery.result ().has_value (), "RL-D4 recovery request failed");
-        std::cout << "scenario RL-D4 passed\n";
-
-        std::vector<std::future<bool>> mixed;
-        mixed.reserve (40);
-        for (int index = 0; index < 20; ++index) {
-            mixed.push_back (std::async (std::launch::async, [&channels, index] {
-                auto task =
-                  channels
-                    .request (e2e::api_channel,
-                              e2e::profile_request_t{.value = "rl-d5-req-"
-                                                               + std::to_string (index)})
-                    .timeout (std::chrono::milliseconds (2500))
-                    .async<e2e::profile_reply_t> ();
-                return task.result ().has_value ();
-            }));
-            mixed.push_back (std::async (std::launch::async, [&channels, index] {
-                auto task =
-                  channels
-                    .send (e2e::api_channel,
-                           e2e::profile_command_t{.command_id = "rl-d5-cmd-"
-                                                                 + std::to_string (index)})
-                    .async ();
-                return task.result ().has_value ();
-            }));
-        }
-        for (auto &operation : mixed) {
-            ensure (operation.get (), "RL-D5 mixed workload operation failed");
-        }
-        auto follow_up =
-          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "rl-d5-after"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (follow_up.result ().has_value (), "RL-D5 follow-up request failed");
-        std::cout << "scenario RL-D5 passed\n";
-    }
-
-    void run_quick_request (zlink::framework::channel_client_t &channels)
-    {
-        auto request =
-          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "quick"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (request.result ().has_value (), "quick request failed");
-        ensure (request.result ().value ().value == "profile:quick", "quick reply mismatch");
-        std::cout << "scenario quick passed\n";
-    }
-
-    void run_inflight_crash (zlink::framework::channel_client_t &channels)
-    {
-        auto slow =
-          channels
-            .request ("registry.messaging.api.manual.b",
-                      e2e::profile_request_t{.value = "very-slow"})
-            .timeout (std::chrono::milliseconds (8000))
-            .async<e2e::profile_reply_t> ();
-        touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-        wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
-        ensure (!slow.result ().has_value (), "RL-B2 in-flight request unexpectedly succeeded");
-
-        auto healthy =
-          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "rl-b2-after"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (healthy.result ().has_value (), "RL-B2 healthy provider follow-up failed");
-        ensure (healthy.result ().value ().provider_rid == "api-a",
-                "RL-B2 follow-up did not use the surviving provider");
-        std::cout << "scenario RL-B2 passed\n";
-    }
-
-    void run_drain_restore (zlink::framework::channel_client_t &channels)
-    {
-        std::set<std::string> before;
-        for (int index = 0; index < 80 && before.size () < 2; ++index) {
-            auto task = channels
-                          .request (e2e::api_channel,
-                                    e2e::profile_request_t{.value = "drain-before-"
-                                                                    + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RL-B4 initial request failed");
-            before.insert (task.result ().value ().provider_rid);
-        }
-        ensure (before.contains ("api-a") && before.contains ("api-b"),
-                "RL-B4 did not start with both providers");
-
-        auto slow =
-          channels
-            .request ("registry.messaging.api.manual.b", e2e::profile_request_t{.value = "slow"})
-            .timeout (std::chrono::milliseconds (3000))
-            .async<e2e::profile_reply_t> ();
-        touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-        wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
-
-        ensure (slow.result ().has_value (), "RL-B5 in-flight request failed during drain");
-        ensure (slow.result ().value ().provider_rid == "api-b",
-                "RL-B5 in-flight request did not run on drained provider");
-
-        int successful_drain_requests = 0;
-        for (int index = 0; index < 40 && successful_drain_requests < 10; ++index) {
-            auto task = channels
-                          .request (e2e::api_channel,
-                                    e2e::profile_request_t{.value = "drain-after-"
-                                                                    + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (500))
-                          .async<e2e::profile_reply_t> ();
-            if (!task.result ().has_value ()) {
-                continue;
-            }
-            ensure (task.result ().value ().provider_rid == "api-a",
-                    "RL-B4 drained provider received a new request");
-            ++successful_drain_requests;
-        }
-        ensure (successful_drain_requests == 10, "RL-B4 did not keep healthy provider available");
-        std::cout << "scenario RL-B5 passed\n";
-
-        touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
-        wait_for_file (env_or ("ZLINK_CPP_E2E_RESTORE_FILE"));
-
-        std::set<std::string> restored;
-        for (int index = 0; index < 80 && !restored.contains ("api-b"); ++index) {
-            auto task = channels
-                          .request (e2e::api_channel,
-                                    e2e::profile_request_t{.value = "restore-"
-                                                                    + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RL-B4 request after restore failed");
-            restored.insert (task.result ().value ().provider_rid);
-        }
-        ensure (restored.contains ("api-b"), "RL-B4 restored provider did not receive traffic");
-        std::cout << "scenario RL-B4 passed\n";
-    }
-
-    void run_route_mesh (zlink::framework::route_client_t &routes)
-    {
-        auto to_b =
-          routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("api-b")),
-                      e2e::route_ping_t{.value = "target-b"})
-            .packet_name ("ScenarioRoutePing")
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::route_pong_t> ();
-        ensure (to_b.result ().has_value (), "RM-C2 target request failed");
-        ensure (to_b.result ().value ().target_rid == "api-b", "RM-C2 target rid mismatch");
-
-        auto evidence_client_a = zlink::http_client::client_t::create ()
-                                   .base_url (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"))
-                                   .json ()
-                                   .timeout (std::chrono::milliseconds (1000))
-                                   .build ();
-        auto evidence_client_b = zlink::http_client::client_t::create ()
-                                   .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
-                                   .json ()
-                                   .timeout (std::chrono::milliseconds (1000))
-                                   .build ();
-        const auto evidence_a = evidence_client_a.get ("/evidence").fetch<e2e::evidence_snapshot_t> ();
-        const auto evidence_b = evidence_client_b.get ("/evidence").fetch<e2e::evidence_snapshot_t> ();
-        bool found_on_a = false;
-        bool found_on_b = false;
-        for (const auto &entry : evidence_a.entries) {
-            if (entry.marker == "ScenarioRoutePing" && entry.value == "target-b") {
-                found_on_a = true;
-            }
-        }
-        for (const auto &entry : evidence_b.entries) {
-            if (entry.marker == "ScenarioRoutePing" && entry.value == "target-b") {
-                found_on_b = true;
-            }
-        }
-        ensure (!found_on_a, "RM-C2 target request reached the wrong provider");
-        ensure (found_on_b, "RM-C2 target provider evidence was not recorded");
-
-        auto missing =
-          routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("api-missing")),
-                      e2e::route_ping_t{.value = "missing"})
-            .packet_name ("ScenarioRoutePing")
-            .timeout (std::chrono::milliseconds (500))
-            .async<e2e::route_pong_t> ();
-        ensure (!missing.result ().has_value (), "RM-C2 missing rid unexpectedly succeeded");
-        std::cout << "scenario RM-C2 passed\n";
-    }
-
-    void run_scale_out (zlink::framework::channel_client_t &channels)
-    {
-        for (int index = 0; index < 5; ++index) {
-            auto task = channels
-                          .request (e2e::api_channel,
-                                    e2e::profile_request_t{.value = "scale-out-before-"
-                                                                    + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RM-B1 initial request failed");
-            ensure (task.result ().value ().provider_rid == "api-a",
-                    "RM-B1 initial traffic should only use api-a");
-        }
-
-        touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-        wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
-
-        std::set<std::string> providers;
-        for (int index = 0; index < 80 && providers.size () < 2; ++index) {
-            auto task = channels
-                          .request (e2e::api_channel,
-                                    e2e::profile_request_t{.value = "scale-out-after-"
-                                                                    + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RM-B1 post-scale request failed");
-            providers.insert (task.result ().value ().provider_rid);
-        }
-        ensure (providers.contains ("api-a") && providers.contains ("api-b"),
-                "RM-B1 did not route to both providers after scale-out");
-        std::cout << "scenario RM-B1 passed\n";
-    }
-
-    void run_scale_in (zlink::framework::channel_client_t &channels)
-    {
-        std::set<std::string> before;
-        for (int index = 0; index < 80 && before.size () < 2; ++index) {
-            auto task = channels
-                          .request (e2e::api_channel,
-                                    e2e::profile_request_t{.value = "scale-in-before-"
-                                                                    + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RM-B2 initial request failed");
-            before.insert (task.result ().value ().provider_rid);
-        }
-        ensure (before.contains ("api-a") && before.contains ("api-b"),
-                "RM-B2 did not start with both providers");
-
-        touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-        wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
-
-        for (int index = 0; index < 20; ++index) {
-            auto task = channels
-                          .request (e2e::api_channel,
-                                    e2e::profile_request_t{.value = "scale-in-after-"
-                                                                    + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RM-B2 post-scale request failed");
-            ensure (task.result ().value ().provider_rid == "api-a",
-                    "RM-B2 routed to removed provider after scale-in");
-        }
-        std::cout << "scenario RM-B2 passed\n";
-    }
-
-    void run_failover (zlink::framework::channel_client_t &channels)
-    {
-        auto first =
-          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "failover-before"})
-            .timeout (std::chrono::milliseconds (2000))
-            .async<e2e::profile_reply_t> ();
-        ensure (first.result ().has_value (), "RM-A4 initial request failed");
-        ensure (first.result ().value ().provider_rid == "api-a"
-                  && first.result ().value ().instance_id == "api-a-v1",
-                "RM-A4 initial provider mismatch");
-
-        touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-        wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
-
-        for (int index = 0; index < 20; ++index) {
-            auto task = channels
-                          .request (e2e::api_channel,
-                                    e2e::profile_request_t{.value = "failover-after-"
-                                                                    + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
-            ensure (task.result ().has_value (), "RM-A4 post-failover request failed");
-            ensure (task.result ().value ().provider_rid == "api-a"
-                      && task.result ().value ().instance_id == "api-a-v2",
-                    "RM-A4 did not switch to replacement provider");
-        }
-        std::cout << "scenario RM-A4 passed\n";
-    }
-
     zlink::framework::app_t &_app;
 };
 
@@ -759,13 +100,13 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
 int main (int argc, char **argv)
 {
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
-    const auto api_a_endpoint = env_or ("ZLINK_CPP_E2E_API_A_ENDPOINT");
-    const auto api_b_endpoint = env_or ("ZLINK_CPP_E2E_API_B_ENDPOINT");
-    const auto route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT");
-    const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
-    const auto scenario_name = env_or ("ZLINK_CPP_E2E_SCENARIO", "common");
+    const auto log_dir = rm_client::env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
+    const auto registry_router = rm_client::env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto api_a_endpoint = rm_client::env_or ("ZLINK_CPP_E2E_API_A_ENDPOINT");
+    const auto api_b_endpoint = rm_client::env_or ("ZLINK_CPP_E2E_API_B_ENDPOINT");
+    const auto route_a_endpoint = rm_client::env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT");
+    const auto route_b_endpoint = rm_client::env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
+    const auto scenario_name = rm_client::env_or ("ZLINK_CPP_E2E_SCENARIO", "common");
 
     auto app = zlink::framework::app_t::create ();
     auto scenario = std::make_unique<scenario_service_t> (app);
@@ -778,11 +119,11 @@ int main (int argc, char **argv)
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/client-flow.log")
           .trace_label ("cpp-rm-client");
-        configure_common_codecs (options.codecs ());
+        rm_client::configure_common_codecs (options.codecs ());
         if (scenario_name != "rm-a2") {
             options.use_discovery ().add_registry_endpoint (registry_router);
-            options.add_client_server_channel (e2e::api_channel).enable_client ();
-            options.add_client_server_channel (e2e::workflow_channel).enable_client ();
+            options.add_client_server_channel (rm::api_channel).enable_client ();
+            options.add_client_server_channel (rm::workflow_channel).enable_client ();
         }
         options.add_client_server_channel ("registry.messaging.api.manual")
           .enable_client (api_a_endpoint);
@@ -800,8 +141,8 @@ int main (int argc, char **argv)
           .client_receive_high_water_mark (zlink::message_count_t::value (2));
         options.add_client_server_channel ("registry.messaging.api.manual.b")
           .enable_client (api_b_endpoint);
-        options.add_route_mesh (e2e::route_channel)
-          .enable_server (env_or ("ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT"))
+        options.add_route_mesh (rm::route_channel)
+          .enable_server (rm_client::env_or ("ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT"))
           .set_routing_id (zlink::routing_id_t::from (std::string ("client")))
           .enable_client (route_a_endpoint)
           .enable_client (route_b_endpoint);

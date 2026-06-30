@@ -5,21 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A HTTP_A HTTP_B CLIENT_ROUTE API_A2 ROUTE_A2 HTTP_A2 <<<"$(python3 - <<'PY'
+read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A HTTP_REGISTRY HTTP_A HTTP_B HTTP_WORKFLOW HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_DISCOVERY_CONSUMER HTTP_BACKPRESSURE_CONSUMER CLIENT_ROUTE API_A2 ROUTE_A2 HTTP_A2 <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(13):
+for _ in range(19):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
 print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:7]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[7:9]), end=" ")
-print(f"tcp://127.0.0.1:{ports[9]}", end=" ")
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[10:12]), end=" ")
-print(f"http://127.0.0.1:{ports[12]}")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[7:15]), end=" ")
+print(f"tcp://127.0.0.1:{ports[15]}", end=" ")
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[16:18]), end=" ")
+print(f"http://127.0.0.1:{ports[18]}")
 for s in sockets:
     s.close()
 PY
@@ -35,11 +35,13 @@ cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_registry_messaging_registry \
   zlink_cpp_e2e_registry_messaging_provider \
   zlink_cpp_e2e_registry_messaging_workflow \
+  zlink_cpp_e2e_registry_messaging_consumer \
   zlink_cpp_e2e_registry_messaging_client >/dev/null
 
 REGISTRY_SERVER="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_registry"
 PROVIDER_SERVER="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_provider"
 WORKFLOW_SERVER="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_workflow"
+CONSUMER_SERVER="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_consumer"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_client"
 SCENARIO="${1:-all}"
 PIDS=()
@@ -84,10 +86,12 @@ wait_port() {
 start_registry() {
   ZLINK_CPP_E2E_REGISTRY_PUB="$REGISTRY_PUB" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_REGISTRY" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$REGISTRY_SERVER" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
   PIDS+=("$!")
   wait_port registry-router "$REGISTRY_ROUTER"
+  wait_port registry-http "$HTTP_REGISTRY"
 }
 
 start_provider() {
@@ -123,12 +127,32 @@ start_workflow_provider() {
   ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
   ZLINK_CPP_E2E_PROVIDER_INSTANCE="$rid" \
   ZLINK_CPP_E2E_WORKFLOW_ENDPOINT="$workflow" \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_WORKFLOW" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$WORKFLOW_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$rid-workflow" "$workflow"
+  wait_port "$rid-http" "$HTTP_WORKFLOW"
+}
+
+start_consumer() {
+  local name="$1"
+  local http="$2"
+  local endpoints="$3"
+  local registry_router="$4"
+  local low_hwm="$5"
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
+  ZLINK_CPP_E2E_PROVIDER_ENDPOINTS="$endpoints" \
+  ZLINK_CPP_E2E_REGISTRY_ROUTER="$registry_router" \
+  ZLINK_CPP_E2E_LOW_HWM="$low_hwm" \
+  ZLINK_CPP_E2E_TRACE_LABEL="$name" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+    "$CONSUMER_SERVER" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
+  LAST_PID="$!"
+  PIDS+=("$LAST_PID")
+  wait_port "$name-http" "$http"
 }
 
 stop_pid() {
@@ -163,7 +187,13 @@ run_client() {
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
   ZLINK_CPP_E2E_HTTP_A_ENDPOINT="$HTTP_A" \
   ZLINK_CPP_E2E_HTTP_B_ENDPOINT="$HTTP_B" \
+  ZLINK_CPP_E2E_HTTP_WORKFLOW_ENDPOINT="$HTTP_WORKFLOW" \
+  ZLINK_CPP_E2E_DIRECT_CONSUMER_URL="$HTTP_DIRECT_CONSUMER" \
+  ZLINK_CPP_E2E_SINGLE_CONSUMER_URL="$HTTP_SINGLE_CONSUMER" \
+  ZLINK_CPP_E2E_DISCOVERY_CONSUMER_URL="$HTTP_DISCOVERY_CONSUMER" \
+  ZLINK_CPP_E2E_BACKPRESSURE_CONSUMER_URL="$HTTP_BACKPRESSURE_CONSUMER" \
   ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
+  ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT="$HTTP_REGISTRY" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$@" \
     "$CLIENT" >"$LOG_DIR/client-$suffix.stdout.log" 2>"$LOG_DIR/client-$suffix.stderr.log"
@@ -178,7 +208,36 @@ if [[ "$SCENARIO" == "all" ]]; then
   exit 0
 fi
 
+case "$SCENARIO" in
+  RM-A1|rm-a1|RM-A2|rm-a2|RM-A4|rm-a4|RM-A6|rm-a6|RM-B1|rm-b1|RM-B2|rm-b2|RM-C1|rm-c1|RM-C2|rm-c2|RM-C3|rm-c3|RM-C4|rm-c4|RM-C5|rm-c5|RM-C7|rm-c7|RM-C8|rm-c8|RM-C9|rm-c9)
+    ;;
+  *)
+    echo "Unknown RegistryMessaging scenario: $SCENARIO" >&2
+    exit 1
+    ;;
+esac
+
 start_registry
+
+if [[ "$SCENARIO" == "RM-A2" || "$SCENARIO" == "rm-a2" ]]; then
+  start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  sleep 1
+  run_client rm-a2 rm-a2 env
+  cat "$LOG_DIR/client-rm-a2.stdout.log"
+  exit 0
+fi
+
+if [[ "$SCENARIO" == "RM-A1" || "$SCENARIO" == "rm-a1" ]]; then
+  start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
+  API_A_PID="$LAST_PID"
+  start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
+  API_B_PID="$LAST_PID"
+  sleep 1
+  run_client rm-a1 rm-a1 env
+  cat "$LOG_DIR/client-rm-a1.stdout.log"
+  exit 0
+fi
 
 if [[ "$SCENARIO" == "RM-A4" || "$SCENARIO" == "rm-a4" ]]; then
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a-v1
@@ -279,6 +338,8 @@ if [[ "$SCENARIO" == "RM-C3" || "$SCENARIO" == "rm-c3" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
+  start_consumer direct-consumer "$HTTP_DIRECT_CONSUMER" "$API_A,$API_B" "" false
+  DIRECT_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c3 rm-c3 env
   cat "$LOG_DIR/client-rm-c3.stdout.log"
@@ -290,6 +351,8 @@ if [[ "$SCENARIO" == "RM-C4" || "$SCENARIO" == "rm-c4" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
+  start_consumer discovery-consumer "$HTTP_DISCOVERY_CONSUMER" "" "$REGISTRY_ROUTER" false
+  DISCOVERY_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c4 rm-c4 env
   cat "$LOG_DIR/client-rm-c4.stdout.log"
@@ -301,6 +364,8 @@ if [[ "$SCENARIO" == "RM-C5" || "$SCENARIO" == "rm-c5" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
+  start_consumer discovery-consumer "$HTTP_DISCOVERY_CONSUMER" "" "$REGISTRY_ROUTER" false
+  DISCOVERY_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c5 rm-c5 env
   cat "$LOG_DIR/client-rm-c5.stdout.log"
@@ -323,14 +388,19 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
+  start_consumer single-consumer "$HTTP_SINGLE_CONSUMER" "$API_A" "" false
+  SINGLE_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c8 rm-c8 env
   cat "$LOG_DIR/client-rm-c8.stdout.log"
+  stop_pid "$SINGLE_CONSUMER_PID"
   stop_pid "$API_A_PID"
   stop_pid "$API_B_PID"
 
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a ZLINK_CPP_E2E_MAX_MESSAGE_SIZE=2048
   API_A_PID="$LAST_PID"
+  start_consumer single-consumer-max "$HTTP_SINGLE_CONSUMER" "$API_A" "" false
+  SINGLE_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c8-max rm-c8-max env
   cat "$LOG_DIR/client-rm-c8-max.stdout.log"
@@ -340,111 +410,13 @@ fi
 if [[ "$SCENARIO" == "RM-C9" || "$SCENARIO" == "rm-c9" ]]; then
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
   API_A_PID="$LAST_PID"
+  start_consumer backpressure-consumer "$HTTP_BACKPRESSURE_CONSUMER" "$API_A" "" true
+  BACKPRESSURE_CONSUMER_PID="$LAST_PID"
   sleep 1
   run_client rm-c9 rm-c9 env
   cat "$LOG_DIR/client-rm-c9.stdout.log"
   exit 0
 fi
 
-start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-if [[ "$SCENARIO" == "RM-A2" || "$SCENARIO" == "rm-a2" ]]; then
-  sleep 1
-  run_client rm-a2 rm-a2 env
-  cat "$LOG_DIR/client-rm-a2.stdout.log"
-  exit 0
-fi
-start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-if [[ "$SCENARIO" == "RM-A1" || "$SCENARIO" == "rm-a1" ]]; then
-  sleep 1
-  run_client rm-a1 rm-a1 env
-  cat "$LOG_DIR/client-rm-a1.stdout.log"
-  exit 0
-fi
-start_workflow_provider workflow-a "$WORKFLOW_A"
-WORKFLOW_A_PID="$LAST_PID"
-sleep 1
-run_client common common env
-cat "$LOG_DIR/client-common.stdout.log"
-stop_pid "$API_A_PID"
-stop_pid "$API_B_PID"
-stop_pid "$WORKFLOW_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a ZLINK_CPP_E2E_SERVER_WEIGHT=75
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B" api-b ZLINK_CPP_E2E_SERVER_WEIGHT=25
-API_B_PID="$LAST_PID"
-sleep 1
-run_client weighted rm-c7 env
-cat "$LOG_DIR/client-rm-c7.stdout.log"
-stop_pid "$API_A_PID"
-stop_pid "$API_B_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a ZLINK_CPP_E2E_MAX_MESSAGE_SIZE=2048
-API_A_PID="$LAST_PID"
-sleep 1
-run_client max-size rm-c8-max env
-cat "$LOG_DIR/client-rm-c8-max.stdout.log"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-sleep 1
-run_client backpressure rm-c9 env
-cat "$LOG_DIR/client-rm-c9.stdout.log"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-READY="$LOG_DIR/rm-b1-ready"
-CONTINUE="$LOG_DIR/rm-b1-continue"
-run_client scale-out rm-b1 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
-B1_CLIENT_PID="$!"
-wait_marker "$READY"
-start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-sleep 5
-touch "$CONTINUE"
-wait "$B1_CLIENT_PID"
-cat "$LOG_DIR/client-rm-b1.stdout.log"
-stop_pid "$API_A_PID"
-stop_pid "$API_B_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A"
-API_A_PID="$LAST_PID"
-start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
-API_B_PID="$LAST_PID"
-READY="$LOG_DIR/rm-b2-ready"
-CONTINUE="$LOG_DIR/rm-b2-continue"
-run_client scale-in rm-b2 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
-B2_CLIENT_PID="$!"
-wait_marker "$READY"
-stop_pid "$API_B_PID"
-sleep 5
-touch "$CONTINUE"
-wait "$B2_CLIENT_PID"
-cat "$LOG_DIR/client-rm-b2.stdout.log"
-stop_pid "$API_A_PID"
-
-start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a-v1
-API_A_PID="$LAST_PID"
-READY="$LOG_DIR/rm-a4-ready"
-CONTINUE="$LOG_DIR/rm-a4-continue"
-run_client failover rm-a4 env \
-  ZLINK_CPP_E2E_READY_FILE="$READY" \
-  ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
-A4_CLIENT_PID="$!"
-wait_marker "$READY"
-stop_pid "$API_A_PID"
-start_provider api-a "$API_A2" "$ROUTE_A2" "$HTTP_A2" api-a-v2
-API_A_PID="$LAST_PID"
-sleep 5
-touch "$CONTINUE"
-wait "$A4_CLIENT_PID"
-cat "$LOG_DIR/client-rm-a4.stdout.log"
-stop_pid "$API_A_PID"
+echo "Unknown RegistryMessaging scenario: $SCENARIO" >&2
+exit 1

@@ -31,6 +31,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
+            options.Codecs.AddJson();
             options.AddSpotRemoteAddressResolver<RedisSpotRemoteAddressResolver>();
 
             options.AddClientServerChannel(SampleChannels.Api)

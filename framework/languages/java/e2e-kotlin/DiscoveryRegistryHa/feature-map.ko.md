@@ -1,8 +1,11 @@
 # Kotlin DiscoveryRegistryHa E2E feature map
 
 이 문서는 Config 6 Discovery/Registry HA 공통 시나리오 중 Kotlin E2E가 현재 검증하는 항목과,
-public API 또는 harness 제어가 더 필요한 항목을 구분한다. registry probe는 registry 프로세스 안에서
+`.NET` 기준 포팅 구조에서 아직 남은 항목을 구분한다. registry probe는 registry 프로세스 안에서
 public `ZLinkRegistryQuery`를 호출하고, consumer는 public `ZLinkClient` discovery 경로만 사용한다.
+현재 구현은 role Gradle project로 process를 나눴고 client scenario dispatcher, scenario ID별 실행
+파일, shared message 타입, registry/provider/consumer/probe/embedded role support는 Kotlin으로
+옮겼다. 파일별 재분류 상태는 `porting-inventory.ko.md`에 기록한다.
 
 ## 구현됨
 
@@ -21,6 +24,27 @@ public `ZLinkRegistryQuery`를 호출하고, consumer는 public `ZLinkClient` di
 - `DR-D3`: embedded registry+provider process와 standalone registry/provider process를 peer로 묶은 혼합 cluster에서 peer 합산 view와 messaging을 확인한다.
 - `DR-D4`: 같은 registry router를 in-process probe와 remote query client로 조회해 topology view가 같은 provider 집합을 반환하는지 확인한다.
 
-## public API/harness 대기
+## 포팅 구조 상태
 
-- 전체 registry가 내려간 동안 이미 resolve된 기존 channel connection의 지속 동작은 같은 client를 유지하는 장기 실행 harness가 필요하다. 현재 DR-C3는 복구 후 재광고와 messaging 수렴을 검증한다.
+현재 Kotlin DiscoveryRegistryHa E2E는 실행 가능한 동작 기준선이며, Gradle project와 process 역할은
+`Client`, `Server/Registry`, `Server/Provider`, `Server/Consumer`, `Server/Probe`, `Server/Embedded`로 나뉘었다. 각 role process는
+환경 변수 대신 CLI option으로 scenario, endpoint, log dir 입력을 받는다. client scenario/support
+분리와 registry/provider/consumer/probe/embedded role support는 Kotlin file로 옮겼다. DR-C3는 같은
+Consumer process를 유지한 채 registry outage 전/중/후 messaging을 확인한다.
+
+## 검증 결과
+
+- `2026-06-29`: `timeout 720s framework/languages/java/e2e-kotlin/DiscoveryRegistryHa/run_e2e.sh`
+  실행 결과 `logs/20260629-180145-820678`에서 full runner가 통과했다.
+- 통과 marker: `scenario DR-A1 passed`, `scenario DR-A2 passed`, `scenario DR-A3 passed`,
+  `scenario DR-A4 passed`, `scenario DR-B1 passed`, `scenario DR-B2 passed`,
+  `scenario DR-B3 passed`, `scenario DR-C1 passed`, `scenario DR-C2 passed`,
+  `scenario DR-C3 passed`, `scenario DR-D1 passed`, `scenario DR-D2 passed`,
+  `scenario DR-D3 passed`, `scenario DR-D4 passed`.
+- 각 client mode stdout에는 `discovery-registry-ha kotlin e2e result=passed`가 남아 있다.
+- `DR-C3`는 같은 Consumer process를 유지한 채 outage 전/중/후 client mode를 실행했고,
+  `consumer-DR-C3-flow.log`에는 같은 consumer label의 `SENT`와 `REPLY_RECEIVED` 흐름이 이어진다.
+- `DR-D4`는 `probe-DR-D4.stdout.log` remote Probe process와 `client-DR-D4.stdout.log`의
+  `scenario DR-D4 passed providers=[api-a, api-b]`로 같은 provider 집합 비교를 확인했다.
+- 이 결과는 현재 구현의 process 분리, CLI option parser 전환, client scenario/support Kotlin file
+  분리, shared message와 registry/provider/consumer/probe/embedded role support Kotlin 전환 증거다.

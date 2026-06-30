@@ -580,9 +580,7 @@ class client_server_channel_builder_t
                   if (client_peer_weight) {
                       client.peer_weight (*client_peer_weight);
                   }
-                  if (client_uses_discovery) {
-                      client.use_discovery ();
-                  } else {
+                  if (!client_uses_discovery) {
                       for (const auto &endpoint : client_endpoints) {
                           client.connect (endpoint);
                       }
@@ -706,9 +704,7 @@ class fanout_channel_builder_t
                                         }
                                         if (subscriber_enabled) {
                                             auto subscriber = channel.enable_subscriber ();
-                                            if (subscriber_uses_discovery) {
-                                                subscriber.use_discovery ();
-                                            } else {
+                                            if (!subscriber_uses_discovery) {
                                                 for (const auto &endpoint : subscriber_endpoints) {
                                                     subscriber.connect (endpoint);
                                                 }
@@ -956,14 +952,6 @@ class spot_node_options_builder_t
         return connect_pub_sub (std::move (endpoint));
     }
 
-    spot_node_options_builder_t &use_discovery (std::string channel_name)
-    {
-        detail::require_non_blank (channel_name, "SPOT discovery channel name is required");
-        _discovery_channel = std::move (channel_name);
-        apply ();
-        return *this;
-    }
-
     spot_node_options_builder_t &use_registry_spot_resolver ()
     {
         _options->registry_spot_remote_addresses_enabled = true;
@@ -1048,7 +1036,6 @@ class spot_node_options_builder_t
         const auto routing_id = _routing_id;
         const auto router_manual_connections = _router_manual_connections;
         const auto pub_sub_manual_connections = _pub_sub_manual_connections;
-        const auto discovery_channel = _discovery_channel;
         const auto actions = _actions;
         const auto options = _options;
         auto configure = [=] (spot_node_builder_t &spot_node) {
@@ -1070,9 +1057,7 @@ class spot_node_options_builder_t
                     spot_node.connect_pub_sub (endpoint);
                 }
             }
-            if (!discovery_channel.empty ()) {
-                spot_node.use_discovery (discovery_channel);
-            }
+            spot_node.use_discovery (spot_node_name);
             if (options->registry_spot_remote_addresses_enabled) {
                 if (options->registry_spot_route_channel) {
                     spot_node.use_registry_spot_remote_addresses (
@@ -1106,7 +1091,6 @@ class spot_node_options_builder_t
     std::optional<zlink::routing_id_t> _routing_id;
     std::vector<std::string> _router_manual_connections;
     std::vector<std::string> _pub_sub_manual_connections;
-    std::string _discovery_channel;
     std::vector<std::function<void (spot_node_builder_t &)>> _actions;
 };
 
@@ -1120,10 +1104,7 @@ class spot_mesh_builder_t : public spot_node_options_builder_t
         _options (std::move (options))
     {
         detail::require_non_blank (_channel_name, "SPOT mesh channel name is required");
-        spot_node_options_builder_t::use_discovery (_channel_name);
     }
-
-    discovery_options_builder_t use_discovery () { return discovery_options_builder_t (_options); }
 
     spot_mesh_builder_t &use_registry_spot_resolver ()
     {
@@ -1163,6 +1144,19 @@ class stream_node_options_builder_t
     {
         detail::require_non_blank (endpoint, "STREAM bind endpoint is required");
         _endpoint = std::move (endpoint);
+        apply ();
+        return *this;
+    }
+
+    stream_node_options_builder_t &set_tls_server (std::string certificate_file,
+                                                   std::string private_key_file)
+    {
+        detail::require_non_blank (certificate_file,
+                                   "STREAM TLS certificate file is required");
+        detail::require_non_blank (private_key_file,
+                                   "STREAM TLS private key file is required");
+        _tls_certificate_file = std::move (certificate_file);
+        _tls_private_key_file = std::move (private_key_file);
         apply ();
         return *this;
     }
@@ -1210,12 +1204,18 @@ class stream_node_options_builder_t
         const auto stream_name = _stream_name;
         const auto endpoint = _endpoint;
         const auto session_name = _session_name;
+        const auto tls_certificate_file = _tls_certificate_file;
+        const auto tls_private_key_file = _tls_private_key_file;
         _options->set_zlink_action (
           "stream_node:" + stream_name,
-          [stream_name, endpoint, session_name] (zlink_builder_t &zlink) {
+          [stream_name, endpoint, session_name, tls_certificate_file,
+           tls_private_key_file] (zlink_builder_t &zlink) {
               auto stream = zlink.stream (stream_name);
               if (!endpoint.empty ()) {
                   stream.bind (endpoint);
+              }
+              if (!tls_certificate_file.empty () || !tls_private_key_file.empty ()) {
+                  stream.set_tls_server (tls_certificate_file, tls_private_key_file);
               }
               if (!session_name.empty ()) {
                   stream.register_session (session_name);
@@ -1228,6 +1228,8 @@ class stream_node_options_builder_t
     std::shared_ptr<detail::framework_options_state_t> _options;
     std::string _endpoint;
     std::string _session_name;
+    std::string _tls_certificate_file;
+    std::string _tls_private_key_file;
     bool _session_configured = false;
 };
 

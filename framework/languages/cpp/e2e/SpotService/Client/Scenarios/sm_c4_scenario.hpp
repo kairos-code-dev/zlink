@@ -81,35 +81,30 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-C4 gateway publish was not accepted");
     }
 
-    for (int attempt = 0; attempt < 80; ++attempt) {
-        auto evidence_raw = play_a.get ("/evidence").submit_raw ().result ();
-        if (!evidence_raw || evidence_raw.value ().status >= 400) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-            continue;
-        }
-        const auto evidence =
-          nlohmann::json::parse (evidence_raw.value ().body).get<evidence_snapshot_t> ();
-        bool received_by_subscribed = false;
-        bool received_by_unsubscribed = false;
-        for (const auto &entry : evidence.entries) {
-            if (entry.marker != "MeshEventReceived"
-                || entry.value != "evt-sm-c4:sm-c4-publish") {
-                continue;
-            }
-            if (entry.spot_rid == subscribed_spot_rid) {
-                received_by_subscribed = true;
-            }
-            if (entry.spot_rid == unsubscribed_spot_rid) {
-                received_by_unsubscribed = true;
-            }
-        }
-        if (received_by_subscribed && !received_by_unsubscribed) {
-            return;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    auto observed_raw =
+      play_a.post ("/spot/publish/wait")
+        .body (spot_publish_route_req_t{.spot_rid = subscribed_spot_rid, .marker = marker})
+        .submit_raw ()
+        .result ();
+    if (!observed_raw || observed_raw.value ().status >= 400) {
+        const auto status =
+          observed_raw ? std::to_string (observed_raw.value ().status) : std::string ("none");
+        const auto body = observed_raw ? observed_raw.value ().body : std::string ("");
+        throw std::runtime_error ("SM-C4 publish wait HTTP failed status=" + status
+                                  + " body=" + body);
     }
-
-    throw std::runtime_error ("SM-C4 publish evidence mismatch");
+    const auto observed =
+      nlohmann::json::parse (observed_raw.value ().body).get<spot_publish_observe_res_t> ();
+    if (!observed.received || observed.spot_rid != subscribed_spot_rid
+        || observed.marker != marker) {
+        throw std::runtime_error ("SM-C4 publish wait reply mismatch");
+    }
+    for (const auto &entry : observed.evidence.entries) {
+        if (entry.marker == "MeshEventReceived" && entry.spot_rid == unsubscribed_spot_rid
+            && entry.value == "evt-sm-c4:sm-c4-publish") {
+            throw std::runtime_error ("SM-C4 unsubscribed spot received publish event");
+        }
+    }
 }
 
 } // namespace zlink::framework::e2e::spot_service::client::scenarios

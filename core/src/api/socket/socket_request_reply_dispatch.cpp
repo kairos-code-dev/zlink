@@ -96,26 +96,7 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
     zlink::request_timeout::cancel (pending.timeout_task);
 
     if (!found) {
-        if (state->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-            const uint8_t dealer_type =
-              envelope.message_type == zlink::request_reply::error_reply_type
-                ? ZLINK_DEALER_MESSAGE_ERROR_REPLY
-                : ZLINK_DEALER_MESSAGE_REPLY;
-            if (dispatch_dealer_message (state, dealer_type, envelope.request_seq, NULL,
-                                         envelope.payload_parts, envelope.payload_part_count)
-                != 0) {
-                zlink::request_reply::close_request_reply_parts (parts_, part_count_);
-            }
-        } else if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
-                   && has_valid_routing_id (source_rid_)) {
-            if (dispatch_router_message (state, source_rid_, NULL, envelope.request_seq,
-                                         envelope.payload_parts, envelope.payload_part_count)
-                != 0) {
-                zlink::request_reply::close_request_reply_parts (parts_, part_count_);
-            }
-        } else {
-            zlink::request_reply::close_request_reply_parts (parts_, part_count_);
-        }
+        zlink::request_reply::close_request_reply_parts (parts_, part_count_);
         return;
     }
 

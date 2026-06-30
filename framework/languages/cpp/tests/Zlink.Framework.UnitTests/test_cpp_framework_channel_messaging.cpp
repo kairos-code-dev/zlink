@@ -726,7 +726,7 @@ int main ()
 
     zlink::framework::zlink_builder_t full_queue;
     full_queue.max_pending (0);
-    full_queue.channel ("profile").enable_client ().use_discovery ();
+    full_queue.channel ("profile").enable_client ();
     auto queue_full_result =
       full_queue.message_bus ().request ("profile", request_t{5}).async<reply_t> ().result ();
     if (queue_full_result
@@ -735,27 +735,14 @@ int main ()
         return 6;
     }
 
-    bool mixed_connection_failed = false;
-    try {
-        zlink::framework::zlink_builder_t invalid;
-        invalid.channel ("bad").enable_client ().connect ("tcp://127.0.0.1:7301").use_discovery ();
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        mixed_connection_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
-    }
-    if (!mixed_connection_failed) {
-        return 7;
-    }
-
     zlink::framework::zlink_builder_t outbound_only;
     auto outbound_only_channel = outbound_only.channel ("client-only");
-    outbound_only_channel.enable_client ().use_discovery ();
-    outbound_only_channel.enable_publisher ().use_discovery ();
+    outbound_only_channel.enable_client ();
+    outbound_only_channel.enable_publisher ();
     const auto outbound_channels = outbound_only.channels ();
     if (outbound_channels.size () != 1 || outbound_channels[0].server.enabled
         || !outbound_channels[0].client.enabled || !outbound_channels[0].publisher.enabled) {
-        return 8;
+        return 7;
     }
 
     zlink::framework::zlink_builder_t fanout;
@@ -1392,7 +1379,7 @@ int main ()
 
     zlink::framework::zlink_builder_t discovery_client_builder;
     discovery_client_builder.discovery ().connect_registry (discovery_registry_router);
-    discovery_client_builder.channel ("hosted-discovery").enable_client ().use_discovery ();
+    discovery_client_builder.channel ("hosted-discovery").enable_client ();
     auto discovery_client_runtime =
       zlink::framework::detail::channel_runtime_t::from (discovery_client_builder.message_bus ());
     discovery_client_runtime.bind_serializers (serializers);

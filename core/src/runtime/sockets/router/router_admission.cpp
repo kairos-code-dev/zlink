@@ -8,8 +8,10 @@
 #include "protocol/wire.hpp"
 #include "utils/debug_log.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace
 {
@@ -71,34 +73,45 @@ bool router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         } else {
             routing_id.set (static_cast<unsigned char *> (msg.data ()), msg.size ());
             msg.close ();
-
-            const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id);
-
-            if (existing_outpipe) {
-                if (!_handover)
-                    return false;
-
-                unsigned char buf[5];
-                buf[0] = 0;
-                put_uint32 (buf + 1, _next_integral_routing_id++);
-                blob_t new_routing_id (buf, sizeof buf);
-
-                pipe_t *const old_pipe = existing_outpipe->pipe;
-                const bool old_locally_initiated = existing_outpipe->locally_initiated;
-
-                erase_out_pipe (old_pipe);
-                old_pipe->set_router_socket_routing_id (new_routing_id);
-                add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe, old_locally_initiated);
-
-                if (old_pipe == _current_in)
-                    _terminate_current_in = true;
-                else
-                    old_pipe->terminate (true);
-            }
         }
     }
 
     return adopt_peer_routing_id (pipe_, ZLINK_MOVE (routing_id), locally_initiated_);
+}
+
+bool router_t::duplicate_pipe_should_replace (const out_pipe_t &existing_outpipe_,
+                                              const blob_t &routing_id_,
+                                              bool locally_initiated_) const
+{
+    if (!existing_outpipe_.active || existing_outpipe_.weight == 0)
+        return true;
+
+    if (!locally_initiated_)
+        return true;
+
+    if (existing_outpipe_.locally_initiated == locally_initiated_) {
+        if (!socket_msg_dispatch_active ())
+            return true;
+        return existing_outpipe_.pipe
+               && existing_outpipe_.pipe->get_msgs_read () == 0
+               && existing_outpipe_.pipe->get_msgs_written () == 0;
+    }
+
+    const size_t local_size = options.routing_id_size;
+    const size_t peer_size = routing_id_.size ();
+    const size_t common_size = std::min (local_size, peer_size);
+    int cmp = 0;
+    if (common_size > 0)
+        cmp = std::memcmp (options.routing_id, routing_id_.data (), common_size);
+    if (cmp == 0) {
+        if (local_size < peer_size)
+            cmp = -1;
+        else if (local_size > peer_size)
+            cmp = 1;
+    }
+
+    const bool locally_initiated_pipe_wins = cmp < 0;
+    return locally_initiated_ == locally_initiated_pipe_wins;
 }
 
 bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool locally_initiated_)
@@ -107,6 +120,29 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool lo
     if (existing_outpipe) {
         if (!_handover)
             return false;
+
+        if (!duplicate_pipe_should_replace (*existing_outpipe, routing_id_, locally_initiated_)) {
+            if (router_debug_enabled ()) {
+                char rid_text[160];
+                format_blob_routing_id_debug (routing_id_, rid_text, sizeof (rid_text));
+            fprintf (stderr,
+                     "router identify_peer: keep existing duplicate rid=%s existing_local=%d "
+                     "new_local=%d\n",
+                     rid_text, existing_outpipe->locally_initiated ? 1 : 0,
+                     locally_initiated_ ? 1 : 0);
+            }
+            pipe_->terminate (false);
+            return false;
+        }
+        if (router_debug_enabled ()) {
+            char rid_text[160];
+            format_blob_routing_id_debug (routing_id_, rid_text, sizeof (rid_text));
+            fprintf (stderr,
+                     "router identify_peer: replace duplicate rid=%s existing_local=%d "
+                     "new_local=%d\n",
+                     rid_text, existing_outpipe->locally_initiated ? 1 : 0,
+                     locally_initiated_ ? 1 : 0);
+        }
 
         unsigned char buf[5];
         buf[0] = 0;

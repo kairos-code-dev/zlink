@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
-import systems.zlink.framework.kotlin.configureStreamCompression
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -36,10 +35,6 @@ class SessionApplication {
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-session.log")
                 traceLabel("session")
             }
-            options.configureStreamCompression {
-                useLz4()
-            }
-            options.codecs().addJson()
             options.addHandlersFromPackageOf(SessionApplication::class.java)
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient()

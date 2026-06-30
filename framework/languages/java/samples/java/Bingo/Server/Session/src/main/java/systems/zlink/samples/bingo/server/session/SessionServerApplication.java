@@ -42,6 +42,7 @@ public final class SessionServerApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-session.log")
                 .traceLabel("session");
+            options.codecs().addJson();
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();

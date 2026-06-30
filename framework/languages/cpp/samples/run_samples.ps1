@@ -7,15 +7,3 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & (Join-Path $ScriptDir "Bingo/run_sample.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-& (Join-Path $ScriptDir "DeliveryDispatch/run_sample.ps1")
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-& (Join-Path $ScriptDir "GameQuest/run_sample.ps1")
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-& (Join-Path $ScriptDir "ShoppingMall/run_sample.ps1")
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-& (Join-Path $ScriptDir "ShoppingMall/run_sample.ps1")
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

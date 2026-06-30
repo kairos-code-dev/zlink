@@ -5,19 +5,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B DEALER_A DEALER_B WORKFLOW_A HTTP_A HTTP_B CLIENT_ROUTE <<<"$(python3 - <<'PY'
+read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B DEALER_A DEALER_B WORKFLOW_A HTTP_REGISTRY HTTP_A HTTP_B HTTP_WORKFLOW CLIENT_ROUTE <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(12):
+for _ in range(14):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
 print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:9]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[9:11]), end=" ")
-print(f"tcp://127.0.0.1:{ports[11]}")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[9:13]), end=" ")
+print(f"tcp://127.0.0.1:{ports[13]}")
 for s in sockets:
     s.close()
 PY
@@ -30,11 +30,15 @@ echo "log_dir=$LOG_DIR"
 
 cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
 cmake --build "$BUILD_DIR" --target \
-  zlink_cpp_e2e_registry_messaging_server \
-  zlink_cpp_e2e_registry_messaging_client >/dev/null
+  zlink_cpp_e2e_resilience_lifecycle_registry \
+  zlink_cpp_e2e_resilience_lifecycle_provider \
+  zlink_cpp_e2e_resilience_lifecycle_workflow \
+  zlink_cpp_e2e_resilience_lifecycle_client >/dev/null
 
-SERVER="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_server"
-CLIENT="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_client"
+REGISTRY="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_registry"
+PROVIDER="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_provider"
+WORKFLOW="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_workflow"
+CLIENT="$BUILD_DIR/zlink_cpp_e2e_resilience_lifecycle_client"
 PIDS=()
 LAST_PID=""
 
@@ -125,10 +129,12 @@ start_registry() {
   ZLINK_CPP_E2E_ROLE=registry \
   ZLINK_CPP_E2E_REGISTRY_PUB="$REGISTRY_PUB" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_REGISTRY" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SERVER" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
+    "$REGISTRY" >"$LOG_DIR/registry.stdout.log" 2>"$LOG_DIR/registry.stderr.log" &
   PIDS+=("$!")
   wait_port registry-router "$REGISTRY_ROUTER"
+  wait_port registry-http "$HTTP_REGISTRY"
 }
 
 start_provider() {
@@ -147,7 +153,7 @@ start_provider() {
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SERVER" >"$LOG_DIR/$rid-$instance.stdout.log" 2>"$LOG_DIR/$rid-$instance.stderr.log" &
+    "$PROVIDER" >"$LOG_DIR/$rid-$instance.stdout.log" 2>"$LOG_DIR/$rid-$instance.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$rid-api" "$api"
@@ -162,12 +168,14 @@ start_workflow_provider() {
   ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
   ZLINK_CPP_E2E_PROVIDER_INSTANCE="$rid" \
   ZLINK_CPP_E2E_WORKFLOW_ENDPOINT="$workflow" \
+  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_WORKFLOW" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+    "$WORKFLOW" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$rid-workflow" "$workflow"
+  wait_port "$rid-http" "$HTTP_WORKFLOW"
 }
 
 run_client() {
@@ -182,6 +190,10 @@ run_client() {
   ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
   ZLINK_CPP_E2E_DEALER_A_ENDPOINT="$DEALER_A" \
   ZLINK_CPP_E2E_DEALER_B_ENDPOINT="$DEALER_B" \
+  ZLINK_CPP_E2E_HTTP_REGISTRY_ENDPOINT="$HTTP_REGISTRY" \
+  ZLINK_CPP_E2E_HTTP_A_ENDPOINT="$HTTP_A" \
+  ZLINK_CPP_E2E_HTTP_B_ENDPOINT="$HTTP_B" \
+  ZLINK_CPP_E2E_HTTP_WORKFLOW_ENDPOINT="$HTTP_WORKFLOW" \
   ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$@" \
@@ -199,9 +211,11 @@ WORKFLOW_A_PID="$LAST_PID"
 sleep 1
 run_client timeout-cleanup rl-b1 env
 grep -q "scenario RM-C4 passed" "$LOG_DIR/client-rl-b1.stdout.log"
+echo "scenario RL-B1 passed"
+run_client rm-c5 rl-d3 env
+grep -q "scenario RM-C5 passed" "$LOG_DIR/client-rl-d3.stdout.log"
 grep -Eq "reason=handler_missing.*action=drop.*packet=MissingProfileCommand" \
   "$LOG_DIR/api-a-flow.log" "$LOG_DIR/api-b-flow.log"
-echo "scenario RL-B1 passed"
 echo "scenario RL-D3 passed"
 stop_pid "$API_A_PID"
 stop_pid "$API_B_PID"
@@ -367,3 +381,5 @@ grep -q "scenario RL-D5 passed" "$LOG_DIR/client-rl-d-stress.stdout.log"
 cat "$LOG_DIR/client-rl-d-stress.stdout.log"
 stop_pid "$API_B_PID"
 stop_pid "$API_A_PID"
+
+echo "resilience-lifecycle e2e result=passed"

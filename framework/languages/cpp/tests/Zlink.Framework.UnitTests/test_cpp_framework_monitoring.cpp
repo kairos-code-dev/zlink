@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <typeindex>
 
@@ -35,6 +36,7 @@ int main ()
     int socket_events = 0;
     int discovery_events = 0;
     int registry_events = 0;
+    int registry_summary_events = 0;
     int spot_events = 0;
     int stream_events = 0;
     int actor_events = 0;
@@ -91,6 +93,12 @@ int main ()
                 && event.event == zlink::framework::registry_event_kind_t::topology_changed
                 && !event.topology.empty ()) {
                 ++registry_events;
+            }
+            if (event.source_name == "registry"
+                && event.event
+                     == zlink::framework::registry_event_kind_t::service_summary_changed
+                && !event.service_summary.empty ()) {
+                ++registry_summary_events;
             }
             if (event.source_name == "ignored.registry") {
                 ++ignored_events;
@@ -181,7 +189,9 @@ int main ()
                                           zlink::framework::service_role_t::spot_node, "stage-node",
                                           zlink::framework::topology_source_t::embedded,
                                           zlink::framework::topology_state_t::active}},
-      {});
+      {zlink::framework::service_summary_entry_t{
+        "stage-node", zlink::framework::service_kind_t::spot,
+        zlink::framework::service_role_t::spot_node, 1}});
     runtime.publish_registry_snapshot (
       "ignored.registry",
       zlink::framework::registry_status_t{zlink::framework::registry_state_t::running, "registry",
@@ -248,8 +258,8 @@ int main ()
                                                                  {{"surface", "http"}});
 
     if (socket_events != 1 || filtered_socket_events != 1 || discovery_events != 1
-        || registry_events != 1 || spot_events != 1 || stream_events != 2 || actor_events != 1
-        || metric_events != 1) {
+        || registry_events != 1 || registry_summary_events != 1 || spot_events != 1
+        || stream_events != 2 || actor_events != 1 || metric_events != 1) {
         return 1;
     }
     if (ignored_events != 0) {
@@ -304,6 +314,34 @@ int main ()
         return 12;
     }
 
+    bool missing_spot_source_failed = false;
+    try {
+        auto invalid_app = zlink::framework::app_t::create ();
+        invalid_app.monitoring ().add_spot_events ("missing.spot", 1s);
+        invalid_app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &) {});
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        missing_spot_source_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+    }
+    if (!missing_spot_source_failed) {
+        return 14;
+    }
+
+    bool missing_socket_source_failed = false;
+    try {
+        auto invalid_app = zlink::framework::app_t::create ();
+        invalid_app.monitoring ().add_socket_events ("missing.server");
+        invalid_app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &) {});
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        missing_socket_source_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+    }
+    if (!missing_socket_source_failed) {
+        return 15;
+    }
+
     bool duplicate_spot_source_failed = false;
     try {
         auto invalid_app = zlink::framework::app_t::create ();
@@ -317,6 +355,32 @@ int main ()
     }
     if (!duplicate_spot_source_failed) {
         return 13;
+    }
+
+    bool monitoring_handler_failure_isolated = false;
+    auto failure_app = zlink::framework::app_t::create ();
+    failure_app.monitoring ()
+      .add_socket_events ("failure.server")
+      .on<zlink::framework::socket_event_payload_t> (
+        [] (const zlink::framework::socket_event_payload_t &) {
+            throw std::runtime_error ("monitoring dispatch failure for unit test");
+        })
+      .on<zlink::framework::socket_event_payload_t> (
+        [&] (const zlink::framework::socket_event_payload_t &event) {
+            monitoring_handler_failure_isolated =
+              event.source_name == "failure.server"
+              && event.event == zlink::framework::socket_event_kind_t::connected;
+        });
+    zlink::framework::detail::monitoring_runtime_t::from (failure_app.monitoring ())
+      .publish_socket (zlink::framework::socket_event_payload_t{
+        zlink::framework::runtime_event_base_t{"failure.server"},
+        zlink::framework::socket_event_kind_t::connected,
+        "tcp://127.0.0.1:7001",
+        "tcp://127.0.0.1:7002",
+        1,
+        0});
+    if (!monitoring_handler_failure_isolated) {
+        return 16;
     }
 
     app.health ()

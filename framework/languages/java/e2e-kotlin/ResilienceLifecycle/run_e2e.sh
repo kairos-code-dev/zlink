@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.resiliencelifecycle\.ProgramKt'
+role_pattern='resilience-lifecycle-kotlin-(client|registry|provider)'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -135,16 +135,23 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/install/resilience-lifecycle-kotlin/bin/resilience-lifecycle-kotlin"
+client_bin() {
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Client/install/resilience-lifecycle-kotlin-client/bin/resilience-lifecycle-kotlin-client"
+}
+
+registry_bin() {
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Registry/install/resilience-lifecycle-kotlin-registry/bin/resilience-lifecycle-kotlin-registry"
+}
+
+provider_bin() {
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Provider/install/resilience-lifecycle-kotlin-provider/bin/resilience-lifecycle-kotlin-provider"
 }
 
 start_registry() {
-  ZLINK_KOTLIN_E2E_ROLE=registry \
   ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
   ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
+    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
   pids+=("$!")
   wait_port registry-router "${REGISTRY_ROUTER}"
 }
@@ -153,13 +160,12 @@ start_provider() {
   local rid="$1"
   local api="$2"
   local http="$3"
-  ZLINK_KOTLIN_E2E_ROLE=provider \
   ZLINK_KOTLIN_E2E_PROVIDER_RID="${rid}" \
   ZLINK_KOTLIN_E2E_API_ENDPOINT="${api}" \
   ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${http}" \
   ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+    "$(provider_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
   wait_port "${rid}-api" "${api}"
   wait_port "${rid}-http" "${http}"
@@ -167,7 +173,7 @@ start_provider() {
 
 read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B API_A_REPLACEMENT HTTP_A HTTP_B HTTP_A_REPLACEMENT <<<"$(reserve_ports)"
 
-gradle_run installDist
+gradle_run clean installDist
 
 start_registry
 REGISTRY_PID="${pids[-1]}"
@@ -180,14 +186,13 @@ sleep 2
 control_dir="${log_dir}/control"
 mkdir -p "${control_dir}"
 
-ZLINK_KOTLIN_E2E_ROLE=client \
 ZLINK_KOTLIN_E2E_CLIENT_MODE=restart \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-restart.stdout.log" 2>"${log_dir}/client-restart.stderr.log" &
+  "$(client_bin)" >"${log_dir}/client-restart.stdout.log" 2>"${log_dir}/client-restart.stderr.log" &
 restart_client_pid="$!"
 pids+=("${restart_client_pid}")
 
@@ -202,7 +207,6 @@ sleep 2
 touch "${control_dir}/a1-up"
 wait "${restart_client_pid}"
 
-ZLINK_KOTLIN_E2E_ROLE=client \
 ZLINK_KOTLIN_E2E_CLIENT_MODE=reschedule \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
@@ -210,7 +214,7 @@ ZLINK_KOTLIN_E2E_API_A_REPLACEMENT_ENDPOINT="${API_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-reschedule.stdout.log" 2>"${log_dir}/client-reschedule.stderr.log" &
+  "$(client_bin)" >"${log_dir}/client-reschedule.stdout.log" 2>"${log_dir}/client-reschedule.stderr.log" &
 reschedule_client_pid="$!"
 pids+=("${reschedule_client_pid}")
 
@@ -225,14 +229,13 @@ sleep 2
 touch "${control_dir}/a2-up"
 wait "${reschedule_client_pid}"
 
-ZLINK_KOTLIN_E2E_ROLE=client \
 ZLINK_KOTLIN_E2E_CLIENT_MODE=flapping \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-flapping.stdout.log" 2>"${log_dir}/client-flapping.stderr.log" &
+  "$(client_bin)" >"${log_dir}/client-flapping.stdout.log" 2>"${log_dir}/client-flapping.stderr.log" &
 flapping_client_pid="$!"
 pids+=("${flapping_client_pid}")
 
@@ -248,12 +251,11 @@ done
 touch "${control_dir}/a5-stop"
 wait "${flapping_client_pid}"
 
-ZLINK_KOTLIN_E2E_ROLE=client \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-default.stdout.log" 2>"${log_dir}/client-default.stderr.log"
+  "$(client_bin)" >"${log_dir}/client-default.stdout.log" 2>"${log_dir}/client-default.stderr.log"
 
 wait_port_down api-b "${API_B}"
 start_provider api-b "${API_B}" "${HTTP_B}"
@@ -265,7 +267,6 @@ for wave in 1 2; do
   for index in $(seq 1 6); do
     storm_log_dir="${log_dir}/storm-${wave}-${index}"
     mkdir -p "${storm_log_dir}"
-    ZLINK_KOTLIN_E2E_ROLE=client \
     ZLINK_KOTLIN_E2E_CLIENT_MODE=storm \
     ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
     ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
@@ -273,7 +274,7 @@ for wave in 1 2; do
     ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
     ZLINK_KOTLIN_E2E_STORM_EXIT_DELAY_MS="$((index * 250))" \
     ZLINK_KOTLIN_E2E_LOG_DIR="${storm_log_dir}" \
-      "$(app_bin)" >"${log_dir}/client-storm-${wave}-${index}.stdout.log" 2>"${log_dir}/client-storm-${wave}-${index}.stderr.log" &
+      "$(client_bin)" >"${log_dir}/client-storm-${wave}-${index}.stdout.log" 2>"${log_dir}/client-storm-${wave}-${index}.stderr.log" &
     storm_pids+=("$!")
     pids+=("$!")
   done
@@ -282,14 +283,13 @@ for wave in 1 2; do
   done
 done
 
-ZLINK_KOTLIN_E2E_ROLE=client \
 ZLINK_KOTLIN_E2E_CLIENT_MODE=cleanup \
 ZLINK_KOTLIN_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-cleanup.stdout.log" 2>"${log_dir}/client-cleanup.stderr.log"
+  "$(client_bin)" >"${log_dir}/client-cleanup.stdout.log" 2>"${log_dir}/client-cleanup.stderr.log"
 
 cat "${log_dir}/client-restart.stdout.log"
 cat "${log_dir}/client-reschedule.stdout.log"

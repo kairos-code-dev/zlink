@@ -1,0 +1,193 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../../../Shared/spot_service_contracts.hpp"
+#include "../../Shared/scenario_state.hpp"
+#include "../../Shared/spot_actor_support.hpp"
+
+#include <zlink/framework.hpp>
+
+#include <map>
+#include <set>
+#include <string>
+
+namespace
+{
+
+class stream_session_t final : public zlink::framework::packet_stream_session_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t,
+                                          zlink::framework::route_client_t,
+                                          zlink::framework::session_actor_manager_t,
+                                          zlink::framework::actor_gateway_t>;
+
+    stream_session_t (scenario_state_t &state,
+                      zlink::framework::route_client_t &routes,
+                      zlink::framework::session_actor_manager_t &actors,
+                      zlink::framework::actor_gateway_t &gateway) :
+        _state (state), _routes (routes), _actors (actors), _gateway (gateway)
+    {
+    }
+
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &stream) override
+    {
+        _state.record ("StreamConnected", {}, {}, stream.session_id ());
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
+    {
+        for (const auto &[actor_id, _] : _bound_actors) {
+            if (_notify_on_disconnect.contains (actor_id)) {
+                if (auto actor = _bound_session_actors.find (actor_id);
+                    actor != _bound_session_actors.end ()) {
+                    co_await actor->second.notify_disconnected ().async ();
+                    _state.record ("StreamDisconnectNotified", actor_id);
+                }
+            }
+            _gateway.unbind_session_stream (actor_id);
+            _actors.unbind_session (actor_id);
+            _state.record ("StreamUnbound", actor_id);
+        }
+        _bound_actors.clear ();
+        _bound_session_actors.clear ();
+        _notify_on_disconnect.clear ();
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_error (zlink::framework::stream_t &,
+                                             const zlink::framework::stream_error_t &error) override
+    {
+        _state.record ("StreamError", {}, {}, std::string (error.message ()));
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_packet (
+      zlink::framework::stream_t &stream,
+      const zlink::framework::stream_dispatch_context_t &dispatch,
+      const zlink::message_t &payload) override
+    {
+        if (dispatch.packet_name () == "StreamAuthReq") {
+            auto request = payload.parse_json<e2e::stream_auth_req_t> ();
+            if (request.actor.actor_id.empty () || request.actor.actor_type.empty ()
+                || (request.target_node_rid != "play-a" && request.target_node_rid != "play-b")) {
+                _state.record ("StreamAuthFailed", request.actor_id, {}, request.target_node_rid);
+                throw zlink::framework::framework_exception_t (
+                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  "stream auth target or actor ref is invalid");
+            }
+            auto bound = co_await _actors.bind (to_actor_ref (request.actor)).async ();
+            const auto actor_id = std::string (bound.actor_id ());
+            _bound_actors[actor_id] = request.target_node_rid;
+            _bound_session_actors[actor_id] = bound;
+            if (actor_id.find ("disconnect-d5-notified") != std::string::npos) {
+                _notify_on_disconnect.insert (actor_id);
+            }
+            _gateway.bind_session_stream (actor_id, stream, zlink::framework::stream_codec_t::json);
+            _state.record ("StreamBound", actor_id, {},
+                           request.target_node_rid + ":" + stream.session_id ());
+            if (dispatch.can_reply ()) {
+                co_await stream
+                  .reply_packet (
+                    zlink::message_t::from_json (
+                      e2e::stream_auth_res_t{request.actor, _state.node_rid}))
+                  .async ();
+            }
+            co_return;
+        }
+        if (dispatch.packet_name () == "StreamEnsureAuthReq") {
+            auto request = payload.parse_json<e2e::stream_ensure_auth_req_t> ();
+            if (request.target_node_rid != "play-a" && request.target_node_rid != "play-b") {
+                _state.record ("StreamAuthFailed", request.actor_id, {}, request.target_node_rid);
+                throw zlink::framework::framework_exception_t (
+                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  "stream ensure auth target is invalid");
+            }
+            auto ensured =
+              co_await _routes
+                .request (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+                          e2e::ensure_actor_req_t{request.actor_id, request.display_name})
+                .packet_name ("EnsureActor")
+                .async<e2e::ensure_actor_res_t> ();
+            auto bound = co_await _actors.bind (to_actor_ref (ensured.actor)).async ();
+            const auto actor_id = std::string (bound.actor_id ());
+            _bound_actors[actor_id] = request.target_node_rid;
+            _bound_session_actors[actor_id] = bound;
+            if (actor_id.find ("disconnect-d5-notified") != std::string::npos) {
+                _notify_on_disconnect.insert (actor_id);
+            }
+            _gateway.bind_session_stream (actor_id, stream, zlink::framework::stream_codec_t::json);
+            _state.record ("StreamBound", actor_id, {},
+                           request.target_node_rid + ":" + stream.session_id ());
+            if (dispatch.can_reply ()) {
+                co_await stream
+                  .reply_packet (
+                    zlink::message_t::from_json (
+                      e2e::stream_auth_res_t{ensured.actor, _state.node_rid}))
+                  .async ();
+            }
+            co_return;
+        }
+
+        auto actor = require_bound_actor (dispatch, std::string (dispatch.packet_name ()));
+        if (!actor) {
+            throw zlink::framework::framework_exception_t (
+              actor.error_kind (),
+              actor.error () ? actor.error ()->what () : "bound actor route is not found");
+        }
+        if (dispatch.can_reply ()) {
+            auto reply = co_await actor.value ().relay_request (payload).async ();
+            co_await stream.reply_packet (reply).async ();
+            co_return;
+        }
+        co_await actor.value ().relay (payload).async ();
+        co_return;
+    }
+
+  private:
+    zlink::framework::result_t<zlink::framework::session_actor_t>
+    require_bound_actor (const zlink::framework::stream_dispatch_context_t &dispatch,
+                         const std::string &packet_name) const
+    {
+        if (_bound_actors.empty ()) {
+            return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::actor_session_not_bound,
+              "stream session is not bound before " + packet_name);
+        }
+        std::string actor_id;
+        if (auto selected = dispatch.metadata ().find ("actor-id")) {
+            actor_id = std::string (*selected);
+        } else if (_bound_actors.size () == 1) {
+            actor_id = _bound_actors.begin ()->first;
+        } else {
+            return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "actor-id metadata is required when multiple actors are bound for " + packet_name);
+        }
+        if (!_bound_actors.contains (actor_id)) {
+            return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "bound actor route is not found for " + actor_id + " / " + packet_name);
+        }
+        auto actor = _actors.find (actor_id);
+        if (!actor) {
+            return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "bound actor route is not found for " + packet_name);
+        }
+        return zlink::framework::result_t<zlink::framework::session_actor_t>::success (
+          std::move (*actor));
+    }
+
+    scenario_state_t &_state;
+    zlink::framework::route_client_t &_routes;
+    zlink::framework::session_actor_manager_t &_actors;
+    zlink::framework::actor_gateway_t &_gateway;
+    std::map<std::string, std::string> _bound_actors;
+    std::map<std::string, zlink::framework::session_actor_t> _bound_session_actors;
+    std::set<std::string> _notify_on_disconnect;
+};
+
+} // namespace

@@ -14,6 +14,7 @@
 #include <iostream>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <utility>
 
 namespace zlink::framework::runtime
@@ -64,6 +65,14 @@ class channel_host_service_t::server_loop_t
                                                + "' discovery attach failed: " + error.what ());
             }
         }
+        _monitor = _router->monitor_open (zlink::monitor_event::connected
+                                          | zlink::monitor_event::accepted
+                                          | zlink::monitor_event::connection_ready
+                                          | zlink::monitor_event::disconnected
+                                          | zlink::monitor_event::closed
+                                          | zlink::monitor_event::handshake_failed_no_detail
+                                          | zlink::monitor_event::handshake_failed_protocol
+                                          | zlink::monitor_event::handshake_failed_auth);
         for (const auto &endpoint : _endpoints) {
             _router->bind (endpoint);
         }
@@ -74,6 +83,7 @@ class channel_host_service_t::server_loop_t
     void run ()
     {
         while (!_stop->load (std::memory_order_acquire)) {
+            drain_monitor_events ();
             apply_runtime_options ();
             flush_replies ();
             zlink::received_t received;
@@ -92,6 +102,7 @@ class channel_host_service_t::server_loop_t
             dispatch_async (std::move (received));
         }
         flush_replies ();
+        drain_monitor_events ();
     }
 
     void stop () noexcept
@@ -103,6 +114,13 @@ class channel_host_service_t::server_loop_t
             catch (...) {
             }
             _discovery.reset ();
+        }
+        if (_monitor.valid ()) {
+            try {
+                _monitor.close ();
+            }
+            catch (...) {
+            }
         }
         if (_router) {
             try {
@@ -249,6 +267,68 @@ class channel_host_service_t::server_loop_t
         return _applied_peer_weight && _applied_peer_weight->value () == 0;
     }
 
+    static std::optional<socket_event_kind_t> map_monitor_event (zlink::monitor_event event)
+    {
+        switch (event) {
+            case zlink::monitor_event::connected:
+            case zlink::monitor_event::accepted:
+                return socket_event_kind_t::connected;
+            case zlink::monitor_event::connection_ready:
+                return socket_event_kind_t::connection_ready;
+            case zlink::monitor_event::disconnected:
+                return socket_event_kind_t::disconnected;
+            case zlink::monitor_event::closed:
+                return socket_event_kind_t::closed;
+            case zlink::monitor_event::handshake_failed_no_detail:
+            case zlink::monitor_event::handshake_failed_protocol:
+            case zlink::monitor_event::handshake_failed_auth:
+                return socket_event_kind_t::handshake_failed;
+            default:
+                return std::nullopt;
+        }
+    }
+
+    void drain_monitor_events ()
+    {
+        if (!_monitor.valid ()) {
+            return;
+        }
+        for (;;) {
+            std::optional<zlink::monitor_event_t> event;
+            try {
+                event = _monitor.recv (zlink::recv_flags_t::dontwait);
+            }
+            catch (...) {
+                return;
+            }
+            if (!event) {
+                return;
+            }
+            const auto kind = map_monitor_event (event->event);
+            if (!kind) {
+                continue;
+            }
+            if (!event->remote_addr.empty ()) {
+                if (*kind == socket_event_kind_t::connected) {
+                    _pending_handshake_remotes.insert (event->remote_addr);
+                } else if (*kind == socket_event_kind_t::connection_ready) {
+                    _pending_handshake_remotes.erase (event->remote_addr);
+                } else if (*kind == socket_event_kind_t::disconnected
+                           && _pending_handshake_remotes.erase (event->remote_addr) != 0) {
+                    _runtime.publish_socket_event (_channel_name,
+                                                   socket_event_kind_t::handshake_failed,
+                                                   event->local_addr, event->remote_addr,
+                                                   static_cast<std::uint32_t> (event->event),
+                                                   event->value);
+                }
+            }
+            _runtime.publish_socket_event (_channel_name, *kind, event->local_addr,
+                                           event->remote_addr,
+                                           static_cast<std::uint32_t> (event->event),
+                                           event->value);
+        }
+    }
+
     detail::channel_runtime_t _runtime;
     std::string _channel_name;
     std::vector<std::string> _endpoints;
@@ -260,6 +340,8 @@ class channel_host_service_t::server_loop_t
     std::atomic_bool *_stop;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
+    zlink::socket_monitor_t _monitor;
+    std::set<std::string> _pending_handshake_remotes;
     std::unique_ptr<zlink::service::discovery_t> _discovery;
     std::optional<zlink::peer_weight_t> _applied_peer_weight;
     std::mutex _workers_mutex;

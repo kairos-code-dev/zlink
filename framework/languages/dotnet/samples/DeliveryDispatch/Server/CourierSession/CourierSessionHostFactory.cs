@@ -20,6 +20,7 @@ public static class CourierSessionHostFactory
                 .TraceLogFile(SampleFlowLog.Path("courier-session"))
                 .TraceLabel("courier-session");
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
+            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableClient(topology.CourierRouteEndpoint)

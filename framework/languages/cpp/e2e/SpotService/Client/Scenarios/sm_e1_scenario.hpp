@@ -71,6 +71,54 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     if (!missing_reply.request_failed) {
         throw std::runtime_error ("SM-E1 missing route reply mismatch");
     }
+
+    auto missing_handler_request =
+      play_a.post ("/spot/missing-handler/request")
+        .body (spot_missing_handler_req_t{.spot_rid = spot_rid})
+        .submit_raw ()
+        .result ();
+    if (!missing_handler_request || missing_handler_request.value ().status >= 400) {
+        throw std::runtime_error ("SM-E1 missing handler request endpoint failed");
+    }
+    const auto missing_handler_request_reply =
+      nlohmann::json::parse (missing_handler_request.value ().body)
+        .get<spot_missing_handler_res_t> ();
+    if (missing_handler_request_reply.spot_rid != spot_rid
+        || !missing_handler_request_reply.failed) {
+        throw std::runtime_error ("SM-E1 missing handler request reply mismatch");
+    }
+
+    auto missing_handler_command =
+      play_a.post ("/spot/missing-handler/command")
+        .body (spot_missing_command_req_t{.spot_rid = spot_rid, .marker = "sm-e1-missing-command"})
+        .submit_raw ()
+        .result ();
+    if (!missing_handler_command || missing_handler_command.value ().status >= 400) {
+        throw std::runtime_error ("SM-E1 missing handler command endpoint failed");
+    }
+    const auto missing_handler_command_reply =
+      nlohmann::json::parse (missing_handler_command.value ().body)
+        .get<spot_missing_command_res_t> ();
+    if (missing_handler_command_reply.spot_rid != spot_rid
+        || missing_handler_command_reply.marker != "sm-e1-missing-command"
+        || !missing_handler_command_reply.sent) {
+        throw std::runtime_error ("SM-E1 missing handler command reply mismatch");
+    }
+
+    const auto absent_spot_rid = user_spot_rid_for_key ("b-sm-e1-missing-target");
+    auto missing_target =
+      play_a.post ("/spot/missing-target/request")
+        .body (spot_missing_target_req_t{.spot_rid = absent_spot_rid})
+        .submit_raw ()
+        .result ();
+    if (!missing_target || missing_target.value ().status >= 400) {
+        throw std::runtime_error ("SM-E1 missing target endpoint failed");
+    }
+    const auto missing_target_reply =
+      nlohmann::json::parse (missing_target.value ().body).get<spot_missing_target_res_t> ();
+    if (missing_target_reply.spot_rid != absent_spot_rid || !missing_target_reply.failed) {
+        throw std::runtime_error ("SM-E1 missing target reply mismatch");
+    }
 }
 
 } // namespace zlink::framework::e2e::spot_service::client::scenarios

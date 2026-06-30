@@ -21,6 +21,7 @@ public static class CourierGatewayHostFactory
                 .TraceLogFile(SampleFlowLog.Path("courier-gateway"))
                 .TraceLabel("courier-gateway");
             options.AddHandlersFromAssemblyOf(typeof(CourierGatewayHostFactory));
+            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.CourierRouteChannel)
                 .EnableServer(topology.CourierRouteEndpoint)

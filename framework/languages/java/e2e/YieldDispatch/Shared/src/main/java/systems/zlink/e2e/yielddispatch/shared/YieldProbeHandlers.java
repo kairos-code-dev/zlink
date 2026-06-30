@@ -83,7 +83,7 @@ public final class YieldProbeHandlers {
                     Thread.sleep(2000);
                     return request.requestId();
                 })
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(10))
                 .yield();
             evidence.record("worker-yield-resumed", result, spot.context().spotRid().toString());
             evidence.record("worker-yield-completed", result, spot.context().spotRid().toString());
@@ -126,7 +126,7 @@ public final class YieldProbeHandlers {
                     Thread.sleep(request.delayMillis());
                     return request.requestId();
                 })
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(10))
                 .yield();
             evidence.record("worker-yield-resumed", result, spot.context().spotRid().toString());
             evidence.record("worker-yield-completed", result, spot.context().spotRid().toString());

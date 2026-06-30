@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${ROOT_DIR}"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.pubsub\.ProgramKt'
+role_pattern='systems\.zlink\.e2e\.kotlin\.pubsub\.(client|publisher|registry|subscriber)\.ProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
-log_dir="$(pwd)/logs/${run_id}"
+log_dir="${ROOT_DIR}/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -29,50 +30,32 @@ print_logs() {
   done
 }
 
-descendants() {
-  local pid="$1"
-  local child
-  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
-    descendants "${child}"
-    echo "${child}"
-  done
-}
-
 cleanup() {
   local status="$?"
   set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
-    local pid="${pids[$i]}"
-    for child in $(descendants "${pid}"); do
-      kill "${child}" >/dev/null 2>&1 || true
-    done
-    kill "${pid}" >/dev/null 2>&1 || true
+    kill "${pids[$i]}" >/dev/null 2>&1 || true
   done
   (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
-    kill -9 "${pid}" >/dev/null 2>&1 || true
+    kill "${pid}" >/dev/null 2>&1 || true
+  done
+  sleep 0.5
+  for ((i=${#pids[@]}-1; i>=0; i--)); do
+    kill -9 "${pids[$i]}" >/dev/null 2>&1 || true
   done
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
 trap cleanup EXIT
 
-reserve_ports() {
+pick_port() {
   python3 - <<'PY'
 import socket
-sockets = []
-ports = []
-try:
-    for _ in range(6):
-        sock = socket.socket()
-        sock.bind(("127.0.0.1", 0))
-        sockets.append(sock)
-        ports.append(sock.getsockname()[1])
-    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:3]), end=" ")
-    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[3:]))
-finally:
-    for sock in sockets:
-        sock.close()
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
 PY
 }
 
@@ -95,6 +78,19 @@ wait_port() {
   return 1
 }
 
+wait_health() {
+  local url="$1"
+  local name="$2"
+  for _ in $(seq 1 120); do
+    if curl -fsS "${url}/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "Timed out waiting for ${name} at ${url}" >&2
+  return 1
+}
+
 wait_marker() {
   local file="$1"
   for _ in $(seq 1 600); do
@@ -111,18 +107,40 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/install/pub-sub-kotlin/bin/pub-sub-kotlin"
+bin_path() {
+  local path="$1"
+  local app="$2"
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/${path}/install/${app}/bin/${app}"
 }
 
+CLIENT_BIN="$(bin_path Client pub-sub-kotlin-client)"
+PUBLISHER_BIN="$(bin_path Server-Publisher pub-sub-kotlin-publisher)"
+REGISTRY_BIN="$(bin_path Server-Registry pub-sub-kotlin-registry)"
+SUBSCRIBER_BIN="$(bin_path Server-Subscriber pub-sub-kotlin-subscriber)"
+
 start_registry() {
-  ZLINK_KOTLIN_E2E_ROLE=registry \
-  ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
+  "${REGISTRY_BIN}" \
+    --registry-pub-endpoint "${REGISTRY_PUB}" \
+    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --http-endpoint "${REGISTRY_HTTP}" \
+    >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
   pids+=("$!")
   wait_port registry-router "${REGISTRY_ROUTER}"
+  wait_health "${REGISTRY_HTTP}" registry
+}
+
+start_publisher() {
+  local suffix="${1:-publisher}"
+  "${PUBLISHER_BIN}" \
+    --publisher-endpoint "${PUBLISHER_ENDPOINT}" \
+    --http-endpoint "${PUBLISHER_HTTP}" \
+    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/${suffix}.stdout.log" 2>"${log_dir}/${suffix}.stderr.log" &
+  LAST_PID="$!"
+  pids+=("${LAST_PID}")
+  wait_port publisher "${PUBLISHER_ENDPOINT}"
+  wait_health "${PUBLISHER_HTTP}" publisher
 }
 
 start_subscriber() {
@@ -130,17 +148,17 @@ start_subscriber() {
   local topics="$2"
   local http="$3"
   local delay="${4:-}"
-  ZLINK_KOTLIN_E2E_ROLE=subscriber \
-  ZLINK_KOTLIN_E2E_SUBSCRIBER_RID="${rid}" \
-  ZLINK_KOTLIN_E2E_TOPICS="${topics}" \
-  ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${http}" \
-  ZLINK_KOTLIN_E2E_HANDLER_DELAY_MS="${delay}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+  "${SUBSCRIBER_BIN}" \
+    --rid "${rid}" \
+    --topics "${topics}" \
+    --http-endpoint "${http}" \
+    --handler-delay-ms "${delay}" \
+    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --log-dir "${log_dir}" \
+    >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
-  wait_port "${rid}-http" "${http}"
+  wait_health "${http}" "${rid}"
 }
 
 stop_pid() {
@@ -151,23 +169,28 @@ stop_pid() {
   fi
 }
 
-run_publisher_mode() {
+run_client_mode() {
   local mode="$1"
   local suffix="$2"
-  ZLINK_KOTLIN_E2E_ROLE=publisher \
-  ZLINK_KOTLIN_E2E_CLIENT_MODE="${mode}" \
-  ZLINK_KOTLIN_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_KOTLIN_E2E_SUB1_HTTP="${SUB1_HTTP}" \
-  ZLINK_KOTLIN_E2E_SUB2_HTTP="${SUB2_HTTP}" \
-  ZLINK_KOTLIN_E2E_SUB3_HTTP="${SUB3_HTTP}" \
-  ZLINK_KOTLIN_E2E_LATE_CONTINUE_FILE="${LATE_CONTINUE}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/publisher-${suffix}.stdout.log" 2>"${log_dir}/publisher-${suffix}.stderr.log"
-  cat "${log_dir}/publisher-${suffix}.stdout.log"
+  "${CLIENT_BIN}" \
+    --mode "${mode}" \
+    --publisher-http "${PUBLISHER_HTTP}" \
+    --sub1-http "${SUB1_HTTP}" \
+    --sub2-http "${SUB2_HTTP}" \
+    --sub3-http "${SUB3_HTTP}" \
+    --late-continue-file "${LATE_CONTINUE}" \
+    >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
+  cat "${log_dir}/client-${suffix}.stdout.log"
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER PUBLISHER_ENDPOINT SUB1_HTTP SUB2_HTTP SUB3_HTTP <<<"$(reserve_ports)"
+REGISTRY_PUB="tcp://127.0.0.1:$(pick_port)"
+REGISTRY_ROUTER="tcp://127.0.0.1:$(pick_port)"
+REGISTRY_HTTP="http://127.0.0.1:$(pick_port)"
+PUBLISHER_ENDPOINT="tcp://127.0.0.1:$(pick_port)"
+PUBLISHER_HTTP="http://127.0.0.1:$(pick_port)"
+SUB1_HTTP="http://127.0.0.1:$(pick_port)"
+SUB2_HTTP="http://127.0.0.1:$(pick_port)"
+SUB3_HTTP="http://127.0.0.1:$(pick_port)"
 
 gradle_run installDist
 
@@ -177,24 +200,24 @@ LATE_READY="${log_dir}/late-ready"
 LATE_CONTINUE="${log_dir}/late-continue"
 
 start_registry
+start_publisher publisher
+PUBLISHER_PID="${LAST_PID}"
 
-ZLINK_KOTLIN_E2E_ROLE=publisher \
-ZLINK_KOTLIN_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-ZLINK_KOTLIN_E2E_SUB1_HTTP="${SUB1_HTTP}" \
-ZLINK_KOTLIN_E2E_SUB2_HTTP="${SUB2_HTTP}" \
-ZLINK_KOTLIN_E2E_SUB3_HTTP="${SUB3_HTTP}" \
-ZLINK_KOTLIN_E2E_PUBLISHER_READY_FILE="${PUBLISHER_READY}" \
-ZLINK_KOTLIN_E2E_PRELATE_CONTINUE_FILE="${PRELATE_CONTINUE}" \
-ZLINK_KOTLIN_E2E_LATE_READY_FILE="${LATE_READY}" \
-ZLINK_KOTLIN_E2E_LATE_CONTINUE_FILE="${LATE_CONTINUE}" \
-ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log" &
+"${CLIENT_BIN}" \
+  --mode default \
+  --publisher-http "${PUBLISHER_HTTP}" \
+  --sub1-http "${SUB1_HTTP}" \
+  --sub2-http "${SUB2_HTTP}" \
+  --sub3-http "${SUB3_HTTP}" \
+  --publisher-ready-file "${PUBLISHER_READY}" \
+  --prelate-continue-file "${PRELATE_CONTINUE}" \
+  --late-ready-file "${LATE_READY}" \
+  --late-continue-file "${LATE_CONTINUE}" \
+  >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log" &
 CLIENT_PID="$!"
 pids+=("${CLIENT_PID}")
 
 wait_marker "${PUBLISHER_READY}"
-wait_port publisher "${PUBLISHER_ENDPOINT}"
 start_subscriber sub-1 alpha "${SUB1_HTTP}"
 SUB1_PID="${LAST_PID}"
 start_subscriber sub-2 beta "${SUB2_HTTP}"
@@ -209,11 +232,11 @@ sleep 2
 touch "${LATE_CONTINUE}"
 
 wait "${CLIENT_PID}"
-cat "${log_dir}/publisher.stdout.log"
+cat "${log_dir}/client.stdout.log"
 
 stop_pid "${SUB1_PID}"
 rm -f "${LATE_CONTINUE}"
-run_publisher_mode subscriber-restarted ps-a4 &
+run_client_mode subscriber-restarted ps-a4 &
 PS_A4_PID="$!"
 sleep 1
 start_subscriber sub-1 alpha "${SUB1_HTTP}"
@@ -226,9 +249,13 @@ stop_pid "${SUB1_PID}"
 start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
 SUB1_PID="${LAST_PID}"
 sleep 2
-run_publisher_mode slow-subscriber ps-b1
+run_client_mode slow-subscriber ps-b1
 
-run_publisher_mode publisher-restarted ps-b2
+stop_pid "${PUBLISHER_PID}"
+start_publisher publisher-restarted
+PUBLISHER_PID="${LAST_PID}"
+sleep 2
+run_client_mode publisher-restarted ps-b2
 
 python3 - "${SUB1_HTTP}/evidence" >"${log_dir}/sub-1-evidence.json" <<'PY'
 import sys

@@ -120,7 +120,6 @@ class capability_builder_t
 
     capability_builder_t &bind (std::string endpoint);
     capability_builder_t &connect (std::string endpoint);
-    capability_builder_t &use_discovery ();
     capability_builder_t &set_routing_id (zlink::routing_id_t routing_id);
     capability_builder_t &send_high_water_mark (zlink::message_count_t value);
     capability_builder_t &receive_high_water_mark (zlink::message_count_t value);

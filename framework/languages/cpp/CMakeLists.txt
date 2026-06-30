@@ -147,7 +147,8 @@ find_package(OpenSSL QUIET)
 target_link_libraries(zlink_framework PUBLIC nlohmann_json::nlohmann_json)
 if(OpenSSL_FOUND)
   target_compile_definitions(zlink_framework PRIVATE
-    ZLINK_FRAMEWORK_HTTP_WITH_OPENSSL)
+    ZLINK_FRAMEWORK_HTTP_WITH_OPENSSL
+    ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL)
   target_link_libraries(zlink_framework PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 endif()
 
@@ -1001,22 +1002,33 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   add_executable(zlink_cpp_e2e_registry_messaging_provider
     e2e/RegistryMessaging/Server/Provider/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registry_messaging_provider PRIVATE
-    zlink::framework)
+    zlink::framework
+    OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_registry_messaging_provider PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_registry_messaging_workflow
     e2e/RegistryMessaging/Server/Workflow/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registry_messaging_workflow PRIVATE
-    zlink::framework)
+    zlink::framework
+    OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_registry_messaging_workflow PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_registry_messaging_consumer
+    e2e/RegistryMessaging/Server/Consumer/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registry_messaging_consumer PRIVATE
+    zlink::framework
+    OpenSSL::Crypto)
+  target_include_directories(zlink_cpp_e2e_registry_messaging_consumer PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_registry_messaging_client
     e2e/RegistryMessaging/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registry_messaging_client PRIVATE
     zlink::framework
-    zlink::http_client)
+    zlink::http_client
+    OpenSSL::Crypto)
   target_include_directories(zlink_cpp_e2e_registry_messaging_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
@@ -1051,6 +1063,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_spot_service_gateway PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
+  add_executable(zlink_cpp_e2e_spot_service_multinode
+    e2e/SpotService/Server/MultiNode/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_spot_service_multinode PRIVATE
+    zlink::framework
+    zlink::http_client)
+  target_include_directories(zlink_cpp_e2e_spot_service_multinode PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
   add_executable(zlink_cpp_e2e_spot_service_client
     e2e/SpotService/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_client PRIVATE
@@ -1060,47 +1080,63 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_spot_service_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_yield_dispatch_registry
-    e2e/YieldDispatch/Server/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_registry PRIVATE
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/e2e/YieldDispatch/Server/Registry/main.cpp")
+    add_executable(zlink_cpp_e2e_yield_dispatch_registry
+      e2e/YieldDispatch/Server/Registry/main.cpp)
+    target_link_libraries(zlink_cpp_e2e_yield_dispatch_registry PRIVATE
+      zlink::framework)
+    target_include_directories(zlink_cpp_e2e_yield_dispatch_registry PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+    add_executable(zlink_cpp_e2e_yield_dispatch_delay
+      e2e/YieldDispatch/Server/Delay/main.cpp)
+    target_link_libraries(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+      zlink::framework)
+    target_include_directories(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+    add_executable(zlink_cpp_e2e_yield_dispatch_play
+      e2e/YieldDispatch/Server/Play/main.cpp)
+    target_link_libraries(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+      zlink::framework)
+    target_include_directories(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+    add_executable(zlink_cpp_e2e_yield_dispatch_session
+      e2e/YieldDispatch/Server/Session/main.cpp)
+    target_link_libraries(zlink_cpp_e2e_yield_dispatch_session PRIVATE
+      zlink::framework)
+    target_include_directories(zlink_cpp_e2e_yield_dispatch_session PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+    add_executable(zlink_cpp_e2e_yield_dispatch_client
+      e2e/YieldDispatch/Client/main.cpp)
+    target_link_libraries(zlink_cpp_e2e_yield_dispatch_client PRIVATE
+      zlink::framework
+      zlink::stream_e2e_client)
+    target_include_directories(zlink_cpp_e2e_yield_dispatch_client PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  endif()
+
+  add_executable(zlink_cpp_e2e_pubsub_registry
+    e2e/PubSub/Server/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_pubsub_registry PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_registry PRIVATE
+  target_include_directories(zlink_cpp_e2e_pubsub_registry PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_yield_dispatch_delay
-    e2e/YieldDispatch/Server/Delay/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+  add_executable(zlink_cpp_e2e_pubsub_publisher
+    e2e/PubSub/Server/Publisher/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_pubsub_publisher PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_delay PRIVATE
+  target_include_directories(zlink_cpp_e2e_pubsub_publisher PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_yield_dispatch_play
-    e2e/YieldDispatch/Server/Play/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_play PRIVATE
+  add_executable(zlink_cpp_e2e_pubsub_subscriber
+    e2e/PubSub/Server/Subscriber/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_pubsub_subscriber PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_play PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-  add_executable(zlink_cpp_e2e_yield_dispatch_session
-    e2e/YieldDispatch/Server/Session/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_session PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_session PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-  add_executable(zlink_cpp_e2e_yield_dispatch_client
-    e2e/YieldDispatch/Client/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_yield_dispatch_client PRIVATE
-    zlink::framework
-    zlink::stream_e2e_client)
-  target_include_directories(zlink_cpp_e2e_yield_dispatch_client PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-
-  add_executable(zlink_cpp_e2e_pubsub_server
-    e2e/PubSub/Server/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_pubsub_server PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_pubsub_server PRIVATE
+  target_include_directories(zlink_cpp_e2e_pubsub_subscriber PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_pubsub_client
@@ -1113,30 +1149,159 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   add_executable(zlink_cpp_e2e_registration_codec_server
     e2e/RegistrationCodec/Server/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registration_codec_server PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_codec_protobuf
+    zlink::framework_codec_messagepack)
   target_include_directories(zlink_cpp_e2e_registration_codec_server PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_registration_codec_invalid_duplicate
+    e2e/RegistrationCodec/Server/InvalidDuplicate/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registration_codec_invalid_duplicate PRIVATE
+    zlink::framework
+    zlink::framework_codec_protobuf
+    zlink::framework_codec_messagepack)
+  target_include_directories(zlink_cpp_e2e_registration_codec_invalid_duplicate PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_registration_codec_json_only_peer
+    e2e/RegistrationCodec/Server/JsonOnlyPeer/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registration_codec_json_only_peer PRIVATE
+    zlink::framework
+    zlink::framework_codec_protobuf
+    zlink::framework_codec_messagepack)
+  target_include_directories(zlink_cpp_e2e_registration_codec_json_only_peer PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_registration_codec_client
     e2e/RegistrationCodec/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_registration_codec_client PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::framework_codec_protobuf
+    zlink::framework_codec_messagepack)
   target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_discovery_registry_ha_registry
-    e2e/DiscoveryRegistryHa/Registry/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_registry PRIVATE
+  add_executable(zlink_cpp_e2e_delivery_dispatch_registry
+    e2e/DeliveryDispatch/Server/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_registry PRIVATE
     zlink::framework)
-  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_registry PRIVATE
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_dispatch_api
+    e2e/DeliveryDispatch/Server/DispatchApi/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_dispatch_api PRIVATE
+    zlink::framework
+    zlink::http_client)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_dispatch_center
+    e2e/DeliveryDispatch/Server/DispatchCenter/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_dispatch_center PRIVATE
+    zlink::framework)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_courier
+    e2e/DeliveryDispatch/Server/Courier/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_courier PRIVATE
+    zlink::framework)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_tracking
+    e2e/DeliveryDispatch/Server/Tracking/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_tracking PRIVATE
+    zlink::framework)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_session
+    e2e/DeliveryDispatch/Server/Session/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_session PRIVATE
+    zlink::framework)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_probe
+    e2e/DeliveryDispatch/Probe/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_probe PRIVATE
+    zlink::framework)
+
+  add_executable(zlink_cpp_e2e_delivery_dispatch_client
+    e2e/DeliveryDispatch/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_delivery_dispatch_client PRIVATE
+    zlink::framework
+    zlink::http_client
+    zlink::stream_connector
+    zlink::stream_e2e_client)
+
+  add_executable(zlink_cpp_e2e_resilience_lifecycle_registry
+    e2e/ResilienceLifecycle/Server/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_registry PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_resilience_lifecycle_registry PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_discovery_registry_ha_client
-    e2e/DiscoveryRegistryHa/Client/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_client PRIVATE
-    zlink::framework)
-  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_client PRIVATE
+  add_executable(zlink_cpp_e2e_resilience_lifecycle_provider
+    e2e/ResilienceLifecycle/Server/Provider/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_provider PRIVATE
+    zlink::framework
+    OpenSSL::Crypto)
+  target_include_directories(zlink_cpp_e2e_resilience_lifecycle_provider PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_resilience_lifecycle_workflow
+    e2e/ResilienceLifecycle/Server/Workflow/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_workflow PRIVATE
+    zlink::framework
+    OpenSSL::Crypto)
+  target_include_directories(zlink_cpp_e2e_resilience_lifecycle_workflow PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_resilience_lifecycle_client
+    e2e/ResilienceLifecycle/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_resilience_lifecycle_client PRIVATE
+    zlink::framework
+    zlink::http_client
+    OpenSSL::Crypto)
+  target_include_directories(zlink_cpp_e2e_resilience_lifecycle_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_runtime_monitoring_client
+    e2e/RuntimeMonitoring/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_client PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_runtime_monitoring_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_client PRIVATE
+    zlink::http_client)
+
+  add_executable(zlink_cpp_e2e_runtime_monitoring_registry
+    e2e/RuntimeMonitoring/Server/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_registry PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_runtime_monitoring_registry PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_runtime_monitoring_service
+    e2e/RuntimeMonitoring/Server/Service/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_service PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_runtime_monitoring_service PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_runtime_monitoring_filtered_service
+    e2e/RuntimeMonitoring/Server/FilteredService/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_filtered_service PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_runtime_monitoring_filtered_service PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_runtime_monitoring_throwing_service
+    e2e/RuntimeMonitoring/Server/ThrowingService/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_throwing_service PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_runtime_monitoring_throwing_service PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_runtime_monitoring_trigger
+    e2e/RuntimeMonitoring/Server/Trigger/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_runtime_monitoring_trigger PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_runtime_monitoring_trigger PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
@@ -1194,35 +1359,95 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::http_client
     zlink::stream_e2e_client)
   add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_server
-    samples/DeliveryDispatch/Server/main.cpp
+    sample_cpp_framework_deliverydispatch_registry
+    samples/DeliveryDispatch/Server/Registry/main.cpp
     "framework-sample-deliverydispatch;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_dispatch_api
+    samples/DeliveryDispatch/Server/DispatchApi/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-server"
+    zlink::framework
+    zlink::http_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_dispatch_center
+    samples/DeliveryDispatch/Server/DispatchCenter/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_courier
+    samples/DeliveryDispatch/Server/Courier/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_tracking
+    samples/DeliveryDispatch/Server/Tracking/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_session
+    samples/DeliveryDispatch/Server/Session/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_probe
+    samples/DeliveryDispatch/Probe/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-client"
     zlink::framework)
   add_zlink_framework_sample(
     sample_cpp_framework_deliverydispatch_client
     samples/DeliveryDispatch/Client/main.cpp
     "framework-sample-deliverydispatch;framework-sample-client"
+    zlink::framework
+    zlink::http_client
+    zlink::stream_connector
+    zlink::stream_e2e_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_gamequest_registry
+    samples/GameQuest/Server/Registry/main.cpp
+    "framework-sample-gamequest;framework-sample-server"
     zlink::framework)
   add_zlink_framework_sample(
-    sample_cpp_framework_gamequest_server
-    samples/GameQuest/Server/main.cpp
+    sample_cpp_framework_gamequest_game_api
+    samples/GameQuest/Server/GameApi/main.cpp
+    "framework-sample-gamequest;framework-sample-server"
+    zlink::framework
+    zlink::http_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_gamequest_quest_mission
+    samples/GameQuest/Server/QuestMission/main.cpp
     "framework-sample-gamequest;framework-sample-server"
     zlink::framework)
   add_zlink_framework_sample(
     sample_cpp_framework_gamequest_client
     samples/GameQuest/Client/main.cpp
     "framework-sample-gamequest;framework-sample-client"
+    zlink::framework
+    zlink::http_client
+    zlink::stream_connector
+    zlink::stream_e2e_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_shoppingmall_registry
+    samples/ShoppingMall/Server/Registry/main.cpp
+    "framework-sample-shoppingmall;framework-sample-server"
     zlink::framework)
   add_zlink_framework_sample(
-    sample_cpp_framework_shoppingmall_server
-    samples/ShoppingMall/Server/main.cpp
+    sample_cpp_framework_shoppingmall_commerce_api
+    samples/ShoppingMall/Server/CommerceApi/main.cpp
+    "framework-sample-shoppingmall;framework-sample-server"
+    zlink::framework
+    zlink::http_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_shoppingmall_order_workflow
+    samples/ShoppingMall/Server/OrderWorkflow/main.cpp
     "framework-sample-shoppingmall;framework-sample-server"
     zlink::framework)
   add_zlink_framework_sample(
     sample_cpp_framework_shoppingmall_client
     samples/ShoppingMall/Client/main.cpp
     "framework-sample-shoppingmall;framework-sample-client"
-    zlink::framework)
+    zlink::framework
+    zlink::http_client)
   add_zlink_framework_sample(
     sample_cpp_framework_supportchat_registry
     samples/SupportChat/Server/Registry/main.cpp
@@ -1244,6 +1469,11 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     "framework-sample-supportchat;framework-sample-session"
     zlink::framework
     zlink::stream_connector)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_probe
+    samples/SupportChat/Probe/main.cpp
+    "framework-sample-supportchat;framework-sample-probe"
+    zlink::framework)
   add_executable(sample_cpp_framework_supportchat_client
     samples/SupportChat/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_supportchat_client PRIVATE

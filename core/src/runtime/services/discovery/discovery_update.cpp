@@ -202,7 +202,9 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         _service_state.apply_provider_snapshot (
           service_list.registry_id, service_list.list_seq, updated, _channel_name,
           _bootstrap_runtime->routing_id_value (), &service_change);
-        append_peer_admission_events_local (previous, updated, _channel_name, &events);
+        std::vector<provider_info_t> current;
+        _service_state.snapshot_providers (&current);
+        append_peer_admission_events_local (previous, current, _channel_name, &events);
         if (service_change.changed) {
             changed.insert (_channel_name);
             events.push_back (service_change.event);

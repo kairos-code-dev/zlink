@@ -1,0 +1,18 @@
+package systems.zlink.e2e.registrymessaging.client.Scenarios;
+
+import systems.zlink.e2e.registrymessaging.client.Support.ScenarioAssert;
+import systems.zlink.e2e.registrymessaging.shared.Contracts;
+import systems.zlink.httpclient.ZLinkHttpClient;
+
+public final class RmA2ManualEndpointScenario {
+    private RmA2ManualEndpointScenario() {
+    }
+
+    public static void run(ZLinkHttpClient providerA) {
+        Contracts.ProfileReply manual = providerA.post("/profile/manual")
+            .body(new Contracts.ProfileRequest("manual"))
+            .fetch(Contracts.ProfileReply.class);
+        ScenarioAssert.that("api-a".equals(manual.providerRid()), "RM-A2 wrong provider");
+        System.out.println("scenario RM-A2 passed");
+    }
+}

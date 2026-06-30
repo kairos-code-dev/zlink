@@ -48,3 +48,10 @@ includeBuild("../../../../../bindings/java") {
         substitute(module("systems.zlink:zlink")).using(project(":"))
     }
 }
+
+include(":Shared")
+include(":Client")
+include(":Server:Consumer")
+include(":Server:Provider")
+include(":Server:Registry")
+include(":Server:Workflow")

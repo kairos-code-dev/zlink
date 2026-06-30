@@ -84,6 +84,20 @@ function Wait-Port {
     throw "Timed out waiting for ${HostName}:$Port"
 }
 
+function Wait-Http {
+    param([string]$Url, [int]$TimeoutSeconds = 60)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            Invoke-WebRequest -Uri "$Url/health" -UseBasicParsing -TimeoutSec 2 | Out-Null
+            return
+        } catch {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    throw "Timed out waiting for $Url/health"
+}
+
 function Split-Endpoint {
     param([string]$Endpoint)
     $parts = $Endpoint.Split(":")
@@ -92,7 +106,7 @@ function Split-Endpoint {
 
 function Invoke-Gradle {
     param([string[]]$Arguments)
-    & $Gradle @Arguments
+    & $Gradle @("--max-workers", "1") @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "Gradle failed: $($Arguments -join ' ')"
     }
@@ -102,7 +116,7 @@ function Start-GradleRole {
     param([string[]]$Arguments, [string]$LogName)
     $logPath = Join-Path $LogDir $LogName
     $errorLogPath = Join-Path $LogDir ($LogName + ".err.log")
-    $process = Start-Process -FilePath $Gradle -ArgumentList $Arguments -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
+    $process = Start-Process -FilePath $Gradle -ArgumentList (@("--max-workers", "1") + $Arguments) -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
     $Processes.Add($process)
 }
 
@@ -112,7 +126,7 @@ try {
     $endpoints = Reserve-Endpoints 12
     $registryPub = Split-Endpoint $endpoints[0]
     $registryRouter = Split-Endpoint $endpoints[1]
-    $apiChannel = Split-Endpoint $endpoints[2]
+    $apiHttp = Split-Endpoint $endpoints[2]
     $dispatchChannel = Split-Endpoint $endpoints[3]
     $courierA = Split-Endpoint $endpoints[4]
     $courierB = Split-Endpoint $endpoints[5]
@@ -124,15 +138,7 @@ try {
     $spotRoute = Split-Endpoint $endpoints[11]
 
     $prefix = "zlink.samples.deliverydispatch"
-    $env:JAVA_TOOL_OPTIONS = "$oldJavaToolOptions -D$prefix.registryPubEndpoint=tcp://$($registryPub.Host):$($registryPub.Port) -D$prefix.registryRouterEndpoint=tcp://$($registryRouter.Host):$($registryRouter.Port) -D$prefix.apiChannelEndpoint=tcp://$($apiChannel.Host):$($apiChannel.Port) -D$prefix.dispatchChannelEndpoint=tcp://$($dispatchChannel.Host):$($dispatchChannel.Port) -D$prefix.courierAEndpoint=tcp://$($courierA.Host):$($courierA.Port) -D$prefix.courierBEndpoint=tcp://$($courierB.Host):$($courierB.Port) -D$prefix.trackingChannelEndpoint=tcp://$($trackingChannel.Host):$($trackingChannel.Port) -D$prefix.statusFanoutEndpoint=tcp://$($statusFanout.Host):$($statusFanout.Port) -D$prefix.trackingSpotRouterEndpoint=tcp://$($trackingSpotRouter.Host):$($trackingSpotRouter.Port) -D$prefix.sessionStreamEndpoint=tcp://$($sessionStream.Host):$($sessionStream.Port) -D$prefix.sessionSpotRouterEndpoint=tcp://$($sessionSpotRouter.Host):$($sessionSpotRouter.Port) -D$prefix.trackingSpotRouteEndpoint=tcp://$($spotRoute.Host):$($spotRoute.Port)"
-
-    Push-Location "../../.."
-    try {
-        & ./gradlew --no-daemon :zlink-framework-core:jar :zlink-framework-spring-boot-starter:jar :zlink-stream-connector:jar --quiet
-        if ($LASTEXITCODE -ne 0) { throw "Framework jar build failed" }
-    } finally {
-        Pop-Location
-    }
+    $env:JAVA_TOOL_OPTIONS = "$oldJavaToolOptions -D$prefix.registryPubEndpoint=tcp://$($registryPub.Host):$($registryPub.Port) -D$prefix.registryRouterEndpoint=tcp://$($registryRouter.Host):$($registryRouter.Port) -D$prefix.apiHttpUrl=http://$($apiHttp.Host):$($apiHttp.Port) -D$prefix.dispatchChannelEndpoint=tcp://$($dispatchChannel.Host):$($dispatchChannel.Port) -D$prefix.courierAEndpoint=tcp://$($courierA.Host):$($courierA.Port) -D$prefix.courierBEndpoint=tcp://$($courierB.Host):$($courierB.Port) -D$prefix.trackingChannelEndpoint=tcp://$($trackingChannel.Host):$($trackingChannel.Port) -D$prefix.statusFanoutEndpoint=tcp://$($statusFanout.Host):$($statusFanout.Port) -D$prefix.trackingSpotRouterEndpoint=tcp://$($trackingSpotRouter.Host):$($trackingSpotRouter.Port) -D$prefix.sessionStreamEndpoint=tcp://$($sessionStream.Host):$($sessionStream.Port) -D$prefix.sessionSpotRouterEndpoint=tcp://$($sessionSpotRouter.Host):$($sessionSpotRouter.Port) -D$prefix.trackingSpotRouteEndpoint=tcp://$($spotRoute.Host):$($spotRoute.Port)"
 
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", "classes", "--quiet")
 
@@ -158,7 +164,7 @@ try {
     Wait-Port $dispatchChannel.Host $dispatchChannel.Port
 
     Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:DispatchApi:run", "--quiet") -LogName "dispatch-api.log"
-    Wait-Port $apiChannel.Host $apiChannel.Port
+    Wait-Http "http://$($apiHttp.Host):$($apiHttp.Port)"
 
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Probe:run", "--quiet")
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Client:run", "--quiet")

@@ -2,10 +2,11 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.dispatchapi.handler
 
 import java.util.concurrent.locks.LockSupport
 import kotlinx.coroutines.future.await
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RestController
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
-import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
@@ -13,14 +14,15 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeli
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CreateDeliveryRequest
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryCreated
 
-@ZLinkHandlerGroup("api")
+@RestController
 class CreateDeliveryHandler(
     private val channels: ZLinkClient,
-) : ZLinkSuspendingRequestHandler<CreateDeliveryRequest, DeliveryCreated> {
-    override suspend fun handle(
-        request: CreateDeliveryRequest,
-        context: ZLinkRequestContext,
-    ) = run {
+) {
+    @GetMapping("/health")
+    fun health(): Map<String, Any> = mapOf("ready" to true, "role" to "dispatch-api")
+
+    @PostMapping("/deliveries")
+    suspend fun handle(@RequestBody request: CreateDeliveryRequest): DeliveryCreated {
         val assign = AssignDelivery(
             request.deliveryId,
             request.customerId,
@@ -31,7 +33,7 @@ class CreateDeliveryHandler(
         System.err.println(
             "deliverydispatch api: created delivery=${assigned.deliveryId} courier=${assigned.courierId}",
         )
-        DeliveryCreated(assigned.deliveryId)
+        return DeliveryCreated(assigned.deliveryId)
     }
 
     private suspend fun requestDispatch(request: AssignDelivery): AssignDeliveryResult {

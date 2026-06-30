@@ -145,6 +145,7 @@ outbox·idempotency 는 그대로 짠다** — 분산 데이터 문제는 transp
 public class CheckoutZLinkConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions options) {
+        options.codecs().addJson();
         var orders = options.addClientServerChannel("orders");
         orders.enableServer("tcp://0.0.0.0:7401");
         orders.addRequestHandler(PlaceOrderHandler.class, PlaceOrder.class, OrderPlaced.class);

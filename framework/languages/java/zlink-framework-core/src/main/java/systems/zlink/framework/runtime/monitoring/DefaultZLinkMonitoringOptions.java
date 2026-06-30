@@ -15,21 +15,29 @@ public final class DefaultZLinkMonitoringOptions implements ZLinkMonitoringOptio
 
     @Override
     public void addSocketEvents(String sourceName, ZLinkSocketEventKind... events) {
-        socketSources.put(requireName(sourceName, "socket source"), events.clone());
+        putUnique(
+            socketSources,
+            requireName(sourceName, "socket source"),
+            events.clone(),
+            "socket");
     }
 
     @Override
     public void addRegistryEvents(String sourceName, Duration interval) {
-        registrySources.put(
+        putUnique(
+            registrySources,
             requireName(sourceName, "registry source"),
-            requirePositive(interval, "registry interval"));
+            requirePositive(interval, "registry interval"),
+            "registry");
     }
 
     @Override
     public void addSpotEvents(String sourceName, Duration interval) {
-        spotSources.put(
+        putUnique(
+            spotSources,
             requireName(sourceName, "spot source"),
-            requirePositive(interval, "spot interval"));
+            requirePositive(interval, "spot interval"),
+            "spot");
     }
 
     Map<String, ZLinkSocketEventKind[]> socketSources() {
@@ -82,5 +90,17 @@ public final class DefaultZLinkMonitoringOptions implements ZLinkMonitoringOptio
             throw new ZLinkConfigurationException(label + " must be positive");
         }
         return value;
+    }
+
+    private static <T> void putUnique(
+        Map<String, T> sources,
+        String sourceName,
+        T value,
+        String kind) {
+        if (sources.containsKey(sourceName)) {
+            throw new ZLinkConfigurationException(
+                "Duplicate monitoring " + kind + " source '" + sourceName + "'.");
+        }
+        sources.put(sourceName, value);
     }
 }

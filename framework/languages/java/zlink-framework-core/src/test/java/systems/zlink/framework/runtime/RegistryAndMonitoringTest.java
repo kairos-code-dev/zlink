@@ -98,6 +98,42 @@ final class RegistryAndMonitoringTest {
     }
 
     @Test
+    void addZLinkMonitoring_throws_whenSocketSourceIsDuplicated() {
+        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
+
+        options.addSocketEvents("profile", ZLinkSocketEventKind.CONNECTED);
+
+        ZLinkConfigurationException error = assertThrows(
+            ZLinkConfigurationException.class,
+            () -> options.addSocketEvents("profile", ZLinkSocketEventKind.CONNECTION_READY));
+        assertEquals("Duplicate monitoring socket source 'profile'.", error.getMessage());
+    }
+
+    @Test
+    void addZLinkMonitoring_throws_whenRegistrySourceIsDuplicated() {
+        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
+
+        options.addRegistryEvents("registry", Duration.ofSeconds(1));
+
+        ZLinkConfigurationException error = assertThrows(
+            ZLinkConfigurationException.class,
+            () -> options.addRegistryEvents("registry", Duration.ofSeconds(2)));
+        assertEquals("Duplicate monitoring registry source 'registry'.", error.getMessage());
+    }
+
+    @Test
+    void addZLinkMonitoring_throws_whenSpotSourceIsDuplicated() {
+        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
+
+        options.addSpotEvents("play", Duration.ofSeconds(1));
+
+        ZLinkConfigurationException error = assertThrows(
+            ZLinkConfigurationException.class,
+            () -> options.addSpotEvents("play", Duration.ofSeconds(2)));
+        assertEquals("Duplicate monitoring spot source 'play'.", error.getMessage());
+    }
+
+    @Test
     void addZLinkMonitoring_throws_whenRegistrySourceIsUnknownOnStartup() {
         DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
 

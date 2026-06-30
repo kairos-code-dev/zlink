@@ -101,24 +101,33 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_KOTLIN_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/install/registration-codec-kotlin/bin/registration-codec-kotlin"
+bin_path() {
+  local path="$1"
+  local app="$2"
+  echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/${path}/install/${app}/bin/${app}"
 }
 
-read -r SERVER_PORT HTTP_PORT INVALID_PORT MISMATCH_PORT MISMATCH_HTTP_PORT <<<"$(reserve_ports 5)"
+CLIENT_BIN="$(bin_path Client registration-codec-kotlin-client)"
+MAIN_BIN="$(bin_path Server-Main registration-codec-kotlin-main)"
+CODEC_REQUESTER_BIN="$(bin_path Server-CodecRequester registration-codec-kotlin-codec-requester)"
+JSON_ONLY_BIN="$(bin_path Server-JsonOnlyPeer registration-codec-kotlin-json-only-peer)"
+INVALID_BIN="$(bin_path Server-InvalidDuplicate registration-codec-kotlin-invalid-duplicate)"
+
+read -r SERVER_PORT HTTP_PORT INVALID_PORT MISMATCH_PORT MISMATCH_HTTP_PORT REQUESTER_HTTP_PORT <<<"$(reserve_ports 6)"
 SERVER_ENDPOINT="$(tcp "${SERVER_PORT}")"
 HTTP_ENDPOINT="$(http "${HTTP_PORT}")"
 INVALID_ENDPOINT="$(tcp "${INVALID_PORT}")"
 MISMATCH_ENDPOINT="$(tcp "${MISMATCH_PORT}")"
 MISMATCH_HTTP_ENDPOINT="$(http "${MISMATCH_HTTP_PORT}")"
+REQUESTER_HTTP_ENDPOINT="$(http "${REQUESTER_HTTP_PORT}")"
 
 gradle_run installDist
 
 set +e
-ZLINK_KOTLIN_E2E_ROLE=invalid-server \
-ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${INVALID_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/invalid-server.stdout.log" 2>"${log_dir}/invalid-server.stderr.log"
+"${INVALID_BIN}" \
+  --server-endpoint "${INVALID_ENDPOINT}" \
+  --log-dir "${log_dir}" \
+  >"${log_dir}/invalid-server.stdout.log" 2>"${log_dir}/invalid-server.stderr.log"
 invalid_status="$?"
 set -e
 if [[ "${invalid_status}" == "0" ]]; then
@@ -129,21 +138,22 @@ cat "${log_dir}/invalid-server.stdout.log" "${log_dir}/invalid-server.stderr.log
   | grep -Eq "duplicate|Duplicate|registration|packet"
 echo "scenario RC-A6 passed"
 
-ZLINK_KOTLIN_E2E_ROLE=server \
-ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
+"${MAIN_BIN}" \
+  --server-endpoint "${SERVER_ENDPOINT}" \
+  --http-endpoint "${HTTP_ENDPOINT}" \
+  --log-dir "${log_dir}" \
+  --codec-mode all \
+  >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
 pids+=("$!")
 wait_port server "${SERVER_ENDPOINT}"
 wait_port evidence "${HTTP_ENDPOINT}"
 sleep 1
 
-ZLINK_KOTLIN_E2E_ROLE=client \
-ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+"${CLIENT_BIN}" \
+  --server-endpoint "${SERVER_ENDPOINT}" \
+  --http-endpoint "${HTTP_ENDPOINT}" \
+  --log-dir "${log_dir}" \
+  >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
 python3 - "${HTTP_ENDPOINT}/evidence" >"${log_dir}/server-evidence.json" <<'PY'
@@ -170,24 +180,47 @@ stop_current() {
 
 stop_current
 
-ZLINK_KOTLIN_E2E_ROLE=server \
-ZLINK_KOTLIN_E2E_CODEC_MODE=json-only \
-ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
+"${JSON_ONLY_BIN}" \
+  --server-endpoint "${MISMATCH_ENDPOINT}" \
+  --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \
+  --log-dir "${log_dir}" \
+  --codec-mode json-only \
+  >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
 pids+=("$!")
 wait_port mismatch-server "${MISMATCH_ENDPOINT}"
 wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
 sleep 1
 
-ZLINK_KOTLIN_E2E_ROLE=client \
-ZLINK_KOTLIN_E2E_CLIENT_MODE=codec-mismatch \
-ZLINK_KOTLIN_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
-ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/mismatch-client.stdout.log" 2>"${log_dir}/mismatch-client.stderr.log"
+"${CODEC_REQUESTER_BIN}" \
+  --server-endpoint "${MISMATCH_ENDPOINT}" \
+  --http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
+  --log-dir "${log_dir}" \
+  >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
+pids+=("$!")
+wait_port codec-requester "${REQUESTER_HTTP_ENDPOINT}"
+sleep 1
 
-cat "${log_dir}/mismatch-client.stdout.log"
+python3 - "${REQUESTER_HTTP_ENDPOINT}" >"${log_dir}/codec-requester-result.json" <<'PY'
+import json
+import sys
+import urllib.request
+
+base = sys.argv[1]
+
+def post(path):
+    request = urllib.request.Request(base + path, data=b"", method="POST")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+json_reply = post("/codec/json/request")
+if json_reply.get("value") != "echo:json-from-requester":
+    raise SystemExit(f"json requester failed: {json_reply}")
+protobuf_reply = post("/codec/protobuf/request")
+if not protobuf_reply.get("error"):
+    raise SystemExit(f"protobuf mismatch did not fail: {protobuf_reply}")
+print(json.dumps({"json": json_reply, "protobuf": protobuf_reply}, sort_keys=True))
+PY
+
+cat "${log_dir}/codec-requester-result.json"
 grep -q "scenario RC-A4 passed" "${log_dir}/client.stdout.log"
-grep -q "scenario RC-B5 passed" "${log_dir}/mismatch-client.stdout.log"
+echo "scenario RC-B5 passed"

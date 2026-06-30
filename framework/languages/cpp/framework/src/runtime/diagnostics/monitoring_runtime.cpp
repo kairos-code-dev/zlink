@@ -3,6 +3,8 @@
 #include "monitoring_runtime.hpp"
 
 #include <algorithm>
+#include <exception>
+#include <iostream>
 #include <utility>
 
 namespace
@@ -90,7 +92,15 @@ void runtime_event_publisher_t::publish_erased (std::type_index event_type,
         return;
     }
     for (const auto &handler : found->second) {
-        handler (event);
+        try {
+            handler (event);
+        }
+        catch (const std::exception &ex) {
+            std::cerr << "monitoring-event-dispatch: " << ex.what () << '\n';
+        }
+        catch (...) {
+            std::cerr << "monitoring-event-dispatch: unknown monitoring handler failure\n";
+        }
     }
 }
 
@@ -284,15 +294,22 @@ void monitoring_runtime_t::publish_registry_snapshot (
     if (!contains_source (_state->registry_sources, source_name)) {
         return;
     }
-    auto event_kind = registry_event_kind_t::status_changed;
-    if (!topology.empty ()) {
-        event_kind = registry_event_kind_t::topology_changed;
-    } else if (!summary.empty ()) {
-        event_kind = registry_event_kind_t::service_summary_changed;
+    if (topology.empty () && summary.empty ()) {
+        publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)},
+                                          registry_event_kind_t::status_changed,
+                                          std::move (status), {}, {}});
+        return;
     }
-    publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)}, event_kind,
-                                      std::move (status), std::move (topology),
-                                      std::move (summary)});
+    if (!topology.empty ()) {
+        publish (registry_event_payload_t{runtime_event_base_t{source_name},
+                                          registry_event_kind_t::topology_changed, status,
+                                          topology, {}});
+    }
+    if (!summary.empty ()) {
+        publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)},
+                                          registry_event_kind_t::service_summary_changed,
+                                          std::move (status), {}, std::move (summary)});
+    }
 }
 
 void monitoring_runtime_t::publish_spot_snapshot (spot_event_payload_t event) const
@@ -329,14 +346,14 @@ void monitoring_runtime_t::publish_timer_failure (std::string source_name,
     auto event_kind = failure.stopped ? spot_event_kind_t::timer_stopped_after_unhandled_exception
                                       : spot_event_kind_t::timer_handler_failed;
     publish (spot_event_payload_t{
-      runtime_event_base_t{std::move (source_name),
+      runtime_event_base_t{source_name,
                            std::chrono::system_clock::now (),
                            runtime_event_severity_t::error,
                            {},
                            {},
                            health_status_t::degraded},
       event_kind,
-      {},
+      std::move (source_name),
       {},
       {},
       spot_timer_diagnostic_t{std::move (spot_rid), false, std::move (failure.timer_name),

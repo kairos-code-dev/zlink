@@ -1,0 +1,16 @@
+package systems.zlink.e2e.kotlin.spotservice.client.scenarios
+
+import systems.zlink.e2e.kotlin.spotservice.Env
+import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
+import systems.zlink.e2e.kotlin.spotservice.client.support.postAdmin
+
+internal object SmA6Scenario {
+    fun run() {
+        val rid = "room-b-lifecycle-${System.nanoTime()}"
+        val created = postAdmin(Env.get("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT"), "/admin/create-user?rid=$rid")
+        ensure(created.contains("\"created\":true"), "SM-A6 lifecycle spot create did not report created=true")
+        val body = postAdmin(Env.get("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT"), "/admin/close?rid=$rid")
+        ensure(body.contains("\"closed\":true"), "SM-A6 spot close did not report closed=true")
+        println("scenario SM-A6 passed")
+    }
+}

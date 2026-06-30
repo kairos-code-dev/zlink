@@ -251,24 +251,6 @@ class pending_operation_controller_t
     channel_runtime_state_t &_state;
 };
 
-void ensure_manual_allowed (const channel_capability_snapshot_t &snapshot)
-{
-    if (snapshot.discovery) {
-        throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
-          "manual endpoint cannot be mixed with discovery in one capability");
-    }
-}
-
-void ensure_discovery_allowed (const channel_capability_snapshot_t &snapshot)
-{
-    if (!snapshot.bind_endpoints.empty () || !snapshot.connect_endpoints.empty ()) {
-        throw framework_exception_t (
-          framework_error_kind_t::request_protocol_error,
-          "discovery cannot be mixed with manual endpoints in one capability");
-    }
-}
-
 channel_runtime_t::channel_runtime_t (std::shared_ptr<channel_runtime_state_t> state) :
     _state (std::move (state))
 {
@@ -340,13 +322,15 @@ channel_runtime_t::dispatch_request (std::string channel_name,
                                      service_provider_t &services,
                                      serializer_registry_t &serializers,
                                      const handler_registry_t &handlers,
-                                     const zlink::message_t &message) const
+                                     const zlink::message_t &message,
+                                     std::string_view content_type) const
 {
     if (!is_enabled (server_capability (*_state, channel_name))) {
         return result_t<zlink::message_t>::failure (framework_error_kind_t::route_not_connected,
                                                     "channel server capability is not enabled");
     }
-    return handlers.invoke (channel_name, topic, packet_name, services, serializers, message);
+    return handlers.invoke (channel_name, topic, packet_name, services, serializers, message,
+                            content_type);
 }
 
 result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
@@ -355,10 +339,12 @@ result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
                                                  service_provider_t &services,
                                                  serializer_registry_t &serializers,
                                                  const handler_registry_t &handlers,
-                                                 const zlink::message_t &message) const
+                                                 const zlink::message_t &message,
+                                                 std::string_view content_type) const
 {
     auto result =
-      handlers.invoke (channel_name, topic, packet_name, services, serializers, message);
+      handlers.invoke (channel_name, topic, packet_name, services, serializers, message,
+                       content_type);
     if (!result) {
         return result_t<void>::failure (result.error_kind (), result.error ()
                                                                 ? result.error ()->what ()
@@ -520,6 +506,25 @@ void channel_runtime_t::drain () noexcept
     pending_operation_controller_t (*_state).drain ();
 }
 
+void channel_runtime_t::publish_socket_event (const std::string &channel_name,
+                                              socket_event_kind_t event,
+                                              std::string local_address,
+                                              std::string remote_address,
+                                              std::uint32_t native_event,
+                                              std::uint32_t native_value) const
+{
+    if (!_state->monitoring) {
+        return;
+    }
+    monitoring_runtime_t (_state->monitoring)
+      .publish_socket (socket_event_payload_t{runtime_event_base_t{channel_name},
+                                              event,
+                                              std::move (local_address),
+                                              std::move (remote_address),
+                                              native_event,
+                                              native_value});
+}
+
 void channel_runtime_t::set_server_peer_weight (const std::string &channel_name,
                                                 zlink::peer_weight_t value)
 {
@@ -527,15 +532,8 @@ void channel_runtime_t::set_server_peer_weight (const std::string &channel_name,
         std::lock_guard lock (_state->mutex);
         _state->server_peer_weight_overrides.insert_or_assign (channel_name, value);
     }
-    if (_state->monitoring) {
-        monitoring_runtime_t (_state->monitoring)
-          .publish_socket (socket_event_payload_t{runtime_event_base_t{channel_name},
-                                                  socket_event_kind_t::peer_admission_changed,
-                                                  {},
-                                                  {},
-                                                  0,
-                                                  value.value ()});
-    }
+    publish_socket_event (channel_name, socket_event_kind_t::peer_admission_changed, {}, {}, 0,
+                          value.value ());
 }
 
 std::optional<zlink::peer_weight_t>
@@ -595,7 +593,7 @@ capability_builder_t &capability_builder_t::operator= (capability_builder_t &&) 
 capability_builder_t &capability_builder_t::bind (std::string endpoint)
 {
     auto &snapshot = capability_snapshot (*_state);
-    detail::ensure_manual_allowed (snapshot);
+    snapshot.discovery = false;
     snapshot.enabled = true;
     snapshot.bind_endpoints.push_back (std::move (endpoint));
     return *this;
@@ -604,18 +602,9 @@ capability_builder_t &capability_builder_t::bind (std::string endpoint)
 capability_builder_t &capability_builder_t::connect (std::string endpoint)
 {
     auto &snapshot = capability_snapshot (*_state);
-    detail::ensure_manual_allowed (snapshot);
+    snapshot.discovery = false;
     snapshot.enabled = true;
     snapshot.connect_endpoints.push_back (std::move (endpoint));
-    return *this;
-}
-
-capability_builder_t &capability_builder_t::use_discovery ()
-{
-    auto &snapshot = capability_snapshot (*_state);
-    detail::ensure_discovery_allowed (snapshot);
-    snapshot.enabled = true;
-    snapshot.discovery = true;
     return *this;
 }
 
@@ -696,7 +685,10 @@ capability_builder_t channel_builder_t::enable_server ()
 
 capability_builder_t channel_builder_t::enable_client ()
 {
-    return enable_capability (detail::select_capability (*_state, channel_capability_t::client));
+    auto builder = enable_capability (
+      detail::select_capability (*_state, channel_capability_t::client));
+    detail::select_capability (*_state, channel_capability_t::client).discovery = true;
+    return builder;
 }
 
 capability_builder_t channel_builder_t::enable_publisher ()
@@ -706,8 +698,10 @@ capability_builder_t channel_builder_t::enable_publisher ()
 
 capability_builder_t channel_builder_t::enable_subscriber ()
 {
-    return enable_capability (
+    auto builder = enable_capability (
       detail::select_capability (*_state, channel_capability_t::subscriber));
+    detail::select_capability (*_state, channel_capability_t::subscriber).discovery = true;
+    return builder;
 }
 
 channel_builder_t &channel_builder_t::default_request_timeout (std::chrono::milliseconds timeout)
@@ -1104,6 +1098,10 @@ route_client_t::submit_send_erased (const std::shared_ptr<detail::route_client_s
               co_return result_t<void>::failure (error.kind (), error.what (),
                                                  error.is_retriable ());
           }
+          catch (const std::exception &error) {
+              co_return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                 error.what ());
+          }
       });
 }
 
@@ -1165,6 +1163,10 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
               co_return result_t<std::uint64_t>::failure (error.kind (), error.what (),
                                                           error.is_retriable ());
           }
+          catch (const std::exception &error) {
+              co_return result_t<std::uint64_t>::failure (framework_error_kind_t::request_failed,
+                                                          error.what ());
+          }
       });
 }
 
@@ -1224,6 +1226,10 @@ task_t<void> route_client_t::submit_spot_send_erased (
           catch (const framework_exception_t &error) {
               co_return result_t<void>::failure (error.kind (), error.what (),
                                                  error.is_retriable ());
+          }
+          catch (const std::exception &error) {
+              co_return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                 error.what ());
           }
       });
 }
@@ -1288,6 +1294,10 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
           catch (const framework_exception_t &error) {
               co_return result_t<std::uint64_t>::failure (error.kind (), error.what (),
                                                           error.is_retriable ());
+          }
+          catch (const std::exception &error) {
+              co_return result_t<std::uint64_t>::failure (framework_error_kind_t::request_failed,
+                                                          error.what ());
           }
       });
 }
@@ -1392,6 +1402,10 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
           catch (const framework_exception_t &error) {
               co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
                                                              error.is_retriable ());
+          }
+          catch (const std::exception &error) {
+              co_return result_t<zlink::message_t>::failure (
+                framework_error_kind_t::request_failed, error.what ());
           }
       });
 }
@@ -1498,6 +1512,10 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
           catch (const framework_exception_t &error) {
               co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
                                                              error.is_retriable ());
+          }
+          catch (const std::exception &error) {
+              co_return result_t<zlink::message_t>::failure (
+                framework_error_kind_t::request_failed, error.what ());
           }
       });
 }

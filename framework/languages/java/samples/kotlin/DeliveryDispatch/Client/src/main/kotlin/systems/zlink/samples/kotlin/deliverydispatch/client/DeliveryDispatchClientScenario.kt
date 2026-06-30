@@ -3,12 +3,11 @@ package systems.zlink.samples.kotlin.deliverydispatch.client
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.future.await as futureAwait
-import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.await
+import systems.zlink.httpclient.ZLinkHttpClient
+import systems.zlink.httpclient.kotlin.fetch
 import systems.zlink.samples.kotlin.deliverydispatch.client.configuration.SampleNames
-import systems.zlink.samples.kotlin.deliverydispatch.client.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CreateDeliveryRequest
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryCreated
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusNotify
@@ -19,7 +18,7 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeD
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryAccepted
 
 class DeliveryDispatchClientScenario(
-    private val channels: ZLinkClient,
+    private val api: ZLinkHttpClient,
 ) {
     suspend fun run(customer: ZLinkKotlinStreamConnector) {
         customer.connect().await()
@@ -78,24 +77,14 @@ class DeliveryDispatchClientScenario(
     }
 
     private suspend fun createDelivery(deliveryId: String): DeliveryCreated =
-        channels
-            .requestToChannel(
-                SampleNames.ApiChannel,
-                CreateDeliveryRequest(deliveryId, "customer-1", "Kitchen 12", "Customer Lobby"),
-            )
-            .timeout(SampleTimings.RequestTimeout)
-            .submit(DeliveryCreated::class.java)
-            .futureAwait()
+        api.post("/deliveries")
+            .body(CreateDeliveryRequest(deliveryId, "customer-1", "Kitchen 12", "Customer Lobby"))
+            .fetch()
 
     private suspend fun assertServerEvidence() {
-        val assertion = channels
-            .requestToChannel(
-                SampleNames.ApiChannel,
-                ServerAssertionReq("delivery-success", "delivery-reassign"),
-            )
-            .timeout(SampleTimings.RequestTimeout)
-            .submit(ServerAssertionRes::class.java)
-            .futureAwait()
+        val assertion = api.post("/self-check/assert")
+            .body(ServerAssertionReq("delivery-success", "delivery-reassign"))
+            .fetch<ServerAssertionRes>()
         ensure(assertion.passed)
         println("deliverydispatch-server-evidence=completed")
     }

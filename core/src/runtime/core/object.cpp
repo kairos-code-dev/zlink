@@ -12,6 +12,16 @@
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
 
+namespace
+{
+bool command_targets_pipe (zlink::command_t::type_t type_)
+{
+    return type_ == zlink::command_t::activate_read || type_ == zlink::command_t::activate_write
+           || type_ == zlink::command_t::hiccup || type_ == zlink::command_t::pipe_term
+           || type_ == zlink::command_t::pipe_term_ack || type_ == zlink::command_t::pipe_hwm;
+}
+}
+
 zlink::object_t::object_t (ctx_t *ctx_, uint32_t tid_) : _ctx (ctx_), _tid (tid_)
 {
 }
@@ -130,6 +140,9 @@ void zlink::object_t::process_command (const command_t &cmd_)
             fflush (stderr);
             zlink_assert (false);
     }
+
+    if (command_targets_pipe (cmd_.type))
+        static_cast<pipe_t *> (cmd_.destination)->release_command_ref ();
 }
 
 int zlink::object_t::register_endpoint (const char *addr_, const endpoint_t &endpoint_)
@@ -249,6 +262,7 @@ void zlink::object_t::send_activate_read (pipe_t *destination_)
     command_t cmd;
     cmd.destination = destination_;
     cmd.type = command_t::activate_read;
+    destination_->retain_command_ref ();
     send_command (cmd);
 }
 
@@ -258,6 +272,7 @@ void zlink::object_t::send_activate_write (pipe_t *destination_, uint64_t msgs_r
     cmd.destination = destination_;
     cmd.type = command_t::activate_write;
     cmd.args.activate_write.msgs_read = msgs_read_;
+    destination_->retain_command_ref ();
     if (destination_->get_tid () == _tid)
         destination_->process_command (cmd);
     else
@@ -270,6 +285,7 @@ void zlink::object_t::send_hiccup (pipe_t *destination_, void *pipe_)
     cmd.destination = destination_;
     cmd.type = command_t::hiccup;
     cmd.args.hiccup.pipe = pipe_;
+    destination_->retain_command_ref ();
     send_command (cmd);
 }
 
@@ -278,6 +294,7 @@ void zlink::object_t::send_pipe_term (pipe_t *destination_)
     command_t cmd;
     cmd.destination = destination_;
     cmd.type = command_t::pipe_term;
+    destination_->retain_command_ref ();
     send_command (cmd);
 }
 
@@ -286,6 +303,7 @@ void zlink::object_t::send_pipe_term_ack (pipe_t *destination_)
     command_t cmd;
     cmd.destination = destination_;
     cmd.type = command_t::pipe_term_ack;
+    destination_->retain_command_ref ();
     send_command (cmd);
 }
 
@@ -296,6 +314,7 @@ void zlink::object_t::send_pipe_hwm (pipe_t *destination_, int inhwm_, int outhw
     cmd.type = command_t::pipe_hwm;
     cmd.args.pipe_hwm.inhwm = inhwm_;
     cmd.args.pipe_hwm.outhwm = outhwm_;
+    destination_->retain_command_ref ();
     send_command (cmd);
 }
 

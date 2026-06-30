@@ -1,7 +1,6 @@
 package systems.zlink.samples.deliverydispatch.server.configuration;
 
 public final class SampleNames {
-    public static final String ApiChannel = "deliverydispatch.api";
     public static final String DispatchChannel = "deliverydispatch.dispatch";
     public static final String CourierAChannel = "deliverydispatch.courier.a";
     public static final String CourierBChannel = "deliverydispatch.courier.b";

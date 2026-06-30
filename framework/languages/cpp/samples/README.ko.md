@@ -46,9 +46,6 @@ Windows PowerShell:
 ```powershell
 .\framework\languages\cpp\samples\TicTacToe\run_sample.ps1
 .\framework\languages\cpp\samples\Bingo\run_sample.ps1
-.\framework\languages\cpp\samples\DeliveryDispatch\run_sample.ps1
-.\framework\languages\cpp\samples\GameQuest\run_sample.ps1
-.\framework\languages\cpp\samples\ShoppingMall\run_sample.ps1
 .\framework\languages\cpp\samples\run_samples.ps1
 ```
 

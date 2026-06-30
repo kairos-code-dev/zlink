@@ -63,7 +63,6 @@ public final class TrackingApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-tracking.log")
                 .traceLabel("tracking");
-            options.codecs().addJson();
             options.addHandlersFromPackageOf(TrackingApplication.class);
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(SampleTopology.TrackingChannelEndpoint)

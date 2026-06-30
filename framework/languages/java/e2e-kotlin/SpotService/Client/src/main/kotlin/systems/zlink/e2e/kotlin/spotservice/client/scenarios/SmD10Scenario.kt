@@ -1,0 +1,74 @@
+package systems.zlink.e2e.kotlin.spotservice.client.scenarios
+
+import systems.zlink.e2e.kotlin.spotservice.Contracts
+import systems.zlink.e2e.kotlin.spotservice.Env
+import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
+import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
+import systems.zlink.stream.connector.ZLinkStreamDispatchMode
+
+internal object SmD10Scenario {
+    fun run() {
+        val congestedActorId = "actor-sm-d10-congested"
+        val isolatedActorId = "actor-sm-d10-isolated"
+        val congested = createStreamConnector(
+            Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"),
+            ZLinkStreamDispatchMode.MANUAL,
+            1,
+        )
+        val isolated = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_B_ENDPOINT"))
+        try {
+            val congestedProfile = Contracts.ActorProfile("Backpressure", 10, listOf("congested"))
+            val isolatedProfile = Contracts.ActorProfile("Backpressure Peer", 10, listOf("isolated"))
+            congested.connect().await()
+            congested
+                .request(Contracts.ActorAuthRequest(congestedActorId, congestedProfile))
+                .await(Contracts.ActorAuthReply::class.java)
+            isolated.connect().await()
+            isolated
+                .request(Contracts.ActorAuthRequest(isolatedActorId, isolatedProfile))
+                .await(Contracts.ActorAuthReply::class.java)
+
+            val retainedPush = congested.waitFor(Contracts.ActorPush::class.java)
+                .submit(Contracts.ActorPush::class.java)
+            for (index in 0 until 8) {
+                val reply = congested
+                    .request(Contracts.ActorEchoRequest("burst-$index", 10, congestedProfile))
+                    .await(Contracts.ActorEchoReply::class.java)
+                ensure(reply.actorId == congestedActorId, "SM-D10 congested reply actor mismatch")
+            }
+            ensure(congested.receivedCount("ActorPush") <= 1, "SM-D10 congested queue retained too many pushes")
+            congested.dispatch().await()
+            val retained = congested.await(retainedPush).payload()
+            ensure(retained.actorId == congestedActorId, "SM-D10 retained push actor mismatch")
+            ensure(retained.value == "push:burst-7", "SM-D10 expected newest congested push to be retained")
+
+            val stillAlive = congested
+                .request(Contracts.ActorEchoRequest("after-backpressure", 10, congestedProfile))
+                .await(Contracts.ActorEchoReply::class.java)
+            ensure(stillAlive.actorId == congestedActorId, "SM-D10 congested session stopped routing")
+            ensure(stillAlive.value == "entry:after-backpressure", "SM-D10 congested session reply mismatch")
+            congested.dispatch().await()
+
+            val isolatedPush = isolated.waitFor(Contracts.ActorPush::class.java)
+                .submit(Contracts.ActorPush::class.java)
+            val isolatedReply = isolated
+                .request(Contracts.ActorEchoRequest("isolated-push", 10, isolatedProfile))
+                .await(Contracts.ActorEchoReply::class.java)
+            val isolatedNotify = isolated.await(isolatedPush).payload()
+            ensure(isolatedReply.actorId == isolatedActorId, "SM-D10 isolated reply actor mismatch")
+            ensure(isolatedNotify.actorId == isolatedActorId, "SM-D10 isolated push actor mismatch")
+            ensure(isolatedNotify.value == "push:isolated-push", "SM-D10 isolated session push mismatch")
+
+            println("scenario SM-D10 passed")
+        } finally {
+            try {
+                congested.close().await()
+            } catch (_: Exception) {
+            }
+            try {
+                isolated.close().await()
+            } catch (_: Exception) {
+            }
+        }
+    }
+}

@@ -171,7 +171,7 @@ terminate_gracefully() {
   for child in "${targets[@]}"; do
     kill -TERM "${child}" >/dev/null 2>&1 || true
   done
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 600); do
     local alive=0
     for child in "${targets[@]}"; do
       if kill -0 "${child}" >/dev/null 2>&1; then
@@ -186,6 +186,11 @@ terminate_gracefully() {
     sleep 0.1
   done
   echo "${name} did not stop after SIGTERM; sending SIGKILL" >&2
+  for child in "${targets[@]}"; do
+    if command -v jcmd >/dev/null 2>&1 && kill -0 "${child}" >/dev/null 2>&1; then
+      jcmd "${child}" Thread.print >"${log_dir}/${name}-${child}-thread-dump.log" 2>&1 || true
+    fi
+  done
   for child in "${targets[@]}"; do
     kill -KILL "${child}" >/dev/null 2>&1 || true
   done

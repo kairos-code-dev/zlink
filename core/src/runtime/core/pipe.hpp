@@ -179,6 +179,9 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     void send_hiccup_msg (const std::vector<unsigned char> &hiccup_);
 
+    void retain_command_ref ();
+    void release_command_ref ();
+
   private:
     //  Type of the underlying lock-free pipe.
     typedef ypipe_base_t<msg_t> upipe_t;
@@ -289,6 +292,8 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     std::atomic<bool> _stream_connect_event_emitted;
     std::atomic<bool> _connection_ready_event_emitted;
+    std::atomic<int> _command_refs;
+    std::atomic<bool> _release_after_command_refs;
     fast_mutex_t _stream_packet_sync;
     stream_packet_state_t _stream_packet_state;
 

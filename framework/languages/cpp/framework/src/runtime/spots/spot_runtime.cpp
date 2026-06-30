@@ -2390,6 +2390,15 @@ void spot_node_runtime_t::attach_native_node (std::shared_ptr<zlink::service::sp
     for (auto &[_, context] : _state->spot_contexts_by_rid) {
         attach_native_spot_locked (context._state);
     }
+    if (_state->monitoring) {
+        monitoring_runtime_t (_state->monitoring)
+          .publish_spot_snapshot (spot_event_payload_t{runtime_event_base_t{_state->snapshot.name},
+                                                       spot_event_kind_t::status_changed,
+                                                       _state->snapshot.name,
+                                                       {},
+                                                       {},
+                                                       std::nullopt});
+    }
 }
 
 void spot_node_runtime_t::detach_native_node ()
@@ -2397,8 +2406,24 @@ void spot_node_runtime_t::detach_native_node ()
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     _state->native_node.reset ();
     _state->native_spots_by_rid.clear ();
+    _state->last_monitoring_peers.clear ();
     for (auto &[_, context] : _state->spot_contexts_by_rid) {
         context._state->native_spot.reset ();
+    }
+    if (_state->monitoring) {
+        monitoring_runtime_t (_state->monitoring)
+          .publish_spot_snapshot (spot_event_payload_t{
+            runtime_event_base_t{_state->snapshot.name,
+                                 std::chrono::system_clock::now (),
+                                 runtime_event_severity_t::warning,
+                                 {},
+                                 {},
+                                 health_status_t::degraded},
+            spot_event_kind_t::status_changed,
+            _state->snapshot.name,
+            {},
+            {},
+            std::nullopt});
     }
 }
 
@@ -2406,6 +2431,41 @@ std::shared_ptr<zlink::service::spot_node_t> spot_node_runtime_t::native_node ()
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     return _state->native_node.lock ();
+}
+
+void spot_node_runtime_t::publish_peer_snapshot_if_changed ()
+{
+    if (!_state->monitoring) {
+        return;
+    }
+
+    std::vector<std::string> peers;
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        auto native = _state->native_node.lock ();
+        if (!native) {
+            return;
+        }
+        for (const auto &peer : native->peers ()) {
+            if (!peer.peer_endpoint ().empty ()) {
+                peers.push_back (peer.peer_endpoint ());
+            }
+        }
+        std::sort (peers.begin (), peers.end ());
+        peers.erase (std::unique (peers.begin (), peers.end ()), peers.end ());
+        if (peers == _state->last_monitoring_peers) {
+            return;
+        }
+        _state->last_monitoring_peers = peers;
+    }
+
+    monitoring_runtime_t (_state->monitoring)
+      .publish_spot_snapshot (spot_event_payload_t{runtime_event_base_t{_state->snapshot.name},
+                                                   spot_event_kind_t::peers_changed,
+                                                   _state->snapshot.name,
+                                                   std::move (peers),
+                                                   {},
+                                                   std::nullopt});
 }
 
 std::vector<spot_context_t> spot_node_runtime_t::active_contexts () const
@@ -2489,18 +2549,26 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
             if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
                 break;
             }
-            auto submit_reply = [] (zlink::service::spot_t &spot, zlink::received_t &received,
+            struct routed_reply_target_t
+            {
+                std::optional<zlink::routing_id_t> routing_id;
+                std::optional<zlink::routing_id_t> spot_rid;
+                std::uint64_t request_seq = 0;
+            };
+            auto submit_reply = [] (zlink::service::spot_t &spot,
+                                    const routed_reply_target_t &target,
                                     const runtime::messaging::message_parts_t &reply_parts) {
                 auto parts = reply_parts.items ();
-                if (parts.empty () || !received.routing_id () || !received.request_seq ()) {
+                if (parts.empty () || !target.routing_id || target.request_seq == 0) {
                     return;
                 }
                 auto iterator = parts.begin ();
-                auto submit =
-                  received.spot_rid ()
-                    ? std::move (received).reply ().message (*iterator)
-                    : spot.reply_to_router (*received.routing_id (), *received.request_seq ())
-                        .message (*iterator);
+                auto submit = target.spot_rid
+                                ? spot.reply_to_spot (*target.routing_id, *target.spot_rid,
+                                                      target.request_seq)
+                                    .message (*iterator)
+                                : spot.reply_to_router (*target.routing_id, target.request_seq)
+                                    .message (*iterator);
                 ++iterator;
                 for (; iterator != parts.end (); ++iterator) {
                     submit = std::move (submit).message (*iterator);
@@ -2523,6 +2591,8 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
             report_spot_dispatch_trace (
               _state, message_flow_outcome_t::received, dispatch_error_surface_t::spot_route,
               message_kind, header.value ().message_name, {}, context._state->spot_rid.value ());
+            const routed_reply_target_t reply_target{
+              inbound.routing_id (), inbound.spot_rid (), inbound.request_seq ().value_or (0)};
             auto body = codec.decode_body (parts);
             auto reply_error = [&] (const framework_exception_t &error) {
                 report_spot_dispatch_error (
@@ -2537,7 +2607,7 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
                   replies.create_error_header (header.value ().channel_name, header.value (),
                                                error),
                   zlink::message_t::from (""));
-                submit_reply (*native, inbound, reply_parts);
+                submit_reply (*native, reply_target, reply_parts);
             };
             if (!body) {
                 reply_error (framework_exception_t (body.error_kind (),
@@ -2556,14 +2626,13 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
             auto task_holder =
               std::make_shared<task_t<zlink::message_t>> (std::move (handler_task));
             auto native_for_reply = native;
-            auto inbound_for_reply = std::make_shared<zlink::received_t> (std::move (inbound));
             auto header_value = header.value ();
             auto node_state = _state;
             auto spot_rid = std::string (context._state->spot_rid.value ());
             detail::observe_task_completion (
               *task_holder,
-              [task_holder, native_for_reply, inbound_for_reply, header_value, node_state,
-               spot_rid, replies, submit_reply] (const result_t<zlink::message_t> &result) mutable {
+              [task_holder, native_for_reply, reply_target, header_value, node_state, spot_rid,
+               replies, submit_reply] (const result_t<zlink::message_t> &result) mutable {
                   if (!result) {
                       const auto *error = result.error ();
                       const framework_exception_t exception (
@@ -2577,12 +2646,12 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
                             dispatch_reason_from_error (exception.kind ()),
                             dispatch_error_action_t::reply_error, header_value.message_name,
                             std::nullopt, spot_rid);
-                          if (inbound_for_reply->request_seq ()) {
+                          if (reply_target.request_seq != 0) {
                               auto reply_parts = replies.reply_raw_envelope (
                                 replies.create_error_header (header_value.channel_name,
                                                              header_value, exception),
                                 zlink::message_t::from (""));
-                              submit_reply (*native_for_reply, *inbound_for_reply, reply_parts);
+                              submit_reply (*native_for_reply, reply_target, reply_parts);
                           }
                       } else {
                           report_spot_dispatch_error (
@@ -2599,7 +2668,7 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
                         replies.create_reply_header (runtime::messaging::message_kind_t::response,
                                                      header_value.channel_name, header_value),
                         result.value ());
-                      submit_reply (*native_for_reply, *inbound_for_reply, reply_parts);
+                      submit_reply (*native_for_reply, reply_target, reply_parts);
                       report_spot_dispatch_trace (
                         node_state, message_flow_outcome_t::replied,
                         dispatch_error_surface_t::spot_route,

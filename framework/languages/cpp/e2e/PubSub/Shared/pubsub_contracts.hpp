@@ -41,6 +41,7 @@ struct evidence_snapshot_t
 {
     std::string subscriber_id;
     std::vector<evidence_event_t> events;
+    std::vector<evidence_event_t> ignored_events;
     std::vector<dispatch_error_evidence_t> errors;
 };
 
@@ -91,14 +92,19 @@ inline void from_json (const nlohmann::json &json, dispatch_error_evidence_t &va
 
 inline void to_json (nlohmann::json &json, const evidence_snapshot_t &value)
 {
-    json = nlohmann::json{
-      {"subscriber_id", value.subscriber_id}, {"events", value.events}, {"errors", value.errors}};
+    json = nlohmann::json{{"subscriber_id", value.subscriber_id},
+                          {"events", value.events},
+                          {"ignored_events", value.ignored_events},
+                          {"errors", value.errors}};
 }
 
 inline void from_json (const nlohmann::json &json, evidence_snapshot_t &value)
 {
     json.at ("subscriber_id").get_to (value.subscriber_id);
     json.at ("events").get_to (value.events);
+    if (json.contains ("ignored_events")) {
+        json.at ("ignored_events").get_to (value.ignored_events);
+    }
     json.at ("errors").get_to (value.errors);
 }
 

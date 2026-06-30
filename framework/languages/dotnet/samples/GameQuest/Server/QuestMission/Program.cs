@@ -34,6 +34,7 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(missionName))
                 .TraceLabel(missionName);
+            options.Codecs.AddJson();
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {

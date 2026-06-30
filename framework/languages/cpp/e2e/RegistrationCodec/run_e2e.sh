@@ -5,12 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r API ROUTE HTTP CLIENT_ROUTE INVALID <<<"$(python3 - <<'PY'
+read -r API ROUTE HTTP CLIENT_ROUTE JSON_ONLY_API JSON_ONLY_HTTP INVALID <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(5):
+for _ in range(7):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
@@ -19,7 +19,9 @@ print(f"tcp://127.0.0.1:{ports[0]}", end=" ")
 print(f"tcp://127.0.0.1:{ports[1]}", end=" ")
 print(f"http://127.0.0.1:{ports[2]}", end=" ")
 print(f"tcp://127.0.0.1:{ports[3]}", end=" ")
-print(f"tcp://127.0.0.1:{ports[4]}")
+print(f"tcp://127.0.0.1:{ports[4]}", end=" ")
+print(f"http://127.0.0.1:{ports[5]}", end=" ")
+print(f"tcp://127.0.0.1:{ports[6]}")
 for s in sockets:
     s.close()
 PY
@@ -33,9 +35,13 @@ echo "log_dir=$LOG_DIR"
 cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
 cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_registration_codec_server \
+  zlink_cpp_e2e_registration_codec_invalid_duplicate \
+  zlink_cpp_e2e_registration_codec_json_only_peer \
   zlink_cpp_e2e_registration_codec_client >/dev/null
 
 SERVER="$BUILD_DIR/zlink_cpp_e2e_registration_codec_server"
+INVALID_SERVER="$BUILD_DIR/zlink_cpp_e2e_registration_codec_invalid_duplicate"
+JSON_ONLY_SERVER="$BUILD_DIR/zlink_cpp_e2e_registration_codec_json_only_peer"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_registration_codec_client"
 PIDS=()
 
@@ -80,7 +86,7 @@ run_invalid() {
   if ZLINK_CPP_E2E_INVALID_MODE="$mode" \
     ZLINK_CPP_E2E_API_ENDPOINT="$INVALID" \
     ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SERVER" >"$LOG_DIR/invalid-$mode.stdout.log" 2>"$LOG_DIR/invalid-$mode.stderr.log"; then
+    "$INVALID_SERVER" >"$LOG_DIR/invalid-$mode.stdout.log" 2>"$LOG_DIR/invalid-$mode.stderr.log"; then
     echo "invalid mode $mode unexpectedly succeeded" >&2
     return 1
   fi
@@ -97,12 +103,31 @@ wait_port api "$API"
 wait_port route "$ROUTE"
 wait_port http "$HTTP"
 
+ZLINK_CPP_E2E_API_ENDPOINT="$JSON_ONLY_API" \
+ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
+ZLINK_CPP_E2E_HTTP_ENDPOINT="$JSON_ONLY_HTTP" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+  "$JSON_ONLY_SERVER" >"$LOG_DIR/json-only.stdout.log" 2>"$LOG_DIR/json-only.stderr.log" &
+PIDS+=("$!")
+wait_port json-only-api "$JSON_ONLY_API"
+wait_port json-only-http "$JSON_ONLY_HTTP"
+
 ZLINK_CPP_E2E_API_ENDPOINT="$API" \
 ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
 ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
+ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 cat "$LOG_DIR/client.stdout.log"
+
+ZLINK_CPP_E2E_SCENARIO=b5 \
+ZLINK_CPP_E2E_API_ENDPOINT="$JSON_ONLY_API" \
+ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE" \
+ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
+ZLINK_CPP_E2E_HTTP_ENDPOINT="$JSON_ONLY_HTTP" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+  "$CLIENT" >"$LOG_DIR/client-b5.stdout.log" 2>"$LOG_DIR/client-b5.stderr.log"
+cat "$LOG_DIR/client-b5.stdout.log"
 
 run_invalid duplicate
 run_invalid wrong-group

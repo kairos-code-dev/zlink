@@ -34,7 +34,6 @@ class CourierApplication {
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-${options.courierId}.log")
                 traceLabel(options.courierId)
             }
-            configurer.codecs().addJson()
             configurer.addClientServerChannel(SampleNames.courierChannel(options.courierId))
                 .enableServer(SampleTopology.courierEndpoint(options.courierId))
                 .addRequestHandler(

@@ -14,9 +14,9 @@
   lifecycle evidence를 검증한다.
 - `SM-A7`: 같은 spot rid를 다른 spot 타입으로 다시 `get_or_create_spot`할 때
   `spot_type_mismatch`로 거부되고 기존 user spot 상태가 유지되는지 검증한다.
-- `SM-A8`: actor handler가 public `run_worker`로 무거운 작업을 spot 직렬 루프 밖에
-  offload하고, 같은 spot의 다른 request가 worker 완료 전에 처리되며 worker 결과가 다시 spot
-  상태에 반영되는지 검증한다.
+- `SM-A8`: `/spot/worker/start`가 public `run_worker`로 무거운 작업을 spot 직렬 루프 밖에
+  offload하고, 같은 spot의 다른 request가 worker 완료 전에 처리되며 `/spot/worker/complete`가
+  worker 결과 evidence를 관측하는지 검증한다.
 - `SM-B1`: `play-a` local actor join과 user spot dispatch를 검증한다.
 - `SM-B2`: `play-b` remote actor join과 cross-node dispatch를 검증한다.
 - `SM-B3`: join request의 문자열, 숫자, 배열 payload가 reply에 그대로 반영되는지 검증한다.
@@ -57,12 +57,25 @@
   session에서 재auth/rebind한 뒤 actor messaging이 정상 재개되는지 검증한다.
 - `SM-D9`: stream inbound observer가 auth/join/state response의 kind/name/request-seq를
   관측하는지 검증한다.
+- `SM-D10`: `max_received_messages`로 stream push 수신 queue를 제한하고,
+  `received_message_dropped` callback이 보고되며 같은 session request와 다른 session push가 계속
+  정상 동작하는지 검증한다.
 - `SM-D11`: 같은 client process에서 stream actor request와 일반 channel request를 동시에 보내도
   각각 stream dispatcher와 channel dispatcher에서 reply를 받는지 검증한다.
 - `SM-D12`: `session-a`에서 join/state/push를 수행한 actor가 연결을 끊은 뒤 `session-b`로
   다시 auth/rebind해 play 노드의 기존 state snapshot과 후속 push를 이어받는지 검증한다.
+- `SM-D14`: public stream node TLS server 설정으로 `tls://` endpoint를 열고, stream connector가
+  self-signed certificate를 strict mode에서 거부한 뒤 skip-validation mode에서 bind, relay, push를
+  평문 stream과 같은 의미로 수행하는지 검증한다.
 - `SM-E1`: handler 없는 spot route request가 client-visible error로 끝나고, 이후 정상 spot route
   request가 같은 route channel에서 계속 성공하는지 검증한다.
+- `SM-E2`: user spot이 public `spot_context_t::add_timer<THandler>`로 timer를 등록하고,
+  timer tick handler가 같은 spot evidence에 tick marker를 남기는지 검증한다.
+- `SM-E3`: public spot create lifecycle에서 idle timer를 등록하고, timer handler가 public
+  `spot_context_t::close()`로 같은 spot을 닫으며 이후 닫힌 spot request가 실패하는지 검증한다.
+- `SM-E4`: public `timer_options_t`의 overrun policy별로 지연된 timer handler를 실행하고,
+  `timer_tick_t`의 delivery/scheduled/skipped evidence로 skip, bounded catch-up, delayed next tick
+  동작을 검증한다.
 - `SM-F1`: route client가 target spot id를 지정해 request/send를 보내는 public API 경로를
   검증한다.
 - `SM-F2`: route mesh channel에서 target node와 target spot을 함께 지정해 cross-node spot
@@ -88,24 +101,18 @@
 
 ## 남은 시나리오
 
+- `SM-Q9`: `.NET` 전용 Client/Scenarios 파일이며 공통 Config 2 scenario ID로 세지 않는다.
+  C++ MultiNode scaffold는 build까지만 확인했고, `.NET` 흐름처럼 spot rid만 public target으로 넘기는
+  route-to-spot request는 현재 C++ public route client 계약에 없다. 이 동작을 공통 계약으로 받을지는
+  별도 spec/guide 검토 뒤 결정해야 한다.
 - `SM-A5`: C++ framework는 Stage wrapper를 별도 타입으로 제공하지 않고 응용이 SPOT 위에
-  직접 구성한다. request/lifecycle은 기존 SPOT 공개 표면으로 검증할 수 있지만, 현재 hosted E2E
-  런타임에는 public timer 등록 뒤 tick을 앱 handler evidence로 관측하는 연결이 없어
-  `detail::timer_runtime_t` 주입 없이 timer 요구까지 검증할 수 없다.
-- `SM-D10`: C++ stream connector product에는 `max_received_messages` 수신 메시지 큐 한계와
-  `received_message_dropped` error callback 보고가 있다. 현재 E2E runner는 이 옵션을 실제 stream
-  client scenario에 연결해 공통 marker로 검증하지 않는다.
-- `SM-D13`: heartbeat-enabled stream이 유지된 뒤 request가 성공하는 경로는 구현했다.
-  heartbeat 중단을 의도적으로 유도하는 public harness knob은 아직 없어, 중단 감지 검증은
-  별도 harness 설계가 필요하다.
-- `SM-D14`: C++ stream E2E runner에 TLS endpoint/certificate 구성이 아직 없다.
-- `SM-E2`: C++ framework에는 public `add_timer` 등록 표면이 있지만, E2E 앱에서 timer tick을
-  자동 발화해 handler evidence로 관측하는 public runner 연결이 아직 없다. 현재 timer 발화와
-  overrun 정책은 unit test가 내부 timer runtime으로 검증한다.
-- `SM-E3`: idle timer가 public `close_spot`을 호출하는 흐름은 timer tick을 E2E 앱에서 관측하는
-  public runner 연결이 필요하다.
-- `SM-E4`: timer overrun policy별 tick 패턴은 현재 unit test 범위이며, E2E 앱에서 tick 지연과
-  catch-up을 public evidence로 만드는 runner 연결이 아직 없다.
+  직접 구성한다. request/timer/lifecycle의 하위 동작은 기존 SPOT 공개 표면으로 검증할 수 있지만,
+  Stage wrapper 자체의 public lifecycle 의미는 C++ 공통 계약으로 받지 않아 별도 완료 항목으로
+  세지 않는다.
+- `SM-D13`: heartbeat-enabled stream이 유지된 뒤 request가 성공하는 경로는 focused harness로
+  확인할 수 있다. 하지만 heartbeat 중단을 의도적으로 유도하는 public harness knob은 아직 없어,
+  공통 시나리오가 요구하는 중단 감지 검증은 별도 harness 설계가 필요하다.
+
 ## 남은 구현 후보
 
 - 없음

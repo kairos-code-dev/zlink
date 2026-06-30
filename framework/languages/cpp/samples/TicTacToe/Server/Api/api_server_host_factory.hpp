@@ -37,7 +37,6 @@ class api_server_host_factory_t
               .trace_log_file (flow_log_path ("api"))
               .trace_label ("tictactoe-api");
 
-            options.codecs ().add_json ();
 
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_server (topology.selected_api_endpoint ())

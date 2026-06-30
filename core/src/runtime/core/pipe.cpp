@@ -162,6 +162,8 @@ zlink::pipe_t::pipe_t (
     _server_socket_routing_id (0),
     _stream_connect_event_emitted (false),
     _connection_ready_event_emitted (false),
+    _command_refs (0),
+    _release_after_command_refs (false),
     _conflate (conflate_)
 {
     _disconnect_msg.init ();
@@ -183,6 +185,19 @@ void zlink::pipe_t::detach_peer_backref ()
 {
     if (_peer && _peer->_peer == this)
         _peer->_peer = NULL;
+}
+
+void zlink::pipe_t::retain_command_ref ()
+{
+    _command_refs.fetch_add (1, std::memory_order_acq_rel);
+}
+
+void zlink::pipe_t::release_command_ref ()
+{
+    const int refs = _command_refs.fetch_sub (1, std::memory_order_acq_rel);
+    zlink_assert (refs > 0);
+    if (refs == 1 && _release_after_command_refs.load (std::memory_order_acquire))
+        zlink::release_heap_owned (this);
 }
 
 void zlink::pipe_t::set_event_sink (i_pipe_events *sink_)
@@ -683,6 +698,8 @@ void zlink::pipe_t::process_pipe_term_ack ()
             zlink_assert (_state == term_ack_sent || _state == term_req_sent2);
     }
 
+    detach_peer_backref ();
+
     //  Notify the user that all the references to the pipe should be dropped.
     zlink_assert (_sink);
     _sink->pipe_terminated (this);
@@ -705,11 +722,12 @@ void zlink::pipe_t::process_pipe_term_ack ()
     }
 
     LIBZLINK_DELETE (_in_pipe);
-    detach_peer_backref ();
 
     //  Pipe objects are always heap-allocated and reference-counted by protocol
     //  state transitions, so termination ack is the canonical final release.
-    zlink::release_heap_owned (this);
+    _release_after_command_refs.store (true, std::memory_order_release);
+    if (_command_refs.load (std::memory_order_acquire) == 0)
+        zlink::release_heap_owned (this);
 }
 
 void zlink::pipe_t::process_pipe_hwm (int inhwm_, int outhwm_)

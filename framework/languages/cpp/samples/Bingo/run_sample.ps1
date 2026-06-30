@@ -184,20 +184,21 @@ try {
     $sessionAPlayRouteEndpoint = if ($env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT) { $env:BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[19])" }
     $sessionBPlayRouteEndpoint = if ($env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT) { $env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT } else { "tcp://$($ports[20])" }
 
-    # The sample owns its Redis: always provision a dedicated, throwaway container
-    # so room-allocation state stays isolated per run and never touches a developer's
-    # local Redis. (BINGO_REDIS_ENDPOINT is intentionally derived here, not read.)
-    $docker = Get-Command docker -ErrorAction SilentlyContinue
-    if ($null -eq $docker) {
-        throw "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)."
+    if ($env:BINGO_REDIS_ENDPOINT) {
+        $redisEndpoint = $env:BINGO_REDIS_ENDPOINT
+    } else {
+        $docker = Get-Command docker -ErrorAction SilentlyContinue
+        if ($null -eq $docker) {
+            throw "Docker is required to run the Bingo sample when BINGO_REDIS_ENDPOINT is not set."
+        }
+        $RedisContainer = "bingo-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start Redis container."
+        }
+        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
+        $redisEndpoint = "127.0.0.1:$redisPort"
     }
-    $RedisContainer = "bingo-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-    & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to start Redis container."
-    }
-    $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
-    $redisEndpoint = "127.0.0.1:$redisPort"
     Wait-Endpoint "redis" "tcp://$redisEndpoint"
 
     $topologyArgs = @(

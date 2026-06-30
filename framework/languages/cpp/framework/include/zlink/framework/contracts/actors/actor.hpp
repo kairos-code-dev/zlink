@@ -175,13 +175,13 @@ class actor_join_spot_call_t
 
     template <typename TReply> task_t<typed_actor_join_result_t<TReply>> yield ()
     {
-        auto result = co_await yield ();
-        if (_serializers == nullptr) {
-            co_return result_t<typed_actor_join_result_t<TReply>>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "actor join result has no serializer registry");
-        }
         try {
+            auto result = co_await yield ();
+            if (_serializers == nullptr) {
+                co_return result_t<typed_actor_join_result_t<TReply>>::failure (
+                  framework_error_kind_t::request_protocol_error,
+                  "actor join result has no serializer registry");
+            }
             co_return typed_actor_join_result_t<TReply>{
               result.result_code, result.actor, result.reply.template decode<TReply> (*_serializers)};
         }

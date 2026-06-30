@@ -1,0 +1,26 @@
+package systems.zlink.e2e.runtimemonitoring.shared;
+
+import java.util.List;
+
+public final class Contracts {
+    public static final String CHANNEL = "monitoring.api";
+    public static final String HANDSHAKE_CHANNEL = "monitoring.handshake";
+    public static final String SPOT_MESH = "monitoring.spot.mesh";
+    public static final String HANDLER_GROUP = "monitoring";
+    public static final String REGISTRY_SOURCE = "ops-registry";
+
+    private Contracts() {
+    }
+
+    public record WorkRequest(String value) {
+    }
+
+    public record WorkReply(String value, String providerRid) {
+    }
+
+    public record EvidenceEntry(String surface, String sourceName, String event, String detail) {
+    }
+
+    public record EvidenceSnapshot(List<EvidenceEntry> entries) {
+    }
+}

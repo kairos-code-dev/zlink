@@ -427,6 +427,18 @@ stream_builder_t &stream_builder_t::bind (std::string endpoint)
     return *this;
 }
 
+stream_builder_t &stream_builder_t::set_tls_server (std::string certificate_file,
+                                                    std::string private_key_file)
+{
+    if (certificate_file.empty () || private_key_file.empty ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "STREAM TLS server requires certificate and private key");
+    }
+    _state->snapshot.tls_certificate_file = std::move (certificate_file);
+    _state->snapshot.tls_private_key_file = std::move (private_key_file);
+    return *this;
+}
+
 stream_builder_t &stream_builder_t::register_session (std::string session_name)
 {
     if (session_name.empty ()) {

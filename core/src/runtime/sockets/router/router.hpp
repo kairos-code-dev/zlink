@@ -59,6 +59,9 @@ class router_t : public routing_socket_base_t
     //  Receive peer id and update lookup map
     bool identify_peer (pipe_t *pipe_, bool locally_initiated_);
     bool adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool locally_initiated_);
+    bool duplicate_pipe_should_replace (const out_pipe_t &existing_outpipe_,
+                                        const blob_t &routing_id_,
+                                        bool locally_initiated_) const;
     void promote_anonymous_pipe_for_dispatch (pipe_t *pipe_);
     void broadcast_local_peer_weight ();
     void send_local_peer_weight (pipe_t *pipe_);
@@ -113,6 +116,8 @@ class router_t : public routing_socket_base_t
     // will be terminated.
     bool _handover;
     std::vector<zlink_msg_t> _dispatch_parts;
+    std::map<pipe_t *, std::vector<zlink_msg_t>> _dispatch_parts_by_pipe;
+    std::map<pipe_t *, zlink_routing_id_t> _dispatch_source_rids;
     zlink_routing_id_t _dispatch_source_rid;
     bool _dispatch_source_rid_valid;
 

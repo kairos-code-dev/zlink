@@ -105,6 +105,7 @@ void spot_node_host_service_t::start (service_provider_t &services)
                 if (!native) {
                     continue;
                 }
+                native->runtime.publish_peer_snapshot_if_changed ();
                 dispatched += native->runtime.drain_routed_packets (services, serializers);
                 dispatched += native->runtime.drain_subscriptions (services, serializers);
             }

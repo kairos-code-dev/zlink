@@ -315,13 +315,23 @@ task_t<zlink::message_t> complete_spot_member_call (TResult &&result,
     using result_type = std::remove_cvref_t<TResult>;
     if constexpr (is_task_v<result_type>) {
         using value_type = typename task_value_type_t<result_type>::type;
-        if constexpr (std::is_void_v<value_type>) {
-            co_await result;
-            co_return result_t<zlink::message_t>::success (zlink::message_t{});
-        } else {
-            auto value = co_await result;
-            co_return result_t<zlink::message_t>::success (
-              detail::encoded_payload_to_raw (serializers.get<value_type> ().serialize (value)));
+        try {
+            if constexpr (std::is_void_v<value_type>) {
+                co_await result;
+                co_return result_t<zlink::message_t>::success (zlink::message_t{});
+            } else {
+                auto value = co_await result;
+                co_return result_t<zlink::message_t>::success (
+                  detail::encoded_payload_to_raw (serializers.get<value_type> ().serialize (value)));
+            }
+        }
+        catch (const framework_exception_t &error) {
+            co_return result_t<zlink::message_t>::failure (
+              error.kind (), error.what (), error.is_retriable ());
+        }
+        catch (const std::exception &error) {
+            co_return result_t<zlink::message_t>::failure (
+              framework_error_kind_t::request_failed, error.what ());
         }
     } else if constexpr (std::is_void_v<result_type>) {
         co_return result_t<zlink::message_t>::success (zlink::message_t{});
@@ -614,12 +624,12 @@ class spot_context_t
         return add_timer_erased (
           std::move (name), period, std::move (options), std::type_index (typeid (THandler)),
           [] (void *spot, serializer_registry_t &serializers, const timer_tick_t &tick) {
-              auto &typed_spot = *static_cast<spot_type *> (spot);
+              auto *typed_spot = static_cast<spot_type *> (spot);
               auto handler = std::make_shared<THandler> ();
               auto captured_tick = std::make_shared<timer_tick_t> (tick);
               return detail::invoke_spot_member_keepalive (
-                [&typed_spot, handler, captured_tick] {
-                    return handler->handle (typed_spot, *captured_tick);
+                [typed_spot, handler, captured_tick] {
+                    return handler->handle (*typed_spot, *captured_tick);
                 },
                 serializers, handler, captured_tick);
           });

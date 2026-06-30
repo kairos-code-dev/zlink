@@ -200,6 +200,10 @@ template <typename T> class task_t
                 completion.complete (
                   result_t<T>::failure (error.kind (), error.what (), error.is_retriable ()));
             }
+            catch (const std::exception &error) {
+                completion.complete (
+                  result_t<T>::failure (framework_error_kind_t::request_failed, error.what ()));
+            }
             catch (...) {
                 completion.complete (result_t<T>::failure (framework_error_kind_t::request_failed,
                                                            "unhandled coroutine exception"));
@@ -268,6 +272,10 @@ template <> class task_t<void>
             catch (const framework_exception_t &error) {
                 completion.complete (
                   result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+            }
+            catch (const std::exception &error) {
+                completion.complete (
+                  result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
             }
             catch (...) {
                 completion.complete (result_t<void>::failure (

@@ -16,7 +16,7 @@ fun sampleRootPath(): String {
 dependencies {
     implementation(sampleProject("Shared"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-http-client:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink:6.0.4")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")

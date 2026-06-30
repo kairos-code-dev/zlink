@@ -742,7 +742,7 @@ int main ()
     zlink.add_node ("stage-node");
     auto channel = zlink.channel ("game.stage");
     channel.enable_publisher ().bind ("tcp://127.0.0.1:8101");
-    channel.enable_subscriber ().use_discovery ();
+    channel.enable_subscriber ();
     zlink.add_spot_node ("stage-spot-node")
       .bind ("tcp://0.0.0.0:9000")
       .enable_router ("tcp://0.0.0.0:9002")

@@ -113,7 +113,20 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
         if (local_peer_weight () != 100)
             send_local_peer_weight (pipe_);
     } else {
-        _anonymous_pipes.insert (pipe_);
+        std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+        const blob_t &routing_id = pipe_->get_routing_id ();
+        const out_pipe_t *const out_pipe =
+          routing_id.size () > 0 ? lookup_out_pipe (routing_id) : NULL;
+        pipe_t *const peer = pipe_->get_peer ();
+        if (out_pipe && (out_pipe->pipe == pipe_ || out_pipe->pipe == peer)) {
+            _anonymous_pipes.erase (pipe_);
+            _fq.attach (pipe_);
+            (void) pipe_->check_read ();
+            if (socket_msg_dispatch_active ())
+                _fq.deactivate (pipe_);
+        } else {
+            _anonymous_pipes.insert (pipe_);
+        }
     }
 }
 

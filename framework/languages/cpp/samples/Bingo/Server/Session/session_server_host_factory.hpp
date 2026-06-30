@@ -4,12 +4,11 @@
 #include "../Configuration/sample_configuration.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
+#include "../common_codecs.hpp"
 #include "../sample_log_dir.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
 #include "Sessions/bingo_session.hpp"
-
-#include <zlink/codecs/protobuf.hpp>
 
 namespace zlink::samples::bingo
 {
@@ -39,7 +38,7 @@ class session_server_host_factory_t
               .trace_label ("session-" + topology.session_node);
             options.services ().add_singleton<sample_topology_t> (
               std::make_unique<sample_topology_t> (topology));
-            options.codecs ().use (framework_codecs::protobuf ());
+            add_bingo_protobuf_codecs (options.codecs ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
             options.add_route_mesh (sample_names_t::play_channel)

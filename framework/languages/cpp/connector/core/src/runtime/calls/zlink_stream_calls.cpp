@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -878,6 +879,11 @@ void start_read_loop (std::shared_ptr<connector_state_t> state)
     schedule_request_pump (std::move (state));
 }
 
+void submit_request_async (std::shared_ptr<void> state_handle,
+                           packet_t packet,
+                           std::chrono::milliseconds timeout,
+                           std::function<void (result_t<zlink::message_t>)> callback);
+
 result_t<void> submit_send (std::shared_ptr<connector_state_t> state, packet_t packet)
 {
     std::lock_guard<std::mutex> lock (state->transport_mutex);
@@ -917,7 +923,24 @@ result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
                                            std::chrono::milliseconds timeout)
 {
     auto state = std::static_pointer_cast<connector_state_t> (std::move (state_handle));
-    std::lock_guard<std::mutex> lock (state->transport_mutex);
+    bool use_async_request_pump = false;
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        use_async_request_pump =
+          state->options.dispatch_mode == dispatch_mode_t::immediate
+          && (state->read_in_progress || !state->pending_waits.empty ());
+    }
+    if (use_async_request_pump) {
+        auto promise = std::make_shared<std::promise<result_t<zlink::message_t>>> ();
+        auto future = promise->get_future ();
+        submit_request_async (
+          state, std::move (packet), timeout,
+          [promise] (result_t<zlink::message_t> result) mutable {
+              promise->set_value (std::move (result));
+          });
+        return future.get ();
+    }
+    std::unique_lock<std::mutex> lock (state->transport_mutex);
     if (state->close_requested.load ()) {
         return result_t<zlink::message_t>::failure (error_code_t::closed,
                                                     "stream connector is closed");
@@ -942,28 +965,51 @@ result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
         return result_t<zlink::message_t>::failure (written.error_code (),
                                                     written.error ()->message);
     }
+    std::deque<std::function<void ()>> deliveries;
+    auto complete_request =
+      [&lock, &deliveries] (result_t<zlink::message_t> result) mutable {
+          lock.unlock ();
+          while (!deliveries.empty ()) {
+              auto delivery = std::move (deliveries.front ());
+              deliveries.pop_front ();
+              if (delivery) {
+                  delivery ();
+              }
+          }
+          return result;
+      };
     const auto deadline = steady_clock_t::now () + timeout;
     for (;;) {
         auto received = read_inbound_frame (state, deadline);
         if (!received) {
             state->pending_requests.erase (seq);
-            return result_t<zlink::message_t>::failure (received.error_code (),
-                                                        received.error ()->message);
+            return complete_request (result_t<zlink::message_t>::failure (
+              received.error_code (), received.error ()->message));
         }
         auto frame = std::move (received.value ());
         if (frame.kind == message_kind_t::response && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
-            return result_t<zlink::message_t>::success (std::move (frame.packet.payload));
+            return complete_request (
+              result_t<zlink::message_t>::success (std::move (frame.packet.payload)));
         }
         if (frame.kind == message_kind_t::error && frame.request_seq == seq) {
             state->pending_requests.erase (seq);
-            return result_t<zlink::message_t>::failure (
-              error_code_t::remote_error, frame.packet.payload.to_string ());
+            return complete_request (result_t<zlink::message_t>::failure (
+              error_code_t::remote_error, frame.packet.payload.to_string ()));
         }
         if (frame.kind == message_kind_t::response || frame.kind == message_kind_t::error) {
             continue;
         }
         auto packet = std::move (frame.packet);
+        if (auto wait = take_matching_wait (*state, packet)) {
+            deliveries.push_back (
+              [wait = std::move (*wait), packet = std::move (packet)] () mutable {
+                  if (wait.callback) {
+                      wait.callback (result_t<packet_t>::success (std::move (packet)));
+                  }
+              });
+            continue;
+        }
         (void) enqueue_received_message (*state, std::move (packet));
         continue;
     }

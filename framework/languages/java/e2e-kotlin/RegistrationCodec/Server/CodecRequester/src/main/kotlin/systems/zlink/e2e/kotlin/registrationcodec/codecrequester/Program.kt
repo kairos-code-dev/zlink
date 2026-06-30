@@ -1,0 +1,64 @@
+package systems.zlink.e2e.kotlin.registrationcodec.codecrequester
+
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.springframework.boot.ApplicationArguments
+import org.springframework.boot.WebApplicationType
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.context.annotation.Bean
+import systems.zlink.e2e.kotlin.registrationcodec.Contracts
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoCommand
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReply
+import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoRequest
+import systems.zlink.e2e.kotlin.registrationcodec.codecrequester.configuration.CodecRequesterOptions
+import systems.zlink.e2e.kotlin.registrationcodec.codecrequester.endpoints.CodecRequesterHttpServer
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.spring.EnableZLinkFramework
+import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+
+@EnableZLinkFramework
+@SpringBootApplication(proxyBeanMethods = false)
+class CodecRequesterApplication {
+    @Bean fun objectMapper(): ObjectMapper = ObjectMapper()
+    @Bean fun requesterOptions(args: ApplicationArguments): CodecRequesterOptions =
+        CodecRequesterOptions.parse(args.sourceArgs)
+    @Bean fun codecRequesterHttpServer(
+        options: CodecRequesterOptions,
+        json: ObjectMapper,
+        requester: CodecRequesterProbe,
+    ): CodecRequesterHttpServer =
+        CodecRequesterHttpServer(options.httpEndpoint, json, requester)
+
+    @Bean
+    fun requesterFramework(options: CodecRequesterOptions): ZLinkFrameworkConfigurer =
+        ZLinkFrameworkConfigurer { framework ->
+            framework.codecs().addJson()
+            framework.codecs().use(ZLinkProtobufCodec.defaultCodec())
+            framework.codecs().use(
+                ZLinkMessagePackCodec.forPayloadTypes { type ->
+                    type == PackedEchoRequest::class.java ||
+                        type == PackedEchoReply::class.java ||
+                        type == PackedEchoCommand::class.java
+                },
+            )
+            framework.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile("${options.logDir}/codec-requester-flow.log")
+                .traceLabel("kotlin-rc-codec-requester")
+            framework.addClientServerChannel(Contracts.CHANNEL)
+                .enableClient(options.serverEndpoint)
+        }
+
+    @Bean fun codecRequesterProbe(client: systems.zlink.framework.channels.ZLinkClient): CodecRequesterProbe =
+        CodecRequesterProbe(client)
+}
+
+fun runCodecRequesterApplication(vararg args: String): AutoCloseable {
+    val builder = SpringApplicationBuilder(CodecRequesterApplication::class.java)
+        .web(WebApplicationType.NONE)
+    builder.application().setKeepAlive(true)
+    val context = builder.run(*args)
+    return AutoCloseable { context.close() }
+}

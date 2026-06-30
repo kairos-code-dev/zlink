@@ -1,0 +1,40 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../../Shared/spot_service_contracts.hpp"
+
+#include <zlink/framework.hpp>
+
+#include <string>
+
+namespace e2e = zlink::framework::e2e::spot_service;
+
+namespace
+{
+
+zlink::framework::actor_ref_t to_actor_ref (const e2e::actor_ref_dto_t &actor)
+{
+    return zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string (actor.node_rid), actor.actor_type, actor.actor_id,
+      actor.generation);
+}
+
+e2e::actor_ref_dto_t from_actor_ref (const zlink::framework::actor_ref_t &actor)
+{
+    return {.node_rid = std::string (actor.node_rid ().value ()),
+            .actor_type = std::string (actor.actor_type ()),
+            .actor_id = std::string (actor.actor_id ()),
+            .generation = actor.generation ()};
+}
+
+std::string owner_for_key (const std::string &key)
+{
+    return e2e::owner_node_rid_for_key (key);
+}
+
+zlink::framework::spot_rid_t user_spot_rid (const std::string &key)
+{
+    return zlink::framework::spot_rid_t::from_string (e2e::user_spot_rid_for_key (key));
+}
+
+} // namespace

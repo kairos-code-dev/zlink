@@ -41,6 +41,7 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
+            options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var route = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel);

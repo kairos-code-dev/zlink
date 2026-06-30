@@ -349,21 +349,6 @@ void native_route_backend_t::forget_peer (const zlink::routing_id_t &target_node
     }
     catch (...) {
     }
-    for (const auto &endpoint : _reconnect_endpoints) {
-        try {
-            _router->disconnect (endpoint);
-        }
-        catch (...) {
-        }
-        try {
-            if (_reconnect_endpoints.size () == 1) {
-                _router->options ().connect_routing_id (target_node_rid);
-            }
-            _router->connect (endpoint);
-        }
-        catch (...) {
-        }
-    }
 }
 
 } // namespace zlink::framework::detail::backend

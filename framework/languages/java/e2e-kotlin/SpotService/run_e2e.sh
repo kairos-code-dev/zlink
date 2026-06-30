@@ -4,7 +4,13 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\.ProgramKt'
+SESSION_A_PID=""
+SESSION_B_PID=""
+GATEWAY_PID=""
+MULTI_NODE_A_PID=""
+MULTI_NODE_B_PID=""
+role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\..*(RegistryProgram|PlayProgram|PublisherProgram|GatewayProgram|MultiNodeProgram|SessionProgram|ClientProgram)Kt'
+client_role_pattern='systems\.zlink\.e2e\.kotlin\.spotservice\..*ClientProgramKt'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -94,6 +100,61 @@ finally:
 PY
 }
 
+reserve_session_endpoints() {
+  python3 - <<'PY'
+import socket
+sockets = []
+ports = []
+try:
+    for _ in range(3):
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sockets.append(sock)
+        ports.append(sock.getsockname()[1])
+    print(f"tcp://127.0.0.1:{ports[0]} tcp://127.0.0.1:{ports[1]} http://127.0.0.1:{ports[2]}")
+finally:
+    for sock in sockets:
+        sock.close()
+PY
+}
+
+reserve_gateway_endpoints() {
+  python3 - <<'PY'
+import socket
+sockets = []
+ports = []
+try:
+    for _ in range(2):
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sockets.append(sock)
+        ports.append(sock.getsockname()[1])
+    print(f"tcp://127.0.0.1:{ports[0]} http://127.0.0.1:{ports[1]}")
+finally:
+    for sock in sockets:
+        sock.close()
+PY
+}
+
+reserve_multinode_endpoints() {
+  python3 - <<'PY'
+import socket
+sockets = []
+ports = []
+try:
+    for _ in range(6):
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sockets.append(sock)
+        ports.append(sock.getsockname()[1])
+    print(" ".join(f"tcp://127.0.0.1:{port}" for port in ports[:4]), end=" ")
+    print(" ".join(f"http://127.0.0.1:{port}" for port in ports[4:]))
+finally:
+    for sock in sockets:
+        sock.close()
+PY
+}
+
 port_of() {
   echo "${1##*:}"
 }
@@ -121,12 +182,41 @@ app_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/install/spot-service-kotlin/bin/spot-service-kotlin"
 }
 
+role_bin() {
+  case "$1" in
+    client)
+      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Client/install/spot-service-kotlin-client/bin/spot-service-kotlin-client"
+      ;;
+    play)
+      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Play/install/spot-service-kotlin-play/bin/spot-service-kotlin-play"
+      ;;
+    publisher)
+      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Publisher/install/spot-service-kotlin-publisher/bin/spot-service-kotlin-publisher"
+      ;;
+    gateway)
+      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Gateway/install/spot-service-kotlin-gateway/bin/spot-service-kotlin-gateway"
+      ;;
+    multi-node)
+      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-MultiNode/install/spot-service-kotlin-multi-node/bin/spot-service-kotlin-multi-node"
+      ;;
+    session)
+      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Session/install/spot-service-kotlin-session/bin/spot-service-kotlin-session"
+      ;;
+    registry)
+      echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Registry/install/spot-service-kotlin-registry/bin/spot-service-kotlin-registry"
+      ;;
+    *)
+      echo "unknown role $1" >&2
+      return 1
+      ;;
+  esac
+}
+
 start_registry() {
-  ZLINK_KOTLIN_E2E_ROLE=registry \
   ZLINK_KOTLIN_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
   ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
+    "$(role_bin registry)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
   pids+=("$!")
   wait_port registry-router "${REGISTRY_ROUTER}"
 }
@@ -139,7 +229,6 @@ start_play() {
   local http="$5"
   local spot_pub="$6"
   local stream="$7"
-  ZLINK_KOTLIN_E2E_ROLE=play \
   ZLINK_KOTLIN_E2E_NODE_RID="${rid}" \
   ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT="${route}" \
   ZLINK_KOTLIN_E2E_INGRESS_ENDPOINT="${ingress}" \
@@ -155,21 +244,158 @@ start_play() {
   ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${http}" \
   ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+    "$(role_bin play)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
   wait_port "${rid}-route" "${route}"
   wait_port "${rid}-spot" "${spot}"
   wait_port "${rid}-spot-pub" "${spot_pub}"
-  wait_port "${rid}-stream" "${stream}"
+  if [[ -n "${stream}" ]]; then
+    wait_port "${rid}-stream" "${stream}"
+  fi
   wait_port "${rid}-http" "${http}"
 }
 
 run_publisher() {
-  ZLINK_KOTLIN_E2E_ROLE=publisher \
   ZLINK_KOTLIN_E2E_SPOT_PUBLISHER_ENDPOINT="${SPOT_PUBLISHER}" \
   ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    timeout -k 5s 30s "$(app_bin)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
+    timeout -k 5s 30s "$(role_bin publisher)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
+}
+
+start_session() {
+  read -r SPOT_SESSION_A STREAM_SESSION_A HTTP_SESSION_A <<<"$(reserve_session_endpoints)"
+  read -r SPOT_SESSION_B STREAM_SESSION_B HTTP_SESSION_B <<<"$(reserve_session_endpoints)"
+  ZLINK_KOTLIN_E2E_NODE_RID="session-a" \
+  ZLINK_KOTLIN_E2E_SPOT_ENDPOINT="${SPOT_SESSION_A}" \
+  ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM_SESSION_A}" \
+  ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${HTTP_SESSION_A}" \
+  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+    "$(role_bin session)" >"${log_dir}/session-a.stdout.log" 2>"${log_dir}/session-a.stderr.log" &
+  SESSION_A_PID="$!"
+  pids+=("$!")
+  ZLINK_KOTLIN_E2E_NODE_RID="session-b" \
+  ZLINK_KOTLIN_E2E_SPOT_ENDPOINT="${SPOT_SESSION_B}" \
+  ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM_SESSION_B}" \
+  ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${HTTP_SESSION_B}" \
+  ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
+    "$(role_bin session)" >"${log_dir}/session-b.stdout.log" 2>"${log_dir}/session-b.stderr.log" &
+  SESSION_B_PID="$!"
+  pids+=("$!")
+  wait_port session-a-spot "${SPOT_SESSION_A}"
+  wait_port session-a-stream "${STREAM_SESSION_A}"
+  wait_port session-a-http "${HTTP_SESSION_A}"
+  wait_port session-b-spot "${SPOT_SESSION_B}"
+  wait_port session-b-stream "${STREAM_SESSION_B}"
+  wait_port session-b-http "${HTTP_SESSION_B}"
+}
+
+stop_session() {
+  for pid in "${SESSION_B_PID}" "${SESSION_A_PID}"; do
+    if [[ -n "${pid}" ]]; then
+      for child in $(descendants "${pid}"); do
+        kill "${child}" >/dev/null 2>&1 || true
+      done
+      kill "${pid}" >/dev/null 2>&1 || true
+      for _ in $(seq 1 50); do
+        if ! kill -0 "${pid}" >/dev/null 2>&1; then
+          break
+        fi
+        sleep 0.1
+      done
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        kill -9 "${pid}" >/dev/null 2>&1 || true
+      fi
+      wait "${pid}" >/dev/null 2>&1 || true
+    fi
+  done
+  SESSION_A_PID=""
+  SESSION_B_PID=""
+}
+
+start_gateway() {
+  read -r GATEWAY_SPOT_PUB GATEWAY_HTTP <<<"$(reserve_gateway_endpoints)"
+  "$(role_bin gateway)" \
+    --rid gateway \
+    --http-url "${GATEWAY_HTTP}" \
+    --log-dir "${log_dir}" \
+    --evidence-file "${log_dir}/gateway.evidence.log" \
+    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --spot-pub-endpoint "${GATEWAY_SPOT_PUB}" \
+      >"${log_dir}/gateway.stdout.log" 2>"${log_dir}/gateway.stderr.log" &
+  GATEWAY_PID="$!"
+  pids+=("$!")
+  wait_port gateway-spot-pub "${GATEWAY_SPOT_PUB}"
+  wait_port gateway-http "${GATEWAY_HTTP}"
+}
+
+stop_gateway() {
+  if [[ -z "${GATEWAY_PID}" ]]; then
+    return
+  fi
+  for child in $(descendants "${GATEWAY_PID}"); do
+    kill "${child}" >/dev/null 2>&1 || true
+  done
+  kill "${GATEWAY_PID}" >/dev/null 2>&1 || true
+  wait "${GATEWAY_PID}" >/dev/null 2>&1 || true
+  GATEWAY_PID=""
+}
+
+start_multi_nodes() {
+  read -r MULTI_ROUTE_A MULTI_ROUTE_B MULTI_SPOT_A MULTI_SPOT_B MULTI_HTTP_A MULTI_HTTP_B <<<"$(reserve_multinode_endpoints)"
+  "$(role_bin multi-node)" \
+    --rid multi-node-a \
+    --http-url "${MULTI_HTTP_A}" \
+    --log-dir "${log_dir}" \
+    --evidence-file "${log_dir}/multi-node-a.evidence.log" \
+    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --multi-route-a-endpoint "${MULTI_ROUTE_A}" \
+    --multi-spot-router-a-endpoint "${MULTI_SPOT_A}" \
+      >"${log_dir}/multi-node-a.stdout.log" 2>"${log_dir}/multi-node-a.stderr.log" &
+  MULTI_NODE_A_PID="$!"
+  pids+=("$!")
+  wait_port multi-node-a-route "${MULTI_ROUTE_A}"
+  wait_port multi-node-a-spot "${MULTI_SPOT_A}"
+  wait_port multi-node-a-http "${MULTI_HTTP_A}"
+
+  "$(role_bin multi-node)" \
+    --rid multi-node-b \
+    --http-url "${MULTI_HTTP_B}" \
+    --log-dir "${log_dir}" \
+    --evidence-file "${log_dir}/multi-node-b.evidence.log" \
+    --registry-router-endpoint "${REGISTRY_ROUTER}" \
+    --multi-route-b-endpoint "${MULTI_ROUTE_B}" \
+    --multi-spot-router-b-endpoint "${MULTI_SPOT_B}" \
+      >"${log_dir}/multi-node-b.stdout.log" 2>"${log_dir}/multi-node-b.stderr.log" &
+  MULTI_NODE_B_PID="$!"
+  pids+=("$!")
+  wait_port multi-node-b-route "${MULTI_ROUTE_B}"
+  wait_port multi-node-b-spot "${MULTI_SPOT_B}"
+  wait_port multi-node-b-http "${MULTI_HTTP_B}"
+}
+
+stop_multi_nodes() {
+  for pid in "${MULTI_NODE_B_PID}" "${MULTI_NODE_A_PID}"; do
+    if [[ -n "${pid}" ]]; then
+      for child in $(descendants "${pid}"); do
+        kill "${child}" >/dev/null 2>&1 || true
+      done
+      kill "${pid}" >/dev/null 2>&1 || true
+      for _ in $(seq 1 50); do
+        if ! kill -0 "${pid}" >/dev/null 2>&1; then
+          break
+        fi
+        sleep 0.1
+      done
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        kill -9 "${pid}" >/dev/null 2>&1 || true
+      fi
+      wait "${pid}" >/dev/null 2>&1 || true
+    fi
+  done
+  MULTI_NODE_A_PID=""
+  MULTI_NODE_B_PID=""
 }
 
 fetch_evidence() {
@@ -227,24 +453,38 @@ PY
 
 read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B HTTP_A HTTP_B <<<"$(reserve_ports)"
 
-gradle_run installDist
+gradle_run clean \
+  :Client:installDist \
+  :Server:Play:installDist \
+  :Server:Publisher:installDist \
+  :Server:Gateway:installDist \
+  :Server:MultiNode:installDist \
+  :Server:Registry:installDist \
+  :Server:Session:installDist
 
 start_registry
-start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" "${STREAM_A}"
-start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}"
+start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PUB_A}" ""
+start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" ""
 sleep 2
 
 run_client_mode() {
   local mode="$1"
   local route_client
   local spot_client
+  local stream_a
+  local stream_b
   local attempt
   local status
   for attempt in $(seq 1 5); do
     read -r route_client spot_client <<<"$(reserve_client_endpoints)"
+    stream_a="${STREAM_A}"
+    stream_b=""
+    if [[ "${mode}" == "actor-session" ]]; then
+      stream_a="${STREAM_SESSION_A}"
+      stream_b="${STREAM_SESSION_B}"
+    fi
     set +e
-    ZLINK_KOTLIN_E2E_ROLE=client \
-      ZLINK_KOTLIN_E2E_CLIENT_MODE="${mode}" \
+    ZLINK_KOTLIN_E2E_CLIENT_MODE="${mode}" \
       ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT="${route_client}" \
       ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
       ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
@@ -252,11 +492,17 @@ run_client_mode() {
       ZLINK_KOTLIN_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
       ZLINK_KOTLIN_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
       ZLINK_KOTLIN_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
-      ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
-      ZLINK_KOTLIN_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
+      ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT="${stream_a}" \
+      ZLINK_KOTLIN_E2E_STREAM_B_ENDPOINT="${stream_b}" \
+      ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
+      ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
+      ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT="${HTTP_SESSION_A:-}" \
+      ZLINK_KOTLIN_E2E_GATEWAY_HTTP_ENDPOINT="${GATEWAY_HTTP:-}" \
+      ZLINK_KOTLIN_E2E_MULTI_HTTP_A_ENDPOINT="${MULTI_HTTP_A:-}" \
+      ZLINK_KOTLIN_E2E_MULTI_HTTP_B_ENDPOINT="${MULTI_HTTP_B:-}" \
       ZLINK_KOTLIN_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-        timeout -k 5s 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
+        timeout -k 5s 75s "$(role_bin client)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
     set -e
     if [[ "${status}" == "0" ]] && grep -q "spot-service kotlin e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then
@@ -264,6 +510,9 @@ run_client_mode() {
       cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
       return 0
     fi
+    (pgrep -f "${client_role_pattern}" 2>/dev/null || true) | while read -r pid; do
+      kill -9 "${pid}" >/dev/null 2>&1 || true
+    done
     sleep 1
   done
   return 1
@@ -271,7 +520,8 @@ run_client_mode() {
 
 : >"${log_dir}/client.stdout.log"
 : >"${log_dir}/client.stderr.log"
-for mode in state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh actor-session idle-timer timer-overrun; do
+client_modes="${ZLINK_KOTLIN_E2E_MODES:-state1 state2 send normal worker missing timeout owner spot-outbound spot-to-spot route-mesh actor-session idle-timer timer-overrun}"
+for mode in ${client_modes}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
     create_timer_spot "${HTTP_A}" idle-active
@@ -283,21 +533,46 @@ for mode in state1 state2 send normal worker missing timeout owner spot-outbound
     create_timer_spot "${HTTP_A}" timer-overrun-delay
     sleep 2
   fi
+  if [[ "${mode}" == "actor-session" ]]; then
+    start_session
+    sleep 1
+  fi
   run_client_mode "${mode}"
+  if [[ "${mode}" == "actor-session" ]]; then
+    fetch_evidence session-a "${HTTP_SESSION_A}"
+    fetch_evidence session-b "${HTTP_SESSION_B}"
+    stop_session
+  fi
   if [[ "${mode}" == "idle-timer" ]]; then
     close_spot "${HTTP_A}" idle-active
   fi
   sleep 2
 done
+if [[ -n "${ZLINK_KOTLIN_E2E_MODES:-}" ]]; then
+  cat "${log_dir}/client.stdout.log"
+  fetch_evidence play-a "${HTTP_A}"
+  fetch_evidence play-b "${HTTP_B}"
+  echo "spot-service kotlin e2e focused modes=${ZLINK_KOTLIN_E2E_MODES} result=passed"
+  exit 0
+fi
 run_publisher
 cat "${log_dir}/publisher.stdout.log" >>"${log_dir}/client.stdout.log"
 cat "${log_dir}/publisher.stderr.log" >>"${log_dir}/client.stderr.log"
 sleep 2
-assert_type_mismatch "${HTTP_A}" room-a
-echo "scenario SM-A7 passed" >>"${log_dir}/client.stdout.log"
-echo "scenario SM-E2 passed" >>"${log_dir}/client.stdout.log"
-close_spot "${HTTP_B}" room-b
-echo "scenario SM-A6 passed" >>"${log_dir}/client.stdout.log"
+start_gateway
+sleep 1
+run_client_mode gateway-publish
+fetch_evidence gateway "${GATEWAY_HTTP}"
+stop_gateway
+run_client_mode type-mismatch
+run_client_mode timer-basic
+run_client_mode lifecycle-close
+start_multi_nodes
+sleep 1
+run_client_mode multi-node
+fetch_evidence multi-node-a "${MULTI_HTTP_A}"
+fetch_evidence multi-node-b "${MULTI_HTTP_B}"
+stop_multi_nodes
 
 cat "${log_dir}/client.stdout.log"
 fetch_evidence play-a "${HTTP_A}"
@@ -306,13 +581,13 @@ grep -Rq "message flow" "${log_dir}"/*-flow.log
 grep -q "packet=RoutePing" "${log_dir}/client-flow.log"
 grep -q '"marker":"RoutePing"' "${log_dir}/play-a-evidence.json"
 grep -q '"value":"route-mesh-normal"' "${log_dir}/play-a-evidence.json"
-grep -q '"marker":"ActorCreated"' "${log_dir}/play-a-evidence.json"
-grep -q '"marker":"ActorCreatedPayload"' "${log_dir}/play-a-evidence.json"
-grep -q '"value":"Player One/7/alpha,beta"' "${log_dir}/play-a-evidence.json"
-grep -q '"marker":"ActorUserJoined"' "${log_dir}/play-a-evidence.json"
-grep -q '"marker":"ActorUserRequest"' "${log_dir}/play-a-evidence.json"
-grep -q 'ActorCreated.*ActorUserJoined.*ActorUserRequest' "${log_dir}/play-a-evidence.json"
-grep -q 'user-echo-1.*user-echo-2.*user-echo-3' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"ActorCreated"' "${log_dir}/session-a-evidence.json"
+grep -q '"marker":"ActorCreatedPayload"' "${log_dir}/session-a-evidence.json"
+grep -q '"value":"Player One/7/alpha,beta"' "${log_dir}/session-a-evidence.json"
+grep -q '"marker":"ActorUserJoined"' "${log_dir}/session-a-evidence.json"
+grep -q '"marker":"ActorUserRequest"' "${log_dir}/session-a-evidence.json"
+grep -q 'ActorCreated.*ActorUserJoined.*ActorUserRequest' "${log_dir}/session-a-evidence.json"
+grep -q 'user-echo-1.*user-echo-2.*user-echo-3' "${log_dir}/session-a-evidence.json"
 if grep -q '"marker":"ActorCreated"' "${log_dir}/play-b-evidence.json"; then
   echo "unexpected play-b actor creation evidence" >&2
   exit 1
@@ -321,7 +596,7 @@ if grep -q '"marker":"ActorUserJoined"' "${log_dir}/play-b-evidence.json"; then
   echo "unexpected play-b actor join evidence" >&2
   exit 1
 fi
-grep -q '"marker":"StreamInbound"' "${log_dir}/play-a-evidence.json"
+grep -q '"marker":"StreamInbound"' "${log_dir}/session-a-evidence.json"
 grep -q "DispatchError" "${log_dir}/play-a-evidence.json"
 grep -q "SpotInitialized" "${log_dir}/play-a-evidence.json"
 grep -q "SpotClosing" "${log_dir}/play-a-evidence.json" "${log_dir}/play-b-evidence.json"
@@ -337,8 +612,12 @@ grep -q "SpotOutbound" "${log_dir}/play-a-evidence.json"
 grep -q "SpotToSpotSend" "${log_dir}/play-b-evidence.json"
 grep -q "SpotMeshEvent" "${log_dir}/play-a-evidence.json"
 grep -q "SpotMeshEvent" "${log_dir}/play-b-evidence.json"
+grep -q "spot-publish|rid=gateway" "${log_dir}/gateway-evidence.json"
 grep -q "IdleCloseRequested" "${log_dir}/play-a-evidence.json"
 grep -q "IdleClosed" "${log_dir}/play-a-evidence.json"
 grep -q "IdleKeptOpen" "${log_dir}/play-a-evidence.json"
 grep -q "TimerOverrunConfigured" "${log_dir}/play-a-evidence.json"
 grep -q "TimerOverrunTick" "${log_dir}/play-a-evidence.json"
+grep -q "multi-state-request|node=multi-node-a" "${log_dir}/multi-node-a-evidence.json"
+grep -q "multi-state-request|node=multi-node-b" "${log_dir}/multi-node-b-evidence.json"
+echo "spot-service kotlin e2e result=passed"

@@ -4,6 +4,9 @@
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/write.hpp>
+#ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
+#include <boost/asio/ssl/stream.hpp>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -17,6 +20,9 @@ namespace zlink::framework::runtime
 {
 namespace asio = boost::asio;
 using tcp = asio::ip::tcp;
+#ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
+namespace ssl = asio::ssl;
+#endif
 using detail::stream_header_flags_t;
 using detail::stream_header_t;
 using detail::stream_message_kind_t;
@@ -47,7 +53,37 @@ parsed_tcp_endpoint_t parse_tcp_endpoint (const std::string &endpoint)
     return {endpoint.substr (host_start, separator - host_start), endpoint.substr (separator + 1)};
 }
 
-std::vector<std::uint8_t> read_exact (tcp::socket &socket, std::size_t size)
+parsed_tcp_endpoint_t parse_tls_endpoint (const std::string &endpoint)
+{
+    constexpr std::string_view prefix = "tls://";
+    if (endpoint.rfind (prefix, 0) != 0) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "STREAM TLS host requires tls://host:port endpoint");
+    }
+    const auto host_start = prefix.size ();
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator <= host_start
+        || separator + 1 >= endpoint.size ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "STREAM tls endpoint must be tls://host:port");
+    }
+    return {endpoint.substr (host_start, separator - host_start), endpoint.substr (separator + 1)};
+}
+
+bool stream_uses_tls (const stream_snapshot_t &stream)
+{
+    return !stream.tls_certificate_file.empty () || !stream.tls_private_key_file.empty ()
+           || stream.bind_endpoint.rfind ("tls://", 0) == 0;
+}
+
+parsed_tcp_endpoint_t parse_stream_endpoint (const stream_snapshot_t &stream)
+{
+    return stream_uses_tls (stream) ? parse_tls_endpoint (stream.bind_endpoint)
+                                    : parse_tcp_endpoint (stream.bind_endpoint);
+}
+
+template <typename TStream>
+std::vector<std::uint8_t> read_exact (TStream &socket, std::size_t size)
 {
     std::vector<std::uint8_t> bytes (size);
     std::size_t offset = 0;
@@ -89,12 +125,19 @@ class stream_host_service_t::listener_t
         _services (&services),
         _stop (&stop),
         _acceptor (_io)
+#ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
+        ,
+        _tls_context (ssl::context::tls_server)
+#endif
     {
     }
 
     void run ()
     {
-        auto endpoint = parse_tcp_endpoint (_stream.bind_endpoint);
+        if (stream_uses_tls (_stream)) {
+            configure_tls_context ();
+        }
+        auto endpoint = parse_stream_endpoint (_stream);
         tcp::resolver resolver (_io);
         const auto endpoints = resolver.resolve (endpoint.host, endpoint.port);
         _acceptor.open (endpoints.begin ()->endpoint ().protocol ());
@@ -114,14 +157,31 @@ class stream_host_service_t::listener_t
                 const std::lock_guard<std::mutex> lock (_sockets_mutex);
                 _sockets.insert (connection.get ());
             }
-            _workers.emplace_back ([this, connection] { handle_connection (connection); });
+            if (stream_uses_tls (_stream)) {
+#ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
+                auto tls_connection =
+                  std::make_shared<ssl::stream<tcp::socket>> (std::move (*connection),
+                                                              _tls_context);
+                {
+                    const std::lock_guard<std::mutex> lock (_sockets_mutex);
+                    _sockets.erase (connection.get ());
+                    _sockets.insert (&tls_connection->next_layer ());
+                }
+                _workers.emplace_back (
+                  [this, tls_connection] { handle_tls_connection (tls_connection); });
+#else
+                connection->close ();
+#endif
+            } else {
+                _workers.emplace_back ([this, connection] { handle_connection (connection); });
+            }
         }
     }
 
     void stop () noexcept
     {
         try {
-            const auto endpoint = parse_tcp_endpoint (_stream.bind_endpoint);
+            const auto endpoint = parse_stream_endpoint (_stream);
             boost::system::error_code ignored;
             tcp::socket wakeup (_io);
             wakeup.connect (tcp::endpoint (asio::ip::make_address (endpoint.host),
@@ -154,7 +214,23 @@ class stream_host_service_t::listener_t
         zlink::message_t payload;
     };
 
-    frame_t read_frame (tcp::socket &socket)
+    void configure_tls_context ()
+    {
+#ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
+        if (_stream.tls_certificate_file.empty () || _stream.tls_private_key_file.empty ()) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "STREAM TLS endpoint requires certificate and private key");
+        }
+        _tls_context.use_certificate_chain_file (_stream.tls_certificate_file);
+        _tls_context.use_private_key_file (_stream.tls_private_key_file, ssl::context::pem);
+#else
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "STREAM TLS support requires OpenSSL");
+#endif
+    }
+
+    template <typename TStream> frame_t read_frame (TStream &socket)
     {
         auto prefix = read_exact (socket, 6);
         const auto header_size = static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
@@ -174,7 +250,8 @@ class stream_host_service_t::listener_t
         return {header.value (), message_from_bytes (payload_bytes)};
     }
 
-    void write_frame (tcp::socket &socket,
+    template <typename TStream>
+    void write_frame (TStream &socket,
                       const stream_header_t &header,
                       const zlink::message_t &payload)
     {
@@ -200,7 +277,8 @@ class stream_host_service_t::listener_t
         boost::asio::write (socket, boost::asio::buffer (frame));
     }
 
-    void write_error_frame (tcp::socket &socket,
+    template <typename TStream>
+    void write_error_frame (TStream &socket,
                             const stream_header_t &request_header,
                             const result_t<void> &error)
     {
@@ -221,7 +299,8 @@ class stream_host_service_t::listener_t
                      zlink::message_t::from (std::string ("{\"error\":\"") + message + "\"}"));
     }
 
-    void flush_writes (tcp::socket &socket, stream_t &stream, std::size_t &flushed)
+    template <typename TStream>
+    void flush_writes (TStream &socket, stream_t &stream, std::size_t &flushed)
     {
         const auto headers = _runtime.written_headers (stream);
         const auto payloads = _runtime.written_payloads (stream);
@@ -230,32 +309,37 @@ class stream_host_service_t::listener_t
         }
     }
 
-    void handle_connection (std::shared_ptr<tcp::socket> connection)
+    template <typename TStream>
+    void handle_stream_connection (std::shared_ptr<TStream> connection,
+                                   tcp::socket *tracked_socket,
+                                   bool attach_immediate_writer)
     {
         auto cleanup = std::unique_ptr<tcp::socket, std::function<void (tcp::socket *)>> (
-          connection.get (), [this] (tcp::socket *socket) {
+          tracked_socket, [this] (tcp::socket *socket) {
               const std::lock_guard<std::mutex> lock (_sockets_mutex);
               _sockets.erase (socket);
           });
         auto scope = _services->create_scope (service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
-        _runtime.attach_transport_writer (
-          stream, [this, connection] (const stream_header_t &header,
-                                      const zlink::message_t &payload) -> result_t<void> {
-              try {
-                  write_frame (*connection, header, payload);
-                  return result_t<void>::success ();
-              }
-              catch (const framework_exception_t &error) {
-                  return result_t<void>::failure (error.kind (), error.what (),
-                                                 error.is_retriable ());
-              }
-              catch (const std::exception &error) {
-                  return result_t<void>::failure (framework_error_kind_t::disconnected,
-                                                 error.what ());
-              }
-          });
+        if (attach_immediate_writer) {
+            _runtime.attach_transport_writer (
+              stream, [this, connection] (const stream_header_t &header,
+                                          const zlink::message_t &payload) -> result_t<void> {
+                  try {
+                      write_frame (*connection, header, payload);
+                      return result_t<void>::success ();
+                  }
+                  catch (const framework_exception_t &error) {
+                      return result_t<void>::failure (error.kind (), error.what (),
+                                                     error.is_retriable ());
+                  }
+                  catch (const std::exception &error) {
+                      return result_t<void>::failure (framework_error_kind_t::disconnected,
+                                                     error.what ());
+                  }
+              });
+        }
         std::size_t flushed = 0;
         try {
             if (auto connected = _runtime.dispatch_connected (session, stream); !connected) {
@@ -293,6 +377,26 @@ class stream_host_service_t::listener_t
         }
     }
 
+#ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
+    void handle_tls_connection (std::shared_ptr<ssl::stream<tcp::socket>> connection)
+    {
+        try {
+            connection->handshake (ssl::stream_base::server);
+        }
+        catch (const boost::system::system_error &) {
+            const std::lock_guard<std::mutex> lock (_sockets_mutex);
+            _sockets.erase (&connection->next_layer ());
+            return;
+        }
+        handle_stream_connection (connection, &connection->next_layer (), false);
+    }
+#endif
+
+    void handle_connection (std::shared_ptr<tcp::socket> connection)
+    {
+        handle_stream_connection (connection, connection.get (), true);
+    }
+
     detail::stream_runtime_t _runtime;
     stream_snapshot_t _stream;
     detail::stream_session_factory_t _session_factory;
@@ -300,6 +404,9 @@ class stream_host_service_t::listener_t
     std::atomic_bool *_stop;
     asio::io_context _io;
     tcp::acceptor _acceptor;
+#ifdef ZLINK_FRAMEWORK_STREAM_WITH_OPENSSL
+    ssl::context _tls_context;
+#endif
     std::mutex _sockets_mutex;
     std::unordered_set<tcp::socket *> _sockets;
     std::vector<std::thread> _workers;

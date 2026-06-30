@@ -4,6 +4,8 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.samples.deliverydispatch.server.dispatchapi.handlers.CreateDeliveryHandler;
+import systems.zlink.samples.deliverydispatch.server.dispatchapi.handlers.ServerAssertionHandler;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -14,14 +16,21 @@ import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopolog
 @EnableZLinkFramework
 @SpringBootApplication(
     proxyBeanMethods = false,
-    scanBasePackageClasses = DispatchApiApplication.class)
+    scanBasePackageClasses = {
+        DispatchApiApplication.class,
+        CreateDeliveryHandler.class,
+        ServerAssertionHandler.class
+    })
 public final class DispatchApiApplication {
     private DispatchApiApplication() {
     }
 
     public static AutoCloseable run(String... args) {
         SpringApplicationBuilder builder = new SpringApplicationBuilder(DispatchApiApplication.class)
-            .web(WebApplicationType.NONE);
+            .web(WebApplicationType.SERVLET)
+            .properties(
+                "server.address=127.0.0.1",
+                "server.port=" + httpPort(SampleTopology.ApiHttpUrl));
         builder.application().setKeepAlive(true);
         return builder.run(args)::close;
     }
@@ -39,13 +48,12 @@ public final class DispatchApiApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-dispatch-api.log")
                 .traceLabel("dispatch-api");
-            options.codecs().addJson();
-            options.addHandlersFromPackageOf(DispatchApiApplication.class);
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(SampleTopology.ApiChannelEndpoint)
-                .addHandlerGroup("api");
             options.addClientServerChannel(SampleNames.DispatchChannel)
                 .enableClient();
         };
+    }
+
+    private static int httpPort(String url) {
+        return java.net.URI.create(url).getPort();
     }
 }

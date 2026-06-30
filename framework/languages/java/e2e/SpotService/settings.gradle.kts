@@ -55,3 +55,9 @@ if (useLocalBindings) {
         }
     }
 }
+
+include(":Shared")
+include(":Client")
+include(":Server:Registry")
+include(":Server:Play")
+include(":Server:Publisher")

@@ -16,8 +16,8 @@
 public class SpotConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
+        framework.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
         ZLinkSpotMeshBuilder spot = framework.addSpotMesh("game.stage");
-        spot.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
         spot.enableRouter("tcp://0.0.0.0:9000");
         spot.enablePubSub("tcp://0.0.0.0:9001");
         spot.addEntrySpot(GameEntrySpot.class);

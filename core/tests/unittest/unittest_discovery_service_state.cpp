@@ -45,11 +45,14 @@ static zlink::provider_info_t make_provider (const char *channel_name_,
     provider.channel_name = channel_name_;
     provider.endpoint = endpoint_;
     provider.service_role = service_role_;
+    provider.weight = 0;
     provider.value = value_;
     provider.routing_id.size = 0;
     provider.metadata.push_back (metadata0_);
     provider.metadata.push_back (metadata1_);
     provider.registered_at = 0;
+    provider.source_registry = 0;
+    provider.registration_id = 0;
     return provider;
 }
 
@@ -85,6 +88,39 @@ void test_discovery_service_state_tracks_provider_views_and_sequences ()
     TEST_ASSERT_EQUAL_UINT (1, peers.size ());
 }
 
+void test_discovery_service_state_merges_registry_snapshots ()
+{
+    zlink::discovery_service_state_t state;
+    zlink_routing_id_t routing_id;
+    memset (&routing_id, 0, sizeof (routing_id));
+
+    std::vector<zlink::provider_info_t> reg1_providers;
+    reg1_providers.push_back (make_provider ("svc", "tcp://reg1-provider", 2, 11, 1, 1));
+    zlink::discovery_service_change_t change;
+    state.apply_provider_snapshot (1, 1, reg1_providers, "svc", routing_id, &change);
+    TEST_ASSERT_TRUE (change.changed);
+    TEST_ASSERT_EQUAL_UINT32 (1, change.event.value);
+
+    std::vector<zlink::provider_info_t> reg2_providers;
+    reg2_providers.push_back (make_provider ("svc", "tcp://reg2-provider", 2, 22, 2, 2));
+    state.apply_provider_snapshot (2, 1, reg2_providers, "svc", routing_id, &change);
+    TEST_ASSERT_TRUE (change.changed);
+    TEST_ASSERT_EQUAL_UINT32 (2, change.event.value);
+
+    std::vector<zlink::provider_info_t> current;
+    state.snapshot_providers (&current);
+    TEST_ASSERT_EQUAL_UINT (2, current.size ());
+
+    std::vector<zlink::provider_info_t> empty_reg2;
+    state.apply_provider_snapshot (2, 2, empty_reg2, "svc", routing_id, &change);
+    TEST_ASSERT_TRUE (change.changed);
+    TEST_ASSERT_EQUAL_UINT32 (1, change.event.value);
+
+    state.snapshot_providers (&current);
+    TEST_ASSERT_EQUAL_UINT (1, current.size ());
+    TEST_ASSERT_EQUAL_STRING ("tcp://reg1-provider", current[0].endpoint.c_str ());
+}
+
 void test_discovery_service_state_blocks_observer_removal_while_inflight ()
 {
     zlink::discovery_service_state_t state;
@@ -118,6 +154,7 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_discovery_service_state_tracks_provider_views_and_sequences);
+    RUN_TEST (test_discovery_service_state_merges_registry_snapshots);
     RUN_TEST (test_discovery_service_state_blocks_observer_removal_while_inflight);
     return UNITY_END ();
 }

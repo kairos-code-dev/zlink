@@ -1,0 +1,220 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../Configuration/server_options.hpp"
+#include "../Endpoints/operational_endpoints.hpp"
+#include "../Handlers/codec_handlers.hpp"
+#include "../Handlers/di_lifecycle_handlers.hpp"
+#include "../Handlers/filter_order_handlers.hpp"
+#include "../Handlers/registration_handlers.hpp"
+
+#include <zlink/codecs/messagepack.hpp>
+#include <zlink/codecs/protobuf.hpp>
+#include <zlink/framework.hpp>
+
+#include <memory>
+#include <stdexcept>
+#include <string>
+
+namespace zlink::framework::e2e::registration_codec::server
+{
+
+inline zlink::framework::encoded_payload_t encode_text (const std::string &prefix,
+                                                        const std::string &value)
+{
+    return zlink::framework::encoded_payload_t::from_string (prefix + ":" + value);
+}
+
+inline std::string decode_text (const zlink::framework::encoded_payload_t &payload,
+                                const std::string &prefix)
+{
+    const auto text = payload.to_string ();
+    const auto expected = prefix + ":";
+    if (text.rfind (expected, 0) != 0) {
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::payload_decode_failed,
+          "custom payload prefix mismatch");
+    }
+    return text.substr (expected.size ());
+}
+
+inline void add_json_codecs (zlink::framework::codec_options_builder_t codecs)
+{
+    codecs.add_json ();
+    codecs.add_json<echo_auto_t,
+                    echo_auto_reply_t,
+                    echo_auto_send_t,
+                    echo_manual_t,
+                    echo_manual_reply_t,
+                    json_roundtrip_t,
+                    json_roundtrip_reply_t,
+                    json_codec_send_t,
+                    scoped_lifecycle_req_t,
+                    scoped_lifecycle_reply_t,
+                    scoped_lifecycle_stats_req_t,
+                    scoped_lifecycle_stats_reply_t,
+                    filter_order_req_t,
+                    filter_order_reply_t,
+                    evidence_entry_t,
+                    evidence_snapshot_t> ();
+}
+
+inline void add_binary_codecs (zlink::framework::codec_options_builder_t codecs)
+{
+    codecs.use (zlink::framework_codecs::protobuf ());
+    zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
+      protobuf_roundtrip_t> (codecs);
+    zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
+      protobuf_roundtrip_reply_t> (codecs);
+    zlink::framework_codecs::protobuf_codec_extension_t::register_payload_serializer<
+      protobuf_codec_send_t> (codecs);
+    codecs.use (zlink::framework_codecs::messagepack ());
+    zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
+      messagepack_roundtrip_t> (codecs);
+    zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
+      messagepack_roundtrip_reply_t> (codecs);
+    zlink::framework_codecs::messagepack_codec_extension_t::register_payload_serializer<
+      messagepack_codec_send_t> (codecs);
+}
+
+inline void add_custom_codecs (zlink::framework::codec_options_builder_t codecs)
+{
+    codecs
+      .add_serializer<custom_roundtrip_t> (
+        [] (const custom_roundtrip_t &value) {
+            return encode_text ("custom-request", value.value);
+        },
+        [] (const zlink::framework::encoded_payload_t &payload) {
+            return custom_roundtrip_t{.value = decode_text (payload, "custom-request")};
+        })
+      .add_serializer<custom_roundtrip_reply_t> (
+        [] (const custom_roundtrip_reply_t &value) {
+            return encode_text ("custom-reply", value.value);
+        },
+        [] (const zlink::framework::encoded_payload_t &payload) {
+            return custom_roundtrip_reply_t{.value = decode_text (payload, "custom-reply")};
+        })
+      .add_serializer<mismatch_roundtrip_t> (
+        [] (const mismatch_roundtrip_t &value) {
+            return encode_text ("mismatch-request", value.value);
+        },
+        [] (const zlink::framework::encoded_payload_t &payload) {
+            return mismatch_roundtrip_t{.value = decode_text (payload, "mismatch-request")};
+        })
+      .add_serializer<mismatch_roundtrip_reply_t> (
+        [] (const mismatch_roundtrip_reply_t &value) {
+            return encode_text ("mismatch-reply", value.value);
+        },
+        [] (const zlink::framework::encoded_payload_t &payload) {
+            return mismatch_roundtrip_reply_t{
+              .value = decode_text (payload, "mismatch-reply")};
+        });
+}
+
+inline void configure_invalid (zlink::framework::zlink_framework_options_t &options,
+                               const std::string &mode,
+                               const std::string &endpoint)
+{
+    if (mode == "duplicate") {
+        options.handlers ()
+          .group (handler_group)
+          .add<auto_request_handler_t> ()
+          .add<auto_request_handler_t> ();
+        return;
+    }
+    if (mode == "wrong-group") {
+        options.handlers ()
+          .group (handler_group)
+          .add_send<auto_send_handler_t> ();
+        options.add_fanout_channel ("registration.codec.invalid")
+          .enable_subscriber (endpoint)
+          .use_handler_group (handler_group);
+        return;
+    }
+    if (mode == "unsupported-channel") {
+        options.add_client_server_channel ("registration.codec.invalid").enable_server (endpoint);
+        return;
+    }
+    throw std::runtime_error ("unknown invalid mode " + mode);
+}
+
+inline void configure_services (zlink::framework::service_collection_t &services)
+{
+    services.add_singleton<scenario_state_t> (std::make_unique<scenario_state_t> ());
+    services.add_singleton<singleton_dependency_t> ();
+    services.add_singleton<filter_order_state_t> ();
+    services.add_scoped<scoped_dependency_t> ();
+    services.add_transient<manual_route_handler_t> ();
+}
+
+inline void configure_codecs (zlink::framework::codec_options_builder_t codecs,
+                              const server_options_t &server)
+{
+    add_json_codecs (codecs);
+    if (server.server_mode != "json-only-peer") {
+        add_binary_codecs (codecs);
+        add_custom_codecs (codecs);
+    }
+}
+
+inline void configure_channels (zlink::framework::zlink_framework_options_t &options,
+                                const server_options_t &server)
+{
+    options.add_client_server_channel (api_channel)
+      .enable_server (server.api_endpoint)
+      .use_handler_group (handler_group);
+    if (server.server_mode != "json-only-peer") {
+        options.add_route_mesh (route_channel)
+          .enable_server (server.route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from ("rc-server"))
+          .add_request_handler<manual_route_handler_t, echo_manual_t, echo_manual_reply_t> (
+            "EchoManual", &manual_route_handler_t::handle);
+    }
+}
+
+inline void configure_http (zlink::framework::http_options_builder_t &http,
+                            const server_options_t &server)
+{
+    http.listen (server.http_endpoint)
+      .map_health ("/health")
+      .map_get<evidence_handler_t> ("/evidence");
+}
+
+inline void configure_handlers (zlink::framework::handler_options_builder_t handlers)
+{
+    handlers.group (handler_group)
+      .add<auto_request_handler_t> ()
+      .add_send<auto_send_handler_t> ()
+      .add<scoped_lifecycle_handler_t> ()
+      .add<scoped_lifecycle_stats_handler_t> ()
+      .add<filter_order_handler_t> ()
+      .add<json_roundtrip_handler_t> ()
+      .add_send<json_codec_send_handler_t> ()
+      .add<protobuf_roundtrip_handler_t> ()
+      .add_send<protobuf_codec_send_handler_t> ()
+      .add<messagepack_roundtrip_handler_t> ()
+      .add_send<messagepack_codec_send_handler_t> ()
+      .add<custom_roundtrip_handler_t> ()
+      .add<mismatch_roundtrip_handler_t> ();
+}
+
+inline void configure_framework (zlink::framework::zlink_framework_options_t &options,
+                                 const server_options_t &server)
+{
+    options.configure_dispatch ()
+      .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+      .trace_log_file (server.log_dir + "/server-flow.log")
+      .trace_label ("cpp-rc-server");
+    if (!server.invalid_mode.empty ()) {
+        configure_invalid (options, server.invalid_mode, server.api_endpoint);
+        return;
+    }
+    options.use_filter<first_filter_t> ().use_filter<second_filter_t> ();
+    configure_services (options.services ());
+    configure_codecs (options.codecs (), server);
+    configure_channels (options, server);
+    configure_http (options.http (), server);
+    configure_handlers (options.handlers ());
+}
+
+} // namespace zlink::framework::e2e::registration_codec::server

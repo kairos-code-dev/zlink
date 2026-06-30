@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.configuration
 
 object SampleNames {
-    const val ApiChannel = "deliverydispatch.api"
     const val DispatchChannel = "deliverydispatch.dispatch"
     const val CourierAChannel = "deliverydispatch.courier.a"
     const val CourierBChannel = "deliverydispatch.courier.b"

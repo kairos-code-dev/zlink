@@ -227,6 +227,8 @@ struct stream_snapshot_t
     std::string name;
     std::string bind_endpoint;
     std::string packet_session_name;
+    std::string tls_certificate_file;
+    std::string tls_private_key_file;
 };
 
 class stream_builder_t
@@ -241,6 +243,8 @@ class stream_builder_t
     stream_builder_t &operator= (const stream_builder_t &) = default;
 
     stream_builder_t &bind (std::string endpoint);
+    stream_builder_t &set_tls_server (std::string certificate_file,
+                                      std::string private_key_file);
     stream_builder_t &register_session (std::string session_name);
     stream_snapshot_t snapshot () const;
 

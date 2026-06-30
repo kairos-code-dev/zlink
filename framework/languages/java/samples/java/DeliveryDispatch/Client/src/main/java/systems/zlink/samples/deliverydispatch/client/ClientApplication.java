@@ -2,14 +2,7 @@ package systems.zlink.samples.deliverydispatch.client;
 
 import java.net.URI;
 import java.time.Duration;
-import org.springframework.boot.WebApplicationType;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.annotation.Bean;
-import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.spring.EnableZLinkFramework;
-import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
-import systems.zlink.samples.deliverydispatch.client.configuration.SampleNames;
+import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.samples.deliverydispatch.client.configuration.SampleTimings;
 import systems.zlink.samples.deliverydispatch.client.configuration.SampleTopology;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -17,37 +10,20 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 
-@EnableZLinkFramework
-@SpringBootApplication(
-    proxyBeanMethods = false,
-    scanBasePackageClasses = ClientApplication.class)
 public final class ClientApplication {
     private ClientApplication() {
     }
 
     public static void run(String... args) throws Exception {
-        SpringApplicationBuilder builder = new SpringApplicationBuilder(ClientApplication.class)
-            .web(WebApplicationType.NONE);
-        try (var context = builder.run(args)) {
-            ZLinkClient channels = context.getBean(ZLinkClient.class);
+        try (ZLinkHttpClient api = ZLinkHttpClient.create(SampleTopology.ApiHttpUrl).build()) {
             ZLinkStreamConnector customer = createConnector();
             try {
-                new DeliveryDispatchClientScenario(channels).run(customer);
+                new DeliveryDispatchClientScenario(api).run(customer);
             } finally {
                 customer.close().await();
             }
         }
         System.out.println("deliverydispatch=completed");
-    }
-
-    @Bean
-    ZLinkFrameworkConfigurer clientFramework() {
-        return options -> {
-            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
-            options.codecs().addJson();
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient();
-        };
     }
 
     private static ZLinkStreamConnector createConnector() {

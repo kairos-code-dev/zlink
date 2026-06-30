@@ -1,0 +1,49 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#pragma once
+
+#include "../Support/client_support.hpp"
+
+#include <iostream>
+
+namespace zlink::framework::e2e::registry_messaging::client
+{
+
+inline void run_rm_c5_missing_packet_scenario (zlink::framework::channel_client_t &channels)
+{
+    (void) channels;
+    const auto consumer = env_or ("ZLINK_CPP_E2E_DISCOVERY_CONSUMER_URL");
+    auto missing = post_json<profile_request_t, request_failure_result_t> (
+      consumer, "/profile/missing-request", profile_request_t{.value = "missing"});
+    ensure (missing.failed, "RM-C5 missing request unexpectedly succeeded");
+    auto dropped = post_json<profile_command_t, operation_status_t> (
+      consumer, "/profile/missing-command", profile_command_t{.command_id = "missing-send"});
+    ensure (dropped.status == "sent", "RM-C5 missing send endpoint failed");
+    auto normal = post_json<profile_request_t, profile_reply_t> (
+      consumer, "/profile/request", profile_request_t{.value = "normal"});
+    ensure (normal.value == "profile:normal", "RM-C5 normal request after missing packet failed");
+
+    std::this_thread::sleep_for (std::chrono::milliseconds (200));
+    const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
+    const auto evidence_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    bool reply_error_recorded = false;
+    bool drop_recorded = false;
+    for (const auto &snapshot : {evidence_a, evidence_b}) {
+        for (const auto &entry : snapshot.entries) {
+            if (entry.marker != "DispatchError") {
+                continue;
+            }
+            if (entry.value == "handler_missing:reply_error") {
+                reply_error_recorded = true;
+            }
+            if (entry.value == "handler_missing:drop") {
+                drop_recorded = true;
+            }
+        }
+    }
+    ensure (reply_error_recorded, "RM-C5 missing request dispatch evidence was not recorded");
+    ensure (drop_recorded, "RM-C5 missing send dispatch evidence was not recorded");
+    std::cout << "scenario RM-C5 passed\n";
+}
+
+} // namespace zlink::framework::e2e::registry_messaging::client

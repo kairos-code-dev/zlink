@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../Support/client_support.hpp"
+
+#include <iostream>
+
+namespace zlink::framework::e2e::pubsub::client
+{
+
+inline void run_missing_message_name_scenario (const std::string &publisher_url)
+{
+    publish (publisher_url, topic_fanout, "missing", true);
+    std::this_thread::sleep_for (std::chrono::milliseconds (500));
+    publish (publisher_url, topic_fanout, "after-missing");
+    std::cout << "scenario PS-C1 passed\n";
+}
+
+} // namespace zlink::framework::e2e::pubsub::client

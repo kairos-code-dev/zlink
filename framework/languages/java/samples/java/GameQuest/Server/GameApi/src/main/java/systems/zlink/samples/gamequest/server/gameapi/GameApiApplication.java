@@ -47,6 +47,7 @@ public final class GameApiApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs") + "/flow-" + apiName + ".log")
                 .traceLabel(apiName);
+            configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(GameApiApplication.class);
 
             // public client-facing action channel hosted on this instance

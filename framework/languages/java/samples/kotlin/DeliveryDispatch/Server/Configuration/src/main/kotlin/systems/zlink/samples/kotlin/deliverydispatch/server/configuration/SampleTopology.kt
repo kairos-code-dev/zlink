@@ -3,7 +3,7 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.configuration
 object SampleTopology {
     val RegistryPubEndpoint = property("registryPubEndpoint", "tcp://127.0.0.1:47390")
     val RegistryRouterEndpoint = property("registryRouterEndpoint", "tcp://127.0.0.1:47391")
-    val ApiChannelEndpoint = property("apiChannelEndpoint", "tcp://127.0.0.1:47392")
+    val ApiHttpUrl = property("apiHttpUrl", "http://127.0.0.1:47392")
     val DispatchChannelEndpoint = property("dispatchChannelEndpoint", "tcp://127.0.0.1:47394")
     val CourierAEndpoint = property("courierAEndpoint", "tcp://127.0.0.1:47395")
     val CourierBEndpoint = property("courierBEndpoint", "tcp://127.0.0.1:47396")

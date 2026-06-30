@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.registrymessaging\.Program'
+role_pattern='systems\.zlink\.e2e\.registrymessaging\.(client|provider|registry|workflow|consumer)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -75,7 +75,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(11):
+    for _ in range(18):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -107,6 +107,31 @@ wait_port() {
   return 1
 }
 
+wait_health() {
+  local name="$1"
+  local endpoint="$2"
+  local port
+  port="$(port_of "${endpoint}")"
+  for _ in $(seq 1 600); do
+    if python3 - "http://127.0.0.1:${port}/health" <<'PY'
+import sys
+import urllib.request
+
+try:
+    with urllib.request.urlopen(sys.argv[1], timeout=0.2) as response:
+        sys.exit(0 if 200 <= response.status < 300 else 1)
+except Exception:
+    sys.exit(1)
+PY
+    then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} health at ${endpoint}" >&2
+  return 1
+}
+
 wait_marker() {
   local file="$1"
   for _ in $(seq 1 400); do
@@ -124,18 +149,35 @@ gradle_run() {
 }
 
 
-app_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/install/registry-messaging/bin/registry-messaging"
+client_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/registry-messaging-client/bin/registry-messaging-client"
+}
+
+provider_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Provider/install/registry-messaging-provider/bin/registry-messaging-provider"
+}
+
+registry_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/registry-messaging-registry/bin/registry-messaging-registry"
+}
+
+workflow_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Workflow/install/registry-messaging-workflow/bin/registry-messaging-workflow"
+}
+
+consumer_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Consumer/install/registry-messaging-consumer/bin/registry-messaging-consumer"
 }
 
 start_registry() {
-  ZLINK_JAVA_E2E_ROLE=registry \
   ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${REGISTRY_HTTP}")" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
+    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
   pids+=("$!")
   wait_port registry-router "${REGISTRY_ROUTER}"
+  wait_health registry "${REGISTRY_HTTP}"
 }
 
 start_provider() {
@@ -145,21 +187,47 @@ start_provider() {
   local workflow="$4"
   local instance="${5:-$rid}"
   local weight="${6:-}"
-  ZLINK_JAVA_E2E_ROLE=provider \
+  local http_port="${7:?http port is required}"
+  local binary
+  if [[ -n "${workflow}" && -z "${api}" && -z "${route}" ]]; then
+    binary="$(workflow_bin)"
+  else
+    binary="$(provider_bin)"
+  fi
   ZLINK_JAVA_E2E_PROVIDER_RID="${rid}" \
   ZLINK_JAVA_E2E_PROVIDER_INSTANCE="${instance}" \
   ZLINK_JAVA_E2E_API_WEIGHT="${weight}" \
   ZLINK_JAVA_E2E_API_ENDPOINT="${api}" \
+  ZLINK_JAVA_E2E_API_MANUAL_ENDPOINT="${API_A}" \
   ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route}" \
+  ZLINK_JAVA_E2E_ROUTE_PEERS="${ROUTE_B}" \
   ZLINK_JAVA_E2E_WORKFLOW_ENDPOINT="${workflow}" \
+  ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${http_port}")" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+    "${binary}" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   [[ -z "${api}" ]] || wait_port "${rid}-api" "${api}"
   [[ -z "${route}" ]] || wait_port "${rid}-route" "${route}"
   [[ -z "${workflow}" ]] || wait_port "${rid}-workflow" "${workflow}"
+  wait_health "${rid}" "${http_port}"
+}
+
+start_consumer() {
+  local name="$1"
+  local mode="$2"
+  local http_port="$3"
+  local endpoints="${4:-}"
+  ZLINK_JAVA_E2E_CONSUMER_NAME="${name}" \
+  ZLINK_JAVA_E2E_CONSUMER_MODE="${mode}" \
+  ZLINK_JAVA_E2E_PROVIDER_ENDPOINTS="${endpoints}" \
+  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
+  ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${http_port}")" \
+  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+    "$(consumer_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  pids+=("$!")
+  wait_health "${name}" "${http_port}"
 }
 
 stop_pid() {
@@ -174,31 +242,36 @@ run_client() {
   local scenario="$1"
   local suffix="$2"
   shift 2
-  ZLINK_JAVA_E2E_ROLE=client \
   ZLINK_JAVA_E2E_SCENARIO="${scenario}" \
-  ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
-  ZLINK_JAVA_E2E_API_A_ENDPOINT="${API_A}" \
-  ZLINK_JAVA_E2E_API_B_ENDPOINT="${API_B}" \
-  ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
-  ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
-  ZLINK_JAVA_E2E_CLIENT_ROUTE_ENDPOINT="${CLIENT_ROUTE}" \
+  ZLINK_JAVA_E2E_REGISTRY_HTTP_URL="http://127.0.0.1:$(port_of "${REGISTRY_HTTP}")" \
+  ZLINK_JAVA_E2E_PROVIDER_A_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_API_A}")" \
+  ZLINK_JAVA_E2E_PROVIDER_B_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_API_B}")" \
+  ZLINK_JAVA_E2E_WORKFLOW_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_WORKFLOW}")" \
+  ZLINK_JAVA_E2E_DISCOVERY_CONSUMER_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_DISCOVERY_CONSUMER}")" \
+  ZLINK_JAVA_E2E_DIRECT_CONSUMER_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_DIRECT_CONSUMER}")" \
+  ZLINK_JAVA_E2E_SINGLE_CONSUMER_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_SINGLE_CONSUMER}")" \
+  ZLINK_JAVA_E2E_BACKPRESSURE_CONSUMER_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_BACKPRESSURE_CONSUMER}")" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$@" \
-    "$(app_bin)" >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
+    "$(client_bin)" >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
 }
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A CLIENT_ROUTE API_A2 ROUTE_A2 UNUSED <<<"$(reserve_ports)"
+read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B WORKFLOW_A API_A2 ROUTE_A2 REGISTRY_HTTP HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER UNUSED <<<"$(reserve_ports)"
 
 gradle_run installDist
 
 start_registry
 
-start_provider api-a "${API_A}" "${ROUTE_A}" ""
+start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" ""
+start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
 API_B_PID="${LAST_PID}"
-start_provider workflow-a "" "" "${WORKFLOW_A}"
+start_provider workflow-a "" "" "${WORKFLOW_A}" workflow-a "" "${HTTP_WORKFLOW}"
 WORKFLOW_A_PID="${LAST_PID}"
+start_consumer discovery-consumer discovery "${HTTP_DISCOVERY_CONSUMER}"
+start_consumer direct-consumer direct "${HTTP_DIRECT_CONSUMER}" "${API_A},${API_B}"
+start_consumer single-consumer direct "${HTTP_SINGLE_CONSUMER}" "${API_A}"
+start_consumer backpressure-consumer direct "${HTTP_BACKPRESSURE_CONSUMER}" "${API_A}"
 sleep 2
 run_client common common env
 cat "${log_dir}/client-common.stdout.log"
@@ -206,9 +279,9 @@ stop_pid "${API_A_PID}"
 stop_pid "${API_B_PID}"
 stop_pid "${WORKFLOW_A_PID}"
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a 75
+start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a 75 "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b 25
+start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b 25 "${HTTP_API_B}"
 API_B_PID="${LAST_PID}"
 sleep 2
 run_client weighted rm-c7 env
@@ -216,7 +289,7 @@ cat "${log_dir}/client-rm-c7.stdout.log"
 stop_pid "${API_A_PID}"
 stop_pid "${API_B_PID}"
 
-start_provider api-a "${API_A}" "${ROUTE_A}" ""
+start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
 READY="${log_dir}/rm-b1-ready"
 CONTINUE="${log_dir}/rm-b1-continue"
@@ -225,7 +298,7 @@ run_client scale-out rm-b1 env \
   ZLINK_JAVA_E2E_CONTINUE_FILE="${CONTINUE}" &
 B1_CLIENT_PID="$!"
 wait_marker "${READY}"
-start_provider api-b "${API_B}" "${ROUTE_B}" ""
+start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
 API_B_PID="${LAST_PID}"
 sleep 5
 touch "${CONTINUE}"
@@ -234,9 +307,9 @@ cat "${log_dir}/client-rm-b1.stdout.log"
 stop_pid "${API_A_PID}"
 stop_pid "${API_B_PID}"
 
-start_provider api-a "${API_A}" "${ROUTE_A}" ""
+start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
-start_provider api-b "${API_B}" "${ROUTE_B}" ""
+start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
 API_B_PID="${LAST_PID}"
 READY="${log_dir}/rm-b2-ready"
 CONTINUE="${log_dir}/rm-b2-continue"
@@ -252,7 +325,7 @@ wait "${B2_CLIENT_PID}"
 cat "${log_dir}/client-rm-b2.stdout.log"
 stop_pid "${API_A_PID}"
 
-start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a-v1
+start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a-v1 "" "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
 READY="${log_dir}/rm-a4-ready"
 CONTINUE="${log_dir}/rm-a4-continue"
@@ -262,7 +335,7 @@ run_client failover rm-a4 env \
 A4_CLIENT_PID="$!"
 wait_marker "${READY}"
 stop_pid "${API_A_PID}"
-start_provider api-a "${API_A2}" "${ROUTE_A2}" "" api-a-v2
+start_provider api-a "${API_A2}" "${ROUTE_A2}" "" api-a-v2 "" "${HTTP_API_A}"
 API_A_PID="${LAST_PID}"
 sleep 5
 touch "${CONTINUE}"

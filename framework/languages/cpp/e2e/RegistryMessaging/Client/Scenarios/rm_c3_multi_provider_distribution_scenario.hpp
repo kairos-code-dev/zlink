@@ -1,0 +1,45 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#pragma once
+
+#include "../Support/client_support.hpp"
+
+#include <iostream>
+#include <map>
+
+namespace zlink::framework::e2e::registry_messaging::client
+{
+
+inline void run_rm_c3_multi_provider_distribution_scenario (
+  zlink::framework::channel_client_t &channels)
+{
+    (void) channels;
+    const auto before_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
+    const auto before_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    const std::string marker = "rm-c3";
+    const auto consumer = env_or ("ZLINK_CPP_E2E_DIRECT_CONSUMER_URL");
+    std::map<std::string, int> counts;
+    for (int index = 0; index < 60; ++index) {
+        const auto value = marker + "-" + std::to_string (index);
+        const auto reply = post_json<profile_request_t, profile_reply_t> (
+          consumer, "/profile/request", profile_request_t{.value = value});
+        ensure (reply.value == "profile:" + value, "RM-C3 reply value mismatch");
+        ensure (reply.provider_rid == "api-a" || reply.provider_rid == "api-b",
+                "RM-C3 reply provider mismatch");
+        ++counts[reply.provider_rid];
+    }
+    ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
+            "RM-C3 did not distribute to both providers");
+    ensure (counts["api-a"] + counts["api-b"] == 60, "RM-C3 count mismatch");
+    const auto after_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
+    const auto after_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    const auto evidence_delta =
+      evidence_value_prefix_count (after_a, "ProfileRequest", marker)
+      - evidence_value_prefix_count (before_a, "ProfileRequest", marker)
+      + evidence_value_prefix_count (after_b, "ProfileRequest", marker)
+      - evidence_value_prefix_count (before_b, "ProfileRequest", marker);
+    ensure (evidence_delta == 60, "RM-C3 provider evidence count mismatch");
+    std::cout << "scenario RM-C3 passed\n";
+}
+
+} // namespace zlink::framework::e2e::registry_messaging::client

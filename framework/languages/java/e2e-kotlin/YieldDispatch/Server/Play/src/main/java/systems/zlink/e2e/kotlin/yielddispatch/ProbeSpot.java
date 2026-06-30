@@ -1,0 +1,140 @@
+package systems.zlink.e2e.kotlin.yielddispatch;
+
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.spots.ZLinkTimer;
+import systems.zlink.framework.spots.ZLinkTimerOptions;
+import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy;
+
+public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
+    private final ZLinkSpotContext context;
+    private final Map<String, TimerScenario> timerScenarios = new HashMap<>();
+    private final Map<String, ZLinkTimer> timers = new HashMap<>();
+    private int sequence;
+
+    public ProbeSpot(ZLinkSpotContext context) {
+        this.context = context;
+    }
+
+    @Override
+    public ZLinkSpotContext context() {
+        return context;
+    }
+
+    @Override
+    public void configure() {
+        context.handlers().addPacket(ProbeRequestHandler.class);
+        context.handlers().addPacket(HoldCommandHandler.class);
+        context.handlers().addPacket(YieldRequestHandler.class);
+        context.handlers().addPacket(YieldCommandHandler.class);
+        context.handlers().addPacket(WorkerYieldCommandHandler.class);
+        context.handlers().addPacket(ProbeCommandHandler.class);
+        context.handlers().addPacket(RemoteSpotYieldRequestHandler.class);
+        context.handlers().addPacket(TimerStartCommandHandler.class);
+        context.handlers().addPacket(TimerStopCommandHandler.class);
+        context.handlers().addPacket(YieldTimeoutCommandHandler.class);
+        context.handlers().addPacket(SpotProbeCommandHandler.class);
+        context.handlers().addActorRequest(ProbeActorRequestHandler.class);
+        context.handlers().addActorRequest(ProbeActorJoinHandler.class);
+        context.handlers().addActorRequest(ProbeActorYieldHandler.class);
+        context.handlers().addActorRequest(ProbeActorFastHandler.class);
+    }
+
+    @Override
+    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        return ZLinkSpotCreateResponse.accept();
+    }
+
+    @Override
+    public ZLinkSpotActorJoinResponse onActorJoin(
+        ProbeActor actor,
+        ZLinkMessage request,
+        CancellationToken cancellationToken) {
+        Contracts.ActorJoinRequest join = request.decode(Contracts.ActorJoinRequest.class);
+        return ZLinkSpotActorJoinResponse.accept(new Contracts.ActorJoinReply(
+            actor.actorId(),
+            context.spotRid().toString(),
+            "joined:" + join.value()));
+    }
+
+    Contracts.ProbeReply handle(Contracts.ProbeRequest request) {
+        sequence++;
+        if (request.op().equals("worker")) {
+            String worker = context.runWorker(token -> {
+                    Thread.sleep(request.millis());
+                    return "worker:" + request.op();
+                })
+                .timeout(Duration.ofSeconds(5))
+                .yield();
+            return reply(request, worker + "#" + sequence);
+        }
+        if (request.millis() <= 0) {
+            return reply(request, "immediate:" + request.op() + "#" + sequence);
+        }
+        Contracts.DelayReply delayed = context.outbound()
+            .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayRequest(request.op(), request.millis()))
+            .timeout(Duration.ofSeconds(5))
+            .yield(Contracts.DelayReply.class);
+        return reply(request, delayed.value() + "#" + sequence);
+    }
+
+    private Contracts.ProbeReply reply(Contracts.ProbeRequest request, String value) {
+        return new Contracts.ProbeReply(
+            context.spotRid().toString(),
+            context.nodeRid().toString(),
+            request.op(),
+            value);
+    }
+
+    synchronized void startTimer(Contracts.TimerStartCommand command) {
+        ZLinkTimer previous = timers.remove(command.timerName());
+        if (previous != null) {
+            previous.close();
+        }
+        timerScenarios.put(command.timerName(), new TimerScenario(
+            command.requestId(),
+            command.mode(),
+            command.delayMillis()));
+        ZLinkTimerOptions options = new ZLinkTimerOptions();
+        options.setOverrunPolicy(ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK);
+        ZLinkTimer timer = context.addTimer(
+                command.timerName(),
+                Duration.ofMillis(command.periodMillis()),
+                TimerTickHandler.class,
+                options)
+            .toCompletableFuture()
+            .join();
+        timers.put(command.timerName(), timer);
+    }
+
+    synchronized void stopTimers(String requestId) {
+        List<String> names = timerScenarios.entrySet().stream()
+            .filter(entry -> entry.getValue().requestId().equals(requestId))
+            .map(Map.Entry::getKey)
+            .toList();
+        names.forEach(this::closeTimer);
+    }
+
+    synchronized TimerScenario timerScenario(String timerName) {
+        return timerScenarios.get(timerName);
+    }
+
+    synchronized void closeTimer(String timerName) {
+        timerScenarios.remove(timerName);
+        ZLinkTimer timer = timers.remove(timerName);
+        if (timer != null) {
+            timer.close();
+        }
+    }
+
+    record TimerScenario(String requestId, String mode, long delayMillis) {
+    }
+}

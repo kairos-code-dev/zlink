@@ -1,21 +1,19 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.dispatchapi.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
-import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RestController
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.EvidenceStore
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatuses
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAssertionReq
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAssertionRes
 
-@ZLinkHandlerGroup("api")
+@RestController
 class ServerAssertionHandler(
     private val evidence: EvidenceStore,
-) : ZLinkSuspendingRequestHandler<ServerAssertionReq, ServerAssertionRes> {
-    override suspend fun handle(
-        request: ServerAssertionReq,
-        context: ZLinkRequestContext,
-    ): ServerAssertionRes {
+) {
+    @PostMapping("/self-check/assert")
+    fun handle(@RequestBody request: ServerAssertionReq): ServerAssertionRes {
         val success = evidence.hasSequence(
             request.successfulDeliveryId,
             DeliveryStatuses.Assigned,

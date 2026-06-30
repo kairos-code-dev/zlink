@@ -519,6 +519,16 @@ static_assert (
                  zlink::framework::stream_node_options_builder_t &>);
 
 static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_node_options_builder_t &> ()
+                             .set_tls_server ("server.crt", "server.key")),
+                 zlink::framework::stream_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_builder_t &> ()
+                             .set_tls_server ("server.crt", "server.key")),
+                 zlink::framework::stream_builder_t &>);
+
+static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ()
                              .enable_publisher ("tcp://127.0.0.1:5000")),
                  zlink::framework::fanout_channel_builder_t &>);

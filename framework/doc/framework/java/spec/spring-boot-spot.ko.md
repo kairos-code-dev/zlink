@@ -23,7 +23,7 @@ publisher handle을 사용한다.
 `SPOT`은 별도 raw runtime으로 노출하기보다, `Spring Boot` bean lifecycle 안에서
 등록하고 관리하는 편을 기본으로 본다.
 
-- `addSpotMesh(...).useDiscovery(...addRegistryEndpoint...)` 기준의 discovery 등록
+- root `useDiscovery().addRegistryEndpoint(...)` 기준의 discovery 등록
 - spot node 설정 등록과, 그에 따른 `ZLinkSpotManager`/`ZLinkSpotOutbound` 등 capability bean 조건부 노출
 - current channel publish/subscribe와 route bridge channel socket 경로
 - local spot 인스턴스가 없는 외부 노드용 publisher client 경로
@@ -55,8 +55,8 @@ publisher handle을 사용한다.
 public class SpotConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
+        framework.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
         ZLinkSpotMeshBuilder node = framework.addSpotMesh("game.stage");
-        node.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
         node.enableRouter("tcp://0.0.0.0:9000");
         node.enablePubSub("tcp://0.0.0.0:9001");
         node.configureEntrySpot()

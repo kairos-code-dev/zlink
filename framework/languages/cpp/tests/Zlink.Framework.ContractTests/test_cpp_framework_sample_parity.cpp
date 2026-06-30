@@ -37,12 +37,6 @@
 #include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation_spot.hpp"
 #include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/EntrySpot/support_entry_spot.hpp"
 #include "../../samples/SupportChat/Server/Api/Handlers/authenticate_user_handler.hpp"
-#include "../../samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp"
-#include "../../samples/DeliveryDispatch/Server/delivery_dispatch_server_role.hpp"
-#include "../../samples/GameQuest/Client/game_quest_client_scenario.hpp"
-#include "../../samples/GameQuest/Server/game_quest_server_role.hpp"
-#include "../../samples/ShoppingMall/Client/shopping_mall_client_scenario.hpp"
-#include "../../samples/ShoppingMall/Server/shopping_mall_server_role.hpp"
 
 #include <gtest/gtest.h>
 
@@ -423,95 +417,108 @@ TEST (CppFrameworkSampleParity, SupportChatEntrySpotUsesApiChannelOrchestration)
     EXPECT_NE (api_handler.find ("assign_agent_req_t"), std::string::npos);
 }
 
+TEST (CppFrameworkSampleParity, SupportChatUsesDotNetProbeAndTopologySurface)
+{
+    const auto cmake = read_file (cpp_language_root () / "CMakeLists.txt");
+    const auto runner = read_file (cpp_language_root () / "samples/SupportChat/run_sample.sh");
+    const auto probe = read_file (cpp_language_root () / "samples/SupportChat/Probe/main.cpp");
+    const auto support =
+      read_file (cpp_language_root () / "samples/SupportChat/Server/Support/support_server_host_factory.hpp");
+    const auto session =
+      read_file (cpp_language_root () / "samples/SupportChat/Server/Session/session_server_host_factory.hpp");
+
+    EXPECT_NE (cmake.find ("sample_cpp_framework_supportchat_probe"), std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_supportchat_probe"), std::string::npos);
+    EXPECT_NE (runner.find ("--registry-endpoint"), std::string::npos);
+    EXPECT_NE (runner.find ("topology=ready"), std::string::npos);
+    EXPECT_NE (probe.find ("registry_query_client_t"), std::string::npos);
+    EXPECT_NE (probe.find ("sample_names_t::api_channel"), std::string::npos);
+    EXPECT_NE (probe.find ("sample_names_t::support_channel"), std::string::npos);
+    EXPECT_NE (support.find ("add_spot_mesh (sample_names_t::support_spot_discovery)"),
+               std::string::npos);
+    EXPECT_NE (session.find ("add_spot_mesh (sample_names_t::support_spot_discovery)"),
+               std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleScenarioSurface)
 {
-    using namespace zlink::samples::deliverydispatch;
+    const auto client =
+      read_file (cpp_language_root ()
+                 / "samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp");
+    const auto dispatch_api =
+      read_file (cpp_language_root () / "samples/DeliveryDispatch/Server/DispatchApi/main.cpp");
+    const auto dispatch_center =
+      read_file (cpp_language_root ()
+                 / "samples/DeliveryDispatch/Server/DispatchCenter/main.cpp");
+    const auto session =
+      read_file (cpp_language_root () / "samples/DeliveryDispatch/Server/Session/main.cpp");
+    const auto tracking =
+      read_file (cpp_language_root () / "samples/DeliveryDispatch/Server/Tracking/main.cpp");
+    const auto runner = read_file (cpp_language_root () / "samples/DeliveryDispatch/run_sample.sh");
 
-    delivery_dispatch_server_role_t server;
-    const auto successful =
-      server.create_delivery ({"delivery-success", "customer-1", "north gate", "south gate"});
-    const auto reassigned =
-      server.create_delivery ({"delivery-reassign", "customer-2", "east gate", "west gate"});
-    server.subscribe_delivery (successful.delivery_id);
-    server.subscribe_delivery (reassigned.delivery_id);
-    EXPECT_TRUE (server.assert_evidence (successful.delivery_id, reassigned.delivery_id).passed);
+    EXPECT_NE (client.find ("zlink::http_client::client_t::create"), std::string::npos);
+    EXPECT_NE (client.find ("customer.wait_for<delivery_status_notify_t>"), std::string::npos);
+    EXPECT_NE (client.find ("customer.request (subscribe_delivery_req_t"), std::string::npos);
+    EXPECT_NE (dispatch_api.find (".map_post<create_delivery_http_handler_t> (\"/deliveries\")"),
+               std::string::npos);
+    EXPECT_NE (dispatch_center.find ("sample_names_t::courier_a_channel"), std::string::npos);
+    EXPECT_NE (dispatch_center.find ("sample_names_t::tracking_route_channel"), std::string::npos);
+    EXPECT_NE (tracking.find ("sample_names_t::status_fanout_channel"), std::string::npos);
+    EXPECT_NE (session.find (".register_session<customer_session_t> ()"), std::string::npos);
+    EXPECT_NE (session.find (".add_publish<delivery_status_fanout_handler_t> ()"),
+               std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_deliverydispatch_dispatch_api"),
+               std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_deliverydispatch_session"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, GameQuestUsesDotNetSampleScenarioSurface)
 {
-    using namespace zlink::samples::gamequest;
+    const auto client =
+      read_file (cpp_language_root () / "samples/GameQuest/Client/game_quest_client_scenario.hpp");
+    const auto api =
+      read_file (cpp_language_root () / "samples/GameQuest/Server/GameApi/main.cpp");
+    const auto mission =
+      read_file (cpp_language_root () / "samples/GameQuest/Server/QuestMission/main.cpp");
+    const auto runner = read_file (cpp_language_root () / "samples/GameQuest/run_sample.sh");
 
-    game_quest_server_role_t server;
-    server.enter_area ({"player-1", "quest-wolf-den", "area-1"});
-    server.kill_monster ({"player-1", "wolf", "quest-wolf-den", "kill-1"});
-    server.collect_item ({"player-1", "herb", 1, "item-1"});
-    server.kill_monster ({"player-1", "wolf", "quest-wolf-den", "kill-2"});
-    server.complete_mission ({"player-1", "quest-wolf-den", "mission-1"});
-    const auto progress = server.get_progress ("player-1").active_quests;
-    EXPECT_FALSE (progress.empty ());
+    EXPECT_NE (client.find ("zlink::http_client::client_t::create"), std::string::npos);
+    EXPECT_NE (client.find ("zlink::stream_e2e_client::use"), std::string::npos);
+    EXPECT_NE (client.find ("stream.request (subscribe_quest_req_t"), std::string::npos);
+    EXPECT_NE (api.find (".map_post<kill_http_handler_t> (\"/combat/kill\")"),
+               std::string::npos);
+    EXPECT_NE (api.find (".register_session<game_quest_session_t> ()"), std::string::npos);
+    EXPECT_NE (mission.find (".add_publish<gameplay_event_handler_t> ()"), std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_gamequest_registry"), std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_gamequest_game_api"), std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_gamequest_quest_mission"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, ShoppingMallUsesDotNetSampleScenarioSurface)
 {
-    using namespace zlink::samples::shoppingmall;
+    const auto client =
+      read_file (cpp_language_root () / "samples/ShoppingMall/Client/shopping_mall_client_scenario.hpp");
+    const auto api =
+      read_file (cpp_language_root () / "samples/ShoppingMall/Server/CommerceApi/main.cpp");
+    const auto workflow =
+      read_file (cpp_language_root () / "samples/ShoppingMall/Server/OrderWorkflow/main.cpp");
+    const auto runner = read_file (cpp_language_root () / "samples/ShoppingMall/run_sample.sh");
 
-    shopping_mall_server_role_t server;
-    const auto started =
-      server.start_order ({"cart-success", "shipping-1", "pm-ok", "order-success-001"});
-    EXPECT_EQ (started.status, std::string (order_status_t::created));
-    const auto continued = server.continue_workflow (started.order_id);
-    EXPECT_EQ (continued.state.status, std::string (order_status_t::confirmed));
-    EXPECT_EQ (server.get_order (started.order_id).state.status,
-               std::string (order_status_t::confirmed));
-}
-
-TEST (CppFrameworkSampleParity, DotNetParitySamplesUseRunnerOwnedServerProcess)
-{
-    struct sample_case_t
-    {
-        std::string sample;
-        std::string client;
-        std::string server_target;
-        std::string port_env;
-    };
-
-    const std::vector<sample_case_t> samples{
-      {"DeliveryDispatch", "Client/delivery_dispatch_client_scenario.hpp",
-       "sample_cpp_framework_deliverydispatch_server", "DELIVERYDISPATCH_DISPATCH_ENDPOINT"},
-      {"GameQuest", "Client/game_quest_client_scenario.hpp",
-       "sample_cpp_framework_gamequest_server", "GAMEQUEST_QUEST_ENDPOINT"},
-      {"ShoppingMall", "Client/shopping_mall_client_scenario.hpp",
-       "sample_cpp_framework_shoppingmall_server", "SHOPPINGMALL_WORKFLOW_ENDPOINT"}};
-
-    const auto samples_root = cpp_language_root () / "samples";
-    for (const auto &sample : samples) {
-        const auto client = read_file (samples_root / sample.sample / sample.client);
-        const auto server = read_file (samples_root / sample.sample / "Server/main.cpp");
-        const auto runner = read_file (samples_root / sample.sample / "run_sample.sh");
-        if (sample.sample == "DeliveryDispatch" || sample.sample == "GameQuest"
-            || sample.sample == "ShoppingMall") {
-            EXPECT_NE (client.find ("channel_client_t"), std::string::npos)
-              << sample.sample << " client must use the framework channel client";
-            EXPECT_NE (client.find ("request_to_channel"), std::string::npos)
-              << sample.sample << " client must request over a framework channel";
-            EXPECT_NE (server.find ("add_client_server_channel"), std::string::npos)
-              << sample.sample << " server must expose a framework channel";
-            EXPECT_NE (server.find (".enable_server"), std::string::npos)
-              << sample.sample << " server must bind the framework channel";
-            EXPECT_EQ (client.find ("support::request_line"), std::string::npos)
-              << sample.sample << " client must not use the temporary line protocol";
-        }
-        EXPECT_EQ (client.find ("../Server/"), std::string::npos)
-          << sample.sample << " client must not include server role internals";
-        EXPECT_EQ (client.find ("_state_t{\""), std::string::npos)
-          << sample.sample << " client must not satisfy the scenario by mutating local state";
-        EXPECT_NE (runner.find (sample.server_target), std::string::npos)
-          << sample.sample << " runner must start the server executable";
-        EXPECT_NE (runner.find (sample.port_env), std::string::npos)
-          << sample.sample << " runner must pass a concrete endpoint to the client";
-        EXPECT_NE (runner.find ("trap cleanup EXIT"), std::string::npos)
-          << sample.sample << " runner must own server cleanup";
-    }
+    EXPECT_NE (client.find ("zlink::http_client::client_t::create"), std::string::npos);
+    EXPECT_EQ (client.find ("../Server/"), std::string::npos);
+    EXPECT_NE (api.find (".map_post<start_order_http_handler_t> (\"/orders/start\")"),
+               std::string::npos);
+    EXPECT_NE (api.find ("route_client_t"), std::string::npos);
+    EXPECT_NE (api.find ("sample_names_t::workflow_route_channel"), std::string::npos);
+    EXPECT_NE (workflow.find (".add_request_handler<start_order_workflow_route_handler_t"),
+               std::string::npos);
+    EXPECT_NE (workflow.find ("start_order_workflow_req_t::packet_name"), std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_shoppingmall_registry"), std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_shoppingmall_commerce_api"),
+               std::string::npos);
+    EXPECT_NE (runner.find ("sample_cpp_framework_shoppingmall_order_workflow"),
+               std::string::npos);
+    EXPECT_NE (runner.find ("SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
@@ -858,9 +865,9 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithAutomaticAct
                std::string::npos);
     EXPECT_NE (api_factory.find (".map_post<create_game_http_handler_t> (\"/games\")"),
                std::string::npos);
-    EXPECT_NE (api_factory.find (".add_json"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_json"), std::string::npos);
-    EXPECT_NE (client.find (".add_json"), std::string::npos);
+    EXPECT_EQ (api_factory.find (".add_json"), std::string::npos);
+    EXPECT_EQ (play_factory.find (".add_json"), std::string::npos);
+    EXPECT_EQ (client.find (".add_json"), std::string::npos);
     EXPECT_EQ (api_factory.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (client.find (".add_message_pack"), std::string::npos);
@@ -913,6 +920,7 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     const auto play_factory = read_file (bingo_root / "Server/Play/play_server_host_factory.hpp");
     const auto session_factory =
       read_file (bingo_root / "Server/Session/session_server_host_factory.hpp");
+    const auto common_codecs = read_file (bingo_root / "Server/common_codecs.hpp");
     const auto session = read_file (bingo_root / "Server/Session/Sessions/bingo_session.hpp");
     const auto contracts = read_file (bingo_root / "Shared/Contracts/messages.hpp");
     const auto client = read_file (bingo_root / "Client/bingo_client_scenario.hpp");
@@ -928,9 +936,14 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> (sample_names_t::room_spot)"),
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<bingo_room_t>"), std::string::npos);
-    EXPECT_NE (api_framework.find ("codecs ().use"), std::string::npos);
-    EXPECT_NE (play_factory.find ("codecs ().use"), std::string::npos);
-    EXPECT_NE (session_factory.find ("codecs ().use"), std::string::npos);
+    EXPECT_NE (api_framework.find ("add_bingo_protobuf_codecs (options.codecs ())"),
+               std::string::npos);
+    EXPECT_NE (play_factory.find ("add_bingo_protobuf_codecs (options.codecs ())"),
+               std::string::npos);
+    EXPECT_NE (session_factory.find ("add_bingo_protobuf_codecs (options.codecs ())"),
+               std::string::npos);
+    EXPECT_NE (common_codecs.find ("codecs.use (framework_codecs::protobuf ())"),
+               std::string::npos);
     EXPECT_NE (client_main.find ("core_client1.codecs ().use"), std::string::npos);
     EXPECT_NE (client_main.find ("core_client2.codecs ().use"), std::string::npos);
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);

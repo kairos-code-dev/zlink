@@ -21,6 +21,10 @@ inline constexpr const char *actor_type = "scenario-player";
 inline constexpr const char *user_spot = "user";
 inline constexpr const char *alternate_spot = "alternate-user";
 inline constexpr const char *mesh_topic = "spot-service-topic";
+inline constexpr const char *multi_route_channel_a = "spot.service.multi.a";
+inline constexpr const char *multi_route_channel_b = "spot.service.multi.b";
+inline constexpr const char *multi_spot_a = "multi-a";
+inline constexpr const char *multi_spot_b = "multi-b";
 
 inline std::string owner_node_rid_for_key (const std::string &key)
 {
@@ -133,6 +137,8 @@ struct actor_ping_res_t
 struct spot_state_route_req_t
 {
     std::string key;
+    std::string target_node_rid;
+    std::string spot_rid;
     state_req_t state;
 };
 
@@ -142,6 +148,26 @@ struct state_res_t
     std::string owner_node_rid;
     int value = 0;
     int sequence = 0;
+};
+
+struct multi_node_create_spot_req_t
+{
+    std::string spot_rid;
+    int delta = 0;
+};
+
+struct multi_node_create_spot_res_t
+{
+    std::string spot_rid;
+    std::string node_rid;
+    std::string state;
+    int value = 0;
+};
+
+struct multi_node_state_route_req_t
+{
+    std::string spot_rid;
+    int delta = 0;
 };
 
 struct remote_actor_flow_res_t
@@ -295,6 +321,26 @@ struct spot_worker_req_t
     worker_req_t worker;
 };
 
+struct spot_worker_start_req_t
+{
+    std::string spot_rid;
+    std::string marker;
+    int delay_ms = 0;
+};
+
+struct spot_worker_start_res_t
+{
+    std::string spot_rid;
+    std::string owner_node_rid;
+    std::string marker;
+};
+
+struct spot_worker_complete_req_t
+{
+    std::string spot_rid;
+    std::string marker;
+};
+
 struct worker_res_t
 {
     int snapshot = 0;
@@ -401,6 +447,28 @@ struct spot_missing_route_res_t
     bool command_sent = false;
 };
 
+struct spot_missing_handler_req_t
+{
+    std::string spot_rid;
+};
+
+struct spot_missing_command_req_t
+{
+    std::string spot_rid;
+    std::string marker;
+};
+
+struct spot_missing_target_req_t
+{
+    std::string spot_rid;
+};
+
+struct spot_missing_target_res_t
+{
+    std::string spot_rid;
+    bool failed = false;
+};
+
 struct spot_to_spot_req_t
 {
     std::string target_key;
@@ -482,6 +550,34 @@ struct close_spot_res_t
     bool closed = false;
 };
 
+struct idle_close_command_t
+{
+    std::string name;
+    int period_ms = 0;
+};
+
+struct spot_idle_close_req_t
+{
+    std::string spot_rid;
+    std::string name;
+    int period_ms = 0;
+};
+
+struct overrun_timer_command_t
+{
+    std::string name;
+    std::string policy;
+    int period_ms = 0;
+};
+
+struct spot_overrun_start_req_t
+{
+    std::string spot_rid;
+    std::string name;
+    std::string policy;
+    int period_ms = 0;
+};
+
 struct stream_auth_req_t
 {
     std::string target_node_rid;
@@ -506,6 +602,12 @@ struct stream_auth_res_t
 struct actor_push_req_t
 {
     std::string value;
+};
+
+struct bound_session_push_req_t
+{
+    std::string actor_id;
+    actor_push_req_t push;
 };
 
 struct actor_push_res_t
@@ -533,6 +635,60 @@ struct evidence_snapshot_t
 {
     std::string node_rid;
     std::vector<evidence_entry_t> entries;
+};
+
+struct spot_worker_complete_res_t
+{
+    std::string spot_rid;
+    std::string marker;
+    bool completed = false;
+    evidence_snapshot_t evidence;
+};
+
+struct spot_idle_close_res_t
+{
+    std::string spot_rid;
+    std::string name;
+    bool closed = false;
+    evidence_snapshot_t evidence;
+};
+
+struct spot_overrun_start_res_t
+{
+    std::string spot_rid;
+    std::string name;
+    bool started = false;
+    evidence_snapshot_t evidence;
+};
+
+struct spot_publish_observe_res_t
+{
+    std::string operation;
+    std::string spot_rid;
+    std::string marker;
+    bool received = false;
+    evidence_snapshot_t evidence;
+};
+
+struct spot_missing_handler_res_t
+{
+    std::string spot_rid;
+    bool failed = false;
+    evidence_snapshot_t evidence;
+};
+
+struct spot_missing_command_res_t
+{
+    std::string spot_rid;
+    std::string marker;
+    bool sent = false;
+    evidence_snapshot_t evidence;
+};
+
+struct evidence_wait_request_t
+{
+    std::vector<std::string> contains_all;
+    int timeout_milliseconds = 10000;
 };
 
 inline void to_json (nlohmann::json &json, const actor_ref_dto_t &value)
@@ -716,13 +872,33 @@ inline void from_json (const nlohmann::json &json, actor_ping_res_t &value)
 
 inline void to_json (nlohmann::json &json, const spot_state_route_req_t &value)
 {
-    json = nlohmann::json{{"key", value.key}, {"state", value.state}};
+    json = nlohmann::json{{"key", value.key},
+                          {"target_node_rid", value.target_node_rid},
+                          {"spot_rid", value.spot_rid},
+                          {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_state_route_req_t &value)
 {
-    json.at ("key").get_to (value.key);
-    json.at ("state").get_to (value.state);
+    if (json.contains ("key")) {
+        json.at ("key").get_to (value.key);
+    }
+    if (json.contains ("target_node_rid")) {
+        json.at ("target_node_rid").get_to (value.target_node_rid);
+    }
+    if (json.contains ("spot_rid")) {
+        json.at ("spot_rid").get_to (value.spot_rid);
+    }
+    if (json.contains ("state")) {
+        json.at ("state").get_to (value.state);
+    } else {
+        if (json.contains ("op")) {
+            json.at ("op").get_to (value.state.op);
+        }
+        if (json.contains ("amount")) {
+            json.at ("amount").get_to (value.state.amount);
+        }
+    }
 }
 
 inline void to_json (nlohmann::json &json, const state_res_t &value)
@@ -739,6 +915,44 @@ inline void from_json (const nlohmann::json &json, state_res_t &value)
     json.at ("owner_node_rid").get_to (value.owner_node_rid);
     json.at ("value").get_to (value.value);
     json.at ("sequence").get_to (value.sequence);
+}
+
+inline void to_json (nlohmann::json &json, const multi_node_create_spot_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"delta", value.delta}};
+}
+
+inline void from_json (const nlohmann::json &json, multi_node_create_spot_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("delta").get_to (value.delta);
+}
+
+inline void to_json (nlohmann::json &json, const multi_node_create_spot_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"node_rid", value.node_rid},
+                          {"state", value.state},
+                          {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, multi_node_create_spot_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("node_rid").get_to (value.node_rid);
+    json.at ("state").get_to (value.state);
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const multi_node_state_route_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"delta", value.delta}};
+}
+
+inline void from_json (const nlohmann::json &json, multi_node_state_route_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("delta").get_to (value.delta);
 }
 
 inline void to_json (nlohmann::json &json, const remote_actor_flow_res_t &value)
@@ -1030,6 +1244,45 @@ inline void from_json (const nlohmann::json &json, spot_worker_req_t &value)
     json.at ("worker").get_to (value.worker);
 }
 
+inline void to_json (nlohmann::json &json, const spot_worker_start_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"marker", value.marker},
+                          {"delay_ms", value.delay_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_worker_start_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("marker").get_to (value.marker);
+    json.at ("delay_ms").get_to (value.delay_ms);
+}
+
+inline void to_json (nlohmann::json &json, const spot_worker_start_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"owner_node_rid", value.owner_node_rid},
+                          {"marker", value.marker}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_worker_start_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("owner_node_rid").get_to (value.owner_node_rid);
+    json.at ("marker").get_to (value.marker);
+}
+
+inline void to_json (nlohmann::json &json, const spot_worker_complete_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"marker", value.marker}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_worker_complete_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("marker").get_to (value.marker);
+}
+
 inline void to_json (nlohmann::json &json, const worker_res_t &value)
 {
     json = nlohmann::json{{"snapshot", value.snapshot},
@@ -1241,6 +1494,48 @@ inline void from_json (const nlohmann::json &json, spot_missing_route_res_t &val
     json.at ("command_sent").get_to (value.command_sent);
 }
 
+inline void to_json (nlohmann::json &json, const spot_missing_handler_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_missing_handler_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+}
+
+inline void to_json (nlohmann::json &json, const spot_missing_command_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"marker", value.marker}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_missing_command_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("marker").get_to (value.marker);
+}
+
+inline void to_json (nlohmann::json &json, const spot_missing_target_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_missing_target_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+}
+
+inline void to_json (nlohmann::json &json, const spot_missing_target_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"failed", value.failed}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_missing_target_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("failed").get_to (value.failed);
+}
+
 inline void to_json (nlohmann::json &json, const spot_to_spot_req_t &value)
 {
     json = nlohmann::json{{"target_key", value.target_key}, {"value", value.value}};
@@ -1400,6 +1695,59 @@ inline void from_json (const nlohmann::json &json, close_spot_res_t &value)
     json.at ("closed").get_to (value.closed);
 }
 
+inline void to_json (nlohmann::json &json, const idle_close_command_t &value)
+{
+    json = nlohmann::json{{"name", value.name}, {"period_ms", value.period_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, idle_close_command_t &value)
+{
+    json.at ("name").get_to (value.name);
+    json.at ("period_ms").get_to (value.period_ms);
+}
+
+inline void to_json (nlohmann::json &json, const spot_idle_close_req_t &value)
+{
+    json = nlohmann::json{
+      {"spot_rid", value.spot_rid}, {"name", value.name}, {"period_ms", value.period_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_idle_close_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("name").get_to (value.name);
+    json.at ("period_ms").get_to (value.period_ms);
+}
+
+inline void to_json (nlohmann::json &json, const overrun_timer_command_t &value)
+{
+    json = nlohmann::json{
+      {"name", value.name}, {"policy", value.policy}, {"period_ms", value.period_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, overrun_timer_command_t &value)
+{
+    json.at ("name").get_to (value.name);
+    json.at ("policy").get_to (value.policy);
+    json.at ("period_ms").get_to (value.period_ms);
+}
+
+inline void to_json (nlohmann::json &json, const spot_overrun_start_req_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"name", value.name},
+                          {"policy", value.policy},
+                          {"period_ms", value.period_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_overrun_start_req_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("name").get_to (value.name);
+    json.at ("policy").get_to (value.policy);
+    json.at ("period_ms").get_to (value.period_ms);
+}
+
 inline void to_json (nlohmann::json &json, const stream_auth_req_t &value)
 {
     json = nlohmann::json{{"target_node_rid", value.target_node_rid},
@@ -1449,6 +1797,17 @@ inline void to_json (nlohmann::json &json, const actor_push_req_t &value)
 inline void from_json (const nlohmann::json &json, actor_push_req_t &value)
 {
     json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const bound_session_push_req_t &value)
+{
+    json = nlohmann::json{{"actor_id", value.actor_id}, {"push", value.push}};
+}
+
+inline void from_json (const nlohmann::json &json, bound_session_push_req_t &value)
+{
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("push").get_to (value.push);
 }
 
 inline void to_json (nlohmann::json &json, const actor_push_res_t &value)
@@ -1512,6 +1871,117 @@ inline void from_json (const nlohmann::json &json, evidence_snapshot_t &value)
 {
     json.at ("node_rid").get_to (value.node_rid);
     json.at ("entries").get_to (value.entries);
+}
+
+inline void to_json (nlohmann::json &json, const spot_worker_complete_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"marker", value.marker},
+                          {"completed", value.completed},
+                          {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_worker_complete_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("marker").get_to (value.marker);
+    json.at ("completed").get_to (value.completed);
+    json.at ("evidence").get_to (value.evidence);
+}
+
+inline void to_json (nlohmann::json &json, const spot_idle_close_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"name", value.name},
+                          {"closed", value.closed},
+                          {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_idle_close_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("name").get_to (value.name);
+    json.at ("closed").get_to (value.closed);
+    json.at ("evidence").get_to (value.evidence);
+}
+
+inline void to_json (nlohmann::json &json, const spot_overrun_start_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"name", value.name},
+                          {"started", value.started},
+                          {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_overrun_start_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("name").get_to (value.name);
+    json.at ("started").get_to (value.started);
+    json.at ("evidence").get_to (value.evidence);
+}
+
+inline void to_json (nlohmann::json &json, const spot_publish_observe_res_t &value)
+{
+    json = nlohmann::json{{"operation", value.operation},
+                          {"spot_rid", value.spot_rid},
+                          {"marker", value.marker},
+                          {"received", value.received},
+                          {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_publish_observe_res_t &value)
+{
+    json.at ("operation").get_to (value.operation);
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("marker").get_to (value.marker);
+    json.at ("received").get_to (value.received);
+    json.at ("evidence").get_to (value.evidence);
+}
+
+inline void to_json (nlohmann::json &json, const spot_missing_handler_res_t &value)
+{
+    json = nlohmann::json{
+      {"spot_rid", value.spot_rid}, {"failed", value.failed}, {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_missing_handler_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("failed").get_to (value.failed);
+    json.at ("evidence").get_to (value.evidence);
+}
+
+inline void to_json (nlohmann::json &json, const spot_missing_command_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"marker", value.marker},
+                          {"sent", value.sent},
+                          {"evidence", value.evidence}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_missing_command_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("marker").get_to (value.marker);
+    json.at ("sent").get_to (value.sent);
+    json.at ("evidence").get_to (value.evidence);
+}
+
+inline void to_json (nlohmann::json &json, const evidence_wait_request_t &value)
+{
+    json = nlohmann::json{{"contains_all", value.contains_all},
+                          {"timeout_milliseconds", value.timeout_milliseconds}};
+}
+
+inline void from_json (const nlohmann::json &json, evidence_wait_request_t &value)
+{
+    if (json.contains ("contains_all")) {
+        json.at ("contains_all").get_to (value.contains_all);
+    }
+    if (json.contains ("timeout_milliseconds")) {
+        json.at ("timeout_milliseconds").get_to (value.timeout_milliseconds);
+    }
 }
 
 } // namespace zlink::framework::e2e::spot_service

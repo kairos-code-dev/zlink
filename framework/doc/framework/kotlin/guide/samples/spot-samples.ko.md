@@ -16,8 +16,8 @@ class SpotConfig {
     fun framework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.useCoroutineHandlers(Dispatchers.Default)
+            options.useDiscovery().addRegistryEndpoint("tcp://registry1:5551")
             val spot = options.addSpotMesh("game.stage")
-            spot.useDiscovery().addRegistryEndpoint("tcp://registry1:5551")
             spot.enableRouter("tcp://0.0.0.0:9000")
             spot.enablePubSub("tcp://0.0.0.0:9001")
             spot.addEntrySpot(GameEntrySpot::class.java)

@@ -47,8 +47,7 @@ class play_server_host_factory_t
               .add_singleton<redis_room_route_store_t, sample_topology_t> ()
               .add_singleton<tictactoe_game_creator_t, sample_topology_t,
                              redis_room_route_store_t> ();
-            options.codecs ().add_json ();
-            options.services ().add_singleton<sample_topology_t> (
+                options.services ().add_singleton<sample_topology_t> (
               std::make_unique<sample_topology_t> (topology));
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.selected_play_endpoint ())

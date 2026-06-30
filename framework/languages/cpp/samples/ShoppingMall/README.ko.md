@@ -1,8 +1,8 @@
 # ShoppingMall C++ Sample
 
 ShoppingMall 샘플은 주문 생성과 order workflow 상태 전이를 C++ 샘플 구조로 보여준다.
-현재 C++ 구현은 channel handler와 role service로 workflow를 검증하는 compact 샘플이며,
-공통 시나리오의 `OrderWorkflowSpot` owner 구조까지 구현한 full 샘플은 아니다.
+클라이언트는 HTTP API를 호출하고, `CommerceApi`는 route mesh를 통해 주문 workflow 소유
+노드로 업무 명령을 보낸다.
 
 ## 실행
 
@@ -12,8 +12,11 @@ ShoppingMall 샘플은 주문 생성과 order workflow 상태 전이를 C++ 샘�
 
 ## Topology
 
-- `Client`는 주문 생성, 결제, 포장, 배송 상태를 검증한다.
-- `Server`는 commerce API와 order workflow 책임을 분리한다.
+- `Client`는 주문 생성, 중복 요청, 실패 경로, projection rebuild를 검증한다.
+- `Registry`는 discovery registry를 실행한다.
+- `CommerceApi`는 HTTP 요청을 받고 idempotency 키로 주문 id를 정한다.
+- `OrderWorkflow`는 `shoppingmall.order.workflow.route` route channel에서 주문 상태 전이를
+  처리한다.
 - `Shared`는 주문 상태 계약을 정의한다.
 
 ## Success Condition

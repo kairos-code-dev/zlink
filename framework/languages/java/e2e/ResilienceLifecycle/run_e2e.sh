@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.resiliencelifecycle\.Program'
+role_pattern='systems\.zlink\.e2e\.resiliencelifecycle\.(client|provider|registry)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -135,16 +135,23 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/install/resilience-lifecycle/bin/resilience-lifecycle"
+client_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/resilience-lifecycle-client/bin/resilience-lifecycle-client"
+}
+
+registry_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/resilience-lifecycle-registry/bin/resilience-lifecycle-registry"
+}
+
+provider_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Provider/install/resilience-lifecycle-provider/bin/resilience-lifecycle-provider"
 }
 
 start_registry() {
-  ZLINK_JAVA_E2E_ROLE=registry \
   ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
+    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
   pids+=("$!")
   wait_port registry-router "${REGISTRY_ROUTER}"
 }
@@ -153,13 +160,12 @@ start_provider() {
   local rid="$1"
   local api="$2"
   local http="$3"
-  ZLINK_JAVA_E2E_ROLE=provider \
   ZLINK_JAVA_E2E_PROVIDER_RID="${rid}" \
   ZLINK_JAVA_E2E_API_ENDPOINT="${api}" \
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+    "$(provider_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
   wait_port "${rid}-api" "${api}"
   wait_port "${rid}-http" "${http}"
@@ -180,14 +186,13 @@ sleep 2
 control_dir="${log_dir}/control"
 mkdir -p "${control_dir}"
 
-ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_CLIENT_MODE=restart \
 ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
 ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-restart.stdout.log" 2>"${log_dir}/client-restart.stderr.log" &
+  "$(client_bin)" >"${log_dir}/client-restart.stdout.log" 2>"${log_dir}/client-restart.stderr.log" &
 restart_client_pid="$!"
 pids+=("${restart_client_pid}")
 
@@ -202,7 +207,6 @@ sleep 2
 touch "${control_dir}/a1-up"
 wait "${restart_client_pid}"
 
-ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_CLIENT_MODE=reschedule \
 ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
@@ -210,7 +214,7 @@ ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT="${API_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
 ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-reschedule.stdout.log" 2>"${log_dir}/client-reschedule.stderr.log" &
+  "$(client_bin)" >"${log_dir}/client-reschedule.stdout.log" 2>"${log_dir}/client-reschedule.stderr.log" &
 reschedule_client_pid="$!"
 pids+=("${reschedule_client_pid}")
 
@@ -225,14 +229,13 @@ sleep 2
 touch "${control_dir}/a2-up"
 wait "${reschedule_client_pid}"
 
-ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_CLIENT_MODE=flapping \
 ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-flapping.stdout.log" 2>"${log_dir}/client-flapping.stderr.log" &
+  "$(client_bin)" >"${log_dir}/client-flapping.stdout.log" 2>"${log_dir}/client-flapping.stderr.log" &
 flapping_client_pid="$!"
 pids+=("${flapping_client_pid}")
 
@@ -248,12 +251,11 @@ done
 touch "${control_dir}/a5-stop"
 wait "${flapping_client_pid}"
 
-ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-default.stdout.log" 2>"${log_dir}/client-default.stderr.log"
+  "$(client_bin)" >"${log_dir}/client-default.stdout.log" 2>"${log_dir}/client-default.stderr.log"
 
 wait_port_down api-b "${API_B}"
 start_provider api-b "${API_B}" "${HTTP_B}"
@@ -265,7 +267,6 @@ for wave in 1 2; do
   for index in $(seq 1 6); do
     storm_log_dir="${log_dir}/storm-${wave}-${index}"
     mkdir -p "${storm_log_dir}"
-    ZLINK_JAVA_E2E_ROLE=client \
     ZLINK_JAVA_E2E_CLIENT_MODE=storm \
     ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
     ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
@@ -273,7 +274,7 @@ for wave in 1 2; do
     ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
     ZLINK_JAVA_E2E_STORM_EXIT_DELAY_MS="$((index * 250))" \
     ZLINK_JAVA_E2E_LOG_DIR="${storm_log_dir}" \
-      "$(app_bin)" >"${log_dir}/client-storm-${wave}-${index}.stdout.log" 2>"${log_dir}/client-storm-${wave}-${index}.stderr.log" &
+      "$(client_bin)" >"${log_dir}/client-storm-${wave}-${index}.stdout.log" 2>"${log_dir}/client-storm-${wave}-${index}.stderr.log" &
     storm_pids+=("$!")
     pids+=("$!")
   done
@@ -282,14 +283,13 @@ for wave in 1 2; do
   done
 done
 
-ZLINK_JAVA_E2E_ROLE=client \
 ZLINK_JAVA_E2E_CLIENT_MODE=cleanup \
 ZLINK_JAVA_E2E_CONTROL_DIR="${control_dir}" \
 ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
 ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(app_bin)" >"${log_dir}/client-cleanup.stdout.log" 2>"${log_dir}/client-cleanup.stderr.log"
+  "$(client_bin)" >"${log_dir}/client-cleanup.stdout.log" 2>"${log_dir}/client-cleanup.stderr.log"
 
 cat "${log_dir}/client-restart.stdout.log"
 cat "${log_dir}/client-reschedule.stdout.log"

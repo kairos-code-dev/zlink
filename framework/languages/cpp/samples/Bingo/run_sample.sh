@@ -176,17 +176,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The sample owns its Redis: always provision a dedicated, throwaway container
-# so room-allocation state stays isolated per run and never touches a developer's
-# local Redis. (BINGO_REDIS_ENDPOINT is intentionally derived here, not read.)
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)." >&2
-  exit 1
+if [[ -n "${BINGO_REDIS_ENDPOINT:-}" ]]; then
+  wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
+else
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required to run the Bingo sample when BINGO_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="bingo-cpp-redis-${RANDOM}-$$"
+  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+  BINGO_REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+  wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 fi
-REDIS_CONTAINER="bingo-cpp-redis-${RANDOM}-$$"
-docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
-BINGO_REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
-wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
 topology_args=(
   "--sample.topology.registryPubEndpoint=$REGISTRY_PUB_ENDPOINT"

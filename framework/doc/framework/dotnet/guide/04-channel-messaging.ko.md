@@ -469,6 +469,7 @@ payload 직렬화 codec 은 framework 등록에서 켠다.
 
 ```csharp
 options.Codecs.Use(ZLinkProtobufCodec.Default);
+options.Codecs.AddJson();
 options.Codecs.Use(ZLinkMessagePackCodec.Default);
 ```
 

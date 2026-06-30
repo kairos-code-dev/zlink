@@ -51,6 +51,49 @@ struct json_roundtrip_t
 struct json_roundtrip_reply_t
 {
     std::string value;
+    std::string content_type;
+};
+
+struct json_codec_send_t
+{
+    static constexpr const char *packet_name = "JsonCodecSend";
+    std::string value;
+};
+
+struct protobuf_roundtrip_t
+{
+    static constexpr const char *packet_name = "ProtobufRoundtrip";
+    std::string value;
+};
+
+struct protobuf_roundtrip_reply_t
+{
+    std::string value;
+    std::string content_type;
+};
+
+struct protobuf_codec_send_t
+{
+    static constexpr const char *packet_name = "ProtobufCodecSend";
+    std::string value;
+};
+
+struct messagepack_roundtrip_t
+{
+    static constexpr const char *packet_name = "MessagePackRoundtrip";
+    std::string value;
+};
+
+struct messagepack_roundtrip_reply_t
+{
+    std::string value;
+    std::string content_type;
+};
+
+struct messagepack_codec_send_t
+{
+    static constexpr const char *packet_name = "MessagePackCodecSend";
+    std::string value;
 };
 
 struct custom_roundtrip_t
@@ -188,10 +231,85 @@ inline void from_json (const nlohmann::json &json, json_roundtrip_t &value)
 
 inline void to_json (nlohmann::json &json, const json_roundtrip_reply_t &value)
 {
-    json = nlohmann::json{{"value", value.value}};
+    json = nlohmann::json{{"value", value.value}, {"content_type", value.content_type}};
 }
 
 inline void from_json (const nlohmann::json &json, json_roundtrip_reply_t &value)
+{
+    json.at ("value").get_to (value.value);
+    if (json.contains ("content_type")) {
+        json.at ("content_type").get_to (value.content_type);
+    }
+}
+
+inline void to_json (nlohmann::json &json, const json_codec_send_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, json_codec_send_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const protobuf_roundtrip_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, protobuf_roundtrip_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const protobuf_roundtrip_reply_t &value)
+{
+    json = nlohmann::json{{"value", value.value}, {"content_type", value.content_type}};
+}
+
+inline void from_json (const nlohmann::json &json, protobuf_roundtrip_reply_t &value)
+{
+    json.at ("value").get_to (value.value);
+    json.at ("content_type").get_to (value.content_type);
+}
+
+inline void to_json (nlohmann::json &json, const protobuf_codec_send_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, protobuf_codec_send_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const messagepack_roundtrip_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, messagepack_roundtrip_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const messagepack_roundtrip_reply_t &value)
+{
+    json = nlohmann::json{{"value", value.value}, {"content_type", value.content_type}};
+}
+
+inline void from_json (const nlohmann::json &json, messagepack_roundtrip_reply_t &value)
+{
+    json.at ("value").get_to (value.value);
+    json.at ("content_type").get_to (value.content_type);
+}
+
+inline void to_json (nlohmann::json &json, const messagepack_codec_send_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, messagepack_codec_send_t &value)
 {
     json.at ("value").get_to (value.value);
 }

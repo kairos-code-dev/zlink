@@ -46,7 +46,6 @@ public final class SessionApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-session.log")
                 .traceLabel("session");
-            options.codecs().addJson();
             options.addHandlersFromPackageOf(SessionApplication.class);
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient();

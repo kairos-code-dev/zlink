@@ -1,31 +1,19 @@
-plugins {
-    application
-}
-
 val e2eBuildDir = providers.environmentVariable("ZLINK_JAVA_E2E_BUILD_DIR").orNull
 if (!e2eBuildDir.isNullOrBlank()) {
     layout.buildDirectory.set(file(e2eBuildDir))
 }
 
-dependencies {
-    implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink-framework-codec-protobuf:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink-framework-codec-msgpack:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink:6.0.4")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
-    implementation("com.google.protobuf:protobuf-java:4.30.2")
-    implementation("org.springframework.boot:spring-boot-starter:3.5.14")
-}
-
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(22))
+subprojects {
+    val rootE2eBuildDir = e2eBuildDir
+    if (!rootE2eBuildDir.isNullOrBlank()) {
+        layout.buildDirectory.set(file("${rootE2eBuildDir}/${project.path.removePrefix(":").replace(":", "-")}"))
     }
-}
 
-application {
-    applicationName = "registration-codec"
-    mainClass.set("systems.zlink.e2e.registrationcodec.Program")
-    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+    plugins.withType<JavaPlugin> {
+        extensions.configure<JavaPluginExtension> {
+            toolchain {
+                languageVersion.set(JavaLanguageVersion.of(22))
+            }
+        }
+    }
 }

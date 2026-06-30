@@ -38,7 +38,6 @@ public final class DispatchCenterApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-dispatch-center.log")
                 .traceLabel("dispatch-center");
-            options.codecs().addJson();
             options.addHandlersFromPackageOf(DispatchCenterApplication.class);
             options.addClientServerChannel(SampleNames.DispatchChannel)
                 .enableServer(SampleTopology.DispatchChannelEndpoint)

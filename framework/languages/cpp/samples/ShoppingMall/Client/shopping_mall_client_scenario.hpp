@@ -3,117 +3,115 @@
 
 #include "../Shared/Contracts/messages.hpp"
 
-#include <zlink/framework.hpp>
+#include <zlink/http_client.hpp>
 
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
 namespace zlink::samples::shoppingmall
 {
 
-using namespace framework;
-
 class shopping_mall_client_scenario_t
 {
   public:
-    bool run (channel_client_t &channels)
+    bool run (const std::string &api_url)
     {
-        const auto success =
-          start (channels, {"cart-success", "addr-home", "pm-ok", "order-success-001"});
-        if (success.status != order_status_t::created) {
-            return false;
-        }
-        const auto confirmed = get_state (channels, success.order_id);
-        if (confirmed.state.status != order_status_t::confirmed
-            || confirmed.state.reservation_id.empty () || confirmed.state.payment_id.empty ()
-            || confirmed.state.amount != 120.0 || confirmed.state.currency != "USD") {
-            return false;
-        }
+        try {
+            auto api = zlink::http_client::client_t::create (api_url)
+                         .timeout (std::chrono::seconds (12))
+                         .build ();
+            const auto success =
+              start (api, {"cart-success", "addr-home", "pm-ok", "order-success-001"});
+            ensure (success.status == order_status_t::created, "success order start failed");
+            const auto confirmed = get_state (api, success.order_id);
+            ensure (confirmed.state.status == order_status_t::confirmed, "confirm failed");
+            ensure (!confirmed.state.reservation_id.empty (), "reservation missing");
+            ensure (!confirmed.state.payment_id.empty (), "payment missing");
+            ensure (confirmed.state.amount == 120.0, "amount mismatch");
+            ensure (confirmed.state.currency == "USD", "currency mismatch");
 
-        const auto duplicate =
-          start (channels, {"cart-success", "addr-home", "pm-ok", "order-success-001"});
-        if (duplicate.order_id != success.order_id) {
-            return false;
-        }
+            const auto duplicate =
+              start (api, {"cart-success", "addr-home", "pm-ok", "order-success-001"});
+            ensure (duplicate.order_id == success.order_id, "idempotency duplicate failed");
 
-        request<seed_pending_idempotency_req_t, start_order_res_t> (
-          channels, {"order-pending-001", "order-pending-0001", "api-a"});
-        const auto pending =
-          start (channels, {"cart-success", "addr-office", "pm-ok", "order-pending-001"});
-        const auto pending_recovered = get_state (channels, pending.order_id);
-        if (pending.order_id != "order-pending-0001"
-            || pending_recovered.state.status != order_status_t::confirmed
-            || pending_recovered.state.shipping_address_id != "addr-office") {
-            return false;
-        }
+            (void) api.post ("/self-check/idempotency/pending")
+              .body (seed_pending_idempotency_req_t{
+                "order-pending-001", "order-pending-0001", "api-a"})
+              .fetch<start_order_res_t> ();
+            const auto pending =
+              start (api, {"cart-success", "addr-office", "pm-ok", "order-pending-001"});
+            const auto pending_state = get_state (api, pending.order_id);
+            ensure (pending.order_id == "order-pending-0001", "pending id mismatch");
+            ensure (pending_state.state.status == order_status_t::confirmed,
+                    "pending recovery failed");
 
-        const auto inventory =
-          start (channels, {"cart-inventory-fail", "addr-home", "pm-ok", "order-inventory-001"});
-        const auto inventory_failed = get_state (channels, inventory.order_id);
-        if (inventory_failed.state.status != order_status_t::failed
-            || inventory_failed.state.reason.find ("inventory") == std::string::npos) {
-            return false;
-        }
+            const auto inventory =
+              start (api, {"cart-inventory-fail", "addr-home", "pm-ok", "order-inventory-001"});
+            const auto inventory_failed = get_state (api, inventory.order_id);
+            ensure (inventory_failed.state.status == order_status_t::failed,
+                    "inventory failure status mismatch");
+            ensure (inventory_failed.state.reason.find ("inventory") != std::string::npos,
+                    "inventory failure reason missing");
 
-        const auto payment =
-          start (channels, {"cart-payment-fail", "addr-home", "pm-decline", "order-payment-001"});
-        const auto payment_failed = get_state (channels, payment.order_id);
-        if (payment_failed.state.status != order_status_t::failed
-            || payment_failed.state.reservation_id.empty ()
-            || payment_failed.state.reason.find ("payment") == std::string::npos) {
-            return false;
-        }
+            const auto payment =
+              start (api, {"cart-payment-fail", "addr-home", "pm-decline", "order-payment-001"});
+            const auto payment_failed = get_state (api, payment.order_id);
+            ensure (payment_failed.state.status == order_status_t::failed,
+                    "payment failure status mismatch");
+            ensure (!payment_failed.state.reservation_id.empty (), "payment reservation missing");
+            ensure (payment_failed.state.reason.find ("payment") != std::string::npos,
+                    "payment failure reason missing");
 
-        request<delete_order_projection_req_t, get_order_state_res_t> (channels,
-                                                                       {success.order_id});
-        const auto rebuilt =
-          request<rebuild_order_projection_req_t, rebuild_order_projection_res_t> (
-            channels, {success.order_id});
-        if (rebuilt.state.status != order_status_t::confirmed) {
-            return false;
-        }
+            (void) api.post ("/self-check/projection/delete")
+              .body (delete_order_projection_req_t{success.order_id})
+              .fetch<get_order_state_res_t> ();
+            const auto rebuilt = api.post ("/self-check/projection/rebuild")
+                                   .body (rebuild_order_projection_req_t{success.order_id})
+                                   .fetch<rebuild_order_projection_res_t> ();
+            ensure (rebuilt.state.status == order_status_t::confirmed,
+                    "projection rebuild failed");
 
-        const auto scale =
-          start (channels, {"cart-success", "addr-office", "pm-ok", "order-scale-001"});
-        const auto scale_confirmed = get_state (channels, scale.order_id);
-        if (scale_confirmed.state.status != order_status_t::confirmed) {
-            return false;
-        }
+            const auto scale =
+              start (api, {"cart-success", "addr-office", "pm-ok", "order-scale-001"});
+            const auto scale_confirmed = get_state (api, scale.order_id);
+            ensure (scale_confirmed.state.status == order_status_t::confirmed,
+                    "scale order confirm failed");
 
-        const auto assertion = request<server_assertion_req_t, server_assertion_res_t> (
-          channels, {success.order_id, pending.order_id, inventory.order_id, payment.order_id,
-                     scale.order_id});
-        if (!assertion.passed) {
+            const auto assertion = api.post ("/self-check/assert")
+                                     .body (server_assertion_req_t{
+                                       success.order_id, pending.order_id, inventory.order_id,
+                                       payment.order_id, scale.order_id})
+                                     .fetch<server_assertion_res_t> ();
+            ensure (assertion.passed, "server evidence failed");
+            std::cout << "shoppingmall-server-evidence=completed\n";
+            return true;
+        }
+        catch (const std::exception &error) {
+            std::cerr << "shoppingmall scenario failed: " << error.what () << "\n";
             return false;
         }
-        std::cout << "shoppingmall-server-evidence=completed\n";
-        return true;
     }
 
   private:
-    static start_order_res_t start (channel_client_t &channels, start_order_req_t request)
+    static start_order_res_t start (zlink::http_client::client_t &api, start_order_req_t request)
     {
-        return shopping_mall_client_scenario_t::request<start_order_req_t, start_order_res_t> (
-          channels, std::move (request));
+        return api.post ("/orders/start").body (request).fetch<start_order_res_t> ();
     }
 
-    static get_order_state_res_t get_state (channel_client_t &channels, const std::string &order_id)
+    static get_order_state_res_t get_state (zlink::http_client::client_t &api,
+                                            const std::string &order_id)
     {
-        return request<get_order_state_req_t, get_order_state_res_t> (channels, {order_id});
+        return api.post ("/orders/get")
+          .body (get_order_state_req_t{order_id})
+          .fetch<get_order_state_res_t> ();
     }
 
-    template <typename TRequest, typename TResponse>
-    static TResponse request (channel_client_t &channels, TRequest request)
+    static void ensure (bool condition, const char *message)
     {
-        auto result = channels.request_to_channel ("shoppingmall.workflow", std::move (request))
-                        .template async<TResponse> ()
-                        .result ();
-        if (!result) {
-            const auto *error = result.error ();
-            throw std::runtime_error (error == nullptr ? "ShoppingMall request failed"
-                                                       : error->what ());
+        if (!condition) {
+            throw std::runtime_error (message);
         }
-        return result.value ();
     }
 };
 

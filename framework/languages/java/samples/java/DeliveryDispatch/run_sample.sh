@@ -107,6 +107,19 @@ wait_port() {
   return 1
 }
 
+wait_http() {
+  local url="$1"
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if curl -fsS "${url}/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${url}/health" >&2
+  return 1
+}
+
 wait_log_contains() {
   local log_file="$1"
   local pattern="$2"
@@ -154,7 +167,7 @@ PY
 }
 
 gradle_run() {
-  ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
+  ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon --max-workers 1 "$@" --quiet
 }
 
 app_bin() {
@@ -163,21 +176,10 @@ app_bin() {
   echo "${project}/build/install/${script}/bin/${script}"
 }
 
-build_framework_jars() {
-  (
-    cd ../../..
-    ./gradlew --no-daemon \
-      :zlink-framework-core:jar \
-      :zlink-framework-spring-boot-starter:jar \
-      :zlink-stream-connector:jar \
-      --quiet
-  )
-}
-
-read -r registry_pub registry_router api_channel dispatch_channel courier_a courier_b tracking_channel status_fanout tracking_spot_router tracking_spot_pub session_stream session_spot_router session_spot_pub tracking_spot_route session_spot_route < <(reserve_ports)
+read -r registry_pub registry_router api_http dispatch_channel courier_a courier_b tracking_channel status_fanout tracking_spot_router tracking_spot_pub session_stream session_spot_router session_spot_pub tracking_spot_route session_spot_route < <(reserve_ports)
 registry_pub_host="${registry_pub%:*}"; registry_pub_port="${registry_pub##*:}"
 registry_router_host="${registry_router%:*}"; registry_router_port="${registry_router##*:}"
-api_host="${api_channel%:*}"; api_port="${api_channel##*:}"
+api_host="${api_http%:*}"; api_port="${api_http##*:}"
 dispatch_host="${dispatch_channel%:*}"; dispatch_port="${dispatch_channel##*:}"
 courier_a_host="${courier_a%:*}"; courier_a_port="${courier_a##*:}"
 courier_b_host="${courier_b%:*}"; courier_b_port="${courier_b##*:}"
@@ -195,7 +197,7 @@ prefix="zlink.samples.deliverydispatch"
 export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
 -D${prefix}.registryPubEndpoint=tcp://${registry_pub_host}:${registry_pub_port} \
 -D${prefix}.registryRouterEndpoint=tcp://${registry_router_host}:${registry_router_port} \
--D${prefix}.apiChannelEndpoint=tcp://${api_host}:${api_port} \
+-D${prefix}.apiHttpUrl=http://${api_host}:${api_port} \
 -D${prefix}.dispatchChannelEndpoint=tcp://${dispatch_host}:${dispatch_port} \
 -D${prefix}.courierAEndpoint=tcp://${courier_a_host}:${courier_a_port} \
 -D${prefix}.courierBEndpoint=tcp://${courier_b_host}:${courier_b_port} \
@@ -210,7 +212,6 @@ export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
 -D${prefix}.sessionSpotRouteEndpoint=tcp://${session_spot_route_host}:${session_spot_route_port} \
 -D${prefix}.workDir=$(pwd)/${work_dir}"
 
-build_framework_jars
 gradle_run \
   :Server:Registry:installDist \
   :Server:Tracking:installDist \
@@ -247,7 +248,7 @@ wait_log_contains "${log_dir}/dispatch-center.log" "Started Program"
 
 "$(app_bin Server/DispatchApi DispatchApi)" >"${log_dir}/dispatch-api.log" 2>&1 &
 pids+=("$!")
-wait_log_contains "${log_dir}/dispatch-api.log" "Started Program"
+wait_http "http://${api_host}:${api_port}"
 
 "$(app_bin Probe Probe)" >"${log_dir}/probe.log" 2>&1
 "$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1

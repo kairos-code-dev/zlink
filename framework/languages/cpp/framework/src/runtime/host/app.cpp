@@ -7,6 +7,7 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/route_channel_host_service.hpp"
+#include "runtime/diagnostics/monitoring_runtime.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/host/actor_gateway_spot_bridge.hpp"
 #include "runtime/host/framework_runtime.hpp"
@@ -22,6 +23,7 @@
 #include <csignal>
 #include <chrono>
 #include <memory>
+#include <string>
 #include <thread>
 #include <typeindex>
 #include <utility>
@@ -43,11 +45,170 @@ bool has_inbound_channel (const std::vector<channel_snapshot_t> &channels)
     return false;
 }
 
+bool monitoring_socket_source_exists (const std::vector<channel_snapshot_t> &channels,
+                                      const std::string &source_name)
+{
+    const auto channel_name_exists =
+      std::any_of (channels.begin (), channels.end (), [&] (const channel_snapshot_t &channel) {
+          return channel.name == source_name;
+      });
+    if (channel_name_exists) {
+        return true;
+    }
+    const auto separator = source_name.rfind ('.');
+    if (separator == std::string::npos) {
+        return false;
+    }
+    if (separator == 0 || separator + 1 == source_name.size ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "socket monitoring source must use '<channel>.<capability>'");
+    }
+    const auto channel_name = source_name.substr (0, separator);
+    const auto capability = source_name.substr (separator + 1);
+    return std::any_of (channels.begin (), channels.end (), [&] (const channel_snapshot_t &channel) {
+        if (channel.name != channel_name) {
+            return false;
+        }
+        return (capability == "server" && channel.server.enabled)
+               || (capability == "client" && channel.client.enabled)
+               || (capability == "publisher" && channel.publisher.enabled)
+               || (capability == "subscriber" && channel.subscriber.enabled);
+    });
+}
+
+service_kind_t registry_native_service_kind (zlink::service_kind_t kind)
+{
+    switch (kind) {
+        case zlink::service_kind_t::discovery:
+            return service_kind_t::registry;
+        case zlink::service_kind_t::spot_pub:
+        case zlink::service_kind_t::spot_sub:
+            return service_kind_t::spot;
+        case zlink::service_kind_t::socket:
+            return service_kind_t::channel;
+    }
+    return service_kind_t::channel;
+}
+
+service_role_t registry_native_service_role (zlink::service_role_t role)
+{
+    switch (role) {
+        case zlink::service_role_t::spot:
+            return service_role_t::spot_node;
+        case zlink::service_role_t::router:
+            return service_role_t::server;
+        case zlink::service_role_t::dealer:
+            return service_role_t::client;
+        case zlink::service_role_t::pub:
+            return service_role_t::publisher;
+        case zlink::service_role_t::sub:
+            return service_role_t::subscriber;
+        case zlink::service_role_t::invalid:
+            return service_role_t::server;
+    }
+    return service_role_t::server;
+}
+
+topology_source_t registry_native_topology_source (zlink::topology_source_t source)
+{
+    switch (source) {
+        case zlink::topology_source_t::manual:
+            return topology_source_t::embedded;
+        case zlink::topology_source_t::discovery:
+        case zlink::topology_source_t::registry:
+            return topology_source_t::remote;
+    }
+    return topology_source_t::embedded;
+}
+
+topology_state_t registry_native_topology_state (zlink::topology_state_t state)
+{
+    switch (state) {
+        case zlink::topology_state_t::ready:
+        case zlink::topology_state_t::connecting:
+            return topology_state_t::active;
+        case zlink::topology_state_t::lost:
+        case zlink::topology_state_t::error:
+        case zlink::topology_state_t::stopped:
+            return topology_state_t::stale;
+        case zlink::topology_state_t::discovered:
+            return topology_state_t::unknown;
+    }
+    return topology_state_t::unknown;
+}
+
+registry_state_t registry_native_state (zlink::registry_state_t state)
+{
+    switch (state) {
+        case zlink::registry_state_t::active:
+        case zlink::registry_state_t::degraded:
+            return registry_state_t::running;
+        case zlink::registry_state_t::idle:
+        case zlink::registry_state_t::error:
+            return registry_state_t::stopped;
+    }
+    return registry_state_t::stopped;
+}
+
+std::vector<topology_entry_t>
+registry_native_topology (const std::vector<zlink::registry_topology_entry_t> &entries)
+{
+    std::vector<topology_entry_t> mapped;
+    mapped.reserve (entries.size ());
+    for (const auto &entry : entries) {
+        mapped.push_back (topology_entry_t{
+          {}, registry_native_service_kind (entry.service_kind ()),
+          registry_native_service_role (entry.service_role ()), entry.channel_name (),
+          registry_native_topology_source (entry.source ()),
+          registry_native_topology_state (entry.state ()), entry.endpoint (), entry.routing_id ()});
+    }
+    return mapped;
+}
+
+std::vector<service_summary_entry_t> registry_native_summary (
+  const std::vector<zlink::registry_service_summary_entry_t> &entries)
+{
+    std::vector<service_summary_entry_t> mapped;
+    mapped.reserve (entries.size ());
+    for (const auto &entry : entries) {
+        mapped.push_back (service_summary_entry_t{
+          entry.channel_name (), service_kind_t::channel,
+          registry_native_service_role (entry.service_role ()), entry.total_count ()});
+    }
+    return mapped;
+}
+
+void validate_monitoring_sources (const monitoring_builder_t &monitoring,
+                                  const std::vector<channel_snapshot_t> &channels,
+                                  const std::vector<spot_node_snapshot_t> &spot_nodes)
+{
+    const auto state = monitoring_runtime_t::from (monitoring).state ();
+    for (const auto &source : state->socket_sources) {
+        if (!monitoring_socket_source_exists (channels, source.source_name)) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "socket monitoring source '" + source.source_name
+                                           + "' is not registered");
+        }
+    }
+    for (const auto &source : state->spot_sources) {
+        const auto exists = std::any_of (spot_nodes.begin (), spot_nodes.end (),
+                                         [&] (const spot_node_snapshot_t &spot_node) {
+                                             return spot_node.name == source.source_name;
+                                         });
+        if (!exists) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "spot monitoring source '" + source.source_name
+                                           + "' is not registered");
+        }
+    }
+}
+
 class registry_host_service_t final : public hosted_service_t
 {
   public:
-    explicit registry_host_service_t (registry_options_snapshot_t options) :
-        _options (std::move (options))
+    registry_host_service_t (registry_options_snapshot_t options,
+                             std::shared_ptr<monitoring_runtime_state_t> monitoring) :
+        _options (std::move (options)), _monitoring (std::move (monitoring))
     {
     }
 
@@ -60,13 +221,67 @@ class registry_host_service_t final : public hosted_service_t
             registry.add_peer (peer);
         }
         registry.bind (_options.pub_endpoint, _options.router_endpoint);
+        publish_status_snapshot (registry);
+        _poller = std::thread ([this] { poll_registry (); });
     }
 
-    void stop () noexcept override { _runtime.drain (); }
+    void stop () noexcept override
+    {
+        _stop_requested.store (true);
+        if (_poller.joinable ()) {
+            _poller.join ();
+        }
+        _runtime.drain ();
+    }
 
   private:
+    void publish_status_snapshot (zlink::service::registry_t &registry)
+    {
+        if (!_monitoring) {
+            return;
+        }
+        const auto status = registry.status ();
+        monitoring_runtime_t (_monitoring)
+          .publish_registry_snapshot (
+            "registry",
+            registry_status_t{registry_native_state (status.state ()),
+                              std::to_string (status.registry_id ()),
+                              _options.pub_endpoint,
+                              _options.router_endpoint,
+                              status.peer_registry_count ()},
+            {}, {});
+    }
+
+    void poll_registry ()
+    {
+        auto &registry = _runtime.registry ();
+        while (!_stop_requested.load ()) {
+            if (_monitoring) {
+                try {
+                    const auto status = registry.status ();
+                    monitoring_runtime_t (_monitoring)
+                      .publish_registry_snapshot (
+                        "registry",
+                        registry_status_t{registry_native_state (status.state ()),
+                                          std::to_string (status.registry_id ()),
+                                          _options.pub_endpoint,
+                                          _options.router_endpoint,
+                                          status.peer_registry_count ()},
+                        registry_native_topology (registry.topology ()),
+                        registry_native_summary (registry.service_summary ()));
+                }
+                catch (...) {
+                }
+            }
+            std::this_thread::sleep_for (_options.broadcast_interval);
+        }
+    }
+
     registry_options_snapshot_t _options;
+    std::shared_ptr<monitoring_runtime_state_t> _monitoring;
     runtime::framework_runtime_t _runtime;
+    std::atomic<bool> _stop_requested{false};
+    std::thread _poller;
 };
 
 class app_state_t
@@ -311,6 +526,10 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
+    if (!_state->services.contains (std::type_index (typeid (registry_query_t)))) {
+        _state->services.add_singleton<registry_query_t> (
+          std::make_unique<registry_query_t> (_state->zlink.registry_query ()));
+    }
     detail::bind_zlink_monitoring (_state->zlink, _state->monitoring);
     detail::bind_stream_serializers (_state->zlink, _state->serializers);
     auto &actor_gateway_runtime =
@@ -321,7 +540,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
       .bind_discovery (_state->zlink.discovery_options ());
     const auto registry_snapshot = _state->zlink.registry_options ();
     if (!registry_snapshot.pub_endpoint.empty () && !registry_snapshot.router_endpoint.empty ()) {
-        add_hosted_service (std::make_unique<detail::registry_host_service_t> (registry_snapshot));
+        add_hosted_service (std::make_unique<detail::registry_host_service_t> (
+          registry_snapshot, detail::monitoring_runtime_t::from (_state->monitoring).state ()));
     }
     const auto channel_snapshot = _state->zlink.channels ();
     detail::channel_runtime_manager_t::from (_state->zlink)
@@ -333,6 +553,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto stream_snapshot = _state->zlink.streams ();
     const auto spot_node_snapshot = _state->zlink.spot_nodes ();
+    detail::validate_monitoring_sources (_state->monitoring, channel_snapshot, spot_node_snapshot);
     std::vector<runtime::spot_node_host_service_t::node_runtime_t> spot_node_runtimes;
     if (!spot_node_snapshot.empty ()) {
         for (const auto &spot_node : spot_node_snapshot) {

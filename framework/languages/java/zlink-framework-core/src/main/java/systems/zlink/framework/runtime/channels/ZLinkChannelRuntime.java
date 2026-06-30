@@ -787,6 +787,11 @@ public final class ZLinkChannelRuntime
         running = false;
         spotRouteBridges.values().forEach(ZLinkBackendSpotRouteBridge::close);
         discoveries.forEach(ZLinkBackendDiscovery::close);
+        clients.values().forEach(ZLinkBackendDealerSocket::close);
+        servers.values().forEach(ZLinkBackendRouterSocket::close);
+        publishers.values().forEach(ZLinkBackendPublisherSocket::close);
+        subscribers.values().forEach(ZLinkBackendSubscriberSocket::close);
+        routeRouters.values().forEach(ZLinkBackendRouterSocket::close);
         manualClients.forEach(ZLinkBackendDealerSocket::close);
         manualServers.forEach(ZLinkBackendRouterSocket::close);
         manualPublishers.forEach(ZLinkBackendPublisherSocket::close);

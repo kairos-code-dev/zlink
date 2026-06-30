@@ -54,8 +54,8 @@
 | `handler_invocation_context_t` | `{descriptor, context, shared_ptr<const message_t> message}` |
 | 등록 | `options.handlers().group("group").add<T>()` / `use_filter<TFilter>()` |
 
-**codec 등록** (`codecs/serializer.hpp`): `serializer_registry_t` — JSON serializer는
-framework가 기본으로 설치한다. Protobuf와 MessagePack은 framework codec extension package를
+**codec 등록** (`codecs/serializer.hpp`): `serializer_registry_t` — JSON 기본 serializer는
+`add_json<T>()`로 등록한다. Protobuf와 MessagePack은 framework codec extension package를
 참조한 뒤 `codecs().use(extension)`으로 등록한다. custom codec도 같은 extension 객체 안에서
 `add_serializer<T>(serialize_fn, deserialize_fn)`를 호출해 등록한다.
 

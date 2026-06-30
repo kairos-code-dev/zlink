@@ -554,7 +554,6 @@ int main ()
     options_send_handler_t::last_value.clear ();
     options_publish_handler_t::last_value.clear ();
     options.handlers ().group ("api").add<options_request_handler_t> ();
-    options.codecs ().add_json ();
     options.handlers ().group ("api").add<late_options_request_handler_t> ();
     options.handlers ().group ("api").add<context_options_request_handler_t> ();
     options.handlers ().group ("api").add_send<options_send_handler_t> ();
@@ -1231,6 +1230,17 @@ int main ()
           },
           "metadata key must not be empty")) {
         return 61;
+    }
+
+    if (!options_failure_contains (
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
+              invalid_options.add_stream_node ("tls.stream")
+                .bind ("tls://127.0.0.1:9204")
+                .set_tls_server (" ", "server.key")
+                .register_session ("tls-session");
+          },
+          "STREAM TLS certificate file is required")) {
+        return 65;
     }
 
     if (!options_failure_contains (

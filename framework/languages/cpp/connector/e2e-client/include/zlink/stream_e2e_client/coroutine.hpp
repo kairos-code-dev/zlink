@@ -7,8 +7,6 @@
 #include <chrono>
 #include <functional>
 #include <future>
-#include <memory>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -194,18 +192,7 @@ template <typename TMessage> class coroutine_wait_call_t
 
     std::future<TMessage> to_future (std::string failure_message = "stream wait failed")
     {
-        auto promise = std::make_shared<std::promise<TMessage>> ();
-        auto future = promise->get_future ();
-        _inner.submit ([promise, failure_message = std::move (failure_message)] (
-                         result_t<TMessage> result) mutable {
-            if (!result) {
-                promise->set_exception (std::make_exception_ptr (
-                  std::runtime_error (failure_message)));
-                return;
-            }
-            promise->set_value (std::move (result.value ()));
-        });
-        return future;
+        return _inner.to_future (std::move (failure_message));
     }
 
   private:

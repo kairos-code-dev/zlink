@@ -81,6 +81,7 @@ handler 타입만 등록한다. topic 이름과 payload 타입은 handler type a
 
 ```cpp
 app.add_zlink_framework([](auto &options) {
+    options.codecs().add_json();
     options.add_client_server_channel("orders")
       .enable_server("tcp://0.0.0.0:7001")
       .use_handler_group("orders-api");

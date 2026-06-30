@@ -1,0 +1,101 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#pragma once
+
+#include "service_options.hpp"
+
+#include "../Handlers/service_handlers.hpp"
+#include "../../Shared/evidence_store.hpp"
+#include "../../../Shared/runtime_monitoring_contracts.hpp"
+
+#include <zlink/framework.hpp>
+
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+
+namespace zlink::framework::e2e::runtime_monitoring::service
+{
+
+inline int run_service_host (int argc,
+                             char **argv,
+                             std::optional<std::string> monitor_profile = std::nullopt)
+{
+    const auto read_options = read_service_options ();
+    auto options = read_options;
+    if (monitor_profile) {
+        options.monitor_profile = *monitor_profile;
+    }
+    auto app = zlink::framework::app_t::create ();
+    app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
+        auto evidence = std::make_unique<server::evidence_store_t> (options.rid,
+                                                                    options.evidence_file);
+        auto *evidence_ptr = evidence.get ();
+        framework.services ().add_singleton<server::evidence_store_t> (std::move (evidence));
+        framework.codecs ().add_json ();
+        framework.codecs ().add_json<profile_request_t, profile_reply_t> ();
+        framework.use_discovery ().add_registry_endpoint (options.registry_router);
+        framework.add_client_server_channel (profile_channel)
+          .enable_server (options.channel_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (options.rid))
+          .use_handler_group (handler_group);
+        framework.add_spot_mesh (spot_node)
+          .set_routing_id (zlink::routing_id_t::from (options.rid))
+          .enable_pub_sub (options.spot_endpoint.empty ()
+                             ? "inproc://runtime-monitoring-spot-" + options.rid
+                             : options.spot_endpoint)
+          .add_spot<monitoring_spot_t> (spot_channel);
+        framework.handlers ().group (handler_group).add<profile_request_handler_t> ();
+        auto &monitoring = framework.monitoring ();
+        monitoring.add_socket_events (channel_server_source);
+        if (options.monitor_profile == "socket-filter") {
+            monitoring.add_socket_events (
+              profile_channel,
+              {zlink::framework::socket_event_kind_t::connection_ready});
+        } else {
+            monitoring.add_socket_events (profile_channel);
+        }
+        monitoring.add_spot_events (spot_node, std::chrono::milliseconds (100));
+        monitoring.add_spot_timer_events (spot_node);
+        monitoring.on<zlink::framework::socket_event_payload_t> (
+          [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
+              evidence_ptr->add ("monitor-socket|source=" + event.source_name
+                                 + "|kind=" + socket_kind_name (event.event)
+                                 + "|remote=" + event.remote_address);
+          });
+        monitoring.on<zlink::framework::spot_event_payload_t> (
+          [evidence_ptr] (const zlink::framework::spot_event_payload_t &event) {
+              evidence_ptr->add ("monitor-spot|source=" + event.source_name
+                                 + "|node=" + event.spot_node_name
+                                 + "|kind=" + spot_kind_name (event.event)
+                                 + "|peers=" + std::to_string (event.peers.size ())
+                                 + "|subjects=" + std::to_string (event.subjects.size ())
+                                 + "|timer="
+                                 + (event.timer_diagnostic
+                                      ? event.timer_diagnostic->timer_name
+                                      : std::string ("<null>")));
+          });
+        if (options.monitor_profile == "throwing") {
+            monitoring.on<zlink::framework::socket_event_payload_t> (
+              [evidence_ptr] (const zlink::framework::socket_event_payload_t &event) {
+                  evidence_ptr->add ("monitor-throw|source=" + event.source_name
+                                     + "|kind=" + socket_kind_name (event.event));
+                  throw std::runtime_error ("monitoring dispatch failure for e2e");
+              });
+        }
+        if (!options.http_endpoint.empty ()) {
+            framework.http ()
+              .listen (options.http_endpoint)
+              .map_health ("/health")
+              .map_get<server::evidence_handler_t> ("/evidence")
+              .map_post<server::evidence_wait_handler_t> ("/evidence/wait")
+              .map_post<server_weight_handler_t> ("/admin/server-weight")
+              .map_post<create_spot_handler_t> ("/spot/create")
+              .map_post<shutdown_handler_t> ("/shutdown");
+        }
+    });
+    return app.run (argc, argv);
+}
+
+} // namespace zlink::framework::e2e::runtime_monitoring::service

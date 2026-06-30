@@ -1,18 +1,17 @@
 package systems.zlink.samples.deliverydispatch.client;
 
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.samples.deliverydispatch.client.configuration.SampleNames;
-import systems.zlink.samples.deliverydispatch.client.configuration.SampleTimings;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages.Status;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamMessage;
 
 public final class DeliveryDispatchClientScenario {
-    private final ZLinkClient channels;
+    private final ZLinkHttpClient api;
 
-    public DeliveryDispatchClientScenario(ZLinkClient channels) {
-        this.channels = channels;
+    public DeliveryDispatchClientScenario(ZLinkHttpClient api) {
+        this.api = api;
     }
 
     public void run(ZLinkStreamConnector customer) throws Exception {
@@ -78,25 +77,21 @@ public final class DeliveryDispatchClientScenario {
     }
 
     private Messages.DeliveryCreated createDelivery(String deliveryId) {
-        return channels
-            .requestToChannel(
-                SampleNames.ApiChannel,
-                new Messages.CreateDeliveryRequest(
+        return api
+            .post("/deliveries")
+            .body(new Messages.CreateDeliveryRequest(
                     deliveryId,
                     "customer-1",
                     "Kitchen 12",
                     "Customer Lobby"))
-            .timeout(SampleTimings.RequestTimeout)
-            .await(Messages.DeliveryCreated.class);
+            .fetch(Messages.DeliveryCreated.class);
     }
 
     private void assertServerEvidence() {
-        Messages.ServerAssertionRes assertion = channels
-            .requestToChannel(
-                SampleNames.ApiChannel,
-                new Messages.ServerAssertionReq("delivery-success", "delivery-reassign"))
-            .timeout(SampleTimings.RequestTimeout)
-            .await(Messages.ServerAssertionRes.class);
+        Messages.ServerAssertionRes assertion = api
+            .post("/self-check/assert")
+            .body(new Messages.ServerAssertionReq("delivery-success", "delivery-reassign"))
+            .fetch(Messages.ServerAssertionRes.class);
         ensure(assertion.passed());
         System.out.println("deliverydispatch-server-evidence=completed");
     }

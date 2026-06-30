@@ -5,7 +5,7 @@
 
 | Scenario | 상태 | 근거 |
 |----------|------|------|
-| `RM-A1` | 구현 | registry discovery로 `registry.messaging.api`를 resolve하고 request를 보낸다. |
+| `RM-A1` | 구현 | registry discovery로 `registry.messaging.api`를 resolve해 request를 보내고, registry topology endpoint에서 두 provider가 active로 보이는지 검증한다. |
 | `RM-A2` | 구현 | `EnableClient(endpoint)` 수동 연결로 `api-a`에 직접 request를 보낸다. |
 | `RM-A4` | 구현 | 같은 rid `api-a`를 다른 endpoint의 `api-a-v2`로 교체한 뒤 연속 request를 검증한다. |
 | `RM-A6` | 구현 | 같은 registry 안에서 `api` channel과 `workflow` channel의 provider가 섞이지 않는지 검증한다. |
@@ -13,9 +13,9 @@
 | `RM-B2` | 구현 | `api-b` provider 종료 뒤 request가 `api-a`로만 가는지 검증한다. |
 | `RM-C1` | 구현 | request와 send happy path를 함께 검증한다. |
 | `RM-C2` | 구현 | route mesh에서 target rid `api-b`로 request하고, 없는 rid는 실패하는지 검증한다. |
-| `RM-C3` | 구현 | 수동 multi-endpoint client-server channel에서 두 provider가 모두 처리하는지 검증한다. |
-| `RM-C4` | 구현 | timeout 뒤 정상 request가 late reply에 오염되지 않는지 검증한다. |
-| `RM-C5` | 구현 | 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. |
+| `RM-C3` | 구현 | direct consumer HTTP role이 수동 multi-endpoint client-server channel로 request를 보내고, 두 provider가 모두 처리하는지 검증한다. C++ HTTP array body binding 차이 때문에 `.NET`의 batch endpoint 대신 같은 consumer의 단건 request endpoint를 반복 호출한다. |
+| `RM-C4` | 구현 | discovery consumer HTTP role이 timeout request와 정상 request를 보내고, late reply가 후속 request를 오염시키지 않는지 검증한다. |
+| `RM-C5` | 구현 | discovery consumer HTTP role이 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. |
 | `RM-C7` | 구현 | `server_peer_weight`로 build-time server weight를 다르게 준 provider 두 개를 띄우고, registry-discovered client에서 high-weight provider가 더 많이 처리되는지 검증한다. |
-| `RM-C8` | 구현 | public typed client로 소형, 대형, near-large payload 왕복을 검증하고, `server_max_message_size`를 낮춘 별도 provider에서 초과 payload 실패 뒤 정상 request가 복구되는지 검증한다. |
-| `RM-C9` | 구현 | 느린 provider handler에 다량 request를 보내 bounded timeout을 관측하고, 적체가 풀린 뒤 정상 request가 같은 channel에서 복구되는지 검증한다. |
+| `RM-C8` | 구현 | single consumer HTTP role이 `PayloadRequest`/`PayloadReply`로 소형, 대형, near-large payload의 length와 SHA-256 왕복을 검증한다. `server_max_message_size`를 낮춘 별도 provider에서 초과 payload가 C++ public timeout error로 끝나는 것과 이후 정상 request 복구를 검증한다. |
+| `RM-C9` | 부분 구현(P2) | backpressure consumer HTTP role이 low-HWM client channel로 느린 send handler에 다량 `ProfileCommand`를 보내고, provider evidence와 backlog 해소 뒤 후속 request 복구를 검증한다. 현재 C++ public send submit은 이 harness에서 .NET처럼 bounded failure를 노출하지 않아 bounded-failure 단언은 gap으로 남긴다. 2026-06-30 검증에서 bounded-failure 단언을 켜면 `logs/20260630-081601-3230989/client-rm-c9.stderr.log`의 `RM-C9 expected at least one bounded failure...` 오류로 실패했다. |

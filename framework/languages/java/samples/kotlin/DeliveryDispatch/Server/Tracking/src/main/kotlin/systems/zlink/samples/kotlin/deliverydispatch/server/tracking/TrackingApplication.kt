@@ -49,7 +49,6 @@ class TrackingApplication {
                 traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-tracking.log")
                 traceLabel("tracking")
             }
-            options.codecs().addJson()
             options.addHandlersFromPackageOf(TrackingApplication::class.java)
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(SampleTopology.TrackingChannelEndpoint)

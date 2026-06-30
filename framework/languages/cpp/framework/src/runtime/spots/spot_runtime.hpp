@@ -73,6 +73,7 @@ class spot_node_builder_state_t
     std::map<std::string, spot_route_t> actor_routes;
     std::map<std::string, std::shared_ptr<service::spot_t>> native_spots_by_rid;
     std::map<std::string, std::function<std::optional<spot_route_t> (spot_rid_t)>> resolvers;
+    std::vector<std::string> last_monitoring_peers;
     std::shared_ptr<runtime::offload_executor_t> worker_executor;
     std::uint64_t next_spot_id = 1;
 };
@@ -221,6 +222,7 @@ class spot_node_runtime_t
     void attach_native_node (std::shared_ptr<service::spot_node_t> node);
     void detach_native_node ();
     std::shared_ptr<service::spot_node_t> native_node () const;
+    void publish_peer_snapshot_if_changed ();
     std::vector<spot_context_t> active_contexts () const;
     result_t<void> dispatch_subscription (const spot_context_t &context,
                                           std::string topic,

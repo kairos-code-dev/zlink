@@ -130,6 +130,7 @@ class route_channel_host_service_t::route_loop_t
           *_router, stop, _runtime->manual_connections ()))
     {
         _router->options ().handover (true);
+        _router->options ().mandatory (true);
         _router->options ().heartbeat_interval (std::chrono::milliseconds (250));
         _router->options ().heartbeat_timeout (std::chrono::milliseconds (1000));
         _router->options ().reconnect_interval (std::chrono::milliseconds (50));
@@ -258,7 +259,8 @@ class route_channel_host_service_t::route_loop_t
   private:
     struct completed_reply_t
     {
-        zlink::received_t received;
+        std::optional<zlink::routing_id_t> target_rid;
+        std::uint64_t request_seq = 0;
         zlink::framework::runtime::messaging::message_parts_t parts;
     };
 
@@ -297,8 +299,15 @@ class route_channel_host_service_t::route_loop_t
             auto bridge =
               std::make_unique<zlink::service::spot_route_bridge_t> (
                 native_node->create_route_bridge ());
-            bridge->attach_router_channel (
-              _route_channel_id, *_router);
+            try {
+                bridge->attach_router_channel (_route_channel_id, *_router);
+            }
+            catch (const std::exception &error) {
+                throw framework_exception_t (
+                  framework_error_kind_t::request_failed,
+                  "route channel '" + _route_channel_id
+                    + "' SPOT route bridge attach failed: " + error.what ());
+            }
             _backend->attach_spot_route_bridge (std::move (bridge), _route_channel_id);
             return;
         }
@@ -331,10 +340,10 @@ class route_channel_host_service_t::route_loop_t
         return zlink::framework::runtime::messaging::message_parts_t (std::move (copied));
     }
 
-    static void reply (zlink::received_t &received,
-                       const zlink::framework::runtime::messaging::message_parts_t &parts)
+    void reply (const completed_reply_t &completed)
     {
-        if (parts.size () == 0 || !received.request_seq ()) {
+        const auto &parts = completed.parts;
+        if (parts.size () == 0 || completed.request_seq == 0 || !completed.target_rid) {
             return;
         }
         std::vector<zlink::message_t> copied;
@@ -342,7 +351,8 @@ class route_channel_host_service_t::route_loop_t
         for (std::size_t index = 0; index < parts.size (); ++index) {
             copied.push_back (clone (parts[index]));
         }
-        auto operation = received.reply ().message (copied[0]);
+        auto operation = _router->reply (*completed.target_rid, completed.request_seq)
+                           .message (copied[0]);
         for (std::size_t index = 1; index < copied.size (); ++index) {
             operation = std::move (operation).message (copied[index]);
         }
@@ -351,18 +361,25 @@ class route_channel_host_service_t::route_loop_t
 
     void dispatch_async (zlink::received_t received, std::vector<zlink::message_t> copied)
     {
+        auto routing_id = *received.routing_id ();
+        const auto request_seq = received.request_seq ();
         std::lock_guard<std::mutex> lock (_workers_mutex);
         _workers.emplace_back (
-          [this, received = std::move (received), copied = std::move (copied)] () mutable {
+          [this, routing_id = std::move (routing_id), request_seq,
+           copied = std::move (copied)] () mutable {
               auto dispatched = _dispatcher.dispatch (detail::route_received_packet_t{
-                *received.routing_id (), received.request_seq (),
+                routing_id, request_seq,
                 zlink::framework::runtime::messaging::message_parts_t (std::move (copied))});
               if (!dispatched || !dispatched.value ()) {
                   return;
               }
+              if (!request_seq) {
+                  return;
+              }
               std::lock_guard<std::mutex> reply_lock (_replies_mutex);
               _replies.push_back (
-                completed_reply_t{std::move (received), std::move (dispatched.value ()->parts)});
+                completed_reply_t{std::move (routing_id), *request_seq,
+                                  std::move (dispatched.value ()->parts)});
           });
     }
 
@@ -379,7 +396,7 @@ class route_channel_host_service_t::route_loop_t
                 _replies.pop_front ();
             }
             try {
-                reply (completed.received, completed.parts);
+                reply (completed);
             }
             catch (const std::exception &error) {
                 std::cerr << "zlink framework route late reply ignored: " << error.what ()
@@ -455,14 +472,25 @@ void route_channel_host_service_t::start (service_provider_t &services)
             found != _internal_dispatchers.end ()) {
             internal_packets = found->second;
         }
-        auto loop = std::make_unique<route_loop_t> (_bus, route_channel_id, services,
-                                                    *_serializers,
-                                                    detail::registry_runtime_t::from (_registry),
-                                                    _discovery, _spot_nodes,
-                                                    std::move (internal_packets), _stop);
+        auto loop = std::make_unique<route_loop_t> (
+          _bus, route_channel_id, services, *_serializers,
+          detail::registry_runtime_t::from (_registry), _discovery, _spot_nodes,
+          internal_packets, _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));
-        _threads.emplace_back ([raw] { raw->run (); });
+        _threads.emplace_back ([this, raw] {
+            try {
+                raw->run ();
+            }
+            catch (const std::exception &error) {
+                std::cerr << "zlink framework route channel stopped: " << error.what () << '\n';
+                _stop.store (true, std::memory_order_release);
+            }
+            catch (...) {
+                std::cerr << "zlink framework route channel stopped\n";
+                _stop.store (true, std::memory_order_release);
+            }
+        });
     }
 }
 
@@ -474,15 +502,13 @@ void route_channel_host_service_t::stop () noexcept
     for (const auto &route_channel_id : manager.route_channel_ids ()) {
         registry_runtime.detach_spot_route_discovery (route_channel_id);
     }
-    for (auto &loop : _loops) {
-        loop->stop ();
-    }
     for (auto &thread : _threads) {
         if (thread.joinable ()) {
             thread.join ();
         }
     }
     for (auto &loop : _loops) {
+        loop->stop ();
         loop->term ();
     }
     _threads.clear ();

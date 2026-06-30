@@ -1,25 +1,22 @@
 package systems.zlink.samples.deliverydispatch.server.dispatchapi.handlers;
 
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
 import systems.zlink.samples.deliverydispatch.server.configuration.EvidenceStore;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages.Status;
 
-@ZLinkHandlerGroup("api")
-public final class ServerAssertionHandler
-    implements ZLinkRequestHandler<Messages.ServerAssertionReq, Messages.ServerAssertionRes> {
+@RestController
+public final class ServerAssertionHandler {
     private final EvidenceStore evidence;
 
     public ServerAssertionHandler(EvidenceStore evidence) {
         this.evidence = evidence;
     }
 
-    @Override
-    public Messages.ServerAssertionRes handle(
-        Messages.ServerAssertionReq request,
-        ZLinkRequestContext context) {
+    @PostMapping("/self-check/assert")
+    public Messages.ServerAssertionRes handle(@RequestBody Messages.ServerAssertionReq request) {
         boolean success = evidence.hasSequence(
             request.successfulDeliveryId(),
             Status.Assigned,

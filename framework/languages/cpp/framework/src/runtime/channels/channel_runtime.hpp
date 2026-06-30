@@ -4,6 +4,7 @@
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
+#include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
 #include "runtime/channels/channel_pending_requests.hpp"
@@ -20,6 +21,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <typeindex>
 #include <vector>
 
@@ -141,7 +143,8 @@ class channel_runtime_t
                                                  service_provider_t &services,
                                                  serializer_registry_t &serializers,
                                                  const handler_registry_t &handlers,
-                                                 const zlink::message_t &message) const;
+                                                 const zlink::message_t &message,
+                                                 std::string_view content_type = "") const;
 
     result_t<void> dispatch_send (std::string channel_name,
                                   std::string topic,
@@ -149,7 +152,8 @@ class channel_runtime_t
                                   service_provider_t &services,
                                   serializer_registry_t &serializers,
                                   const handler_registry_t &handlers,
-                                  const zlink::message_t &message) const;
+                                  const zlink::message_t &message,
+                                  std::string_view content_type = "") const;
 
     result_t<std::uint64_t> reserve_outbound_request (std::string channel_name);
     result_t<std::uint64_t> queue_pending_send (std::string channel_name,
@@ -169,6 +173,12 @@ class channel_runtime_t
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
     void drain () noexcept;
+    void publish_socket_event (const std::string &channel_name,
+                               socket_event_kind_t event,
+                               std::string local_address = {},
+                               std::string remote_address = {},
+                               std::uint32_t native_event = 0,
+                               std::uint32_t native_value = 0) const;
     void set_server_peer_weight (const std::string &channel_name, zlink::peer_weight_t value);
     std::optional<zlink::peer_weight_t>
     server_peer_weight_override (const std::string &channel_name) const;

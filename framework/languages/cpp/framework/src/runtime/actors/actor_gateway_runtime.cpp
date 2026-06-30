@@ -928,19 +928,11 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
               }
               current_actor_ref = found->second.ref;
           }
-          auto reply = route_client
-                         .request (route_channel_name, target_node_rid,
-                                   make_actor_bound_session_route_request (current_actor_ref,
-                                                                           packet_name, payload))
-                         .packet_name (actor_bound_session_route_request_t::packet_name)
-                         .async<actor_bound_session_route_reply_t> ()
-                         .result ();
-          if (!reply) {
-              return task_t<void> (result_t<void>::failure (
-                reply.error_kind (),
-                reply.error () ? reply.error ()->what () : "routed bound session send failed"));
-          }
-          return task_t<void> (result_t<void>::success ());
+          return route_client
+            .send (route_channel_name, target_node_rid,
+                   make_actor_bound_session_route_request (current_actor_ref, packet_name, payload))
+            .packet_name (actor_bound_session_route_request_t::packet_name)
+            .async ();
       };
 }
 

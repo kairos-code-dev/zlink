@@ -119,6 +119,12 @@ framework/languages/java/samples/java/<Sample>/sample-porting-inventory.ko.md
 | 5 | `ShoppingMall` | CommerceApi/OrderWorkflow/Registry, event sourced order workflow, projection 검증 통과 |
 | 6 | `GameQuest` | GameApi/QuestMission/Registry, quest event fanout, aggregate/projection 검증 통과 |
 
+## 진행 현황
+
+| 샘플 | 상태 | 근거 | 남은 일 |
+|------|------|------|---------|
+| `Bingo` | in-progress | `framework/languages/java/samples/java/Bingo/sample-porting-inventory.ko.md`를 추가했고, runner가 외부 `BINGO_REDIS_ENDPOINT`를 존중하도록 맞췄다. | Java Shared 계약이 아직 공통 문서의 `bingo_messages.proto` 생성 message가 아니라 hand-written `Messages.java` record다. sample release gate도 이 구조를 기대하므로, Protobuf 생성 전환은 Java/Kotlin gate 갱신과 같은 단위로 진행해야 한다. 개별 runner와 상위 runner 재실행이 필요하다. |
+
 ## 샘플 단위 절차
 
 1. `.NET` 샘플 파일 목록과 공통 샘플 문서를 읽고 inventory를 만든다.

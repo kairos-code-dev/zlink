@@ -41,7 +41,6 @@ public final class CourierApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-" + options.courierId() + ".log")
                 .traceLabel(options.courierId());
-            configurer.codecs().addJson();
             configurer.addClientServerChannel(SampleNames.courierChannel(options.courierId()))
                 .enableServer(SampleTopology.courierEndpoint(options.courierId()))
                 .addRequestHandler(

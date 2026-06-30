@@ -23,8 +23,7 @@ int main ()
           last_dead_letter_key = event.idempotency_key;
       })
       .channel ("profile")
-      .enable_client ()
-      .use_discovery ();
+      .enable_client ();
 
     auto bus = zlink.message_bus ();
     auto runtime = zlink::framework::detail::channel_runtime_t::from (bus);
@@ -75,7 +74,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t shutdown_builder;
-    shutdown_builder.channel ("profile").enable_client ().use_discovery ();
+    shutdown_builder.channel ("profile").enable_client ();
     auto shutdown_runtime =
       zlink::framework::detail::channel_runtime_t::from (shutdown_builder.message_bus ());
     auto shutdown_pending = shutdown_runtime.queue_pending_send ("profile", "shutdown-key");
@@ -93,7 +92,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t close_builder;
-    close_builder.channel ("profile").enable_client ().use_discovery ();
+    close_builder.channel ("profile").enable_client ();
     auto close_runtime =
       zlink::framework::detail::channel_runtime_t::from (close_builder.message_bus ());
     close_runtime.close ();

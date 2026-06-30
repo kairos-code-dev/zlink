@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.e2e\.spotservice\.Program'
+role_pattern='systems\.zlink\.e2e\.spotservice\.(client|play|publisher|registry)\.Program'
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 repo_root="$(cd ../../../../.. && pwd)"
@@ -117,16 +117,27 @@ gradle_run() {
   ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
 
-app_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/install/spot-service/bin/spot-service"
+client_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/spot-service-client/bin/spot-service-client"
+}
+
+registry_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Registry/install/spot-service-registry/bin/spot-service-registry"
+}
+
+play_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Play/install/spot-service-play/bin/spot-service-play"
+}
+
+publisher_bin() {
+  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Publisher/install/spot-service-publisher/bin/spot-service-publisher"
 }
 
 start_registry() {
-  ZLINK_JAVA_E2E_ROLE=registry \
   ZLINK_JAVA_E2E_REGISTRY_PUB="${REGISTRY_PUB}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
+    "$(registry_bin)" >"${log_dir}/registry.stdout.log" 2>"${log_dir}/registry.stderr.log" &
   pids+=("$!")
   wait_port registry-router "${REGISTRY_ROUTER}"
 }
@@ -139,7 +150,6 @@ start_play() {
   local http="$5"
   local spot_pub="$6"
   local stream="$7"
-  ZLINK_JAVA_E2E_ROLE=play \
   ZLINK_JAVA_E2E_NODE_RID="${rid}" \
   ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route}" \
   ZLINK_JAVA_E2E_INGRESS_ENDPOINT="${ingress}" \
@@ -155,7 +165,7 @@ start_play() {
   ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(app_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+    "$(play_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
   wait_port "${rid}-route" "${route}"
   wait_port "${rid}-spot" "${spot}"
@@ -165,11 +175,10 @@ start_play() {
 }
 
 run_publisher() {
-  ZLINK_JAVA_E2E_ROLE=publisher \
   ZLINK_JAVA_E2E_SPOT_PUBLISHER_ENDPOINT="${SPOT_PUBLISHER}" \
   ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
   ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    timeout -k 5s 30s "$(app_bin)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
+    timeout -k 5s 30s "$(publisher_bin)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
 }
 
 fetch_evidence() {
@@ -243,8 +252,7 @@ run_client_mode() {
   for attempt in $(seq 1 5); do
     read -r route_client spot_client <<<"$(reserve_client_endpoints)"
     set +e
-    ZLINK_JAVA_E2E_ROLE=client \
-      ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
+    ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
       ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route_client}" \
       ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
       ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
@@ -256,7 +264,7 @@ run_client_mode() {
       ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
       ZLINK_JAVA_E2E_REGISTRY_ROUTER="${REGISTRY_ROUTER}" \
       ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        timeout -k 5s 30s "$(app_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
+        timeout -k 5s 30s "$(client_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
     set -e
     if [[ "${status}" == "0" ]] && grep -q "spot-service e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then

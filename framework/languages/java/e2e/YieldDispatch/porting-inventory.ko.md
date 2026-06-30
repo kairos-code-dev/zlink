@@ -22,10 +22,11 @@ session gateway가 route mesh로 보낸 packet이 `play-b` target spot handler�
 yield 중일 때 bound session push를 원래 stream connector로 보내고, 다른 actor의 push wait는 진행되지
 않는지 검증한다. `YD-E1`은 timeout 뒤 같은 Spot mailbox가 probe를 처리하는 cleanup을 검증한다.
 현재 proof log는 `logs/20260630-123141-4002944`다. `YD-E3` diagnostic runner는
-`logs/20260630-122821-3987239`에서 play-a가 pending yield 중 SIGTERM으로 내려가지 않고 client가
+`logs/20260630-125123-4074910`에서 play-a가 pending yield 중 SIGTERM으로 내려가지 않고 client가
 closed/cancelled public error 대신 request timeout을 받는 것을 확인했다. 같은 로그의
-`play-a-3988858-thread-dump.log`는 Spring shutdown hook이 `Native.ctxTerm`에서 멈춘 상태를
-남긴다. 아직 `YD-E2`, `YD-E3`는 gap으로 남아 있다.
+`play-a-4076778-thread-dump.log`는 Spring shutdown hook이 `Native.ctxTerm`에서 멈춘 상태를
+남기며, `play-a.stderr.log`의 debug 출력은 `terminate-before-stop socket_count=20`으로 play-a context에
+ROUTER/DEALER/SUB/PUB/PAIR socket이 남아 있음을 보여 준다. 아직 `YD-E2`, `YD-E3`는 gap으로 남아 있다.
 이 inventory는
 `.NET` 기준 파일과 Java 대응 위치를 고정하고, 남은 scenario를
 internal helper나 raw-frame 우회로 완료 처리하지 않기 위해 유지한다.
@@ -97,6 +98,8 @@ YD-E1에서 검증했다. marker report는 YD-E5에서 생성한다. Java Config
 최근 재실행 로그: `logs/20260630-123141-4002944`
 
 현재 runner는 YD-A1/A2/A3/A4, YD-B1/B2/B3, YD-C1/C2/C3, YD-D2/D3/D4, YD-E1과 E4 정적 검증을
-통과했고 `yield-dispatch-marker-report.json`을 생성한다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`는 `logs/20260630-122821-3987239`에서
+통과했고 `yield-dispatch-marker-report.json`을 생성한다. `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1 ./run_e2e.sh`는 `logs/20260630-125123-4074910`에서
 play-a SIGTERM shutdown이 pending yield를 정리하지 못하고 client request timeout으로 끝나는 gap을
-재현했다. 아직 YD-E2 cancellation cleanup, YD-E3 shutdown/restart recovery는 완료하지 않았다.
+재현했다. `ZLINK_CTX_DEBUG_SOCKETS=1`로 같은 run에 남긴 debug 출력은 play-a `ctxTerm` 진입 시
+socket 20개가 아직 context에 남아 있음을 보여 준다. 아직 YD-E2 cancellation cleanup, YD-E3
+shutdown/restart recovery는 완료하지 않았다.

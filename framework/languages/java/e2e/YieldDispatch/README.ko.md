@@ -29,10 +29,11 @@ post-timeout probe를 처리하는지 검증한다.
 최근 full runner는 `logs/20260630-123141-4002944`에서 YD-A/B/C/D/E1, E4 정적 검증,
 E5 marker report 생성을 통과했다.
 shutdown recovery diagnostic은 `ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1`로 실행할 수 있지만,
-`logs/20260630-122821-3987239`에서 pending yield 중 play-a가 SIGTERM으로 내려가지 않고 client가
+`logs/20260630-125123-4074910`에서 pending yield 중 play-a가 SIGTERM으로 내려가지 않고 client가
 closed/cancelled public error 대신 request timeout을 받는 gap을 확인했다. 같은 로그의 thread dump는
-Spring shutdown hook이 `Native.ctxTerm`에서 멈춘 상태를 남긴다. 아직 cancellation, shutdown recovery,
-cross-language aggregation은 완료하지 않았다.
+Spring shutdown hook이 `Native.ctxTerm`에서 멈춘 상태를 남긴다. `ZLINK_CTX_DEBUG_SOCKETS=1`로 남긴
+debug 출력은 play-a `ctxTerm` 진입 시 socket 20개가 context에 남아 있음을 보여 준다. 아직
+cancellation, shutdown recovery는 완료하지 않았다.
 남은 gap은 `feature-map.ko.md`와 `porting-inventory.ko.md`에 기록한다.
 
 ## 목표 역할
@@ -62,6 +63,7 @@ play/session evidence JSON을 남긴다. 성공 기준은 `scenario YD-A1 passed
 `scenario YD-E1 passed`, `yield-dispatch e2e result=passed` 출력, message flow 로그,
 `yield-dispatch-marker-report.json` 생성이다. 최근 재실행 로그는 `logs/20260630-123141-4002944`이며,
 현재 기본 runner 범위는 통과한다.
-`ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260630-122821-3987239`에서 play-a가
+`ZLINK_JAVA_E2E_RUN_E3_SHUTDOWN=1` 전체 gate는 `logs/20260630-125123-4074910`에서 play-a가
 SIGTERM 뒤에도 내려가지 않아 SIGKILL까지 갔고, client가 public closed/cancelled error 대신 timeout을
-받았다. 전체 Config 8 포팅 완료에는 아직 YD-E2, YD-E3 gap 처리가 남아 있다.
+받았다. debug 출력은 play-a context가 `ctxTerm`에 들어갈 때 socket 20개를 아직 보유한 상태임을
+보여 준다. 전체 Config 8 포팅 완료에는 아직 YD-E2, YD-E3 gap 처리가 남아 있다.

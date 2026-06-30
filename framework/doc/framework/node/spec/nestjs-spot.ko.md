@@ -768,7 +768,7 @@ const reply = await spot.context.outbound.requestToChannel<GetStageStateReply>(
 
 void spot.context.outbound.sendToSpot(stage.spotRid, new StageNoticeMessage());
 
-await spot.context.outbound.publish('stage.state.updated', new StageStateUpdatedEvent());
+spot.context.outbound.publish('stage.state.updated', new StageStateUpdatedEvent());
 ```
 
 `Stage wrapper` 같은 상위 계층이 별도의 directory 나 lookup 을 얹는 것은

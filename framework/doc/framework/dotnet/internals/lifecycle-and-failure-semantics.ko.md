@@ -76,9 +76,9 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 | ---- | --------- |
 | `RequestToChannel(...).Async<TReply>(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외로 본다 |
 | `SendToChannel(...).Submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 framework 내부 전송 상태로 처리한다 |
-| `Publish(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
+| `Publish(...).Submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 framework 내부 전송 상태로 처리한다 |
 
-`Send(...).Submit(...)` 과 `Publish(...).Async(...)` 은 원격 peer 의 handler
+`Send(...).Submit(...)` 과 `Publish(...).Submit(...)` 은 원격 peer 의 handler
 처리가 끝나기를 기다리지 않는다. send 의 송신 수락 대기는 호출자에게 노출하지 않는다. 일시적인
 backpressure[^backpressure] 는 `false` 반환값으로 노출하지 않는다. 대신
 nonblocking send, pending queue, ready notification 조합으로 내부에서 처리한다.

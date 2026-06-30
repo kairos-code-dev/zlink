@@ -204,14 +204,14 @@ public interface IZLinkSessionSendCall
     IZLinkSessionSendCall Metadata(string key, string value);
     IZLinkSessionSendCall PacketName(string messageName);
     IZLinkSessionSendCall Compress();
-    ValueTask Async();
+    void Submit();
 }
 
 public interface IZLinkSessionReplyCall
 {
     IZLinkSessionReplyCall Metadata(string key, string value);
     IZLinkSessionReplyCall Compress();
-    ValueTask Async();
+    void Submit();
 }
 
 public interface IZLinkSessionContext

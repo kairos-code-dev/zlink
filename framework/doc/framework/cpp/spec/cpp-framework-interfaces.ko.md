@@ -793,13 +793,13 @@ public:
     send_call_t &timeout(std::chrono::milliseconds timeout);
     send_call_t &packet_name(std::string packet_name);
     send_call_t &metadata(std::string key, std::string value);
-    task_t<void> async();
+    void submit();
 };
 
 class relay_call_t {
 public:
     relay_call_t &timeout(std::chrono::milliseconds timeout);
-    task_t<void> async();
+    void submit();
 };
 
 class stream_write_call_t {
@@ -807,7 +807,7 @@ public:
     stream_write_call_t &metadata(std::string key, std::string value);
     stream_write_call_t &packet_name(std::string packet_name);
     stream_write_call_t &compress();
-    task_t<void> async();
+    void submit();
 };
 
 template <typename TActor>
@@ -1017,8 +1017,8 @@ stream callback은 framework가 packet을 수신하고 header 검증을 마친 �
 request handler 반환값은 `TReply` 또는 `task_t<TReply>`를 허용한다. `task_t<TReply>`를
 반환하는 handler는 `.NET`의 `async Task<TReply>` handler와 같은 의미이며, 내부
 request/relay처럼 결과를 기다려야 하는 호출은 `co_await call.async()` 형태로 사용한다.
-one-way send/push는 `call.submit()`으로 제출하고 handler 흐름에서 송신 수락 완료를
-기다리지 않는다.
+one-way send/push는 `call.submit()`으로 제출하고 handler 흐름에서 송신 수락 완료나
+backpressure 결과를 기다리지 않는다.
 
 handler 실행은 framework runtime의 coroutine executor를 통과한다. 이 executor는 내부적으로
 `boost::asio::thread_pool`과 `boost::asio::co_spawn`으로
@@ -1104,7 +1104,7 @@ class route_send_call_t {
 public:
     route_send_call_t &packet_name(std::string packet_name);
     route_send_call_t &metadata(std::string key, std::string value);
-    task_t<void> async();
+    void submit();
 };
 
 class route_request_call_t {

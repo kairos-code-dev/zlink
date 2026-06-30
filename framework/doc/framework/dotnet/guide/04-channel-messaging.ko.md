@@ -297,7 +297,7 @@ public sealed class PriceService(IZLinkChannelClient client)
     public ValueTask RefreshAsync(string accountId, CancellationToken ct)
         => client
             .SendToChannel("profile", new RefreshCacheCommand(accountId))
-            .Async(ct);                // send: 응답이 없으므로 .Async<T> 없이 .Async, timeout 무관
+            .Submit(ct);               // send: 응답과 완료 객체를 기다리지 않는다
 }
 ```
 

@@ -14,7 +14,7 @@ class RouteSession(private val context: ZLinkSessionContext) : ZLinkSuspendingSe
     override fun context(): ZLinkSessionContext = context
 
     override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
-        context.client().reply(Pong()).submit().await()
+        context.client().reply(Pong()).submit()
     }
 }
 ```

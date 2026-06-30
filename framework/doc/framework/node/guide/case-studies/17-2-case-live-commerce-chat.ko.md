@@ -166,7 +166,7 @@ export class LiveChatSession implements ZLinkSession {
       const req = payload.decode<AuthViewerReq>();
       const actor = await this.actors.getOrCreate(req.viewerId, 'viewer');
       this.viewer = await this.context.actors.bind(actor);
-      await this.context.client.reply(new AuthViewerOk()).submit();
+      this.context.client.reply(new AuthViewerOk()).submit();
       return;
     }
     if (!this.viewer) {

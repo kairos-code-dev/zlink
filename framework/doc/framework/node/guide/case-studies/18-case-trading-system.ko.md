@@ -82,7 +82,7 @@ export class SubmitOrderHandler
 ```ts
 // 체결이 나면 spot 의 outbound 로 심볼별 시세 토픽에 publish 한다.
 async function publishTick(spot: SymbolBookSpot, trade: Trade): Promise<void> {
-  await spot.context.outbound.publish(`md.${spot.symbol}`, trade).submit();
+  spot.context.outbound.publish(`md.${spot.symbol}`, trade).submit();
 }
 ```
 

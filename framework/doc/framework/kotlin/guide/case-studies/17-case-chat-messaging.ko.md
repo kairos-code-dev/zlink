@@ -111,7 +111,7 @@ class ChatSession(
             val req = payload.decode(AuthReq::class.java)
             val actor = actors.getOrCreate(req.userId, "chat-user").await()
             user = context.actors().bind(actor).await()
-            context.client().reply(AuthOk()).submit().await()
+            context.client().reply(AuthOk()).submit()
             return
         }
         val bound = user ?: throw IllegalStateException("actor is not bound")

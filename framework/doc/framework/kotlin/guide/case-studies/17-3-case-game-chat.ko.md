@@ -173,7 +173,7 @@ class GameChatSession(
             val req = payload.decode(AuthPlayerReq::class.java)
             val actor = actors.getOrCreate(req.playerId, "player").await()
             player = context.actors().bind(actor).await()
-            context.client().reply(AuthPlayerOk()).submit().await()
+            context.client().reply(AuthPlayerOk()).submit()
             return
         }
         val bound = player ?: throw IllegalStateException("actor is not bound")

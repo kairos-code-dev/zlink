@@ -58,7 +58,7 @@ class GameSession(
                 val input = payload.decode(ClientInput::class.java)
                 channels.sendToChannel("play", ForwardInputCommand(input)).submit()
             }
-            "Ping" -> context.client().reply(Pong()).submit().await()
+            "Ping" -> context.client().reply(Pong()).submit()
             else -> return
         }
     }
@@ -69,7 +69,7 @@ class GameSession(
 
 | 표면 | 용도 |
 |------|------|
-| `client().send(msg).submit()` / `client().reply(msg).submit().await()` | client로 push / 요청에 응답 |
+| `client().send(msg).submit()` / `client().reply(msg).submit()` | client로 push / 요청에 응답 |
 | `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([06-actor-session](06-actor-session.ko.md)) |
 | `close()` | session context의 close hook (현재 구현은 완료된 future를 반환하는 no-op) |
 

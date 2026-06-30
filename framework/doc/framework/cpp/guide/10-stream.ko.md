@@ -97,10 +97,10 @@ write call과 reply call로 패킷을 쓴다. application은 STREAM header를 �
 
 ```cpp
 auto payload = zlink::message_t::from_json (response);
-co_await stream.write_packet (payload)
+stream.write_packet (payload)
   .packet_name ("game.state.changed") // client가 받을 packet 이름
-  .async ();
-co_await stream.reply_packet (payload).async (); // 현재 request dispatch에 대한 응답
+  .submit ();
+stream.reply_packet (payload).submit (); // 현재 request dispatch에 대한 응답
 ```
 
 STREAM session은 `stream_dispatch_context_t`와 `zlink::message_t` payload를 받는다.

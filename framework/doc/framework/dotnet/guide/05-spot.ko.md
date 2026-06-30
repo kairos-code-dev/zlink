@@ -777,7 +777,7 @@ public sealed class StageNoticeHandler
         var outbound = spot.Context.Outbound;
 
         // topic — 현재 channel 의 topic 으로 publish
-        await outbound.Publish("stage.notice", new StageNoticeEvent(request.Text)).Async(ct);
+        outbound.Publish("stage.notice", new StageNoticeEvent(request.Text)).Submit(ct);
 
         // 일반 channel — attach 된 비-spot channel 로 send/request
         outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);

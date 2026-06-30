@@ -1358,8 +1358,8 @@ public sealed class TicTacToeSession(IZLinkSessionContext context, IZLinkActorMa
 
             authenticatedActors.Remember(request.ActorId, actor);
 
-            await context.Client.Reply(new AuthRep(ok: true))
-                .Async();
+            context.Client.Reply(new AuthRep(ok: true))
+            .Submit();
             return;
         }
 

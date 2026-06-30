@@ -119,7 +119,7 @@ class GameSession(
             val req = payload.decode(AuthReq::class.java)
             val player = actors.getOrCreate(req.playerId, "player").await()
             actor = context.actors().bind(player).await()
-            context.client().reply(AuthOk()).submit().await()
+            context.client().reply(AuthOk()).submit()
             return
         }
         val bound = actor ?: throw IllegalStateException("actor is not bound")

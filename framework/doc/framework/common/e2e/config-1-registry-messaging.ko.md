@@ -210,13 +210,13 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 
 우선순위: `P2`
 
-**한마디로:** provider가 느려 송신 큐가 high-water mark까지 차오를 때, client가 정해진 backpressure(대기/timeout/정해진 error)대로 동작하고 연결이 깨지지 않는가.
+**한마디로:** provider가 느려 send 처리 backlog가 쌓여도 one-way send 호출자는 전송 완료를 기다리지 않고, framework가 내부 backpressure를 처리한 뒤 연결과 후속 request가 정상으로 남는가.
 
 - 절차: provider handler를 느리게 두고, client가 처리 속도보다 빠르게 다량 request/send를 보내 송신 큐를 HWM까지 채운다.
-- 검증: HWM 포화 시 정해진 흐름 제어(블록·timeout·정해진 public error) 중 계약된 동작이 일어나고, 연결이 깨지거나 다른 정상 트래픽이 오염되지 않는다. 적체가 풀리면 messaging이 정상화된다.
+- 검증: send pressure 중 one-way send submit은 public 완료 객체나 bounded failure oracle을 노출하지 않는다. 호출부는 제출만 확인하고, 연결이 깨지거나 다른 정상 트래픽이 오염되지 않는다. 적체가 풀리면 follow-up request와 provider evidence가 정상으로 회복된다.
 - 세부 동작: 송신 HWM 포화 시 backpressure 계약.
 
-> 주의: 각 언어의 framework channel runtime은 `SendHighWaterMark`/`ReceiveHighWaterMark` 같은 HWM 설정을 live socket에 적용해야 한다. 다만 framework channel 레이어에서 포화를 결정적으로 유도하려면 느린 handler, 다량 송신, timeout 관측을 안정화하는 harness가 필요하다. backpressure 표면 자체의 직접 검증은 binding 레이어가 더 적합할 수 있다.
+> 주의: send/publish는 one-way submit이다. backpressure 대기, send-ready 재시도, timeout 정책은 framework 내부 책임이며 public send 호출자가 await할 완료값으로 드러내지 않는다. HWM 포화 자체의 직접 오류 결과 검증은 binding 또는 runtime 내부 테스트가 더 적합하다.
 
 ## 5. 완료 기준
 

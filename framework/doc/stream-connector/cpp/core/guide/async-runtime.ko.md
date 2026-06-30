@@ -13,14 +13,15 @@ tool, perf client처럼 engine main thread 제약이 없는 code에서 사용한
 
 ## Callback Completion
 
-`submit(callback)`, `connect(callback)`, `close(callback)`은 operation을 등록하고 즉시 반환한다.
-동기 `submit()`, `connect()`, `close()`는 기존 사용자를 위해 유지한다.
+`request().submit(callback)`, `wait_for().submit(callback)`, `connect(callback)`,
+`close(callback)`은 operation을 등록하고 즉시 반환한다. 동기 `request().submit()`,
+`wait_for().submit()`, `connect()`, `close()`는 기존 사용자를 위해 유지한다.
 
 TCP, TLS, WebSocket, WSS transport에서 `connect(callback)`은 연결 완료나 handshake를 기다리기
 위해 호출 thread를 막지 않는다. TLS와 WSS는 OpenSSL feature가 켜진 build에서 사용할 수 있다.
 
-`send().submit(callback)`의 callback은 outbound frame write가 완료된 뒤 호출된다. callback을
-등록했다는 이유만으로 성공 결과를 먼저 반환하지 않는다.
+`send().submit()`은 one-way 전송 요청을 제출하고 완료 결과를 호출자에게 반환하지 않는다.
+송신 수락과 backpressure 처리는 connector 내부 책임이다.
 
 `request().submit(callback)`은 request frame write를 등록한 뒤 반환한다. reply, timeout, close,
 transport 오류 중 하나가 발생하면 callback에 `result_t<T>`로 전달된다.

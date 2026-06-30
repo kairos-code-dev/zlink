@@ -1286,7 +1286,7 @@ export class TicTacToeSession implements ZLinkSession {
 
       this.authenticatedActors.remember(request.actorId, actor);
 
-      await this.context.client.reply(new AuthRep(true)).submit(signal);
+      this.context.client.reply(new AuthRep(true)).submit(signal);
       return;
     }
 

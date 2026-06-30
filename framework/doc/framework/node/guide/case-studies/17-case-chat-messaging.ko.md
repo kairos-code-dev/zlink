@@ -124,7 +124,7 @@ export class ChatSession implements ZLinkSession {
       const req = payload.decode<AuthReq>();
       const actor = await this.actors.getOrCreate(req.userId, 'user');
       this.user = await this.context.actors.bind(actor);
-      await this.context.client.reply(new AuthOk()).submit();
+      this.context.client.reply(new AuthOk()).submit();
       return;
     }
     if (!this.user) {

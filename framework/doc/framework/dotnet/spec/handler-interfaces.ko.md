@@ -1257,7 +1257,7 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    ValueTask Async();
+    void Submit();
 }
 
 public interface IZLinkSessionReplyCall
@@ -1266,7 +1266,7 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    ValueTask Async();
+    void Submit();
 }
 
 ```
@@ -1955,7 +1955,7 @@ public interface IZLinkSendCall
 {
     IZLinkSendCall PacketName(string packetName);
 
-    ValueTask Async(
+    void Submit(
         CancellationToken cancellationToken = default);
 }
 
@@ -2018,7 +2018,7 @@ timeout 은 request 와 send 간에 다르게 다룬다.
 - `Publish(...)` 도 같은 이유로 timeout 설정을 두지 않는다.
 - `SendToChannel(...).Submit(...)` 는 handler 완료를 기다리는 호출이 아니다.
   framework 가 메시지를 transport 에 위임하는 과정은 내부에서 처리한다.
-- `Publish(...).Async(...)` 도 동일한 의미다. subscriber 의 handler
+- `Publish(...).Submit(...)` 도 동일한 의미다. subscriber 의 handler
   완료나 subscriber 수신을 기다리지 않는다. local publish transport 에
   submit 되는 시점까지만 대기한다.
 - send backpressure 의 대기 한계는 builder 가 아니라, framework 기본값 또는
@@ -2232,7 +2232,7 @@ public interface IZLinkPublishCall
 {
     IZLinkPublishCall PacketName(string packetName);
 
-    ValueTask Async(
+    void Submit(
         CancellationToken cancellationToken = default);
 }
 

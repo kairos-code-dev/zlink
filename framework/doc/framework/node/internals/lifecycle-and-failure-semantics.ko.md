@@ -163,10 +163,10 @@ framework runtime 을 내리는 세부 순서는 `ZLinkFrameworkRuntimeHost.stop
 | ---- | --------- |
 | `request(...).submit(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외(reject)로 본다 |
 | `send(...).submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 framework 내부 전송 상태로 처리한다 |
-| `publish(...).submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외(reject)로 본다 |
+| `publish(...).submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 framework 내부 전송 상태로 처리한다 |
 
-TypeScript 표면에서 request와 publish의 `submit(...)` 은 `Promise` 를 반환하는 async
-submit 이다. send/push는 application 흐름에서 그 완료를 기다리는 표면으로 설명하지 않는다.
+TypeScript 표면에서 request의 `submit(...)` 은 `Promise` 를 반환하는 async
+submit 이다. send/publish/push/reply는 application 흐름에서 그 완료를 기다리는 표면으로 설명하지 않는다.
 
 `send(...).submit(...)` 과 `publish(...).submit(...)` 은 원격 peer 의 handler
 처리가 끝나기를 기다리지 않는다. send/push의 송신 수락 대기는 caller 표면으로

@@ -372,9 +372,10 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        return context
+        context
             .Client.Reply(new Pong())
-            .Async();
+            .Submit();
+        return ValueTask.CompletedTask;
     }
 }
 ```

@@ -167,7 +167,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
         // BindAsync: 인증된 actor handle 을 이 session 에 묶는다. 이후 packet 은 RelayAsync 로 이 actor 에 간다.
         await context.Actors.BindAsync(
             actor, ct);
-        await context.Client.Reply(new AuthRep(ok: true)).Async();
+        context.Client.Reply(new AuthRep(ok: true)).Submit();
     }
 }
 ```

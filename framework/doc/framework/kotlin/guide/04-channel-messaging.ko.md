@@ -63,7 +63,7 @@ class GetProfileHandler : ZLinkSuspendingRequestHandler<GetProfileRequest, GetPr
 ## 3. Fanout
 
 ```kotlin
-fanoutClient.publish("profile", "profile.changed", ProfileChanged(accountId)).submit().await()
+fanoutClient.publish("profile", "profile.changed", ProfileChanged(accountId)).submit()
 ```
 
 fanout은 reply를 기대하지 않는 event 전파다. 구독 쪽은

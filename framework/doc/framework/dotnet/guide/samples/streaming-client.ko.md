@@ -583,7 +583,7 @@ public interface IZlinkStreamSendCall
 
     IZlinkStreamSendCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    void Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZlinkStreamRequestCall

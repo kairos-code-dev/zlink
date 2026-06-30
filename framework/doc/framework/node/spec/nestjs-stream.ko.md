@@ -205,13 +205,13 @@ export interface ZLinkSessionSendCall {
   metadata(key: string, value: string): ZLinkSessionSendCall;
   packetName(messageName: string): ZLinkSessionSendCall;
   compress(): ZLinkSessionSendCall;
-  submit(signal?: AbortSignal): Promise<void>;
+  submit(signal?: AbortSignal): void;
 }
 
 export interface ZLinkSessionReplyCall {
   metadata(key: string, value: string): ZLinkSessionReplyCall;
   compress(): ZLinkSessionReplyCall;
-  submit(signal?: AbortSignal): Promise<void>;
+  submit(signal?: AbortSignal): void;
 }
 
 export interface ZLinkSessionContext {

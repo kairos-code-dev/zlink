@@ -399,14 +399,13 @@ public interface ZLinkSessionSendCall {
     ZLinkSessionSendCall metadata(String key, String value);
     ZLinkSessionSendCall packetName(String messageName);
     ZLinkSessionSendCall compress();
-    CompletionStage<Void> submit();
+    void submit();
 }
 
 public interface ZLinkSessionReplyCall {
     ZLinkSessionReplyCall metadata(String key, String value);
     ZLinkSessionReplyCall compress();
-    CompletionStage<Void> submit();
-    void await();
+    void submit();
 }
 
 public interface ZLinkSessionActor {
@@ -491,17 +490,13 @@ public interface ZLinkBoundSession {
 public interface ZLinkBoundSessionSendCall {
     ZLinkBoundSessionSendCall packetName(String packetName);
     ZLinkBoundSessionSendCall metadata(String key, String value);
-    CompletionStage<Void> submit();
-    void yield();
+    void submit();
 }
 ```
 
-`submit(...)` 과 `await(...)` 는 기본 serial terminator다. `yield(...)` 는
-framework가 만든 actor join 또는 bound session send call object에서만
-사용한다. 이 terminator들은 completion을 기다리는 동안 현재 Spot turn을 반납하고,
-completion 뒤 같은 handler continuation을 재개한다. Entry Spot actor handler 안에서 만든
-call object에는 반납할 Entry Spot 전체 실행 turn이 없으므로 `yield(...)`를 호출하면 즉시 계약
-오류가 난다.
+`submit(...)` 은 send 계열 메시지를 맡기는 terminator다. 완료 객체를 반환하지 않으며,
+송신 수락과 backpressure 처리는 framework 내부 책임이다. `yield(...)` 는 actor join처럼
+응답을 기다리는 call object에서만 사용한다.
 
 `ZLinkSessionClient.reply(...)`는 현재 session dispatch가 request packet을 처리하는
 동안에만 사용할 수 있다. framework runtime은 inbound header의 request sequence를
@@ -718,7 +713,7 @@ public interface ZLinkClient {
 
 public interface ZLinkSendCall {
     ZLinkSendCall packetName(String messageName);
-    CompletionStage<Void> submit();
+    void submit();
 }
 
 public interface ZLinkRequestCall {
@@ -843,8 +838,7 @@ public interface ZLinkFanoutClient {
 
 public interface ZLinkPublishCall {
     ZLinkPublishCall packetName(String messageName);
-    CompletionStage<Void> submit();
-    void await();
+    void submit();
 }
 
 public record ZLinkSpotCreateResult(

@@ -111,7 +111,7 @@ class StagePublishController(private val spotPublisherClient: ZLinkSpotPublisher
             "game.stage",
             "stage.state.updated",
             StageStateUpdated(request.stageRid, request.userCount),
-        ).submit().await()
+        ).submit()
         return ResponseEntity.accepted().build()
     }
 }

@@ -39,10 +39,10 @@
 **종결 호출(call) 객체** (`channels/call.hpp`, route 계열은 `channels/channel.hpp`) —
 전송 전 옵션을 얹는다:
 `channel_request_call_t`는 `.timeout()` · `.packet_name()` · `.metadata(k,v)` · `.async<TReply>()`,
-`send_call_t`는 `.timeout()` · `.packet_name()` · `.metadata(k,v)` · `.async()`,
+`send_call_t`는 `.timeout()` · `.packet_name()` · `.metadata(k,v)` · `.submit()`,
 `route_request_call_t`는 `.timeout()` · `.packet_name()` · `.metadata(k,v)` · `.async()` /
-`.async<TReply>()`, `route_send_call_t`는 `.packet_name()` · `.metadata(k,v)` · `.async()`를
-제공한다. send 계열은 `task_t<void>`를 반환한다.
+`.async<TReply>()`, `route_send_call_t`는 `.packet_name()` · `.metadata(k,v)` · `.submit()`을
+제공한다. send 계열은 완료값을 반환하지 않는다.
 
 **handler/filter 계약** (`handlers/handler_registry.hpp`):
 

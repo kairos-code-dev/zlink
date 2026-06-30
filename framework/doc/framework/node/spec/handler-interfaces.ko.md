@@ -797,13 +797,13 @@ export interface ZLinkSessionSendCall {
   metadata(key: string, value: string): ZLinkSessionSendCall;
   packetName(messageName: string): ZLinkSessionSendCall;
   compress(): ZLinkSessionSendCall;
-  submit(): Promise<void>;
+  submit(): void;
 }
 
 export interface ZLinkSessionReplyCall {
   metadata(key: string, value: string): ZLinkSessionReplyCall;
   compress(): ZLinkSessionReplyCall;
-  submit(): Promise<void>;
+  submit(): void;
 }
 ```
 
@@ -1144,7 +1144,7 @@ packet key 는 매번 별도 문자열로 받지 않는 것이 기본이다. pay
 ```ts
 export interface ZLinkSendCall {
   packetName(packetName: string): ZLinkSendCall;
-  submit(): Promise<void>;
+  submit(): void;
 }
 
 export interface ZLinkRequestCall {
@@ -1273,7 +1273,7 @@ export interface ZLinkSpotPublisherClient {
 ```ts
 export interface ZLinkPublishCall {
   packetName(packetName: string): ZLinkPublishCall;
-  submit(signal?: AbortSignal): Promise<void>;
+  submit(signal?: AbortSignal): void;
 }
 
 export interface ZLinkFanoutClient {

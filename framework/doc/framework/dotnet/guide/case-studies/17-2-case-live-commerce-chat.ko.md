@@ -178,7 +178,7 @@ public sealed class LiveChatSession(IZLinkSessionContext context, IZLinkActorMan
             var req = payload.Decode<AuthViewerReq>();
             ActorRef actor = await actors.GetOrCreateAsync(req.ViewerId, "viewer", ct);
             _viewer = await context.Actors.BindAsync(actor, ct);
-            await context.Client.Reply(new AuthViewerOk()).Async();
+            context.Client.Reply(new AuthViewerOk()).Submit();
             return;
         }
 

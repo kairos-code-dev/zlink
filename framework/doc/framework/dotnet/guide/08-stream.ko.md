@@ -95,7 +95,7 @@ public sealed class ClientHeaderSession(
             case "Ping":
                 var ping = payload.Decode<Ping>();
                 // Client.Reply: 응답 helper. payload 수명을 framework 가 관리한다(Client.Send, actor 의 BoundSession.Send 도 동일).
-                await context.Client.Reply(new Pong(ping.Sequence)).Async();
+                context.Client.Reply(new Pong(ping.Sequence)).Submit();
                 break;
         }
     }
@@ -106,7 +106,7 @@ public sealed class ClientHeaderSession(
 
 | 표면 | 용도 |
 |------|------|
-| `Client.Send(msg).Submit()` / `Client.Reply(msg).Async()` | client 로 push / 요청에 응답 |
+| `Client.Send(msg).Submit()` / `Client.Reply(msg).Submit()` | client 로 push / 요청에 응답 |
 | `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-spot](06-actor-spot.ko.md)) |
 | `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
@@ -133,7 +133,7 @@ public sealed class ClientHeaderSession(
 ### 보내기와 직렬화
 
 - `IZLinkStream.Send(ZLinkMessage)` 와 `IZLinkStream.Reply(ZLinkMessage)` 는 send/reply call을
-  돌려준다. 응용은 call에서 packet name, metadata, compression을 지정하고 `Async()`로 제출한다.
+  돌려준다. 응용은 call에서 packet name, metadata, compression을 지정하고 `Submit()`으로 제출한다.
 - session dispatch payload 는 `ZLinkMessage` 로 들어온다. 응용 코드는
   `payload.Decode<T>()` 로 DTO를 얻고, framework runtime 이 등록된 codec registry 로
   JSON, MessagePack, Protobuf, custom codec 을 고른다. codec 을 바꿔도 session handler

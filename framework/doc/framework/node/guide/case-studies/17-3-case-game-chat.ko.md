@@ -175,7 +175,7 @@ export class GameChatSession implements ZLinkSession {
       const req = payload.decode<AuthPlayerReq>();
       const actor = await this.actors.getOrCreate(req.playerId, 'player');
       this.player = await this.context.actors.bind(actor);
-      await this.context.client.reply(new AuthPlayerOk()).submit();
+      this.context.client.reply(new AuthPlayerOk()).submit();
       return;
     }
     if (!this.player) {

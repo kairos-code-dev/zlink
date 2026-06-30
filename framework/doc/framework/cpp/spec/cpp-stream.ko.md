@@ -93,7 +93,7 @@ public:
     stream_write_call_t &metadata(std::string key, std::string value);
     stream_write_call_t &packet_name(std::string packet_name);
     stream_write_call_t &compress();
-    task_t<void> async();
+    void submit();
 };
 
 class session_actor_t {
@@ -179,10 +179,10 @@ session 이름으로 사용하고, 없으면 타입 이름 기반 message name�
 - CPU-bound 또는 blocking 가능성이 있는 stream handler는 offload 실행 정책을 명시한다.
 - 같은 stream session의 lifecycle callback과 packet callback은 직렬로 처리한다.
 - Header 검증에 실패한 packet은 application handler로 넘기지 않는다.
-- `stream_t::write_packet(...)`과 `reply_packet(...)`은 async submit으로 본다. 반환된
+- `stream_t::write_packet(...)`과 `reply_packet(...)`은 one-way write로 본다. 반환된
   `stream_write_call_t`에서 `metadata(...)`, `packet_name(...)`, `compress()`를 설정할 수 있고,
-  실제 실행은 `async()`에서 시작한다.
-- `stream_t::close()`는 session을 닫고 이후 write submit이 `disconnected` 결과를 반환하게
+  실제 제출은 `submit()`에서 시작한다. write 제출은 응답을 기다리지 않는다.
+- `stream_t::close()`는 session을 닫고 이후 write submit을 `disconnected`로 처리하게
   한다. 이미 닫힌 stream을 다시 닫는 것은 성공으로 처리해 cleanup 호출자가 중복 close를
   특별히 구분하지 않아도 되게 한다.
 - session actor dispatch는 STREAM session에서 route mesh channel로 직접 packet을 만들지

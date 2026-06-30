@@ -82,7 +82,7 @@ class DriverSession(
     override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         val loc = payload.decode(DriverLocation::class.java)
         geo.update(loc)
-        feed.publish("loc.events", "driver.location", loc).submit().await()
+        feed.publish("loc.events", "driver.location", loc).submit()
     }
 }
 ```
@@ -121,7 +121,7 @@ class DriverSession(
     override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         val loc = payload.decode(DriverLocation::class.java)
         geo.update(loc)
-        feed.publish("loc.events", "driver.location", loc).submit().await()
+        feed.publish("loc.events", "driver.location", loc).submit()
     }
 }
 ```

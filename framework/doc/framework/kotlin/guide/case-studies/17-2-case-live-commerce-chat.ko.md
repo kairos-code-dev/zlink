@@ -168,7 +168,7 @@ class LiveChatSession(
             val req = payload.decode(AuthViewerReq::class.java)
             val actor = actors.getOrCreate(req.viewerId, "viewer").await()
             viewer = context.actors().bind(actor).await()
-            context.client().reply(AuthViewerOk()).submit().await()
+            context.client().reply(AuthViewerOk()).submit()
             return
         }
         val bound = viewer ?: throw IllegalStateException("actor is not bound")

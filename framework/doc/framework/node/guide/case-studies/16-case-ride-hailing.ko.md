@@ -79,7 +79,7 @@ export class DriverSession implements ZLinkSession {
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     const loc = payload.decode<DriverLocation>();
     this.geo.update(loc);
-    await this.feed.publishToChannel('loc.events', 'driver.location', loc).submit();
+    this.feed.publishToChannel('loc.events', 'driver.location', loc).submit();
   }
 }
 ```

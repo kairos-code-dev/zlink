@@ -84,7 +84,8 @@ framework public API는 각 언어의 표준 비동기 표현을 사용하되, f
 
 callback 기반 completion API는 awaitable 값을 반환하지 않으므로, 언어별 관례에 따라
 `Submit(callback)`, `submit(callback)`, `onCompleted(...).start()` 같은 이름을 유지할 수
-있다. 이 경우에도 network 의미는 위의 async 실행과 같아야 한다.
+있다. 다만 one-way send/publish/push/reply 계열은 callback completion을 공개 계약으로 두지
+않는다. 호출자가 기다릴 결과가 있는 request/wait 계열에서만 완료 객체나 callback을 공개한다.
 
 message dispatch error observer 도 같은 원칙을 따른다. observer 는 request error reply, 기본 로그,
 metric/counter 기록 뒤에 실행되는 관측 callback 이며 dispatch 결정을 바꾸는 hook 이 아니다. observer
@@ -104,14 +105,13 @@ queue overflow 때 아직 전달하지 않은 새 event 를 drop 하고 overflow
 
 | 구분 | 포함하는 API | 공통 기준 |
 |------|--------------|-----------|
-| 서버 framework | channel handler, outbound client, Spot, actor, session, Registry, monitoring | host framework의 lifecycle과 DI 규칙을 따른다. handler 반환 타입과 outbound submit terminator가 해당 언어의 async 표면을 사용한다. |
-| client connector | Stream Connector, game/UI client connector, wait/request/send helper | 서버 framework와 독립된 client 라이브러리로 둘 수 있다. manual dispatch, callback, coroutine adapter 같은 runtime별 표면을 별도 설명한다. |
+| 서버 framework | channel handler, outbound client, Spot, actor, session, Registry, monitoring | host framework의 lifecycle과 DI 규칙을 따른다. one-way outbound submit은 완료 객체를 반환하지 않고, request처럼 응답을 기다리는 호출만 async 결과를 반환한다. |
+| client connector | Stream Connector, game/UI client connector, wait/request/send helper | 서버 framework와 독립된 client 라이브러리로 둘 수 있다. send는 송신 완료를 공개하지 않고, wait/request와 lifecycle completion만 별도 설명한다. |
 | runtime adapter | Unity, Unreal, Godot, Axmol, Kotlin coroutine wrapper 같은 환경별 adapter | core 의미를 바꾸지 않고, main thread 또는 coroutine/dispatcher 규칙에 맞게 감싼다. |
 
-서버 framework가 `Async`, `submit`, `CompletionStage`, `task_t` 같은 awaitable
-표면을 제공하더라도, client connector는 callback completion 표면을 함께 제공할 수 있다.
-이 경우 callback 표면은 awaitable 표면과 같은 timeout, cancellation, error 의미를 가져야
-한다.
+서버 framework가 `Async`, `submit`, `CompletionStage`, `task_t` 같은 awaitable 표면을
+제공하더라도, one-way send/publish/push/reply 계열에는 이 표면을 붙이지 않는다. client
+connector의 callback completion도 request/wait/lifecycle처럼 완료 의미가 있는 호출에만 둔다.
 
 ## 4. 언어별 네이밍과 인터페이스 투영
 
@@ -200,7 +200,7 @@ client connector 표면:
 | 영역 | Node 표면 | 의미 |
 |------|-----------|------|
 | lifecycle | `connect()`, `close()`, `dispatch()` | `Promise<void>` 반환 |
-| send/request/wait | `send(...).submit()`, `request(...).submit<T>()`, `waitFor(...).where(...).submit()` | `Promise<T>` 또는 `Promise<void>` 반환. `Async` suffix를 붙이지 않는다. |
+| send/request/wait | `send(...).submit()`, `request(...).submit<T>()`, `waitFor(...).where(...).submit()` | `send`는 완료값을 반환하지 않는다. `request`와 `waitFor`는 응답을 기다리므로 `Promise<T>`를 반환한다. `Async` suffix를 붙이지 않는다. |
 | cancellation | `signal?: AbortSignal` | `.NET` `CancellationToken`의 Node 투영 |
 
 codec 변환, packet name 계산, 값 객체 생성처럼 network I/O를 하지 않는 순수 helper는
@@ -226,7 +226,7 @@ client connector 표면:
 |------|------------------------------|-------------------|
 | lifecycle / request / wait | framework connector가 소유하는 callback 또는 result 기반 표면. 예외와 coroutine에 의존하지 않음 | `connect().async()`, `close().async()`, `request(...).async()`, `wait_for(...).async()` (`connector.dispatch()`는 별도) |
 | one-way send | 호출자가 송신 수락이나 backpressure 완료를 기다리지 않도록 framework 내부 submitter가 처리 | `send(...).submit()` |
-| callback completion | core connector의 `submit(callback)` | callback 기반 completion이 필요할 때 사용 |
+| callback completion | core connector의 request/wait `submit(callback)` | callback 기반 completion이 필요할 때 사용 |
 | coroutine completion | bindings나 낮은 수준 connector 표면에는 직접 섞지 않음 | `co_await` 가능한 `task_t<T>` 반환 |
 
 Unreal, Godot, Axmol 같은 engine adapter는 기본 connector를 복제하지 않고, engine main

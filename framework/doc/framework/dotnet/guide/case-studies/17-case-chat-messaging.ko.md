@@ -80,7 +80,7 @@ public sealed class ChatSession(IZLinkSessionContext context, IZLinkActorManager
             var req = payload.Decode<AuthReq>();
             ActorRef actor = await actors.GetOrCreateAsync(req.UserId, "chat-user", ct);
             _user = await context.Actors.BindAsync(actor, ct);
-            await context.Client.Reply(new AuthOk()).Async();
+            context.Client.Reply(new AuthOk()).Submit();
             return;
         }
         await _user!.RelayAsync(payload, ct);

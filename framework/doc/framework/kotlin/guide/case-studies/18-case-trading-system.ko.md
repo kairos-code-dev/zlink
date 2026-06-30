@@ -85,7 +85,7 @@ class SubmitOrderHandler :
 class TickPublishHandler :
     ZLinkSuspendingSpotPacketHandler<SymbolBookSpot, Trade> {
     override suspend fun handle(spot: SymbolBookSpot, trade: Trade) {
-        spot.context().outbound().publish("md.${spot.symbol()}", trade).submit().await()
+        spot.context().outbound().publish("md.${spot.symbol()}", trade).submit()
     }
 }
 ```

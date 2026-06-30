@@ -216,7 +216,7 @@ class AuthenticatePlaySessionHandler(
                 .await()
         val playActor = actors.getOrCreate(authenticated.actorId, "player").await()
         val bound = context.actors().bind(playActor).await()
-        context.client().reply(AuthenticateRes(bound.actorId())).submit().await()
+        context.client().reply(AuthenticateRes(bound.actorId())).submit()
     }
 }
 ```

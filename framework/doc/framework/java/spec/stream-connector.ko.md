@@ -193,7 +193,7 @@ public interface ZLinkStreamSendCall {
     ZLinkStreamSendCall metadata(String key, String value);
     ZLinkStreamSendCall metadata(Map<String, String> metadata);
     ZLinkStreamSendCall compress();
-    CompletionStage<Void> submit();
+    void submit();
 }
 
 public interface ZLinkStreamRequestCall {
